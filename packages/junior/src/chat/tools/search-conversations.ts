@@ -1,11 +1,13 @@
+import { mapBounded } from "@/chat/fan-out";
 import * as z from "zod";
-import type { ConversationEmbedder } from "@/chat/conversations/embedding";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   briefLinkSchema,
   briefOutcomeStatusSchema,
 } from "@/chat/briefs/schema";
 import {
   searchConversations,
+  type ConversationSearchChannelPort,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
@@ -13,23 +15,12 @@ import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const SUMMARY_MAX_LENGTH = 1_000;
 const CONVERSATION_IDS_MAX = 25;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
-
-/** Provider-owned channel filter and match details for Conversation search. */
-export interface ConversationSearchChannelPort {
-  channelFilterSchema: z.ZodString;
-  describeMatch(match: ConversationSearchResult): Promise<{
-    channel_id?: string;
-    channel_name?: string;
-    permalink?: string;
-  }>;
-  resolveChannel(input: string): Promise<string>;
-}
 
 /**
  * What the agent of the Conversation does now. The words match the
@@ -164,7 +155,7 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created, changed, or read the resource.",
+          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created or changed the resource.",
         ),
       conversation_ids: z
         .array(z.string().trim().min(1))
@@ -253,7 +244,7 @@ export function createSearchConversationsTool(context: {
   channels?: ConversationSearchChannelPort;
   conversationId: string;
   /** Embeds a query to also match Briefs by meaning. */
-  embedder?: ConversationEmbedder;
+  embedder?: PluginEmbedder;
 }) {
   const { channels } = context;
   return zodTool({
@@ -298,8 +289,8 @@ export function createSearchConversationsTool(context: {
         },
       });
       return {
-        conversations: await Promise.all(
-          matches.map((match) => conversationMatch(match, channels)),
+        conversations: await mapBounded(matches, (match) =>
+          conversationMatch(match, channels),
         ),
       };
     },

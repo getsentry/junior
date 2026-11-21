@@ -2,6 +2,7 @@ import type { CodeChangeSummaryReport } from "@sentry/junior/api/schema";
 
 import { StatusChip } from "../../components/StatusChip";
 import { OutboundLink } from "../../components/OutboundLink";
+import { IdleText } from "../../conversations/codeChangeIdle";
 
 // `draft` only means something while the change is open; a closed draft
 // shows as closed.
@@ -15,7 +16,10 @@ function stateTone(state: ReturnType<typeof stateLabel>) {
   return "neutral" as const;
 }
 
-/** Show one code change with its title, repository reference, and state. */
+/**
+ * Show one code change with its title, repository reference, and state. An
+ * open change also shows the time since its last activity.
+ */
 export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
   const change = props.change;
   const title = change.title ?? `${change.repository} #${change.number}`;
@@ -40,9 +44,16 @@ export function CodeChangeRow(props: { change: CodeChangeSummaryReport }) {
           {change.repository} #{change.number}
         </div>
       </div>
-      <StatusChip size="compact" tone={stateTone(state)}>
-        {state}
-      </StatusChip>
+      <div className="flex shrink-0 items-center gap-3">
+        {change.state === "open" ? (
+          <span className="font-mono text-xs text-dashboard-text-muted">
+            <IdleText change={change} nowMs={Date.now()} />
+          </span>
+        ) : null}
+        <StatusChip size="compact" tone={stateTone(state)}>
+          {state}
+        </StatusChip>
+      </div>
     </div>
   );
 }

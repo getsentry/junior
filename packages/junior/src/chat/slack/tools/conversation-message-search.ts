@@ -11,7 +11,7 @@ import {
 import { getSlackMessagePermalink } from "@/chat/slack/outbound";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const DEFAULT_LIMIT = 20;
 const MAX_LIMIT = 50;
@@ -55,11 +55,11 @@ function parseTimestamp(
 }
 
 async function resolveSearchFilters(input: {
-  after?: string | null;
-  annotation?: string | null;
-  before?: string | null;
-  channel_id?: string | null;
-  query?: string | null;
+  after?: string | null | undefined;
+  annotation?: string | null | undefined;
+  before?: string | null | undefined;
+  channel_id?: string | null | undefined;
+  query?: string | null | undefined;
   teamId: SlackTeamId;
 }): Promise<ConversationMessageSearchFilters> {
   const query = input.query?.trim() || undefined;
@@ -173,7 +173,9 @@ export function createSlackConversationMessageSearchTool(
         limit: input.limit ?? DEFAULT_LIMIT,
       });
       const matchesOutput = await Promise.all(
+        // oxlint-disable-next-line junior/bounded-fan-out -- The search returns at most 50 matches.
         matches.map(async (match) => {
+          // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
           const reference = parseSlackThreadId(match.conversationId);
           if (
             !reference ||

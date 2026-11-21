@@ -1,7 +1,7 @@
 /**
  * `onProgress` handlers that tests share.
  */
-import type { CallOptions } from "./agent";
+import type { CallOptions } from "./call";
 import type { Input } from "./inputs";
 
 /**
@@ -16,6 +16,7 @@ export function sendDuringFirstModelRequest(
     if (sent || progress.type !== "model_request") return;
     sent = true;
     for (const input of inputs) {
+      // oxlint-disable-next-line no-await-in-loop -- Inputs arrive in order.
       await send(input);
     }
   };

@@ -36,13 +36,13 @@ type ChartFacts = Extract<ObjectFacts, { type: "chart" }>;
 type Series = ChartFacts["series"][number];
 
 /** What a chart card shows, read with the viewer's own token. */
-interface SentryChart {
+export interface SentryChart {
   display: ChartFacts["display"];
   displayType: string;
   title: string;
   yAxis: string;
   range: string;
-  query?: string;
+  query?: string | undefined;
   series: Series[];
 }
 
@@ -74,7 +74,7 @@ const UNIT_NAMES: Record<string, string> = {
 };
 
 /** Name a time range the way Sentry's date picker does. */
-function rangeLabel(range: {
+export function rangeLabel(range: {
   statsPeriod?: string;
   start?: string;
   end?: string;
@@ -95,8 +95,8 @@ function text(value: string): string {
   return value.trim().slice(0, 160) || "(no value)";
 }
 
-// Average neighbor buckets down to `size` points, so the shape stays.
-function downsample(points: number[], size: number): number[] {
+/** Average neighbor buckets down to `size` points, so the shape stays. */
+export function downsample(points: number[], size: number): number[] {
   if (points.length <= size) return points;
   return Array.from({ length: size }, (_, index) => {
     const from = Math.floor((index * points.length) / size);
@@ -136,21 +136,24 @@ function fitFacts(chart: SentryChart): ChartFacts | undefined {
   return undefined;
 }
 
+// With more than one aggregate, each group has one series per aggregate,
+// so the label names both.
 function groupLabel(
   series: z.infer<typeof timeseriesSchema>["timeSeries"][number],
-  grouped: boolean,
+  link: SentryExploreLink,
 ): string {
-  if (series.meta?.isOther) return "Other";
-  if (!grouped) return series.yAxis;
-  return (
-    (series.groupBy ?? [])
-      .map(({ value }) =>
-        value === null || value === undefined || value === ""
-          ? "(no value)"
-          : String(value),
-      )
-      .join(", ") || series.yAxis
-  );
+  if (link.groupBy.length === 0) return series.yAxis;
+  const group = series.meta?.isOther
+    ? "Other"
+    : (series.groupBy ?? [])
+        .map(({ value }) =>
+          value === null || value === undefined || value === ""
+            ? "(no value)"
+            : String(value),
+        )
+        .join(", ");
+  if (!group) return series.yAxis;
+  return link.yAxes.length > 1 ? `${group} · ${series.yAxis}` : group;
 }
 
 /**
@@ -158,7 +161,7 @@ function groupLabel(
  * refuses it: the viewer has no Sentry account, may not see a queried
  * project, or the URL holds a query that Sentry rejects.
  */
-async function readExploreChart(
+export async function readExploreChart(
   ctx: ObjectLinkContext,
   origin: string,
   link: SentryExploreLink,
@@ -166,7 +169,9 @@ async function readExploreChart(
   const range =
     link.start && link.end
       ? { start: link.start, end: link.end }
-      : { statsPeriod: link.statsPeriod };
+      : link.statsPeriod === undefined
+        ? undefined
+        : { statsPeriod: link.statsPeriod };
   const result = await sentryApi(
     ctx.viewerEgress,
     origin,
@@ -177,12 +182,16 @@ async function readExploreChart(
       dataset: link.dataset,
       interval: link.interval,
       yAxis: link.yAxes,
-      groupBy: link.groupBy.length ? link.groupBy : undefined,
-      project: link.project.length ? link.project : undefined,
-      environment: link.environment.length ? link.environment : undefined,
-      query: link.query,
-      sort: link.sort,
-      topEvents: link.topEvents,
+      ...(link.groupBy.length ? { groupBy: link.groupBy } : undefined),
+      ...(link.project.length ? { project: link.project } : undefined),
+      ...(link.environment.length
+        ? { environment: link.environment }
+        : undefined),
+      ...(link.query === undefined ? undefined : { query: link.query }),
+      ...(link.sort === undefined ? undefined : { sort: link.sort }),
+      ...(link.topEvents === undefined
+        ? undefined
+        : { topEvents: link.topEvents }),
       ...range,
     },
   });
@@ -202,7 +211,7 @@ async function readExploreChart(
     series: [...parsed.data.timeSeries]
       .sort((a, b) => (a.meta?.order ?? 0) - (b.meta?.order ?? 0))
       .map((series) => ({
-        label: groupLabel(series, grouped),
+        label: groupLabel(series, link),
         points: fillGaps(series.values.map(({ value }) => value)),
       })),
   };
@@ -228,7 +237,8 @@ function fillGaps(values: Array<number | null>): number[] {
   });
 }
 
-function urlHash(url: URL): string {
+/** Hash a URL for a cache key or a card key. */
+export function urlHash(url: URL): string {
   return createHash("sha256").update(url.href).digest("hex");
 }
 
@@ -256,13 +266,13 @@ async function canViewSentryChartLink(
   return (await viewerChart(ctx, url)) !== null;
 }
 
-async function resolveSentryChartLink(
-  ctx: ObjectLinkContext,
+/** Draw the chart card of a chart read from `url`. */
+export function chartCard(
   url: URL,
-): Promise<ObjectAnnotation | undefined> {
-  const chart = await viewerChart(ctx, url);
-  const facts = chart && fitFacts(chart);
-  if (!chart || !facts) return undefined;
+  chart: SentryChart,
+): ObjectAnnotation | undefined {
+  const facts = fitFacts(chart);
+  if (!facts) return undefined;
   return {
     kind: "object",
     objectType: "chart",
@@ -276,10 +286,18 @@ async function resolveSentryChartLink(
   };
 }
 
+async function resolveSentryChartLink(
+  ctx: ObjectLinkContext,
+  url: URL,
+): Promise<ObjectAnnotation | undefined> {
+  const chart = await viewerChart(ctx, url);
+  return chart ? chartCard(url, chart) : undefined;
+}
+
 /** Sentry Explore charts, on sentry.io and customer domains. */
 export const sentryChartLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryChartLink,
   filters: SENTRY_EXPLORE_LINK_FILTERS,
-  objectType: "chart",
+  objectTypes: ["chart"],
   resolve: resolveSentryChartLink,
 };

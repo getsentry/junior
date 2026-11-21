@@ -14,7 +14,7 @@ import { getConversationIdByWholeDestination } from "@/chat/conversations/sql/bi
 import { stopConversation } from "@/chat/conversations/stop";
 import { getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
+import { isTrustedSlackAuthor } from "@/chat/identities/trust";
 import { isSlackWorkspaceMember } from "@/chat/ingress/workspace-membership";
 import { stripLeadingBotMention } from "@/chat/runtime/thread-context";
 import { getThreadStopDecision } from "@/chat/services/subscribed-decision";
@@ -41,8 +41,6 @@ function slackTsMs(ts: string): number {
  */
 export async function routeSlackCodeChannelEvent(args: {
   adapter: SlackAdapter;
-  allowedBotUserIds: readonly string[];
-  allowedDomains: readonly string[];
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
   queue: ConversationWorkQueue;
@@ -146,9 +144,7 @@ export async function routeSlackCodeChannelEvent(args: {
   // Every post here is for Junior, so each one gets the domain check that a
   // mention gets elsewhere.
   if (
-    !(await isSlackAuthorDomainAllowed({
-      allowedBotUserIds: args.allowedBotUserIds,
-      allowedDomains: args.allowedDomains,
+    !(await isTrustedSlackAuthor({
       state: args.state,
       teamId,
       user: event.user,

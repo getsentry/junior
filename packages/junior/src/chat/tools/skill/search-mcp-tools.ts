@@ -179,12 +179,10 @@ function searchMcpCatalog(
   }
 
   return tools
-    .map(
-      (toolDef): RankedTool => ({
-        tool: toolDef,
-        score: scoreTool(toolDef, query),
-      }),
-    )
+    .map((toolDef): RankedTool => ({
+      tool: toolDef,
+      score: scoreTool(toolDef, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -207,12 +205,10 @@ function searchProviderCatalog(
   }
 
   return sorted
-    .map(
-      (provider): RankedProvider => ({
-        provider,
-        score: scoreProvider(provider, query),
-      }),
-    )
+    .map((provider): RankedProvider => ({
+      provider,
+      score: scoreProvider(provider, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -280,7 +276,7 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
           .string()
           .min(1)
           .describe(
-            'Set this when you pass provider. A short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
+            'Required with provider. A short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
           )
           .optional(),
         max_results: z
@@ -291,7 +287,13 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
           .describe("Maximum matching tool descriptors to return.")
           .optional(),
       })
-      .strict(),
+      .strict()
+      // The intent explains a provider connection to the person, so a call
+      // that can connect a provider must carry one.
+      .refine((input) => !input.provider || Boolean(input.intent), {
+        message: "Pass intent with provider.",
+        path: ["intent"],
+      }),
     outputSchema: searchMcpToolsOutputSchema,
     privateTraceResult: (result) => ({
       total_active_tools: result.total_active_tools,

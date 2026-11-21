@@ -11,7 +11,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { Hono } from "hono";
-import { type HarnessRun, type TranscriptEvent } from "vitest-evals/harness";
+import { type HarnessRun } from "vitest-evals/harness";
 import { createApp, type JuniorAppOptions } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -24,7 +24,7 @@ import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
-import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import { installGatewayObserver } from "./gateway";
 import {
   expectAccepted,
   jsonRequest,
@@ -32,17 +32,17 @@ import {
   uploadWebFiles,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
-import { actOnWebReviewItem } from "./review-desk";
+import { actOnWebInboxItem } from "./inbox";
 import { automationRequest, isAutomationInput } from "./automation-request";
 import { installWebReplay } from "./web";
+import type { CallOptions, Conversation, RunAgent, TurnProgress } from "./call";
 import type {
   AutomationInput,
-  HistoryItem,
   HistoryReply,
   Input,
   MentionInput,
   MessageInput,
-  ReviewItemActionInput,
+  InboxItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
@@ -54,14 +54,15 @@ import {
 } from "./history";
 import type { VisibleMessage } from "./judge";
 import { createInProcessQueue } from "./queue";
-import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
   combinedRun,
   readAuthorizationPrompt,
   readCallEvents,
   readFailedCallRun,
+  type ReportCall,
   readConversationDetail,
+  readWatchIds,
   participantSlackUserIds,
   slackCallReplies,
   slackThreadEffects,
@@ -69,8 +70,6 @@ import {
   VIEWER_HEADER,
   type FixtureUsage,
   type Reply,
-  type ToolCall,
-  type Turn,
 } from "./results";
 import {
   DEFAULT_SLACK_AUTHOR,
@@ -100,80 +99,6 @@ const IDLE_TIMEOUT_MS = 60_000;
  * so the recording run and the replay would take different paths.
  */
 const INPUT_SETTLE_MS = 1_500;
-
-export type TurnProgress =
-  | GatewayProgress
-  | { type: "reply"; text: string }
-  /**
-   * A turn stopped before it finished, for example at its deadline, and
-   * Junior queued the rest of it. The rest waits until the handler finishes,
-   * so a sent input arrives before the turn continues.
-   */
-  | { type: "paused" };
-
-export interface CallOptions {
-  /** Earlier turns as items, or a recorded conversation. */
-  history?: HistoryItem[] | RecordedConversation;
-  onProgress?: (
-    progress: TurnProgress,
-    actions: { send(input: Input): Promise<void> },
-  ) => void | Promise<void>;
-}
-
-/**
- * Returned by every call. The fields describe that call only. It is also the
- * vitest-evals run of the call, so `expect(conversation).toSatisfyJudge()`
- * takes it.
- */
-export interface Conversation extends HarnessRun {
-  conversationId: string;
-  /** Assistant messages that people saw. */
-  replies: Reply[];
-  /** Quiet messages: stored, but not delivered to the Slack thread. */
-  quietReplies: Reply[];
-  /** Tool calls of the agent, with their results. */
-  toolCalls: ToolCall[];
-  /** Slack reactions that Junior added. */
-  reactions: string[];
-  /** Names of the files that Junior uploaded to the Slack thread. */
-  files: string[];
-  /**
-   * Status lines that Junior set under the Slack thread, in order. An empty
-   * string clears the status.
-   */
-  statuses: string[];
-  /** Titles that Junior gave the Slack thread, in order. */
-  threadTitles: string[];
-  /** The title that the dashboard shows after the call. */
-  title: string;
-  /** Whether the dashboard shows the Conversation as archived after the call. */
-  archived: boolean;
-  /** Slack user ids of the participants that the dashboard lists after the call. */
-  participantSlackUserIds: string[];
-  /**
-   * The label of the connect prompt that the dashboard shows to the person
-   * after the call, when a turn waits for their authorization.
-   */
-  authorizationPrompt?: string;
-  /** Times Junior replaced agent history with a summary, as the dashboard shows. */
-  compactions: number;
-  turns: Turn[];
-  continue(
-    input: Input | Input[],
-    options?: CallOptions,
-  ): Promise<Conversation>;
-  fork(reply: Reply | HistoryReply): Promise<Conversation>;
-  /**
-   * Open a child Conversation of this one, such as a Thread that a spawnAgent
-   * call started. Its `continue()` posts as the person who reads this one.
-   */
-  child(conversationId: string): Promise<Conversation>;
-}
-
-export type RunAgent = (
-  input: Input | Input[],
-  options?: CallOptions,
-) => Promise<Conversation>;
 
 /** Test hooks the fixture needs from Vitest. */
 export interface FixtureTestContext {
@@ -270,6 +195,7 @@ export async function createFixtureAgent(
   const close = async (): Promise<void> => {
     queue.close();
     while (queue.pending().length > 0 || background.size > 0) {
+      // oxlint-disable-next-line no-await-in-loop -- Settled work can start more work, so check again until none is left.
       await Promise.allSettled([...queue.pending(), ...background]);
     }
     if (!closed) {
@@ -302,8 +228,7 @@ export async function createFixtureAgent(
 
   const replyMessages = new WeakMap<HistoryReply, string>();
   const knownConversationIds = new Set<string>();
-  const calls: Array<{ conversationId: string; events: TranscriptEvent[] }> =
-    [];
+  const calls: ReportCall[] = [];
   // Agent model cost per Conversation, from the reporting API.
   const agentCostUsd = new Map<string, number>();
   const currentUsage = (): FixtureUsage => ({
@@ -323,6 +248,7 @@ export async function createFixtureAgent(
       const pending = [...queue.pending(), ...background];
       if (pending.length === 0) {
         // Let work that a finished delivery started reach the queue.
+        // oxlint-disable-next-line no-await-in-loop -- Wait for idle: each round checks the work that the round before started.
         await new Promise((resolve) => setTimeout(resolve, 0));
         if (queue.pending().length === 0 && background.size === 0) break;
         continue;
@@ -336,6 +262,7 @@ export async function createFixtureAgent(
         );
       }
       let timer: ReturnType<typeof setTimeout> | undefined;
+      // oxlint-disable-next-line no-await-in-loop -- Wait for idle: each round checks the work that the round before started.
       await Promise.race([
         Promise.allSettled(pending),
         new Promise((resolve) => {
@@ -431,11 +358,11 @@ export async function createFixtureAgent(
       });
       return;
     }
-    if (input.kind === "review_item_action") {
+    if (input.kind === "inbox_item_action") {
       if (record.surface !== "web" || !record.started) {
-        throw new Error("A review item action continues a web Conversation");
+        throw new Error("An inbox item action continues a web Conversation");
       }
-      await actOnWebReviewItem(api, input, record);
+      await actOnWebInboxItem(api, input, record);
       return;
     }
     const started = record.started;
@@ -449,7 +376,9 @@ export async function createFixtureAgent(
         : record.idempotencyKey;
       const uploadIds = input.files?.length
         ? await uploadWebFiles(api, {
-            ...(started ? { conversationId: record.conversationId } : {}),
+            ...(started
+              ? { conversationId: record.conversationId }
+              : undefined),
             files: input.files,
             idempotencyKey,
             viewerEmail: record.viewerEmail,
@@ -531,11 +460,11 @@ export async function createFixtureAgent(
 
   /** Create the record for a new Conversation. It starts with its first input. */
   const newConversation = (
-    first: MessageInput | ReviewItemActionInput,
+    first: MessageInput | InboxItemActionInput,
     history: CallOptions["history"],
   ): ConversationRecord => {
-    // A review desk action comes from the dashboard.
-    if (first.kind === "web_message" || first.kind === "review_item_action") {
+    // An Inbox action comes from the dashboard.
+    if (first.kind === "web_message" || first.kind === "inbox_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);
@@ -753,6 +682,7 @@ export async function createFixtureAgent(
     calls.push({
       conversationId: record.conversationId,
       events: callRun.session.events,
+      turns: events.turns,
     });
     context.task.meta.harness = {
       name: "junior",
@@ -764,8 +694,8 @@ export async function createFixtureAgent(
         ? { authorizationPrompt: authorizationPrompt.label }
         : undefined),
       compactions: events.compactions,
+      compactionSummaries: events.compactionSummaries,
       files,
-      quietReplies: events.quietReplies,
       reactions,
       replies,
       statuses,
@@ -773,8 +703,14 @@ export async function createFixtureAgent(
       threadTitles,
       title: detail.displayTitle,
       archived: Boolean(detail.archivedAt),
+      status: detail.status,
       toolCalls: events.toolCalls,
       turns: events.turns,
+      watchIds: await readWatchIds(
+        api,
+        record.conversationId,
+        record.viewerEmail,
+      ),
     });
     // A person can reply in the thread of the automation's first post.
     const [firstPost] = record.surface === "automation" ? callPosts : [];
@@ -805,6 +741,7 @@ export async function createFixtureAgent(
         items: options.history,
         replyMessages,
         slack,
+        started: record.started,
         viewerEmail: record.viewerEmail,
       });
       record.started = true;
@@ -816,6 +753,7 @@ export async function createFixtureAgent(
         // Inputs in one call arrive before the worker runs, as one batch.
         if (inputs.length > 1) queue.hold();
         try {
+          // oxlint-disable-next-line no-await-in-loop -- Inputs of one call arrive in order.
           for (const next of inputs) await sendInput(record, next);
         } finally {
           queue.release();
@@ -885,8 +823,8 @@ export async function createFixtureAgent(
         toolCalls: [],
       }),
       compactions: 0,
+      compactionSummaries: [],
       files: [],
-      quietReplies: [],
       reactions: [],
       replies: [],
       statuses: [],
@@ -894,8 +832,10 @@ export async function createFixtureAgent(
       threadTitles: [],
       title: detail.displayTitle,
       archived: Boolean(detail.archivedAt),
+      status: detail.status,
       toolCalls: [],
       turns: [],
+      watchIds: await readWatchIds(api, conversationId, viewerEmail),
     });
   };
 

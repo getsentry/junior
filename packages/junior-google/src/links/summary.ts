@@ -4,8 +4,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { type DefaultTreeAdapterMap, parseFragment } from "parse5";
 import * as z from "zod";
-import { type FileReference, resourceKeyHeaders } from "../tools/files";
-import { googleApiRequest } from "../tools/shared";
+import { type FileReference, resourceKeyHeaders } from "../drive/files";
+import { googleApiRequest } from "../google-api";
 
 type Node = DefaultTreeAdapterMap["node"];
 
@@ -23,7 +23,7 @@ export function htmlSummary(html: string | undefined): string | undefined {
   const visit = (node: Node) => {
     if (node.nodeName === "#text" && "value" in node) parts.push(node.value);
     if (HIDDEN.has(node.nodeName)) return;
-    if ("childNodes" in node) node.childNodes.forEach(visit);
+    if ("childNodes" in node) for (const child of node.childNodes) visit(child);
     if (BREAKS.has(node.nodeName)) parts.push(" ");
   };
   visit(parseFragment(html));

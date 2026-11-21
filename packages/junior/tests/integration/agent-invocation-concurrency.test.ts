@@ -1,6 +1,6 @@
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import type { AgentRun } from "@/chat/agent/types";
 import {
   createAgentInvocation,
@@ -20,10 +20,11 @@ import {
 } from "@/chat/agent-invocations/work";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
-import { createEventTools } from "@/chat/tools/events";
+import { createListWatchesTool } from "@/chat/tools/list-watches";
+import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
+import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   getConversationEventStore,
@@ -31,9 +32,8 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { actOnReviewItem } from "@/chat/review-items/actions";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import { actOnInboxItem } from "@/chat/inbox-items/actions";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -49,6 +49,7 @@ import { createConfiguredJuniorSqlFixture } from "../fixtures/sql";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const parentConversationId = "local:test:agent-invocation-concurrency";
 const destination = {
@@ -70,7 +71,7 @@ async function listAgents() {
 const NO_ANSWER = "Do not answer.";
 
 /** Reply with the input, or answer with plain text twice for `NO_ANSWER`. */
-function taskModel(request: AgentRun): StreamFn {
+function taskModel(request: AgentRun): AgentRequestStreamFn {
   return createModelStream(
     request.instruction.text.includes(NO_ANSWER)
       ? [
@@ -87,7 +88,9 @@ function taskModel(request: AgentRun): StreamFn {
   );
 }
 
-async function createHarness(streamForRun: (request: AgentRun) => StreamFn) {
+async function createHarness(
+  streamForRun: (request: AgentRun) => AgentRequestStreamFn,
+) {
   const fixture = createConfiguredJuniorSqlFixture();
   await migrateSchema(fixture.sql);
   const conversationStore = createSqlStore(fixture.sql);
@@ -243,16 +246,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[0]?.history).toEqual([]);
       expect(requests[0]?.reasoning).toBe("high");
-      expect(requests[0]?.disabledFeatures).toEqual([
-        "interactive-auth",
-        "subagents",
-      ]);
+      expect(requests[0]?.disabledFeatures).toEqual(["interactive-auth"]);
       // A message keeps the reasoning level of the child.
       expect(requests[1]?.reasoning).toBe("high");
-      expect(requests[1]?.disabledFeatures).toEqual([
-        "interactive-auth",
-        "subagents",
-      ]);
+      expect(requests[1]?.disabledFeatures).toEqual(["interactive-auth"]);
       expect(requests[1]?.history).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),
@@ -448,12 +445,16 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      const childTools = createEventTools(
-        { ...context(), conversationId: child.childConversationId },
-        getEventCatalog(),
-      );
+      const childContext = {
+        ...context(),
+        conversationId: child.childConversationId,
+      };
+      const childTools = {
+        listWatches: createListWatchesTool(childContext),
+        watchTimer: createWatchTimerTool(childContext),
+      };
       const timer = (await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check the deploy again." },
         "child-timer",
       )) as { id: string };
@@ -532,12 +533,12 @@ describe("agent invocation identity and concurrency", () => {
       // a timer event that already reached it is saved to its transcript
       // with no Turn, and a later timer never fires.
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check once more." },
         "child-timer-2",
       );
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 600_000, intent: "Check much later." },
         "child-timer-3",
       );
@@ -547,7 +548,7 @@ describe("agent invocation identity and concurrency", () => {
       await expect(
         stopAgent.execute!({ conversation_id: child.childConversationId }, {}),
       ).resolves.toMatchObject({ stopped: true });
-      await expect(execute(childTools.listWatches!, {})).resolves.toEqual({
+      await expect(execute(childTools["listWatches"]!, {})).resolves.toEqual({
         subscriptions: [],
       });
       clock.mockReturnValue(clock() + 600_000);
@@ -578,7 +579,7 @@ describe("agent invocation identity and concurrency", () => {
         agents: [{ status: "idle" }],
       });
       await execute(
-        childTools.watchTimer!,
+        childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check after the restart." },
         "child-timer-4",
       );
@@ -700,7 +701,7 @@ describe("agent invocation identity and concurrency", () => {
     },
   );
 
-  it("gives a child the Review item tag for an answer to its item", async () => {
+  it("gives a child the Inbox item tag for an answer to its item", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const harness = await createHarness(taskModel);
     try {
@@ -726,13 +727,13 @@ describe("agent invocation identity and concurrency", () => {
       )) as User;
       // The child opened the item, so it is the only linked Conversation.
       const added = (await (
-        createAddReviewItemTool(
+        createAddInboxItemTool(
           {
             conversationId: child.childConversationId,
             resolveActorIdentity: async () => undefined,
             source: { kind: "scheduled_automation" },
           },
-          createSlackReviewItemToolServices(() => harness.queue),
+          createSlackInboxItemToolServices(() => harness.queue),
         ) as any
       ).execute(
         {
@@ -748,7 +749,7 @@ describe("agent invocation identity and concurrency", () => {
         {},
       )) as { item: { id: string } };
       const id = added.item.id;
-      await actOnReviewItem({
+      await actOnInboxItem({
         action: "submit",
         answer: { requestId: id, values: { owner: ["Bob"] } },
         delivery: { queue: harness.queue, show: async () => {} },
@@ -763,10 +764,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[1]!.instruction.text).toBe(
         [
-          `<review-item-answer id="${id}">`,
+          `<inbox-item-answer id="${id}">`,
           "Question: Who should own the login bug?",
           "Owner (owner): Bob",
-          "</review-item-answer>",
+          "</inbox-item-answer>",
         ].join("\n"),
       );
     } finally {
@@ -800,7 +801,7 @@ describe("agent invocation identity and concurrency", () => {
         })
       ).events.flatMap(({ data }) =>
         data.type === "structured_event" && data.name === "conversation_note"
-          ? [data.content.text]
+          ? [data.content["text"]]
           : [],
       );
     const stoppedNote = (id: string) =>
@@ -828,8 +829,14 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      const toolsFor = (conversationId: string) =>
-        createEventTools({ ...context(), conversationId }, getEventCatalog());
+      const toolsFor = (conversationId: string) => {
+        const toolContext = { ...context(), conversationId };
+        return {
+          listWatches: createListWatchesTool(toolContext),
+          stopWatchingResources: createStopWatchingResourcesTool(toolContext),
+          watchTimer: createWatchTimerTool(toolContext),
+        };
+      };
       const parentTools = toolsFor(parentConversationId);
       const watcherTools = toolsFor(watcher.childConversationId);
       const watchTimer = async (
@@ -838,7 +845,7 @@ describe("agent invocation identity and concurrency", () => {
       ) => {
         clock.mockReturnValue(clock() + 1_000);
         const timer = (await execute(
-          tools.watchTimer!,
+          tools["watchTimer"]!,
           { after_ms: 600_000, intent },
           intent,
         )) as { id: string };
@@ -846,7 +853,7 @@ describe("agent invocation identity and concurrency", () => {
       };
       const owners = async (tools: ReturnType<typeof toolsFor>) =>
         (
-          (await execute(tools.listWatches!, {})) as {
+          (await execute(tools["listWatches"]!, {})) as {
             subscriptions: { child_agent?: unknown; id: string }[];
           }
         ).subscriptions.map(({ child_agent, id }) => ({ child_agent, id }));
@@ -889,7 +896,7 @@ describe("agent invocation identity and concurrency", () => {
       ]);
       for (const id of [parentWatch, siblingWatch]) {
         await expect(
-          execute(watcherTools.stopWatchingResources!, { id }),
+          execute(watcherTools["stopWatchingResources"]!, { id }),
         ).rejects.toThrow(
           "Watch was not found in the current conversation or its child agents.",
         );
@@ -898,7 +905,7 @@ describe("agent invocation identity and concurrency", () => {
       const requestsBeforeStops = modelInputs.length;
       // The parent stops a watch of its child agent by id.
       await expect(
-        execute(parentTools.stopWatchingResources!, { id: watcherWatch }),
+        execute(parentTools["stopWatchingResources"]!, { id: watcherWatch }),
       ).resolves.toEqual({
         stopped_ids: [watcherWatch],
         watching_status: "stopped",
@@ -910,7 +917,7 @@ describe("agent invocation identity and concurrency", () => {
       // A stop of every watch includes the watches of the child agents below,
       // and nothing above or beside them.
       await expect(
-        execute(watcherTools.stopWatchingResources!, {}),
+        execute(watcherTools["stopWatchingResources"]!, {}),
       ).resolves.toEqual({
         stopped_ids: [helperWatch],
         watching_status: "stopped",
@@ -920,7 +927,7 @@ describe("agent invocation identity and concurrency", () => {
         { child_agent: siblingAgent, id: siblingWatch },
       ]);
       await expect(
-        execute(parentTools.stopWatchingResources!, {}),
+        execute(parentTools["stopWatchingResources"]!, {}),
       ).resolves.toEqual({
         stopped_ids: [parentWatch, siblingWatch],
         watching_status: "stopped",
@@ -947,7 +954,7 @@ describe("agent invocation identity and concurrency", () => {
       // Turn runs waits for the Turn after it. Each note is shown once.
       const lateWatch = await watchTimer(watcherTools, "Check again.");
       duringNextRequest = () =>
-        execute(parentTools.stopWatchingResources!, { id: lateWatch });
+        execute(parentTools["stopWatchingResources"]!, { id: lateWatch });
       await harness.message({
         childConversationId: watcher.childConversationId,
         idempotencyKey: "owned-message-1",

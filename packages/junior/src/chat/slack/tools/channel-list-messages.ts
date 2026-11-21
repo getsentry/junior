@@ -18,7 +18,7 @@ import {
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 
 const booleanInput = (description: string) =>
@@ -54,6 +54,7 @@ function normalizeRangeTimestamp(
     return timestamp;
   }
 
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const threadId = parseSlackThreadId(trimmed);
   const threadTimestamp = threadId
     ? parseSlackTimestampParam(field, threadId.threadTs)

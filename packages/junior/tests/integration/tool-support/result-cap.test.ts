@@ -9,7 +9,7 @@ import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import {
@@ -126,7 +126,7 @@ async function bigMcpTool(): Promise<{
   ]);
   expect(await manager.activateProvider("docs")).toBe(true);
   return {
-    callMcpTool: createCallMcpToolTool(manager) as AnyToolDefinition,
+    callMcpTool: createCallMcpToolTool(manager),
     close: () => manager.close(),
   };
 }
@@ -155,7 +155,7 @@ describe("tool result cap", () => {
     const fullText = JSON.stringify({ text: BIG_TEXT });
     expect(writeFiles).toHaveBeenCalledOnce();
     const file = writeFiles.mock.calls[0]![0][0]!;
-    expect(file.path).toMatch(/^\/tmp\/jr\/[0-9a-f]{8}$/);
+    expect(file.path).toMatch(/^\/tmp\/jr\/spills\/[0-9a-f]{8}$/);
     // Compare large strings as booleans, so a failure does not print them.
     // JSON is saved pretty-printed, so readFile and grep can page through it.
     expect(file.content === JSON.stringify({ text: BIG_TEXT }, null, 2)).toBe(

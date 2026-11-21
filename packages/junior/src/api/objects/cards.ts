@@ -13,10 +13,9 @@ const MAX_LABEL_CHARS = 256;
 const MAX_FACT_CHARS = 160;
 
 const conversationStates = {
-  active: "running",
-  completed: "idle",
-  failed: "failed",
-  stopped: "stopped",
+  done: "done",
+  needs_input: "needs input",
+  working: "working",
 } satisfies Record<ConversationSummaryReport["status"], string>;
 
 function personName(person: ActorIdentity): string | undefined {
@@ -28,7 +27,7 @@ function personName(person: ActorIdentity): string | undefined {
  * only when the viewer may see the Brief.
  */
 export function conversationObjectCard(args: {
-  brief?: string;
+  brief?: string | undefined;
   participants: readonly ActorIdentity[];
   summary: Pick<
     ConversationSummaryReport,
@@ -138,11 +137,11 @@ export function messageObjectCard(args: {
  * tags. `thumbnailUrl` must be a Junior image path.
  */
 export function webPageObjectCard(args: {
-  author?: string;
-  description?: string;
-  media?: "video" | "image";
+  author?: string | undefined;
+  description?: string | undefined;
+  media?: "video" | "image" | undefined;
   siteName?: string;
-  thumbnailUrl?: string;
+  thumbnailUrl?: string | undefined;
   title: string;
   url: string;
 }): ObjectAnnotation {

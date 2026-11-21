@@ -9,6 +9,7 @@ import { reorderPinnedConversationsResponseSchema } from "@sentry/junior/api/sch
 
 import { put } from "../http";
 import {
+  invalidateConversationFeeds,
   mapConversationFeedCache,
   type ConversationFeedCache,
 } from "./conversationFeedCache";
@@ -52,7 +53,7 @@ export function useReorderPinnedConversations(): ReorderPins {
     // A later queued drop owns the cache, so only the last save refetches.
     onSettled: () =>
       queryClient.isMutating({ mutationKey: PIN_ORDER_MUTATION_KEY }) === 1
-        ? queryClient.invalidateQueries(feeds)
+        ? invalidateConversationFeeds(queryClient)
         : undefined,
   });
   return useCallback(

@@ -5,8 +5,8 @@ import { Hono } from "hono";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { getConversationEventStore } from "@/chat/db";
-import { createTools } from "@/chat/tools";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import {
   createConversationFixture,
@@ -65,7 +65,7 @@ describe("web file delivery", () => {
     expect(
       createTools([], {}, { ...context, attachmentStorage: undefined }),
     ).not.toHaveProperty("sendFiles");
-    const tool = createTools([], {}, context).sendFiles;
+    const tool = createTools([], {}, context)["sendFiles"];
     if (!tool?.execute) throw new Error("sendFiles is unavailable");
     const input = {
       files: [{ path: "/tmp/desktop.png" }, { path: "/tmp/mobile.png" }],
@@ -87,6 +87,7 @@ describe("web file delivery", () => {
       createConversationRoutes({
         attachmentStorage: storage,
         queue: fixture.queue,
+        waitUntil: () => undefined,
       }),
     );
     const base = `/api/conversations/${encodeURIComponent(conversationId)}`;
@@ -131,7 +132,7 @@ describe("web file delivery", () => {
 
   it("does not report delivery when storage fails and can retry the same files", async () => {
     const { context, conversationId, storage } = await webFiles();
-    const tool = createTools([], {}, context).sendFiles;
+    const tool = createTools([], {}, context)["sendFiles"];
     if (!tool?.execute) throw new Error("sendFiles is unavailable");
     const put = storage.put;
     storage.put = async () => {

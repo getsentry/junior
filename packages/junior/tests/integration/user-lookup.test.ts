@@ -812,7 +812,7 @@ describe("userLookup", () => {
         },
       });
       expect(
-        Object.keys(tool.inputSchema.properties as Record<string, unknown>),
+        Object.keys(tool.inputSchema["properties"] as Record<string, unknown>),
       ).toEqual(["provider", "query"]);
     });
 
@@ -825,7 +825,7 @@ describe("userLookup", () => {
 
   describe("registration", () => {
     it("is registered in createTools", async () => {
-      const { createTools } = await import("@/chat/tools/index");
+      const { createTools } = await import("@/chat/tool-support/create-tools");
       const tools = createTools(
         [],
         {},
@@ -853,7 +853,7 @@ describe("userLookup", () => {
       );
 
       expect(tools).toHaveProperty("userLookup");
-      expect(tools.userLookup?.description).toContain("provider");
+      expect(tools["userLookup"]?.description).toContain("provider");
     });
   });
 });

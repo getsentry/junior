@@ -19,13 +19,15 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { GET as heartbeat } from "@/handlers/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { installTestSkills } from "../fixtures/skill-dirs";
 import { createWaitUntilCollector } from "../fixtures/wait-until";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const TEST_NOW_MS = Date.parse("2026-05-26T12:05:00.000Z");
@@ -41,12 +43,21 @@ let creatorIdentityId = "";
 function testHeartbeat(
   request: Parameters<typeof heartbeat>[0],
   waitUntil: Parameters<typeof heartbeat>[1],
-  options: Parameters<typeof heartbeat>[2] = {},
+  options: Partial<Parameters<typeof heartbeat>[2]> = {},
 ) {
+  const queue = options.conversationWorkQueue ?? conversationWorkQueue;
   return heartbeat(request, waitUntil, {
-    ...options,
-    conversationWorkQueue:
-      options.conversationWorkQueue ?? conversationWorkQueue,
+    conversationWorkQueue: queue,
+    dispatchForIdentity:
+      options.dispatchForIdentity ??
+      createIdentityDispatcher({
+        conversationWorkQueue: () => queue,
+      }),
+    events:
+      options.events ??
+      createEventAppPublisher({
+        conversationWork: () => ({ queue }),
+      }),
   });
 }
 
@@ -134,9 +145,9 @@ describe("scheduled automation heartbeat", () => {
   beforeEach(async () => {
     conversationWorkQueue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ now: TEST_NOW_MS });
-    process.env.JUNIOR_SCHEDULER_SECRET = "heartbeat-secret";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
-    process.env.JUNIOR_SECRET = "dispatch-secret";
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "heartbeat-secret";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
+    process.env["JUNIOR_SECRET"] = "dispatch-secret";
     await disconnectStateAdapter();
     creatorIdentityId = (
       await upsertIdentity(getSqlExecutor(), {
@@ -151,10 +162,10 @@ describe("scheduled automation heartbeat", () => {
   afterEach(async () => {
     global.fetch = originalFetch;
     await disconnectStateAdapter();
-    delete process.env.JUNIOR_SCHEDULER_SECRET;
-    delete process.env.CRON_SECRET;
-    delete process.env.JUNIOR_BASE_URL;
-    delete process.env.JUNIOR_SECRET;
+    delete process.env["JUNIOR_SCHEDULER_SECRET"];
+    delete process.env["CRON_SECRET"];
+    delete process.env["JUNIOR_BASE_URL"];
+    delete process.env["JUNIOR_SECRET"];
     vi.restoreAllMocks();
     vi.useRealTimers();
   });
@@ -163,7 +174,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(
       db,
@@ -381,7 +392,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     await saveScheduledAutomation(db, createTask());
 
@@ -470,7 +481,7 @@ describe("scheduled automation heartbeat", () => {
       expect(dispatchRecord?.skill).toBe("manual-digest");
       expect(dispatchRecord?.input).toContain(
         [
-          "Run the manual-digest skill. The instructions below add context for this run.",
+          "Run the $manual-digest skill. The instructions below add context for this run.",
           "<instructions>Only cover getsentry/junior.</instructions>",
         ].join("\n"),
       );
@@ -509,7 +520,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     const task = createDailyTask();
     await saveScheduledAutomation(db, task);
@@ -533,7 +544,7 @@ describe("scheduled automation heartbeat", () => {
     const fetchMock = vi.fn(async () => {
       return new Response("Accepted", { status: 202 });
     });
-    global.fetch = fetchMock as typeof fetch;
+    global.fetch = fetchMock;
     const db = scheduledAutomationDb();
     const first = createDailyTask({
       id: "sched_plugin_duplicate_a",

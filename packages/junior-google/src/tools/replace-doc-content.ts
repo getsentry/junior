@@ -15,8 +15,8 @@ import {
   requireRevision,
   revisionAfterUpdate,
   revisionIdSchema,
-} from "./doc-edits";
-import type { GoogleToolContext } from "./shared";
+} from "../docs/edits";
+import type { GoogleToolContext } from "../google-api";
 
 const inputSchema = z
   .object({
@@ -55,7 +55,7 @@ export const replaceGoogleDocContentTool = definePluginTool({
     const deleteEnd = body.endIndex - 1;
     const reply = await batchUpdateDoc(
       ctx,
-      doc.ref,
+      doc,
       [
         ...(deleteEnd > 1
           ? [

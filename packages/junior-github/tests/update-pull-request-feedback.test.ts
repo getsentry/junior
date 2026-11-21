@@ -39,6 +39,7 @@ function toolContext(responses: Response[]) {
     fetch,
     tool: bindPluginTool(createGitHubUpdatePullRequestFeedbackTool(BOT_EMAIL), {
       egress: { fetch },
+      log: { warn() {} },
     }),
   };
 }

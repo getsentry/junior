@@ -28,15 +28,18 @@ function takeEarlyResponse(path: string): Promise<Response> | undefined {
 /** An authenticated dashboard request rejected by the product API. */
 export class DashboardApiError extends Error {
   readonly status: number;
-  readonly fields?: Record<string, string[]>;
-  readonly code?: string;
+  readonly fields?: Record<string, string[]> | undefined;
+  readonly code?: string | undefined;
   readonly apiError?: string;
 
   constructor(
     path: string,
     status: number,
     apiError?: string,
-    detail?: { fields?: Record<string, string[]>; code?: string },
+    detail?: {
+      fields?: Record<string, string[]> | undefined;
+      code?: string | undefined;
+    },
   ) {
     super(`${path} returned ${status}`);
     this.status = status;
@@ -152,9 +155,18 @@ export async function put<T>(
   return readResponseJson(response, schema);
 }
 
-/** Delete one authenticated dashboard resource. */
-export async function deleteDashboardResource(path: string): Promise<void> {
+/** Delete one authenticated dashboard resource, named by a JSON `body` if given. */
+export async function deleteDashboardResource(
+  path: string,
+  body?: unknown,
+): Promise<void> {
   const response = await fetchDashboard(path, {
+    ...(body === undefined
+      ? undefined
+      : {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json" },
+        }),
     credentials: "same-origin",
     method: "DELETE",
   });

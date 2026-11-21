@@ -1,4 +1,5 @@
 import { CONVERSATION_DETAIL_VERSION_HEADER } from "@/api/schema";
+import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { afterEach, describe, expect, it } from "vitest";
 import { avatarPath } from "../../../fixtures/avatar";
 import { signedInViewer } from "../../../fixtures/user";
@@ -61,8 +62,9 @@ describe("conversation detail API", () => {
     });
 
     const app = createJuniorApi();
-    const detailResponse = await app.request(
-      `http://localhost/api/conversations/${conversationId}`,
+    const detailResponse = await expectSqlBudget(
+      () => app.request(`http://localhost/api/conversations/${conversationId}`),
+      { statements: 15, serialRounds: 3 },
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
@@ -496,7 +498,7 @@ describe("conversation detail API", () => {
     });
   });
 
-  it("resolves mentioned Slack users with current names", async () => {
+  it("resolves mentioned Slack users with current names and photos", async () => {
     const conversationId = "slack:C123:mentions-detail";
     await getConversationStore().recordActivity({
       actor: {
@@ -513,6 +515,17 @@ describe("conversation detail API", () => {
       title: "Mentions",
       visibility: "public",
     });
+    // The owner's User photo is their Slack photo.
+    const [owner] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/owner_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UOWNER1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id });
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({
         userId: "UNEW1234",
@@ -568,8 +581,10 @@ describe("conversation detail API", () => {
     );
     expect(message).toMatchObject({
       mentions: [
-        // Known Junior users link to their People profile.
+        // Known Junior users link to their People profile and show their
+        // photo.
         {
+          avatarUrl: avatarPath(owner!.id),
           email: "owner@example.com",
           fullName: "Owner Person",
           slackUserId: "UOWNER1",
@@ -584,7 +599,7 @@ describe("conversation detail API", () => {
       ],
     });
     expect(
-      getCapturedSlackApiCalls("users.info").map((call) => call.params.user),
+      getCapturedSlackApiCalls("users.info").map((call) => call.params["user"]),
     ).toEqual(["UNEW1234"]);
     // Other instances can now skip Slack for UNEW1234.
     expect(
@@ -593,6 +608,7 @@ describe("conversation detail API", () => {
     // The Brief uses the same lookup as transcript events.
     expect(detail?.brief?.mentions).toEqual([
       {
+        avatarUrl: avatarPath(owner!.id),
         email: "owner@example.com",
         fullName: "Owner Person",
         slackUserId: "UOWNER1",
@@ -636,6 +652,15 @@ describe("conversation detail API", () => {
       {
         createdAtMs: 3,
         data: {
+          messageId: "user-1",
+          role: "user",
+          text: "Is getsentry/junior#12 done?",
+          type: "message",
+        },
+      },
+      {
+        createdAtMs: 3,
+        data: {
           messageId: "reply-1",
           role: "assistant",
           text: "Fixed getsentry/junior#12 for @octocat and @U012ABCDEF: https://github.com/getsentry/junior/pull/13",
@@ -667,6 +692,8 @@ describe("conversation detail API", () => {
           text: "<task>@octocat asked a question.</task>",
           trustedSummary: `${octocat} commented on ${pr12}.`,
         }),
+        // A person's message links the same references as a reply.
+        expect.objectContaining({ text: `Is ${pr12} done?` }),
         // A reply that names a repository. Bare links stay for their cards,
         // and a bare Slack user ID is a Slack mention, not a GitHub login.
         expect.objectContaining({

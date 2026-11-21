@@ -1,9 +1,13 @@
+import pLimit from "p-limit";
 import type { PluginLogger } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import {
   configuredRepository,
   type Repository,
 } from "./configured-repository.js";
-import { isRecord } from "./credential-support.js";
+
+// GitHub objects that one title read loads at once.
+const REFERENCE_LOAD_CONCURRENCY = 5;
 
 // Name a Conversation from its main objects, not from every reference it has.
 const MAX_REFERENCES = 3;
@@ -28,7 +32,7 @@ interface ReferenceMatch {
   end: number;
   id: string;
   kind: GitHubReference["kind"];
-  repository?: Repository;
+  repository?: Repository | undefined;
   start: number;
 }
 
@@ -163,20 +167,26 @@ function parseGitHubReferences(
   return [...references.values()];
 }
 
+const commitResponseSchema = z.object({
+  commit: z.object({ message: z.string() }),
+});
+const titledResponseSchema = z.object({ title: z.string() });
+
 /** Read the display title of an issue, pull request, or commit response. */
 function objectTitle(
   kind: GitHubReference["kind"],
   object: unknown,
 ): string | undefined {
-  if (!isRecord(object)) return undefined;
-  const raw =
-    kind === "commit"
-      ? isRecord(object.commit) && typeof object.commit.message === "string"
-        ? object.commit.message.split("\n")[0]
-        : undefined
-      : typeof object.title === "string"
-        ? object.title
-        : undefined;
+  let raw: string | undefined;
+  if (kind === "commit") {
+    const parsed = commitResponseSchema.safeParse(object);
+    raw = parsed.success
+      ? parsed.data.commit.message.split("\n")[0]
+      : undefined;
+  } else {
+    const parsed = titledResponseSchema.safeParse(object);
+    raw = parsed.success ? parsed.data.title : undefined;
+  }
   return raw?.replace(/\s+/g, " ").trim() || undefined;
 }
 
@@ -191,8 +201,9 @@ export async function loadGitHubConversationTitleContext(args: {
   log: PluginLogger;
   text: string;
 }): Promise<string[]> {
-  const lines = await Promise.all(
-    parseGitHubReferences(args.text, args.config).map(async (reference) => {
+  const lines = await pLimit(REFERENCE_LOAD_CONCURRENCY).map(
+    parseGitHubReferences(args.text, args.config),
+    async (reference) => {
       try {
         const title = objectTitle(
           reference.kind,
@@ -212,7 +223,7 @@ export async function loadGitHubConversationTitleContext(args: {
         });
         return undefined;
       }
-    }),
+    },
   );
   return lines.filter((line): line is string => Boolean(line));
 }

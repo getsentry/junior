@@ -1,7 +1,15 @@
 import { AwsClient } from "aws4fetch";
 import { eq } from "drizzle-orm";
 import { Hono } from "hono";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { readAttachmentStorageConfig } from "@/chat/attachments/config";
@@ -153,6 +161,50 @@ describe("S3 attachment storage", () => {
     await storage.delete([key]);
   });
 
+  it("signs a plain GET of one key that ends at its expiry", async () => {
+    const storage = s3Storage();
+    const key = `downloads/${Date.now()}/standup.mp4`;
+    const otherKey = `${key}.other`;
+    for (const [k, text] of Object.entries({
+      [key]: "standup",
+      [otherKey]: "other",
+    })) {
+      await storage.put({
+        body: bufferBody(Buffer.from(text)),
+        bytes: text.length,
+        contentType: "video/mp4",
+        key: k,
+      });
+    }
+    const read = (url: string) =>
+      fetch(url).then(async (response) => ({
+        body: await response.text(),
+        status: response.status,
+      }));
+    const url = await storage.createDownloadUrl!({
+      expiresAtMs: Date.now() + 60_000,
+      key,
+    });
+
+    expect(await read(url)).toEqual({ body: "standup", status: 200 });
+    const otherUrl = new URL(url);
+    otherUrl.pathname = `${otherUrl.pathname}.other`;
+    expect((await read(otherUrl.toString())).status).toBe(403);
+    const tamperedUrl = new URL(url);
+    tamperedUrl.searchParams.set("X-Amz-Expires", "3600");
+    expect((await read(tamperedUrl.toString())).status).toBe(403);
+
+    // Sign two minutes in the past, so the URL expired a minute ago.
+    vi.useFakeTimers({ now: Date.now() - 120_000, toFake: ["Date"] });
+    const expiredUrl = await storage.createDownloadUrl!({
+      expiresAtMs: Date.now() + 60_000,
+      key,
+    });
+    vi.useRealTimers();
+    expect((await read(expiredUrl)).status).toBe(403);
+    await storage.delete([key, otherKey]);
+  });
+
   it("serves stored attachments and deletes them during garbage collection", async () => {
     const conversationId = "slack:CS3:attachment";
     await recordPublicConversation(conversationId);
@@ -174,6 +226,7 @@ describe("S3 attachment storage", () => {
       createConversationRoutes({
         attachmentStorage: storage,
         queue: createConversationWorkQueueTestAdapter(),
+        waitUntil: () => undefined,
       }),
     );
 

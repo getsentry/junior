@@ -67,13 +67,13 @@ import {
   isSlackWorkspaceMember,
   slackWorkspaceBotId,
 } from "@/chat/ingress/workspace-membership";
-import { isSlackAuthorDomainAllowed } from "@/chat/ingress/slack-allowed-domain";
+import { isTrustedSlackAuthor } from "@/chat/identities/trust";
 import { slackMessageAttributes } from "./slack-message-telemetry";
 import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
+import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -81,7 +81,7 @@ import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-ident
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
@@ -114,10 +114,6 @@ export interface SlackWebhookServices {
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
   conversationStore?: ConversationStore;
-  /** Email domains Slack authors need to start a Turn. Empty allows all. */
-  allowedDomains?: readonly string[];
-  /** Slack user IDs of bots that may start a Turn without an email domain. */
-  allowedBotUserIds?: readonly string[];
   /** Join each public channel created after this is on. Defaults to off. */
   autoJoinNewChannels?: boolean;
   runtime: Pick<
@@ -195,9 +191,7 @@ async function buildThread(args: {
 }
 
 function shouldIgnoreMessage(message: Message): boolean {
-  return (
-    message.author.isMe === true || !parseActorUserId(message.author.userId)
-  );
+  return message.author.isMe || !parseActorUserId(message.author.userId);
 }
 
 /**
@@ -231,9 +225,10 @@ async function resolveSlackConversationId(args: {
   canonicalThreadId: string;
   /** Claim an unowned thread for the Conversation this message starts. */
   claimAtMs?: number;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   installation: SlackInstallationContext;
 }): Promise<string> {
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
   const providerThread = parseSlackThreadId(args.canonicalThreadId);
   const conversationStore = args.conversationStore ?? getConversationStore();
   if (!providerThread) {
@@ -271,7 +266,7 @@ async function resolveSlackConversationId(args: {
 async function buildSlackInput(args: {
   adapter: SlackAdapter;
   conversationId: string;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
@@ -295,10 +290,10 @@ async function buildSlackInput(args: {
 
 async function persistSlackMessage(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
   route: SlackConversationRoute;
@@ -367,11 +362,9 @@ async function routeParsedMessage(args: {
   event: SlackInboundEvent;
   installation: SlackInstallationContext;
   message: Message;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   queue: ConversationWorkQueue;
   receivedAtMs: number;
-  allowedBotUserIds: readonly string[];
-  allowedDomains: readonly string[];
   /** Run the task after the caller releases the thread's ingress lock. */
   runAfterUnlock: (task: () => Promise<void>) => void;
   state: StateAdapter;
@@ -415,20 +408,14 @@ async function routeParsedMessage(args: {
     text: args.event.text ?? "",
     isExplicitMention: isMention,
   });
-  const isAuthorDomainAllowed = () =>
-    isSlackAuthorDomainAllowed({
-      allowedBotUserIds: args.allowedBotUserIds,
-      allowedDomains: args.allowedDomains,
+  const isAuthorTrusted = () =>
+    isTrustedSlackAuthor({
       state: args.state,
       teamId: args.installation.teamId,
       user: args.event.user,
     });
   // Passive thread messages and stops are not checked for the allowed domains.
-  if (
-    !stopDecision &&
-    route === "mention" &&
-    !(await isAuthorDomainAllowed())
-  ) {
+  if (!stopDecision && route === "mention" && !(await isAuthorTrusted())) {
     return;
   }
 
@@ -459,6 +446,7 @@ async function routeParsedMessage(args: {
       conversationStore: args.conversationStore,
       queue: args.queue,
       request: inbound,
+      // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       slackThread: parseSlackThreadId(canonicalThreadId),
       state: args.state,
       stopMessage: {
@@ -505,14 +493,12 @@ async function routeParsedMessage(args: {
   // when an open item can match, so most replies need no profile lookup.
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
-    await closeReviewItemsAnsweredByReply({
-      ...(route === "subscribed"
-        ? { canAnswer: isAuthorDomainAllowed }
-        : undefined),
+    await closeInboxItemsAnsweredByReply({
+      ...(route === "subscribed" ? { canAnswer: isAuthorTrusted } : undefined),
       conversationId,
       delivery: {
         queue: args.queue,
-        show: createSlackReviewItemShow(() => args.adapter),
+        show: createSlackInboxItemShow(() => args.adapter),
       },
       resolveUser: async () => {
         const teamId = args.installation.teamId;
@@ -549,7 +535,7 @@ async function ingestChannelMessage(args: {
   author: SlackChannelMessageAuthor;
   event: SlackInboundEvent;
   queue: ConversationWorkQueue;
-  teamId?: string;
+  teamId?: string | undefined;
 }): Promise<void> {
   // Use only `message`: Slack also sends `app_mention` for a mention in code.
   const { event } = args;
@@ -613,7 +599,7 @@ async function handleSlackEvent(args: {
           event.type === "assistant_thread_context_changed"
         ) {
           const parsed = slackAssistantThreadSchema.safeParse(
-            event.assistant_thread,
+            event["assistant_thread"],
           );
           if (!parsed.success) return;
 
@@ -637,7 +623,7 @@ async function handleSlackEvent(args: {
         }
 
         if (event.type === "entity_details_requested") {
-          const ref = event.external_ref;
+          const ref = event["external_ref"];
           if (
             ref &&
             typeof ref === "object" &&
@@ -674,8 +660,6 @@ async function handleSlackEvent(args: {
             event.type === "app_mention") &&
           (await routeSlackCodeChannelEvent({
             adapter,
-            allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-            allowedDomains: args.services.allowedDomains ?? [],
             event,
             installation,
             queue: args.services.queue,
@@ -736,6 +720,10 @@ async function handleSlackEvent(args: {
           event.channel &&
           event.ts
         ) {
+          // Junior is read-only in a channel shared with another
+          // organization: no post there starts a Turn or an automation, so
+          // no reply exposes internal data. Tools can still read the channel.
+          if (channelScope === "external") return;
           // A post with a bot ID and no user, such as from an app
           // integration, runs only channel-message automations that name the
           // bot. It never starts a Turn. A post that mentions Junior runs
@@ -774,14 +762,13 @@ async function handleSlackEvent(args: {
                 conversationStore: args.services.conversationStore,
                 queue: args.services.queue,
                 receivedAtMs,
-                allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-                allowedDomains: args.services.allowedDomains ?? [],
                 runAfterUnlock: (task) => {
                   afterUnlock = task;
                 },
                 state,
               }),
             { keepAlive: true, waitMs: 10_000 },
+            // oxlint-disable-next-line typescript/no-misused-promises -- finally waits for the returned promise.
           ).finally(() => afterUnlock?.());
           if (!routed.acquired) {
             throw new Error("Could not acquire Slack ingress lock");
@@ -799,7 +786,7 @@ async function handleSlackEvent(args: {
  */
 async function persistSlackMentionWithLock(args: {
   adapter: SlackAdapter;
-  facts?: SlackInteractionInputFacts;
+  facts?: SlackInteractionInputFacts | undefined;
   installation: SlackInstallationContext;
   message: Message;
   services: SlackWebhookServices;
@@ -858,9 +845,7 @@ export async function handleSlackWebhook(args: {
       body,
       getUserTokenStore: () => getUserTokenStore(args.services),
       isAuthorAllowed: (userId, installation) =>
-        isSlackAuthorDomainAllowed({
-          allowedBotUserIds: args.services.allowedBotUserIds ?? [],
-          allowedDomains: args.services.allowedDomains ?? [],
+        isTrustedSlackAuthor({
           state,
           teamId: installation.teamId,
           user: userId,

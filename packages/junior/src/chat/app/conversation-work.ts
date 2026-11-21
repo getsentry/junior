@@ -24,8 +24,7 @@ import {
   withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { botConfig } from "@/chat/config";
-import { logException } from "@/chat/logging";
+import { logException, withLogContext } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
@@ -39,10 +38,7 @@ import { createSlackRuntime } from "./factory";
 import type { JuniorRuntimeServiceOverrides } from "./services";
 import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
 import { withCodeChannelStatus } from "@/chat/slack/code-channel/status";
-import {
-  scheduleSessionCompletedPluginTasks,
-  type ScheduleSessionCompletedPluginTasksOptions,
-} from "@/chat/plugins/task-runner";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 
 type SlackRuntime = ReturnType<typeof createSlackRuntime>;
 
@@ -51,12 +47,8 @@ interface ConversationWorkOptions {
   conversationStore: ConversationStore;
   getSlackAdapter: () => SlackAdapter;
   queue: ConversationWorkQueue;
-  /**
-   * Optional plugin-task send path for completed Turns.
-   * Production omits this and uses the default Vercel queue sender.
-   */
-  sendPluginTask?: ScheduleSessionCompletedPluginTasksOptions["send"];
-  services?: JuniorRuntimeServiceOverrides;
+  sendPluginTask: SendPluginTask;
+  services?: JuniorRuntimeServiceOverrides | undefined;
   state?: StateAdapter;
   /** Keeps background work started by turns, such as titles, alive. */
   waitUntil?: (task: Promise<unknown>) => void;
@@ -87,9 +79,7 @@ export function createConversationWork(
   const baseRuntime = createSlackRuntime({
     getSlackAdapter: options.getSlackAdapter,
     pausedTurns,
-    ...(options.sendPluginTask
-      ? { sendPluginTask: options.sendPluginTask }
-      : undefined),
+    sendPluginTask: options.sendPluginTask,
     services: {
       ...options.services,
       agentRunner: options.agentRunner,
@@ -97,14 +87,6 @@ export function createConversationWork(
     waitUntil: options.waitUntil,
   });
   const runtime = options.wrapRuntime?.(baseRuntime) ?? baseRuntime;
-  const scheduleCompletedPluginTasks = options.sendPluginTask
-    ? async (
-        params: Parameters<typeof scheduleSessionCompletedPluginTasks>[0],
-      ) =>
-        await scheduleSessionCompletedPluginTasks(params, {
-          send: options.sendPluginTask,
-        })
-    : undefined;
   const slackWorker = createSlackConversationWorker({
     getSlackAdapter: options.getSlackAdapter,
     runNextPausedTurn: async (conversationId, runOptions) =>
@@ -112,13 +94,8 @@ export function createConversationWork(
         conversationId,
         {
           agentRunner: options.agentRunner,
-          wakePausedTurn: pausedTurns.wake,
-          ...(scheduleCompletedPluginTasks
-            ? {
-                scheduleSessionCompletedPluginTasks:
-                  scheduleCompletedPluginTasks,
-              }
-            : undefined),
+          pausedTurns,
+          sendPluginTask: options.sendPluginTask,
         },
         runOptions,
       ),
@@ -133,13 +110,8 @@ export function createConversationWork(
           agentRunner: options.agentRunner,
           inputMessageIds: [getDispatchInputMessageId(dispatch.id)],
           routingContext: buildDispatchRoutingContext(dispatch),
-          wakePausedTurn: pausedTurns.wake,
-          ...(scheduleCompletedPluginTasks
-            ? {
-                scheduleSessionCompletedPluginTasks:
-                  scheduleCompletedPluginTasks,
-              }
-            : undefined),
+          pausedTurns,
+          sendPluginTask: options.sendPluginTask,
         },
         { checkIn: hooks.checkIn, shouldYield: hooks.shouldYield },
       );
@@ -165,7 +137,6 @@ export function createConversationWork(
   );
   const childWorker = createChildConversationWorker(options.agentRunner, {
     enqueueResult,
-    maxAgentDepth: botConfig.maxAgentDepth,
     queue: options.queue,
     runTurn: conversationTurnWorker,
     state: options.state,
@@ -207,21 +178,13 @@ export function createConversationWork(
     }
     return await destinationWorker(context);
   };
-  const run = async (
-    attemptContext: ConversationWorkerContext,
+  const runByKind = async (
+    context: ConversationWorkerContext,
+    topLevel: boolean,
   ): Promise<ConversationWorkerResult> => {
-    // Apply a session stop to automated input, on a root or a child.
-    const stopped = await skipInputAfterConversationStop(attemptContext);
-    if ("skipped" in stopped) {
-      return stopped.skipped;
-    }
-    const { context } = stopped;
     // The stored kind decides the worker, so child work never reaches a root
     // worker. A child Turn can have any Source.
-    const conversation = await options.conversationStore.get({
-      conversationId: context.conversationId,
-    });
-    if (!isTopLevelKind(conversation?.kind ?? "root")) {
+    if (!topLevel) {
       return await childWorker(context);
     }
     // A root's run can see its stop late. Then it stops the child agents that
@@ -254,6 +217,29 @@ export function createConversationWork(
     }
     await stopLateChildAgents();
     return result;
+  };
+  const run = async (
+    attemptContext: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    // Apply a session stop to automated input, on a root or a child.
+    const stopped = await skipInputAfterConversationStop(attemptContext);
+    if ("skipped" in stopped) {
+      return stopped.skipped;
+    }
+    const { context } = stopped;
+    const conversation = await options.conversationStore.get({
+      conversationId: context.conversationId,
+    });
+    const topLevel = isTopLevelKind(conversation?.kind ?? "root");
+    // Bind the tree root once, so spans of child agents count by root.
+    return await withLogContext(
+      {
+        rootConversationId:
+          conversation?.rootConversationId ??
+          (topLevel ? context.conversationId : undefined),
+      },
+      () => runByKind(context, topLevel),
+    );
   };
   return {
     beforeWorkStops: failStoppedDispatch,

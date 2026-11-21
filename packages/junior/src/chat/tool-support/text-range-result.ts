@@ -1,6 +1,6 @@
 import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const DEFAULT_READ_LIMIT = 1000;
 /**
@@ -36,7 +36,7 @@ interface TextRangeResult {
   details: {
     target: string;
     content: string;
-    end_line?: number;
+    end_line?: number | undefined;
     path: string;
     start_line: number;
     total_lines: number;
@@ -57,7 +57,7 @@ interface TextRangeResult {
 
 interface LegacyTextRangeResult {
   content: string;
-  end_line?: number;
+  end_line?: number | undefined;
   path: string;
   start_line: number;
   total_lines: number;

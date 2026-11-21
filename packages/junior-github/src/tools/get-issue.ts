@@ -1,11 +1,8 @@
-import { githubObjectAnnotation } from "../annotations.js";
-import { githubObjectFacts } from "../object-facts.js";
 import {
   type Actor,
-  type Identity,
   type PluginEgress,
+  type PluginWorkOwner,
   type PluginLogger,
-  type User,
   definePluginTool,
   PluginToolInputError,
   pluginToolOutputSchema,
@@ -17,6 +14,7 @@ import * as z from "zod";
 import { gitHubIssueSubscribable } from "../events/issue.js";
 import {
   linkedGitHubLogin,
+  requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
 import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
@@ -29,7 +27,7 @@ const CLAIM_NOTE =
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Issue number."),
+    issue: z.number().int().positive().describe("Issue number."),
   })
   .strict();
 const issueSchema = z.object({
@@ -92,15 +90,11 @@ export const gitHubGetIssueTool = definePluginTool({
     input,
     _options,
     ctx: {
-      actor?: Actor;
+      actor?: Actor | undefined;
       egress: PluginEgress;
       events: { canSubscribe: boolean };
       log: PluginLogger;
-      users: {
-        resolveActor(): Promise<
-          { identity?: Identity; user?: User } | undefined
-        >;
-      };
+      resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
     },
   ): Promise<Result> {
     const repo = parseRepo(input.repo);
@@ -108,7 +102,7 @@ export const gitHubGetIssueTool = definePluginTool({
       githubApi(ctx.egress, {
         followRedirects: true,
         operation: "github.issue.get",
-        path: `${repoPath(repo)}/issues/${input.number}`,
+        path: `${repoPath(repo)}/issues/${input.issue}`,
       }),
       resolveGitHubRequester(ctx),
     ]);
@@ -123,7 +117,9 @@ export const gitHubGetIssueTool = definePluginTool({
     const issue = providerIssueSchema.parse(response.body);
     // A transferred issue redirects to its new repository.
     const repoRef = issueRepoRef(issue.repository_url) ?? repo.ref;
-    const login = linkedGitHubLogin(requester?.user)?.toLowerCase();
+    const login = linkedGitHubLogin(
+      requesterPerson(requester)?.user,
+    )?.toLowerCase();
     const needsClaim =
       login !== undefined &&
       issue.state === "open" &&
@@ -134,17 +130,6 @@ export const gitHubGetIssueTool = definePluginTool({
       repo: repoRef,
     });
     return {
-      objectAnnotations: [
-        githubObjectAnnotation({
-          ...githubObjectFacts("task", response.body),
-          repo: repoRef,
-          number: issue.number,
-          title: issue.title,
-          url: issue.html_url,
-          objectType: "task",
-          status: issue.state,
-        }),
-      ],
       target: "getIssue",
       assignees: issue.assignees,
       ...(issue.user ? { author: issue.user.login } : undefined),

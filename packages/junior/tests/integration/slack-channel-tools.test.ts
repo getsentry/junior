@@ -4,9 +4,9 @@ import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-l
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
-import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import { readSandboxFileUpload } from "@/chat/sandbox/file-uploads";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import type { ToolState } from "@/chat/tools/types";
+import type { ToolState } from "@/chat/tool-support/types";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
@@ -162,6 +162,7 @@ describe("slack channel tools", () => {
         createMaterializeFile({
           "/tmp/shared.txt": Buffer.from("shared update"),
         }),
+        "conversation-test",
       ),
       { files: [{ path: "/tmp/shared.txt" }] },
     );
@@ -218,7 +219,7 @@ describe("slack channel tools", () => {
       oldest: "1690000000.000",
       latest: "1710000000",
     });
-    expect(String(historyCalls[0]?.params.limit)).toBe("150");
+    expect(String(historyCalls[0]?.params["limit"])).toBe("150");
   });
 
   it("normalizes Slack thread references before listing channel messages", async () => {
@@ -345,12 +346,12 @@ describe("slack channel tools", () => {
 
     const historyCalls = getCapturedSlackApiCalls("conversations.history");
     expect(historyCalls).toHaveLength(2);
-    expect(String(historyCalls[0]?.params.limit)).toBe("2");
+    expect(String(historyCalls[0]?.params["limit"])).toBe("2");
     expect(historyCalls[1]?.params).toMatchObject({
       channel: "C123",
       cursor: "cursor-next",
     });
-    expect(String(historyCalls[1]?.params.limit)).toBe("1");
+    expect(String(historyCalls[1]?.params["limit"])).toBe("1");
   });
 
   it("returns a recoverable tool error when Slack rejects a stale history cursor", async () => {

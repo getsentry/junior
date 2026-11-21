@@ -6,7 +6,9 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { patch, post } from "../http";
+import { withoutVersion } from "../revalidation";
 import { conversationDetailQueryKey } from "./queries";
+import { invalidateConversationFeeds } from "./conversationFeedCache";
 
 /** Turn auto-archive on or off for one conversation and the viewer. */
 export function useSetConversationAutoArchive(conversationId: string) {
@@ -23,11 +25,10 @@ export function useSetConversationAutoArchive(conversationId: string) {
         ConversationDetailReport & { detailEtag?: string }
       >(conversationDetailQueryKey(conversationId), (detail) =>
         detail
-          ? {
-              ...detail,
-              autoArchive: result.autoArchive,
-              detailEtag: undefined,
-            }
+          ? withoutVersion(
+              { ...detail, autoArchive: result.autoArchive },
+              "detailEtag",
+            )
           : detail,
       );
     },
@@ -45,9 +46,7 @@ export function useArchiveDoneConversations() {
         {},
       ),
     onSuccess: async () => {
-      await queryClient.invalidateQueries({
-        queryKey: ["dashboard", "conversations"],
-      });
+      await invalidateConversationFeeds(queryClient);
     },
   });
 }

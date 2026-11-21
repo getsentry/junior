@@ -52,14 +52,14 @@ function toolContext(
     egress: adapter.egress,
     events: { canSubscribe: true },
     log: { error: vi.fn(), info: vi.fn(), warn: vi.fn() },
-    users: { resolveActor: async () => (user ? { user } : undefined) },
+    resolveWorkOwner: async () => (user ? { kind: "person", user } : undefined),
   } as never);
   return { adapter, tool };
 }
 
 async function getIssue(tool: ReturnType<typeof toolContext>["tool"]) {
   return await tool.execute?.(
-    { repo: "getsentry/junior", number: 2768 },
+    { repo: "getsentry/junior", issue: 2768 },
     { toolCallId: "get-issue" },
   );
 }

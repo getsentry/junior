@@ -3,26 +3,43 @@ import type {
   ConversationFeed,
 } from "@sentry/junior/api/schema";
 
-import { readMockCodeOverview } from "./fixtures";
+import type { CodeChangeState } from "@sentry/junior-plugin-api";
+
+import { mockIdleCount, readMockCodeOverview } from "./fixtures";
 
 const MOCK_WORKSPACES: Record<string, CodeRepositoryReport["workspaces"]> = {
   "getsentry/junior": [{ id: "workspace-junior", name: "junior" }],
 };
 
-/** Build one mock repository report from the mock Code overview. */
+/**
+ * Build one mock repository report from the mock Code overview. `state`
+ * lists only the changes in that state.
+ */
 export function readMockCodeRepository(
   repositoryId: string,
+  state?: CodeChangeState,
 ): CodeRepositoryReport | undefined {
   const overview = readMockCodeOverview();
   const repository = overview.repositories.find(
     (entry) => entry.id === repositoryId,
   );
   if (!repository) return undefined;
+  const changes = overview.changes.filter(
+    (change) => change.repository === repository.name,
+  );
+  const countOf = (state: string) =>
+    changes.filter((change) => change.state === state).length;
   return {
     activityDays: overview.activityDays,
-    changes: overview.changes.filter(
-      (change) => change.repository === repository.name,
-    ),
+    // The mock lists every change, so the counts match the list.
+    changeCounts: {
+      closed: countOf("closed"),
+      merged: countOf("merged"),
+      open: countOf("open"),
+    },
+    changes: state
+      ? changes.filter((change) => change.state === state)
+      : changes,
     generatedAt: overview.generatedAt,
     repository: {
       id: repository.id,
@@ -33,6 +50,7 @@ export function readMockCodeRepository(
     summary: {
       closed: repository.closed,
       created: repository.created,
+      idle: mockIdleCount(changes),
       merged: repository.merged,
       open: repository.open,
       ...(repository.mergeRate === undefined

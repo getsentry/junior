@@ -19,10 +19,11 @@ function uploadContentType(file: File): string {
  */
 async function uploadMessageFiles(
   files: readonly File[] | undefined,
-  message: { conversationId?: string; idempotencyKey: string },
+  message: { conversationId?: string | undefined; idempotencyKey: string },
 ): Promise<string[] | undefined> {
   if (!files?.length) return undefined;
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- The composer allows at most MAX_INPUT_ATTACHMENTS files.
     files.map(async (file) => {
       const { target, uploadId } = await post(
         attachmentUploadSchema,

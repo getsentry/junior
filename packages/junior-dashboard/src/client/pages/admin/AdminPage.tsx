@@ -4,17 +4,22 @@ import type { PluginUserPageLink } from "@sentry/junior-plugin-api";
 
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import { dashboardContainerClass } from "../../styles";
+import {
+  dashboardContainerClass,
+  cn,
+  dashboardIconTileClass,
+} from "../../styles";
 import { pluginUserPagePath } from "../user/pluginUserPageRoutes";
 import { CacheWarmingSection } from "./CacheWarmingSection";
+import { GatewayProvidersSection } from "./GatewayProvidersSection";
 import {
   ServiceAccountsSection,
   useServiceAccounts,
 } from "./ServiceAccountsSection";
 
 /**
- * Show service accounts, cache warming, and admin-only plugin pages to a
- * Junior admin.
+ * Show service accounts, cache warming, enabled providers, and admin-only
+ * plugin pages to a Junior admin.
  *
  * The server hides admin pages and service accounts from other viewers and
  * refuses their requests, so this page only arranges them.
@@ -31,7 +36,7 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
         <PageHeader
           description={
             <>
-              Setup that only Junior admins can see. Change who is an admin with{" "}
+              Setup that only admins can see. Change who is an admin with{" "}
               <code>junior admin grant &lt;email&gt;</code> and{" "}
               <code>junior admin revoke &lt;email&gt;</code>.
             </>
@@ -40,10 +45,11 @@ export function AdminPage(props: { pages: PluginUserPageLink[] }) {
         />
         <ServiceAccountsSection accountsQuery={serviceAccounts} />
         <CacheWarmingSection />
+        <GatewayProvidersSection />
         {nothingToSet ? (
           <Card padding="md">
             <div className="flex items-center gap-4">
-              <div className="grid size-10 shrink-0 place-items-center rounded-md border border-dashboard-border bg-dashboard-fill-soft text-dashboard-text-muted">
+              <div className={cn(dashboardIconTileClass, "size-10")}>
                 <Boxes aria-hidden="true" size={17} />
               </div>
               <p className="m-0 text-sm text-dashboard-text-muted">

@@ -111,7 +111,7 @@ export type ConversationBrief = z.output<typeof conversationBriefSchema>;
 /** Parse a stored Brief row, dropping fields that older versions wrote. */
 export function parseStoredBrief(content: unknown): ConversationBrief {
   // Briefs stored before open decisions were removed still have them.
-  // Review items track open asks now.
+  // Inbox items track open asks now.
   if (content && typeof content === "object" && "openDecisions" in content) {
     const { openDecisions: _openDecisions, ...rest } = content;
     return conversationBriefSchema.parse(rest);

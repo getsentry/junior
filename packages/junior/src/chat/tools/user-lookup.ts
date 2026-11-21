@@ -1,4 +1,3 @@
-import { getOAuthAccountProviders } from "@/chat/plugins/credential-hooks";
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import * as z from "zod";
@@ -16,7 +15,7 @@ import {
 import { juniorIdentities } from "@/db/schema";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const linkedSlackIdentity = alias(
   juniorIdentities,
@@ -40,7 +39,7 @@ type UserLookupResult = {
   query: string;
   count: number;
   mention?: string;
-  user?: UserLookupMatch;
+  user?: UserLookupMatch | undefined;
   users?: UserLookupMatch[];
 } & Partial<UserLookupSearchMeta>;
 
@@ -70,7 +69,7 @@ function lookupResult(args: {
   provider: string;
   query: string;
   users: UserLookupProfile[];
-  search?: UserLookupSearchMeta;
+  search?: UserLookupSearchMeta | undefined;
 }): UserLookupResult {
   const users = args.users.map(asMatch);
   if (users.length === 1) {
@@ -286,14 +285,6 @@ async function resolveStoredProvider(
   return lookupResult({ provider, query, users });
 }
 
-/** Identity providers that `userLookup` can search: Slack, then OAuth account providers. */
-export function userLookupIdentityProviders(): [string, ...string[]] {
-  return [
-    "slack",
-    ...getOAuthAccountProviders().filter((provider) => provider !== "slack"),
-  ];
-}
-
 /** Static definition of `userLookup` for these identity providers. */
 export function userLookupToolDefinition(providers: [string, ...string[]]) {
   return zodToolDefinition({
@@ -315,7 +306,7 @@ export function userLookupToolDefinition(providers: [string, ...string[]]) {
           .trim()
           .min(1)
           .describe(
-            "Provider subject ID, handle, Slack email, or Slack name. For Slack, pass the user ID (`U…`) whenever the conversation shows one, such as the requester's `author_id`, a participant's `actor_id`, or a `<@U…>` mention. Search by name only with no known ID.",
+            "Provider subject ID, handle, Slack email, or Slack name. For Slack, pass the user ID (`U…`) whenever the conversation shows one, such as an `author_id` or a `<@U…>` mention. Search by name only with no known ID.",
           ),
       })
       .strict(),

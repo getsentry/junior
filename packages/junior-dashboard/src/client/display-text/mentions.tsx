@@ -1,18 +1,16 @@
 import { createContext, useContext, type ReactNode } from "react";
-import { Link } from "react-router";
 import type { ActorIdentity } from "@sentry/junior/api/schema";
 
 import { HighlightText } from "../conversations/transcriptSearch";
-import { peoplePath } from "../format";
-import { cn } from "../styles";
+import { PersonReference } from "../components/PersonReference";
+import { personFromActor } from "../person";
 import { replaceSlackEmoji } from "./emoji";
-import { ANCHOR_CLASS } from "./links";
-import { PersonMention } from "./people";
+import { useAnchorClass } from "./links";
 
 type Mention = {
   end: number;
   id: string;
-  label?: string;
+  label?: string | undefined;
   sigil: "@" | "#";
   start: number;
 };
@@ -127,27 +125,47 @@ function findMentions(text: string): Mention[] {
 function MentionView(props: { mention: Mention }) {
   const { links, people } = useContext(MentionPeople);
   const { id, sigil } = props.mention;
-  const person = sigil === "@" ? people.get(id) : undefined;
-  const text = <HighlightText text={mentionLabel(props.mention, people)} />;
-  const name =
-    links && person?.email ? (
-      <Link
-        // Previews sit in cards that disable pointer events on their text.
-        className={cn("pointer-events-auto", ANCHOR_CLASS)}
-        title={id}
-        to={peoplePath(person.email)}
-      >
-        {text}
-      </Link>
-    ) : (
+  const actor = sigil === "@" ? people.get(id) : undefined;
+  const label = mentionLabel(props.mention, people);
+  const person = personFromActor(actor);
+  const anchorClass = useAnchorClass("person");
+  if (!person) {
+    return (
       <span className="font-medium text-dashboard-accent-text" title={id}>
-        {text}
+        <HighlightText text={label} />
       </span>
     );
-  if (!person) return name;
+  }
   return (
-    <PersonMention avatarUrl={person.avatarUrl} email={person.email}>
-      {name}
-    </PersonMention>
+    <PersonReference
+      card={links}
+      className={
+        links && person.email
+          ? anchorClass
+          : "font-medium text-dashboard-accent-text"
+      }
+      highlightSelf
+      label={<HighlightText text={label} />}
+      person={person}
+    />
+  );
+}
+
+/**
+ * Show one line of plain text, such as a title, with its Slack mentions as
+ * people. Set `links={false}` inside a link or button.
+ */
+export function MentionText(props: {
+  links?: boolean | undefined;
+  mentions?: readonly ActorIdentity[] | undefined;
+  text: string;
+}) {
+  return (
+    <MentionPeopleProvider
+      links={props.links ?? true}
+      mentions={props.mentions ?? []}
+    >
+      {renderTextTokens(props.text, "mention-text")}
+    </MentionPeopleProvider>
   );
 }

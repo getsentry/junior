@@ -16,7 +16,7 @@ export interface GuardedRequest {
   /** Sent only to the origin of `url`, never after a redirect to another. */
   headers?: Record<string, string>;
   /** Limit every hop to these hosts and their subdomains. */
-  hosts?: readonly string[];
+  hosts?: readonly string[] | undefined;
   /** A larger body is a `too_large` failure, unless `truncate` is set. */
   maxBytes: number;
   timeoutMs: number;
@@ -29,12 +29,12 @@ export interface GuardedRequest {
 
 /** The body of the last hop, or why Junior did not take it. */
 export type GuardedResponse =
-  | { bytes: Buffer; contentType?: string; url: string }
+  | { bytes: Buffer; contentType?: string | undefined; url: string }
   | { failure: string };
 
 type Hop =
   | { location: string }
-  | { bytes: Buffer; contentType?: string }
+  | { bytes: Buffer; contentType?: string | undefined }
   | { failure: string };
 
 function blockedUrl(url: URL, hosts: readonly string[] | undefined): boolean {
@@ -135,6 +135,7 @@ export async function guardedFetch(
     if (!URL.canParse(current)) return { failure: "invalid_url" };
     const url = new URL(current);
     if (blockedUrl(url, request.hosts)) return { failure: "blocked_address" };
+    // oxlint-disable-next-line no-await-in-loop -- Each redirect hop needs the location from the hop before.
     const hop = await requestHop(
       url,
       request,

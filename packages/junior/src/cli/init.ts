@@ -32,12 +32,8 @@ function writePluginsFile(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "plugins.ts"),
     `import { defineJuniorPlugins } from "@sentry/junior";
-import { memoryPlugin } from "@sentry/junior-memory";
 
-export const plugins = defineJuniorPlugins([
-  memoryPlugin(),
-  "@sentry/junior-maintenance",
-]);
+export const plugins = defineJuniorPlugins(["@sentry/junior-maintenance"]);
 `,
   );
 }
@@ -75,7 +71,7 @@ function writeTsConfig(targetDir: string): void {
     `${JSON.stringify(
       {
         extends: "nitro/tsconfig",
-        compilerOptions: {},
+        compilerOptions: { noUncheckedIndexedAccess: true },
       },
       null,
       2,
@@ -89,6 +85,14 @@ function writePnpmWorkspace(targetDir: string): void {
     `minimumReleaseAge: 1440
 minimumReleaseAgeExclude:
   - "@sentry/*"
+# pnpm fails the install when a dependency has an unreviewed build script.
+# These are the @sentry/junior runtime dependencies that have one.
+allowBuilds:
+  "@google/genai": true
+  "@mongodb-js/zstd": true
+  esbuild: true
+  node-liblzma: false
+  protobufjs: true
 `,
   );
 }
@@ -118,14 +122,13 @@ jobs:
     steps:
       - uses: actions/checkout@v6
       - uses: pnpm/action-setup@v6
-        with:
-          version: 10
       - uses: actions/setup-node@v6
         with:
           node-version: 24
           cache: pnpm
       - run: pnpm install
       - run: pnpm check
+      - run: pnpm typecheck
       # Snapshot warmup needs Vercel OIDC, so the Vercel deploy build runs it.
       - run: pnpm build
         env:
@@ -162,6 +165,8 @@ export async function runInit(
     version: "0.1.0",
     private: true,
     type: "module",
+    packageManager: "pnpm@12.18.0",
+    engines: { node: "24.x" },
     scripts: {
       dev: "nitro dev",
       check: "junior check",
@@ -171,12 +176,11 @@ export async function runInit(
     },
     dependencies: {
       "@sentry/junior": "latest",
-      "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
       hono: "^4.13.11",
     },
     devDependencies: {
-      "@types/node": "^25.9.1",
+      "@types/node": "^24.19.2",
       jiti: "^2.7.0",
       nitro: "3.0.260522-beta",
       typescript: "^7.0.2",

@@ -10,7 +10,10 @@ import {
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { readChildConversationSender } from "./child-input";
-import { agentMessageInboundId, enqueueAgentMessageToParent } from "./result";
+import {
+  agentMessageInboundId,
+  enqueueAgentMessageToParent,
+} from "./agent-message";
 import type { ChildAgentSender } from "./types";
 
 /**

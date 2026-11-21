@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createSlackListCreateTool } from "@/chat/slack/tools/list/create";
 import { createSlackListUpdateItemTool } from "@/chat/slack/tools/list/update-item";
-import type { ToolState } from "@/chat/tools/types";
+import type { ToolState } from "@/chat/tool-support/types";
 import { slackListsCreateOk } from "../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -98,7 +98,7 @@ describe("slack list create/update tools", () => {
     expect(updateCalls[0]?.params).toMatchObject({
       list_id: "LIST_ABC",
     });
-    expect(updateCalls[0]?.params.cells).toEqual([
+    expect(updateCalls[0]?.params["cells"]).toEqual([
       {
         row_id: "ROW_77",
         column_id: "COL_DONE",
@@ -134,9 +134,12 @@ describe("slack list create/update tools", () => {
         item_id: "ROW_77",
         completed: true,
       }),
-    ).rejects.toThrow(
-      "No updatable fields were provided or inferred for this list item",
-    );
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: expect.stringContaining(
+        "No updatable fields were provided or inferred for this list item",
+      ),
+    });
     expect(getCapturedSlackApiCalls("slackLists.items.update")).toHaveLength(0);
   });
 });

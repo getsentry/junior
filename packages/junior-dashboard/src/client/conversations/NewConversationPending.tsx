@@ -30,7 +30,7 @@ import { Transcript } from "./TranscriptView";
 export type PendingNewConversation = {
   createdAt: string;
   idempotencyKey: string;
-  files?: File[];
+  files?: File[] | undefined;
   message: string;
   visibility: "private" | "public";
 };
@@ -97,7 +97,8 @@ export function NewConversationPending(props: {
       lastProgressAt: pending.createdAt,
       lastSeenAt: pending.createdAt,
       startedAt: pending.createdAt,
-      status: "active",
+      status: "working",
+      turnActive: true,
       surface: "internal",
       visibility: pending.visibility,
     }),

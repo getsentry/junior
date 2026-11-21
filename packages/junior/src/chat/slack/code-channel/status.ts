@@ -12,7 +12,7 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
-import { juniorReviewItems } from "@/db/schema";
+import { juniorInboxItems } from "@/db/schema";
 import { setCodeChannelStatus, type CodeChannelSessionStatus } from "./api";
 
 type TurnWorker = (
@@ -20,15 +20,16 @@ type TurnWorker = (
   work: MailboxTurnWork,
 ) => Promise<ConversationWorkerResult>;
 
-async function hasOpenReviewItem(conversationId: string): Promise<boolean> {
+async function hasOpenInboxItem(conversationId: string): Promise<boolean> {
   const [row] = await getDb()
-    .select({ id: juniorReviewItems.id })
-    .from(juniorReviewItems)
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
     .where(
       and(
-        eq(juniorReviewItems.addedByConversationId, conversationId),
-        eq(juniorReviewItems.kind, "action"),
-        eq(juniorReviewItems.status, "open"),
+        eq(juniorInboxItems.ownerKind, "conversation"),
+        eq(juniorInboxItems.ownerId, conversationId),
+        eq(juniorInboxItems.kind, "action"),
+        eq(juniorInboxItems.status, "open"),
       ),
     )
     .limit(1);
@@ -53,7 +54,7 @@ async function trySetStatus(
 /**
  * Wrap the Conversation loop's Turn worker so that each Turn of a channel
  * Thread in a Slack code channel shows `processing`, then `active`, or
- * `suspended` while the Thread waits on an open Review item.
+ * `suspended` while the Thread waits on an open Inbox item.
  */
 export function withCodeChannelStatus(worker: TurnWorker): TurnWorker {
   return async (context, work) => {
@@ -76,7 +77,7 @@ export function withCodeChannelStatus(worker: TurnWorker): TurnWorker {
       await trySetStatus(
         conversationId,
         location.channelId,
-        (await hasOpenReviewItem(conversationId)) ? "suspended" : "active",
+        (await hasOpenInboxItem(conversationId)) ? "suspended" : "active",
       );
     }
   };

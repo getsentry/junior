@@ -26,10 +26,11 @@ import {
   juniorConversationBindings,
   juniorConversations,
 } from "@/db/schema";
+import { mapBounded } from "@/chat/fan-out";
 import { recordSubagentEnded } from "./markers";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
-import { ownAgentInvocation, readChildMessageSender } from "./child-message";
+import { ownAgentInvocation, readChildMessageSenders } from "./child-message";
 import {
   getLatestAgentInvocationForConversation,
   invocationFromRow,
@@ -137,7 +138,11 @@ export async function stopChildAgentsOf(
  */
 export async function stopChildAgentsBelow(
   conversationId: string,
-  options: { nowMs: number; stoppedAtMs: number; state?: StateAdapter },
+  options: {
+    nowMs: number;
+    stoppedAtMs: number;
+    state?: StateAdapter | undefined;
+  },
 ): Promise<void> {
   const { nowMs, stoppedAtMs, state } = options;
   const tree = await stopAgentInvocationTree(conversationId, nowMs, {
@@ -174,14 +179,12 @@ async function skipUnreadResults(
   // A child's `reply` is its result, so a stop skips it too. A reply from a
   // Turn on the Conversation loop names no work of its own:
   // `dropUnreadLoopReplies` drops it instead.
-  const invocationIds: string[] = [];
-  for (const message of messages) {
-    const sender = await readChildMessageSender(message);
-    const invocation = sender && ownAgentInvocation(sender);
-    if (invocation) {
-      invocationIds.push(invocation);
-    }
-  }
+  const invocationIds = (await readChildMessageSenders(messages)).flatMap(
+    (sender) => {
+      const invocation = sender && ownAgentInvocation(sender);
+      return invocation ? [invocation] : [];
+    },
+  );
   if (invocationIds.length === 0) {
     return;
   }
@@ -214,25 +217,27 @@ async function dropUnreadLoopReplies(
   state: StateAdapter | undefined,
 ): Promise<void> {
   const stopped = new Set(stoppedIds);
-  for (const conversationId of mailboxIds) {
+  await mapBounded(mailboxIds, async (conversationId) => {
     const messages =
       (await getConversationWorkState({ conversationId, state }))?.messages ??
       [];
-    const inboundMessageIds: string[] = [];
-    for (const message of messages) {
-      const sender = await readChildMessageSender(message);
-      if (
-        sender &&
+    const senders = await readChildMessageSenders(messages);
+    const inboundMessageIds = messages.flatMap((message, index) => {
+      const sender = senders[index];
+      return sender &&
         !ownAgentInvocation(sender) &&
         stopped.has(sender.conversationId)
-      ) {
-        inboundMessageIds.push(message.inboundMessageId);
-      }
-    }
+        ? [message.inboundMessageId]
+        : [];
+    });
     if (inboundMessageIds.length > 0) {
-      await dropPendingMessages({ conversationId, inboundMessageIds, state });
+      await dropPendingMessages({
+        conversationId,
+        inboundMessageIds,
+        state,
+      });
     }
-  }
+  });
 }
 
 /**
@@ -268,13 +273,14 @@ async function finishStoppedTree(
   options: Parameters<typeof markConversationsStopped>[1],
 ): Promise<void> {
   for (const invocation of tree.stopped) {
+    // oxlint-disable-next-line no-await-in-loop -- Append the end markers in stop order.
     await recordSubagentEnded(invocation);
   }
   await markConversationsStopped(conversationIdsToStop, options);
-  for (const conversationId of conversationIdsToStop) {
+  await mapBounded(conversationIdsToStop, async (conversationId) => {
     await cancelSignInWait(conversationId);
     await stopConversationWork({ conversationId, state: options.state });
-  }
+  });
 }
 
 /**
@@ -289,6 +295,7 @@ async function lockAgentConversationTree(
   const executor = getSqlExecutor();
   const conversationIds = [childConversationId];
   let parents = conversationIds;
+  /* oxlint-disable no-await-in-loop -- Each level reads the children of the level before, after it holds their parents' locks. */
   while (parents.length > 0) {
     for (const parent of parents) {
       await executor.withLock(
@@ -341,6 +348,7 @@ async function lockAgentConversationTree(
     ].filter((id) => !conversationIds.includes(id));
     conversationIds.push(...parents);
   }
+  /* oxlint-enable no-await-in-loop */
   return conversationIds;
 }
 

@@ -1,5 +1,5 @@
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const MAX_SUGGESTIONS = 3;
 const MAX_SOURCE_TOOLS = 10;
@@ -13,15 +13,15 @@ export type ToolNameHint =
   | { source: string; tools: string[] };
 
 /**
- * A call named a tool that the caller cannot call. `hint` comes from
- * {@link findToolNameHint} and can be empty.
+ * A call named a tool that the caller cannot call. `message` already holds
+ * the rendered hint. `hint` comes from {@link findToolNameHint} and can be
+ * empty.
  */
 export class ToolNameMissError extends ToolInputError {
   readonly hint: ToolNameHint;
 
   constructor(message: string, hint: ToolNameHint) {
-    const text = renderToolNameHint(hint);
-    super(text ? `${message} ${text}` : message);
+    super(message);
     this.name = "ToolNameMissError";
     this.hint = hint;
   }

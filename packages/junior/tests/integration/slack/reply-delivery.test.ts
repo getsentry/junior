@@ -5,14 +5,24 @@ import { closeDb, getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
 import { sendSlackReply } from "@/chat/slack/reply";
 import {
+  type CapturedSlackApiCall,
   getCapturedSlackApiCalls,
   resetSlackApiMockState,
 } from "../../msw/handlers/slack-api";
 
+function markdownBody(call: CapturedSlackApiCall): string {
+  const [block] = call.params["blocks"] as Array<{
+    type: string;
+    text: string;
+  }>;
+  expect(block?.type).toBe("markdown");
+  return block?.text ?? "";
+}
+
 describe("sendSlackReply", () => {
   beforeEach(() => {
-    process.env.SLACK_BOT_TOKEN =
-      process.env.SLACK_BOT_TOKEN ?? "xoxb-test-token";
+    process.env["SLACK_BOT_TOKEN"] =
+      process.env["SLACK_BOT_TOKEN"] ?? "xoxb-test-token";
     resetSlackApiMockState();
   });
 
@@ -62,6 +72,79 @@ describe("sendSlackReply", () => {
         }),
       }),
     ]);
+  });
+
+  it("posts a markdown table with contiguous rows", async () => {
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: [
+        "7 rows were billed twice:",
+        "| Org | Billed |",
+        "|---|---|",
+        "| 405346 | $89.34 |",
+        "| 4512136079409152 | $34.32 |",
+        "What this means",
+      ].join("\n"),
+      threadTs: "1700000000.000100",
+    });
+
+    const [post] = getCapturedSlackApiCalls("chat.postMessage");
+    expect(post && markdownBody(post)).toBe(
+      [
+        "7 rows were billed twice:",
+        "",
+        "| Org | Billed |",
+        "|---|---|",
+        "| 405346 | $89.34 |",
+        "| 4512136079409152 | $34.32 |",
+        "",
+        "What this means",
+      ].join("\n"),
+    );
+  });
+
+  it("starts every chunked post of a table with its header rows", async () => {
+    const header = "| Shard | Tests | Time |\n|---|---|---|";
+    const rows = Array.from(
+      { length: 120 },
+      (_, i) => `| shard-${i} | ${1800 + i} tests | ${300 + i}s |`,
+    );
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: ["x".repeat(3_000), header, ...rows].join("\n"),
+      threadTs: "1700000000.000100",
+    });
+
+    const posts =
+      getCapturedSlackApiCalls("chat.postMessage").map(markdownBody);
+    expect(posts.some((text) => text.endsWith("|---|---|---|"))).toBe(false);
+    const tables = posts.filter((text) => text.includes("| shard-"));
+    expect(tables.length).toBeGreaterThan(1);
+    for (const text of tables) {
+      expect(text.startsWith(`${header}\n`)).toBe(true);
+      expect(text).not.toMatch(/\|\n\n\|/);
+    }
+    expect(tables.join("\n").match(/\| shard-/g)).toHaveLength(rows.length);
+  });
+
+  it("keeps two tables apart when a post ends between them", async () => {
+    const first = "| A | B |\n|---|---|\n| a1 | b1 |";
+    const second = `| ${"C".repeat(200)} | D |\n|---|---|\n| c1 | d1 |`;
+    // The 4,000-character budget ends inside the second table's header row,
+    // so the post splits at the blank line between the tables.
+    const prose = "x".repeat(3_900 - 2 - first.length);
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: `${prose}\n\n${first}\n\n${second}`,
+      threadTs: "1700000000.000100",
+    });
+
+    const posts =
+      getCapturedSlackApiCalls("chat.postMessage").map(markdownBody);
+    expect(posts).toEqual([`${prose}\n\n${first}`, second]);
   });
 
   it("returns every posted message timestamp for chunked replies", async () => {
@@ -177,7 +260,7 @@ describe("sendSlackReply", () => {
     expect(posts).toHaveLength(2);
     expect(posts[0]?.params).not.toHaveProperty("thread_ts");
     expect(posts[1]?.params).toMatchObject({ thread_ts: timestamps[0] });
-    expect(posts[1]?.params.blocks).toContainEqual({
+    expect(posts[1]?.params["blocks"]).toContainEqual({
       type: "section",
       text: {
         type: "mrkdwn",
@@ -185,12 +268,65 @@ describe("sendSlackReply", () => {
       },
     });
     expect(posts[1]?.params).not.toHaveProperty("metadata");
-    expect(posts[1]?.params.text).toBe(
+    expect(posts[1]?.params["text"]).toBe(
       "Automation\nReminder &lt;@U123&gt;\nEvery Monday",
     );
     for (const post of posts) {
       expect(JSON.stringify(post.params)).not.toContain(card.instruction);
     }
+  });
+
+  it("keeps each post's Work Objects within Slack's metadata limit", async () => {
+    const card = {
+      kind: "object" as const,
+      plugin: "objects",
+      label: "ENG-1",
+      objectType: "task" as const,
+      title: "Saved issue",
+      description: "Steps to reproduce. ".repeat(25),
+    };
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: "Here are the issues.",
+      threadTs: "1700000000.000100",
+      cards: [
+        ...Array.from({ length: 5 }, (_, index) => ({
+          ...card,
+          key: `repo#${index}`,
+          url: `https://example.com/issues/${index}`,
+        })),
+        // Slack counts each non-ASCII character as a 6-byte escape.
+        {
+          ...card,
+          key: "repo#big",
+          title: "修正".repeat(80),
+          description: "修正".repeat(250),
+          url: "https://example.com/issues/big",
+        },
+      ],
+    });
+    const posts = getCapturedSlackApiCalls("chat.postMessage");
+    const metadata = posts.flatMap((post) => {
+      const value = post.params["metadata"] as
+        | { entities: Array<{ url: string }> }
+        | undefined;
+      return value ? [value] : [];
+    });
+    expect(
+      Math.max(...metadata.map((value) => JSON.stringify(value).length)),
+    ).toBeLessThanOrEqual(4_000);
+    expect(
+      metadata.flatMap((value) => value.entities).map((entity) => entity.url),
+    ).toEqual(
+      Array.from(
+        { length: 5 },
+        (_, index) => `https://example.com/issues/${index}`,
+      ),
+    );
+    expect(JSON.stringify(posts.at(-1)?.params["blocks"])).toContain(
+      "修正".repeat(80),
+    );
   });
 
   it("does not post empty text", async () => {
@@ -236,7 +372,7 @@ describe("sendSlackReply", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
-          text: "<@U123> fixed [#12](https://github.com/getsentry/junior/issues/12). Thanks @octocat.",
+          text: "<@U123> fixed [getsentry/junior#12](https://github.com/getsentry/junior/issues/12). Thanks @octocat.",
         }),
       }),
     ]);

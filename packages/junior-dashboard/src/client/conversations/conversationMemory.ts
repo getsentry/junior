@@ -1,9 +1,9 @@
 import { useQuery } from "@tanstack/react-query";
-import { createContext, useContext } from "react";
 import * as z from "zod";
 
 import { fetchDashboardJson } from "../http";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
+import { markTranscriptRow } from "./useMessageLinkJump";
 
 const conversationMemoryListSchema = z
   .object({
@@ -32,11 +32,8 @@ const conversationMemoryListSchema = z
 export type ConversationMemoryList = z.output<
   typeof conversationMemoryListSchema
 >;
-export type ConversationMemory = ConversationMemoryList["memories"][number];
+type ConversationMemory = ConversationMemoryList["memories"][number];
 type MemorySource = ConversationMemoryList["events"][number]["source"];
-
-/** One transcript spot that recalled or captured memories. */
-export type MemoryAnchor = { source: MemorySource; turnId: string };
 
 /** Load what one Conversation recalled and captured. */
 export function useConversationMemories(conversationId: string) {
@@ -44,33 +41,11 @@ export function useConversationMemories(conversationId: string) {
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         conversationMemoryListSchema,
-        `/api/plugins/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
+        `/api/memory/conversations/${encodeURIComponent(conversationId)}/memories`,
         signal,
       ),
     queryKey: conversationSideReadQueryKey(conversationId, "memories"),
     retry: false,
-  });
-}
-
-/** Name the transcript element that opens one anchor's popover. */
-export function memoryAnchorKey(anchor: MemoryAnchor): string {
-  return `${anchor.source}:${anchor.turnId}`;
-}
-
-/** List the memories that one transcript spot recalled or captured. */
-export function anchorMemories(
-  list: ConversationMemoryList | undefined,
-  anchor: MemoryAnchor,
-): ConversationMemory[] {
-  const event = list?.events.find(
-    (candidate) =>
-      candidate.source === anchor.source && candidate.turnId === anchor.turnId,
-  );
-  if (!event || !list) return [];
-  const byId = new Map(list.memories.map((memory) => [memory.id, memory]));
-  return event.memoryIds.flatMap((id) => {
-    const memory = byId.get(id);
-    return memory ? [memory] : [];
   });
 }
 
@@ -80,7 +55,6 @@ export type ConversationMemoryEntry = {
   /** The recall or capture event, where the transcript opens. */
   seq: number;
   source: MemorySource;
-  turnId?: string;
 };
 
 /**
@@ -100,41 +74,38 @@ export function conversationMemoryEntries(
       const memory = byId.get(id);
       if (seen.has(key) || !memory) continue;
       seen.add(key);
-      entries.push({
-        memory,
-        seq: event.seq,
-        source: event.source,
-        ...(event.turnId ? { turnId: event.turnId } : undefined),
-      });
+      entries.push({ memory, seq: event.seq, source: event.source });
     }
   }
   return entries;
 }
 
-/** The open memory popover, and the memory it highlights. */
-export type OpenMemoryPopover = MemoryAnchor & { memoryId?: string };
-
-/** A memory chosen in details, and the event where the transcript opens. */
-export type MemoryJump = OpenMemoryPopover & { seq: number };
-
-/** Shared memory popover state for one Conversation page. */
-export type ConversationMemoryState = {
-  list?: ConversationMemoryList;
-  open?: OpenMemoryPopover;
-  setOpen(open: OpenMemoryPopover | undefined): void;
-};
-
 /**
- * Let the transcript and the details panel share memory popovers. Only the
- * Conversation page sets it, so nested transcripts show plain events.
+ * Show the transcript row of a memory event's Turn. The event has no row, so
+ * this is the last row before it: the prompt of a recall, or the reply of a
+ * capture. Matches `rowIndexBeforeSeq`, which keeps that row mounted.
  */
-export const ConversationMemoryContext = createContext<
-  ConversationMemoryState | undefined
->(undefined);
-
-/** Read the memory popover state of the current Conversation page. */
-export function useConversationMemoryState() {
-  return useContext(ConversationMemoryContext);
+export function showMemoryRow(root: Element | null, seq: number) {
+  // Only the rows of this Conversation's transcript count.
+  const transcript = root?.querySelector(
+    '[aria-label="Conversation transcript"]',
+  );
+  let row: Element | undefined;
+  let rowSeq: number | undefined;
+  // Rows are in seq order. A question moved after its reply keeps the reply
+  // seq, so the first row with a seq wins.
+  for (const candidate of transcript?.querySelectorAll(
+    "[data-transcript-seq]",
+  ) ?? []) {
+    const candidateSeq = Number(candidate.getAttribute("data-transcript-seq"));
+    if (candidateSeq >= seq) break;
+    if (candidateSeq === rowSeq) continue;
+    row = candidate;
+    rowSeq = candidateSeq;
+  }
+  if (!row) return;
+  row.scrollIntoView({ block: "center" });
+  markTranscriptRow(row);
 }
 
 /** True for the memory plugin event that a Turn's capture emits. */

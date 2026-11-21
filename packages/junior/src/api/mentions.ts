@@ -1,4 +1,10 @@
 import { and, eq, inArray } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import {
+  hasUserPhoto,
+  identityAvatarUrl,
+  userAvatarUrlsFromJoinedPhotos,
+} from "@/chat/identities/avatar";
 import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import { lookupSlackUserNames } from "@/chat/slack/user";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -11,7 +17,7 @@ import type { ActorIdentity } from "./schema/conversation";
  * Junior identities resolve.
  */
 export type MentionSource = {
-  tenantId?: string;
+  tenantId?: string | undefined;
   texts: readonly (string | undefined)[];
 };
 
@@ -37,14 +43,15 @@ export async function resolveMentions(
     mentionedSlackUserIds(source.texts),
   );
   const idsByTenant = new Map<string | undefined, Set<string>>();
-  sources.forEach((source, index) => {
-    if (idsBySource[index]!.length === 0) return;
+  for (const [index, source] of sources.entries()) {
+    if (idsBySource[index]!.length === 0) continue;
     const ids = idsByTenant.get(source.tenantId) ?? new Set<string>();
     for (const id of idsBySource[index]!) ids.add(id);
     idsByTenant.set(source.tenantId, ids);
-  });
+  }
   const peopleByTenant = new Map(
     await Promise.all(
+      // oxlint-disable-next-line junior/bounded-fan-out -- One read per workspace.
       [...idsByTenant].map(
         async ([tenantId, ids]) =>
           [
@@ -63,10 +70,14 @@ export async function resolveMentions(
   });
 }
 
+// The photo Identities of each mentioned user, so one read returns names and
+// photos.
+const userPhotos = alias(juniorIdentities, "mention_user_photos");
+
 /**
- * Read current names for mentioned Slack users. Known Junior identities come
- * first. The email is set only for a linked, verified Junior user, because
- * that email is the People profile route.
+ * Read current names and photos for mentioned Slack users. Known Junior
+ * identities come first. The email is set only for a linked, verified Junior
+ * user, because that email is the People profile route.
  */
 async function readMentionedPeople(
   executor: JuniorSqlDatabase,
@@ -76,15 +87,31 @@ async function readMentionedPeople(
   const rows = await executor
     .db()
     .select({
+      avatarUrl: juniorIdentities.avatarUrl,
       displayName: juniorIdentities.displayName,
       emailVerified: juniorIdentities.emailVerified,
       handle: juniorIdentities.handle,
+      identityId: juniorIdentities.id,
+      photo: {
+        avatarUrl: userPhotos.avatarUrl,
+        identityId: userPhotos.id,
+        provider: userPhotos.provider,
+        updatedAt: userPhotos.updatedAt,
+      },
       providerSubjectId: juniorIdentities.providerSubjectId,
       userDisplayName: juniorUsers.displayName,
       userEmail: juniorUsers.primaryEmail,
+      userId: juniorIdentities.userId,
     })
     .from(juniorIdentities)
     .leftJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
+    .leftJoin(
+      userPhotos,
+      and(
+        eq(userPhotos.userId, juniorIdentities.userId),
+        hasUserPhoto(userPhotos),
+      ),
+    )
     .where(
       and(
         eq(juniorIdentities.provider, "slack"),
@@ -93,13 +120,16 @@ async function readMentionedPeople(
       ),
     );
 
+  const userAvatarUrls = userAvatarUrlsFromJoinedPhotos(rows);
   const people = new Map<string, ActorIdentity>();
   for (const row of rows) {
     if (people.has(row.providerSubjectId)) continue;
     const fullName = row.userDisplayName?.trim() || row.displayName?.trim();
     const email = row.emailVerified ? row.userEmail?.trim() : undefined;
+    const avatarUrl = identityAvatarUrl(row, userAvatarUrls);
     people.set(row.providerSubjectId, {
       slackUserId: row.providerSubjectId,
+      ...(avatarUrl ? { avatarUrl } : undefined),
       ...(fullName ? { fullName } : undefined),
       ...(row.handle ? { slackUserName: row.handle } : undefined),
       ...(email ? { email } : undefined),

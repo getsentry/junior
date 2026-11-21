@@ -103,7 +103,11 @@ import {
   webConversationMessage,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
-import { instructionActorFor, instructionForInputs } from "@/chat/agent/prompt";
+import {
+  instructionActorFor,
+  instructionForInputs,
+  turnRequestText,
+} from "@/chat/agent/prompt";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -114,7 +118,7 @@ import {
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { Actor } from "@sentry/junior-plugin-api";
@@ -135,7 +139,7 @@ function captureConversationTurnFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
-  runId?: string;
+  runId?: string | undefined;
   turnId: string;
 }): string | undefined {
   const eventId = logException(
@@ -251,10 +255,17 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
-        inputs = renderEventBatchInputs(
-          messages,
-          await eventReviewItemInputs(messages),
-        ).map((text) => ({ kind: "runtime", text }));
+        const rendered = await eventInboxItemInputs(messages);
+        for (const { message, requestText } of resolved.batch) {
+          if (requestText) {
+            rendered.set(message.inboundMessageId, {
+              kind: "runtime",
+              text: message.input.text.trim(),
+              requestText,
+            });
+          }
+        }
+        inputs = renderEventBatchInputs(messages, rendered);
         eventMeta = eventBatchMessageMeta(messages);
       } else {
         inputs = await webTurnInputs(messages.map((message) => message.input));
@@ -322,7 +333,15 @@ export function createConversationTurnWorker(
       );
       userMessageId = userMessage.id;
       inputs = savedMessageIsEvent
-        ? [{ kind: "runtime", text: userMessage.text }]
+        ? [
+            {
+              kind: "runtime",
+              text: userMessage.text,
+              ...(userMessage.meta?.requestText
+                ? { requestText: userMessage.meta.requestText }
+                : undefined),
+            },
+          ]
         : await webTurnInputs(
             turnInputs.map((message) => ({
               reviewItemChange: message.meta?.reviewItemChanges?.[0],
@@ -388,10 +407,7 @@ export function createConversationTurnWorker(
       personInput: isPersonInput(source.kind),
     });
     const webActor = actor.platform === "web" ? actor : undefined;
-    // A child agent's Turn cannot wait for a person to sign in, even when it
-    // runs as the web user who started it; missing auth blocks it instead.
-    const signInActor =
-      behavior.promptMode === "child_agent" ? undefined : webActor;
+    const signInActor = behavior.waitsForSignIn ? webActor : undefined;
     const disabledFeatures: AgentFeature[] = signInActor
       ? []
       : ["interactive-auth"];
@@ -502,6 +518,9 @@ export function createConversationTurnWorker(
           }
           // An Event batch saves one Message with the rendered Events.
           if (webInputMessages.length === 0) {
+            const requestText = turnRequestText({
+              instruction: instructionInputs,
+            });
             upsertConversationMessage(conversation, {
               id: userMessageId,
               role: "user",
@@ -513,6 +532,7 @@ export function createConversationTurnWorker(
                 ...(attachments.length ? { attachments } : undefined),
                 explicitMention: true,
                 replied: false,
+                ...(requestText ? { requestText } : undefined),
                 ...eventMeta,
               },
             });
@@ -547,7 +567,7 @@ export function createConversationTurnWorker(
 
         const deliverAssistantMessage = async (
           value: AssistantMessage | string,
-          options?: { quiet?: true; reply?: true },
+          options?: { reply?: true },
         ): Promise<void> => {
           const agentMessage = typeof value === "string" ? undefined : value;
           const replyText =
@@ -557,16 +577,11 @@ export function createConversationTurnWorker(
           }
           failureCode = "delivery_failed";
           const cards = await loadPendingMessageCards(context.conversationId);
-          // Only Event Turns may be quiet: a person who asked always gets the
-          // reply. A card means someone must look, so it always delivers.
-          const quiet =
-            options?.quiet === true && isEventTurn && cards.length === 0;
           let deliveryResult: DeliveryResult | undefined;
           // Read the pause at reply time: a person can pause Delivery while
           // this Turn runs.
           if (
             (options?.reply ? postsToProvider : deliverToProvider) &&
-            !quiet &&
             !(await isConversationDeliveryPaused(context.conversationId))
           ) {
             if (!conversationLocation || !deliverMessage) {
@@ -587,7 +602,6 @@ export function createConversationTurnWorker(
             conversation,
             conversationId: context.conversationId,
             ...(deliveryResult ? { deliveryResult } : undefined),
-            ...(quiet ? { quiet } : undefined),
             sessionId: turnId,
             ...(deliveryResult
               ? { source: "slack" as const }
@@ -741,7 +755,6 @@ export function createConversationTurnWorker(
                 result.diagnostics.outcome !== "success";
               const finalized = finalizeFailedTurnReplyWithEvent({
                 reply: result,
-                logException,
               });
               const modelFailureReason = finalized.failureReason;
               const reply = finalized.reply;
@@ -772,11 +785,6 @@ export function createConversationTurnWorker(
                 });
               } else if (reply.blocked) {
                 await blockRunAutomation(context.conversationId, reply.blocked);
-              } else if (reply.noReply?.note && isEventTurn) {
-                // The note of a no-reply Event Turn is its Quiet message.
-                await deliverAssistantMessage(reply.noReply.note, {
-                  quiet: true,
-                });
               }
 
               const completedState = buildDeliveredTurnStatePatch({
@@ -872,23 +880,21 @@ export function createConversationTurnWorker(
                   conversationId: context.conversationId,
                   sessionId: turnId,
                 },
-                {
-                  send: async (message) => {
-                    try {
-                      await processPluginTask(message);
-                    } catch (error) {
-                      logException(
-                        error,
-                        "conversation.plugin.session_completion_task.failed",
-                        {
-                          conversationId: context.conversationId,
-                          pluginName: message.plugin,
-                          taskName: message.name,
-                          turnId,
-                        },
-                      );
-                    }
-                  },
+                async (message) => {
+                  try {
+                    await processPluginTask(message);
+                  } catch (error) {
+                    logException(
+                      error,
+                      "conversation.plugin.session_completion_task.failed",
+                      {
+                        conversationId: context.conversationId,
+                        pluginName: message.plugin,
+                        taskName: message.name,
+                        turnId,
+                      },
+                    );
+                  }
                 },
               );
             } catch (error) {

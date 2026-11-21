@@ -12,9 +12,10 @@
 import type {
   EventInput,
   EventPublisher,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
@@ -22,6 +23,9 @@ import { gitHubRepoDataSchema } from "../events/scope.js";
 import { applyGitHubConflictPolicy } from "../merge-conflict-checks/policy.js";
 import { pullRequestTargets } from "./event-targets.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
+
+// Pull requests that one delivery checks at once, under GitHub rate limits.
+const PULL_REQUEST_CHECK_CONCURRENCY = 5;
 
 const EVENT_TYPE = "pull_request.merge_conflict";
 
@@ -32,7 +36,7 @@ const CLOSED_EVENT_TYPES = new Set([
 ]);
 
 /** The pull request fields that tell if it has a conflict. */
-const pullRequestSchema = z.object({
+export const gitHubPullRequestMergeSchema = z.object({
   base: z.object({ ref: z.string().min(1) }),
   draft: z.boolean().optional(),
   number: z.number().int().positive().optional(),
@@ -111,9 +115,9 @@ function pullRequestRefs(events: EventInput[]): GitHubPullRequestRef[] {
 function deliveredPullRequest(
   payload: unknown,
   ref: GitHubPullRequestRef,
-): z.infer<typeof pullRequestSchema> | undefined {
+): z.infer<typeof gitHubPullRequestMergeSchema> | undefined {
   const parsed = z
-    .object({ pull_request: pullRequestSchema })
+    .object({ pull_request: gitHubPullRequestMergeSchema })
     .safeParse(payload);
   const pullRequest = parsed.success ? parsed.data.pull_request : undefined;
   return pullRequest?.number === ref.number &&
@@ -136,50 +140,51 @@ export async function loadGitHubMergeConflictEvents(args: {
   deliveryId: string;
   events: EventInput[];
   hasMatch: EventPublisher["hasMatch"];
-  loadPullRequest?(ref: GitHubPullRequestRef): Promise<unknown>;
-  loadConflictHistory?(ref: GitHubPullRequestRef): Promise<unknown>;
-  log?: Pick<PluginLogger, "error" | "warn">;
+  loadPullRequest?:
+    | ((ref: GitHubPullRequestRef) => Promise<unknown>)
+    | undefined;
+  loadConflictHistory?:
+    | ((ref: GitHubPullRequestRef) => Promise<unknown>)
+    | undefined;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
-  const conflicts: EventInput[] = [];
-  for (const ref of pullRequestRefs(args.events)) {
+  const check = async (ref: GitHubPullRequestRef): Promise<EventInput[]> => {
     // Merge conflict events match only `repo` and `pullRequest`, so this
     // answer is the same as for the full events.
-    if (!(await hasMatch(gitHubMergeConflictEvents(ref)))) continue;
+    if (!(await hasMatch(gitHubMergeConflictEvents(ref)))) return [];
     try {
       const loaded =
         deliveredPullRequest(args.pullRequestPayload, ref) ??
-        pullRequestSchema.parse(await loadPullRequest(ref));
+        gitHubPullRequestMergeSchema.parse(await loadPullRequest(ref));
       if (
         loaded.state !== "open" ||
         loaded.mergeable !== false ||
         loaded.mergeable_state !== "dirty"
       ) {
-        continue;
+        return [];
       }
       const conflict: GitHubMergeConflict = {
         baseBranch: loaded.base.ref,
         headSha: loaded.head.sha,
         ...(loaded.html_url ? { url: loaded.html_url } : undefined),
       };
-      conflicts.push(
-        ...(await applyGitHubConflictPolicy({
-          conflict,
-          db: args.db,
-          draft: loaded.draft === true,
-          events: gitHubMergeConflictEvents({ ...ref, conflict }),
-          loadHistory: loadConflictHistory,
-          log: args.log,
-          now: new Date(),
-          ref,
-          reviewItems: args.reviewItems,
-          ...(loaded.title ? { title: loaded.title } : undefined),
-        })),
-      );
+      return await applyGitHubConflictPolicy({
+        conflict,
+        db: args.db,
+        draft: loaded.draft === true,
+        events: gitHubMergeConflictEvents({ ...ref, conflict }),
+        loadHistory: loadConflictHistory,
+        log: args.log,
+        now: new Date(),
+        ref,
+        inboxItems: args.inboxItems,
+        ...(loaded.title ? { title: loaded.title } : undefined),
+      });
     } catch (error) {
       // The delivered events still publish without the conflict check.
       logFailOpenFailure(
@@ -192,7 +197,12 @@ export async function loadGitHubMergeConflictEvents(args: {
           repository: ref.repositoryFullName,
         },
       );
+      return [];
     }
-  }
-  return conflicts;
+  };
+  const conflicts = await pLimit(PULL_REQUEST_CHECK_CONCURRENCY).map(
+    pullRequestRefs(args.events),
+    (ref) => check(ref),
+  );
+  return conflicts.flat();
 }

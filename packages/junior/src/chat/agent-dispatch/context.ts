@@ -15,8 +15,8 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
-import { createPluginReviewItems } from "@/chat/review-items/plugin";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buildDispatchId,
@@ -24,6 +24,7 @@ import {
   getPluginDispatchProjection,
   isTerminalDispatchStatus,
 } from "./store";
+import type { IdentityDispatcher } from "./identity";
 import { enqueueAgentDispatch } from "./work";
 import type { BoundDispatchOptions, SlackDispatchOptions } from "./types";
 import {
@@ -95,16 +96,22 @@ async function dispatch(args: {
 /** Build the plugin-scoped heartbeat context that gates durable dispatch access. */
 export function createHeartbeatContext(args: {
   conversationWorkQueue: ConversationWorkQueue;
+  dispatchForIdentity: IdentityDispatcher;
   /** Already bound to the plugin. */
   events: EventPublisher;
   nowMs: number;
   plugin: string | PluginRegistration;
-  /** Shows a Review item that the heartbeat changed. */
-  showReviewItem?: ShowReviewItem;
+  /** Shows an Inbox item that the heartbeat changed. */
+  showInboxItem?: ShowInboxItem | undefined;
 }): HeartbeatHookContext {
   const pluginName =
     typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;
   let dispatchCount = 0;
+  const assertDispatchBudget = () => {
+    if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
+      throw new Error("Plugin heartbeat exceeded the dispatch limit");
+    }
+  };
   return {
     plugin: { name: pluginName },
     annotations: {
@@ -121,12 +128,12 @@ export function createHeartbeatContext(args: {
     db: getDb(),
     embedder: createPluginEmbedder(pluginName),
     events: args.events,
-    reviewItems: {
+    inboxItems: {
       forConversation: (conversationId) =>
-        createPluginReviewItems({
+        createPluginInboxItems({
           conversationId,
           plugin: pluginName,
-          show: args.showReviewItem ?? (async () => {}),
+          show: args.showInboxItem ?? (async () => {}),
         }),
     },
     state: createPluginState(pluginName),
@@ -138,9 +145,7 @@ export function createHeartbeatContext(args: {
           options,
           pluginName,
         );
-        if (dispatchCount >= MAX_DISPATCHES_PER_HEARTBEAT) {
-          throw new Error("Plugin heartbeat exceeded the dispatch limit");
-        }
+        assertDispatchBudget();
         const result = await dispatch({
           conversationWorkQueue: args.conversationWorkQueue,
           nowMs: args.nowMs,
@@ -149,6 +154,13 @@ export function createHeartbeatContext(args: {
         });
         dispatchCount += 1;
         return result;
+      },
+      async dispatchForIdentity(options) {
+        assertDispatchBudget();
+        // Count every attempt, so one heartbeat cannot make unbounded Slack
+        // lookups for people who do not match.
+        dispatchCount += 1;
+        return await args.dispatchForIdentity(pluginName, options);
       },
       async get(id) {
         return await getPluginDispatchProjection({

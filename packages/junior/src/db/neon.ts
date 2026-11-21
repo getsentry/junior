@@ -56,7 +56,11 @@ function toWebSocketError(error: unknown, failure: string): Error {
 
 // No query waits on the failed client, so this is a warning and not an
 // exception.
-function warnWebSocketFailure(name: string, error: unknown, failure: string) {
+function warnWebSocketFailure(
+  name: "db.pool.client.connect_failed" | "db.pool.client.failed",
+  error: unknown,
+  failure: string,
+) {
   const reported = toWebSocketError(error, failure);
   logWarn(name, {
     "app.db.driver": "neon",
@@ -114,6 +118,7 @@ class OverflowPool extends Pool {
   }
 
   // Loose parameters satisfy every pg `query` overload.
+  /* oxlint-disable typescript/no-explicit-any, typescript/no-unsafe-argument, typescript/no-unsafe-assignment -- pg overloads need loose parameters. */
   override query(input: any, values?: any, callback?: any): any {
     const query: PlainQuery | undefined =
       typeof input === "string" ? { text: input } : input;
@@ -126,6 +131,7 @@ class OverflowPool extends Pool {
       return super.query(input, values, callback);
     }
     const params: unknown[] = values ?? query.values ?? [];
+    /* oxlint-enable typescript/no-explicit-any, typescript/no-unsafe-argument, typescript/no-unsafe-assignment */
     // An empty pool opens its first client inline, as before, so the warm
     // path stays on WebSocket.
     if (
@@ -216,7 +222,7 @@ class OverflowPool extends Pool {
         if (client) {
           resolve(client);
         } else {
-          reject(error);
+          reject(error ?? new Error("pg pool returned no client"));
         }
       });
     });
@@ -404,7 +410,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
 /** Create the shared Neon-backed Junior SQL executor. */
 export function createNeonJuniorSqlExecutor(args: {
   connectionString: string;
-  onInfo?: (message: string) => void;
+  onInfo?: ((message: string) => void) | undefined;
   statementTimeoutMs?: number | false;
 }): NeonJuniorSqlExecutor {
   const { onInfo, ...poolArgs } = args;

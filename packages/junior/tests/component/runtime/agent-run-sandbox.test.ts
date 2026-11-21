@@ -14,11 +14,7 @@ const {
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
-    value: "plain" as
-      | "plain"
-      | "loadSkill"
-      | "bashThenError"
-      | "agentsAfterBash",
+    value: "plain",
   },
   createSandboxCallCount: {
     value: 0,
@@ -62,7 +58,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
         execute: (toolCallId: unknown, params: unknown) => Promise<unknown>;
       }>;
     };
-    private prepareNextTurn?: (context: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context: unknown) => Promise<unknown> | unknown)
+      | undefined;
     private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
@@ -80,7 +78,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       };
     }) {
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -229,6 +234,19 @@ vi.mock("@/chat/pi/client", () => ({
   resolveGatewayModel: (modelId: string) => ({ id: modelId }),
 }));
 
+// Guardian reviews each bash call. These tests cover sandbox wiring, so the
+// reviewer allows every call.
+vi.mock("@/chat/guardian/reviewer", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async () => ({
+      decision: "allow" as const,
+      reason: "This test exercises sandbox runtime behavior.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }),
+  }),
+}));
+
 vi.mock("@/chat/prompt", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/prompt")>()),
   buildSystemPrompt: () => "System prompt",
@@ -241,6 +259,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 vi.mock("@/chat/conversations/projection", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/conversations/projection")>()),
   loadConnectedMcpProviders: async () => [],
+  loadConversationSkillNames: async () => [],
   openConversationProjection: async () => ({}),
   recordMcpProviderConnected: async () => undefined,
   recordToolExecutionStarted: async () => undefined,
@@ -344,7 +363,7 @@ vi.mock("@/chat/skills", () => {
         body: "Skill instructions",
       },
     ],
-    parseSkillInvocation: () => null,
+    parseSkillInvocations: () => [],
     stripFrontmatter: (value: string) =>
       value.replace(/^---[\s\S]*?---\s*/, "").trim(),
   };
@@ -491,6 +510,8 @@ const LOCAL_DESTINATION = {
   conversationId: "local:test:agent-run-sandbox",
 };
 const LOCAL_SOURCE = createLocalSource(LOCAL_DESTINATION.conversationId);
+// Guardian review of a bash call needs the Actor of the Run.
+const LOCAL_ACTOR = { platform: "local" as const, userId: "local-test" };
 
 /** Return each AGENTS.md block in history, in order. */
 function agentsBlocks(messages: PiMessage[] | undefined): string[] {
@@ -520,6 +541,7 @@ async function generateLocalReply(
       text: message,
       ...instructionOverrides,
     },
+    actor: LOCAL_ACTOR,
     destination: LOCAL_DESTINATION,
     source: LOCAL_SOURCE,
     ...rest,

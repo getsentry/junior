@@ -1,5 +1,4 @@
 import { performance } from "node:perf_hooks";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessageEvent,
@@ -13,6 +12,7 @@ import {
   streamSimple,
 } from "@earendil-works/pi-ai/compat";
 import * as Sentry from "@/chat/sentry";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import {
   extractGenAiUsageAttributes,
   getLogContextAttributesForSpan,
@@ -24,6 +24,7 @@ import {
   GEN_AI_SERVER_ADDRESS,
   GEN_AI_SERVER_PORT,
 } from "@/chat/pi/client";
+import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
 import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
 import {
   type ConversationPrivacy,
@@ -52,7 +53,7 @@ function attributeModeForPrivacy(
 function buildChatStartAttributes(
   model: Model<Api>,
   context: Context,
-  options: Parameters<StreamFn>[2],
+  options: Parameters<AgentRequestStreamFn>[2],
   mode: GenAiAttributeMode,
   conversationPrivacy: ConversationPrivacy | undefined,
   promptName: string | undefined,
@@ -207,8 +208,8 @@ function createResponseTiming(requestStartedAtMs: number): {
 // loop could have delayed the request on Junior's side.
 function traceResponseHeaders(
   span: Sentry.Span,
-  options: Parameters<StreamFn>[2],
-): Parameters<StreamFn>[2] {
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
   const eventLoopStart = performance.eventLoopUtilization();
   const onResponse = options?.onResponse;
   return {
@@ -238,8 +239,8 @@ function traceResponseHeaders(
 // result of the wrapped hook, so it never changes the payload itself.
 function traceRequestPayload(
   span: Sentry.Span,
-  options: Parameters<StreamFn>[2],
-): Parameters<StreamFn>[2] {
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
   const onPayload = options?.onPayload;
   return {
     ...options,
@@ -247,6 +248,25 @@ function traceRequestPayload(
       const nextPayload = await onPayload?.(payload, model);
       span.setAttributes(requestPrefixAttributes(nextPayload ?? payload));
       return nextPayload;
+    },
+  };
+}
+
+// Wraps `onProviderStreamEvent`, which Pi calls with each raw provider stream
+// event. It records how AI Gateway routed the request.
+function traceGatewayRouting(
+  span: Sentry.Span,
+  options: Parameters<AgentRequestStreamFn>[2],
+): Parameters<AgentRequestStreamFn>[2] {
+  const onProviderStreamEvent = options?.onProviderStreamEvent;
+  return {
+    ...options,
+    onProviderStreamEvent: async (event, model) => {
+      const attributes = gatewayRoutingAttributes(event);
+      if (attributes) {
+        span.setAttributes(attributes);
+      }
+      await onProviderStreamEvent?.(event, model);
     },
   };
 }
@@ -296,16 +316,16 @@ function relayStream(
  */
 export function createTracedStreamFn(
   baseOrOptions:
-    | StreamFn
+    | AgentRequestStreamFn
     | {
-        conversationPrivacy?: ConversationPrivacy;
-        base?: StreamFn;
+        conversationPrivacy?: ConversationPrivacy | undefined;
+        base?: AgentRequestStreamFn;
         endAttributes?: (
           message: AssistantMessage,
         ) => Record<string, TraceAttributeValue> | undefined;
         promptName?: string;
       } = streamSimple,
-): StreamFn {
+): AgentRequestStreamFn {
   const base =
     typeof baseOrOptions === "function"
       ? baseOrOptions
@@ -350,7 +370,10 @@ export function createTracedStreamFn(
           base(
             model,
             context,
-            traceRequestPayload(span, traceResponseHeaders(span, options)),
+            traceGatewayRouting(
+              span,
+              traceRequestPayload(span, traceResponseHeaders(span, options)),
+            ),
           ),
         ),
       );

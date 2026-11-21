@@ -3,7 +3,6 @@ import type { StateAdapter } from "chat";
 import { wakePausedTurn } from "@/chat/task-execution/turn-wake";
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import {
   appendAndEnqueueInboundMessage,
   appendInboundMessage,
@@ -56,6 +55,7 @@ import {
   delayMutationLockUntil,
   inboundMessage,
   observeConversationMutationLock,
+  runTestHeartbeat,
 } from "../../fixtures/conversation-work";
 import { readProxyProperty } from "../../fixtures/proxy-property";
 const OTHER_SLACK_DESTINATION = {
@@ -104,7 +104,7 @@ function metadataEventsStore(events: string[]): ConversationStore {
 }
 
 describe("conversation work execution", () => {
-  const originalJuniorSecret = process.env.JUNIOR_SECRET;
+  const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 
   beforeEach(async () => {
     await disconnectStateAdapter();
@@ -114,9 +114,9 @@ describe("conversation work execution", () => {
     await closeDb();
     await disconnectStateAdapter();
     if (originalJuniorSecret === undefined) {
-      delete process.env.JUNIOR_SECRET;
+      delete process.env["JUNIOR_SECRET"];
     } else {
-      process.env.JUNIOR_SECRET = originalJuniorSecret;
+      process.env["JUNIOR_SECRET"] = originalJuniorSecret;
     }
     vi.useRealTimers();
   });
@@ -220,7 +220,7 @@ describe("conversation work execution", () => {
     const legacyMessage = {
       ...(inboundMessage("legacy") as Record<string, unknown>),
     };
-    delete legacyMessage.destination;
+    delete legacyMessage["destination"];
     const legacyWork = {
       schemaVersion: 2,
       conversationId: CONVERSATION_ID,
@@ -258,7 +258,7 @@ describe("conversation work execution", () => {
     const raw = (await state.get(CONVERSATION_WORK_STATE_KEY)) as {
       execution: { pendingMessages: Array<Record<string, unknown>> };
     };
-    raw.execution.pendingMessages[0]!.delivery = "future-mode";
+    raw.execution.pendingMessages[0]!["delivery"] = "future-mode";
     await state.set(CONVERSATION_WORK_STATE_KEY, raw);
 
     await expect(
@@ -2538,10 +2538,7 @@ describe("conversation work execution", () => {
     await appendInboundMessage({ message: inboundMessage("m1"), nowMs: 1_000 });
 
     try {
-      await runHeartbeat({
-        nowMs: 62_000,
-        conversationWorkQueue: queue,
-      });
+      await runTestHeartbeat(queue, 62_000);
     } finally {
       unregister();
     }
@@ -2803,7 +2800,7 @@ describe("conversation work execution", () => {
   });
 
   it("verifies signed Vercel Queue callback payloads", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     const signedAtMs = 12_345;
     const maxSkewMs = 60 * 60 * 1000;
     const signed = signConversationQueueMessage(
@@ -2841,7 +2838,7 @@ describe("conversation work execution", () => {
   });
 
   it("keeps queue signatures valid across default visibility redelivery", () => {
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
+    process.env["JUNIOR_SECRET"] = "conversation-work-secret";
     const signedAtMs = 12_345;
     const signed = signConversationQueueMessage(
       conversationQueueMessage(),

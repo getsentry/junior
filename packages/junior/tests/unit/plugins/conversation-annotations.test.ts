@@ -54,6 +54,34 @@ describe("conversation annotations", () => {
       objectPresentation({ objectType: "automation", status: "blocked" }),
     ).toEqual({ icon: "workflow", tone: "warning", label: "Automation" });
     expect(objectPresentation({ objectType: "item" }).icon).toBe("package");
+    // A monitor's tone follows its shared state, whatever its status says.
+    for (const [state, tone] of Object.entries({
+      ok: "success",
+      failing: "danger",
+      pending: "info",
+      paused: "neutral",
+    })) {
+      expect(
+        objectPresentation({
+          objectType: "monitor",
+          status: "Missed",
+          facts: { type: "monitor", state },
+        }),
+      ).toEqual({ icon: "bell", tone, label: "Monitor" });
+    }
+    // An alert's tone follows whether it is on, whatever its status says.
+    for (const [enabled, tone] of [
+      [true, "success"],
+      [false, "neutral"],
+    ] as const) {
+      expect(
+        objectPresentation({
+          objectType: "alert",
+          status: "Muted",
+          facts: { type: "alert", enabled },
+        }),
+      ).toEqual({ icon: "bell", tone, label: "Alert" });
+    }
   });
 
   it("bounds typed object facts without rejecting old cards or accepting arbitrary provider JSON", () => {

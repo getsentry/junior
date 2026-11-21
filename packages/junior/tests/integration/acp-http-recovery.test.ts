@@ -141,7 +141,7 @@ describe("remote ACP recovery", () => {
     await expect(readAcpSseMessage(reader, buffer)).resolves.toMatchObject({
       id: requestId,
       error: {
-        message: expect.stringContaining("Junior sign-in request expired"),
+        message: expect.stringContaining("Sign-in request expired"),
       },
     });
 
@@ -287,9 +287,7 @@ describe("remote ACP recovery", () => {
       id: "second-authenticate",
       error: {
         code: -32600,
-        message: expect.stringContaining(
-          "Junior sign-in is already in progress",
-        ),
+        message: expect.stringContaining("Sign-in is already in progress"),
       },
     });
     await expect(
@@ -415,7 +413,11 @@ describe("remote ACP recovery", () => {
           {
             type: "toolCall",
             name: "searchMcpTools",
-            arguments: { provider: "eval-auth", query: "budget echo" },
+            arguments: {
+              provider: "eval-auth",
+              query: "budget echo",
+              intent: "look up the budget",
+            },
           },
           { type: "text", text: "Auth-paused Turn must not reply." },
         ]),

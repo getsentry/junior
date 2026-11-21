@@ -1,4 +1,5 @@
 import type { ImageContent, TextContent } from "@earendil-works/pi-ai";
+import * as z from "zod";
 import { injectContinuationToolName } from "@/chat/tool-support/structured-result";
 
 function isToolContent(
@@ -11,12 +12,13 @@ function isToolContent(
         return false;
       }
       const record = part as Record<string, unknown>;
-      if (record.type === "text") {
-        return typeof record.text === "string";
+      if (record["type"] === "text") {
+        return typeof record["text"] === "string";
       }
-      if (record.type === "image") {
+      if (record["type"] === "image") {
         return (
-          typeof record.data === "string" && typeof record.mimeType === "string"
+          typeof record["data"] === "string" &&
+          typeof record["mimeType"] === "string"
         );
       }
       return false;
@@ -81,12 +83,19 @@ function replaceGeneratedTextContent(
   ];
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+/** Any non-array object; tool details are read field by field. */
+const objectSchema = z.looseObject({});
+
+const continuationDetailsSchema = z.looseObject({
+  continuation: objectSchema,
+});
+
+const permissionDeniedDetailsSchema = z.looseObject({
+  permission_denied: objectSchema,
+});
 
 function hasContinuation(value: unknown): boolean {
-  return isRecord(value) && isRecord(value.continuation);
+  return continuationDetailsSchema.safeParse(value).success;
 }
 
 function stringField(record: Record<string, unknown>, key: string): string {
@@ -109,10 +118,12 @@ function stringListField(
     : [];
 }
 
-function accountText(value: unknown): string | undefined {
-  if (!isRecord(value)) {
+function accountText(account: unknown): string | undefined {
+  const parsed = objectSchema.safeParse(account);
+  if (!parsed.success) {
     return undefined;
   }
+  const value = parsed.data;
   const label = stringField(value, "label") || stringField(value, "id");
   const id = stringField(value, "id");
   if (!label) {
@@ -146,15 +157,17 @@ function policyDeniedText(
   ].join("\n");
 }
 
-function permissionDeniedText(value: unknown): string | undefined {
-  if (!isRecord(value) || !isRecord(value.permission_denied)) {
+function permissionDeniedText(details: unknown): string | undefined {
+  const parsed = permissionDeniedDetailsSchema.safeParse(details);
+  if (!parsed.success) {
     return undefined;
   }
+  const value = parsed.data;
   const signal = value.permission_denied;
-  if (signal.source === "policy") {
+  if (signal["source"] === "policy") {
     return policyDeniedText(value, signal);
   }
-  if (signal.source !== "upstream") {
+  if (signal["source"] !== "upstream") {
     return undefined;
   }
   const provider = stringField(signal, "provider");
@@ -165,12 +178,12 @@ function permissionDeniedText(value: unknown): string | undefined {
   if (!provider || !message || !upstreamHost || !upstreamPath || !status) {
     return undefined;
   }
-  const grant = isRecord(signal.grant) ? signal.grant : {};
+  const grant = objectSchema.safeParse(signal["grant"]).data ?? {};
   const grantName = stringField(grant, "name");
   const grantAccess = stringField(grant, "access");
   const grantReason = stringField(grant, "reason");
   const grantRequirements = stringListField(grant, "requirements");
-  const account = accountText(signal.account);
+  const account = accountText(signal["account"]);
   const command = stringField(value, "command");
   const stderr = stringField(value, "stderr").trim();
   const stdout = stringField(value, "stdout").trim();

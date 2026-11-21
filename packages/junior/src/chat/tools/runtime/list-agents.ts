@@ -4,6 +4,15 @@ import {
   type ParentAgent,
 } from "@/chat/agent-invocations/list";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { getSqlExecutor } from "@/chat/db";
+import { renderTodoAssignee } from "@/chat/todos/prompt";
+import { listTodos } from "@/chat/todos/store";
+import { outputTodo, todoOutputSchema } from "@/chat/todos/tool-output";
+import {
+  isOpenTodoStatus,
+  SELF_TODO_ASSIGNEE,
+  type Todo,
+} from "@/chat/todos/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import {
@@ -115,10 +124,42 @@ const listedAgentSchema = z
       .optional()
       .describe("Why the agent is blocked, failed, or stopped"),
     updated_at: z.string().describe("Time of the latest change"),
+    todos: z
+      .array(todoOutputSchema)
+      .optional()
+      .describe(
+        "Open To-dos of the parent. Only on the parent. Assignee self is this conversation, which can set those to done or dropped with updateTodos; parent is the parent's own agent.",
+      ),
   })
   .strict();
 
 type ListedAgent = z.output<typeof listedAgentSchema>;
+
+/**
+ * Render a parent's To-do for its child: "self" is the child, and
+ * "parent" is the parent's own agent.
+ */
+function parentTodo(todo: Todo, conversationId: string) {
+  const { assignee } = todo;
+  if (assignee.kind === "self") {
+    return outputTodo(todo, "parent");
+  }
+  if (assignee.kind === "agent" && assignee.conversationId === conversationId) {
+    return outputTodo(todo, SELF_TODO_ASSIGNEE);
+  }
+  return outputTodo(todo, renderTodoAssignee(assignee));
+}
+
+/** Open To-dos of the parent. A child can only close its own. */
+async function parentTodos(
+  parentConversationId: string,
+  conversationId: string,
+) {
+  const todos = await listTodos(getSqlExecutor(), parentConversationId);
+  return todos
+    .filter((todo) => isOpenTodoStatus(todo.status))
+    .map((todo) => parentTodo(todo, conversationId));
+}
 
 function listedChildAgent(
   relation: AgentRelation,
@@ -158,7 +199,7 @@ export const listAgentsToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "List the agents that this conversation can see, with the state recorded by the runtime: the child agents it started and, for a child agent, itself, its parent, and its siblings. Results of child agents arrive as new tasks, not through this tool.",
+    "List the agents that this conversation can see, with the state recorded by the runtime: the child agents it started and, for a child agent, itself, its parent with the parent's open To-dos, and its siblings. Results of child agents arrive as new tasks, not through this tool.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -176,13 +217,18 @@ export const listAgentsToolDefinition = zodToolDefinition({
  */
 export function createListAgentsTool(context: {
   conversationId: string;
-  parentConversationId?: string;
+  parentConversationId?: string | undefined;
 }) {
   return zodTool({
     ...listAgentsToolDefinition,
     execute: async () => {
       const { children, parent, self, siblings } =
         await listAgentRelatives(context);
+      // listAgentRelatives reads the parent only from the runtime context,
+      // so a child reads only its own parent's To-dos.
+      const todos = parent
+        ? await parentTodos(parent.conversationId, context.conversationId)
+        : [];
       return {
         agents: [
           ...(self ? [listedChildAgent("self", self)] : []),
@@ -193,6 +239,7 @@ export function createListAgentsTool(context: {
                   conversation_id: parent.conversationId,
                   status: parentAgentStatus(parent),
                   updated_at: new Date(parent.updatedAtMs).toISOString(),
+                  ...(todos.length > 0 ? { todos } : undefined),
                 },
               ]
             : []),

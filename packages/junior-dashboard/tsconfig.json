@@ -1,8 +1,18 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
+    // Exception to the strict base: the .d.ts files of drizzle-orm and the other packages/junior dependencies
+    // fail type checks (for example, drizzle-orm imports optional drivers
+    // such as `gel` that are not installed). Remove this line when
+    // `tsc --noEmit -p . --skipLibCheck false` passes.
+    "skipLibCheck": true,
+    // Temporary exception: 164 errors remain under exactOptionalPropertyTypes
+    // (122 in packages/junior, 42 in packages/junior-dashboard). Count them
+    // with `tsc --noEmit -p . --exactOptionalPropertyTypes`. Remove this line
+    // when that command passes.
+    "exactOptionalPropertyTypes": false,
     "target": "ES2022",
-    "lib": ["ES2022", "DOM"],
+    "lib": ["ES2022", "ES2025.Intl", "DOM"],
     "module": "ESNext",
     "moduleResolution": "Bundler",
     "jsx": "react-jsx",
@@ -28,6 +38,21 @@
     "src/**/*.ts",
     "src/**/*.tsx",
     "tests/**/*.ts",
-    "tests/**/*.tsx"
+    "tests/**/*.tsx",
+    "oxlint/**/*.ts",
+    "e2e/composer-stand-in.spec.ts",
+    "e2e/composer-references.spec.ts",
+    "e2e/composer-typeahead.spec.ts",
+    "e2e/composer-skill-menu.spec.ts",
+    "e2e/conversation-watches.spec.ts",
+    "e2e/dashboard-switch.spec.ts",
+    "e2e/inbox/**/*.ts",
+    "e2e/person-cards.spec.ts",
+    "e2e/pick-option.ts",
+    "e2e/question-cards.spec.ts",
+    "e2e/request-budget.ts",
+    "e2e/inbox-item-evidence.spec.ts",
+    "playwright.config.ts",
+    "tsdown.client.config.ts"
   ]
 }

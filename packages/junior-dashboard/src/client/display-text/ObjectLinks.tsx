@@ -22,8 +22,9 @@ import {
   textHasStandaloneUrl,
   type KnownObjects,
 } from "./knownObjects";
-import { ANCHOR_CLASS } from "./links";
-import { PersonMention } from "./people";
+import { useAnchorClass } from "./links";
+import { SameTabLink } from "../components/SameTabLink";
+import { PersonInline, PersonReference } from "../components/PersonReference";
 
 // Fits most live cards, such as a pull request or a task. A taller card
 // scrolls in its body.
@@ -46,6 +47,11 @@ const KnownObjectsContext = createContext<KnownObjectsValue>({
  */
 export function KnownObjectsProvider(props: {
   annotations: ConversationDetailReport["annotations"];
+  /**
+   * More saved objects, such as an Inbox row's linked work, for the links
+   * that no Annotation names.
+   */
+  cards?: readonly OwnedObjectAnnotation[];
   children: ReactNode;
 }) {
   const value = useMemo(() => {
@@ -55,15 +61,20 @@ export function KnownObjectsProvider(props: {
       const key = annotation.url ? objectUrlKey(annotation.url) : undefined;
       if (key && !kinds.has(key)) kinds.set(key, annotation.kind);
     }
+    const objects = new Map(knownObjectsFromAnnotations(props.annotations));
+    for (const card of props.cards ?? []) {
+      const key = card.url ? objectUrlKey(card.url) : undefined;
+      if (key && !objects.has(key)) objects.set(key, card);
+    }
     return {
       links: new Set(
         [...kinds].flatMap(([key, kind]) =>
           kind === "resource_link" ? [key] : [],
         ),
       ),
-      objects: knownObjectsFromAnnotations(props.annotations),
+      objects,
     };
-  }, [props.annotations]);
+  }, [props.annotations, props.cards]);
   const saved = useMemo(
     () => savedObjectsFromAnnotations(props.annotations),
     [props.annotations],
@@ -157,31 +168,26 @@ export function ObjectLinkPreview(props: {
   children: ReactNode;
   className: string;
   href: string;
-  live?: boolean;
-  reserveHeight?: boolean;
+  live?: boolean | undefined;
+  reserveHeight?: boolean | undefined;
 }) {
   return (
     <HoverPreview
       className={
         props.reserveHeight ? RESERVED_PREVIEW_HEIGHT_CLASS : undefined
       }
+      // The hover card is the frame, so it stays whole while the card scrolls.
       content={
         <ObjectCard
           card={props.card}
+          className="my-0 rounded-none border-0"
           fill={props.reserveHeight}
           live={props.live}
         />
       }
       // Running text links carry no outbound icon, so a paragraph of links
       // reads as text.
-      trigger={
-        <a
-          className={props.className}
-          href={props.href}
-          rel="noreferrer"
-          target="_blank"
-        />
-      }
+      trigger={<SameTabLink className={props.className} href={props.href} />}
     >
       {props.children}
     </HoverPreview>
@@ -198,10 +204,11 @@ export function ObjectTitleLink(props: {
   live?: boolean;
   reserveHeight?: boolean;
 }) {
+  const className = useAnchorClass();
   return (
     <ObjectLinkPreview
       card={props.card}
-      className={ANCHOR_CLASS}
+      className={className}
       href={props.href}
       live={props.live}
       reserveHeight={props.reserveHeight}
@@ -244,7 +251,8 @@ export function ObjectThumbnailLink(props: {
 
 /**
  * Show a bare URL to a person in running text as a GitHub-style mention:
- * the photo, then `@Name` as a plain link that previews the card.
+ * the photo, then `@Name`. A person with a People page gets the person card;
+ * another account, such as a GitHub account, previews its own card.
  */
 export function PersonLink(props: {
   card: OwnedObjectAnnotation;
@@ -254,17 +262,33 @@ export function PersonLink(props: {
 }) {
   const { card } = props;
   const facts = card.facts?.type === "person" ? card.facts : undefined;
+  const className = useAnchorClass("person");
+  const person = {
+    avatarUrl: facts?.avatarUrl,
+    email: facts?.email,
+    name: card.label,
+  };
+  if (person.email) {
+    return (
+      <PersonReference
+        className={className}
+        highlightSelf
+        label={`@${card.label}`}
+        person={person}
+      />
+    );
+  }
   return (
-    <PersonMention avatarUrl={facts?.avatarUrl} email={facts?.email}>
+    <PersonInline person={person}>
       <ObjectLinkPreview
         card={card}
-        className={ANCHOR_CLASS}
+        className={className}
         href={props.href}
         live={props.live}
         reserveHeight={props.reserveHeight}
       >
         @{card.label}
       </ObjectLinkPreview>
-    </PersonMention>
+    </PersonInline>
   );
 }

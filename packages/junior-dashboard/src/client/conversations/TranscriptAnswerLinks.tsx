@@ -1,8 +1,8 @@
 import { createContext, use, useSyncExternalStore } from "react";
 
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
 import { cn } from "../styles";
 import type { TranscriptListRow } from "./transcriptListRows";
 
@@ -18,7 +18,7 @@ export type TranscriptAnswerLink = {
 };
 
 /**
- * Link each answer row to the row that asked its Review item. An answer is a
+ * Link each answer row to the row that asked its Inbox item. An answer is a
  * `submitted` change on a person's message. An Event message only relays a
  * change from somewhere else, so it is not an answer.
  */
@@ -27,15 +27,15 @@ export function transcriptAnswerLinks(
 ): TranscriptAnswerLink[] {
   const askIndexes = new Map<string, number>();
   const links: TranscriptAnswerLink[] = [];
-  rows.forEach((row, index) => {
-    if (row.kind !== "entry") return;
+  for (const [index, row] of rows.entries()) {
+    if (row.kind !== "entry") continue;
     const { entry } = row;
     if (entry.kind === "tool") {
-      const itemId = reviewItemIdFromToolCall(entry.part);
+      const itemId = inboxItemIdFromToolCall(entry.part);
       if (itemId !== undefined) askIndexes.set(itemId, index);
-      return;
+      continue;
     }
-    if (entry.kind !== "message" || entry.message.eventType) return;
+    if (entry.kind !== "message" || entry.message.eventType) continue;
     for (const change of entry.message.reviewItemChanges ?? []) {
       const askIndex = askIndexes.get(change.reviewItemId);
       if (change.kind !== "submitted" || askIndex === undefined) continue;
@@ -46,7 +46,7 @@ export function transcriptAnswerLinks(
         lane: 0,
       });
     }
-  });
+  }
   // A link takes the first lane that is free at its question.
   const laneEnds: number[] = [];
   for (const link of [...links].sort((a, b) => a.askIndex - b.askIndex)) {
@@ -154,7 +154,7 @@ export function useAnswerInView(itemId: string): boolean {
  * page loads the history around the row when it is not loaded.
  */
 export const TranscriptShowQuestion = createContext<
-  ((item: ReviewItemPayload) => void) | undefined
+  ((item: InboxItemPayload) => void) | undefined
 >(undefined);
 
 // Lanes sit inside the avatar column (1.5rem, 2rem from md), so each line

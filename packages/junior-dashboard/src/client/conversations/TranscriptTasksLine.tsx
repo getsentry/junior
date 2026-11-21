@@ -23,8 +23,7 @@ function taskLabel(part: TranscriptViewSubagentPart): string {
   return part.title ?? part.agentName ?? part.task ?? part.subagentKind;
 }
 
-/** The look of a small chip under a reply. */
-export const chipClass =
+const chipClass =
   "inline-flex h-6 min-w-0 max-w-64 items-center gap-1.5 rounded-md border border-dashboard-border bg-transparent px-2 font-sans text-xs text-dashboard-text-muted transition-colors hover:bg-dashboard-surface-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus";
 
 /**
@@ -51,7 +50,7 @@ export function TranscriptTasksLine(props: {
 
 function TaskChip(props: {
   entry: RenderedTaskEntry;
-  onOpenTranscript?: (part: TranscriptViewSubagentPart) => void;
+  onOpenTranscript?: ((part: TranscriptViewSubagentPart) => void) | undefined;
 }) {
   const { part } = props.entry;
   const label = taskLabel(part);

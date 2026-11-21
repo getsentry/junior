@@ -31,7 +31,8 @@ export interface JuniorDashboardOptions {
 }
 
 export interface JuniorDashboardRuntimeOptions extends JuniorDashboardOptions {
-  agentName?: string;
+  /** The configured bot name (`botConfig.userName`). */
+  agentName: string;
   /** The app's `allowedDomains`. Dashboard auth requires at least one. */
   allowedDomains: string[];
   /** Google sign-in session of the dashboard. */
@@ -73,7 +74,7 @@ export function dashboardRequiresSignIn(
 ): boolean {
   if (!dashboard || dashboard.disabled) return false;
   if (dashboard.authRequired !== undefined) return dashboard.authRequired;
-  return process.env.JUNIOR_DASHBOARD_AUTH_REQUIRED?.trim() !== "false";
+  return process.env["JUNIOR_DASHBOARD_AUTH_REQUIRED"]?.trim() !== "false";
 }
 
 /** Mount the dashboard app on the dashboard-owned host paths. */
@@ -106,7 +107,7 @@ export async function createDashboardRouteRegistrations(args: {
 async function loadDashboardAppFactory(): Promise<CreateDashboardApp> {
   try {
     const appRequire = createRequire(`${process.cwd()}/package.json`);
-    const mod = await import(
+    const mod: unknown = await import(
       pathToFileURL(appRequire.resolve(DASHBOARD_PACKAGE_NAME)).href
     );
     return dashboardAppFactoryFromModule(mod);
@@ -183,6 +184,7 @@ function dashboardHostRoutePaths(
     `${conversationsPath}/*`,
     pagePath("locations"),
     `${pagePath("locations")}/*`,
+    pagePath("inbox"),
     pagePath("review"),
     peoplePath,
     `${peoplePath}/*`,
@@ -213,6 +215,8 @@ function dashboardHostRoutePaths(
     loginPath,
     "/api/health",
     "/api/runtime",
+    "/api/memory",
+    "/api/memory/*",
     "/api/plugins",
     "/api/plugins/*",
     "/api/plugin-reports",
@@ -233,7 +237,6 @@ function dashboardHostRoutePaths(
     "/api/images/*",
     "/api/objects",
     "/api/stats",
-    "/api/reply-times",
     "/api/versions",
     "/api/conversations",
     "/api/conversations/*",
@@ -241,14 +244,16 @@ function dashboardHostRoutePaths(
     "/api/locations/*",
     "/api/people",
     "/api/people/*",
-    "/api/review-items",
-    "/api/review-items/*",
+    "/api/inbox/*",
+    "/api/inbox-items",
+    "/api/inbox-items/*",
     "/api/personal-tokens",
     "/api/personal-tokens/*",
     "/api/service-accounts",
     "/api/service-accounts/*",
     "/api/cache-warming",
     "/api/cache-warming/*",
+    "/api/gateway-providers",
     "/api/workspaces",
     "/api/workspaces/*",
     "/api/config",

@@ -1,5 +1,5 @@
 import type {
-  AutomationList,
+  AutomationListPage,
   AutomationListQuery,
 } from "@sentry/junior/api/schema";
 import {
@@ -11,7 +11,7 @@ import type { ActiveFilter } from "../../components/filters/FilterToolbar";
 
 type FilterProps = {
   filters: AutomationListQuery;
-  data: AutomationList | undefined;
+  data: Pick<AutomationListPage, "creators" | "destinations"> | undefined;
   onChange(key: string, value: string): void;
 };
 

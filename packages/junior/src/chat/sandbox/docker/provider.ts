@@ -28,6 +28,7 @@ import type {
   SandboxSession,
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
+import { mapBounded } from "@/chat/fan-out";
 
 /** Create a sandbox container and return a session for it. */
 async function createSession(
@@ -146,15 +147,17 @@ async function deleteWorkspaceSnapshotBuilders(
   names: Iterable<string>,
 ): Promise<void> {
   const failures: unknown[] = [];
-  for (const name of new Set(names)) {
+  const removeAll = async (name: string) => {
     for (const remove of [removeContainer, deleteSnapshotTag]) {
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Remove the container before its snapshot tag.
         await remove(name);
       } catch (error) {
         failures.push(error);
       }
     }
-  }
+  };
+  await mapBounded([...new Set(names)], (name) => removeAll(name));
   if (failures.length > 0) throw failures[0];
 }
 

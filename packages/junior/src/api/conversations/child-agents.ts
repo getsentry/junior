@@ -2,10 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import { getConversationStore, getDb } from "@/chat/db";
 import { throwApiError } from "../http";
-import {
-  conversationChildAgentsReportSchema,
-  type ConversationChildAgentsReport,
-} from "../schema/child-agent";
+import { type ConversationChildAgentsReport } from "../schema/child-agent";
 import { readConversationAccessFromSql } from "./access";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
 import {
@@ -21,7 +18,7 @@ import {
  */
 export async function requireConversationChildAgents(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { viewer?: User | undefined } = {},
 ): Promise<ConversationChildAgentsReport> {
   const conversation = await getConversationStore().get({ conversationId });
   if (!conversation) throwApiError(404, "Conversation not found.");
@@ -71,5 +68,5 @@ export async function requireConversationChildAgents(
     };
   });
 
-  return conversationChildAgentsReportSchema.parse({ agents, conversationId });
+  return { agents, conversationId };
 }

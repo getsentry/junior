@@ -1,7 +1,7 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
+import { googlePlugin } from "../src/index";
 import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const REQUESTER = "alice@example.com";
@@ -13,9 +13,17 @@ const AGENDA_ID = "1AgendaAbCdEfGhIjKlMnOp";
 const LONG_NOTES = `# Notes\n\n${"**Bob:** Next topic.\n".repeat(6_000)}`;
 const NOTES_TITLE = "Weekly triage - 2026/10/12 10:01 PDT - Notes by Gemini";
 
-function meetTools(...responses: Response[]) {
-  const fetch = vi.fn();
-  for (const response of responses) fetch.mockResolvedValueOnce(response);
+const EVENT_PATH = "/calendar/v3/calendars/primary/events/event1";
+
+// Answer each Google API request by its URL path. The tool reads attached
+// Docs at once, so the request order is not fixed.
+function meetTools(routes: Record<string, Response>) {
+  const fetch = vi.fn(async ({ request }: { request: Request }) => {
+    const path = new URL(request.url).pathname;
+    const response = routes[path];
+    if (!response) throw new Error(`No fake response for ${path}`);
+    return response;
+  });
   const sandbox = {
     root: "/vercel/sandbox",
     run: vi.fn(async () => ({ exitCode: 0, stderr: "", stdout: "" })),
@@ -32,7 +40,7 @@ function meetTools(...responses: Response[]) {
     },
   } as never);
   const run = (name: string, input: Record<string, unknown>) =>
-    tools[name]!.execute!(tools[name]!.prepareArguments!(input), {
+    tools[name].execute(tools[name].prepareArguments!(input), {
       toolCallId: "call-1",
     });
   return { fetch, run, sandbox };
@@ -67,25 +75,28 @@ describe("Google Meet transcripts", () => {
   afterEach(() => vi.unstubAllEnvs());
 
   it("reads Meet records only for meetings where Junior and the requester are invited", async () => {
-    const outsider = meetTools(
-      Response.json({
+    const outsider = meetTools({
+      [EVENT_PATH]: Response.json({
         ...event,
         attendees: [{ email: "bob@example.com" }, event.attendees[2]],
       }),
-    );
+    });
     await expect(
       outsider.run("readMeetingTranscript", { event_id: "event1" }),
     ).rejects.toBeInstanceOf(PluginToolInputError);
-    const notInvited = meetTools(
-      Response.json({ ...event, attendees: event.attendees.slice(0, 2) }),
-    );
+    const notInvited = meetTools({
+      [EVENT_PATH]: Response.json({
+        ...event,
+        attendees: event.attendees.slice(0, 2),
+      }),
+    });
     await expect(
       notInvited.run("readMeetingTranscript", { event_id: "event1" }),
     ).rejects.toThrow("You are not invited");
     // A cancelled event can be a stub without times or attendees.
-    const cancelled = meetTools(
-      Response.json({ id: "event1", status: "cancelled" }),
-    );
+    const cancelled = meetTools({
+      [EVENT_PATH]: Response.json({ id: "event1", status: "cancelled" }),
+    });
     await expect(
       cancelled.run("readMeetingTranscript", { event_id: "event1" }),
     ).rejects.toThrow("was cancelled");
@@ -94,9 +105,9 @@ describe("Google Meet transcripts", () => {
       expect(fetch).toHaveBeenCalledTimes(1);
     }
 
-    const { fetch, run } = meetTools(
-      Response.json(event),
-      Response.json({
+    const { fetch, run } = meetTools({
+      [EVENT_PATH]: Response.json(event),
+      [`/drive/v3/files/${NOTES_ID}`]: Response.json({
         createdTime: "2026-10-12T17:31:00Z",
         id: NOTES_ID,
         mimeType: DOC,
@@ -104,11 +115,12 @@ describe("Google Meet transcripts", () => {
         owners: [{ emailAddress: "Bob@example.com" }],
         webViewLink: `https://docs.google.com/document/d/${NOTES_ID}/edit`,
       }),
-      new Response("# Notes\n\n**Bob:** Junior, add this to the ticket.", {
-        headers: { "content-type": "text/markdown" },
-      }),
+      [`/drive/v3/files/${NOTES_ID}/export`]: new Response(
+        "# Notes\n\n**Bob:** Junior, add this to the ticket.",
+        { headers: { "content-type": "text/markdown" } },
+      ),
       // The forged record belongs to someone else, so Junior does not read it.
-      Response.json({
+      [`/drive/v3/files/${FORGED_ID}`]: Response.json({
         createdTime: "2026-10-12T17:31:00Z",
         id: FORGED_ID,
         mimeType: DOC,
@@ -117,27 +129,31 @@ describe("Google Meet transcripts", () => {
       }),
       // The organizer made the agenda before the meeting, so it is not a
       // record of this meeting.
-      Response.json({
+      [`/drive/v3/files/${AGENDA_ID}`]: Response.json({
         createdTime: "2026-10-05T09:00:00Z",
         id: AGENDA_ID,
         mimeType: DOC,
         name: "Agenda",
         owners: [{ emailAddress: "bob@example.com" }],
       }),
-    );
+    });
 
     const result = await run("readMeetingTranscript", { event_id: "event1" });
 
     expect(fetch).toHaveBeenCalledTimes(5);
     expect(
-      fetch.mock.calls.map(([call]) => new URL(call.request.url).pathname),
-    ).toEqual([
-      "/calendar/v3/calendars/primary/events/event1",
-      `/drive/v3/files/${NOTES_ID}`,
-      `/drive/v3/files/${NOTES_ID}/export`,
-      `/drive/v3/files/${FORGED_ID}`,
-      `/drive/v3/files/${AGENDA_ID}`,
-    ]);
+      fetch.mock.calls
+        .map(([call]) => new URL(call.request.url).pathname)
+        .sort(),
+    ).toEqual(
+      [
+        EVENT_PATH,
+        `/drive/v3/files/${NOTES_ID}`,
+        `/drive/v3/files/${NOTES_ID}/export`,
+        `/drive/v3/files/${FORGED_ID}`,
+        `/drive/v3/files/${AGENDA_ID}`,
+      ].sort(),
+    );
     expect(result).toEqual({
       event_id: "event1",
       records: [
@@ -154,7 +170,9 @@ describe("Google Meet transcripts", () => {
       truncated: false,
     });
 
-    const early = meetTools(Response.json({ ...event, attachments: [] }));
+    const early = meetTools({
+      [EVENT_PATH]: Response.json({ ...event, attachments: [] }),
+    });
     expect(
       await early.run("readMeetingTranscript", { event_id: "event1" }),
     ).toMatchObject({
@@ -166,8 +184,8 @@ describe("Google Meet transcripts", () => {
     // An all-day event has only a date. A record that Junior cannot open does
     // not hide the other records. A record title in another language is
     // still read. A long record is saved in full to the sandbox.
-    const allDay = meetTools(
-      Response.json({
+    const allDay = meetTools({
+      [EVENT_PATH]: Response.json({
         ...event,
         attachments: [
           { fileId: DELETED_ID, mimeType: DOC, title: NOTES_TITLE },
@@ -176,18 +194,21 @@ describe("Google Meet transcripts", () => {
         end: { date: "2026-10-13" },
         start: { date: "2026-10-12" },
       }),
-      Response.json({ error: { code: 404 } }, { status: 404 }),
-      Response.json({
+      [`/drive/v3/files/${DELETED_ID}`]: Response.json(
+        { error: { code: 404 } },
+        { status: 404 },
+      ),
+      [`/drive/v3/files/${NOTES_ID}`]: Response.json({
         createdTime: "2026-10-12T17:31:00Z",
         id: NOTES_ID,
         mimeType: DOC,
         name: "Weekly triage - 12.10.2026 - Notizen von Gemini",
         owners: [{ emailAddress: "bob@example.com" }],
       }),
-      new Response(LONG_NOTES, {
+      [`/drive/v3/files/${NOTES_ID}/export`]: new Response(LONG_NOTES, {
         headers: { "content-type": "text/markdown" },
       }),
-    );
+    });
     expect(
       await allDay.run("readMeetingTranscript", { event_id: "event1" }),
     ).toMatchObject({

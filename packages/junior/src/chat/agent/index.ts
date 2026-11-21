@@ -9,11 +9,7 @@
  * assistant message through the delivery port; the result carries diagnostics,
  * artifacts, and transcript state for destination-owned completion.
  */
-import {
-  Agent,
-  type AgentEvent,
-  type StreamFn,
-} from "@earendil-works/pi-agent-core";
+import { Agent, type AgentEvent } from "@earendil-works/pi-agent-core";
 import type { FileUpload } from "chat";
 import { botConfig } from "@/chat/config";
 import {
@@ -34,14 +30,11 @@ import {
 } from "@/chat/logging";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import {
-  findSkillByName,
-  parseSkillInvocation,
-  type Skill,
-} from "@/chat/skills";
+import { findSkillByName, parseSkillInvocations } from "@/chat/skills";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import {
   loadConnectedMcpProviders,
+  loadConversationSkillNames,
   recordAgentsInstructionsUpdated,
   recordToolExecutionStarted,
   recordMcpProviderConnected,
@@ -65,6 +58,7 @@ import {
 } from "@/chat/pi/client";
 import {
   readAgentHistory,
+  type AgentRequestStreamFn,
   withAgentRequest,
   writeAgentHistory,
 } from "@/chat/pi/agent-history";
@@ -76,7 +70,7 @@ import {
   isAssistantMessage,
 } from "@/chat/pi/transcript";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
-import { createCacheWarmingRecorder } from "@/chat/cache-warming/warmup";
+import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";
 import { shouldEmitDevAgentTrace } from "@/chat/runtime/dev-agent-trace";
 import {
   isTurnInputCommitLostError,
@@ -91,10 +85,13 @@ import {
 } from "@/chat/turn-answer";
 import { decideReply } from "@/chat/services/assistant-reply";
 import {
-  findProviderError,
+  ProviderError,
   getProviderErrorAttributes,
   isProviderRetryError,
 } from "@/chat/services/provider-error";
+import { findInErrorChain } from "@/chat/sandbox/errors";
+import { isRetryableSandboxFailure } from "@/chat/sandbox/provider";
+import { captureTurnFailure } from "@/chat/services/turn-failure-response";
 import {
   nextProviderRetry,
   nextRefusalFallback,
@@ -146,7 +143,11 @@ import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmatio
 import { readParentAgentTask } from "@/chat/input-tags";
 import { isChannelThread } from "@/chat/conversations/channel-thread";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
-import { discoverRunSkills, loadRunSkill } from "@/chat/agent/skills";
+import {
+  discoverRunSkills,
+  restoreActiveSkill,
+  skillInvocationText,
+} from "@/chat/agent/skills";
 import { missingAutomationSkillReason } from "@/chat/automations/skill";
 import {
   assemblePrompt,
@@ -180,6 +181,7 @@ import {
   recordToolBatch,
   toolBatchSpanAttributes,
 } from "@/chat/agent/tool-batch";
+import { mapBounded } from "@/chat/fan-out";
 
 const AGENT_ABORT_SETTLE_GRACE_MS = 5_000;
 // Past a turn limit, a gated Turn gets this many failed answer calls before
@@ -239,7 +241,7 @@ function waitForAbortSettlement(
  */
 export async function executeAgentRun(
   run: AgentRun,
-  streamFn?: StreamFn,
+  streamFn?: AgentRequestStreamFn,
 ): Promise<AgentRunOutcome> {
   if (!run.destination) {
     throw new TypeError("Assistant reply generation requires a destination");
@@ -287,21 +289,45 @@ export async function executeAgentRun(
   };
   const channelThread = await isChannelThread(conversation);
   return withLogContext(runLogContext, () =>
-    runWithConversationPrivacy(conversationPrivacy, () =>
-      executeAgentRunInPrivacyContext(
-        run,
-        // TODO(dcramer): Remove the `root` case one release after #3060 step
-        // 3. An Automation run in progress at deploy is stored as `root`.
-        run.dispatch?.declaresResult
-          ? "automation"
-          : (conversation?.kind ?? "root"),
-        channelThread,
-        conversationPrivacy,
-        runLogContext,
-        streamFn,
+    runWithConversationPrivacy(conversationPrivacy, async () =>
+      reportFailedRun(
+        await executeAgentRunInPrivacyContext(
+          run,
+          // TODO(dcramer): Remove the `root` case one release after #3060
+          // step 3. An Automation run in progress at deploy is stored as
+          // `root`.
+          run.dispatch?.declaresResult
+            ? "automation"
+            : (conversation?.kind ?? "root"),
+          channelThread,
+          conversationPrivacy,
+          runLogContext,
+          streamFn,
+        ),
+        run.signal,
       ),
     ),
   );
+}
+
+// The agent run owns the report of its own failure: callers only read
+// `diagnostics.eventId`. A run that its caller stopped, such as when a person
+// stops the Turn, is not a failure to report; the caller owns that outcome.
+function reportFailedRun(
+  outcome: AgentRunOutcome,
+  signal: AbortSignal | undefined,
+): AgentRunOutcome {
+  if (
+    outcome.status !== "completed" ||
+    outcome.result.diagnostics.outcome === "success" ||
+    signal?.aborted
+  ) {
+    return outcome;
+  }
+  return {
+    ...outcome,
+    result: captureTurnFailure(outcome.result, logException),
+  };
 }
 
 async function executeAgentRunInPrivacyContext(
@@ -310,7 +336,7 @@ async function executeAgentRunInPrivacyContext(
   channelThread: boolean,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
-  streamFn: StreamFn | undefined,
+  streamFn: AgentRequestStreamFn | undefined,
 ): Promise<AgentRunOutcome> {
   // Local views keep the existing loop body readable while the public edge is flat.
   const conversationId = run.conversationId;
@@ -464,9 +490,9 @@ async function executeAgentRunInPrivacyContext(
     if (!mcpToolManager) {
       return;
     }
-    for (const provider of mcpToolManager.getActiveProviders()) {
-      await recordConnectedMcpProvider(provider);
-    }
+    await mapBounded(mcpToolManager.getActiveProviders(), (provider) =>
+      recordConnectedMcpProvider(provider),
+    );
   };
   try {
     shouldTrace = shouldEmitDevAgentTrace();
@@ -493,17 +519,13 @@ async function executeAgentRunInPrivacyContext(
     // An Automation in skill mode names its skill in the dispatch, so its
     // text is not parsed for one.
     const dispatchSkill = run.dispatch?.skill;
-    const skillInvocation = dispatchSkill
-      ? { skillName: dispatchSkill }
-      : parseSkillInvocation(userInput, availableSkills);
-    const invokedSkill = skillInvocation
-      ? findSkillByName(skillInvocation.skillName, availableSkills)
-      : null;
-    if (dispatchSkill && !invokedSkill) {
+    const invokedSkillNames = dispatchSkill
+      ? [dispatchSkill]
+      : parseSkillInvocations(skillInvocationText(run, actor), availableSkills);
+    if (dispatchSkill && !findSkillByName(dispatchSkill, availableSkills)) {
       throw new Error(missingAutomationSkillReason(dispatchSkill));
     }
-    const activeSkills: Skill[] = [];
-    const skillSandbox = new SkillSandbox(availableSkills, activeSkills);
+    const skillSandbox = new SkillSandbox(availableSkills);
 
     // ── Turn checkpoint (resume cursor) ──────────────────────────────
     const checkpoint = await loadTurnCheckpoint({ conversationId, turnId });
@@ -633,12 +655,16 @@ async function executeAgentRunInPrivacyContext(
         : [],
     );
 
-    // A new turn starts with no active skill. A resumed turn recovers only its
-    // last successful loadSkill result, never skill state from older turns.
-    const explicitSkill = await loadRunSkill({
-      activeSkills,
+    // A manual-only skill that `loadSkill` loaded earlier in this
+    // Conversation stays loadable, and so do the skills that it references.
+    const conversationSkillNames =
+      await loadConversationSkillNames(conversationId);
+
+    // A new turn starts with no active skill. A resumed turn recovers the
+    // skill loaded last in this Turn, never skill state from older turns.
+    // Invoked skills wait for the model to call `loadSkill`.
+    await restoreActiveSkill({
       currentTurnMessages,
-      invokedSkill,
       resumed: resumedFromSessionRecord,
       skillSandbox,
     });
@@ -672,7 +698,7 @@ async function executeAgentRunInPrivacyContext(
       ? runSandbox.agentSandbox.captureRepositoryInstructions()
       : Promise.resolve(undefined);
     const promptTurnContextPromise = loadPromptTurnContext({
-      context: createPromptHookContext({ actor, run, userInput }),
+      context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
@@ -726,7 +752,6 @@ async function executeAgentRunInPrivacyContext(
     // ── Tool wiring ──────────────────────────────────────────────────
     const wiring = await wireAgentTools({
       abortAgent: () => agent?.abort(),
-      activeSkills,
       behavior,
       currentActor: actor,
       currentAgentMessages,
@@ -739,7 +764,8 @@ async function executeAgentRunInPrivacyContext(
       durability,
       authorization,
       generatedFiles,
-      invokedSkill,
+      invokedSkillNames,
+      conversationSkillNames,
       onEvent: run.onEvent,
       onFatalToolError(error) {
         pendingPiHookError = error;
@@ -794,12 +820,14 @@ async function executeAgentRunInPrivacyContext(
       platform: promptPlatform,
       promptTimestamp: restoredPromptTimestamp,
       promptHistoryMessages,
+      sectionsMessage,
       shouldPromptAgent,
       turnContexts,
       userContentParts: promptUserContentParts,
     } = await assemblePrompt({
       activeMcpCatalogs: wiring.activeMcpCatalogs,
       promptMode: behavior.promptMode,
+      sender: behavior.sender,
       currentActor: actor,
       availableSkills,
       configurationValues,
@@ -808,7 +836,6 @@ async function executeAgentRunInPrivacyContext(
       existingSessionPiMessages: existingSessionRecord?.piMessages,
       existingTurnStartMessageIndex:
         existingSessionRecord?.turnStartMessageIndex,
-      explicitSkill,
       priorPiMessages,
       repositoryInstructions: initialRepositoryInstructions,
       resumedFromSessionRecord,
@@ -873,8 +900,10 @@ async function executeAgentRunInPrivacyContext(
           pendingMessages,
           mode,
           piMessages: messages,
+          // Not `agent.state.systemPrompt`: it also folds in saved system
+          // messages, which the history estimate counts.
           requestOverheadTokens: estimateRequestOverheadTokens(
-            agent!.state.systemPrompt,
+            baseInstructions,
             agent!.state.tools,
             activeModelId,
           ),
@@ -1036,7 +1065,10 @@ async function executeAgentRunInPrivacyContext(
     // Turns. Keep its gaps out of the histograms of people.
     const cacheWarming = createCacheWarmingRecorder(
       conversationId,
-      isUserActor(actor) && conversationKind !== "task",
+      {
+        userActor: isUserActor(actor) && conversationKind !== "task",
+        idleNeedsPendingWork: behavior.idleNeedsPendingWork,
+      },
       { platform: promptPlatform, mode: behavior.promptMode },
     );
     // Batch counts go on the `gen_ai.invoke_agent` span, because production
@@ -1201,7 +1233,7 @@ async function executeAgentRunInPrivacyContext(
         }
         if (decision === "wrap_up") {
           runResume.markTurnLimitWrappedUp();
-          logWarn("agent.turn.limit.wrap_up", {
+          logWarn("agent.turn.limit.wrapped_up", {
             "app.ai.cost.total_usd": turnCostUsd,
             "app.ai.tool_call_count": toolCallCount,
           });
@@ -1345,6 +1377,11 @@ async function executeAgentRunInPrivacyContext(
       } else if (promptHistoryMessages.length > 0) {
         setAgentHistory(promptHistoryMessages);
       }
+      // The sections message goes before the Turn start, so the messages of
+      // the Turn stay its context and prompt. The input checkpoint saves it.
+      if (sectionsMessage) {
+        setAgentHistory([...currentAgentMessages(), sectionsMessage]);
+      }
       runResume.setBeforeMessageCount(currentAgentMessages().length);
       if (shouldPromptAgent) {
         runResume.setTurnStartMessageIndex(currentAgentMessages().length);
@@ -1364,17 +1401,17 @@ async function executeAgentRunInPrivacyContext(
           const promptTimestamp = restoredPromptTimestamp ?? Date.now();
           const contextMessage: PiMessage | undefined =
             shouldPromptAgent && promptContextContentParts.length > 0
-              ? ({
+              ? {
                   role: "user",
                   content: promptContextContentParts,
                   timestamp: promptTimestamp,
-                } as PiMessage)
+                }
               : undefined;
           const freshPromptMessage: PiMessage = {
             role: "user",
             content: promptUserContentParts,
             timestamp: promptTimestamp,
-          } as PiMessage;
+          };
           if (shouldPromptAgent) {
             const promptPersisted =
               await runResume.requireDurableInputCheckpoint(
@@ -1541,6 +1578,7 @@ async function executeAgentRunInPrivacyContext(
             signal?.throwIfAborted();
           };
           try {
+            /* oxlint-disable no-await-in-loop -- The agent runs one step at a time, and each retry follows the step before. */
             for (;;) {
               await runAgentStep(run);
               if (assistantMessageDeliveryError) {
@@ -1681,6 +1719,7 @@ async function executeAgentRunInPrivacyContext(
               await sleep(providerRetry.delayMs, signal);
               run = agent!.continue();
             }
+            /* oxlint-enable no-await-in-loop */
           } catch (error) {
             if (error instanceof AuthorizationPauseError) {
               // A durable auth pause is a successful span outcome. Persistence
@@ -1814,6 +1853,19 @@ async function executeAgentRunInPrivacyContext(
       const outcome = await resume.translateSuspension({
         currentUsage: turnUsage,
         error: runError,
+        // A sandbox call outside a tool, such as the AGENTS.md refresh between
+        // steps, can fail for a short time. Run the step again on a later
+        // slice. Before the input commits, the queue redelivers instead. After
+        // a delivered reply, a retry would post a second reply. Model
+        // failures have their own retry policy.
+        retryable:
+          resume.inputCommitted &&
+          !acceptedToolFreeAssistant &&
+          !findInErrorChain(
+            runError,
+            (candidate) => candidate instanceof ProviderError,
+          ) &&
+          isRetryableSandboxFailure(runError),
       });
       if (outcome) {
         return outcome;
@@ -1836,17 +1888,6 @@ async function executeAgentRunInPrivacyContext(
     if (durability.onInputCommitted && !resume?.inputCommitted) {
       throw error;
     }
-    // The caller aborted the run, such as when a person stops the Turn. The
-    // caller owns that outcome; it is not a reply failure to report.
-    if (!signal?.aborted || error !== signal.reason) {
-      const providerError = findProviderError(error);
-      logException(
-        error,
-        "assistant.reply.generation.failed",
-        providerError ? getProviderErrorAttributes(providerError) : {},
-      );
-    }
-
     // Raw exception text is diagnostics-only; the failure-response service
     // owns the sanitized user-visible fallback for empty provider errors.
     const message = error instanceof Error ? error.message : String(error);

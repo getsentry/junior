@@ -1,5 +1,11 @@
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import type { Conversation } from "../types";
+import {
+  calendarDay,
+  calendarDaysAgo,
+  dateTimeFormat,
+  formatTime,
+} from "../time";
 
 export type ConversationSection = {
   conversations: Conversation[];
@@ -7,7 +13,6 @@ export type ConversationSection = {
   label: string;
 };
 
-const DAY_MS = 24 * 60 * 60 * 1000;
 // Pinned sorts first, then Needs you, then every time section.
 const PINNED_SECTION = { key: "pinned", label: "Pinned", order: -2 };
 const NEEDS_YOU_SECTION = { key: "needs-you", label: "Needs you", order: -1 };
@@ -23,6 +28,10 @@ type Waiting = Pick<
  * Today, Yesterday, Previous 7 days, Previous 30 days, then one section per
  * month.
  *
+ * Without `waiting`, as in the new UI, there is no Needs you: a
+ * conversation that waits on the viewer stays in its section, and its row
+ * carries the waiting marker.
+ *
  * Needs you holds the conversations that wait on the viewer: an open Review
  * item in `waiting`, or a Turn that waits on an authorization. Open work
  * does not move a row. A pinned conversation
@@ -36,7 +45,7 @@ export function buildConversationSections(
   options: {
     nowMs: number;
     timeZone: string;
-    waiting: Waiting;
+    waiting?: Waiting;
   },
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
@@ -48,7 +57,7 @@ export function buildConversationSections(
   for (const conversation of sorted) {
     const section = conversation.pinnedAt
       ? PINNED_SECTION
-      : waitsOnViewer(conversation, options.waiting)
+      : options.waiting && waitsOnViewer(conversation, options.waiting)
         ? NEEDS_YOU_SECTION
         : conversationSection(
             activityTime(conversation),
@@ -65,22 +74,43 @@ export function buildConversationSections(
   }
 
   sections.get(PINNED_SECTION.key)?.conversations.sort(comparePinOrder);
-  sections
-    .get(NEEDS_YOU_SECTION.key)
-    ?.conversations.sort(compareWaitStart(options.waiting));
+  if (options.waiting) {
+    sections
+      .get(NEEDS_YOU_SECTION.key)
+      ?.conversations.sort(compareWaitStart(options.waiting));
+  }
   return [...sections.values()]
     .sort((left, right) => left.order - right.order)
     .map(({ order: _order, ...section }) => section);
 }
 
 /**
- * True when the conversation waits on the viewer: an open Review item waits
+ * True when the conversation waits on the viewer: an open Inbox item waits
  * on them, or a Turn waits on a person to finish an authorization.
  */
 function waitsOnViewer(conversation: Conversation, waiting: Waiting): boolean {
   return (
     waiting.has(conversation.id) || conversation.awaitingAuthorization === true
   );
+}
+
+/**
+ * Sort pinned conversations to the front, in the order that
+ * `buildConversationSections` shows them without `waiting`: pins in the
+ * viewer's order, then the newest Message first. Paginated lists call this
+ * before paging, so page 1 holds every pin, and pages split where the
+ * sections do.
+ */
+export function pinnedFirst(conversations: Conversation[]): Conversation[] {
+  return [...conversations]
+    .sort((left, right) => activityTime(right) - activityTime(left))
+    .sort((left, right) => {
+      const leftRank = left.pinnedAt ? 0 : 1;
+      return (
+        leftRank - (right.pinnedAt ? 0 : 1) ||
+        (leftRank === 0 ? comparePinOrder(left, right) : 0)
+      );
+    });
 }
 
 /**
@@ -191,11 +221,11 @@ function conversationSection(
   const nowMonth = yearMonth(nowMs, timeZone);
   return {
     key: `month-${month.year}-${month.month}`,
-    label: new Intl.DateTimeFormat("en-US", {
+    label: formatTime(time, {
       month: "long",
       timeZone,
       ...(month.year === nowMonth.year ? undefined : { year: "numeric" }),
-    }).format(time),
+    }),
     // Month sections follow the rolling windows, newest month first.
     order:
       4 + (nowMonth.year - month.year) * 12 + (nowMonth.month - month.month),
@@ -206,36 +236,11 @@ function yearMonth(
   time: number,
   timeZone: string,
 ): { month: number; year: number } {
-  const parts = new Intl.DateTimeFormat("en-US", {
+  const parts = dateTimeFormat({
     month: "numeric",
     timeZone,
     year: "numeric",
   }).formatToParts(time);
   const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
   return { month: values.get("month") ?? 1, year: values.get("year") ?? 0 };
-}
-
-/** Count the calendar days from `time` to `nowDay` (a `calendarDay` value). */
-export function calendarDaysAgo(
-  time: number,
-  nowDay: number,
-  timeZone: string,
-): number {
-  return Math.round((nowDay - calendarDay(time, timeZone)) / DAY_MS);
-}
-
-/** Return the UTC midnight of the calendar day that holds `time` in `timeZone`. */
-export function calendarDay(time: number, timeZone: string): number {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    day: "numeric",
-    month: "numeric",
-    timeZone,
-    year: "numeric",
-  }).formatToParts(time);
-  const values = new Map(parts.map((part) => [part.type, Number(part.value)]));
-  return Date.UTC(
-    values.get("year") ?? 0,
-    (values.get("month") ?? 1) - 1,
-    values.get("day") ?? 1,
-  );
 }

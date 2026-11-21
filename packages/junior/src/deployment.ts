@@ -31,13 +31,13 @@ function toOptionalTrimmed(value: string | undefined): string | undefined {
 
 /** Resolve the deployment version used for release and telemetry correlation. */
 export function getDeploymentServiceVersion(): string | undefined {
-  const configuredRelease = toOptionalTrimmed(process.env.SENTRY_RELEASE);
+  const configuredRelease = toOptionalTrimmed(process.env["SENTRY_RELEASE"]);
   if (configuredRelease) {
     return configuredRelease;
   }
 
   const deploymentRevision = toOptionalTrimmed(
-    process.env.VERCEL_GIT_COMMIT_SHA,
+    process.env["VERCEL_GIT_COMMIT_SHA"],
   );
   return deploymentRevision
     ? `${JUNIOR_VERSION}+${deploymentRevision}`
@@ -46,7 +46,7 @@ export function getDeploymentServiceVersion(): string | undefined {
 
 /** Vercel deployment that runs this process. Unset outside Vercel. */
 export function getDeploymentId(): string | undefined {
-  return toOptionalTrimmed(process.env.VERCEL_DEPLOYMENT_ID);
+  return toOptionalTrimmed(process.env["VERCEL_DEPLOYMENT_ID"]);
 }
 
 /** Resolve deployment-scoped telemetry attributes from host environment. */
@@ -54,7 +54,7 @@ export function getDeploymentTelemetryAttributes(): Record<string, string> {
   const attributes: Record<string, string> = {};
   const serviceVersion = getDeploymentServiceVersion();
   const deploymentId = getDeploymentId();
-  const region = toOptionalTrimmed(process.env.VERCEL_REGION);
+  const region = toOptionalTrimmed(process.env["VERCEL_REGION"]);
   attributes["app.junior.version"] = JUNIOR_VERSION;
   attributes["service.instance.id"] = SERVICE_INSTANCE_ID;
   if (region) {

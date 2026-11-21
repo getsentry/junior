@@ -9,8 +9,8 @@ import {
 } from "vitest";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
-const originalStateAdapter = process.env.JUNIOR_STATE_ADAPTER;
-process.env.JUNIOR_STATE_ADAPTER = "memory";
+const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
+process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 
 const { captured } = vi.hoisted(() => ({
   captured: {
@@ -32,7 +32,9 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
       systemPrompt: string;
       tools: unknown[];
     };
-    private prepareNextTurn?: (context?: unknown) => Promise<unknown> | unknown;
+    private prepareNextTurn?:
+      | ((context?: unknown) => Promise<unknown> | unknown)
+      | undefined;
     private listeners: Array<(event: unknown) => unknown> = [];
 
     constructor(input: {
@@ -48,7 +50,14 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
     }) {
       captured.systemPrompt = input.initialState.systemPrompt;
       this.state = {
-        messages: [],
+        // Pi puts the leading system message there, like the real Agent.
+        messages: [
+          {
+            role: "system",
+            content: input.initialState.systemPrompt,
+            timestamp: 0,
+          },
+        ],
         model: input.initialState.model,
         systemPrompt: input.initialState.systemPrompt,
         tools: input.initialState.tools,
@@ -121,6 +130,7 @@ vi.mock("@/chat/pi/client", () => ({
 import {
   defineJuniorPlugin,
   definePromptContext,
+  type PromptContextContribution,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { executeAgentRun } from "@/chat/agent";
@@ -148,7 +158,7 @@ describe("plugin prompt hook composition", () => {
     previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -176,9 +186,9 @@ describe("plugin prompt hook composition", () => {
 
   afterAll(() => {
     if (originalStateAdapter === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = originalStateAdapter;
+      process.env["JUNIOR_STATE_ADAPTER"] = originalStateAdapter;
     }
   });
 
@@ -213,10 +223,21 @@ describe("plugin prompt hook composition", () => {
       }),
       renderPrompt: ({ memories }) => memories[0]!.content,
     });
+    // A plain method that reads `this`, not a definePromptContext closure.
+    const note: PromptContextContribution = {
+      context: {
+        kind: "note",
+        version: 1,
+        content: { note: "Run the tests." },
+      },
+      renderPrompt() {
+        return String(this.context.content["note"]);
+      },
+    };
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -226,6 +247,7 @@ describe("plugin prompt hook composition", () => {
               recall({
                 memories: [{ id: "memory-1", content: "Use pnpm." }],
               }),
+              note,
             ];
           },
         },
@@ -244,19 +266,35 @@ describe("plugin prompt hook composition", () => {
     expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
       "Use pnpm.",
     );
-    const stored = await getConversationEventStore().loadByIdempotencyKey(
+    expect(JSON.stringify(captured.promptContextMessages[0])).toContain(
+      "Run the tests.",
+    );
+    const eventStore = getConversationEventStore();
+    const stored = await eventStore.loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toEqual({
       type: "turn_context",
       turnId,
-      pluginName: "memory",
+      pluginName: "notes",
       kind: "recall",
       version: 1,
       content: {
         memories: [{ id: "memory-1", content: "Use pnpm." }],
       },
+    });
+    const storedMethod = await eventStore.loadByIdempotencyKey(
+      LOCAL_DESTINATION.conversationId,
+      `turn:${turnId}:context:notes:1`,
+    );
+    expect(storedMethod?.data).toEqual({
+      type: "turn_context",
+      turnId,
+      pluginName: "notes",
+      kind: "note",
+      version: 1,
+      content: { note: "Run the tests." },
     });
   });
 
@@ -273,7 +311,7 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -325,7 +363,7 @@ describe("plugin prompt hook composition", () => {
     );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toMatchObject({
       type: "turn_context",

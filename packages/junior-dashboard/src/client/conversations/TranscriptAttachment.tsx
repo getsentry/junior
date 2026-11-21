@@ -339,7 +339,7 @@ function TranscriptMediaTile(props: {
 
 // Every file row shares this look. A stored file is a preview button or a
 // download link; a file that is still sending is neither. A large Slack file
-// that Junior never stores has its own Download button.
+// that Junior has not stored yet has its own Download button.
 const FILE_ROW_SHELL_CLASS =
   "grid w-full min-w-0 items-center gap-2 rounded-lg border border-dashboard-border bg-dashboard-fill-faint px-3 py-2 text-left font-sans no-underline";
 const FILE_ROW_BASE_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)]`;
@@ -347,7 +347,7 @@ const FILE_ROW_CLASS = `${FILE_ROW_BASE_CLASS} cursor-pointer transition-colors 
 const PENDING_FILE_ROW_CLASS = `${FILE_ROW_SHELL_CLASS} grid-cols-[auto_minmax(0,1fr)_auto]`;
 
 /**
- * Render a large Slack file that Junior never stores. Download loads the
+ * Render a large Slack file that Junior has not stored yet. Download loads the
  * file URL in a hidden frame, and the server streams it from Slack. A saved
  * file never loads a document in the frame. An error response does, and the
  * conversation page stays in place, so the row then asks the server why.

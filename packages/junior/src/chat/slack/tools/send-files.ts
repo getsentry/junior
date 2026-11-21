@@ -1,42 +1,78 @@
 import type { AttachmentStorage } from "@/chat/attachments/storage";
 import type { JuniorSqlDatabase } from "@/db/db";
+import { isConversationDeliveryPaused } from "@/chat/conversations/delivery-pause";
 import { uploadFilesToConversation } from "@/chat/slack/outbound";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
-  createSendFilesTool,
+  sendFiles,
+  sendFilesInputSchema,
+  sendFilesResultSchema,
+  type FileDelivery,
   type MaterializeFile,
-} from "@/chat/tools/send-files";
-import type { ToolState } from "@/chat/tools/types";
+} from "@/chat/tool-support/send-files";
+import type { ToolState } from "@/chat/tool-support/types";
+import { zodTool } from "@/chat/tool-support/zod-tool";
 
-/** Deliver files to the active Slack Location and retain Conversation attachments. */
+/**
+ * Deliver files to the active Slack Location and retain Conversation
+ * attachments. While the Conversation is detached from Slack, files are only
+ * retained.
+ *
+ * @runBuilt sendFiles
+ */
 export function createSlackSendFilesTool(
   context: SlackToolContext,
   state: ToolState,
   materializeFile: MaterializeFile,
+  conversationId: string,
   attachments?: {
-    conversationId: string;
     db: JuniorSqlDatabase;
     storage: AttachmentStorage;
   },
 ) {
   const channelId = context.locationChannelId;
   const threadTs = context.threadTs ?? context.messageTs;
-  return createSendFilesTool(state, materializeFile, {
-    attachments,
-    delivery: {
-      key: `${channelId}:${threadTs ?? ""}`,
-      description:
-        "Send one or more sandbox files into the active Slack conversation.",
-      async send(files) {
-        await uploadFilesToConversation({
-          channelId,
-          files: files.map((file) => ({
-            data: file.data,
-            filename: file.filename,
-          })),
-          ...(threadTs ? { threadTs } : undefined),
-        });
-      },
+  const delivery: FileDelivery = {
+    key: `${channelId}:${threadTs ?? ""}`,
+    async send(files) {
+      // Read the pause at send time: a person can detach while this Turn
+      // runs.
+      if (await isConversationDeliveryPaused(conversationId)) {
+        if (!attachments) {
+          throw new ToolInputError(
+            "This conversation is detached from Slack, so files cannot be sent to it.",
+          );
+        }
+        return;
+      }
+      await uploadFilesToConversation({
+        channelId,
+        files: files.map((file) => ({
+          data: file.data,
+          filename: file.filename,
+        })),
+        ...(threadTs ? { threadTs } : undefined),
+      });
     },
+  };
+  return zodTool({
+    annotations: {
+      destructiveHint: false,
+      idempotentHint: false,
+      openWorldHint: true,
+      readOnlyHint: false,
+    },
+    description:
+      "Send one or more sandbox files into the active Slack conversation.",
+    inputSchema: sendFilesInputSchema,
+    outputSchema: sendFilesResultSchema,
+    execute: (input, options) =>
+      sendFiles(input, options, state, materializeFile, {
+        ...(attachments
+          ? { attachments: { ...attachments, conversationId } }
+          : undefined),
+        delivery,
+      }),
   });
 }

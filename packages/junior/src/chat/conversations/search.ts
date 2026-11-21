@@ -23,9 +23,11 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import type * as z from "zod";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   conversationSimilarity,
-  type ConversationEmbedder,
+  embedConversationQuery,
 } from "@/chat/conversations/embedding";
 import {
   parseStoredBrief,
@@ -81,6 +83,17 @@ export interface ConversationSearchResult {
   updatedAtMs: number;
 }
 
+/** Provider-owned channel filter and match details for Conversation search. */
+export interface ConversationSearchChannelPort {
+  channelFilterSchema: z.ZodString;
+  describeMatch(match: ConversationSearchResult): Promise<{
+    channel_id?: string;
+    channel_name?: string;
+    permalink?: string;
+  }>;
+  resolveChannel(input: string): Promise<string>;
+}
+
 /** Filters for one Conversation search. All are optional. */
 export interface ConversationSearch {
   /** Only Conversations with activity at or after this time. */
@@ -119,7 +132,7 @@ export interface ConversationSearch {
 export async function searchConversations(
   db: JuniorDatabase,
   args: {
-    embedder?: ConversationEmbedder;
+    embedder?: PluginEmbedder;
     requesterConversationId: string;
     search: ConversationSearch;
   },
@@ -134,7 +147,7 @@ export async function searchConversations(
   const query = search.query?.trim() || undefined;
   const queryVector =
     query && embedder
-      ? await embedder({ inputType: "query", text: query })
+      ? await embedConversationQuery(embedder, query)
       : undefined;
   // SQL null for a stale vector or a vector of another model.
   const similarity = queryVector

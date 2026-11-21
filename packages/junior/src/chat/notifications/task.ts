@@ -21,6 +21,7 @@ import {
   sendPushNotificationToUser,
   type PushNotificationPayload,
 } from "./web-push";
+import { botConfig } from "@/chat/config";
 
 const PREVIEW_MAX_CHARS = 180;
 
@@ -40,8 +41,7 @@ function notificationPreview(text: string): string {
 
 /**
  * Return the stored reply of the Turn: the text that the person sees. The
- * run transcript has the raw model text, which can be a no-reply marker, and
- * does not say whether the reply was quiet.
+ * run transcript has the raw model text, which can be a no-reply marker.
  */
 async function readTurnReply(
   run: PluginRunContext,
@@ -91,7 +91,6 @@ type SkipReason =
   | "no_user"
   | "not_configured"
   | "outside_hours"
-  | "quiet"
   | "slack_paused";
 
 function skip(reason: SkipReason): void {
@@ -119,8 +118,6 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   if (!url) return skip("no_dashboard");
   const reply = await readTurnReply(run);
   if (!reply) return skip("no_reply");
-  // A Quiet message notifies nobody, like in the Location.
-  if (reply.meta?.quiet) return skip("quiet");
   const db = context.db as JuniorDatabase;
   const userId = await recipientUserId(db, run);
   if (!userId) return skip("no_user");
@@ -148,7 +145,9 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   const payload: PushNotificationPayload = {
     body: notificationPreview(reply.text) || "New reply",
     tag: run.conversationId,
-    title: (await readConversationTitle(db, run.conversationId)) ?? "Junior",
+    title:
+      (await readConversationTitle(db, run.conversationId)) ??
+      botConfig.userName,
     url,
   };
   const result = await sendPushNotificationToUser({

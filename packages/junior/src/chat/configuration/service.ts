@@ -8,49 +8,48 @@ import {
   validateConfigKey,
   validateConfigValue,
 } from "@/chat/configuration/validation";
-import { isRecord, toOptionalString } from "@/chat/coerce";
+import { toOptionalString } from "@/chat/coerce";
+import * as z from "zod";
+
+const legacyNonEmptyStringSchema = z
+  .string()
+  .refine((value) => value.trim().length > 0);
+const legacyOptionalStringSchema = legacyNonEmptyStringSchema
+  .optional()
+  .catch(undefined);
+
+const legacyEntrySchema = z.object({
+  key: legacyNonEmptyStringSchema,
+  value: configValueSchema,
+  scope: z.enum(["channel", "conversation", "location"]),
+  updatedAt: legacyNonEmptyStringSchema,
+  updatedBy: legacyOptionalStringSchema,
+  source: legacyOptionalStringSchema,
+  expiresAt: legacyOptionalStringSchema,
+});
+
+// Entries are checked one by one so one invalid entry does not drop the rest.
+const legacyLocationConfigSchema = z.object({
+  configuration: z.object({
+    entries: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown())]),
+  }),
+});
 
 function sanitizeEntry(value: unknown): ConfigEntry | undefined {
-  if (!isRecord(value)) {
+  const parsed = legacyEntrySchema.safeParse(value);
+  if (!parsed.success || validateConfigKey(parsed.data.key)) {
     return undefined;
   }
-  const key = toOptionalString(value.key);
-  if (!key || validateConfigKey(key)) {
-    return undefined;
-  }
-  const updatedAt = toOptionalString(value.updatedAt);
-  if (!updatedAt) {
-    return undefined;
-  }
-  if (
-    value.scope !== "channel" &&
-    value.scope !== "conversation" &&
-    value.scope !== "location"
-  ) {
-    return undefined;
-  }
-  const parsedValue = configValueSchema.safeParse(value.value);
-  if (!parsedValue.success) {
-    return undefined;
-  }
-  return {
-    key,
-    value: parsedValue.data,
-    scope: "location",
-    updatedAt,
-    updatedBy: toOptionalString(value.updatedBy),
-    source: toOptionalString(value.source),
-    expiresAt: toOptionalString(value.expiresAt),
-  };
+  return { ...parsed.data, scope: "location" };
 }
 
 /** Coerce legacy persisted configuration into current Location entries. */
 export function coerceLegacyLocationConfig(raw: unknown): ConfigEntry[] {
-  const rawConfig = isRecord(raw) && isRecord(raw.configuration)
-    ? raw.configuration
-    : {};
-  const rawEntries = isRecord(rawConfig.entries) ? rawConfig.entries : {};
-  return Object.values(rawEntries).flatMap((value) => {
+  const parsed = legacyLocationConfigSchema.safeParse(raw);
+  if (!parsed.success) {
+    return [];
+  }
+  return Object.values(parsed.data.configuration.entries).flatMap((value) => {
     const entry = sanitizeEntry(value);
     return entry ? [entry] : [];
   });
@@ -106,7 +105,9 @@ export function createLocationConfigurationService(
     options: { keys?: string[]; prefix?: string } = {},
   ): ReturnType<LocationConfigurationService["resolveValues"]> => {
     const keys = options.keys?.map((key) => key.trim()).filter(Boolean);
-    const entries = await list(options.prefix ? { prefix: options.prefix } : {});
+    const entries = await list(
+      options.prefix ? { prefix: options.prefix } : {},
+    );
     return Object.fromEntries(
       entries
         .filter((entry) => !keys || keys.includes(entry.key))

@@ -21,7 +21,7 @@ import type { AutomationDestination } from "./creator";
 import type { TaskCandidate } from "./read";
 import { automationSkillNameSchema, type AutomationTask } from "./task";
 import type { SkillMetadata } from "@/chat/skills";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const automationResultSchema = z.discriminatedUnion("type", [
   compactTaskResultSchema,
@@ -95,10 +95,10 @@ export function automationSkillToolSchema(skills: readonly SkillMetadata[]) {
 
 /** Flat task fields of the Automation tools. */
 type TaskToolFields = {
-  instruction?: string;
-  skill?: string;
+  instruction?: string | undefined;
+  skill?: string | undefined;
   /** Null clears the context. Only an update can send it. */
-  context?: string | null;
+  context?: string | null | undefined;
 };
 
 /** Map the task fields of a new Automation to its task. */

@@ -46,10 +46,10 @@ import {
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { createTools } from "@/chat/tools";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type {
   SandboxCommandInput,
   SandboxSession,
@@ -102,6 +102,8 @@ const TEST_EGRESS = {
     return new Response("ok");
   },
 };
+
+const dispatchForIdentity = async () => ({ status: "not_linked" as const });
 
 const SLACK_DESTINATION = {
   platform: "slack",
@@ -183,6 +185,12 @@ function fakeSandbox(
       );
     },
   };
+}
+
+/** Operational reports of the test plugins, without the core Memory report. */
+async function testPluginReports() {
+  const reports = await getPluginOperationalReports(123);
+  return reports.filter((report) => report.pluginName !== "memory");
 }
 
 describe("agent plugin hooks", () => {
@@ -319,7 +327,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt() {
-            return [{ text: "" }] as any;
+            return [{ text: "" }];
           },
         },
       }),
@@ -441,9 +449,9 @@ describe("agent plugin hooks", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes",
         },
         hooks: {
           userPrompt() {
@@ -469,7 +477,7 @@ describe("agent plugin hooks", () => {
       ).resolves.toEqual([
         {
           id: "userPrompt:0",
-          pluginName: "memory",
+          pluginName: "notes",
           text: "Use pnpm.",
           context: {
             content: {
@@ -477,7 +485,7 @@ describe("agent plugin hooks", () => {
             },
             kind: "recall",
             loadedAtMs: expect.any(Number),
-            pluginName: "memory",
+            pluginName: "notes",
             version: 1,
           },
         },
@@ -497,7 +505,7 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           userPrompt() {
-            return [{ text: "" }] as any;
+            return [{ text: "" }];
           },
         },
       }),
@@ -663,22 +671,24 @@ describe("agent plugin hooks", () => {
 
       await expect(resolveActor?.()).resolves.toEqual({ identity, user });
       expect(tools).toHaveProperty("agentDemo_demoTool");
-      expect(tools.demoTool).toBeUndefined();
-      expect(tools.agentDemo_demoTool?.identity).toEqual({
+      expect(tools["demoTool"]).toBeUndefined();
+      expect(tools["agentDemo_demoTool"]?.identity).toEqual({
         id: "agent-demo.demoTool",
         name: "demoTool",
         plugin: "agent-demo",
       });
-      expect(tools.agentDemo_demoTool?.source).toEqual({
+      expect(tools["agentDemo_demoTool"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
-      expect(tools.agentDemo_demoTool?.approvalMode).toBe("review");
-      expect(tools.agentDemo_demoTool?.describeProposal?.({})).toBe(
+      expect(tools["agentDemo_demoTool"]?.approvalMode).toBe("review");
+      expect(tools["agentDemo_demoTool"]?.describeProposal?.({})).toBe(
         "Demo tool proposal",
       );
-      expect(tools.agentDemo_demoTool?.disabledReason).toBeUndefined();
-      expect(tools.agentDemo_writeTool?.disabledReason).toBe("Read-only Turn.");
+      expect(tools["agentDemo_demoTool"]?.disabledReason).toBeUndefined();
+      expect(tools["agentDemo_writeTool"]?.disabledReason).toBe(
+        "Read-only Turn.",
+      );
 
       disabled = { missingTool: "No tool." };
       expect(() => getPluginTools(context)).toThrow(
@@ -828,22 +838,23 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(tools.agentDemo_prototypeTool?.description).toBe("Prototype tool");
-      expect(tools.prototypeTool).toBeUndefined();
-      expect(tools.agentDemo_prototypeTool?.approvalMode).toBe("auto");
-      expect(tools.agentDemo_prototypeTool?.identity).toEqual({
+      expect(tools["agentDemo_prototypeTool"]?.description).toBe(
+        "Prototype tool",
+      );
+      expect(tools["prototypeTool"]).toBeUndefined();
+      expect(tools["agentDemo_prototypeTool"]?.approvalMode).toBe("auto");
+      expect(tools["agentDemo_prototypeTool"]?.identity).toEqual({
         id: "agent-demo.prototypeTool",
         name: "prototypeTool",
         plugin: "agent-demo",
       });
-      expect(tools.agentDemo_prototypeTool?.source).toEqual({
+      expect(tools["agentDemo_prototypeTool"]?.source).toEqual({
         id: "agent-demo",
         description: "Agent demo",
       });
-      const prototypeResult = (await tools.agentDemo_prototypeTool?.execute?.(
-        {},
-        {},
-      )) as ReturnType<PrototypeTool["execute"]> | undefined;
+      const prototypeResult = (await tools[
+        "agentDemo_prototypeTool"
+      ]?.execute?.({}, {})) as ReturnType<PrototypeTool["execute"]> | undefined;
       expect(prototypeResult).toEqual({
         message: "done",
       });
@@ -879,7 +890,7 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(tools.agentDemo_demoTool).toBeDefined();
+      expect(tools["agentDemo_demoTool"]).toBeDefined();
       expect(tools["agent-Demo-_demoTool"]).toBeUndefined();
     } finally {
       setPlugins(previous);
@@ -914,8 +925,8 @@ describe("agent plugin hooks", () => {
         workspace: {} as any,
       });
 
-      expect(tools.agentDemo_directTool?.exposure).toBe("direct");
-      expect(tools.agentDemo_defaultTool?.exposure).toBe("deferred");
+      expect(tools["agentDemo_directTool"]?.exposure).toBe("direct");
+      expect(tools["agentDemo_defaultTool"]?.exposure).toBe("deferred");
     } finally {
       setPlugins(previous);
     }
@@ -947,7 +958,7 @@ describe("agent plugin hooks", () => {
         source: LOCAL_SOURCE,
         workspace: {} as any,
       });
-      expect(tools.agentDemo_deployment_create?.identity).toEqual({
+      expect(tools["agentDemo_deployment_create"]?.identity).toEqual({
         id: "agent-demo.deployment_create",
         name: "deployment_create",
         plugin: "agent-demo",
@@ -987,8 +998,8 @@ describe("agent plugin hooks", () => {
           workspace: {} as any,
         },
       );
-      expect(tools.loadSkill).toBeDefined();
-      expect(tools.agentDemo_loadSkill).toBeDefined();
+      expect(tools["loadSkill"]).toBeDefined();
+      expect(tools["agentDemo_loadSkill"]).toBeDefined();
     } finally {
       setPlugins(previous);
     }
@@ -1169,7 +1180,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async (_event: Event) => {});
-      const routes = getPluginRoutes({ events: { publish } });
+      const routes = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1225,7 +1239,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ events: { publish } });
+      const [route] = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1291,7 +1308,10 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       const publish = vi.fn(async () => {});
-      const [route] = getPluginRoutes({ events: { publish } });
+      const [route] = getPluginRoutes({
+        dispatchForIdentity,
+        events: { publish },
+      });
 
       await expect(
         route!.handler(new Request("http://localhost/demo")),
@@ -1326,6 +1346,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1360,6 +1381,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1399,6 +1421,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          dispatchForIdentity,
           events: { publish: async () => {} },
         }),
       ).toThrow(
@@ -1439,7 +1462,9 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const routes = getPluginApiRoutes();
+      const routes = getPluginApiRoutes().filter(
+        (route) => route.pluginName !== "memory",
+      );
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1557,7 +1582,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(getPluginOperationalReports(123)).resolves.toEqual([
+      await expect(testPluginReports()).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
@@ -1655,7 +1680,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(getPluginOperationalReports(123)).resolves.toEqual([
+      await expect(testPluginReports()).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
@@ -1777,7 +1802,7 @@ describe("agent plugin hooks", () => {
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
               "command" in ctx.tool.input &&
-              ctx.tool.input.command === "replace me"
+              ctx.tool.input["command"] === "replace me"
             ) {
               ctx.decision.replaceInput({
                 ...ctx.tool.input,
@@ -1788,7 +1813,7 @@ describe("agent plugin hooks", () => {
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
               "command" in ctx.tool.input &&
-              ctx.tool.input.command === "denied"
+              ctx.tool.input["command"] === "denied"
             ) {
               ctx.decision.deny("blocked by plugin");
             }
@@ -1796,7 +1821,7 @@ describe("agent plugin hooks", () => {
               typeof ctx.tool.input === "object" &&
               ctx.tool.input &&
               "command" in ctx.tool.input &&
-              ctx.tool.input.command === "redirected"
+              ctx.tool.input["command"] === "redirected"
             ) {
               ctx.decision.redirect("use otherTool instead");
             }

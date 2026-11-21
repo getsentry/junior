@@ -83,7 +83,7 @@ function fakeSentry(
   };
   mswServer.use(
     http.get("https://sentry.io/api/0/organizations/:org/", ({ params }) =>
-      HttpResponse.json({ slug: params.org, links: { regionUrl: REGION } }),
+      HttpResponse.json({ slug: params["org"], links: { regionUrl: REGION } }),
     ),
     http.get(
       `${REGION}/api/0/organizations/sentry/events-timeseries/`,
@@ -176,13 +176,13 @@ describe("Sentry chart link cards", () => {
       `Bearer alice-token us.sentry.io/api/0/organizations/sentry/events-timeseries/?${new URLSearchParams(
         [
           ["dataset", "spans"],
-          ["interval", "5m"],
-          ["yAxis", "p95(span.duration)"],
           ["groupBy", "span.op"],
+          ["interval", "5m"],
           ["project", "11"],
           ["sort", "-p95(span.duration)"],
-          ["topEvents", "5"],
           ["statsPeriod", "24h"],
+          ["topEvents", "5"],
+          ["yAxis", "p95(span.duration)"],
         ],
       )}`,
     ]);
@@ -260,6 +260,52 @@ describe("Sentry chart link cards", () => {
       "2026-11-13T00:00:00.000Z",
       "2026-11-13T12:00:00.000Z",
     ]);
+  });
+
+  it("names the aggregate of each group when a chart has two", async () => {
+    const series = (yAxis: string, group: string, order: number) => ({
+      yAxis,
+      groupBy: [{ key: "span.op", value: group }],
+      meta: { interval: 300_000, order },
+      values: [1, 2].map((value, index) => ({
+        timestamp: 1782896400000 + index * 300_000,
+        value,
+      })),
+    });
+    fakeSentry(
+      { alice: ["11"] },
+      {
+        timeSeries: [
+          series("p95(span.duration)", "http.client", 0),
+          series("count(span.duration)", "http.client", 0),
+          series("p95(span.duration)", "db", 1),
+          series("count(span.duration)", "db", 1),
+        ],
+      },
+    );
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const url = new URL(EXPLORE_URL);
+    url.searchParams.set(
+      "aggregateField",
+      field({
+        chartType: 1,
+        yAxes: ["p95(span.duration)", "count(span.duration)"],
+      }),
+    );
+    url.searchParams.append("aggregateField", field({ groupBy: "span.op" }));
+
+    const { objects } = await readCards(alice, [url.href]);
+
+    const facts = objects[0]?.object.facts;
+    expect(facts?.type === "chart" && facts.series.map((s) => s.label)).toEqual(
+      [
+        "http.client · p95(span.duration)",
+        "http.client · count(span.duration)",
+        "db · p95(span.duration)",
+        "db · count(span.duration)",
+      ],
+    );
   });
 
   it("fits long series in the card facts limit", async () => {

@@ -1,6 +1,10 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { mentionsTag } from "@sentry/junior-plugin-api";
 import { pathToFileURL } from "node:url";
+import pLimit from "p-limit";
+import * as z from "zod";
+import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { ParsedSkillFile } from "@/chat/skills";
 import { parseSkillFile } from "@/chat/skills";
 import {
@@ -73,11 +77,11 @@ const ANSI = {
 };
 
 function supportsColor(stream: NodeJS.WriteStream | undefined): boolean {
-  if (process.env.NO_COLOR !== undefined) {
+  if (process.env["NO_COLOR"] !== undefined) {
     return false;
   }
 
-  if (process.env.FORCE_COLOR && process.env.FORCE_COLOR !== "0") {
+  if (process.env["FORCE_COLOR"] && process.env["FORCE_COLOR"] !== "0") {
     return true;
   }
 
@@ -217,20 +221,25 @@ async function collectPackageWarnings(
     return warnings;
   }
 
-  for (const declaredPackage of packages) {
-    if (!declaredPackage.name.startsWith("@sentry/junior-")) {
-      continue;
-    }
-    if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
-      continue;
-    }
-    const pluginVersion = comparableVersion(
-      (await readInstalledPackageVersion(rootDir, declaredPackage.name)) ??
-        declaredPackage.spec,
-    );
-    if (pluginVersion && pluginVersion !== coreVersion) {
+  const pluginVersions = await mapBounded(
+    packages.filter((declaredPackage) =>
+      declaredPackage.name.startsWith("@sentry/junior-"),
+    ),
+    async (declaredPackage) => {
+      if (!(await packageHasPluginContent(rootDir, declaredPackage.name))) {
+        return undefined;
+      }
+      const version = comparableVersion(
+        (await readInstalledPackageVersion(rootDir, declaredPackage.name)) ??
+          declaredPackage.spec,
+      );
+      return { name: declaredPackage.name, version };
+    },
+  );
+  for (const plugin of pluginVersions) {
+    if (plugin?.version && plugin.version !== coreVersion) {
       warnings.push(
-        `${path.join(rootDir, "package.json")}: ${declaredPackage.name} version ${pluginVersion} does not match @sentry/junior version ${coreVersion}`,
+        `${path.join(rootDir, "package.json")}: ${plugin.name} version ${plugin.version} does not match @sentry/junior version ${coreVersion}`,
       );
     }
   }
@@ -274,9 +283,10 @@ async function validateSkillDirectory(
     warnings.push(`${skillFile}: no skill instructions after frontmatter`);
   }
   if (
-    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b|<active-mcp-(?:tools|catalogs)>/.test(
+    /\b(?:searchTools|searchMcpTools|useTool|callMcpTool|available_tools)\b/.test(
       parsed.skill.body,
-    )
+    ) ||
+    mentionsTag(parsed.skill.body, ["active-mcp-tools", "active-mcp-catalogs"])
   ) {
     errors.push(
       `${skillFile}: skill instructions must not hardcode harness tool-discovery or MCP dispatcher mechanics`,
@@ -357,29 +367,39 @@ function validatePluginManifest(
   return { manifestPath, manifest, errors: [] };
 }
 
+const exportConditionTargetSchema = z.string().optional().catch(undefined);
+
+// A root export is a path, or conditions whose first path wins.
+const packageExportTargetSchema = z.union([
+  z.string(),
+  z
+    .object({
+      default: exportConditionTargetSchema,
+      import: exportConditionTargetSchema,
+      node: exportConditionTargetSchema,
+    })
+    .transform(
+      (conditions) =>
+        conditions.default ?? conditions.import ?? conditions.node,
+    ),
+]);
+
 function packageExportsEntryPath(exportsValue: unknown): string | undefined {
   if (typeof exportsValue === "string") {
     return exportsValue;
   }
-  if (!isRecord(exportsValue)) {
+  if (
+    typeof exportsValue !== "object" ||
+    exportsValue === null ||
+    Array.isArray(exportsValue)
+  ) {
     return undefined;
   }
 
-  const rootExport = exportsValue["."] ?? exportsValue;
-  if (typeof rootExport === "string") {
-    return rootExport;
-  }
-  if (!isRecord(rootExport)) {
-    return undefined;
-  }
-
-  for (const condition of ["default", "import", "node"]) {
-    const target = rootExport[condition];
-    if (typeof target === "string") {
-      return target;
-    }
-  }
-  return undefined;
+  const rootExport =
+    ("." in exportsValue ? exportsValue["."] : undefined) ?? exportsValue;
+  const target = packageExportTargetSchema.safeParse(rootExport);
+  return target.success ? target.data : undefined;
 }
 
 async function resolvePackageEntryPath(
@@ -404,6 +424,7 @@ async function resolvePackageEntryPath(
       ? candidate
       : `./${candidate}`;
     const entryPath = path.resolve(packageDir, normalizedCandidate);
+    // oxlint-disable-next-line no-await-in-loop -- The first entry file that exists wins.
     if (await pathIsFile(entryPath)) {
       return entryPath;
     }
@@ -421,20 +442,36 @@ function isPluginFactoryExport(
   );
 }
 
-function isPluginRegistrationLike(
-  value: unknown,
-): value is { manifest: PluginManifest } {
-  return isRecord(value) && isRecord(value.manifest);
-}
+// Factory output is checked only for a manifest object here.
+// parseInlinePluginManifest validates the manifest itself.
+const pluginRegistrationLikeSchema = z.object({
+  manifest: z.custom<PluginManifest>(
+    (value) =>
+      typeof value === "object" && value !== null && !Array.isArray(value),
+  ),
+});
 
 async function collectPackageJsPluginSources(
   packageDir: string,
   packageName: string,
 ): Promise<PluginSource[]> {
+  // Core ships skills but is not a plugin, and its entry reads app env at import.
+  if (packageName === "@sentry/junior") {
+    return [];
+  }
   const entryPath = await resolvePackageEntryPath(packageDir);
   if (!entryPath) {
     return [];
   }
+
+  const errorSource = (manifestPath: string, error: unknown): PluginSource => ({
+    pluginDir: packageDir,
+    packageName,
+    manifestPath,
+    errors: [
+      `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
+    ],
+  });
 
   let moduleExports: Record<string, unknown>;
   try {
@@ -442,8 +479,8 @@ async function collectPackageJsPluginSources(
       string,
       unknown
     >;
-  } catch {
-    return [];
+  } catch (error) {
+    return [errorSource(entryPath, error)];
   }
 
   const pluginSources: PluginSource[] = [];
@@ -454,33 +491,33 @@ async function collectPackageJsPluginSources(
       continue;
     }
 
+    const manifestPath = `${entryPath}#${exportName}`;
     let registration: unknown;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- Call plugin factories in export order.
       registration = await exportedValue();
-    } catch {
+    } catch (error) {
+      pluginSources.push(errorSource(manifestPath, error));
       continue;
     }
-    if (!isPluginRegistrationLike(registration)) {
+    const pluginRegistration =
+      pluginRegistrationLikeSchema.safeParse(registration);
+    if (!pluginRegistration.success) {
       continue;
     }
 
-    const manifestPath = `${entryPath}#${exportName}`;
     try {
       pluginSources.push({
         pluginDir: packageDir,
         packageName,
         manifestPath,
-        manifest: parseInlinePluginManifest(registration.manifest, packageDir),
+        manifest: parseInlinePluginManifest(
+          pluginRegistration.data.manifest,
+          packageDir,
+        ),
       });
     } catch (error) {
-      pluginSources.push({
-        pluginDir: packageDir,
-        packageName,
-        manifestPath,
-        errors: [
-          `${manifestPath}: ${error instanceof Error ? error.message : String(error)}`,
-        ],
-      });
+      pluginSources.push(errorSource(manifestPath, error));
     }
   }
 
@@ -499,16 +536,15 @@ async function collectPluginDirectories(rootDir: string): Promise<string[]> {
     return pluginDirs;
   }
 
-  for (const entry of entries) {
-    if (!entry.isDirectory()) {
-      continue;
-    }
-
-    const pluginDir = path.join(contentRoot(rootDir, "plugins"), entry.name);
-    if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
-      pluginDirs.push(pluginDir);
-    }
-  }
+  await mapBounded(
+    entries.filter((entry) => entry.isDirectory()),
+    async (entry) => {
+      const pluginDir = path.join(contentRoot(rootDir, "plugins"), entry.name);
+      if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
+        pluginDirs.push(pluginDir);
+      }
+    },
+  );
 
   return pluginDirs.sort((left, right) => left.localeCompare(right));
 }
@@ -523,62 +559,70 @@ async function collectPackagedContent(
   const pluginSources: PluginSource[] = [];
   const skillRoots: PackagedSkillRoot[] = [];
 
-  for (const declaredPackage of packages) {
-    const packageDir = packageInstallDir(rootDir, declaredPackage.name);
-    if (!(await pathIsDirectory(packageDir))) {
-      continue;
-    }
-
-    const rootManifestPath = path.join(packageDir, "plugin.yaml");
-    const hasRootManifest = await pathIsFile(rootManifestPath);
-    const packageSkillsRoot = path.join(packageDir, "skills");
-    const hasPackageSkills = await pathIsDirectory(packageSkillsRoot);
-
-    if (hasRootManifest) {
-      pluginSources.push({
-        pluginDir: packageDir,
-        manifestPath: rootManifestPath,
-        packageName: declaredPackage.name,
-      });
-    } else if (hasPackageSkills) {
-      const jsPluginSources = await collectPackageJsPluginSources(
-        packageDir,
-        declaredPackage.name,
-      );
-      if (jsPluginSources.length > 0) {
-        pluginSources.push(...jsPluginSources);
-      } else {
-        skillRoots.push({
-          root: packageSkillsRoot,
-          packageName: declaredPackage.name,
-        });
+  // Each file system call takes a limiter slot. A package's work does not
+  // hold one, so its nested calls cannot wait on each other.
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  await Promise.all(
+    packages.map(async (declaredPackage) => {
+      const packageDir = packageInstallDir(rootDir, declaredPackage.name);
+      if (!(await limit(() => pathIsDirectory(packageDir)))) {
+        return;
       }
-    }
 
-    const nestedPluginsRoot = path.join(packageDir, "plugins");
-    let nestedEntries;
-    try {
-      nestedEntries = await fs.readdir(nestedPluginsRoot, {
-        withFileTypes: true,
-      });
-    } catch {
-      continue;
-    }
+      const rootManifestPath = path.join(packageDir, "plugin.yaml");
+      const packageSkillsRoot = path.join(packageDir, "skills");
+      const [hasRootManifest, hasPackageSkills] = await Promise.all([
+        limit(() => pathIsFile(rootManifestPath)),
+        limit(() => pathIsDirectory(packageSkillsRoot)),
+      ]);
 
-    for (const entry of nestedEntries) {
-      if (!entry.isDirectory()) {
-        continue;
-      }
-      const pluginDir = path.join(nestedPluginsRoot, entry.name);
-      if (await pathIsFile(path.join(pluginDir, "plugin.yaml"))) {
+      if (hasRootManifest) {
         pluginSources.push({
-          pluginDir,
-          manifestPath: path.join(pluginDir, "plugin.yaml"),
+          pluginDir: packageDir,
+          manifestPath: rootManifestPath,
           packageName: declaredPackage.name,
         });
+      } else if (hasPackageSkills) {
+        const jsPluginSources = await limit(() =>
+          collectPackageJsPluginSources(packageDir, declaredPackage.name),
+        );
+        if (jsPluginSources.length > 0) {
+          pluginSources.push(...jsPluginSources);
+        } else {
+          skillRoots.push({
+            root: packageSkillsRoot,
+            packageName: declaredPackage.name,
+          });
+        }
       }
-    }
-  }
+
+      const nestedPluginsRoot = path.join(packageDir, "plugins");
+      let nestedEntries;
+      try {
+        nestedEntries = await limit(() =>
+          fs.readdir(nestedPluginsRoot, { withFileTypes: true }),
+        );
+      } catch {
+        return;
+      }
+
+      await Promise.all(
+        nestedEntries
+          .filter((entry) => entry.isDirectory())
+          .map(async (entry) => {
+            const pluginDir = path.join(nestedPluginsRoot, entry.name);
+            const manifestPath = path.join(pluginDir, "plugin.yaml");
+            if (await limit(() => pathIsFile(manifestPath))) {
+              pluginSources.push({
+                pluginDir,
+                manifestPath,
+                packageName: declaredPackage.name,
+              });
+            }
+          }),
+      );
+    }),
+  );
 
   return {
     pluginSources: pluginSources.sort((left, right) =>
@@ -746,10 +790,6 @@ interface VercelProjectConfig {
   framework?: unknown;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 async function hasJuniorDeploymentMarkers(
   rootDir: string,
   packages: DeclaredPackage[],
@@ -799,7 +839,7 @@ async function validateDeploymentConfig(
     checked = true;
     if (!/\bjuniorNitro\s*\(/.test(nitroConfig)) {
       errors.push(
-        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits Junior's Vercel queue trigger and heartbeat cron into the deployed build output.`,
+        `${nitroConfigPath}: missing juniorNitro(). The Nitro module emits the Vercel queue trigger and heartbeat cron into the deployed build output.`,
       );
     }
   }
@@ -833,24 +873,29 @@ async function validateDeploymentConfig(
   ) {
     checked = true;
     errors.push(
-      `${vercelConfigPath}: framework must be "nitro" for Junior's Vercel deployment wiring.`,
+      `${vercelConfigPath}: framework must be "nitro" for the Vercel deployment wiring.`,
     );
   }
 
-  if (isRecord(vercelConfig.functions)) {
-    const legacyFunctionConfig =
-      vercelConfig.functions[LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION];
-    if (legacyFunctionConfig !== undefined) {
-      checked = true;
-      errors.push(
-        `${vercelConfigPath}: functions.${LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION} targets a source file that Nitro does not deploy. Remove it; juniorNitro() emits the ${JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE} queue trigger through Nitro functionRules.`,
-      );
-    }
+  const { functions } = vercelConfig;
+  if (
+    typeof functions === "object" &&
+    functions !== null &&
+    LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION in functions
+  ) {
+    checked = true;
+    errors.push(
+      `${vercelConfigPath}: functions.${LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION} targets a source file that Nitro does not deploy. Remove it; juniorNitro() emits the ${JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE} queue trigger through Nitro functionRules.`,
+    );
   }
 
   if (hasJuniorMarkers && Array.isArray(vercelConfig.crons)) {
     const hasHeartbeatCron = vercelConfig.crons.some(
-      (cron) => isRecord(cron) && cron.path === JUNIOR_HEARTBEAT_ROUTE,
+      (cron: unknown) =>
+        typeof cron === "object" &&
+        cron !== null &&
+        "path" in cron &&
+        cron.path === JUNIOR_HEARTBEAT_ROUTE,
     );
     if (hasHeartbeatCron) {
       checked = true;
@@ -870,14 +915,21 @@ async function validateAppSourceFiles(
   const errors: string[] = [];
   const warnings: string[] = [];
 
-  for (const fileName of ["server.ts", "server.js", "nitro.config.ts"]) {
-    const sourcePath = path.join(rootDir, fileName);
-    let source: string;
-    try {
-      source = await fs.readFile(sourcePath, "utf8");
-    } catch {
+  const sources = await Promise.all(
+    ["server.ts", "server.js", "nitro.config.ts"].map(async (fileName) => {
+      const sourcePath = path.join(rootDir, fileName);
+      try {
+        return { sourcePath, source: await fs.readFile(sourcePath, "utf8") };
+      } catch {
+        return undefined;
+      }
+    }),
+  );
+  for (const file of sources) {
+    if (!file) {
       continue;
     }
+    const { source, sourcePath } = file;
 
     if (/\bpluginPackages\s*:/.test(source)) {
       errors.push(
@@ -939,24 +991,15 @@ async function validateAppFiles(
 }
 
 async function hasJuniorAppMarkers(appDir: string): Promise<boolean> {
-  for (const fileName of [
-    "SOUL.md",
-    "WORLD.md",
-    "DESCRIPTION.md",
-    "ABOUT.md",
-  ]) {
-    if (await pathIsFile(path.join(appDir, fileName))) {
-      return true;
-    }
-  }
-
-  for (const dirName of ["skills", "plugins"]) {
-    if (await pathIsDirectory(path.join(appDir, dirName))) {
-      return true;
-    }
-  }
-
-  return false;
+  const markers = await Promise.all([
+    ...["SOUL.md", "WORLD.md", "DESCRIPTION.md", "ABOUT.md"].map((fileName) =>
+      pathIsFile(path.join(appDir, fileName)),
+    ),
+    ...["skills", "plugins"].map((dirName) =>
+      pathIsDirectory(path.join(appDir, dirName)),
+    ),
+  ]);
+  return markers.includes(true);
 }
 
 export async function runCheck(
@@ -985,20 +1028,25 @@ export async function runCheck(
   ];
   const appSkillsRoot = contentRoot(resolvedRoot, "skills");
   const appSkillDirs = await collectSkillDirectories(appSkillsRoot);
-  const pluginSkillDirs = new Map<string, string[]>();
-  for (const { pluginDir } of pluginSources) {
-    pluginSkillDirs.set(
-      pluginDir,
-      await collectSkillDirectories(path.join(pluginDir, "skills")),
-    );
-  }
-  const packagedSkillDirsByPackage = new Map<string, string[]>();
-  for (const skillRoot of packagedContent.skillRoots) {
-    packagedSkillDirsByPackage.set(
-      skillRoot.packageName,
-      await collectSkillDirectories(skillRoot.root),
-    );
-  }
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
+  const [pluginSkillDirs, packagedSkillDirsByPackage] = await Promise.all([
+    Promise.all(
+      pluginSources.map(({ pluginDir }) =>
+        limit(async (): Promise<[string, string[]]> => [
+          pluginDir,
+          await collectSkillDirectories(path.join(pluginDir, "skills")),
+        ]),
+      ),
+    ).then((entries) => new Map(entries)),
+    Promise.all(
+      packagedContent.skillRoots.map((skillRoot) =>
+        limit(async (): Promise<[string, string[]]> => [
+          skillRoot.packageName,
+          await collectSkillDirectories(skillRoot.root),
+        ]),
+      ),
+    ).then((entries) => new Map(entries)),
+  ]);
   const packagedStandaloneSkillDirs = [
     ...packagedSkillDirsByPackage.values(),
   ].flat();
@@ -1057,7 +1105,8 @@ export async function runCheck(
             pluginNameMap,
             providerDomainMap,
           )
-        : await validatePluginDirectory(
+        : // oxlint-disable-next-line no-await-in-loop -- The first plugin with a name wins, so check plugins in order.
+          await validatePluginDirectory(
             pluginDir,
             pluginNameMap,
             providerDomainMap,
@@ -1083,6 +1132,7 @@ export async function runCheck(
   warnings.push(...appSourceResult.warnings);
   errors.push(...appSourceResult.errors);
 
+  /* oxlint-disable no-await-in-loop -- The first skill with a name wins, so check skills in order. */
   for (const skillDir of appAndLocalPluginSkillDirs) {
     const result = await validateSkillDirectory(skillDir, duplicateSkillNames);
     skillResultsByDir.set(skillDir, result);
@@ -1098,6 +1148,7 @@ export async function runCheck(
     warnings.push(...result.warnings);
     errors.push(...result.errors);
   }
+  /* oxlint-enable no-await-in-loop */
 
   for (const pluginResult of pluginResults) {
     pluginResult.skillResults = (
@@ -1192,6 +1243,9 @@ export async function runCheck(
   }
 
   io.info(
-    `${formatHeading("ok", `Validation passed (${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`)}`,
+    formatHeading(
+      "ok",
+      `Validation passed (${pluginSources.length} plugin manifest${pluginSources.length === 1 ? "" : "s"}, ${skillDirs.length} skill director${skillDirs.length === 1 ? "y" : "ies"} checked).`,
+    ),
   );
 }

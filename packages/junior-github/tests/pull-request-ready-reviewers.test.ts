@@ -1,7 +1,7 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginRoute,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -53,7 +53,7 @@ const pullRequest = {
   id: 1001,
   merged: false,
   number: 946,
-  title: "Add the review desk ask",
+  title: "Add the Inbox ask",
   updated_at: "2026-07-01T12:00:00Z",
   user: { login: "sentry-junior[bot]" },
 };
@@ -77,7 +77,7 @@ function memoryState(): PluginState {
       return true;
     },
     async withLock(_key, _ttlMs, callback) {
-      return await callback();
+      return { acquired: true, value: await callback() };
     },
   };
 }
@@ -87,9 +87,14 @@ function route(
   options: { state?: PluginState; warnings?: string[] } = {},
 ): PluginRoute {
   // The next-action item has its own tests.
-  const reviewItems: PluginConversationReviewItems = {
+  const inboxItems: PluginConversationInboxItems = {
     forConversation() {
-      return { async upsert() {}, async close() {} };
+      return {
+        async upsert() {},
+        async close() {
+          return false;
+        },
+      };
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({
@@ -117,7 +122,7 @@ function route(
       warn: (message: string) => options.warnings?.push(message),
     },
     plugin: { name: "github" },
-    reviewItems,
+    inboxItems,
     state: options.state ?? memoryState(),
     // The requester linked the GitHub account `Requester`.
     users: {
@@ -132,7 +137,7 @@ function route(
           : undefined,
     },
   } as never);
-  return webhook!;
+  return webhook;
 }
 
 async function seedJuniorPullRequest(fixture: GitHubFixture): Promise<void> {
@@ -183,7 +188,7 @@ describe("review request when a draft is ready", () => {
   ): Promise<string[]> {
     const operations: string[] = [];
     const tool = bindPluginTool(
-      githubPlugin().hooks!.tools!().createPullRequest,
+      githubPlugin().hooks!.tools!()["createPullRequest"],
       {
         actor: { platform: "slack", teamId: "T1", userId: "U1" },
         conversationId: CONVERSATION_ID,
@@ -204,25 +209,26 @@ describe("review request when a draft is ready", () => {
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
         state,
+        resolveWorkOwner: async () => ({
+          kind: "person",
+          identity: { id: "identity-requester", provider: "slack" },
+          user: { identities: [{ handle: "Requester", provider: "github" }] },
+        }),
         users: {
           replaceSlackMentions: async (value: unknown) => value,
-          resolveActor: async () => ({
-            identity: { id: "identity-requester", provider: "slack" },
-            user: { identities: [{ handle: "Requester", provider: "github" }] },
-          }),
         },
       } as never,
     );
-    await tool.execute!(
+    await tool.execute(
       {
         base: "main",
         draft: true,
-        head: "feat/review-desk-ask",
+        head: "feat/inbox-ask",
         repo: "getsentry/junior",
         title: pullRequest.title,
         ...(reviewers ? { reviewers } : undefined),
-      } as never,
-      { toolCallId: `call-${reviewers?.join("-") ?? "requester"}` } as never,
+      },
+      { toolCallId: `call-${reviewers?.join("-") ?? "requester"}` },
     );
     return operations;
   }
@@ -234,7 +240,7 @@ describe("review request when a draft is ready", () => {
         pull_request: {
           ...pullRequest,
           draft: false,
-          head: { ref: "feat/review-desk-ask" },
+          head: { ref: "feat/inbox-ask" },
           state: "open",
         },
       },
@@ -256,6 +262,31 @@ describe("review request when a draft is ready", () => {
       ),
       http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
         HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
+      ),
+      // The next-action check reads an open pull request with no reviews.
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({
+          data: {
+            repository: {
+              pullRequest: {
+                autoMergeRequest: null,
+                commits: { nodes: [] },
+                headRefOid: "head-1",
+                isDraft: false,
+                mergeStateStatus: "BLOCKED",
+                reviewRequests: { nodes: [] },
+                reviews: {
+                  nodes: [],
+                  pageInfo: { hasPreviousPage: false, startCursor: null },
+                },
+                state: "OPEN",
+                timelineItems: { nodes: [] },
+                title: "Add the Inbox notice",
+                url: PULL_URL,
+              },
+            },
+          },
+        }),
       ),
       http.post(
         "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",

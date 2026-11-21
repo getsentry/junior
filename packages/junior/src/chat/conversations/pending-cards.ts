@@ -1,11 +1,11 @@
 import { getConversationEventStore, getDb } from "@/chat/db";
-import { isRecord } from "@/chat/coerce";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import {
   isAgentInvocationResult,
   listChildMessages,
 } from "@/chat/agent-invocations/child-message";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import { mapBounded } from "@/chat/fan-out";
 import {
   readMessageCardRefs,
   removedCardSchema,
@@ -32,6 +32,7 @@ async function selectTurnCards(
 ): Promise<string[]> {
   // Tools are committed before Delivery. A visible assistant Message consumes
   // the cards; a new Turn must not inherit cards from an earlier silent Turn.
+  /* oxlint-disable no-await-in-loop -- Each page starts before the oldest event of the page before. */
   while (true) {
     const page = await getConversationEventStore().query(conversationId, {
       beforeSeq,
@@ -44,20 +45,21 @@ async function selectTurnCards(
       if (data.type === "message" && data.role === "assistant") return [];
       if (
         data.type !== "tool_result" ||
-        data.isError ||
-        typeof data.toolName !== "string" ||
-        !isRecord(data.details)
+        data["isError"] ||
+        typeof data["toolName"] !== "string"
       )
         continue;
-      if (data.details.timed_out === true) continue;
-      if (Array.isArray(data.details.removedCards)) {
+      const details = data["details"];
+      if (typeof details !== "object" || details === null) continue;
+      if ("timed_out" in details && details.timed_out === true) continue;
+      if ("removedCards" in details && Array.isArray(details.removedCards)) {
         for (const ref of removedCardSchema
           .array()
-          .parse(data.details.removedCards)) {
+          .parse(details.removedCards)) {
           selection.deleted.add(JSON.stringify([ref.plugin, ref.key]));
         }
       }
-      for (const card of readMessageCardRefs(data.details)) {
+      for (const card of readMessageCardRefs(details)) {
         const key = JSON.stringify([card.plugin, card.key]);
         if (!selection.deleted.has(key) && !selection.cards.has(key)) {
           selection.cards.set(key, card);
@@ -67,6 +69,7 @@ async function selectTurnCards(
     if (!page.hasOlder || page.events.length === 0) return [];
     beforeSeq = page.events[0]!.seq;
   }
+  /* oxlint-enable no-await-in-loop */
 }
 
 /**
@@ -86,17 +89,25 @@ async function selectChildResultCards(
     inputMessageIds,
     execution?.messageSenders ?? {},
   );
-  for (const message of messages.reverse()) {
-    const { conversationId: childConversationId, turnId } = message.sender;
-    // The child records its terminal Turn event before it reports the result.
-    const terminal = await events.loadByIdempotencyKey(
-      childConversationId,
-      `turn:${turnId}:terminal`,
-    );
+  messages.reverse();
+  // The child records its terminal Turn event before it reports the result.
+  const terminals = await mapBounded(messages, ({ sender }) =>
+    events.loadByIdempotencyKey(
+      sender.conversationId,
+      `turn:${sender.turnId}:terminal`,
+    ),
+  );
+  for (const [index, message] of messages.entries()) {
+    const terminal = terminals[index];
     // A `reply` ends the child's Turn, but it can reach the parent before the
     // child records that end. Then its cards are the newest ones.
     if (!terminal && isAgentInvocationResult(message)) continue;
-    await selectTurnCards(childConversationId, selection, terminal?.seq);
+    // oxlint-disable-next-line no-await-in-loop -- Newer child results select cards first.
+    await selectTurnCards(
+      message.sender.conversationId,
+      selection,
+      terminal?.seq,
+    );
   }
 }
 

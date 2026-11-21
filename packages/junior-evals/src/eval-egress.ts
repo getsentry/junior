@@ -97,9 +97,9 @@ async function writeResponse(
 ): Promise<void> {
   target.statusCode = response.status;
   target.statusMessage = response.statusText;
-  response.headers.forEach((value, key) => {
+  for (const [key, value] of response.headers) {
     target.setHeader(key, value);
-  });
+  }
 
   if (!response.body) {
     target.end();
@@ -109,6 +109,7 @@ async function writeResponse(
   const reader = response.body.getReader();
   try {
     for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- Each chunk is read after the chunk before.
       const next = await reader.read();
       if (next.done) break;
       target.write(next.value);
@@ -185,15 +186,18 @@ function createEvalEgressServer(options: EvalEgressOptions): {
         const request = new Request(
           new URL(incoming.url ?? "/", `http://${incoming.headers.host}`).href,
           {
-            method: incoming.method,
+            method: incoming.method ?? "GET",
             headers: requestHeadersFromNode(incoming.headers),
             ...(incoming.method === "GET" || incoming.method === "HEAD"
-              ? {}
+              ? undefined
               : {
+                  // Node fetch streams a Readable body with `duplex: "half"`;
+                  // the DOM BodyInit type does not include it.
+                  // oxlint-disable-next-line anti-slop/no-chained-type-assertions
                   body: incoming as unknown as BodyInit,
                   duplex: "half",
                 }),
-          } as RequestInit,
+          },
         );
         // Delay the product handler import until Postgres setup replaces DATABASE_URL.
         const handleProxyRequest = await loadProxyRequest();
@@ -202,8 +206,10 @@ function createEvalEgressServer(options: EvalEgressOptions): {
           await handleProxyRequest(request, {
             ...(options.interceptHttp
               ? { interceptHttp: options.interceptHttp }
-              : {}),
-            ...(options.verifyOidc ? { verifyOidc: options.verifyOidc } : {}),
+              : undefined),
+            ...(options.verifyOidc
+              ? { verifyOidc: options.verifyOidc }
+              : undefined),
           }),
         );
       } catch (error) {
@@ -317,6 +323,7 @@ async function waitForPublicProxy(baseUrl: string): Promise<void> {
   await new Promise((resolve) => setTimeout(resolve, 5_000));
   const deadline = Date.now() + PUBLIC_HEALTH_TIMEOUT_MS;
   let lastError: unknown;
+  /* oxlint-disable no-await-in-loop -- Poll until the proxy answers or the deadline passes. */
   while (Date.now() < deadline) {
     try {
       const response = await fetch(
@@ -331,6 +338,7 @@ async function waitForPublicProxy(baseUrl: string): Promise<void> {
     }
     await new Promise((resolve) => setTimeout(resolve, 500));
   }
+  /* oxlint-enable no-await-in-loop */
   throw new Error(
     `Eval egress proxy was not publicly reachable at ${baseUrl}: ${
       lastError instanceof Error ? lastError.message : String(lastError)
@@ -367,6 +375,7 @@ export async function startEvalEgress(
     const configPath = path.join(configDir, "config.yml");
     await writeFile(configPath, "{}\n", "utf8");
     const errors: Error[] = [];
+    /* oxlint-disable no-await-in-loop -- Try the next tunnel only after the attempt before fails. */
     for (let attempt = 1; attempt <= QUICK_TUNNEL_ATTEMPTS; attempt += 1) {
       const startedAt = Date.now();
       tunnel = spawn(
@@ -418,6 +427,7 @@ export async function startEvalEgress(
         }
       }
     }
+    /* oxlint-enable no-await-in-loop */
     throw new AggregateError(
       errors,
       `Eval egress failed after ${QUICK_TUNNEL_ATTEMPTS} Quick Tunnel attempts`,
@@ -426,6 +436,7 @@ export async function startEvalEgress(
     try {
       await close();
     } catch (cleanupError) {
+      // oxlint-disable-next-line eslint/preserve-caught-error -- `errors` keeps both failures; `cause` keeps the startup failure first.
       throw new AggregateError(
         [error, cleanupError],
         "Eval egress startup and cleanup failed",

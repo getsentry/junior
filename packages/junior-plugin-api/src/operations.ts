@@ -1,6 +1,12 @@
 import * as z from "zod";
 import type { Identity, PluginContext, PluginEmbedder, User } from "./context";
-import type { Dispatch, DispatchOptions, DispatchResult } from "./dispatch";
+import type {
+  Dispatch,
+  DispatchOptions,
+  DispatchResult,
+  IdentityDispatchOptions,
+  IdentityDispatchResult,
+} from "./dispatch";
 import { nonBlankStringSchema } from "./schemas";
 import type { PluginReadState, PluginState } from "./state";
 import type { EventPublisher } from "./events";
@@ -10,12 +16,19 @@ import type {
   PluginConversationEventStats,
 } from "./conversation-events";
 import type { CodeChangePublisher } from "./code";
-import type { PluginConversationReviewItems } from "./review-items";
+import type { PluginConversationInboxItems } from "./inbox-items";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
     dispatch(options: DispatchOptions): Promise<DispatchResult>;
     get(id: string): Promise<Dispatch | undefined>;
+    /**
+     * Start a public Conversation for one person. Each call counts toward the
+     * dispatch limit of this heartbeat. See the route context version.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
   };
   /** Conversation annotations, as from a plugin route. */
   annotations: PluginConversationAnnotations;
@@ -26,8 +39,8 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   nowMs: number;
-  /** Review desk items, as from a plugin route. */
-  reviewItems: PluginConversationReviewItems;
+  /** Inbox items, as from a plugin route. */
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
 }
 
@@ -171,13 +184,27 @@ export type PluginRouteApp = {
 };
 
 export interface RouteRegistrationHookContext extends PluginContext {
+  agent: {
+    /**
+     * Start a public Conversation for one person, as if they sent `input` from
+     * the dashboard. It has no Slack Destination. Core starts work only when
+     * the person maps to exactly one current Slack member on the allowed
+     * domains: through an Identity of this plugin's provider that the OAuth
+     * account-linking flow linked, or through a verified email that is the
+     * User's primary email and the member's Slack email. Otherwise it returns
+     * `not_linked` and calls no model.
+     */
+    dispatchForIdentity(
+      options: IdentityDispatchOptions,
+    ): Promise<IdentityDispatchResult>;
+  };
   annotations: PluginConversationAnnotations;
   /** Provider-neutral write boundary for Junior's native code index. */
   codeChanges: CodeChangePublisher;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
-  /** Review desk items that the plugin adds and closes from its events. */
-  reviewItems: PluginConversationReviewItems;
+  /** Inbox items that the plugin adds and closes from its events. */
+  inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;
   users: {

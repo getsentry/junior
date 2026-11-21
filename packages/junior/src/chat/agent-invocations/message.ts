@@ -13,7 +13,7 @@ import { findChildAgentConversationId } from "./bindings";
 import { appendParentMessage } from "./parent-message";
 import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
-import { enqueueAgentMessageToParent } from "./result";
+import { enqueueAgentMessageToParent } from "./agent-message";
 import { createAgentInvocationForMessage } from "./create";
 import {
   getActiveAgentInvocationForConversation,

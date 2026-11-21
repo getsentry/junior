@@ -20,7 +20,7 @@ async function selectReplyText(
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     const walker = document.createTreeWalker(reply, NodeFilter.SHOW_TEXT);
     let node = walker.nextNode();
     while (node && (node.textContent ?? "").trim().length < 12) {
@@ -50,7 +50,7 @@ async function selectWholeReply(page: Page) {
     const replies = document.querySelectorAll(
       "[data-quick-question-message-id]",
     );
-    const reply = replies[replies.length - 1]!;
+    const reply = replies[replies.length - 1];
     reply.scrollIntoView({ block: "start" });
     // A scroll hides the button. Select after the scroll settles.
     await new Promise((resolve) => setTimeout(resolve, 200));
@@ -86,12 +86,12 @@ async function serveQuickQuestionFork(
       const detail = await response.json();
       const reply = detail.events.findIndex(
         (event: { data: { messageId?: string } }) =>
-          event.data.messageId === forks[0]!.messageId,
+          event.data.messageId === forks[0].messageId,
       );
       detail.events = detail.events.slice(0, reply + 1);
       const last = detail.events.at(-1);
       detail.conversationId = forkId;
-      detail.status = "completed";
+      detail.status = "done";
       detail.events.push(
         ...messages.map((message, index) => ({
           seq: last.seq + index + 1,
@@ -191,27 +191,53 @@ test("asks a quick question about selected reply text", async ({
   await composer.press("Enter");
   // The held question stays in the composer. Thinking waits for it.
   await expect.poll(() => asks).toBe(1);
-  await expect(composer).toHaveValue("Why?");
+  await expect(composer).toHaveText("Why?", { useInnerText: true });
   await expect(panel.getByText("Thinking…")).toBeHidden();
   acceptFirstAsk();
   await expect(panel.getByText("Answer 1.")).toBeVisible();
-  await expect(composer).toHaveAttribute("placeholder", "Ask a follow-up…");
+  await expect(composer).toHaveAttribute(
+    "aria-placeholder",
+    "Ask a follow-up…",
+  );
+  // A reference in a quick question links no work to the parent.
+  const linked: string[] = [];
+  await page.route("**/api/conversations/*/annotations", async (route) => {
+    if (route.request().method() === "POST") {
+      linked.push(route.request().postDataJSON().url);
+    }
+    await route.fallback();
+  });
   await composer.fill("And then?");
+  await composer.pressSequentially(" #3842");
+  const pulls = page
+    .getByRole("listbox", { name: "References" })
+    .getByRole("group", { name: "Pull requests" });
+  await expect(pulls.getByRole("option")).toHaveText([
+    /getsentry\/junior#3842/,
+  ]);
+  await composer.press("Enter");
+  await expect(composer.locator("[data-reference='code_change']")).toHaveText(
+    "junior#3842",
+  );
   await composer.press("Enter");
   await expect(panel.getByText("Answer 2.")).toBeVisible();
   // The retry finds the same fork. Follow-ups go to that fork.
   expect(forks).toEqual([
     {
-      idempotencyKey: forks[0]!.idempotencyKey,
-      messageId: forks[0]!.messageId,
+      idempotencyKey: forks[0].idempotencyKey,
+      messageId: forks[0].messageId,
       quickQuestion: { quote },
     },
     forks[0],
   ]);
   expect(messages.filter((message) => message.role === "user")).toEqual([
     { role: "user", text: "Why?" },
-    { role: "user", text: "And then?" },
+    {
+      role: "user",
+      text: "And then? <https://github.com/getsentry/junior/pull/3842|getsentry/junior#3842>",
+    },
   ]);
+  expect(linked).toEqual([]);
   await screenshot(page, "conversation-quick-question-answered");
 
   let kept = 0;
@@ -258,6 +284,42 @@ test("closes a quick question and shows details again", async ({
   await expect(details).toBeVisible();
 });
 
+test("finds people of this Conversation's workspace in a quick question", async ({
+  page,
+  dashboard,
+}) => {
+  const searches: (string | null)[] = [];
+  await page.route("**/api/people/search?*", async (route) => {
+    searches.push(
+      new URL(route.request().url()).searchParams.get("conversationId"),
+    );
+    await route.fallback();
+  });
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+  );
+  await expect(
+    page.locator("[data-quick-question-message-id]").first(),
+  ).toBeVisible();
+  await selectReplyText(page);
+  await page
+    .getByRole("button", { name: "Quick question", exact: true })
+    .click();
+  const composer = page
+    .getByRole("complementary", { name: "Quick question", exact: true })
+    .getByRole("textbox", { name: "Quick question" });
+  await composer.pressSequentially(" @c");
+  await expect(
+    page
+      .getByRole("listbox", { name: "Mentions" })
+      .getByRole("group", { name: "People" })
+      .getByRole("option")
+      .first(),
+  ).toBeVisible();
+  expect(searches.length).toBeGreaterThan(0);
+  expect(new Set(searches)).toEqual(new Set([conversationId]));
+});
+
 test("quotes selected reply text in the message box", async ({
   page,
   dashboard,
@@ -286,7 +348,7 @@ test("quotes selected reply text in the message box", async ({
   // The quote keeps the Markdown of the reply: marks, lists, tables, code.
   await selectWholeReply(page);
   await respond.click();
-  await expect(composer).toHaveValue(
+  await expect(composer).toHaveText(
     [
       "Thanks.",
       "",
@@ -324,6 +386,7 @@ test("quotes selected reply text in the message box", async ({
       "",
       "",
     ].join("\n"),
+    { useInnerText: true },
   );
   await screenshot(page, "conversation-selection-respond-quoted", {
     view: "desktop",
@@ -362,6 +425,6 @@ test.describe("on a touch screen", () => {
     await respond.tap();
     await expect(
       page.getByRole("textbox", { name: "Continue this conversation" }),
-    ).toHaveValue(`> ${quote}\n\n`);
+    ).toHaveText(`> ${quote}\n\n`, { useInnerText: true });
   });
 });

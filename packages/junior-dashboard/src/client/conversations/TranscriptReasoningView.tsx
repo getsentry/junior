@@ -6,7 +6,6 @@ import {
   TraceCollapsibleTrigger,
 } from "../components/ui/trace";
 import { DisplayText } from "../display-text/DisplayText";
-import { formatMessageTimestamp } from "../format";
 import type { TranscriptViewReasoningPart } from "../types";
 import {
   TranscriptHeadingMeta,
@@ -14,13 +13,14 @@ import {
 } from "./TranscriptHeadingRow";
 import { useTranscriptRowOpen } from "./TranscriptRows";
 import { useTranscriptSearch } from "./transcriptSearch";
+import { formatMessageTimestamp } from "../time";
 
 /** Render reasoning collapsed with a short preview until expanded or searched. */
 export function TranscriptReasoningView(props: {
   /** Keeps the entry open while it unmounts outside the viewport. */
   openKey?: string;
   part: TranscriptViewReasoningPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const { active: searchActive } = useTranscriptSearch();
   const [open, setOpen] = useTranscriptRowOpen(props.openKey);

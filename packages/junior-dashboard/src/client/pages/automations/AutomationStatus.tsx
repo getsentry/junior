@@ -1,4 +1,7 @@
-import type { AutomationSummary } from "@sentry/junior/api/schema";
+import type {
+  AutomationListItem,
+  AutomationSummary,
+} from "@sentry/junior/api/schema";
 import { Link } from "react-router";
 
 import {
@@ -10,10 +13,12 @@ import {
 import { FormNotice } from "../../components/FormNotice";
 import { StatusChip } from "../../components/StatusChip";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import { automationPath, formatRelativeTime } from "../../format";
+import { automationPath } from "../../format";
 import { buttonVariants } from "../../components/ui/button";
 import { cn } from "../../styles";
 import { formatAutomationRunTime } from "./automationFormat";
+import { formatRelativeTime, getDashboardTimeZone } from "../../time";
+import { agentNamePossessive } from "../../agentName";
 
 /**
  * Name the lifecycle state. It is a live region, so Pause and Resume results
@@ -22,7 +27,7 @@ import { formatAutomationRunTime } from "./automationFormat";
 export function AutomationStateChip({
   automation,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
 }) {
   const unavailable =
     automation.kind === "event" && automation.trigger.problems.length > 0;
@@ -82,7 +87,7 @@ export function AutomationStatus({
 }
 
 /** Name the one problem the Overview notice explains, if there is one. */
-function automationProblem(automation: AutomationSummary) {
+function automationProblem(automation: AutomationListItem) {
   if (
     automation.status === "blocked" ||
     (automation.status === "paused" && automation.statusReason)
@@ -107,7 +112,7 @@ export type AutomationProblemSummary = {
 
 /** Summarize the problem the Overview notice explains, for one list row. */
 export function automationProblemSummary(
-  automation: AutomationSummary,
+  automation: AutomationListItem,
 ): AutomationProblemSummary | undefined {
   const problem = automationProblem(automation);
   if (!problem) return undefined;
@@ -152,7 +157,7 @@ export function automationProblemSummary(
 
 /** True when the Overview shows a notice, so the notice owns the main action. */
 export function automationNeedsAttention(
-  automation: AutomationSummary,
+  automation: AutomationListItem,
 ): boolean {
   return automationProblem(automation) !== undefined;
 }
@@ -196,7 +201,7 @@ export function AutomationAttention({
           {automation.statusReason ??
             "Check the last run to see what needs fixing."}{" "}
           {!automation.ownedByViewer && automation.credentialMode === "creator"
-            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to Junior's credentials first.`
+            ? `It uses accounts connected by ${automation.createdBy}. Ask them to resume it, or switch it to ${agentNamePossessive()} credentials first.`
             : null}
         </p>
       ) : null}
@@ -255,7 +260,7 @@ export function AutomationAttention({
 function AutomationNextTrigger({
   automation,
 }: {
-  automation: AutomationSummary;
+  automation: AutomationListItem;
 }) {
   let description: string;
   if (automation.status === "completed") description = "No future runs";
@@ -269,7 +274,7 @@ function AutomationNextTrigger({
         ? "Waiting for a matching event"
         : "Waiting for a trigger fix";
   else if (automation.nextRunAt) {
-    const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const browserZone = getDashboardTimeZone();
     const scheduleTime = formatAutomationRunTime(
       automation.nextRunAt,
       automation.timezone,

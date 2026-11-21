@@ -202,7 +202,7 @@ function dashboardAssetPath(packageDir: string, fileName: string): string {
   }
 
   throw new Error(
-    `Junior dashboard asset ${fileName} was not built; run pnpm --filter @sentry/junior-dashboard build before building Nitro`,
+    `Dashboard asset ${fileName} was not built; run pnpm --filter @sentry/junior-dashboard build before building Nitro`,
   );
 }
 

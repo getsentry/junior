@@ -45,6 +45,7 @@ export async function getPluginConversationTitleContext(args: {
   // The deadline can pass after every hook returns.
   timedOut.catch(() => undefined);
   const results = await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- One hook per installed plugin, under one deadline.
     getPlugins().map(async (plugin) => {
       const hook = plugin.hooks?.conversationTitleContext;
       if (!hook) return [];

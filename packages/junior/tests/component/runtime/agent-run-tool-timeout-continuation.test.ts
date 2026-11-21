@@ -52,6 +52,19 @@ vi.mock("@/chat/pi/client", async (importOriginal) => {
   };
 });
 
+// Guardian reviews each bash call. These tests cover sandbox wiring, so the
+// reviewer allows every call.
+vi.mock("@/chat/guardian/reviewer", () => ({
+  createGuardianActionReviewer: () => ({
+    review: async () => ({
+      decision: "allow" as const,
+      reason: "This test exercises sandbox runtime behavior.",
+      riskLevel: "low" as const,
+      userAuthorization: "high" as const,
+    }),
+  }),
+}));
+
 // Keep the provider as the integration boundary. The real Pi loop executes
 // the tools, handles abort, persists the toolResults, and invokes continue().
 vi.mock("@/chat/pi/traced-stream", () => ({
@@ -176,14 +189,14 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/skills")>()),
   discoverSkills: async () => [],
   findSkillByName: () => null,
-  parseSkillInvocation: () => null,
+  parseSkillInvocations: () => [],
 }));
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 
-const ORIGINAL_STATE_ADAPTER = process.env.JUNIOR_STATE_ADAPTER;
+const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
 
 async function waitFor(condition: () => boolean, label: string) {
   for (let attempt = 0; attempt < 2_000; attempt += 1) {
@@ -197,7 +210,7 @@ async function waitFor(condition: () => boolean, label: string) {
 
 describe("tool timeout continuation composition", () => {
   beforeEach(async () => {
-    process.env.JUNIOR_STATE_ADAPTER = "memory";
+    process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     observations.continuationMessages = [];
     observations.providerCalls = 0;
     observations.releaseSecondRead = undefined;
@@ -213,9 +226,9 @@ describe("tool timeout continuation composition", () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
     if (ORIGINAL_STATE_ADAPTER === undefined) {
-      delete process.env.JUNIOR_STATE_ADAPTER;
+      delete process.env["JUNIOR_STATE_ADAPTER"];
     } else {
-      process.env.JUNIOR_STATE_ADAPTER = ORIGINAL_STATE_ADAPTER;
+      process.env["JUNIOR_STATE_ADAPTER"] = ORIGINAL_STATE_ADAPTER;
     }
   });
 
@@ -225,6 +238,8 @@ describe("tool timeout continuation composition", () => {
     const request = {
       conversationId: conversationId,
       turnId: turnId,
+      // Guardian review of a bash call needs the Actor of the Run.
+      actor: { platform: "local" as const, userId: "local-test" },
       instruction: {
         text: "Run the targeted test and create the PR.",
       },

@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_review_items_answered_idx" ON "junior_review_items" USING btree ("added_by_conversation_id","closed_by_user_id","closed_at") WHERE "junior_review_items"."answer" is not null;

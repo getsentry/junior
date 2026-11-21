@@ -4,11 +4,9 @@ import {
   createAgentInvocationForMessage,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
 } from "@/chat/agent-invocations/create";
-import {
-  AgentInvocationLimitError,
-  AgentMessageQueueFullError,
-} from "@/chat/agent-invocations/errors";
+import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
+import { turnRequestText } from "@/chat/agent/prompt";
 import { getAgentInvocationIdForMessage } from "@/chat/agent-invocations/ids";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
@@ -32,7 +30,6 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
-import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   appendInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
@@ -50,7 +47,12 @@ import {
 } from "../fixtures/child-without-agent-invocation";
 import { webTestActor } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
-import { createHarness, type Harness } from "../fixtures/thread-input";
+import {
+  commitRunInput,
+  createHarness,
+  yieldRun,
+  type Harness,
+} from "../fixtures/thread-input";
 
 async function parentMessageTexts() {
   return (
@@ -143,7 +145,7 @@ describe("child agents that no Agent invocation names", () => {
             conversationId: slackParentConversationId,
           })
         )?.messages ?? [];
-      expect(reply?.input.metadata?.sender).toEqual({
+      expect(reply?.input.metadata?.["sender"]).toEqual({
         conversationId: childId,
         turnId: "turn_child",
       });
@@ -285,6 +287,20 @@ describe("child agents that no Agent invocation names", () => {
         ),
       ).resolves.toEqual([
         expect.objectContaining({ childConversationId: childId }),
+      ]);
+
+      // Its Turn takes the task, then pauses at a yield.
+      const statuses: unknown[] = [];
+      harness.onPersonRun(async (run) => {
+        await commitRunInput(run);
+        statuses.push(await listAgents.execute!({}, {}));
+        return await yieldRun(run);
+      });
+      await harness.processUntilRun(childId);
+      statuses.push(await listAgents.execute!({}, {}));
+      expect(statuses).toEqual([
+        { agents: [expect.objectContaining({ status: "running" })] },
+        { agents: [expect.objectContaining({ status: "running" })] },
       ]);
 
       await expect(
@@ -430,6 +446,9 @@ describe("child agents that no Agent invocation names", () => {
       const run = harness.runs.at(-1)!;
       expect(JSON.stringify(run.history)).toContain("Parent context.");
       expect(run.instruction.text).toContain(FORK_INSTRUCTIONS);
+      // Context such as memory recall follows the parent's task, without
+      // the tag and the fork instructions around it.
+      expect(turnRequestText(run)).toBe("Check the deploy.");
     } finally {
       await harness.close();
     }
@@ -571,11 +590,9 @@ describe("child agents that no Agent invocation names", () => {
         status: "completed",
       });
       // The grandchild's Turn takes its input and yields between slices.
-      // This fake runner saves no slice, so only the Turn's end status
-      // holds the child's result back.
       harness.onPersonRun(async (run) => {
-        await run.durability?.onInputCommitted?.();
-        return { reason: "yield", resumeVersion: 1, status: "suspended" };
+        await commitRunInput(run);
+        return await yieldRun(run);
       });
       await harness.processUntilRun(grandchildId);
 
@@ -668,29 +685,12 @@ describe("child agents that no Agent invocation names", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      // The first attempt takes its input and saves a slice. The retry
-      // resumes that Turn.
+      // The first run takes its input and yields. The next run resumes
+      // that Turn.
       harness.onPersonRun(async (run) => {
         if (harness.runs.length === 1) {
-          await run.durability?.onInputCommitted?.();
-          await saveTurnCheckpoint({
-            actor: run.actor!,
-            conversationId: childId,
-            destination: undefined,
-            messages: [
-              {
-                role: "user",
-                content: [{ type: "text", text: "Check the deploy." }],
-                timestamp: 1,
-              },
-            ],
-            mode: "paused",
-            reason: "yield",
-            sliceId: 1,
-            source: run.source!,
-            surface: "api",
-            turnId: run.turnId!,
-          });
+          await commitRunInput(run);
+          return await yieldRun(run);
         }
         throw new Error("stop after reading the run");
       });
@@ -703,6 +703,8 @@ describe("child agents that no Agent invocation names", () => {
         instruction: { provenance: { authority: "instruction" } },
         turnId: first!.turnId,
       });
+      // The resumed Turn recalls from the same task words as the first.
+      expect(turnRequestText(resumed!)).toBe("Check the deploy.");
       await expect(
         readRootConversation({ actor: undefined, conversationId: childId }),
       ).resolves.toMatchObject({
@@ -784,12 +786,13 @@ describe("child agents that no Agent invocation names", () => {
     }
   });
 
-  it("caps the open parent messages of one child", async () => {
+  it("accepts a parent message while five already wait", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
+      // Its mailbox holds the spawn message and four more.
       const childId = await spawnChild(harness, "parent-turn:call-0");
-      for (let index = 1; index < 4; index++) {
+      for (let index = 1; index < 5; index++) {
         await sendParentMessage({
           actor: slackInvocationInput.actor,
           childConversationId: childId,
@@ -805,12 +808,15 @@ describe("child agents that no Agent invocation names", () => {
           actor: slackInvocationInput.actor,
           childConversationId: childId,
           destination: slackInvocationInput.destination,
-          idempotencyKey: "parent-turn:call-over",
+          idempotencyKey: "parent-turn:call-5",
           input: "Check it again.",
           parentConversationId: slackParentConversationId,
-          parentToolCallId: "call-over",
+          parentToolCallId: "call-5",
         }),
-      ).rejects.toBeInstanceOf(AgentMessageQueueFullError);
+      ).resolves.toMatchObject({
+        invocation: expect.objectContaining({ childConversationId: childId }),
+        queued: true,
+      });
     } finally {
       await harness.close();
     }

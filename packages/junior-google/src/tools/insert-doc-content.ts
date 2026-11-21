@@ -17,8 +17,8 @@ import {
   requireRevision,
   revisionAfterUpdate,
   revisionIdSchema,
-} from "./doc-edits";
-import type { GoogleToolContext } from "./shared";
+} from "../docs/edits";
+import type { GoogleToolContext } from "../google-api";
 
 const inputSchema = z
   .object({
@@ -77,12 +77,7 @@ export const insertGoogleDocContentTool = definePluginTool({
             prefix: isEmptyParagraph(body.last) ? "" : "\n",
             suffix: "",
           });
-    const reply = await batchUpdateDoc(
-      ctx,
-      doc.ref,
-      requests,
-      input.revision_id,
-    );
+    const reply = await batchUpdateDoc(ctx, doc, requests, input.revision_id);
     const revisionId = revisionAfterUpdate(reply);
     return {
       target: "insertGoogleDocContent" as const,

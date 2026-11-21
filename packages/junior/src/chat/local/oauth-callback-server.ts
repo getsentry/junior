@@ -1,4 +1,8 @@
-import { createServer } from "node:http";
+import {
+  createServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
 import type { AddressInfo } from "node:net";
 
 import { GET as handlePluginOAuthCallback } from "@/handlers/oauth-callback";
@@ -72,7 +76,10 @@ export async function startLocalOAuthCallbackServer(): Promise<LocalOAuthCallbac
     );
   };
 
-  const server = createServer(async (incoming, outgoing) => {
+  const handleRequest = async (
+    incoming: IncomingMessage,
+    outgoing: ServerResponse,
+  ): Promise<void> => {
     const host = incoming.headers.host ?? "127.0.0.1";
     let requestUrl: URL;
     try {
@@ -169,7 +176,10 @@ export async function startLocalOAuthCallbackServer(): Promise<LocalOAuthCallbac
         error instanceof Error ? error : new Error(String(error)),
       );
     }
-  });
+  };
+  const server = createServer(
+    (incoming, outgoing) => void handleRequest(incoming, outgoing),
+  );
 
   await new Promise<void>((resolve, reject) => {
     server.once("error", reject);

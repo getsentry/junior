@@ -8,7 +8,7 @@
  */
 import type {
   EventPublisher,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -21,7 +21,7 @@ import {
 } from "../webhooks/merge-conflict.js";
 import {
   applyGitHubConflictPolicy,
-  closeGitHubConflictNotices,
+  closeGitHubConflictItems,
   GITHUB_CONFLICT_GONE_REASON,
 } from "./policy.js";
 import {
@@ -77,11 +77,44 @@ const searchResponseSchema = z.object({
 });
 
 type SearchOpenPullRequests = (input: {
-  after?: string;
+  after?: string | undefined;
   repositoryFullName: string;
 }) => Promise<unknown>;
 
 /** Return whether any open pull request still has an unknown answer. */
+/** Apply the conflict policy to one pull request and publish its events. */
+async function checkConflict(
+  args: CheckArgs,
+  input: {
+    conflict: GitHubMergeConflict;
+    draft: boolean;
+    ref: { number: number; repositoryFullName: string };
+    title: string;
+  },
+): Promise<void> {
+  const events = gitHubMergeConflictEvents({
+    ...input.ref,
+    conflict: input.conflict,
+  });
+  // Conflict events match only `repo` and `pullRequest`.
+  if (!(await args.events.hasMatch?.(events))) return;
+  for (const event of await applyGitHubConflictPolicy({
+    conflict: input.conflict,
+    db: args.db,
+    draft: input.draft,
+    events,
+    loadHistory: args.loadHistory,
+    log: args.log,
+    now: args.now,
+    ref: input.ref,
+    inboxItems: args.inboxItems,
+    title: input.title,
+  })) {
+    // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
+    await args.events.publish(event);
+  }
+}
+
 async function checkRepository(
   args: CheckArgs,
   repositoryFullName: string,
@@ -90,6 +123,7 @@ async function checkRepository(
   let after: string | undefined;
   for (let page = 0; page < MAX_PAGES; page += 1) {
     const { search } = searchResponseSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
       await args.search({ after, repositoryFullName }),
     ).data;
     const mergeable: number[] = [];
@@ -104,31 +138,22 @@ async function checkRepository(
         headSha: node.headRefOid,
         url: node.url,
       };
-      const events = gitHubMergeConflictEvents({ ...ref, conflict });
-      // Conflict events match only `repo` and `pullRequest`.
-      if (!(await args.events.hasMatch?.(events))) continue;
-      for (const event of await applyGitHubConflictPolicy({
+      // oxlint-disable-next-line no-await-in-loop -- The sweep checks one pull request at a time, under GitHub rate limits.
+      await checkConflict(args, {
         conflict,
-        db: args.db,
         draft: node.isDraft,
-        events,
-        loadHistory: args.loadHistory,
-        log: args.log,
-        now: args.now,
         ref,
-        reviewItems: args.reviewItems,
         title: node.title,
-      })) {
-        await args.events.publish(event);
-      }
+      });
     }
-    await closeGitHubConflictNotices({
+    // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
+    await closeGitHubConflictItems({
       db: args.db,
       log: args.log,
       numbers: mergeable,
       reason: GITHUB_CONFLICT_GONE_REASON,
       repositoryFullName,
-      reviewItems: args.reviewItems,
+      inboxItems: args.inboxItems,
       status: "done",
     });
     if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
@@ -143,7 +168,7 @@ interface CheckArgs {
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
   log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   search: SearchOpenPullRequests;
   state: PluginState;
 }
@@ -187,6 +212,7 @@ export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
     args.db,
   )) {
     if (checked >= CHECK_LIMIT) break;
+    // oxlint-disable-next-line no-await-in-loop -- Claim and check one repository at a time, up to CHECK_LIMIT.
     const check = await claimGitHubConflictCheck({
       claimedUntilMs: nowMs + CLAIM_MS,
       nowMs,
@@ -195,6 +221,7 @@ export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
     });
     if (!check) continue;
     checked += 1;
+    // oxlint-disable-next-line no-await-in-loop -- Claim and check one repository at a time, up to CHECK_LIMIT.
     await runCheck(args, check);
   }
 }

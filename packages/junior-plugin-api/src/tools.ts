@@ -216,7 +216,7 @@ export interface WorkspacePrepareHookContext extends PluginContext {
 }
 
 export interface SandboxPrepareHookContext extends PluginContext {
-  actor?: Actor;
+  actor?: Actor | undefined;
   sandbox: PluginSandbox;
 }
 
@@ -225,7 +225,7 @@ export interface BeforeToolExecuteHookContext extends PluginContext {
   env: PluginEnv;
   /** Same directory as `PluginSandbox.juniorRoot` from `sandboxPrepare`. */
   juniorRoot: string;
-  actor?: Actor;
+  actor?: Actor | undefined;
   /** All actors who contributed instructions to the run so far; see `multi-actor-runs.md`. */
   actors?: Actor[];
   tool: {
@@ -290,7 +290,7 @@ export interface AfterMcpToolHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   result: {
     /** Provider content before model-facing truncation. */
-    content?: PluginMcpContent[];
+    content?: PluginMcpContent[] | undefined;
     structuredContent?: unknown;
   };
   tool: {
@@ -330,7 +330,11 @@ export const pluginToolReplySchema = z
 /** Shared optional fields for canonical plugin tool outputs. */
 export const pluginToolOutputSchema = z
   .object({
-    /** Object results to save and show with the next reply. Omit for silent updates. */
+    /**
+     * Objects that the tool created or changed, to save as Annotations and
+     * show with the next reply. Omit for silent updates. Read-only tools
+     * (`readOnlyHint: true`) must omit it: core rejects the result.
+     */
     objectAnnotations: z.array(objectAnnotationSchema).optional(),
     /**
      * Reply the tool posted for Junior, such as a pull request comment. Core
@@ -384,11 +388,11 @@ export type ToolApprovalMode = z.output<typeof toolApprovalModeSchema>;
  */
 export interface ToolAnnotations {
   [key: string]: unknown;
-  destructiveHint?: boolean;
-  idempotentHint?: boolean;
-  openWorldHint?: boolean;
-  readOnlyHint?: boolean;
-  title?: string;
+  destructiveHint?: boolean | undefined;
+  idempotentHint?: boolean | undefined;
+  openWorldHint?: boolean | undefined;
+  readOnlyHint?: boolean | undefined;
+  title?: string | undefined;
 }
 
 export const REQUIRED_TOOL_ANNOTATION_KEYS = [
@@ -415,7 +419,7 @@ export function missingToolAnnotationKeys(
  */
 export interface ToolApprovalMetadata<TInput = unknown> {
   /** Optional declared approval mode; the owning tool boundary selects defaults. */
-  approvalMode?: ToolApprovalMode;
+  approvalMode?: ToolApprovalMode | undefined;
   annotations?: ToolAnnotations;
   /**
    * Describe the reviewed semantic action for the review request.
@@ -457,7 +461,7 @@ export interface PluginToolDefinition<
   description: string;
   executionMode?: unknown;
   /** Override the host's default tool exposure. */
-  exposure?: ToolExposure;
+  exposure?: ToolExposure | undefined;
   inputSchema: unknown;
   outputSchema?: unknown;
   /**
@@ -598,11 +602,7 @@ function createZodTool<
     ...(execute
       ? {
           async execute(input, options, ctx) {
-            const result = await execute(
-              input as z.output<TInputSchema>,
-              options,
-              ctx,
-            );
+            const result = await execute(input, options, ctx);
             if (isPluginToolOutputEnvelope(result)) {
               return {
                 content: z.array(pluginToolContentSchema).parse(result.content),
@@ -725,6 +725,12 @@ export interface PluginEventToolContext {
      * resource type guidance when a matching Event arrives.
      */
     guidance?: Partial<Record<string, string>>;
+    /**
+     * Event types, from `events`, that this Watch delivers quietly: core
+     * saves each one as a Conversation note and starts no Turn. Use it for
+     * outcomes that a later Turn must know but that need no action.
+     */
+    quietEvents?: string[];
   }): Promise<WatchResult>;
 }
 
@@ -773,6 +779,29 @@ export interface PluginConversationToolContext {
   }): Promise<PluginConversationMatch[]>;
 }
 
+/**
+ * Whose work a Turn does. A person, with their stored Identity and User when
+ * Junior has them, or the system record that started the work, such as an
+ * Automation run.
+ */
+export type PluginWorkOwner =
+  | {
+      kind: "person";
+      /** The Turn Actor, when the person runs the Turn themselves. */
+      actor?: Exclude<Actor, { platform: "system" }>;
+      identity?: Identity;
+      user?: User;
+    }
+  | {
+      kind: "system";
+      /** What started the work, such as `automation`. */
+      name: string;
+      id: string;
+      runId?: string;
+      /** Host-owned dashboard link to the record. */
+      url?: string;
+    };
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -784,8 +813,12 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   annotations?: PluginAnnotations;
   /** Other Conversations. Set only when the turn has a `conversationId`. */
   conversations?: PluginConversationToolContext;
-  /** Host-owned dashboard link to the Automation that started this run. */
-  automationLink?: { url: string };
+  /**
+   * Resolve whose work this Turn does: the person who runs it, else the
+   * person who started its root Conversation, else the system record that
+   * started the root. Returns nothing when nobody did.
+   */
+  resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
   /** Decision model for narrow choices, such as checks on text a tool writes. */

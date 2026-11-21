@@ -17,7 +17,7 @@ export async function runAdmin(argv: string[]): Promise<number> {
 
   if (subcommand === "list" && email === undefined) {
     const admins = await listAdminUsersFromSql(getDb());
-    if (admins.length === 0) console.log("No Junior admins.");
+    if (admins.length === 0) console.log("No admins.");
     for (const admin of admins) console.log(admin.email);
     return 0;
   }
@@ -33,14 +33,14 @@ export async function runAdmin(argv: string[]): Promise<number> {
       console.error(
         isAdmin
           ? `Could not grant admin: "${email}" is not a valid email.`
-          : `No Junior user has the email "${email}".`,
+          : `No User has the email "${email}".`,
       );
       return 1;
     }
     console.log(
       isAdmin
-        ? `${user.email} is now a Junior admin.`
-        : `${user.email} is no longer a Junior admin.`,
+        ? `${user.email} is now an admin.`
+        : `${user.email} is no longer an admin.`,
     );
     return 0;
   }

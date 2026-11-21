@@ -13,7 +13,10 @@ const TOKEN = "jr_live_token";
 // personal token on a real deployment.
 let live: Server;
 let liveOrigin: string;
-const liveRequests: { headers: IncomingHttpHeaders; url?: string }[] = [];
+const liveRequests: {
+  headers: IncomingHttpHeaders;
+  url?: string | undefined;
+}[] = [];
 
 beforeAll(async () => {
   live = createServer((request, response) => {
@@ -49,6 +52,7 @@ afterEach(() => {
 function dashboard() {
   return withLivePreview(
     createDashboardApp({
+      agentName: "Junior",
       allowedDomains: [],
       authRequired: false,
       mockConversations: true,
@@ -81,6 +85,18 @@ describe("dashboard live preview", () => {
     expect(liveRequests).toEqual([]);
     expect(html).toContain("Demo data.");
     expect(html).not.toContain("delete window.__JUNIOR_DASHBOARD_BOOTSTRAP__");
+    // Every bottom offset of the banner clears a home indicator.
+    const offsets = [...html.matchAll(/bottom:([^;}]+)/g)].map(
+      (match) => match[1],
+    );
+    expect(offsets.length).toBeGreaterThan(1);
+    for (const offset of offsets) {
+      expect(offset).toContain("env(safe-area-inset-bottom)");
+    }
+    // Tall desktop windows raise it over the new UI's two-row spend footer.
+    expect(html).toContain(
+      "@media (min-width:768px) and (min-height:45rem){#junior-preview-banner{bottom:calc(5.75rem + env(safe-area-inset-bottom))}}",
+    );
   });
 
   it("asks for a personal token until the live deployment accepts one", async () => {

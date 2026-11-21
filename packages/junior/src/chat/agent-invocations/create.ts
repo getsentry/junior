@@ -9,10 +9,7 @@ import {
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import { getAgentBinding } from "./bindings";
 import { readChildConversationSender } from "./child-input";
-import {
-  countOpenParentMessages,
-  listOpenChildAgentsWithoutAgentInvocations,
-} from "./list";
+import { listOpenChildAgentsWithoutAgentInvocations } from "./list";
 import {
   agentConfigSchema,
   readAgentConfig,
@@ -44,8 +41,9 @@ import {
 /** Cap concurrent non-terminal children one parent can keep in flight. */
 export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
 /**
- * Cap the non-terminal agent invocations of one child, including the one that
- * runs. Each message to a busy child queues one more.
+ * Cap the non-terminal Agent invocations of one child, including the one that
+ * runs. Each message to a busy child with a row queues one more. A child with
+ * no row has no cap: its parent messages wait in its mailbox like any input.
  */
 const MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD = 4;
 
@@ -64,7 +62,7 @@ type NewAgentInvocation = Pick<
   | "parentToolCallId"
   | "reasoningLevel"
   | "title"
-> & { source?: AgentInvocation["source"] };
+> & { source?: AgentInvocation["source"] | undefined };
 
 /**
  * Insert one pending agent invocation and read it back. An existing row with
@@ -390,14 +388,11 @@ export async function createAgentInvocationForMessage(
         latest ?? (await readAgentConfig(input.childConversationId)) ?? {};
       const open = await listOpenAgentInvocations(input.parentConversationId);
       await assertCanGiveChildWork(input.parentConversationId, open);
-      // A child that no Agent invocation names counts its open parent
-      // messages instead.
-      const openCount =
-        open.filter(
-          (row) => row.childConversationId === input.childConversationId,
-        ).length +
-        (latest ? 0 : await countOpenParentMessages(input.childConversationId));
-      if (openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
+      const openCount = open.filter(
+        (row) => row.childConversationId === input.childConversationId,
+      ).length;
+      // TODO(#3060 step 7): delete with rows
+      if (latest && openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
         throw new AgentMessageQueueFullError(
           MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,
         );
@@ -406,6 +401,16 @@ export async function createAgentInvocationForMessage(
         childConversationId: input.childConversationId,
         parentConversationId: input.parentConversationId,
       });
+      // A busy child reads the message after its current work. A child with
+      // no row is busy while the status reader shows it `running`.
+      const queued =
+        openCount > 0 ||
+        (!latest &&
+          (
+            await listOpenChildAgentsWithoutAgentInvocations(
+              input.parentConversationId,
+            )
+          ).includes(input.childConversationId));
       const invocation = await insertAgentInvocation(
         {
           actor: input.actor,
@@ -425,7 +430,7 @@ export async function createAgentInvocationForMessage(
       if (!invocation) {
         throw new Error(`Agent invocation creation raced for ${invocationId}`);
       }
-      return { invocation, queued: openCount > 0 };
+      return { invocation, queued };
     },
   );
 }

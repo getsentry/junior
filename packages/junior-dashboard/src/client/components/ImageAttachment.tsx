@@ -39,7 +39,7 @@ export function shouldPreviewImageAttachment(
 
 /** One image that a preview can show. */
 export type PreviewImage = {
-  context?: string;
+  context?: string | undefined;
   filename: string;
   src: string;
 };
@@ -56,7 +56,7 @@ export function ImageAttachment(
   props: {
     context?: string;
     filename: string;
-    gallery?: readonly PreviewImage[];
+    gallery?: readonly PreviewImage[] | undefined;
     imageClassName?: string;
     src: string;
     triggerClassName?: string;
@@ -115,7 +115,7 @@ const PREVIEW_NAV_BUTTON_CLASS =
  * scroll lock with sheets and keeps Escape and backdrop dismissal on the
  * front modal.
  */
-function ImagePreview(props: {
+export function ImagePreview(props: {
   images: readonly PreviewImage[];
   initialIndex: number;
   onClose(): void;

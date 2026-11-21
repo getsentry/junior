@@ -1,22 +1,24 @@
+import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { verifySchedulerRequest } from "@/handlers/scheduler-auth";
 import type { WaitUntilFn } from "@/handlers/types";
 
 export interface HeartbeatHandlerOptions {
   conversationWorkQueue?: ConversationWorkQueue;
-  events?: AppEventPublisher;
-  showReviewItem?: ShowReviewItem;
+  dispatchForIdentity: IdentityDispatcher;
+  events: AppEventPublisher;
+  showInboxItem?: ShowInboxItem;
 }
 
 /** Handle the authenticated internal heartbeat. */
 export async function GET(
   request: Request,
   waitUntil: WaitUntilFn,
-  options: HeartbeatHandlerOptions = {},
+  options: HeartbeatHandlerOptions,
 ): Promise<Response> {
   if (!verifySchedulerRequest(request)) {
     return new Response("Unauthorized", { status: 401 });
@@ -26,11 +28,12 @@ export async function GET(
   waitUntil(() =>
     runHeartbeat({
       conversationWorkQueue: options.conversationWorkQueue,
+      dispatchForIdentity: options.dispatchForIdentity,
       events: options.events,
       nowMs,
-      showReviewItem: options.showReviewItem,
+      showInboxItem: options.showInboxItem,
     }).catch((error) => {
-      logException(error, "heartbeat.failed", {
+      logException(error, "heartbeat.run.failed", {
         "app.heartbeat.now_ms": nowMs,
       });
     }),

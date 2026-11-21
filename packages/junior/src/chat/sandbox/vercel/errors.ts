@@ -3,10 +3,22 @@ import {
   getSandboxErrorDetails,
 } from "@/chat/sandbox/errors";
 import type { SandboxErrorChecks } from "@/chat/sandbox/provider";
+import * as z from "zod";
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+const invalidTokenErrorSchema = z.object({
+  json: z.object({ invalidToken: z.literal(true) }),
+});
+
+const sessionForbiddenErrorSchema = z.object({
+  response: z.object({
+    status: z.literal(403),
+    url: z.string().includes("/sandboxes/sessions"),
+  }),
+});
+
+const serverErrorResponseSchema = z.object({
+  response: z.object({ status: z.number().min(500).lt(600) }),
+});
 
 function searchableText(error: unknown): string {
   const details = getSandboxErrorDetails(error);
@@ -14,20 +26,9 @@ function searchableText(error: unknown): string {
 }
 
 function isInvalidSandboxSessionError(error: unknown): boolean {
-  if (!isRecord(error)) {
-    return false;
-  }
-
-  if (isRecord(error.json) && error.json.invalidToken === true) {
-    return true;
-  }
-
-  const response = error.response;
   return (
-    isRecord(response) &&
-    response.status === 403 &&
-    typeof response.url === "string" &&
-    response.url.includes("/sandboxes/sessions")
+    invalidTokenErrorSchema.safeParse(error).success ||
+    sessionForbiddenErrorSchema.safeParse(error).success
   );
 }
 
@@ -100,29 +101,22 @@ function isTransient(error: unknown): boolean {
       return true;
     }
 
-    if (!isRecord(candidate)) return false;
-    const response = candidate.response;
-    return (
-      isRecord(response) &&
-      typeof response.status === "number" &&
-      response.status >= 500 &&
-      response.status < 600
-    );
+    return serverErrorResponseSchema.safeParse(candidate).success;
   });
 }
 
 // undici wraps a dropped connection as `TypeError: terminated` (mid-response)
 // or `TypeError: fetch failed` (before a response), with the socket error as
 // the cause.
-const SOCKET_FAILURE_CODES = new Set(["ECONNRESET", "UND_ERR_SOCKET"]);
+const socketFailureCauseSchema = z.object({
+  code: z.enum(["ECONNRESET", "UND_ERR_SOCKET"]),
+});
 
 function isFetchSocketFailure(error: Error): boolean {
   return (
     error.name === "TypeError" &&
     (error.message === "terminated" || error.message === "fetch failed") &&
-    isRecord(error.cause) &&
-    typeof error.cause.code === "string" &&
-    SOCKET_FAILURE_CODES.has(error.cause.code)
+    socketFailureCauseSchema.safeParse(error.cause).success
   );
 }
 

@@ -17,8 +17,8 @@ import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { createTools } from "@/chat/tools";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { mswServer } from "../../msw/server";
@@ -57,7 +57,7 @@ function deferred<T = void>() {
  */
 function fakeGuardian() {
   return vi.fn<ToolActionReviewer["review"]>(async (proposal) =>
-    proposal.input.channel === "#public"
+    proposal.input["channel"] === "#public"
       ? {
           decision: "deny",
           reason: "Private data would go to a public channel.",
@@ -236,19 +236,23 @@ describe("Code Mode bridge", () => {
 
   it("refuses model-only tools inside the script", async () => {
     const spawnAgent = vi.fn();
-    const registry = createTools([], {}, {
-      conversationId: CONVERSATION_ID,
-      destination: DESTINATION,
-      egress: {
-        async fetch() {
-          return new Response("ok");
+    const registry = createTools(
+      [],
+      {},
+      {
+        conversationId: CONVERSATION_ID,
+        destination: DESTINATION,
+        egress: {
+          async fetch() {
+            return new Response("ok");
+          },
         },
+        source: SOURCE,
+        spawnAgent,
+        turnTools: ROOT_TURN_TOOLS,
+        workspace: {} as never,
       },
-      source: SOURCE,
-      spawnAgent,
-      turnTools: ROOT_TURN_TOOLS,
-      workspace: {} as never,
-    } as never);
+    );
     const { directTools, scriptTools } = planToolExposure(registry);
     const modelOnlyTools = Object.keys(directTools).filter(
       (name) => !Object.hasOwn(scriptTools, name),
@@ -405,19 +409,23 @@ describe("Code Mode bridge", () => {
     ]);
     try {
       expect(await manager.activateProvider("ci")).toBe(true);
-      const registry = createTools([], {}, {
-        conversationId: CONVERSATION_ID,
-        destination: DESTINATION,
-        egress: {
-          async fetch() {
-            return new Response("ok");
+      const registry = createTools(
+        [],
+        {},
+        {
+          conversationId: CONVERSATION_ID,
+          destination: DESTINATION,
+          egress: {
+            async fetch() {
+              return new Response("ok");
+            },
           },
+          mcpToolManager: manager,
+          source: SOURCE,
+          turnTools: ROOT_TURN_TOOLS,
+          workspace: {} as never,
         },
-        mcpToolManager: manager,
-        source: SOURCE,
-        turnTools: ROOT_TURN_TOOLS,
-        workspace: {} as never,
-      } as never);
+      );
       const { scriptTools } = planToolExposure(registry);
 
       const result = await runCodeModeScript({

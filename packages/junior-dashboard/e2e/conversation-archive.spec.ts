@@ -1,5 +1,6 @@
 import { viewAsParticipant } from "./conversationMenu";
 import { expect, test } from "./test";
+import { pickOption } from "./pick-option";
 
 // Only participants can archive or restore.
 test.beforeEach(async ({ page }) => viewAsParticipant(page));
@@ -18,9 +19,9 @@ test("finds an old archived conversation by title and restores it", async ({
   await page.keyboard.press("ControlOrMeta+k");
   const palette = page.getByRole("dialog", { name: "Go to conversation" });
   await palette.getByRole("combobox").fill("archived restore");
-  await palette
-    .getByRole("option", { name: /Archived restore target.*Archived/ })
-    .click();
+  await pickOption(
+    palette.getByRole("option", { name: /Archived restore target.*Archived/ }),
+  );
   await expect(
     page.getByRole("heading", { name: "Archived restore target" }),
   ).toBeVisible();
@@ -57,7 +58,7 @@ test("archives and restores a conversation from the sidebar", async ({
               !archived ||
               conversation.displayTitle !== "Dashboard QA edge cases",
           )
-          .map((conversation: object) => ({
+          .map((conversation: Record<string, unknown>) => ({
             ...conversation,
             isParticipant: true,
           })),

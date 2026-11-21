@@ -95,7 +95,7 @@ async function startHarness() {
       request: slackWebhookRequest({
         type: "event_callback",
         team_id: "T123",
-        event_id: `Ev_${String(event.type)}_${String(event.ts ?? event.event_ts)}`,
+        event_id: `Ev_${String(event["type"])}_${String(event["ts"] ?? event["event_ts"])}`,
         event,
       }),
       services,
@@ -172,7 +172,7 @@ async function eventTexts(conversationId: string, harness: Harness) {
 function codeChannelPosts() {
   return slackApiOutbox
     .messages()
-    .filter((call) => call.params.channel === CODE_CHANNEL);
+    .filter((call) => call.params["channel"] === CODE_CHANNEL);
 }
 
 function archiveEvent() {
@@ -223,8 +223,8 @@ describe("Slack code channel Threads", () => {
     });
     expect(harness.runs.at(-1)?.location).not.toHaveProperty("threadTs");
     const posts = codeChannelPosts();
-    expect(posts[0]?.params.text).toBe("Looking into the flaky check here.");
-    expect(posts[0]?.params.thread_ts).toBeUndefined();
+    expect(posts[0]?.params["text"]).toBe("Looking into the flaky check here.");
+    expect(posts[0]?.params["thread_ts"]).toBeUndefined();
     expect(
       slackApiOutbox.calls("agents.sessions.setStatus")[0]?.params,
     ).toMatchObject({ channel_id: CODE_CHANNEL, status: "processing" });
@@ -317,7 +317,7 @@ describe("Slack code channel Threads", () => {
     expect(
       slackApiOutbox
         .messages()
-        .map((call) => String(call.params.text))
+        .map((call) => String(call.params["text"]))
         .filter((text) => text.includes("feature_disabled")),
     ).toEqual([]);
   });

@@ -12,11 +12,14 @@ import {
 import { createPluginDecider, createPluginModel } from "@/chat/plugins/model";
 import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { isToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { isToolInputError } from "@/chat/tool-support/tool-input-error";
 import { workspaceRepoCheckoutPath } from "@/chat/workspaces/checkout-path";
 import { getWorkspace } from "@/chat/workspaces/store";
-import { escapeXml } from "@/chat/xml";
+import {
+  escapeTagTextAndQuotes,
+  renderInlineTag,
+} from "@sentry/junior-plugin-api";
 
 /** The Run's sandbox, read when an `afterToolExecute` hook runs. */
 export interface ToolHookSandbox {
@@ -46,7 +49,9 @@ export interface ToolResultNudge {
 
 /** Render a nudge as the marked text the agent reads. */
 export function renderToolResultNudge(nudge: ToolResultNudge): string {
-  return `<plugin-note plugin="${nudge.pluginName}">${escapeXml(nudge.message)}</plugin-note>`;
+  return renderInlineTag("plugin-note", escapeTagTextAndQuotes(nudge.message), {
+    plugin: nudge.pluginName,
+  });
 }
 
 async function activeWorkspace(
@@ -108,6 +113,7 @@ export async function runAfterToolExecuteHooks(args: {
     });
     let denial: string | undefined;
     try {
+      // oxlint-disable-next-line no-await-in-loop -- A denial stops the hooks after it, and an abort skips them.
       await withPluginHookSpan(
         pluginName,
         "afterToolExecute",

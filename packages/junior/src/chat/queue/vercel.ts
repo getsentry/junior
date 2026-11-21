@@ -8,7 +8,7 @@ import type { QueueConsumer, QueueProvider } from "@/chat/queue/provider";
 type QueueClientOptions = ConstructorParameters<typeof QueueClient>[0];
 
 function defaultQueueClientOptions(): QueueClientOptions {
-  if (process.env.VERCEL_DEPLOYMENT_ID?.trim()) {
+  if (process.env["VERCEL_DEPLOYMENT_ID"]?.trim()) {
     return {};
   }
   return { deploymentId: null };

@@ -1,9 +1,7 @@
-import * as z from "zod";
+import { executeToolInputSchema } from "@/chat/tool-support/catalog-tool-call";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-
-export const EXECUTE_TOOL_NAME = "executeTool";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const executeToolDefinition = zodToolDefinition({
   annotations: {
@@ -16,22 +14,7 @@ const executeToolDefinition = zodToolDefinition({
     "Execute a catalog tool by its exact name. Use it for a tool that is not in your tool list: one that searchTools returned, or one that a skill, tool result, or error names. Put tool-specific parameters inside arguments.",
   executionMode: "sequential",
   exposure: "modelOnly",
-  inputSchema: z
-    .object({
-      tool_name: z
-        .string()
-        .min(1)
-        .describe(
-          "Exact catalog tool_name, from searchTools or as named by a skill, tool result, or error.",
-        ),
-      arguments: z
-        .record(z.string(), z.unknown())
-        .describe(
-          'Arguments matching the selected catalog tool schema, for example { "query": "..." }.',
-        )
-        .optional(),
-    })
-    .strict(),
+  inputSchema: executeToolInputSchema,
   outputSchema: juniorToolOutputSchema,
 });
 

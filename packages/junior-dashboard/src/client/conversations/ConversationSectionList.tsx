@@ -4,7 +4,7 @@ import { ArrowUp } from "lucide-react";
 import {
   useWaitingConversationsSettled,
   type WaitingConversation,
-} from "../review-desk/queries";
+} from "../inbox/queries";
 import type { Conversation } from "../types";
 import {
   buildConversationSections,
@@ -30,7 +30,7 @@ export function ConversationSectionList(props: {
   loading: boolean;
   onReorderError(conversation: Conversation): void;
   /** Leave unset when the list shows only some pins. */
-  onReorderPins?: ReorderPins;
+  onReorderPins?: ReorderPins | undefined;
   timeZone: string;
   waitingConversations: ReadonlyMap<string, WaitingConversation>;
 }) {
