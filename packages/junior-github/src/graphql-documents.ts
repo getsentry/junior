@@ -291,12 +291,13 @@ export const PULL_REQUEST_REVIEW_AGAIN = githubGraphql(`
         }
         reviews(last: 1, author: $reviewer, states: [APPROVED, CHANGES_REQUESTED, DISMISSED]) {
           nodes {
+            databaseId
             state
             body
             ...FeedbackReactors
             comments(first: 100) {
               totalCount
-              nodes { ...FeedbackReactors }
+              nodes { databaseId ...FeedbackReactors }
             }
           }
         }

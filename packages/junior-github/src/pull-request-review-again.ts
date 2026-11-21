@@ -111,9 +111,14 @@ const reviewAgainSchema = z.object({
               .extend({
                 body: z.string(),
                 comments: z.object({
-                  nodes: z.array(reactorsSchema.nullable()),
+                  nodes: z.array(
+                    reactorsSchema
+                      .extend({ databaseId: z.number().nullable() })
+                      .nullable(),
+                  ),
                   totalCount: z.number(),
                 }),
+                databaseId: z.number().nullable(),
                 state: z.string(),
               })
               .nullable(),
@@ -211,6 +216,11 @@ export async function readReviewAgainReadiness(
   read: GitHubRead,
   target: {
     botUserId: number;
+    /**
+     * The comment that the caller just marked. It counts as marked, because
+     * GitHub's GraphQL read can lag behind a reaction that was just added.
+     */
+    marked?: { id: number; kind: "review" | "review_body" } | undefined;
     name: string;
     number: number;
     owner: string;
@@ -237,11 +247,20 @@ export async function readReviewAgainReadiness(
   const comments = review.comments.nodes.filter((comment) => comment !== null);
   // A comment past the first 100 cannot be read, so it counts as open.
   if (comments.length < review.comments.totalCount) return "none";
-  const items =
-    review.body.trim() || comments.length === 0
-      ? [review, ...comments]
-      : comments;
-  if (!items.every((item) => markedBy(item, target.botUserId))) return "none";
+  const { marked } = target;
+  const justMarked = (id: number | null, kind: "review" | "review_body") =>
+    marked?.kind === kind && marked.id === id;
+  const bodyMarked =
+    justMarked(review.databaseId, "review_body") ||
+    markedBy(review, target.botUserId);
+  const bodyCounts = review.body.trim() !== "" || comments.length === 0;
+  if (bodyCounts && !bodyMarked) return "none";
+  const commentsMarked = comments.every(
+    (comment) =>
+      justMarked(comment.databaseId, "review") ||
+      markedBy(comment, target.botUserId),
+  );
+  if (!commentsMarked) return "none";
 
   const rules = branchRulesSchema.parse(
     await read({
@@ -280,6 +299,8 @@ const HELD_ASK_TTL_MS = 3 * 24 * 60 * 60 * 1000;
 
 const heldAskSchema = z.object({
   at: z.iso.datetime(),
+  // `handled`: the checks passed, but GitHub did not take the request.
+  reason: z.enum(["checks", "handled"]),
   reviewer: z.string().min(1),
 });
 

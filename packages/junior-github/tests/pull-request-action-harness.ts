@@ -203,6 +203,10 @@ export interface GitHubState {
    * `comment:<id>` for an inline comment.
    */
   feedback?: Record<string, string>;
+  /** Feedback keys that GitHub's GraphQL read does not show yet. */
+  laggingFeedback?: string[];
+  /** GitHub rejects review requests, such as during an outage. */
+  rejectReviewRequests?: boolean;
   /** The checks of the head commit. */
   checks?: Array<{ conclusion: string | null; name: string; status: string }>;
   /** The checks that a ruleset of the base branch requires. */
@@ -246,6 +250,12 @@ function reviewsPage(github: GitHubState, before: number) {
 }
 
 // The bot's reactions in GraphQL, as reaction groups.
+function graphqlReactionGroups(github: GitHubState, key: string) {
+  return github.laggingFeedback?.includes(key)
+    ? []
+    : botReactionGroups(github, key);
+}
+
 function botReactionGroups(github: GitHubState, key: string) {
   const content = github.feedback?.[key];
   return content
@@ -300,13 +310,21 @@ function reviewAgainPull(github: GitHubState, reviewer: string) {
         ? [
             {
               body: review.body ?? "Please change this.",
+              databaseId: review.id ?? null,
               comments: {
                 nodes: (review.comments ?? []).map((id) => ({
-                  reactionGroups: botReactionGroups(github, `comment:${id}`),
+                  databaseId: id,
+                  reactionGroups: graphqlReactionGroups(
+                    github,
+                    `comment:${id}`,
+                  ),
                 })),
                 totalCount: review.comments?.length ?? 0,
               },
-              reactionGroups: botReactionGroups(github, `review:${review.id}`),
+              reactionGroups: graphqlReactionGroups(
+                github,
+                `review:${review.id}`,
+              ),
               state: review.state,
             },
           ]
@@ -538,6 +556,10 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
       "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
       async ({ request }) => {
         const { reviewers } = (await request.json()) as { reviewers: string[] };
+        if (github.rejectReviewRequests) {
+          requests.push(`rejected ${reviewers.join(",")}`);
+          return HttpResponse.json({}, { status: 503 });
+        }
         requests.push(`request ${reviewers.join(",")}`);
         github.requestedReviewers = [
           ...(github.requestedReviewers ?? []),

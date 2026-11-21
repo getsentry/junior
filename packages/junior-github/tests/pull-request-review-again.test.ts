@@ -262,6 +262,66 @@ describe("review again after a change request", () => {
     }
   });
 
+  it("asks once the last inline comment is marked though GitHub's read lags, and retries a rejected request", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const requests: string[] = [];
+    const state = memoryState();
+    const github: GitHubState = {
+      checks: [{ conclusion: "SUCCESS", name: "test", status: "COMPLETED" }],
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: [],
+      requiredChecks: ["test"],
+      reviews: [
+        {
+          body: "",
+          comments: [401, 402],
+          commit_id: "head-1",
+          id: 301,
+          state: "CHANGES_REQUESTED",
+          user: { login: "requester" },
+        },
+      ],
+      state: "open",
+    };
+    mockGitHub(github, requests);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], state);
+      await webhook.handler(reviewSubmitted("changes_requested"));
+      await markFeedback(state, { id: 401, kind: "review" });
+      expect(requests).not.toContain("request requester");
+
+      // GitHub's read does not show the last mark yet, and GitHub rejects
+      // the request. Nothing asks, and the ask waits.
+      github.laggingFeedback = ["comment:402"];
+      github.rejectReviewRequests = true;
+      await markFeedback(state, { id: 402, kind: "review" });
+      expect(requests).toContain("rejected requester");
+      expect(requests).not.toContain("request requester");
+
+      // The next webhook asks again, and the item says why.
+      github.laggingFeedback = [];
+      github.rejectReviewRequests = false;
+      await webhook.handler(checkSuiteCompleted());
+      expect(requests).toContain("request requester");
+      expect(calls).toEqual([
+        {
+          conversationId: "slack:C123:1712345.0001",
+          kind: "upsert",
+          notice: expect.objectContaining({
+            body: `Every comment on your change request is handled.\n\n${PULL_URL}`,
+            title: "Review requested · #946",
+          }),
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("asks the requester again when a change request is addressed with no push", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];

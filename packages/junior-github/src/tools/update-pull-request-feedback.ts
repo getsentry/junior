@@ -339,6 +339,7 @@ async function askForReviewAgain(
   },
   input: {
     botUserId: number;
+    marked?: { id: number; kind: "review" | "review_body" };
     name: string;
     owner: string;
     pullRequest: number;
@@ -368,33 +369,34 @@ async function askForReviewAgain(
       },
       { ...input, number: input.pullRequest },
     );
+    // A read can lag behind another comment's new mark, so "none" drops
+    // nothing. Each webhook checks a held ask again.
+    if (readiness === "none") return;
+    const at = new Date().toISOString();
     if (readiness === "checks") {
       await holdGitHubReviewAsk(ctx.state, target, {
-        at: new Date().toISOString(),
+        at,
+        reason: "checks",
         reviewer: input.reviewer,
       });
       return;
     }
-    await dropHeldGitHubReviewAsk(ctx.state, target, input.reviewer);
-    if (readiness !== "ready") return;
     // GitHub's review request webhook shows the item. This record gives it
     // the reason.
     await markGitHubReviewAsked(ctx.state, target, {
-      at: new Date().toISOString(),
+      at,
       reviewer: input.reviewer,
     });
-    const response = await githubApi(ctx.egress, {
-      operation: "github.pull.request_reviewers",
-      method: "POST",
-      path: `${repoPath(input)}/pulls/${input.pullRequest}/requested_reviewers`,
-      body: { reviewers: [input.reviewer] },
-    });
-    if (!response.ok) {
-      ctx.log.warn(
-        "github.pull_request.request_reviewers_after_feedback.rejected",
-        { ...fields, status: response.status },
-      );
+    if (await requestReviewer(ctx, input)) {
+      await dropHeldGitHubReviewAsk(ctx.state, target, input.reviewer);
+      return;
     }
+    // The next webhook asks again.
+    await holdGitHubReviewAsk(ctx.state, target, {
+      at,
+      reason: "handled",
+      reviewer: input.reviewer,
+    });
   } catch (error) {
     ctx.log.warn(
       "github.pull_request.request_reviewers_after_feedback.failed",
@@ -404,6 +406,39 @@ async function askForReviewAgain(
       },
     );
   }
+}
+
+/** Ask the reviewer on GitHub, and return whether GitHub took the request. */
+async function requestReviewer(
+  ctx: { egress: PluginEgress; log: Pick<PluginLogger, "warn"> },
+  input: { name: string; owner: string; pullRequest: number; reviewer: string },
+): Promise<boolean> {
+  const fields = {
+    number: input.pullRequest,
+    repo: `${input.owner}/${input.name}`,
+  };
+  try {
+    const response = await githubApi(ctx.egress, {
+      operation: "github.pull.request_reviewers",
+      method: "POST",
+      path: `${repoPath(input)}/pulls/${input.pullRequest}/requested_reviewers`,
+      body: { reviewers: [input.reviewer] },
+    });
+    if (response.ok) return true;
+    ctx.log.warn(
+      "github.pull_request.request_reviewers_after_feedback.rejected",
+      { ...fields, status: response.status },
+    );
+  } catch (error) {
+    ctx.log.warn(
+      "github.pull_request.request_reviewers_after_feedback.failed",
+      {
+        ...fields,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+      },
+    );
+  }
+  return false;
 }
 
 // GraphQL reports errors with HTTP 200, so a failed reply can be `ok`.
@@ -529,6 +564,9 @@ export function createGitHubUpdatePullRequestFeedbackTool(
           botUserId,
           name: repo.name,
           owner: repo.owner,
+          ...(commentKind === "conversation"
+            ? undefined
+            : { marked: { id: commentId, kind: commentKind } }),
           pullRequest,
           reviewer: reactions.author,
         });

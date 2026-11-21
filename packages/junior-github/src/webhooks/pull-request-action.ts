@@ -408,8 +408,9 @@ export async function closeEndedGitHubPullRequestItems(args: {
 }
 
 /**
- * Ask for a reviewer's review on GitHub, so GitHub notifies them. The item
- * already asks, so a failure is logged and the item stays.
+ * Ask for a reviewer's review on GitHub, so GitHub notifies them, and return
+ * whether GitHub took the request. The item already asks, so a failure is
+ * logged and the item stays.
  */
 async function requestReviewAgain(
   args: {
@@ -418,25 +419,29 @@ async function requestReviewAgain(
   },
   target: GitHubPullRequestTarget,
   login: string,
-): Promise<void> {
+): Promise<boolean> {
   try {
     await requestPullRequestReviewers(args.env, {
       ...target,
       reviewers: [login],
     });
+    return true;
   } catch (error) {
     logFailOpenFailure(args.log, "GitHub review request again failed", error, {
       number: target.number,
       repository: target.repositoryFullName,
     });
+    return false;
   }
 }
 
 /**
  * Ask the reviewer of a held review ask again once the required checks
- * pass, and return their login. Keep the hold while the checks have not
- * passed. Drop it when the pull request ended, when the reviewer commented
- * or reviewed since, or when their change request is no longer ready.
+ * pass, and return their login and the reason. Keep the hold while the
+ * checks have not passed, or while GitHub does not take the request, so a
+ * later webhook asks again. Drop it when the pull request ended, when the
+ * reviewer commented or reviewed since, or when their change request is no
+ * longer ready.
  */
 async function askHeldReview(
   args: {
@@ -447,7 +452,7 @@ async function askHeldReview(
   },
   target: GitHubPullRequestTarget,
   state: GitHubPullRequestMergeState,
-): Promise<string | undefined> {
+): Promise<{ reason: GitHubReviewAskReason; reviewer: string } | undefined> {
   const held = await readHeldGitHubReviewAsk(args.state, target);
   if (!held) return undefined;
   const heldAt = new Date(held.at);
@@ -468,28 +473,34 @@ async function askHeldReview(
     { botUserId, name, number: target.number, owner, reviewer: held.reviewer },
   );
   if (readiness === "checks") return undefined;
+  if (readiness === "ready") {
+    if (await requestReviewAgain(args, target, held.reviewer)) {
+      await dropHeldGitHubReviewAsk(args.state, target);
+    }
+    return { reason: held.reason, reviewer: held.reviewer };
+  }
   await dropHeldGitHubReviewAsk(args.state, target);
-  if (readiness !== "ready") return undefined;
-  await requestReviewAgain(args, target, held.reviewer);
-  return held.reviewer;
+  return undefined;
 }
 
 /**
- * Return why Junior asked the requester again, if it did: `checks` when this
- * sync released their held ask, `handled` when the feedback tool asked them
- * and they have not acted since.
+ * Return why Junior asked the requester again, if it did: the reason of the
+ * held ask that this sync released, or `handled` when the feedback tool
+ * asked them and they have not acted since.
  */
 async function askReason(
   state: PluginState,
   target: GitHubPullRequestTarget,
   args: {
-    asked: string | undefined;
+    asked: { reason: GitHubReviewAskReason; reviewer: string } | undefined;
     requesterAt: Date | undefined;
     requesterLogin: string | undefined;
   },
 ): Promise<GitHubReviewAskReason | undefined> {
   if (args.asked !== undefined) {
-    return sameLogin(args.asked, args.requesterLogin) ? "checks" : undefined;
+    return sameLogin(args.asked.reviewer, args.requesterLogin)
+      ? args.asked.reason
+      : undefined;
   }
   const asked = await readGitHubReviewAsked(state, target);
   return asked &&
@@ -566,7 +577,7 @@ async function syncOne(
       state,
       {
         actedLast: timeOf(activity.requesterAt) > timeOf(activity.askedAt),
-        askedAgain: reason === "checks",
+        askedAgain: asked !== undefined && reason !== undefined,
         login: requesterLogin,
       },
       previous,
