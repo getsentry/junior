@@ -22,6 +22,11 @@ not for a new write of the full history.
   rare to pay for warming every Conversation that long. So nearly all
   warming stops because a return is unlikely, and the 55-minute idle horizon
   rarely stops it.
+- An idle period that waits on a child agent keeps warming past the
+  55-minute idle horizon, up to 110 minutes, while its chance of a return
+  pays. The child agent's result starts a Turn, so its chance of a return
+  per interval stays well above breakeven for most of that time. A wait on
+  a Review item is borderline, so it keeps the 55-minute horizon.
 - A return after warming stopped is the expected price of the stop rule. It
   is not a cache failure. Nearly every last warmup before such a return read
   the cache.
@@ -56,11 +61,3 @@ not for a new write of the full history.
 - When many warmups of one provider miss the cache, Junior stops warming
   for that provider for a while, so a broken cache does not keep costing
   money.
-
-## Gaps
-
-- While an idle period waits on a child agent, the chance of a return per
-  interval stays well above breakeven past the idle horizon: about 12% at
-  31 to 52 minutes, and about 6.5% at 52 to 103 minutes. Warming still stops
-  at the horizon. This breaks "the chance of a return decides when warming
-  stops".

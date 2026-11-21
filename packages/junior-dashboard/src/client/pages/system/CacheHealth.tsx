@@ -69,7 +69,7 @@ export function CacheHealth(props: { range: TimeRangeDays }) {
             50k tokens to the cache and read under 20k.
             {props.range > 7 ? " Shows the last 7 days." : ""}
             {report?.stale
-              ? ` Sentry is limiting reads, so this is from ${formatTime(report.fetchedAt, { hour: "numeric", minute: "2-digit" })}.`
+              ? ` This is from ${formatTime(report.fetchedAt, { hour: "numeric", minute: "2-digit" })}.`
               : ""}
           </p>
           {report ? <HealthTotals report={report} /> : null}
@@ -99,6 +99,9 @@ function unavailable(report: Exclude<CacheHealthReport, Report>): string {
   }
   if (report.status === "denied") {
     return "Sentry rejected SENTRY_READ_TOKEN. It needs Issue & Event read access to this project.";
+  }
+  if (report.status === "busy") {
+    return "Cache health is still loading from Sentry. Try again in a minute.";
   }
   return "Sentry is limiting reads. Cache health shows again in a minute.";
 }

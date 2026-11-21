@@ -9,9 +9,9 @@
  * Tool exposure decides which names these are. This module owns only the
  * text that each one gets.
  */
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { EXECUTE_TOOL_NAME } from "@/chat/tools/execute-tool";
-import { SEARCH_TOOLS_NAME } from "@/chat/tools/search-tools";
+import { SEARCH_TOOLS_NAME } from "@/chat/tool-support/catalog-search";
+import { EXECUTE_TOOL_NAME } from "@/chat/tool-support/catalog-tool-call";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 
 function executeToolRedirect(
   input: unknown,

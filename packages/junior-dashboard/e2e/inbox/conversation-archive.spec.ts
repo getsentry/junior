@@ -2,6 +2,7 @@ import { viewAsParticipant } from "./conversationMenu";
 import type { Locator } from "@playwright/test";
 import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { pickOption } from "../pick-option";
 
 /**
  * Rest the pointer on an Inbox row's head until the row stops moving, so
@@ -58,9 +59,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("ControlOrMeta+k");
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     await palette.getByRole("combobox").fill("archived restore");
-    await palette
-      .getByRole("option", { name: /Archived restore target.*Archived/ })
-      .click();
+    await pickOption(
+      palette.getByRole("option", {
+        name: /Archived restore target.*Archived/,
+      }),
+    );
     await expect(
       page.getByRole("heading", { name: "Archived restore target" }),
     ).toBeVisible();

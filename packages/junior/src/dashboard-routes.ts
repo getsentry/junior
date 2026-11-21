@@ -215,6 +215,8 @@ function dashboardHostRoutePaths(
     loginPath,
     "/api/health",
     "/api/runtime",
+    "/api/memory",
+    "/api/memory/*",
     "/api/plugins",
     "/api/plugins/*",
     "/api/plugin-reports",

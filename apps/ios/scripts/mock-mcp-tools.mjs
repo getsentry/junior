@@ -636,8 +636,12 @@ export function createMockMcpTools({ app, origin }) {
         stopped.add(id);
         if (running) droppedPending.add(id);
         return {
+          conversationId: id,
           status: running ? "requested" : "no_work",
-          droppedMessages: running ? pendingMessages.length : 0,
+          stoppedInboundMessageIds: running
+            ? pendingMessages.map((message) => message.messageId)
+            : [],
+          stoppedMessages: [],
         };
       },
     },
@@ -653,7 +657,13 @@ export function createMockMcpTools({ app, origin }) {
         await requireDetail(id);
         const { pendingMessages } = await readPendingWork(id);
         droppedPending.add(id);
-        return { cancelledMessages: pendingMessages.length };
+        return {
+          cancelledCount: pendingMessages.length,
+          cancelledInboundMessageIds: pendingMessages.map(
+            (message) => message.messageId,
+          ),
+          conversationId: id,
+        };
       },
     },
     {

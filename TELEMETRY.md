@@ -71,7 +71,7 @@ attributes. Nested logs and spans inherit them.
 | Tool, MCP, or sandbox failure        | `agent.tool_call.failed`, `mcp.*`, `sandbox.*`, spans `gen_ai.execute_tool`, `sandbox.*`, `bash`     | `chat/tool-support/`, `chat/sandbox/`                           |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
-| Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tools/search-tools-rerank.ts`                             |
+| Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tool-support/catalog-search-rerank.ts`                    |
 | History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
 | History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
@@ -83,7 +83,7 @@ attributes. Nested logs and spans inherit them.
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
-| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `chat/memory/`                                                  |
 | Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |

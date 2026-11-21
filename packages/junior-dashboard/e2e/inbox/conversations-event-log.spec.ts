@@ -8,6 +8,7 @@ import {
   routeConversationVersion,
   withRequestedMailbox,
 } from "../harness";
+import { pickOption } from "../pick-option";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -338,7 +339,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const events = palette.getByRole("group").first();
     await expect(events).toHaveAccessibleName("Events");
     await expect(events.getByRole("option")).toHaveCount(1);
-    await events.getByRole("option").click();
+    await pickOption(events.getByRole("option"));
     await expect(page).toHaveURL(/[?&]event=2(&|$)/);
     await expect(
       log.getByRole("button", { name: "Event 2: turn_context", exact: true }),
@@ -639,10 +640,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("ControlOrMeta+k");
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     await palette.getByRole("combobox").fill("row 1234.");
-    await palette
-      .getByRole("group", { name: "Events" })
-      .getByRole("option")
-      .click();
+    await pickOption(
+      palette.getByRole("group", { name: "Events" }).getByRole("option"),
+    );
     await expect(entry(1234)).toBeInViewport();
     await expect(entry(1234)).toHaveAttribute("aria-expanded", "true");
   });

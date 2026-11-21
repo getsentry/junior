@@ -1,3 +1,4 @@
+import { createUpdateReviewItemTool } from "@/chat/review-items/tools/update";
 import type { User } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
@@ -10,10 +11,7 @@ import {
   getReviewItem,
   listWaitingConversations,
 } from "@/chat/review-items/store";
-import {
-  createAddReviewItemTool,
-  createUpdateReviewItemTool,
-} from "@/chat/tools/review-items";
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
@@ -220,21 +218,25 @@ describe("plugin review items", () => {
       ),
     ).rejects.toThrow("Only the plugin or a person can change it");
 
-    await items.close({
-      dedupeKey: NOTICE.dedupeKey,
-      reason: "The pull request merged.",
-      status: "done",
-    });
+    await expect(
+      items.close({
+        dedupeKey: NOTICE.dedupeKey,
+        reason: "The pull request merged.",
+        status: "done",
+      }),
+    ).resolves.toBe(true);
     expect(await getReviewItem(getDb(), added!.id)).toMatchObject({
       closeReason: "The pull request merged.",
       status: "done",
     });
     // A close with no open item does nothing.
-    await items.close({
-      dedupeKey: NOTICE.dedupeKey,
-      reason: "Again.",
-      status: "dismissed",
-    });
+    await expect(
+      items.close({
+        dedupeKey: NOTICE.dedupeKey,
+        reason: "Again.",
+        status: "dismissed",
+      }),
+    ).resolves.toBe(false);
     expect(await getReviewItem(getDb(), added!.id)).toMatchObject({
       closeReason: "The pull request merged.",
     });

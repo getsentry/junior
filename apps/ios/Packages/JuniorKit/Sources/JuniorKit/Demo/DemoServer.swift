@@ -90,9 +90,12 @@ public actor DemoServer {
     case "stopConversation": return try stop(arguments)
     case "cancelQueuedMessages":
       let index = try conversationIndex(arguments)
-      let count = conversations[index].pending.count
+      let ids = conversations[index].pending.compactMap { $0["messageId"] }
       conversations[index].pending = []
-      return .object(["cancelledMessages": .number(Double(count))])
+      return .object([
+        "cancelledCount": .number(Double(ids.count)), "cancelledInboundMessageIds": .array(ids),
+        "conversationId": .string(conversations[index].id),
+      ])
     case "searchReviewItems": return searchReviewItems(arguments)
     case "getReviewItem":
       guard let item = reviewItems.first(where: { $0["id"]?.string == arguments.text("id") }) else {
@@ -293,15 +296,22 @@ public actor DemoServer {
 
   private func stop(_ arguments: JSONObject) throws -> JSONValue {
     let index = try conversationIndex(arguments)
+    let id = JSONValue.string(conversations[index].id)
     guard conversations[index].summary["turnActive"]?.bool == true else {
-      return .object(["status": "no_work", "droppedMessages": 0])
+      return .object([
+        "conversationId": id, "status": "no_work", "stoppedInboundMessageIds": .array([]),
+        "stoppedMessages": .array([]),
+      ])
     }
-    let dropped = conversations[index].pending.count
+    let dropped = conversations[index].pending.compactMap { $0["messageId"] }
     conversations[index].pending = []
     conversations[index].replyAt = nil
     conversations[index].summary["turnActive"] = false
     conversations[index].summary["status"] = "done"
-    return .object(["status": "requested", "droppedMessages": .number(Double(dropped))])
+    return .object([
+      "conversationId": id, "status": "requested", "stoppedInboundMessageIds": .array(dropped),
+      "stoppedMessages": .array([]),
+    ])
   }
 
   private func conversationIndex(_ arguments: JSONObject) throws -> Int {

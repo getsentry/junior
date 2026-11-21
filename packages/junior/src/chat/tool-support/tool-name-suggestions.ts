@@ -1,5 +1,5 @@
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const MAX_SUGGESTIONS = 3;
 const MAX_SOURCE_TOOLS = 10;

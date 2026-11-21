@@ -9,6 +9,7 @@ import {
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { pickOption } from "../pick-option";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -672,10 +673,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect(composer).toBeFocused();
       await page.goto(`${dashboard.baseURL}/settings`);
       await page.keyboard.press("ControlOrMeta+k");
-      await page
-        .getByRole("dialog", { name: "Go to conversation" })
-        .getByRole("option", { name: "New conversation" })
-        .click();
+      await pickOption(
+        page
+          .getByRole("dialog", { name: "Go to conversation" })
+          .getByRole("option", { name: "New conversation" }),
+      );
       await expect(page).toHaveURL(/\/conversations\/new$/);
       await expect(composer).toBeFocused();
     });

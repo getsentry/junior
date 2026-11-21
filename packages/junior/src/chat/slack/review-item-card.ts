@@ -15,7 +15,7 @@ import {
   slackUserInputAnswerNote,
   slackUserInputText,
 } from "@/chat/slack/user-input";
-import { buttonUserInputField } from "@/chat/tools/runtime/user-input-request";
+import { buttonUserInputField } from "@/chat/review-items/user-input-request";
 import { safeLinkUrl } from "@/net/link-url";
 
 /** Callback id of the modal form that answers a Review item. */

@@ -1,0 +1,14 @@
+id: tools-dir-exports-only-tools
+valid:
+  - "export const readFileTool = definePluginTool({});"
+  - "export function createBashTool(deps) { return zodTool(bashToolDefinition, deps); }"
+  - "export const bashToolDefinition = zodToolDefinition({});"
+  - "export function registerSearchTool(server) { server.registerTool('search', {}, run); }"
+  - "function helper() {} export const readFileTool = definePluginTool({ execute: helper });"
+invalid:
+  - "export function helper() {}"
+  - "export const MAX_BYTES = 1024;"
+  - "export interface ToolInput { path: string }"
+  - "export type ToolInput = { path: string };"
+  - "export { readFileTool } from './read-file';"
+  - "export * from './read-file';"

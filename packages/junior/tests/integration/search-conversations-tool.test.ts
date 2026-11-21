@@ -7,7 +7,7 @@ import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { parseSlackTeamId } from "@/chat/slack/ids";
-import { createSlackConversationSearchChannelPort } from "@/chat/slack/tools/conversation-search";
+import { createSlackConversationSearchChannelPort } from "@/chat/slack/tool-support/conversation-search";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { juniorConversationEmbeddings, juniorConversations } from "@/db/schema";
