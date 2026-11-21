@@ -46,6 +46,7 @@ struct RootView: View {
     .sheet(item: $app.webPage) { url in
       SafariView(url: url).ignoresSafeArea()
     }
+    .sheet(item: $app.changelog) { ChangelogSheet(page: $0) }
     .alert("The demo has no web dashboard", isPresented: $app.demoWebNotice) {
       Button("OK", role: .cancel) {}
     } message: {

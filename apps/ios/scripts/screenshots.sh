@@ -30,7 +30,8 @@ set -- \
   "automations__dark|/automations|dark" \
   "automation__dark|/automations/scheduled-1|dark" \
   "drawer__dark|/?drawer=1|dark" \
-  "settings__dark|/settings|dark"
+  "settings__dark|/settings|dark" \
+  "changelog__dark|/settings?changelog=1|dark"
 
 case "$orientation" in
   portrait) exec "$scripts/sim.sh" shots "$out" "$@" ;;

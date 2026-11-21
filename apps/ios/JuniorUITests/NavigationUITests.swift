@@ -38,7 +38,7 @@ final class NavigationUITests: XCTestCase {
 
   /// The whole OAuth flow: the browser sheet, the mock's consent, the
   /// loopback redirect, the token exchange, and a Keychain that survives a
-  /// relaunch. Sign out returns to Sign in.
+  /// relaunch. Settings shows the changelog, and Sign out returns to Sign in.
   func testSignInAndOut() {
     var app = launch(auth: .signedOut)
     let signIn = app.buttons["sign-in"]
@@ -48,6 +48,12 @@ final class NavigationUITests: XCTestCase {
     app.terminate()
 
     app = launch(open: "/settings", auth: .kept)
+    // The bundled CHANGELOG.md opens from Settings.
+    let showChangelog = app.buttons["show-changelog"]
+    XCTAssertTrue(showChangelog.waitForExistence(timeout: 10))
+    showChangelog.tap()
+    XCTAssertTrue(app.staticTexts["Unreleased"].waitForExistence(timeout: 10))
+    app.buttons["Close Changelog"].tap()
     let signOut = app.buttons["sign-out"]
     XCTAssertTrue(signOut.waitForExistence(timeout: 10))
     signOut.tap()
