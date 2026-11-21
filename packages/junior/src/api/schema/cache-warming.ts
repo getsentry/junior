@@ -183,6 +183,8 @@ export const cacheHealthReportSchema = z.discriminatedUnion("status", [
   z.object({ status: z.literal("denied") }).strict(),
   /** Sentry rate limited the read, and no earlier answer is stored. */
   z.object({ status: z.literal("rate_limited") }).strict(),
+  /** Another load is still reading Sentry, and no earlier answer is stored. */
+  z.object({ status: z.literal("busy") }).strict(),
 ]);
 
 export type CacheHealthReport = z.output<typeof cacheHealthReportSchema>;
