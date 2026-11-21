@@ -1,11 +1,13 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
+import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { conversationSubtree } from "@/chat/conversations/sql/subtree";
 import { juniorConversations } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
@@ -34,6 +36,25 @@ import {
 } from "../../../fixtures/conversation-status";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
+
+type PlanNode = {
+  "Node Type": string;
+  "Plan Rows": number;
+  Plans?: PlanNode[] | undefined;
+};
+const planNode: z.ZodType<PlanNode> = z.lazy(() =>
+  z.object({
+    "Node Type": z.string(),
+    "Plan Rows": z.number(),
+    Plans: z.array(planNode).optional(),
+  }),
+);
+const planRoot = z.object({ Plan: planNode });
+
+/** Every node of an EXPLAIN plan. */
+function planNodes(node: PlanNode): PlanNode[] {
+  return [node, ...(node.Plans ?? []).flatMap(planNodes)];
+}
 
 /** Read the viewer's feed version token. */
 async function feedToken(fixture: StatusFixture): Promise<string> {
@@ -329,6 +350,39 @@ describe("conversation tree state", () => {
     );
     expect(stopped.status).toBe(200);
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
+  });
+
+  it("plans a root's tree without a walk over it", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000540",
+    );
+    await getSqlExecutor().execute(
+      `insert into junior_conversations
+        (conversation_id, root_conversation_id, parent_conversation_id,
+         created_at, last_activity_at, updated_at, execution_status)
+      select 'agent:big-tree-' || n, $1, $1, now(), now(), now(), 'idle'
+      from generate_series(1, 2000) n`,
+      [conversationId],
+    );
+    await getSqlExecutor().execute("analyze junior_conversations");
+    const [explained] = z
+      .object({ rows: z.array(z.object({ "QUERY PLAN": z.array(planRoot) })) })
+      .parse(
+        await getDb().execute(
+          sql`explain (format json) select * from ${conversationSubtree([conversationId])}`,
+        ),
+      ).rows;
+    // Postgres guesses each recursive step from the rows that start the
+    // walk. A guess that holds the root's tree prices the read high enough
+    // to turn on JIT.
+    const walks = planNodes(explained!["QUERY PLAN"][0]!.Plan).filter(
+      (node) => node["Node Type"] === "Recursive Union",
+    );
+    expect(walks.length).toBeGreaterThan(0);
+    // A tenth of the 2,000 children: the guess covers the walk, not the tree.
+    for (const walk of walks) expect(walk["Plan Rows"]).toBeLessThan(200);
   });
 
   it("skips archived children and their descendants", async () => {
