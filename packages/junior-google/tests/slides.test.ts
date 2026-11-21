@@ -454,15 +454,15 @@ describe("Google Slides tools", () => {
     });
 
     it("refuses a bad image or an install without artifacts before publishing anything or editing", async () => {
-      const PHOTO = `${SANDBOX_ROOT}/photo.jpg`;
+      // Any absolute sandbox path works, such as the scratch directory.
+      const PHOTO = "/tmp/jr/photo.jpg";
       const refused: Array<
         [Record<string, Uint8Array | null>, string, string, boolean]
       > = [
-        [{}, "/etc/grid.png", "normalized absolute path under /sandbox", true],
         [
           {},
           `${SANDBOX_ROOT}/../etc/grid.png`,
-          "normalized absolute path under /sandbox",
+          "normalized absolute sandbox path",
           true,
         ],
         [{ [GRID]: null }, GRID, `No sandbox file at ${GRID}.`, true],

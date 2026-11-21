@@ -53,12 +53,11 @@ async function readImage(
   ctx: GoogleToolContext,
   path: string,
 ): Promise<Uint8Array> {
-  if (
-    posix.normalize(path) !== path ||
-    !path.startsWith(`${ctx.sandbox.root}/`)
-  ) {
+  // Any path in the sandbox works, such as its scratch directory, like the
+  // core publishImage tool.
+  if (posix.normalize(path) !== path) {
     throw new PluginToolInputError(
-      `An image path must be a normalized absolute path under ${ctx.sandbox.root}, not ${path}.`,
+      `An image path must be a normalized absolute sandbox path, not ${path}.`,
     );
   }
   const bytes = await ctx.sandbox.readFile(path);
