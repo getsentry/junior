@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { AgentStoppedError } from "@/chat/agent-invocations/errors";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 
 describe("messageAgent", () => {

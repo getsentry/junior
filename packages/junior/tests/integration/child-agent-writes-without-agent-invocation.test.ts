@@ -28,7 +28,7 @@ import {
   resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
