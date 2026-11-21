@@ -36,6 +36,11 @@ Workspace account, so the user connects nothing.
   requester who is invited to the event.
 - Junior checks availability for and invites only people in the allowed
   domains.
+- Junior reads a colleague's calendar only as far as its sharing settings
+  let Junior's account see it. Junior never returns event descriptions.
+- To find meeting times, Junior reads only the times, attendees, and
+  responses of a person's past events. It keeps no copy and returns only the
+  working hours that it learns from them.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
 - Junior reads a file or its comments only for a requester who can open it
