@@ -16,6 +16,9 @@ import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
+import { useSnoozeInboxItem } from "./inboxSnoozes";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import { eventSnoozeOf } from "./snoozeChoices";
 
 function actionError(error: unknown): string {
   if (error instanceof DashboardApiError && error.apiError) {
@@ -61,6 +64,27 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
         <AnswerSummary answer={item.answer} request={item.request} />
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Snooze one item from its own card, until a time or an Event, as the
+ * Inbox card's Snooze does.
+ */
+function CardSnoozeButton(props: { item: InboxItemPayload }) {
+  const [open, setOpen] = useState(false);
+  const snooze = useSnoozeInboxItem();
+  const snoozeUntil = (end: Parameters<typeof snooze>[1]) => {
+    setOpen(false);
+    void snooze(props.item, end);
+  };
+  return (
+    <RowSnoozeButton
+      eventSnooze={eventSnoozeOf([props.item], snoozeUntil)}
+      onOpenChange={setOpen}
+      onSnooze={snoozeUntil}
+      open={open}
+    />
   );
 }
 
@@ -130,7 +154,12 @@ export function InboxItemActions(props: {
 
   const dismiss = props.dismiss ?? true;
   const take = item.canTake ? (props.take ?? "Take") : false;
-  // Take and Dismiss are quiet, so the answer stays the main action.
+  // A card on its own, as in a transcript, snoozes its item itself. The
+  // Inbox brings its own Snooze, so its row leaves with motion.
+  const snooze =
+    dismiss && !props.extra && !props.onAction && !item.hiddenFromViewer;
+  // Take, Snooze, and Dismiss are quiet, so the answer stays the main
+  // action.
   const secondaryActions = (
     <>
       {take ? (
@@ -142,6 +171,7 @@ export function InboxItemActions(props: {
           {take}
         </Button>
       ) : null}
+      {snooze ? <CardSnoozeButton item={item} /> : null}
       {dismiss ? (
         <Button
           disabled={action.isPending || sending}
@@ -191,7 +221,7 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || dismiss || props.extra ? (
+      ) : take || snooze || dismiss || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}

@@ -1,11 +1,12 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, lt, ne, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias, QueryBuilder } from "drizzle-orm/pg-core";
 import type { EventMatch } from "@sentry/junior-plugin-api";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema/conversations";
 import {
+  juniorInboxHides,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
 } from "@/db/schema/inbox-snoozes";
@@ -64,12 +65,26 @@ export function inboxItemSnoozedBy(userId: string): SQL {
   return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.inboxItemId} = ${juniorInboxItems.id} and ${juniorInboxSnoozes.state} = 'snoozed')`;
 }
 
+/** SQL: this User dismissed the Inbox item for themselves only. */
+export function inboxItemDismissedBy(userId: string): SQL {
+  return sql`exists (select 1 from ${juniorInboxHides} where ${juniorInboxHides.userId} = ${userId} and ${juniorInboxHides.inboxItemId} = ${juniorInboxItems.id})`;
+}
+
+/**
+ * SQL: this User hid the Inbox item: they snoozed it, and it has not woken,
+ * or they dismissed it for themselves.
+ */
+export function inboxItemHiddenFrom(userId: string): SQL {
+  return or(inboxItemSnoozedBy(userId), inboxItemDismissedBy(userId))!;
+}
+
 /**
  * SQL for the Inbox versions token: it changes when this User snoozes an
- * item, and when one of their snoozes wakes or is cancelled.
+ * item, when one of their snoozes wakes or is cancelled, and when they
+ * dismiss an item for themselves.
  */
 export function inboxSnoozesVersion(userId: string): SQL<string> {
-  return sql<string>`(select concat_ws(':', count(*), max(${juniorInboxSnoozes.createdAt})) from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.state} = 'snoozed')`;
+  return sql<string>`concat_ws(':', (select concat_ws(':', count(*), max(${juniorInboxSnoozes.createdAt})) from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.state} = 'snoozed'), (select concat_ws(':', count(*), max(${juniorInboxHides.createdAt})) from ${juniorInboxHides} where ${juniorInboxHides.userId} = ${userId}))`;
 }
 
 /**
@@ -155,6 +170,84 @@ export async function snoozeInboxItems(
     );
     return snoozes.map((snooze) => snooze.id);
   });
+}
+
+/**
+ * Dismiss one Inbox item for one User only: it leaves their Inbox, and it
+ * stays open for everyone else. It ends their snooze of the item. A second
+ * dismiss changes nothing. The caller checks that the User can act on it.
+ */
+export async function hideInboxItem(
+  db: JuniorDatabase,
+  input: { inboxItemId: string; nowMs: number; userId: string },
+): Promise<void> {
+  await db.transaction(async (tx) => {
+    await lockUserSnoozes(tx, input.userId);
+    await tx
+      .update(juniorInboxSnoozes)
+      .set({ state: "cancelled" })
+      .where(
+        and(
+          eq(juniorInboxSnoozes.userId, input.userId),
+          eq(juniorInboxSnoozes.inboxItemId, input.inboxItemId),
+          eq(juniorInboxSnoozes.state, "snoozed"),
+        ),
+      );
+    await tx
+      .insert(juniorInboxHides)
+      .values({
+        createdAt: new Date(input.nowMs),
+        inboxItemId: input.inboxItemId,
+        userId: input.userId,
+      })
+      .onConflictDoNothing();
+  });
+}
+
+/**
+ * Return how this User hid each of these Inbox items: `snoozed` until
+ * it wakes, or `dismissed` for them only. Items they did not hide are
+ * missing.
+ */
+export async function readInboxItemsHiddenFrom(
+  db: JuniorDatabase,
+  userId: string,
+  inboxItemIds: readonly string[],
+): Promise<Map<string, "dismissed" | "snoozed">> {
+  const hidden = new Map<string, "dismissed" | "snoozed">();
+  if (inboxItemIds.length === 0) return hidden;
+  const ids = [...inboxItemIds];
+  // One statement: the item lists read this for every page.
+  const rows = await db
+    .select({
+      inboxItemId: juniorInboxSnoozes.inboxItemId,
+      kind: sql<"dismissed" | "snoozed">`'snoozed'`.as("kind"),
+    })
+    .from(juniorInboxSnoozes)
+    .where(
+      and(
+        eq(juniorInboxSnoozes.userId, userId),
+        inArray(juniorInboxSnoozes.inboxItemId, ids),
+        eq(juniorInboxSnoozes.state, "snoozed"),
+      ),
+    )
+    .unionAll(
+      db
+        .select({
+          inboxItemId: juniorInboxHides.inboxItemId,
+          kind: sql<"dismissed" | "snoozed">`'dismissed'`.as("kind"),
+        })
+        .from(juniorInboxHides)
+        .where(
+          and(
+            eq(juniorInboxHides.userId, userId),
+            inArray(juniorInboxHides.inboxItemId, ids),
+          ),
+        ),
+    );
+  // A Dismiss ends the snooze, so an item has at most one row.
+  for (const row of rows) hidden.set(row.inboxItemId, row.kind);
+  return hidden;
 }
 
 /**

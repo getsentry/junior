@@ -12,7 +12,7 @@ import { useState } from "react";
 import { useToastManager } from "../components/ui/toast";
 import { useDebouncedValue } from "../debouncedValue";
 import { deleteDashboardResource, fetchDashboardJson, post } from "../http";
-import { invalidateInboxItemCollections } from "./queries";
+import { inboxItemQueryKey, invalidateInboxItemCollections } from "./queries";
 import { itemConversationId, type InboxBundle } from "./inboxItemFormat";
 import type { CustomSnoozeEnd } from "./snoozeChoices";
 
@@ -199,6 +199,34 @@ export function useInboxSnoozes(read: SnoozedRead) {
     wakeItem,
     /** The item was just woken, and the lists have not refreshed yet. */
     waking: (itemId: string) => waking.has(itemId),
+  };
+}
+
+/**
+ * Snooze one item from its card outside the Inbox list, such as a question
+ * card in a transcript. The card shows the snooze once the lists refresh.
+ */
+export function useSnoozeInboxItem() {
+  const queryClient = useQueryClient();
+  const toast = useToastManager();
+  return async (item: InboxItemPayload, end: SnoozeEnd) => {
+    try {
+      const body: InboxSnoozeCreateBody = {
+        ...itemSubject(item),
+        ...snoozeEndBody(end),
+      };
+      await post(inboxSnoozeSchema, SNOOZES_PATH, body);
+    } catch {
+      toast.add({ title: "The item could not be snoozed", type: "error" });
+      return;
+    }
+    await Promise.all([
+      invalidateInboxItemCollections(queryClient),
+      queryClient.invalidateQueries({
+        exact: true,
+        queryKey: inboxItemQueryKey(item.id),
+      }),
+    ]);
   };
 }
 

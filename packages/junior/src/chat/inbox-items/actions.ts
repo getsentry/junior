@@ -3,6 +3,7 @@ import { getDb } from "@/chat/db";
 import { AutomationEditError } from "@/chat/automations/edit-rules";
 import { ViewerTaskNotFoundError } from "@/chat/automations/read";
 import { logWarn } from "@/chat/logging";
+import { hideInboxItem } from "@/chat/inbox-snoozes/store";
 import {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
@@ -16,6 +17,7 @@ import {
   isAutomationAlertItem,
   isOnlyAssignee,
   isPluginInboxItem,
+  isSharedInboxItem,
 } from "./access";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
@@ -109,21 +111,24 @@ function submittedAnswer(
 
 /**
  * Do one person action on an Inbox item and tell its linked Conversations.
- * The first submit or dismiss closes the item for every
- * assignee. A retry of the same close sends any missing messages again and
- * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
- * only the call that closes the item succeeds, and every other call gets a
- * conflict. Use it when the caller adds its own input for the action, such
+ * The first submit or dismiss closes the item for every assignee, except a
+ * dismiss with `dismissForUserOnly`. A retry of the same close sends any
+ * missing messages again and succeeds, so a client can retry after a
+ * failure. With `firstCloseOnly`, only the call that closes the item
+ * succeeds, and every other call gets a conflict. Use it when the caller adds its own input for the action, such
  * as a card click in a chat thread, so one action adds one Turn.
  * `exceptConversationId` is the Conversation where the person acted. It gets
  * the person's input from its own surface, so it gets no message here.
  * `delivery` shows the change and sends the messages; see
- * `deliverInboxItemChange`.
+ * `deliverInboxItemChange`. With `dismissForUserOnly`, a dismiss of an item
+ * that other people share (`isSharedInboxItem`) hides it from this User's
+ * Inbox only. The item stays open, and no message goes out.
  */
 export async function actOnInboxItem(args: {
   action: InboxItemAction;
   answer?: UserInputAnswer;
   delivery: InboxItemDelivery;
+  dismissForUserOnly?: boolean;
   exceptConversationId?: string;
   firstCloseOnly?: boolean;
   id: string;
@@ -134,6 +139,22 @@ export async function actOnInboxItem(args: {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
   const item = await readInboxItemForUser(user, args.id);
+
+  if (
+    action === "dismiss" &&
+    args.dismissForUserOnly &&
+    item.status === "open" &&
+    isSharedInboxItem(item)
+  ) {
+    if (!canActOnInboxItem(item, user.id)) {
+      throw new InboxItemActionError(
+        "forbidden",
+        "Only an assignee can act on this item.",
+      );
+    }
+    await hideInboxItem(db, { inboxItemId: item.id, nowMs, userId: user.id });
+    return item;
+  }
 
   if (action === "take") {
     if (item.status !== "open") {

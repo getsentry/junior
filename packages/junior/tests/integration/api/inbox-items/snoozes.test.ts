@@ -19,6 +19,7 @@ import {
 } from "../../../fixtures/conversation";
 import { useGitHubEvents } from "../../../fixtures/event-automations";
 import {
+  addEveryoneItem,
   addItem,
   addNotice,
   addPullRequestItem,
@@ -164,6 +165,92 @@ describe("snoozes", () => {
       inbox: ["Review globex entry"],
       waiting: [ROOT],
     });
+  });
+
+  it("dismisses a shared item for its person only, until someone answers it", async () => {
+    const ana = await user("ana@example.com");
+    const bob = await user("bob@example.com");
+    const shared = await addItem(ROOT, [ana, bob], "Review acme entry");
+    vi.setSystemTime(NOW_MS + 1);
+    const everyone = await addEveryoneItem(ROOT, "Review globex entry");
+    const asAna = api(fixture, ana);
+    const asBob = api(fixture, bob);
+    const versionBefore = await asAna.versions();
+    expect(
+      (
+        await asAna.snooze(
+          { conversationId: ROOT, inboxItemId: shared },
+          NOW_MS + HOUR_MS,
+        )
+      ).status,
+    ).toBe(201);
+
+    // Dismiss on an item for more than one person, or for Everyone, hides
+    // it from Ana. It ends her snooze, and it stays open.
+    for (const id of [shared, everyone]) {
+      const dismissed = await asAna.act(id, { action: "dismiss" });
+      expect(dismissed.status).toBe(200);
+      expect(await dismissed.json()).toMatchObject({
+        hiddenFromViewer: "dismissed",
+        id,
+        status: "open",
+      });
+    }
+    expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
+    expect(await asAna.snoozed()).toEqual(NOTHING_SNOOZED);
+    expect(await feedWaitingIds(ana.id)).toEqual([]);
+    expect(await asAna.versions()).not.toBe(versionBefore);
+    // A second Dismiss changes nothing.
+    expect((await asAna.act(shared, { action: "dismiss" })).status).toBe(200);
+    // The Conversation's own list still shows both, marked for Ana only.
+    const conversationList = `/inbox-items?conversationId=${encodeURIComponent(ROOT)}`;
+    const marks = async (as: typeof asAna) =>
+      (
+        (await as.json(conversationList)) as {
+          items: { hiddenFromViewer?: string; title: string }[];
+        }
+      ).items.map((item) => [item.title, item.hiddenFromViewer ?? null]);
+    expect(await marks(asAna)).toEqual([
+      ["Review acme entry", "dismissed"],
+      ["Review globex entry", "dismissed"],
+    ]);
+    expect(await marks(asBob)).toEqual([
+      ["Review acme entry", null],
+      ["Review globex entry", null],
+    ]);
+    expect(await asBob.inbox()).toEqual({
+      count: 1,
+      inbox: ["Review acme entry", "Review globex entry"],
+      waiting: [ROOT],
+    });
+
+    // Bob's answer still closes the item for everyone.
+    expect(
+      (
+        await asBob.act(shared, {
+          action: "submit",
+          answer: { values: { decision: ["Approve"] } },
+        })
+      ).status,
+    ).toBe(200);
+    expect(await getInboxItem(getDb(), shared)).toMatchObject({
+      status: "done",
+    });
+    expect(await asBob.inbox()).toEqual({
+      count: 0,
+      inbox: ["Review globex entry"],
+      waiting: [],
+    });
+  });
+
+  it("dismisses an item for one person for everyone", async () => {
+    const ana = await user("ana@example.com");
+    const id = await addItem(ROOT, [ana], "Review acme entry");
+    const dismissed = await api(fixture, ana).act(id, { action: "dismiss" });
+    expect(await dismissed.json()).toMatchObject({ status: "dismissed" });
+    expect(
+      (await api(fixture, ana).json(`/inbox-items/${id}`)) as object,
+    ).not.toHaveProperty("hiddenFromViewer");
   });
 
   it("counts each item that one snooze on their root hides", async () => {

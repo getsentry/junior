@@ -4,8 +4,9 @@ The Inbox is where work waits for a person. Junior adds an Inbox item: an action
 
 ## Sub-features
 
-- `ask` Junior asks the user. The item shows in the Inbox and in the Conversation, with one control per choice, a note line, `Send`, and `Dismiss`. A click picks a choice, and `Send` answers.
-- `first-answer-closes` The first answer or dismiss closes the item everywhere, and the Inbox shows who closed it.
+- `ask` Junior asks the user. The item shows in the Inbox and in the Conversation, with one control per choice, a note line, `Send`, `Snooze`, and `Dismiss`. A click picks a choice, and `Send` answers.
+- `first-answer-closes` The first answer closes the item everywhere, and the Inbox shows who closed it. A dismiss of an item for one User closes it too.
+- `dismiss-for-viewer` In the dashboard, `Dismiss` on an item for Everyone or more than one User hides it for the viewer only. Its transcript card says "Dismissed for you", and it stays open for the others.
 - `answer-resumes` An answer reaches the Conversation and Junior continues the work. A dismiss starts no Turn.
 - `thread-reply` An assignee answers with a reply in the Slack thread, and the item closes. A reply that only acknowledges leaves it open.
 - `groups` Open actions show under "Needs you" and notices under "FYI". A closed item shows only in search.

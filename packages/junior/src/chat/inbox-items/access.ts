@@ -446,6 +446,15 @@ export function itemNeedsUser(item: InboxItem, userId: string): boolean {
   );
 }
 
+/**
+ * Return whether other people share the Inbox item: it is assigned to
+ * Everyone, or to more than one User. The dashboard's Dismiss hides such
+ * an item from one User only.
+ */
+export function isSharedInboxItem(item: InboxItem): boolean {
+  return item.assignedToEveryone || item.assignees.length > 1;
+}
+
 /** Return whether a User is already the only assignee, so take does nothing. */
 export function isOnlyAssignee(item: InboxItem, userId: string): boolean {
   return (

@@ -48,6 +48,7 @@ import {
 import type { InboxItemDelivery } from "@/chat/inbox-items/changes";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
+import { readInboxItemsHiddenFrom } from "@/chat/inbox-snoozes/store";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
@@ -234,22 +235,33 @@ async function inboxItemPayloads(
   items: readonly InboxItem[],
   viewer: User,
   reader: InboxItemReader,
+  /** The list already leaves out what the viewer hid, so it skips the read. */
+  awake = false,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const [roots, mentions, related] = await Promise.all([
+  const [roots, mentions, related, hidden] = await Promise.all([
     readItemRoots(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
+    awake
+      ? new Map<string, "dismissed" | "snoozed">()
+      : readInboxItemsHiddenFrom(
+          db,
+          viewer.id,
+          items.filter((item) => item.status === "open").map((item) => item.id),
+        ),
   ]);
-  return items.map((item, index) =>
-    inboxItemPayload(
+  return items.map((item, index) => {
+    const payload = inboxItemPayload(
       item,
       viewer,
       roots,
       mentions[index]!,
       related.get(item.id),
-    ),
-  );
+    );
+    const hiddenFromViewer = hidden.get(item.id);
+    return hiddenFromViewer ? { ...payload, hiddenFromViewer } : payload;
+  });
 }
 
 function actionErrorResponse(error: unknown): Response {
@@ -324,19 +336,20 @@ export function createInboxItemRoutes(services: {
             : undefined),
         });
       }
+      // The viewer's Inbox hides the rows they snoozed until they wake, and
+      // the shared items they dismissed. A Conversation's own list and a
+      // search still show them.
+      const awake =
+        query.for === "viewer" &&
+        !filters.conversationId &&
+        !filters.query &&
+        !filters.snoozedForUserId;
       // The archived matches come once, with the first page. They do not
       // depend on the open page, so both reads run at once.
       const [open, archived] = await Promise.all([
         searchInboxItems(db, reader, {
           ...filters,
-          // The viewer's Inbox hides the rows they snoozed until they wake. A
-          // Conversation's own list and a search still show them.
-          ...(query.for === "viewer" &&
-          !filters.conversationId &&
-          !filters.query &&
-          !filters.snoozedForUserId
-            ? { awakeForUserId: viewer.id }
-            : undefined),
+          ...(awake ? { awakeForUserId: viewer.id } : undefined),
           limit: query.limit + 1,
           statuses: ["open"],
           ...(filters.sort
@@ -369,6 +382,7 @@ export function createInboxItemRoutes(services: {
           [...page, ...archived.slice(0, ARCHIVED_LIMIT)],
           viewer,
           reader,
+          awake,
         ),
         ...(archived.length > ARCHIVED_LIMIT
           ? { moreArchived: true }
@@ -467,6 +481,9 @@ export function createInboxItemRoutes(services: {
         const item = await actOnInboxItem({
           action: body.action,
           delivery: services.delivery,
+          // Slack's shared card closes for everyone; the Inbox is one
+          // person's own.
+          dismissForUserOnly: true,
           id,
           user: viewer,
           ...(body.action === "submit"

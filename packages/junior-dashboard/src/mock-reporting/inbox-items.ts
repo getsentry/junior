@@ -36,6 +36,13 @@ export const AVERY_MENTION = {
   slackUserId: "U789",
 };
 
+/** A teammate that one mock question is also for. */
+const teammate = {
+  displayName: "Avery Chen",
+  email: "avery@example.com",
+  userId: "u-avery",
+};
+
 // Fixture Conversations that the plugin asks and notices link to.
 const DEPLOY_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
 const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
@@ -83,6 +90,8 @@ export type MockItemSeed = Pick<
     linkedConversationIds?: string[];
     /** The plugin that added the item. Plugin items have no Turn. */
     plugin?: string;
+    /** The item is also for a teammate, so Dismiss hides it for the viewer. */
+    shared?: boolean;
   };
 
 /** Every mock Inbox item, with its times relative to `nowMs`. */
@@ -224,6 +233,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       createdAt: at(40),
       addedByTurnId: "qa-turn-migration",
       id: "qa-migration-negative",
+      shared: true,
       request: {
         question: "What should happen to the 12 negative invoices?",
         fields: [
@@ -603,11 +613,14 @@ type MockItemChange = Pick<
 const changes = new Map<string, MockItemChange>();
 /** When each snoozed item wakes, by item id, like the server's snoozes. */
 const snoozes = new Map<string, number>();
+/** The shared items that the viewer dismissed for themselves only. */
+const hides = new Set<string>();
 
 /** Clear viewer actions so tests sharing a worker do not leak them. */
 export function resetMockInboxItems(): void {
   changes.clear();
   snoozes.clear();
+  hides.clear();
 }
 
 /** The items that a snooze hides now. */
@@ -634,7 +647,9 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
     .map((seed) => seed.id);
   // A snooze with no time waits for its Event, which mock data never sends.
   const wakeAtMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
-  for (const id of inboxItemIds) snoozes.set(id, wakeAtMs);
+  for (const id of inboxItemIds) {
+    if (!hides.has(id)) snoozes.set(id, wakeAtMs);
+  }
   return { inboxItemIds };
 }
 
@@ -691,6 +706,7 @@ function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
 function payload(
   seed: MockItemSeed,
   all: readonly MockItemSeed[],
+  nowMs: number,
 ): InboxItemPayload {
   const {
     automationId,
@@ -698,6 +714,7 @@ function payload(
     conversationId,
     linkedConversationIds = [],
     plugin: _plugin,
+    shared,
     ...rest
   } = seed;
   const root = rootOf(seed);
@@ -705,11 +722,20 @@ function payload(
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
   const relatedWork = related(seed, all);
+  const hiddenFromViewer =
+    item.status !== "open"
+      ? undefined
+      : hides.has(seed.id)
+        ? "dismissed"
+        : (snoozes.get(seed.id) ?? -Infinity) > nowMs
+          ? "snoozed"
+          : undefined;
   return {
     ...item,
     ...(childLabel ? { addedByLabel: childLabel } : undefined),
+    ...(hiddenFromViewer ? { hiddenFromViewer } : undefined),
     assignedToEveryone: everyone,
-    assignees: everyone ? [] : [viewer],
+    assignees: everyone ? [] : shared ? [viewer, teammate] : [viewer],
     canAct: item.status === "open",
     canTake: false,
     conversationIds: [
@@ -760,9 +786,10 @@ export function readMockInboxItems(
         (!q || seed.title.toLowerCase().includes(q)) &&
         (filters.snoozed
           ? snoozed.has(seed.id)
-          : !filters.forViewer || !snoozed.has(seed.id)),
+          : !filters.forViewer ||
+            !(snoozed.has(seed.id) || hides.has(seed.id))),
     )
-    .map((seed) => payload(seed, all));
+    .map((seed) => payload(seed, all, nowMs));
   if (filters.closed)
     return items
       .filter((item) => item.status !== "open")
@@ -777,7 +804,7 @@ export function readMockInboxItem(
 ): InboxItemPayload | undefined {
   const all = seeds(nowMs);
   const seed = all.find((candidate) => candidate.id === id);
-  return seed ? payload(seed, all) : undefined;
+  return seed ? payload(seed, all, nowMs) : undefined;
 }
 
 /** Apply a viewer action to an open mock item, like the API. */
@@ -789,6 +816,16 @@ export function actOnMockInboxItem(
   const item = readMockInboxItem(nowMs, id);
   if (!item || item.status !== "open") return item;
   if (body.action === "take") return item;
+  // Like the API, Dismiss on an item that others share hides it for the
+  // viewer only, and ends their snooze.
+  if (
+    body.action === "dismiss" &&
+    (item.assignedToEveryone || item.assignees.length > 1)
+  ) {
+    hides.add(id);
+    snoozes.delete(id);
+    return readMockInboxItem(nowMs, id);
+  }
   changes.set(id, {
     closedAt: new Date(nowMs).toISOString(),
     closedBy: viewer,

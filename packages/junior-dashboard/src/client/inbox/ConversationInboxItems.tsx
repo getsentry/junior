@@ -23,9 +23,12 @@ export function ConversationInboxItems(props: {
   conversationId: string;
   highlight: boolean;
 }) {
-  const { items, query } = useInboxItemsData({
+  const { items: linked, query } = useInboxItemsData({
     conversationId: props.conversationId,
   });
+  // An item that the viewer snoozed or dismissed keeps only its record in
+  // the transcript.
+  const items = linked.filter((item) => !item.hiddenFromViewer);
   const sectionRef = useRef<HTMLDivElement>(null);
   const shown = items.length > 0;
   useEffect(() => {

@@ -47,6 +47,12 @@ export const inboxItemSchema = z
     closedBy: personSchema.optional(),
     conversationIds: z.array(z.string().min(1)),
     createdAt: z.string().datetime(),
+    /**
+     * Set when the viewer hid the open item from their Inbox: `snoozed`
+     * until it wakes, or `dismissed` for them only. It stays open for the
+     * other people it is for.
+     */
+    hiddenFromViewer: z.enum(["dismissed", "snoozed"]).optional(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
     /** People that the title, body, and question mention. */

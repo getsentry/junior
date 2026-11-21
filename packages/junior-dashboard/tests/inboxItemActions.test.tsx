@@ -1,3 +1,4 @@
+import { Toast } from "@base-ui/react/toast";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -11,17 +12,19 @@ const item = { ...seed!, canTake: true, kind: "notice" as const };
 function buttons(props: { dismiss?: boolean; take?: string | false }) {
   const html = renderToStaticMarkup(
     <QueryClientProvider client={new QueryClient()}>
-      <InboxItemActions item={item} {...props} />
+      <Toast.Provider>
+        <InboxItemActions item={item} {...props} />
+      </Toast.Provider>
     </QueryClientProvider>,
   );
-  return [...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)].map(
-    ([, label]) => label,
+  return [...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)].map(([, label]) =>
+    label!.replace(/<[^>]*>/g, ""),
   );
 }
 
 describe("inbox item actions", () => {
-  it("shows Take and Dismiss unless the caller leaves them out", () => {
-    expect(buttons({})).toEqual(["Take", "Dismiss"]);
+  it("shows Take, Snooze, and Dismiss unless the caller leaves them out", () => {
+    expect(buttons({})).toEqual(["Take", "Snooze", "Dismiss"]);
     expect(buttons({ dismiss: false, take: "Take it" })).toEqual(["Take it"]);
     expect(buttons({ dismiss: false, take: false })).toEqual([]);
   });

@@ -30,6 +30,7 @@ import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
 import {
+  juniorInboxHides,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
 } from "./schema/inbox-snoozes";
@@ -76,6 +77,7 @@ export {
   juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
+  juniorInboxHides,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
   juniorInboxItemAssignees,
@@ -122,6 +124,7 @@ export const juniorSqlSchema = {
   juniorMemorySignals,
   juniorDestinations,
   juniorIdentities,
+  juniorInboxHides,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
   juniorInboxItemAssignees,

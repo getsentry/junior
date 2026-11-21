@@ -4,6 +4,7 @@ import {
   index,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -75,5 +76,28 @@ export const juniorInboxSnoozeTriggers = pgTable(
       table.eventType,
     ),
     index("junior_inbox_snooze_triggers_snooze_idx").on(table.snoozeId),
+  ],
+);
+
+/**
+ * One person's Dismiss of an Inbox item that other people share: an item
+ * for Everyone, or for more than one assignee. It hides the item from that
+ * person only, with no wake time. The item stays open for the others, and
+ * an answer still closes it for everyone.
+ */
+export const juniorInboxHides = pgTable(
+  "junior_inbox_hides",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => juniorUsers.id, { onDelete: "cascade" }),
+    inboxItemId: text("inbox_item_id")
+      .notNull()
+      .references(() => juniorInboxItems.id, { onDelete: "cascade" }),
+    createdAt: timestamptz("created_at").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.userId, table.inboxItemId] }),
+    index("junior_inbox_hides_inbox_item_idx").on(table.inboxItemId),
   ],
 );

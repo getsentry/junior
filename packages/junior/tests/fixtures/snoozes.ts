@@ -181,6 +181,38 @@ export async function addPullRequestItem(
   return item!.id;
 }
 
+/** Add an open action item for Everyone. Anyone in the workspace can act. */
+export async function addEveryoneItem(
+  conversationId: string,
+  title: string,
+): Promise<string> {
+  const item = await insertInboxItem(getDb(), {
+    owner: { id: conversationId, kind: "conversation" },
+    assignedToEveryone: true,
+    assigneeUserIds: [],
+    body: title,
+    conversationIds: [conversationId],
+    dedupeKey: title,
+    kind: "action",
+    nowMs: Date.now(),
+    request: {
+      fields: [
+        {
+          id: "decision",
+          kind: "choice",
+          label: "Decision",
+          options: [{ label: "Approve" }, { label: "Reject" }],
+        },
+      ],
+      question: title,
+    },
+    tenant: { provider: "slack", providerTenantId: "T123" },
+    title,
+    visibility: "public",
+  });
+  return item!.id;
+}
+
 /** Add an open notice for these Users. A notice waits on nobody. */
 export async function addNotice(
   conversationId: string,
@@ -219,6 +251,15 @@ export function api(fixture: ConversationFixture, viewer: User) {
       method,
     });
   return {
+    /** Take, answer, or dismiss an Inbox item. */
+    act: (inboxItemId: string, body: unknown) =>
+      app.request(`http://localhost/api/inbox-items/${inboxItemId}/actions`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
+    /** Read one API path as JSON. */
+    json,
     /** Read one API path, with these request headers. */
     request: (path: string, headers?: Record<string, string>) =>
       app.request(`http://localhost/api${path}`, { headers }),
