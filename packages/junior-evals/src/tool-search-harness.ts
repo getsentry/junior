@@ -41,6 +41,7 @@ interface ToolSearchEvalOutput extends Record<string, JsonValue> {
 }
 
 function trackerTool(description: string, inputSchema: z.ZodTypeAny) {
+  // ast-grep-ignore: tools-defined-in-tools-dir -- a stand-in tool for an eval case, not a product tool
   return definePluginTool({
     annotations: {
       destructiveHint: false,

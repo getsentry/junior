@@ -40,14 +40,12 @@ import { createMemoryCliCommand } from "@/chat/memory/cli";
 import { createMemoryRegistration } from "@/chat/memory/registration";
 import { processMemorySession } from "@/chat/memory/process-session";
 import { reembedMemories } from "@/chat/memory/reembed";
-import {
-  memoryArchiveTool,
-  memoryRestoreTool,
-  memoryCreateTool,
-  memoryListTool,
-  memorySearchTool,
-  type MemoryReviewer,
-} from "@/chat/memory/tools";
+import { memoryArchiveTool } from "@/chat/memory/tools/archive";
+import { memoryCreateTool } from "@/chat/memory/tools/create";
+import { memoryListTool } from "@/chat/memory/tools/list";
+import { memoryRestoreTool } from "@/chat/memory/tools/restore";
+import { memorySearchTool } from "@/chat/memory/tools/search";
+import type { MemoryReviewer } from "@/chat/memory/tool-support";
 import { hashEmbeddedContent } from "@/chat/memory/embedding";
 import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import type {
