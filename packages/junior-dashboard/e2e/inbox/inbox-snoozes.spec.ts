@@ -33,6 +33,9 @@ async function pickEvent(page: Page, index: number, phrase: string) {
     .nth(index)
     .click();
   await page.getByRole("option", { exact: true, name: phrase }).click();
+  // A closing list keeps its options until its exit animation ends, so the
+  // next pick would match two options.
+  await expect(page.getByRole("listbox")).toHaveCount(0);
 }
 
 // The next snooze that the page saves.
