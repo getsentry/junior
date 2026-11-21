@@ -622,9 +622,27 @@ importers:
       '@dnd-kit/sortable':
         specifier: ^10.0.0
         version: 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      '@lexical/code-core':
+        specifier: ^0.53.0
+        version: 0.53.0(typescript@7.0.2)
+      '@lexical/link':
+        specifier: ^0.53.0
+        version: 0.53.0(typescript@7.0.2)
+      '@lexical/list':
+        specifier: ^0.53.0
+        version: 0.53.0(typescript@7.0.2)
+      '@lexical/markdown':
+        specifier: ^0.53.0
+        version: 0.53.0(typescript@7.0.2)
       '@lexical/react':
         specifier: ^0.53.0
         version: 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
+      '@lexical/rich-text':
+        specifier: ^0.53.0
+        version: 0.53.0(typescript@7.0.2)
+      '@lexical/utils':
+        specifier: ^0.53.0
+        version: 0.53.0(typescript@7.0.2)
       '@sentry/browser':
         specifier: 'catalog:'
         version: 11.14.0
@@ -14896,7 +14914,13 @@ snapshots:
       '@base-ui/react': 1.9.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@dnd-kit/core': 6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       '@dnd-kit/sortable': 10.0.0(@dnd-kit/core@6.3.1(react-dom@19.2.6(react@19.2.6))(react@19.2.6))(react@19.2.6)
+      '@lexical/code-core': 0.53.0(typescript@7.0.2)
+      '@lexical/link': 0.53.0(typescript@7.0.2)
+      '@lexical/list': 0.53.0(typescript@7.0.2)
+      '@lexical/markdown': 0.53.0(typescript@7.0.2)
       '@lexical/react': 0.53.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(typescript@7.0.2)
+      '@lexical/rich-text': 0.53.0(typescript@7.0.2)
+      '@lexical/utils': 0.53.0(typescript@7.0.2)
       '@sentry/browser': 11.14.0
       '@sentry/junior': file:packages/junior(@types/node@24.19.2)(nitro@3.0.260522-beta(jiti@2.7.0))(typescript@7.0.2)
       '@sentry/junior-plugin-api': file:packages/junior-plugin-api

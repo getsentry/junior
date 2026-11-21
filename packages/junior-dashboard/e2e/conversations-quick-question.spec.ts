@@ -324,6 +324,13 @@ test("quotes selected reply text in the message box", async ({
   page,
   dashboard,
 }) => {
+  const sent: string[] = [];
+  await page.route("**/api/conversations/*/messages", async (route) => {
+    if (route.request().method() === "POST") {
+      sent.push(route.request().postDataJSON().message);
+    }
+    await route.fallback();
+  });
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
   );
@@ -348,49 +355,51 @@ test("quotes selected reply text in the message box", async ({
   // The quote keeps the Markdown of the reply: marks, lists, tables, code.
   await selectWholeReply(page);
   await respond.click();
-  await expect(composer).toHaveText(
-    [
-      "Thanks.",
-      "",
-      `> ${first}`,
-      "",
-      "Why?",
-      "",
-      "> Checkout p95 jumped after **payments-v42** landed.",
-      ">",
-      "> What I checked:",
-      ">",
-      "> - deploy marker `payments-v42` correlates with the spike",
-      "> - canary hosts show the same `checkout.latency` shape",
-      "> - error volume is flat, so this looks like slow path not hard fail",
-      ">",
-      "> | Window | Region | Host class | p50 | p95 | p99 | Errors | Notes |",
-      "> | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
-      "> | pre-deploy | us-west1 | canary + stable | 120ms | 210ms | 340ms | 0.4% | baseline |",
-      "> | post-deploy | us-west1 | stable | 310ms | **890ms** | 1.4s | 0.5% | spike after payments-v42 |",
-      "> | canary only | us-west1 | canary | 280ms | 860ms | 1.3s | 0.5% | same shape as stable |",
-      ">",
-      "> Useful query:",
-      ">",
-      "> ```sql",
-      "> SELECT percentile(duration, 0.95) AS p95",
-      "> FROM transactions",
-      "> WHERE transaction = 'checkout.complete'",
-      ">   AND timestamp > now() - interval '2 hours'",
-      "> GROUP BY 1",
-      "> ORDER BY p95 DESC;",
-      "> ```",
-      ">",
-      "> Next step: compare the pre/post deploy spans, then decide whether to",
-      "> roll back or patch the slow serializer path.",
-      "",
-      "",
-    ].join("\n"),
-    { useInnerText: true },
-  );
+  // The composer renders the quote. The sent text keeps the Markdown.
+  await expect(composer.locator("blockquote").first()).toHaveText(first);
   await screenshot(page, "conversation-selection-respond-quoted", {
     view: "desktop",
   });
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect
+    .poll(() => sent)
+    .toEqual([
+      [
+        "Thanks.",
+        "",
+        `> ${first}`,
+        "",
+        "Why?",
+        "",
+        "> Checkout p95 jumped after **payments-v42** landed.",
+        ">",
+        "> What I checked:",
+        ">",
+        "> - deploy marker `payments-v42` correlates with the spike",
+        "> - canary hosts show the same `checkout.latency` shape",
+        "> - error volume is flat, so this looks like slow path not hard fail",
+        ">",
+        "> | Window | Region | Host class | p50 | p95 | p99 | Errors | Notes |",
+        "> | --- | --- | --- | ---: | ---: | ---: | ---: | --- |",
+        "> | pre-deploy | us-west1 | canary + stable | 120ms | 210ms | 340ms | 0.4% | baseline |",
+        "> | post-deploy | us-west1 | stable | 310ms | **890ms** | 1.4s | 0.5% | spike after payments-v42 |",
+        "> | canary only | us-west1 | canary | 280ms | 860ms | 1.3s | 0.5% | same shape as stable |",
+        ">",
+        "> Useful query:",
+        ">",
+        "> ```sql",
+        "> SELECT percentile(duration, 0.95) AS p95",
+        "> FROM transactions",
+        "> WHERE transaction = 'checkout.complete'",
+        ">   AND timestamp > now() - interval '2 hours'",
+        "> GROUP BY 1",
+        "> ORDER BY p95 DESC;",
+        "> ```",
+        ">",
+        "> Next step: compare the pre/post deploy spans, then decide whether to",
+        "> roll back or patch the slow serializer path.",
+      ].join("\n"),
+    ]);
 });
 
 test.describe("on a touch screen", () => {
@@ -424,7 +433,9 @@ test.describe("on a touch screen", () => {
     );
     await respond.tap();
     await expect(
-      page.getByRole("textbox", { name: "Continue this conversation" }),
-    ).toHaveText(`> ${quote}\n\n`, { useInnerText: true });
+      page
+        .getByRole("textbox", { name: "Continue this conversation" })
+        .locator("blockquote"),
+    ).toHaveText(quote);
   });
 });

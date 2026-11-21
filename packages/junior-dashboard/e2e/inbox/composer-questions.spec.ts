@@ -541,7 +541,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "Continue this conversation",
     });
     await expect(composer).toBeFocused();
-    await expect.poll(() => composer.innerText()).toContain(`> ${quote}`);
+    // The composer renders the quote.
+    await expect(composer.locator("blockquote")).toHaveText(String(quote));
     await expect(question).toBeVisible();
   });
 });

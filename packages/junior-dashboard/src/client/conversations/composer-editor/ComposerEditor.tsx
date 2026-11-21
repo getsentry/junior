@@ -3,7 +3,10 @@ import { useLexicalComposerContext } from "@lexical/react/LexicalComposerContext
 import { ContentEditable } from "@lexical/react/LexicalContentEditable";
 import { LexicalErrorBoundary } from "@lexical/react/LexicalErrorBoundary";
 import { HistoryPlugin } from "@lexical/react/LexicalHistoryPlugin";
-import { PlainTextPlugin } from "@lexical/react/LexicalPlainTextPlugin";
+import { LinkPlugin } from "@lexical/react/LexicalLinkPlugin";
+import { ListPlugin } from "@lexical/react/LexicalListPlugin";
+import { MarkdownShortcutPlugin } from "@lexical/react/LexicalMarkdownShortcutPlugin";
+import { RichTextPlugin } from "@lexical/react/LexicalRichTextPlugin";
 import {
   $getRoot,
   $getSelection,
@@ -13,6 +16,8 @@ import {
   COMMAND_PRIORITY_NORMAL,
   DROP_COMMAND,
   HISTORIC_TAG,
+  INSERT_PARAGRAPH_COMMAND,
+  $isRangeSelection,
   KEY_ENTER_COMMAND,
   mergeRegister,
   PASTE_COMMAND,
@@ -38,11 +43,18 @@ import { skillTokenAt } from "../composerSkillToken";
 import { ComposerMentionNode } from "./ComposerMentionNode";
 import { ComposerReferenceNode } from "./ComposerReferenceNode";
 import {
+  $insertComposerMarkdown,
   $readComposerText,
   $replaceComposerTokens,
   $writeComposerText,
   type ComposerLookup,
 } from "./composerEditorText";
+import {
+  $isInMultilineBlock,
+  COMPOSER_MARKDOWN,
+  COMPOSER_MARKDOWN_NODES,
+  COMPOSER_THEME,
+} from "./composerMarkdown";
 import { useLexicalTypeahead } from "./useLexicalTypeahead";
 
 /** Imperative actions on the draft editor. */
@@ -91,10 +103,10 @@ type ComposerEditorProps = {
 };
 
 /**
- * The composer's draft editor: plain text with inline mentions and
- * reference chips, built on Lexical. The `$`, `@`, and `#` menus run inside
- * it. The composer lazy-loads
- * this module, because Lexical is large.
+ * The composer's draft editor: Markdown that renders as you type, with
+ * inline mentions and reference chips, built on Lexical. The draft text
+ * stays Markdown. The `$`, `@`, and `#` menus run inside it. The composer
+ * lazy-loads this module, because Lexical is large.
  */
 export default function ComposerEditor(props: ComposerEditorProps) {
   const initialText = useRef(props.readText());
@@ -106,15 +118,19 @@ export default function ComposerEditor(props: ComposerEditorProps) {
         editable: props.editable,
         editorState: () => $writeComposerText(initialText.current, lookup),
         namespace: "junior-composer",
-        nodes: [ComposerMentionNode, ComposerReferenceNode],
+        nodes: [
+          ComposerMentionNode,
+          ComposerReferenceNode,
+          ...COMPOSER_MARKDOWN_NODES,
+        ],
         onError: (error) => {
           throw error;
         },
-        theme: { paragraph: "m-0" },
+        theme: COMPOSER_THEME,
       }}
     >
       <div className="relative min-w-0">
-        <PlainTextPlugin
+        <RichTextPlugin
           contentEditable={
             <ContentEditable
               aria-autocomplete="list"
@@ -151,6 +167,9 @@ export default function ComposerEditor(props: ComposerEditorProps) {
         />
       </div>
       <HistoryPlugin />
+      <ListPlugin />
+      <LinkPlugin />
+      <MarkdownShortcutPlugin transformers={COMPOSER_MARKDOWN} />
       <ComposerBehavior
         {...props}
         initialText={initialText.current}
@@ -248,16 +267,26 @@ function ComposerBehavior(
         editor.registerCommand(
           KEY_ENTER_COMMAND,
           (event) => {
-            if (
-              !callbacks.current.enterSends ||
-              !event ||
+            if (!event || event.isComposing) return false;
+            // Shift+Enter starts a new paragraph, not a line break, so a
+            // Markdown block shortcut works on the new line. Enter adds a
+            // line in a code block or a list.
+            const newLine =
               event.shiftKey ||
-              event.isComposing
-            ) {
-              return false;
-            }
+              !callbacks.current.enterSends ||
+              editor.getEditorState().read(() => {
+                const selection = $getSelection();
+                return (
+                  $isRangeSelection(selection) &&
+                  $isInMultilineBlock(selection.anchor.getNode())
+                );
+              });
             event.preventDefault();
-            callbacks.current.onEnter();
+            if (newLine) {
+              editor.dispatchCommand(INSERT_PARAGRAPH_COMMAND, undefined);
+            } else {
+              callbacks.current.onEnter();
+            }
             return true;
           },
           COMMAND_PRIORITY_NORMAL,
@@ -270,9 +299,20 @@ function ComposerBehavior(
               event instanceof ClipboardEvent
                 ? Array.from(event.clipboardData?.files ?? [])
                 : [];
-            if (!onPasteFiles || !files.length) return false;
+            if (onPasteFiles && files.length) {
+              event.preventDefault();
+              onPasteFiles(files);
+              return true;
+            }
+            // Paste text as Markdown and render it, as if it was typed.
+            // Formatting from a web page or another editor does not come in.
+            const text =
+              event instanceof ClipboardEvent
+                ? event.clipboardData?.getData("text/plain")
+                : undefined;
+            if (!text) return false;
             event.preventDefault();
-            onPasteFiles(files);
+            editor.update(() => $insertComposerMarkdown(text));
             return true;
           },
           COMMAND_PRIORITY_HIGH,
