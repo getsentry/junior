@@ -17,6 +17,7 @@ import {
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import type { ReviewItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import {
@@ -67,6 +68,7 @@ export interface ReviewItemSubject {
   id: string;
   title?: string;
   url?: string;
+  titleParts?: ReviewItemSubjectTitleParts;
 }
 
 /** One assigned User of a Review item. */
@@ -273,6 +275,9 @@ async function hydrate(
               id: row.subjectId,
               ...(row.subjectTitle ? { title: row.subjectTitle } : undefined),
               ...(row.subjectUrl ? { url: row.subjectUrl } : undefined),
+              ...(row.subjectTitleParts
+                ? { titleParts: row.subjectTitleParts }
+                : undefined),
             },
           }
         : undefined),
@@ -289,6 +294,7 @@ function contentColumns(content: ReviewItemContent) {
     subjectId: content.subject?.id ?? null,
     subjectTitle: content.subject?.title ?? null,
     subjectUrl: content.subject?.url ?? null,
+    subjectTitleParts: content.subject?.titleParts ?? null,
     title: content.title,
     visibility: content.visibility,
   };

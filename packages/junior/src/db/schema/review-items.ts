@@ -9,6 +9,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { ReviewItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 import type { ReviewItemRequest } from "@/chat/review-items/evidence";
 import type { UserInputAnswer } from "@/chat/review-items/user-input-request";
 import { juniorAutomations } from "./automations";
@@ -54,6 +55,10 @@ export const juniorReviewItems = pgTable(
     subjectId: text("subject_id"),
     subjectTitle: text("subject_title"),
     subjectUrl: text("subject_url"),
+    /** The parsed subject title of a code change (`ReviewItemSubjectTitleParts`). */
+    subjectTitleParts: jsonb(
+      "subject_title_parts",
+    ).$type<ReviewItemSubjectTitleParts>(),
     // The default filled the rows from before owners had kinds.
     ownerKind: text("owner_kind")
       .$type<ReviewItemOwnerKind>()
