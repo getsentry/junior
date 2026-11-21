@@ -37,13 +37,8 @@ result to a Slack Destination.
 - A Destination is optional. It is a Slack channel or DM, never a web
   Conversation.
 - A block pauses the Automation until someone resumes it.
-- When an Automation needs its creator, core adds an Automation alert to
-  their Inbox: for a block, a trigger that no enabled plugin serves, or a
-  failed or blocked last run. A failed-run alert offers Run again and
-  Pause. It closes when the Automation recovers: it is active, its last run
-  succeeded, and its trigger is available. A dismissed alert hides its
-  alerts until the Automation recovers. A pause closes the alert, but it is
-  no recovery.
+- When an Automation needs its creator, Junior adds an Automation alert to
+  their Inbox ([Inbox](./inbox.md)).
 - An event filter limits noise. It is not access control.
 
 ## Gaps
