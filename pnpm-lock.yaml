@@ -296,6 +296,9 @@ importers:
       oxlint-tsgolint:
         specifier: 7.0.2007
         version: 7.0.2007
+      p-limit:
+        specifier: ^7.3.3
+        version: 7.3.3
       publint:
         specifier: ^0.3.21
         version: 0.3.21

@@ -117,6 +117,8 @@ jobs:
               - README.md
               - scripts/bump-release-versions.mjs
               - scripts/check-release-config.mjs
+              - scripts/check.mjs
+              - scripts/lib/repo-files.mjs
               - scripts/release-artifacts*.mjs
               - scripts/publish-github-release*.mjs
               - packages/*/package.json

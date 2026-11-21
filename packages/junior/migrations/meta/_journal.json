@@ -1030,6 +1030,13 @@
       "when": 1795286127229,
       "tag": "0146_inbox_item_subject_title_parts",
       "breakpoints": true
+    },
+    {
+      "idx": 147,
+      "version": "7",
+      "when": 1795290103913,
+      "tag": "0147_inbox_snooze_wake_reason",
+      "breakpoints": true
     }
   ]
 }

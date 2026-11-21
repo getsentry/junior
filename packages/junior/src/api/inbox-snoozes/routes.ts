@@ -1,5 +1,7 @@
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import { clearInboxWakeReasons } from "@/chat/inbox-snoozes/store";
 import { viewerSnoozeResource } from "@/chat/inbox-snoozes/subject";
 import {
   createViewerSnooze,
@@ -15,6 +17,7 @@ import {
   inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
+  inboxSnoozeWakesClearSchema,
 } from "../schema/inbox-snooze";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -84,6 +87,21 @@ export function createInboxSnoozeRoutes(): Hono<JuniorApiEnv> {
     validateRequest("json", inboxSnoozeSubjectSchema, "Invalid snooze."),
     async (context) => {
       await unsnoozeViewerRow(context.get("viewer"), context.req.valid("json"));
+      return emptyResponse();
+    },
+  );
+
+  // The viewer opened these items, so they no longer say why they woke.
+  // Only the viewer's own snoozes change.
+  app.delete(
+    "/wakes",
+    requireViewer,
+    validateRequest("json", inboxSnoozeWakesClearSchema, "Invalid items."),
+    async (context) => {
+      await clearInboxWakeReasons(getDb(), {
+        inboxItemIds: context.req.valid("json").inboxItemIds,
+        userId: context.get("viewer").id,
+      });
       return emptyResponse();
     },
   );
