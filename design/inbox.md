@@ -109,10 +109,10 @@ how the dashboard groups and acts on its rows.
 - A "To do for you" item has no Slack card. In Slack, the person learns of
   the To-do only from the reply. This breaks "its assignees see it in the
   Inbox and in its linked Slack threads".
-- A "To do for you" item checks the assignee's access only when its To-do
-  changes. A person who can see the Conversation only later gets no item
-  until then, and one who loses access keeps it. This breaks "only while
-  they can see the Conversation's private content".
+- Core adds a "To do for you" item only when its To-do changes. A person
+  who can see the Conversation only after that gets no item until the
+  To-do changes again. This breaks "a task for a person is a To-do
+  assigned to them. They see it with their other asks".
 - The "Needs you" group of the classic Inbox also shows open actions for
   Everyone and actions with no assignees. To do in the new Inbox shows
   actions with no assignees, and the Inbox count leaves them out. This

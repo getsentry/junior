@@ -1,4 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inboxItemCountSchema, inboxItemListSchema } from "@/api/schema";
 import { getConversationStore, getDb } from "@/chat/db";
@@ -269,10 +270,19 @@ describe("To-dos for a person in the Inbox", () => {
         { title: "Rotate the other key", assignee: "bob@example.com" },
       ],
     });
-    expect(await inbox(ana).items()).toEqual([
-      expect.objectContaining({ title: "Rotate the key" }),
-    ]);
+    const [item] = await inbox(ana).items();
+    expect(item).toEqual(expect.objectContaining({ title: "Rotate the key" }));
     expect(await inbox(bob).items()).toEqual([]);
+
+    // When Ana leaves the Conversation, the item leaves her Inbox too.
+    await getDb()
+      .delete(juniorConversationParticipants)
+      .where(eq(juniorConversationParticipants.userId, ana.id));
+    expect(await inbox(ana).items()).toEqual([]);
+    expect(await inbox(ana).count()).toEqual(
+      expect.objectContaining({ needsViewer: 0 }),
+    );
+    expect((await inbox(ana).act(item!.id, "done")).status).toBe(404);
   });
 
   async function updateTodosFor(conversationId: string, title: string) {

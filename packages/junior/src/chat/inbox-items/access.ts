@@ -1,5 +1,16 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, or, sql, type AnyColumn, type SQL } from "drizzle-orm";
+import {
+  and,
+  eq,
+  exists,
+  isNull,
+  notLike,
+  or,
+  sql,
+  type AnyColumn,
+  type SQL,
+} from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import {
   readConversationAccessFromSql,
   type ProviderTenant,
@@ -8,6 +19,9 @@ import { getDb } from "@/chat/db";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
+  juniorConversationParticipants,
+  juniorConversations,
+  juniorDestinations,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
   juniorInboxItems,
@@ -79,16 +93,74 @@ export function inboxItemOwnedByConversation(
   )!;
 }
 
-/** SQL: the Inbox item has this assigned User. */
+const todoOwner = alias(juniorConversations, "todo_owner");
+const todoRoot = alias(juniorConversations, "todo_root");
+const todoDestination = alias(juniorDestinations, "todo_destination");
+
+/**
+ * SQL: the User can see the private content of the Conversation that owns
+ * the item: its root's Destination is public, or the User is a Participant
+ * of the root. This is the rule of `conversationAccessFromRows`.
+ */
+function ownerConversationOpenTo(userId: string): SQL {
+  return exists(
+    getDb()
+      .select({ one: sql`1` })
+      .from(todoOwner)
+      .innerJoin(
+        todoRoot,
+        and(
+          eq(todoRoot.conversationId, todoOwner.rootConversationId),
+          eq(todoRoot.rootConversationId, todoRoot.conversationId),
+          isNull(todoRoot.parentConversationId),
+        ),
+      )
+      .leftJoin(todoDestination, eq(todoDestination.id, todoRoot.destinationId))
+      .where(
+        and(
+          eq(todoOwner.conversationId, juniorInboxItems.ownerId),
+          or(
+            eq(todoDestination.visibility, "public"),
+            exists(
+              getDb()
+                .select({ one: sql`1` })
+                .from(juniorConversationParticipants)
+                .where(
+                  and(
+                    eq(
+                      juniorConversationParticipants.rootConversationId,
+                      todoRoot.conversationId,
+                    ),
+                    eq(juniorConversationParticipants.userId, userId),
+                  ),
+                ),
+            ),
+          ),
+        ),
+      ),
+  );
+}
+
+/**
+ * SQL: the Inbox item has this assigned User. A To-do's item counts only
+ * while the User can see its Conversation's private content, so a person
+ * who loses access to the Conversation no longer sees or acts on it.
+ */
 export function inboxItemAssignedTo(userId: string): SQL {
-  return sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`;
+  return and(
+    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
+    or(
+      notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+      ownerConversationOpenTo(userId),
+    ),
+  )!;
 }
 
 /**
  * SQL: the Inbox item needs this User. Only an open `action` item that is
  * assigned to the User needs them. A notice, an item for Everyone, and an
- * item without assignees need no one. An assigned User can always see the
- * item, so this rule needs no visibility check. The nav count and the
+ * item without assignees need no one. An assigned User can see the item
+ * (`inboxItemAssignedTo`), so this rule needs no other visibility check. The nav count and the
  * "Waiting on you" marker use this rule.
  */
 export function inboxItemNeedsUser(userId: string): SQL {
@@ -206,6 +278,20 @@ export async function canUserReadInboxItem(
   item: InboxItem,
   user: User,
 ): Promise<boolean> {
+  const todo = inboxItemTodo(item);
+  if (todo) {
+    // Only its assignee reads a To-do's item, while they can see the
+    // Conversation (`inboxItemAssignedTo`).
+    if (!item.assignees.some((assignee) => assignee.userId === user.id)) {
+      return false;
+    }
+    const access = await readConversationAccessFromSql(
+      getDb(),
+      [todo.conversationId],
+      user,
+    );
+    return access.get(todo.conversationId)?.canViewPrivateContent === true;
+  }
   if (canReadInboxItem(item, inboxItemReaderForUser(user))) return true;
   const access = await readConversationAccessFromSql(
     getDb(),
