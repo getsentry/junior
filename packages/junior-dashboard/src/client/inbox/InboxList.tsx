@@ -389,6 +389,14 @@ export function InboxList(props: {
     const head = options.itemRow
       ? codeChangeHead(row.newest, conversationOf(row.conversationId))
       : undefined;
+    const expanded = state.expandedKey === key;
+    // An opened item stops saying why it woke once its row closes.
+    const wake = row.items.find(
+      (item) =>
+        item.status === "open" &&
+        (expanded || !snoozes.wakeOpened(item)) &&
+        item.wake,
+    )?.wake;
     const snoozeRow = options.snoozed
       ? undefined
       : (end: SnoozeEnd) => {
@@ -413,7 +421,7 @@ export function InboxList(props: {
         }
         conversationId={row.conversationId}
         drag={options.drag}
-        expanded={state.expandedKey === key}
+        expanded={expanded}
         foldedNotices={data.foldedNotices}
         itemHead={head}
         itemTitle={options.itemRow ? row.newest.title : undefined}
@@ -453,8 +461,12 @@ export function InboxList(props: {
                 )
             : undefined
         }
+        onOpen={() => snoozes.openWoken(row.items)}
         onSnoozeMenu={(open) => setSnoozeKey(open ? key : undefined)}
-        onToggle={() => toggle(key)}
+        onToggle={() => {
+          if (!expanded) snoozes.openWoken(row.items);
+          toggle(key);
+        }}
         rowKey={key}
         selected={false}
         showThreads={!options.itemRow}
@@ -462,6 +474,7 @@ export function InboxList(props: {
         take={options.take}
         time={options.time ?? row.waitingSince}
         title={title}
+        wake={wake}
       />
     );
   };
@@ -521,6 +534,7 @@ export function InboxList(props: {
           },
           snoozed: options.snoozed,
         })}
+        onOpen={() => snoozes.openWoken(row.items)}
         onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
         path={
           row.conversationId
