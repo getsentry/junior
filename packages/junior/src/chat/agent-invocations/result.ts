@@ -504,8 +504,20 @@ export async function enqueueChildResultToParent(args: {
     ...childMessageSenderMetadata(sender),
   };
   // A `reply` of an agent invocation is its result. A reply from a Turn on
-  // the Conversation loop is not, so the child's work may go on.
-  if (args.result.kind === "reply" && ownAgentInvocation(sender)) {
+  // the Conversation loop is not, so the child's work may go on. Only the
+  // first send closes: a retry must not close To-dos assigned after it.
+  const replyingInvocationId =
+    args.result.kind === "reply" ? ownAgentInvocation(sender) : undefined;
+  if (
+    replyingInvocationId &&
+    !hasAgentInvocationReply(
+      await readParentChildMessages(
+        args.sender.parentConversationId,
+        args.state,
+      ),
+      replyingInvocationId,
+    )
+  ) {
     await closeTodosForResult(args.sender, "completed", nowMs);
   }
   await appendAndEnqueueInboundMessage({

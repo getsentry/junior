@@ -368,6 +368,12 @@ describe("updateTodos", () => {
       // invocation ends, so the parent Turn that reads it sees the change.
       await harness.reply(children.replied, "Reviewed.");
       await expect(statusOf("India open")).resolves.toBe("done");
+      // A retry of the same reply leaves To-dos assigned after it open.
+      await harness.updateTodos({
+        add: [{ title: "India next", assignee: "India" }],
+      });
+      await harness.reply(children.replied, "Reviewed.");
+      await expect(statusOf("India next")).resolves.toBe("open");
       await harness.finish({
         invocationId: children.replied.invocationId,
         result: "",
@@ -412,6 +418,7 @@ describe("updateTodos", () => {
         ["Golf open", "open", undefined],
         ["Hotel open", "open", undefined],
         ["Parent open", "open", undefined],
+        ["India next", "open", undefined],
       ]);
     } finally {
       await harness.close();
