@@ -17,8 +17,9 @@ function buttons(props: { dismiss?: boolean; take?: string | false }) {
       </Toast.Provider>
     </QueryClientProvider>,
   );
-  return [...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)].map(([, label]) =>
-    label!.replace(/<[^>]*>/g, ""),
+  // A button's label is the text after its icon.
+  return [...html.matchAll(/<button[^>]*>(.*?)<\/button>/g)].map(
+    ([, content]) => content!.split(">").at(-1),
   );
 }
 
