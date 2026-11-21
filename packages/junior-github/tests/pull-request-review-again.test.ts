@@ -302,8 +302,8 @@ describe("review again after a change request", () => {
       expect(requests).toContain("rejected requester");
       expect(requests).not.toContain("request requester");
 
-      // The next webhook asks again, and the item says why.
-      github.laggingFeedback = [];
+      // The next webhook asks again, though the read still lags, and the
+      // item says why.
       github.rejectReviewRequests = false;
       await webhook.handler(checkSuiteCompleted());
       expect(requests).toContain("request requester");

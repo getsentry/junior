@@ -376,6 +376,7 @@ async function askForReviewAgain(
     if (readiness === "checks") {
       await holdGitHubReviewAsk(ctx.state, target, {
         at,
+        ...(input.marked ? { marked: input.marked } : undefined),
         reason: "checks",
         reviewer: input.reviewer,
       });
@@ -394,6 +395,7 @@ async function askForReviewAgain(
     // The next webhook asks again.
     await holdGitHubReviewAsk(ctx.state, target, {
       at,
+      ...(input.marked ? { marked: input.marked } : undefined),
       reason: "handled",
       reviewer: input.reviewer,
     });

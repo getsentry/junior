@@ -302,6 +302,10 @@ const heldAskSchema = z.object({
   // `handled`: the checks passed, but GitHub did not take the request.
   reason: z.enum(["checks", "handled"]),
   reviewer: z.string().min(1),
+  // The comment whose mark made the ask, so a lagging read still counts it.
+  marked: z
+    .object({ id: z.number(), kind: z.enum(["review", "review_body"]) })
+    .optional(),
 });
 
 /** A review ask that waits for the required checks to pass. */

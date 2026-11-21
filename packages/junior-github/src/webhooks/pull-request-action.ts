@@ -470,7 +470,14 @@ async function askHeldReview(
   const [owner = "", name = ""] = target.repositoryFullName.split("/");
   const readiness = await readReviewAgainReadiness(
     await loadReviewAgainReader(args.env, target.repositoryFullName),
-    { botUserId, name, number: target.number, owner, reviewer: held.reviewer },
+    {
+      botUserId,
+      marked: held.marked,
+      name,
+      number: target.number,
+      owner,
+      reviewer: held.reviewer,
+    },
   );
   if (readiness === "checks") return undefined;
   if (readiness === "ready") {
