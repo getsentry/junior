@@ -41,8 +41,7 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
    a failure cause, how to handle pushback. Never present inference as fact.
 3. **Context and trust.** `<context-trust>`: generic rules for context inputs.
    No tag table and no context data.
-4. **Actions and safety.** `<safety>`: action limits, approvals, and retries
-   with side effects.
+4. **Actions and safety.** `<safety>`: action limits, approvals, side-effect retries.
 5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<todo-policy>`:
    cross-tool rules only. A rule for one tool goes in its description.
 6. **Communication and output.** `<tool-call-style>`, `<conversation>`,
@@ -51,10 +50,11 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
    Put guidance for one situation in that tool result or input.
 7. **Personality.** The consumer's `SOUL.md`: voice and tone only.
 8. **World.** The consumer's `WORLD.md`: operator facts and workflow rules.
-9. **Plugin guidance.** `<plugin-system-context>` from plugin `systemPrompt`
-   hooks.
+9. **Plugin guidance.** `<plugin-system-context>` from `systemPrompt` hooks.
+10. **Reply length.** `<reply-length>`, only in `conversation`: it repeats the
+    `<output>` length default, because Opus 5 follows it better at the end.
 
-- Blocks 7 to 9 come last. The identity header says core rules win over them.
+- Blocks 7 to 10 come last. The identity header puts core rules over 7 to 9.
 - Core behavior must not depend on `SOUL.md` or `WORLD.md`.
 
 ### Context inputs
@@ -116,5 +116,5 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
 Fetched 2026-10-29. Research and summaries: issue #2364.
 
 - OpenAI: [Prompt engineering](https://developers.openai.com/api/docs/guides/prompt-engineering.md), [GPT-5.5](https://developers.openai.com/api/docs/guides/latest-model/gpt-5.5.md), [GPT-5.6](https://developers.openai.com/api/docs/guides/prompt-guidance-gpt-5p6.md), [GPT-4.1 guide](https://cookbook.openai.com/examples/gpt4-1_prompting_guide), [Model Spec](https://model-spec.openai.com/2026-08-18.html).
-- Anthropic: [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices), [Reduce hallucinations](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-hallucinations), [Mid-conversation system messages](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages), [claude.ai system prompts](https://platform.claude.com/docs/en/release-notes/system-prompts/claude-fable-5-1).
+- Anthropic: [Prompting best practices](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/claude-prompting-best-practices), [Reduce hallucinations](https://platform.claude.com/docs/en/test-and-evaluate/strengthen-guardrails/reduce-hallucinations), [Mid-conversation system messages](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages), [Prompting Claude Opus 5](https://platform.claude.com/docs/en/build-with-claude/prompt-engineering/prompting-claude-opus-5), [claude.ai system prompts](https://platform.claude.com/docs/en/release-notes/system-prompts/claude-fable-5-1).
 - Claude Code 2.1.312 binary: static sections first, then per-session context.

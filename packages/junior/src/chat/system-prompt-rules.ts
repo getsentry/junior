@@ -513,6 +513,21 @@ function buildOutputSection(
   ]);
 }
 
+/**
+ * Block 10 `<reply-length>`: a short reminder of the `<output>` length default
+ * for a person's conversation. Opus 5.x follows a length rule better when a
+ * reminder sits at the end of the prompt.
+ */
+export function buildReplyLengthReminder(mode: PromptMode): string | null {
+  if (mode !== "conversation") {
+    return null;
+  }
+  return renderRuleSection("reply-length", [
+    "- Keep the reply short: under 60 words unless the person asked for depth. Answer, give the main reason, and stop.",
+    "- No bold labels on bullets, no recap of what you checked, and no closing summary or offer.",
+  ]);
+}
+
 /** Return the core rule blocks 2 to 6 for one platform and Prompt mode. */
 export function buildRuleBlocks(
   platform: Platform,
