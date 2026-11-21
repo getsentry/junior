@@ -29,11 +29,23 @@ how the dashboard groups and acts on its rows.
 - Slack: the item card in each linked thread, and a thread reply.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
   the question card in the Conversation transcript, and the questions pill.
+- Dashboard filters: All, Pull requests, Decisions, and Other in the Inbox,
+  and Pinned only in the Inbox, Conversations, and a repository's
+  Conversations tab.
 - Settings: "Show the Inbox count in the tab".
 - MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
 ## Rules
 
+- The Inbox filters its asks by type: Pull requests (asks about a code
+  change), Decisions (other asks with a form), and Other (the rest, such
+  as To-dos and Resume). Each count holds the asks that wait on the viewer,
+  one per ask. The type counts add up to All, and All is the Inbox count.
+  A type with nothing waiting hides, but All always shows.
+- Pinned only shows only the rows of the viewer's pinned Conversations.
+  Pins have no section of their own: a pin stays in its place, with a pin
+  marker.
+- The filters stay in the URL, so a reload or a link keeps them.
 - A question never blocks its Conversation. It shows as a card in the
   transcript where Junior asked it. Nothing docks over the message box, and
   nothing takes the focus. A typed message still answers it.

@@ -18,7 +18,8 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     const primary = page.getByRole("navigation", { name: "Primary" });
     // One list of labelled rows: the Inbox views, Conversations and
-    // Automations, then the asks by type. No tab bar sits above them.
+    // Automations. The Inbox filters its asks by type, so the pane has no
+    // rows for them. No tab bar sits above them.
     await expect(page.getByRole("tablist")).toHaveCount(0);
     const rows = primary.getByRole("link");
     const names = [
@@ -27,15 +28,16 @@ test.describe("new UI", { tag: "@new" }, () => {
       "Done",
       "Conversations",
       /^Automations/,
-      /^Pull requests/,
-      /^Decisions/,
     ];
     for (const [index, name] of names.entries())
       await expect(rows.nth(index)).toHaveAccessibleName(name);
     await expect(rows.nth(0)).toHaveAttribute("aria-current", "page");
     await expect(
       primary.getByRole("heading", { name: "Asks by type" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
+    await expect(
+      primary.getByRole("link", { name: /^(Pull requests|Decisions)/ }),
+    ).toHaveCount(0);
 
     // Automations keeps the same pane, with its row marked.
     await primary.getByRole("link", { name: /^Automations/ }).click();

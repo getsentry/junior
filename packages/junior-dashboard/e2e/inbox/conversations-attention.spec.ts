@@ -2,7 +2,6 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 import { viewAsParticipant } from "./conversationMenu";
-import { openRow } from "./inbox-fixture";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -37,18 +36,18 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test.describe("conversation rows", () => {
-    test("pinning moves a conversation to Pinned and In flight", async ({
+    test("a pin keeps its place, and Pinned only lists only the pins", async ({
       page,
       dashboard,
     }) => {
       await viewAsParticipant(page);
       await page.goto(`${dashboard.baseURL}/?view=conversations`);
       const list = conversationsList(page);
-      const row = rowLink(list, "Investigate checkout latency");
+      const title = "Investigate checkout latency";
+      const row = rowLink(list, title);
       await expect(row).toBeVisible();
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .not.toBe("Pinned");
+      const section = await sectionOf(list, title);
+      await expect(list.getByRole("region", { name: "Pinned" })).toHaveCount(0);
 
       // Pin from the row's hover action.
       const pinRequest = page.waitForRequest(
@@ -56,45 +55,54 @@ test.describe("new UI", { tag: "@new" }, () => {
           request.method() === "PATCH" && request.url().endsWith("/pin"),
       );
       await row.hover();
-      await list
-        .getByRole("button", { name: "Pin Investigate checkout latency" })
-        .click();
+      await list.getByRole("button", { name: `Pin ${title}` }).click();
       expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
-      // The row shows only in Pinned, and In flight lists it.
-      await expect(row).toHaveCount(1);
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .toBe("Pinned");
+      // The row stays in its time section, and In flight lists it.
+      await row.hover();
+      await expect(
+        list.getByRole("button", { name: `Unpin ${title}` }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await expect.poll(() => sectionOf(list, title)).toBe(section);
+      await expect(list.getByRole("region", { name: "Pinned" })).toHaveCount(0);
       await expect(
         page
           .getByRole("list", { name: "In flight" })
-          .getByRole("link", { name: /Investigate checkout latency/ }),
+          .getByRole("link", { name: new RegExp(title) }),
       ).toBeVisible();
-      await row.hover();
-      await expect(
-        list.getByRole("button", {
-          name: "Unpin Investigate checkout latency",
-        }),
-      ).toHaveAttribute("aria-pressed", "true");
-      await screenshot(page, "conversations-pinned", {
+
+      // Pinned only shows only the pin, also after a reload.
+      const pinnedOnly = page
+        .getByRole("navigation", { name: "Rows to show" })
+        .getByRole("link", { name: "Pinned only" });
+      await pinnedOnly.click();
+      await expect(page).toHaveURL(/[?&]pinned=1/);
+      await expect(pinnedOnly).toHaveAttribute("aria-current", "page");
+      const rows = list.locator("a[data-inbox-head]");
+      await expect(rows).toHaveCount(1);
+      await expect(row).toBeVisible();
+      await page.reload();
+      await expect(pinnedOnly).toHaveAttribute("aria-current", "page");
+      await expect(rows).toHaveCount(1);
+      await screenshot(page, "conversations-pinned-only", {
         lightTheme: true,
         view: "desktop",
       });
 
-      // Unpin from the conversation `⋯` menu.
-      await openRow(row);
-      await page.getByRole("button", { name: "Conversation menu" }).click();
-      await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
-      await expect(
-        page.getByRole("menuitem", { name: "Pin", exact: true }),
-      ).toBeVisible();
-      await page.keyboard.press("Escape");
-      await page.getByRole("link", { name: "Back to Conversations" }).click();
+      // An unpin takes the row out of the list, and the empty state says
+      // how to pin.
+      await row.hover();
+      const unpin = list.getByRole("button", { name: `Unpin ${title}` });
+      await expect(unpin).toHaveAttribute("aria-pressed", "true");
+      await unpin.click();
+      await expect(row).toHaveCount(0);
+      await expect(page.getByText(/^Nothing pinned\./)).toBeVisible();
+
+      // Off again, every row shows.
+      await pinnedOnly.click();
+      await expect(page).not.toHaveURL(/[?&]pinned=1/);
       await expect(row).toBeVisible();
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .not.toBe("Pinned");
+      await expect.poll(() => sectionOf(list, title)).toBe(section);
     });
 
     test("lists the rows of the conversation menu in the row menu", async ({

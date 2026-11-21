@@ -76,23 +76,23 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
-    // An entry counts what waits on the viewer, like the badge: the
-    // "Pull request ready for review" notice does not.
     await expect(nav.getByRole("link")).toHaveText([
       /^Inbox/,
       /^Snoozed/,
       /^Done$/,
       /^Conversations$/,
       /^Automations/,
-      /^Pull requests\s*2$/,
-      /^Decisions\s*4$/,
       new RegExp(checkout),
     ]);
+    // A filter counts what waits on the viewer, like the badge: the
+    // "Pull request ready for review" notice does not.
+    await expect(
+      page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
+    ).toHaveText([/^All\s*6$/, /^Pull requests\s*2$/, /^Decisions\s*4$/]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 
     // Pull requests list the viewer's open changes, with their asks.
-    await nav.getByRole("link", { name: /^Pull requests/ }).click();
-    await expect(page).toHaveURL(/\/\?view=prs$/);
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Pull requests" }),
     ).toBeVisible();
@@ -100,13 +100,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Waiting on you/,
       /^Waiting on others/,
     ]);
-    await expect(
-      nav.getByRole("link", { name: /^Pull requests/ }),
-    ).toHaveAttribute("aria-current", "page");
     await screenshot(page, "inbox-pull-requests", { lightTheme: true });
 
     // Decisions group by Conversation, the longest wait first.
-    await nav.getByRole("link", { name: /^Decisions/ }).click();
+    await page.goto(`${dashboard.baseURL}/?view=decisions`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Decisions" }),
     ).toBeVisible();

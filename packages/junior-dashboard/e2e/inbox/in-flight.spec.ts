@@ -256,18 +256,23 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/?view=conversations&pinned=1`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
-    const pinned = page.getByRole("region", { name: "Pinned" });
+    // Pinned only lists every pin, and no other row.
+    const pinned = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
     await expect(pinned.locator("[data-inbox-row]")).toHaveCount(4);
+    await expect(rowHead(pinned, "Recent conversation")).toHaveCount(0);
 
     const save = page.waitForRequest(
       (request) =>
         request.method() === "PUT" &&
         request.url().includes("/api/conversations/pin-order"),
     );
-    await rowHead(pinned, "Old pin 2").focus();
+    await inFlight.getByRole("link", { name: /Old pin 2/ }).focus();
     await page.keyboard.press("Alt+ArrowUp");
     expect((await save).postDataJSON()).toEqual({
       conversationIds: [1, 0, 2, 3].map(

@@ -1,4 +1,8 @@
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import {
+  openRepositoryConversations,
+  pinFirstRepositoryConversation,
+} from "../repositoryConversations";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
@@ -223,5 +227,53 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByText("Last activity 10d ago · opened 12d ago"),
     ).toBeVisible();
+  });
+
+  test("the repository Conversations tab keeps a pin in place, and Pinned only lists only the pins", async ({
+    page,
+    dashboard,
+  }) => {
+    await pinFirstRepositoryConversation(page);
+    const list = await openRepositoryConversations(page, dashboard.baseURL);
+    const pinned = list.getByRole("link", { name: "Open Pinned conversation" });
+    const unpinned = list.getByRole("link", {
+      name: "Open Unpinned conversation",
+    });
+    await expect(pinned).toBeVisible();
+    await expect(unpinned).toBeVisible();
+    await expect(list.getByRole("region", { name: /^Pinned/ })).toHaveCount(0);
+    // Only the pin has the pin marker.
+    await expect(list.getByRole("img", { name: "Pinned" })).toHaveCount(1);
+
+    const pinnedOnly = list
+      .getByRole("navigation", { name: "Rows to show" })
+      .getByRole("link", { name: "Pinned only" });
+    await pinnedOnly.click();
+    await expect(page).toHaveURL(/\/conversations\?pinned=1$/);
+    await expect(pinned).toBeVisible();
+    await expect(unpinned).toHaveCount(0);
+    await page.reload();
+    await expect(pinnedOnly).toHaveAttribute("aria-current", "page");
+    await expect(pinned).toBeVisible();
+    await expect(unpinned).toHaveCount(0);
+
+    await pinnedOnly.click();
+    await expect(unpinned).toBeVisible();
+  });
+
+  test("the repository Conversations tab says how to pin when Pinned only finds no pin", async ({
+    page,
+    dashboard,
+  }) => {
+    const list = await openRepositoryConversations(page, dashboard.baseURL);
+    await expect(
+      list.getByRole("link", { name: /^Open / }).first(),
+    ).toBeVisible();
+    await list
+      .getByRole("navigation", { name: "Rows to show" })
+      .getByRole("link", { name: "Pinned only" })
+      .click();
+    await expect(list.getByText(/^Nothing pinned\./)).toBeVisible();
+    await expect(list.getByRole("link", { name: /^Open / })).toHaveCount(0);
   });
 });

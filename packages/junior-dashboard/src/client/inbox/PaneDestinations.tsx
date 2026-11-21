@@ -42,9 +42,6 @@ export const paneEntryClass = (selected: boolean, phone?: boolean) =>
       : "text-dashboard-text hover:bg-dashboard-fill-hover",
   );
 
-const headingClass =
-  "m-0 px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted";
-
 function Entry(props: {
   count?: number;
   icon: LucideIcon;
@@ -110,9 +107,9 @@ function Entry(props: {
 
 /**
  * The pane's destinations, in one list: the Inbox, Snoozed, and Done; then
- * Conversations, Automations, and the primary plugin pages; then the asks
- * by type. Each row reopens where the reader left it, and the Inbox and
- * Automations rows count what waits on the viewer.
+ * Conversations, Automations, and the primary plugin pages. The Inbox
+ * filters its asks by type itself. Each row reopens where the reader left
+ * it, and the Inbox and Automations rows count what waits on the viewer.
  */
 export function PaneDestinations(props: { phone?: boolean }) {
   const { pathname } = useLocation();
@@ -181,15 +178,6 @@ export function PaneDestinations(props: { phone?: boolean }) {
           />
         ))}
       </ul>
-      {data.signedIn ? (
-        <>
-          <h2 className={headingClass}>Asks by type</h2>
-          <ul className="m-0 grid gap-0.5 p-0">
-            {view("prs")}
-            {view("decisions")}
-          </ul>
-        </>
-      ) : null}
     </>
   );
 }

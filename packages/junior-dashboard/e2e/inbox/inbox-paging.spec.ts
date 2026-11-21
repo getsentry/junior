@@ -366,16 +366,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
+    const filters = page.getByRole("navigation", { name: "Asks to show" });
     await expect(
       page.getByRole("region", { name: "To do" }).locator("[data-inbox-row]"),
     ).toHaveCount(2);
     // The server counts every page, and leaves out the snoozed row.
-    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+    await expect(filters.getByRole("link", { name: /^Decisions/ })).toHaveText(
       /^Decisions\s*11$/,
     );
-    await expect(nav.getByRole("link", { name: /^Pull requests/ })).toHaveText(
-      /^Pull requests\s*2$/,
-    );
+    await expect(
+      filters.getByRole("link", { name: /^Pull requests/ }),
+    ).toHaveText(/^Pull requests\s*2$/);
     await expect(nav.getByRole("link", { name: /^Snoozed/ })).toHaveText(
       /^Snoozed\s*1$/,
     );
@@ -397,7 +398,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     const todo = page.getByRole("region", { name: "To do" });
     await expect(rowHead(todo, linked.title)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+    const filters = page.getByRole("navigation", { name: "Asks to show" });
+    await expect(filters.getByRole("link", { name: /^Decisions/ })).toHaveText(
       /^Decisions\s*12$/,
     );
     await expect(

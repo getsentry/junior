@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useSearchParams } from "react-router";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
 import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 
@@ -19,8 +20,9 @@ import {
 } from "../../../components/controls/TimeRangeSelector";
 import { Card } from "../../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
-import { pinnedFirst } from "../../../conversations/conversationSections";
+import { newestFirst } from "../../../conversations/conversationSections";
 import { buildConversations } from "../../../format";
+import { PinnedFilter, pinnedOnlyOf } from "../../../inbox/inboxFilters";
 import { useWaitingConversations } from "../../../inbox/queries";
 import { CodeActivityChart } from "../../../pages/code/CodeActivityChart";
 import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
@@ -29,22 +31,39 @@ import { getDashboardTimeZone } from "../../../time";
 
 const PAGE_SIZE = 25;
 
-/** Conversations linked to the repository, in the home list layout. */
+/**
+ * Conversations linked to the repository, in the home list layout. A pin
+ * stays in its time section. `?pinned=1` shows only the viewer's pins.
+ */
 export function RepositoryConversationsTab(props: { repositoryId: string }) {
   const [page, setPage] = useState(1);
+  const [params] = useSearchParams();
+  const pinnedOnly = pinnedOnlyOf(params);
+  useEffect(() => {
+    setPage(1);
+  }, [pinnedOnly]);
   const feed = useCodeRepositoryConversationsData(props.repositoryId);
-  const conversations = buildConversations(feed.data?.conversations ?? []);
+  const conversations = newestFirst(
+    buildConversations(feed.data?.conversations ?? []),
+  ).filter((conversation) => !pinnedOnly || conversation.pinnedAt);
   const waitingConversations = useWaitingConversations();
   return (
     <section aria-label="Conversations" className="grid gap-3">
+      <div className="flex justify-end">
+        <PinnedFilter on={pinnedOnly} search={params.toString()} />
+      </div>
       {feed.error ? (
         <EmptyTelemetry>
           Conversations are unavailable. Try refreshing the dashboard.
         </EmptyTelemetry>
       ) : (
         <ConversationHomeList
-          conversations={pageItems(pinnedFirst(conversations), page, PAGE_SIZE)}
-          emptyLabel="No conversations are linked to this repository yet."
+          conversations={pageItems(conversations, page, PAGE_SIZE)}
+          emptyLabel={
+            pinnedOnly
+              ? "Nothing pinned. Pin a conversation from its menu."
+              : "No conversations are linked to this repository yet."
+          }
           loading={!feed.data}
           timeZone={getDashboardTimeZone()}
           waitingConversations={waitingConversations}
