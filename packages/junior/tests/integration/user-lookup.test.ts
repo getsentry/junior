@@ -1,15 +1,14 @@
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import {
-  createSlackSource,
-  defineJuniorPlugin,
-} from "@sentry/junior-plugin-api";
-import { createApp, defineJuniorPlugins } from "@/app";
+import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
-import { parseSlackTeamId } from "@/chat/slack/ids";
-import { createUserLookupTool } from "@/chat/tools/user-lookup";
+import {
+  executeTool,
+  lookupTool,
+  seedLinkedIdentities,
+} from "../fixtures/user-lookup";
 import { juniorIdentities } from "@/db/schema";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
@@ -22,49 +21,6 @@ const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
 }).tools;
-
-async function executeTool<TInput>(tool: any, input: TInput) {
-  if (typeof tool?.execute !== "function") {
-    throw new Error("tool execute function missing");
-  }
-  const prepared = tool.prepareArguments?.(input) ?? input;
-  return await tool.execute(prepared, {} as any);
-}
-
-function lookupTool() {
-  const teamId = parseSlackTeamId("T0TEST");
-  if (!teamId) throw new Error("invalid test team id");
-  return createUserLookupTool(teamId, ["slack", "github"], {
-    fetch: async () => {
-      throw new Error("userLookup tests make no provider requests");
-    },
-  });
-}
-
-async function seedLinkedIdentities(input: {
-  githubId: string;
-  githubHandle: string;
-  slackUserId: string;
-  slackHandle: string;
-}) {
-  const slackIdentity = await upsertIdentity(getSqlExecutor(), {
-    kind: "user",
-    provider: "slack",
-    providerTenantId: "T0TEST",
-    providerSubjectId: input.slackUserId,
-    email: `${input.slackHandle}@sentry.io`,
-    emailVerified: true,
-    displayName: input.slackHandle,
-    handle: input.slackHandle,
-  });
-  if (!slackIdentity.userId) throw new Error("missing linked user");
-  await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
-    kind: "user",
-    provider: "github",
-    providerSubjectId: input.githubId,
-    handle: input.githubHandle,
-  });
-}
 
 describe("userLookup", () => {
   describe("provider slack", () => {
@@ -802,129 +758,6 @@ describe("userLookup", () => {
         query: "U0UNLINKED",
       });
       expect(unlinked.user).not.toHaveProperty("linked_identities");
-    });
-  });
-
-  describe("every provider", () => {
-    it("merges the providers that matched one person", async () => {
-      await seedLinkedIdentities({
-        githubId: "12345",
-        githubHandle: "dcramer",
-        slackUserId: "U039RR91S",
-        slackHandle: "dcramer",
-      });
-      queueSlackApiResponse("users.list", {
-        body: usersListPage({
-          members: [{ id: "U039RR91S", name: "dcramer", realName: "David" }],
-        }),
-      });
-
-      const result = await executeTool(lookupTool(), { query: "dcramer" });
-
-      expect(result).not.toHaveProperty("provider");
-      expect(result).toMatchObject({
-        count: 1,
-        ambiguous: false,
-        mention: "<@U039RR91S>",
-        user: {
-          matched_providers: ["slack", "github"],
-          linked_identities: [{ provider: "github", handle: "dcramer" }],
-        },
-      });
-    });
-
-    it("finds a person by a Slack mention", async () => {
-      queueSlackApiResponse("users.info", {
-        body: usersInfoOk({ userId: "U039RR91S", userName: "david" }),
-      });
-
-      await expect(
-        executeTool(lookupTool(), { query: "<@U039RR91S|david>" }),
-      ).resolves.toMatchObject({
-        count: 1,
-        user: { id: "U039RR91S", matched_providers: ["slack"] },
-      });
-    });
-
-    it("flags several candidates as ambiguous", async () => {
-      await seedLinkedIdentities({
-        githubId: "1",
-        githubHandle: "shared-login",
-        slackUserId: "U1",
-        slackHandle: "alice",
-      });
-      await seedLinkedIdentities({
-        githubId: "2",
-        githubHandle: "shared-login",
-        slackUserId: "U2",
-        slackHandle: "bob",
-      });
-      queueSlackApiResponse("users.list", { body: usersListPage() });
-
-      const result = await executeTool(lookupTool(), {
-        query: "shared-login",
-      });
-
-      expect(result).toMatchObject({ count: 2, ambiguous: true });
-      expect(result.users).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ id: "U1", matched_providers: ["github"] }),
-          expect.objectContaining({ id: "U2", matched_providers: ["github"] }),
-        ]),
-      );
-    });
-
-    it("links accounts that a plugin search finds", async () => {
-      await seedLinkedIdentities({
-        githubId: "12345",
-        githubHandle: "dcramer",
-        slackUserId: "U039RR91S",
-        slackHandle: "david",
-      });
-      queueSlackApiResponse("users.list", { body: usersListPage() });
-      await createApp({
-        plugins: defineJuniorPlugins([
-          defineJuniorPlugin({
-            manifest: {
-              name: "github",
-              displayName: "GitHub",
-              description: "Searches test accounts",
-            },
-            hooks: {
-              searchUsers: ({ query }) =>
-                query === "dcramer"
-                  ? [
-                      { id: "12345", handle: "dcramer" },
-                      {
-                        id: "67890",
-                        handle: "dcramer-alt",
-                        displayName: "Alt",
-                      },
-                    ]
-                  : [],
-            },
-          }),
-        ]),
-      });
-
-      const result = await executeTool(lookupTool(), { query: "dcramer" });
-
-      expect(result).toMatchObject({
-        count: 1,
-        ambiguous: true,
-        user: { id: "U039RR91S", matched_providers: ["github"] },
-        accounts: [
-          { provider: "github", handle: "dcramer-alt", display_name: "Alt" },
-        ],
-      });
-    });
-
-    it("returns no candidates when nobody matches an exact ID", async () => {
-      queueSlackApiError("users.info", { error: "user_not_found" });
-
-      await expect(
-        executeTool(lookupTool(), { query: "U0MISSING" }),
-      ).resolves.toMatchObject({ count: 0, ambiguous: false, users: [] });
     });
   });
 

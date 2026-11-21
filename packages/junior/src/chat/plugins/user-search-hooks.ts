@@ -23,7 +23,10 @@ export function getUserSearchProviders(): string[] {
     .map((plugin) => plugin.manifest.name);
 }
 
-/** Ask each listed provider's plugin for the accounts that match a query. */
+/**
+ * Ask each listed provider's plugin for the accounts that match a query. A
+ * search that fails or returns invalid accounts is logged and left out.
+ */
 export async function searchPluginUsers(input: {
   egress: PluginEgress;
   providers: string[];
@@ -36,18 +39,22 @@ export async function searchPluginUsers(input: {
       : [];
   });
   return await mapBounded(searches, async ({ plugin, search }) => {
-    const result = searchResultSchema.safeParse(
-      await search({
-        ...basePluginContext(plugin),
-        egress: input.egress,
-        query: input.query,
-      }),
-    );
-    if (!result.success) {
-      throw new Error(
-        `Plugin "${plugin.manifest.name}" searchUsers returned invalid accounts`,
+    const context = basePluginContext(plugin);
+    const provider = plugin.manifest.name;
+    try {
+      const result = searchResultSchema.safeParse(
+        await search({ ...context, egress: input.egress, query: input.query }),
       );
+      if (result.success) return { provider, accounts: result.data };
+      context.log.warn("plugin.search_users.invalid_result", { provider });
+    } catch (error) {
+      // One provider's search must not fail the whole lookup.
+      context.log.warn("plugin.search_users.failed", {
+        provider,
+        "exception.message":
+          error instanceof Error ? error.message : String(error),
+      });
     }
-    return { provider: plugin.manifest.name, accounts: result.data };
+    return { provider, accounts: [] };
   });
 }
