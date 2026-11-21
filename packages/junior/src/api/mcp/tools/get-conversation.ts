@@ -12,13 +12,17 @@ import {
   type ConversationBrief,
 } from "@/chat/briefs/schema";
 import {
+  mcpActivity,
+  mcpActivitySchema,
   mcpConversation,
   mcpConversationIdSchema,
   mcpCursorSchema,
   mcpConversationSchema,
+  mcpIncludeActivitySchema,
   mcpAuthorizationSchema,
   mcpMessages,
   mcpMessageSchema,
+  type McpActivity,
   type McpMessage,
   mcpPendingMessagesSchema,
   readMcpPendingWork,
@@ -61,13 +65,20 @@ const AFTER_EVENT_SCAN_LIMIT = 200;
 const AFTER_MESSAGE_LIMIT = 20;
 
 /**
- * Read the Messages after a transcript position and the position to continue
- * from. The cursor stops at the last returned Message when more are left.
+ * Read the Messages after a transcript position, the activity up to the last
+ * of them when `includeActivity` is set, and the position to continue from.
+ * The cursor stops at the last returned Message when more are left.
  */
 async function readMessagesAfter(
   conversationId: string,
   afterSeq: number,
-): Promise<{ messages: McpMessage[]; hasMore: boolean; seq: number }> {
+  includeActivity: boolean,
+): Promise<{
+  activity?: McpActivity[];
+  messages: McpMessage[];
+  hasMore: boolean;
+  seq: number;
+}> {
   // Participants can see private content.
   const page = await readConversationEventPageAfter(getSqlExecutor(), {
     afterSeq,
@@ -78,10 +89,16 @@ async function readMessagesAfter(
   const scanned = mcpMessages(page.events);
   const messages = scanned.slice(0, AFTER_MESSAGE_LIMIT);
   const cut = scanned.length > messages.length;
+  const seq = cut
+    ? messages.at(-1)!.seq
+    : (page.events.at(-1)?.seq ?? afterSeq);
   return {
+    ...(includeActivity
+      ? { activity: mcpActivity(page.events.filter((e) => e.seq <= seq)) }
+      : undefined),
     messages,
     hasMore: cut || page.nextSeq !== undefined,
-    seq: cut ? messages.at(-1)!.seq : (page.events.at(-1)?.seq ?? afterSeq),
+    seq,
   };
 }
 
@@ -109,6 +126,7 @@ export function registerGetConversationTool(
           .describe(
             "`cursor` from sendMessage, createConversation, or an earlier getConversation call.",
           ),
+        includeActivity: mcpIncludeActivitySchema,
       },
       outputSchema: {
         conversation: mcpConversationSchema,
@@ -123,6 +141,12 @@ export function registerGetConversationTool(
           .optional()
           .describe(
             "User and assistant messages after `after`, oldest first. Set only with `after`.",
+          ),
+        activity: z
+          .array(mcpActivitySchema)
+          .optional()
+          .describe(
+            "Set only with `after` and `includeActivity`. Oldest first.",
           ),
         hasMore: z
           .boolean()
@@ -141,7 +165,7 @@ export function registerGetConversationTool(
         readOnlyHint: true,
       },
     },
-    async ({ after, conversationId }) => {
+    async ({ after, conversationId, includeActivity }) => {
       const afterSeq = after
         ? decodeConversationCursor({ conversationId, cursor: after })?.seq
         : undefined;
@@ -164,7 +188,11 @@ export function registerGetConversationTool(
           ? undefined
           : detail.eventHistory.status === "expired"
             ? { messages: [], hasMore: false, seq: afterSeq }
-            : await readMessagesAfter(conversationId, afterSeq);
+            : await readMessagesAfter(
+                conversationId,
+                afterSeq,
+                includeActivity,
+              );
       const lastReply = newer
         ? undefined
         : mcpMessages(detail.events)
@@ -180,6 +208,7 @@ export function registerGetConversationTool(
           : undefined),
         ...(lastReply ? { lastReply } : undefined),
         ...(newer ? { messages: newer.messages } : undefined),
+        ...(newer?.activity ? { activity: newer.activity } : undefined),
         ...(newer?.hasMore ? { hasMore: true } : undefined),
         ...(await readMcpPendingWork(user, conversationId)),
         cursor: encodeConversationCursor({

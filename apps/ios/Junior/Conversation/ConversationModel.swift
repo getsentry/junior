@@ -4,12 +4,16 @@ import SwiftUI
 
 /// One Conversation through the public API: `getConversation` for its state
 /// and a cursor to follow it, and `listConversationMessages` for history.
+/// Both read the Turn activity between messages too (`includeActivity`).
 @MainActor
 @Observable
 final class ConversationModel {
   let conversationId: String
   var state: ConversationState?
   var messages: [MCPMessage] = []
+  private var activity: [MCPActivity] = []
+  /// Messages and the activity groups between them, oldest first.
+  private(set) var items: [TranscriptItem] = []
   /// `nextCursor` for older messages, when there are any.
   var olderCursor: String?
   var loadingEarlier = false
@@ -47,11 +51,13 @@ final class ConversationModel {
     do {
       async let opened = app.call("getConversation", ["conversationId": id], as: ConversationState.self)
       async let page = app.call(
-        "listConversationMessages", ["conversationId": id, "limit": 30], as: MessagePage.self)
+        "listConversationMessages", ["conversationId": id, "limit": 30, "includeActivity": true],
+        as: MessagePage.self)
       let (state, newest) = try await (opened, page)
       self.state = state
       cursor = state.cursor
-      messages = mergeMessages(messages, newest.messages)
+      messages = mergeBySeq(messages, newest.messages)
+      activity = mergeBySeq(activity, newest.activity ?? [])
       olderCursor = newest.nextCursor
       error = nil
       refreshFailed = false
@@ -72,8 +78,10 @@ final class ConversationModel {
     do {
       for _ in 0..<5 {
         let next = try await app.call(
-          "getConversation", ["conversationId": id, "after": .string(after)], as: ConversationState.self)
-        messages = mergeMessages(messages, next.messages ?? [])
+          "getConversation", ["conversationId": id, "after": .string(after), "includeActivity": true],
+          as: ConversationState.self)
+        messages = mergeBySeq(messages, next.messages ?? [])
+        activity = mergeBySeq(activity, next.activity ?? [])
         // `brief` and the conversation come with every read.
         state = next
         after = next.cursor
@@ -99,9 +107,11 @@ final class ConversationModel {
     defer { loadingEarlier = false }
     do {
       let page = try await app.call(
-        "listConversationMessages", ["conversationId": id, "before": .string(before), "limit": 30],
+        "listConversationMessages",
+        ["conversationId": id, "before": .string(before), "limit": 30, "includeActivity": true],
         as: MessagePage.self)
-      messages = mergeMessages(messages, page.messages)
+      messages = mergeBySeq(messages, page.messages)
+      activity = mergeBySeq(activity, page.activity ?? [])
       olderCursor = page.nextCursor
       rebuild()
     } catch {
@@ -135,6 +145,14 @@ final class ConversationModel {
     }
     parsedByText = kept
     messageBlocks = blocks
+    items = transcriptItems(messages: messages, activity: activity)
+  }
+
+  /// The activity of the running Turn: the last group, when no message
+  /// follows it (`liveActivityIndex`).
+  var liveActivityId: Int? {
+    guard conversation?.turnActive == true, case .activity(let group) = items.last else { return nil }
+    return group.id
   }
 
   /// The draft's idempotency key. A retry after a timeout reuses it, so
