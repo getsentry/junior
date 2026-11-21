@@ -1,1 +1,0 @@
-ALTER TABLE "junior_review_items" ADD COLUMN "subject_title_parts" jsonb;

@@ -3,7 +3,7 @@ import {
   CONVERSATION_VERSION_HEADER,
 } from "@sentry/junior/api/schema";
 import { requestedConversationIds, withRequestedMailbox } from "./harness";
-import { mockReviewItems, prReview, rowHead } from "./inbox/inbox-fixture";
+import { mockInboxItems, prReview, rowHead } from "./inbox/inbox-fixture";
 import { expect, test } from "./test";
 
 const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
@@ -19,7 +19,7 @@ test("refreshes idle reads only when their version moves", async ({
     conversation: "1:1",
     conversationIds: [] as string[],
     conversations: "feed-1",
-    reviewItems: "review-1",
+    inboxItems: "review-1",
     spend: "spend-1",
   };
   let versionReads = 0;
@@ -47,13 +47,13 @@ test("refreshes idle reads only when their version moves", async ({
       await route.fallback();
     },
   );
-  const reviewItemStatuses: number[] = [];
+  const inboxItemStatuses: number[] = [];
   page.on("response", (response) => {
     if (response.request().method() !== "GET") return;
     const { pathname } = new URL(response.url());
     if (pathname === "/api/conversations") feedStatuses.push(response.status());
-    if (pathname.startsWith("/api/review-items/")) {
-      reviewItemStatuses.push(response.status());
+    if (pathname.startsWith("/api/inbox-items/")) {
+      inboxItemStatuses.push(response.status());
     }
   });
   await page.route(
@@ -120,11 +120,11 @@ test("refreshes idle reads only when their version moves", async ({
   await expect(
     page.getByRole("link", { name: /Investigate checkout latency/ }).first(),
   ).toBeVisible();
-  // The Review item reads did not change either.
-  const reviewItemReads = reviewItemStatuses.length;
-  versions.reviewItems = "review-2";
+  // The Inbox item reads did not change either.
+  const inboxItemReads = inboxItemStatuses.length;
+  versions.inboxItems = "review-2";
   await expect
-    .poll(() => reviewItemStatuses.slice(reviewItemReads), { timeout: 15_000 })
+    .poll(() => inboxItemStatuses.slice(inboxItemReads), { timeout: 15_000 })
     .toContain(304);
 });
 
@@ -148,7 +148,7 @@ test.describe("checks less often while the reader is away", () => {
         json: {
           conversationDetails: {},
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -201,9 +201,9 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks.length).toBeGreaterThanOrEqual(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
-    // The Review items mock adds its own versions route. A later route runs
+    // The Inbox items mock adds its own versions route. A later route runs
     // first, so this one comes after it to see each check.
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       const ids = requestedConversationIds(route);
       await route.fulfill({
@@ -212,7 +212,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
             ids.filter((id) => id === releaseId).map((id) => [id, token]),
           ),
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });
@@ -293,15 +293,15 @@ test.describe("refreshes each Conversation on screen from its token", () => {
       await expect.poll(() => checks).toBeGreaterThan(count);
       await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
     };
-    // The Review items mock adds its own versions route. A later route runs
+    // The Inbox items mock adds its own versions route. A later route runs
     // first, so this one comes after it to see each check.
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.route("**/api/versions*", async (route) => {
       await route.fulfill({
         json: {
           conversationDetails: {},
           conversations: "mock",
-          reviewItems: "mock",
+          inboxItems: "mock",
           spend: "mock",
         },
       });

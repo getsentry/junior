@@ -1,7 +1,7 @@
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "../harness";
-import { automationAlert, mockReviewItems, openRow } from "./inbox-fixture";
+import { automationAlert, mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
@@ -180,7 +180,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [automationAlert("scheduled-1", "Weekly project summary")],
       automations: () =>
         mockAutomationCollection(
@@ -337,7 +337,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.setViewportSize({ width: 1440, height: 900 });
     const conversationUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770000000.000100")}`;
     const primary = page.getByRole("navigation", { name: "Primary" });

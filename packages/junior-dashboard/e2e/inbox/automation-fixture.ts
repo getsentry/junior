@@ -164,7 +164,7 @@ export function attentionCount(
 
 /** Serve the Automation collection and direct details from the same fixture. */
 export async function mockAutomationApis(page: Page) {
-  await page.route("**/api/review-items/count**", async (route) => {
+  await page.route("**/api/inbox-items/count**", async (route) => {
     // A navigation can cancel the count read before the fetch here ends.
     const response = await route.fetch().catch(() => undefined);
     if (!response) return route.abort().catch(() => {});

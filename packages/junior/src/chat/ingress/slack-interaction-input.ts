@@ -1,12 +1,12 @@
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { Message } from "chat";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
 import type { SlackInteractivePayload } from "./slack-payload";
 
 /** Facts that a Slack interaction saves on its input, beside the message. */
 export interface SlackInteractionInputFacts {
-  reviewItemChange?: ReviewItemChangeRecord | undefined;
+  reviewItemChange?: InboxItemChangeRecord | undefined;
 }
 
 /**

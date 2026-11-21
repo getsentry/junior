@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { mockReviewItems, prMerge, prReview } from "./inbox-fixture";
+import { mockInboxItems, prMerge, prReview } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -59,7 +59,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [breakingReview, prMerge, conflict] });
+    await mockInboxItems(page, { open: [breakingReview, prMerge, conflict] });
     await page.goto(`${dashboard.baseURL}/`);
     const review = row(page, "Pin the release train");
     const head = review.locator("[data-inbox-head]");
@@ -95,7 +95,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [breakingReview] });
+    await mockInboxItems(page, { open: [breakingReview] });
     await page.goto(`${dashboard.baseURL}/`);
     const review = row(page, "Pin the release train");
     // Closed, the row's hover actions open the pull request before the

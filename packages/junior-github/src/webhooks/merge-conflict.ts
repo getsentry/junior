@@ -12,7 +12,7 @@
 import type {
   EventInput,
   EventPublisher,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
@@ -151,7 +151,7 @@ export async function loadGitHubMergeConflictEvents(args: {
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
@@ -185,7 +185,7 @@ export async function loadGitHubMergeConflictEvents(args: {
         log: args.log,
         now: new Date(),
         ref,
-        reviewItems: args.reviewItems,
+        inboxItems: args.inboxItems,
         ...(loaded.title ? { title: loaded.title } : undefined),
       });
     } catch (error) {

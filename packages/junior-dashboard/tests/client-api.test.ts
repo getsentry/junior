@@ -28,9 +28,9 @@ import {
 } from "../src/client/conversations/queries";
 import { conversationSideReadQueryKey } from "../src/client/conversations/conversationSideReads";
 import {
-  REVIEW_ITEMS_QUERY_KEY,
-  reviewItemListQueryKey,
-  useConversationReviewItemData,
+  INBOX_ITEMS_QUERY_KEY,
+  inboxItemListQueryKey,
+  useConversationInboxItemData,
 } from "../src/client/inbox/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
@@ -207,17 +207,17 @@ describe("dashboard client API", () => {
     ).rejects.toThrow("Conversation history cursor did not advance");
   });
 
-  it("reads a transcript Review item from its Conversation's list", () => {
+  it("reads a transcript Inbox item from its Conversation's list", () => {
     const conversationId = "slack:C1:123";
     const client = new QueryClient();
-    client.setQueryData(reviewItemListQueryKey({ conversationId }), {
+    client.setQueryData(inboxItemListQueryKey({ conversationId }), {
       pageParams: [undefined],
       pages: [{ items: [{ id: "listed", title: "Listed item" }] }],
     });
     const detail = (id: string) =>
       client.getQueryCache().find({
         exact: true,
-        queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+        queryKey: [...INBOX_ITEMS_QUERY_KEY, "detail", id],
       });
     const render = (id: string) =>
       renderToStaticMarkup(
@@ -225,7 +225,7 @@ describe("dashboard client API", () => {
           QueryClientProvider,
           { client },
           createElement(function Row() {
-            const { data } = useConversationReviewItemData(conversationId, id);
+            const { data } = useConversationInboxItemData(conversationId, id);
             return data?.title ?? "loading";
           }),
         ),
@@ -267,18 +267,18 @@ describe("dashboard client API", () => {
     // transcript reads its open items from the list. An Inbox list that
     // shows an item of this Conversation shows its subject from this
     // detail, so it refreshes with it. The versions poll refreshes the other
-    // Review item reads.
-    const inbox = reviewItemListQueryKey({ forViewer: true, sort: "waiting" });
-    const otherInbox = reviewItemListQueryKey({ forViewer: true });
+    // Inbox item reads.
+    const inbox = inboxItemListQueryKey({ forViewer: true, sort: "waiting" });
+    const otherInbox = inboxItemListQueryKey({ forViewer: true });
     const sideReads = [
       conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
-      reviewItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
+      inboxItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
       inbox,
-      [...REVIEW_ITEMS_QUERY_KEY, "detail", "item-1"],
-      reviewItemListQueryKey({ conversationId: "slack:C1:other" }),
+      [...INBOX_ITEMS_QUERY_KEY, "detail", "item-1"],
+      inboxItemListQueryKey({ conversationId: "slack:C1:other" }),
       otherInbox,
-      [...REVIEW_ITEMS_QUERY_KEY, "count"],
-      [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+      [...INBOX_ITEMS_QUERY_KEY, "count"],
+      [...INBOX_ITEMS_QUERY_KEY, "waiting-conversations"],
     ];
     const listOf = (ownerId: string) => ({
       pageParams: [undefined],

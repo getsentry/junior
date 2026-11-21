@@ -16,7 +16,7 @@ import {
   getRegistrations,
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { mapBounded } from "@/chat/fan-out";
@@ -80,7 +80,7 @@ async function runPluginHeartbeats(args: {
   events: AppEventPublisher;
   limit?: number;
   nowMs: number;
-  showReviewItem?: ShowReviewItem | undefined;
+  showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   let count = 0;
   /* oxlint-disable no-await-in-loop -- Plugin dispatches take the shared pending-append index lock, which does not wait. */
@@ -104,7 +104,7 @@ async function runPluginHeartbeats(args: {
               events: createPluginEventPublisher(plugin, args.events),
               plugin,
               nowMs: args.nowMs,
-              showReviewItem: args.showReviewItem,
+              showInboxItem: args.showInboxItem,
             }),
           ),
         ),
@@ -257,8 +257,8 @@ export async function runHeartbeat(args: {
   /** The app's event publisher. */
   events: AppEventPublisher;
   nowMs: number;
-  /** Shows a Review item that a plugin heartbeat changed. */
-  showReviewItem?: ShowReviewItem | undefined;
+  /** Shows an Inbox item that a plugin heartbeat changed. */
+  showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
   // Runs before result recovery, so an invocation that this ends is sent to
@@ -323,7 +323,7 @@ export async function runHeartbeat(args: {
     dispatchForIdentity: args.dispatchForIdentity,
     events: args.events,
     nowMs: args.nowMs,
-    showReviewItem: args.showReviewItem,
+    showInboxItem: args.showInboxItem,
   });
   try {
     // Last, so a long first run does not delay the work above.

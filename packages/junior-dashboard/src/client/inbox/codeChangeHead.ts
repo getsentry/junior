@@ -1,5 +1,5 @@
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
-import type { ReviewItemSubjectTitleParts } from "@sentry/junior-plugin-api";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 
 import type { Conversation } from "../types";
 
@@ -16,7 +16,7 @@ export type CodeChangeHead = {
   /** The change's reference, such as "payments#91". */
   reference: string;
   /** The title without its type prefix, with its type, scope and breaking mark. */
-  title: ReviewItemSubjectTitleParts;
+  title: InboxItemSubjectTitleParts;
   /** The change's page on its provider. */
   url: string;
   /** Name of the action that opens `url`, such as "Review on GitHub". */
@@ -58,7 +58,7 @@ function shortRepo(
  * another item, which keeps its own title.
  */
 export function codeChangeHead(
-  item: Pick<ReviewItemPayload, "status" | "subject" | "title">,
+  item: Pick<InboxItemPayload, "status" | "subject" | "title">,
   conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
 ): CodeChangeHead | undefined {
   const subject = item.subject;

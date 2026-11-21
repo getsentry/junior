@@ -16,7 +16,7 @@ import { toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -99,8 +99,8 @@ const agentInputSchema = z
     /** Identity of the input author, resolved at ingress. */
     authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
-    /** Review item change that this input reports, on any Source. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
+    /** Inbox item change that this input reports, on any Source. */
+    reviewItemChange: inboxItemChangeRecordSchema.optional(),
     text: z.string(),
   })
   .strict()

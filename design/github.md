@@ -47,7 +47,7 @@ also wake a Conversation or run an Event automation.
   matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When it is approved and can merge,
-  the requester gets a "Ready to merge" Review item, because a person
+  the requester gets a "Ready to merge" Inbox item, because a person
   merges.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.

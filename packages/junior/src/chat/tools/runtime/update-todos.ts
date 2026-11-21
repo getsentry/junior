@@ -24,7 +24,7 @@ import {
 import {
   resolveAssignee,
   type FindMentionedUserId,
-} from "@/chat/review-items/assignees";
+} from "@/chat/inbox-items/assignees";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";

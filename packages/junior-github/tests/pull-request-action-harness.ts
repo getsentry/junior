@@ -4,7 +4,7 @@
  */
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginRoute,
 } from "@sentry/junior-plugin-api";
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
@@ -402,20 +402,20 @@ export async function markReviewAddressed(reviewId: number): Promise<void> {
   );
 }
 
-export type ReviewItemCall =
+export type InboxItemCall =
   | { conversationId: string; kind: "upsert"; notice: unknown }
   | { conversationId: string; input: unknown; kind: "close" };
 
 export function route(
   fixture: GitHubFixture,
-  calls: ReviewItemCall[],
+  calls: InboxItemCall[],
   errors: string[] = [],
   failures = { close: 0 },
   /** Keys of the other closed items, such as from before one item per pull request. */
   otherCloses: string[] = [],
 ): PluginRoute {
   const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
-  const reviewItems: PluginConversationReviewItems = {
+  const inboxItems: PluginConversationInboxItems = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
@@ -470,7 +470,7 @@ export function route(
     plugin: { name: "github" },
     events: { hasMatch: async () => false, async publish() {} },
     cache: { getOrLoad: unused },
-    reviewItems,
+    inboxItems,
     state: memoryState(),
     // The requester linked the GitHub account `Requester`.
     users: {

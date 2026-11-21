@@ -12,14 +12,14 @@ const MAYA = person("UMAYA", "Maya");
 
 /** The `request` of each action item that the agent added. */
 function askedRequests(conversation: { toolCalls: ToolCall[] }) {
-  return completedToolCalls("addReviewItem", conversation)
+  return completedToolCalls("addInboxItem", conversation)
     .map((call) => call.input as { kind?: string; request?: unknown })
     .filter((input) => input.kind === "action")
     .map((input) => input.request);
 }
 
 describe("Asking a Person", () => {
-  test("when the work needs facts that only the person knows, ask with a review item", async ({
+  test("when the work needs facts that only the person knows, ask with an inbox item", async ({
     run,
   }) => {
     const conversation = await run(
@@ -48,7 +48,7 @@ describe("Asking a Person", () => {
       ),
     );
 
-    const asks = completedToolCalls("addReviewItem", conversation)
+    const asks = completedToolCalls("addInboxItem", conversation)
       .map(
         (call) =>
           call.input as {
@@ -86,7 +86,7 @@ describe("Asking a Person", () => {
 
     // The delimiter, header, and quoting are scope choices with a
     // conventional default. They do not need the person.
-    expect(toolCallsOf("addReviewItem", conversation)).toHaveLength(0);
+    expect(toolCallsOf("addInboxItem", conversation)).toHaveLength(0);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
       rubric({

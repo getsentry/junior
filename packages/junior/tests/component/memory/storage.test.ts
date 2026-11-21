@@ -106,7 +106,7 @@ function memoryHeartbeatContext(args: {
     log: noopLogger,
     nowMs: args.nowMs,
     plugin: { name: "memory" },
-    reviewItems: { forConversation: vi.fn() },
+    inboxItems: { forConversation: vi.fn() },
     state: memoryState,
   };
 }

@@ -9,7 +9,7 @@ import {
   digest,
   license,
   migration,
-  mockReviewItems,
+  mockInboxItems,
   mockViewerCodeChanges,
   prMerge,
   prReady,
@@ -28,7 +28,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     // One row, or one stack of rows, per Conversation.
@@ -71,7 +71,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, license, audit, prReady, migration, prMerge, prReview],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -136,7 +136,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   });
 
   test("a row answers its ask in place", async ({ dashboard, page }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [rollout, license, audit],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -207,7 +207,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-team-ask",
       title: "Pick the on-call rotation",
     };
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -247,7 +247,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.clock.setFixedTime(NOW_MS);
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [license, prReady, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -282,7 +282,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       failActions: [digest.id],
       open: [license, digest],
     });
@@ -328,7 +328,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       license,
       automationAlert("scheduled-1", "Weekly project summary"),
     ];
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () =>
         mockAutomationCollection(
           report,
@@ -385,7 +385,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, { open: [prReview] });
+    const actions = await mockInboxItems(page, { open: [prReview] });
     await mockViewerCodeChanges(page, [
       {
         idleDays: 0,
@@ -468,7 +468,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     await page
       .getByRole("navigation", { name: "Primary" })
@@ -496,7 +496,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // The linked item is past the first page, so its row loads on its own.
-    await mockReviewItems(page, { open: [audit, rollout], pageSize: 1 });
+    await mockInboxItems(page, { open: [audit, rollout], pageSize: 1 });
     await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     await expect(
@@ -522,7 +522,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [rollout, license] });
+    await mockInboxItems(page, { open: [rollout, license] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await todo.getByRole("button", { name: /^To do/ }).click();
@@ -542,7 +542,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [prReady, license, audit] });
+    await mockInboxItems(page, { open: [prReady, license, audit] });
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
@@ -587,7 +587,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // The Conversation that added the item is not in the feed, and its title
     // does not load.
-    await mockReviewItems(page, { open: [prReview] });
+    await mockInboxItems(page, { open: [prReview] });
     await page.route(
       `**/api/conversations/${encodeURIComponent(prReview.owner.id)}**`,
       (route) => route.fulfill({ json: { error: "Not found" }, status: 404 }),
@@ -628,7 +628,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       kind: "notice" as const,
       request: undefined,
     };
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     await rowHead(page, "Pin the release train").click();
     const toggle = page.getByRole("button", { name: `Expand ${item.title}` });
@@ -666,7 +666,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       kind: "notice" as const,
       request: undefined,
     };
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
@@ -695,7 +695,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ],
       },
     };
-    await mockReviewItems(page, { open: [asked] });
+    await mockInboxItems(page, { open: [asked] });
     const event = (seq: number, data: Record<string, unknown>) => ({
       createdAt: new Date(NOW_MS - (60 - seq) * 1000).toISOString(),
       data,
@@ -868,7 +868,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // Both changes wait on the viewer, so they share one list.
-    await mockReviewItems(page, { open: [prReview, prMerge] });
+    await mockInboxItems(page, { open: [prReview, prMerge] });
     await mockViewerCodeChanges(page, [
       { idleDays: 1, number: 91, title: "Pin the release train" },
       { idleDays: 0, number: 42, title: "Tune the retry backoff" },

@@ -4,7 +4,7 @@
  */
 import type {
   PluginLogger,
-  ReviewItemSubjectTitleParts,
+  InboxItemSubjectTitleParts,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -25,7 +25,7 @@ import type { GitHubInstallationEnv } from "./installation-requests.js";
 export type LoadGitHubTitleParts = (input: {
   repositoryFullName: string;
   title: string;
-}) => Promise<ReviewItemSubjectTitleParts | undefined>;
+}) => Promise<InboxItemSubjectTitleParts | undefined>;
 
 /** A repository without the file costs at most one read in this time. */
 const MISSING_TTL_MS = 60 * 60_000;
@@ -91,7 +91,7 @@ export async function loadGitHubTitleParts(
   env: GitHubInstallationEnv,
   input: { repositoryFullName: string; title: string },
   log?: Pick<PluginLogger, "error" | "warn">,
-): Promise<ReviewItemSubjectTitleParts | undefined> {
+): Promise<InboxItemSubjectTitleParts | undefined> {
   let categories: readonly CodeChangeCategory[];
   try {
     categories = await loadReleaseCategories(env, input.repositoryFullName);

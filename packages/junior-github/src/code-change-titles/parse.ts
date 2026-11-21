@@ -4,7 +4,7 @@
  * Craft's changelog categories (`getsentry/craft` `src/utils/changelog.ts`),
  * so a card names a change the way its release notes will.
  */
-import type { ReviewItemSubjectTitleParts } from "@sentry/junior-plugin-api";
+import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 
 /** One changelog category: its title and its compiled title patterns. */
 export interface CodeChangeCategory {
@@ -116,7 +116,7 @@ function firstMatch(
 export function parseCodeChangeTitle(
   title: string,
   categories: readonly CodeChangeCategory[] = DEFAULT_CODE_CHANGE_CATEGORIES,
-): ReviewItemSubjectTitleParts | undefined {
+): InboxItemSubjectTitleParts | undefined {
   const bounded = title.slice(0, MAX_TITLE_LENGTH);
   const breaking = BREAKING.test(bounded);
   // A breaking title that no repo category matches still loses its prefix.

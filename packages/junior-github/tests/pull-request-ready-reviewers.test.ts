@@ -1,7 +1,7 @@
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginRoute,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -87,7 +87,7 @@ function route(
   options: { state?: PluginState; warnings?: string[] } = {},
 ): PluginRoute {
   // The next-action item has its own tests.
-  const reviewItems: PluginConversationReviewItems = {
+  const inboxItems: PluginConversationInboxItems = {
     forConversation() {
       return {
         async upsert() {},
@@ -122,7 +122,7 @@ function route(
       warn: (message: string) => options.warnings?.push(message),
     },
     plugin: { name: "github" },
-    reviewItems,
+    inboxItems,
     state: options.state ?? memoryState(),
     // The requester linked the GitHub account `Requester`.
     users: {

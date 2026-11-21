@@ -13,7 +13,7 @@ import {
   seedJuniorPullRequest,
   stubGitHubAppEnv,
   type GitHubState,
-  type ReviewItemCall,
+  type InboxItemCall,
 } from "./pull-request-action-harness";
 
 describe("next action item", () => {
@@ -27,7 +27,7 @@ describe("next action item", () => {
 
   it("adds one notice for the requester while the pull request is ready, and closes it when that stops", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const errors: string[] = [];
     const failures = { close: 0 };
     const requests: string[] = [];
@@ -227,7 +227,7 @@ describe("next action item", () => {
 
   it("shows one item that changes from review to merge", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const github: GitHubState = {
       draft: false,
       mergeableStates: ["blocked"],
@@ -350,7 +350,7 @@ describe("next action item", () => {
 
   it("reads nothing from GitHub for a pull request with no requester Conversation", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const requests: string[] = [];
     mockGitHub(
       {

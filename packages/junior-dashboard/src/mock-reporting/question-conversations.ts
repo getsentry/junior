@@ -1,6 +1,6 @@
 /**
  * The transcripts of the mock question Conversations, whose items come from
- * `review-items.ts`.
+ * `inbox-items.ts`.
  */
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import {
@@ -10,7 +10,7 @@ import {
   type MockItemSeed,
   seeds,
   viewer,
-} from "./review-items";
+} from "./inbox-items";
 
 function addItemCall(seq: number, createdAt: string, item: MockItemSeed) {
   return {
@@ -21,7 +21,7 @@ function addItemCall(seq: number, createdAt: string, item: MockItemSeed) {
       calls: [
         {
           input: { kind: "action", title: item.title },
-          name: "addReviewItem",
+          name: "addInboxItem",
           output: JSON.stringify({ item: { id: item.id } }),
           status: "completed",
           toolCallId: `add-${item.id}`,
