@@ -82,6 +82,7 @@ export async function stopConversation(args: {
     const stoppedAtMs = args.message?.createdAtMs ?? nowMs;
     await stopChildAgentsBelow(args.conversationId, {
       nowMs,
+      queue: args.queue,
       stoppedAtMs,
       state: args.state,
     });
