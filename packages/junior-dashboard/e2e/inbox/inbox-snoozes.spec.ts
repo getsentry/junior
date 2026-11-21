@@ -26,13 +26,22 @@ const openRowOf = (page: Page) =>
 const customOf = (page: Page) =>
   page.getByRole("dialog", { name: "Custom snooze" });
 
+// Open the Event select of the condition at `index` in the Custom snooze
+// dialog, and return its list. A list that just closed stays in the page while
+// it fades out, with the same options, so read only the list that opened.
+async function openEvents(page: Page, index: number) {
+  const select = customOf(page)
+    .getByRole("combobox", { name: "Event" })
+    .nth(index);
+  await select.click();
+  await expect(select).toHaveAttribute("aria-controls", /.+/);
+  return page.locator(`[id="${await select.getAttribute("aria-controls")}"]`);
+}
+
 // Pick the Event of the condition at `index` in the Custom snooze dialog.
 async function pickEvent(page: Page, index: number, phrase: string) {
-  await customOf(page)
-    .getByRole("combobox", { name: "Event" })
-    .nth(index)
-    .click();
-  await page.getByRole("option", { exact: true, name: phrase }).click();
+  const events = await openEvents(page, index);
+  await events.getByRole("option", { exact: true, name: phrase }).click();
 }
 
 // The next snooze that the page saves.
@@ -548,11 +557,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       .fill(issue);
     await page.getByRole("option", { name: issue }).click();
     // The second condition offers the issue's Events.
-    await dialog.getByRole("combobox", { name: "Event" }).nth(1).click();
+    const events = await openEvents(page, 1);
     await expect(
-      page.getByRole("option", { exact: true, name: "is merged" }),
+      events.getByRole("option", { exact: true, name: "is merged" }),
     ).toHaveCount(0);
-    await page.getByRole("option", { exact: true, name: "is closed" }).click();
+    await events
+      .getByRole("option", { exact: true, name: "is closed" })
+      .click();
     await expect(
       dialog.getByRole("group", { name: "When the issue is closed" }),
     ).toBeVisible();
