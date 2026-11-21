@@ -37,10 +37,12 @@ export const CONVERSATION_METADATA_TASK = {
 } as const;
 
 const LOCK_TTL_MS = 10 * 60 * 1_000;
-// Turns that end close together, such as follow-up Turns for several people,
-// queue their tasks at once. Waiting about one generation lets the next task
-// run after the holder instead of failing and waiting for a queue retry.
-const LOCK_WAIT_MS = 30_000;
+// The holder covers newer Turns before it releases the lock, so a task that
+// finds the lock held can skip. The wait covers only the gap between the
+// holder's last check and its release.
+const LOCK_WAIT_MS = 5_000;
+// Bounds how many updates one holder stores before it releases the lock.
+const MAX_PASSES = 3;
 
 /** Return whether a user gave this Turn an instruction. */
 function hasUserInstruction(record: TurnRecord): boolean {
@@ -62,6 +64,27 @@ function logSkip(conversationId: string, reason: string): void {
     "app.conversation_metadata.skip_reason": reason,
     "gen_ai.conversation.id": conversationId,
   });
+}
+
+async function readLatestCompletedTurn(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<{ seq: number; turnId: string } | undefined> {
+  const rows = await db
+    .select({
+      seq: juniorConversationEvents.seq,
+      turnId: sql<string>`${juniorConversationEvents.payload}->>'turnId'`,
+    })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "turn_completed"),
+      ),
+    )
+    .orderBy(desc(juniorConversationEvents.seq))
+    .limit(1);
+  return rows[0];
 }
 
 async function readTurnCompletedSeq(
@@ -88,6 +111,75 @@ async function readTurnCompletedSeq(
     );
   }
   return seq;
+}
+
+/**
+ * Store the metadata and embedding through one completed Turn unless newer
+ * metadata already covers it. Returns the event seq that the metadata covers.
+ */
+async function storeMetadataThroughTurn(
+  db: JuniorDatabase,
+  executor: ReturnType<typeof getSqlExecutor>,
+  args: { conversationId: string; terminalSeq: number; turnId: string },
+): Promise<number> {
+  const { conversationId, terminalSeq, turnId } = args;
+  const embed = createConversationEmbedder({
+    cost: { conversationId, turnId },
+    operation: "conversation_embedding",
+  });
+  const previous = await readConversationMetadata(db, conversationId);
+  if (
+    previous?.throughSeq !== undefined &&
+    previous.throughSeq >= terminalSeq
+  ) {
+    // A retry after the metadata write embeds again here. The embedding
+    // write skips a vector that is already current.
+    await storeConversationEmbedding(db, embed, {
+      conversationId,
+      metadata: previous,
+    });
+    logSkip(conversationId, "turn_already_covered");
+    return previous.throughSeq;
+  }
+  const input = await conversationMetadataInputFromSql(
+    executor,
+    conversationId,
+    terminalSeq,
+  );
+  // The update runs after the reply and shares no prompt prefix with the
+  // Turn, so the main model's cache cannot help.
+  const modelId = botConfig.fastModelId;
+  const generated = await generateConversationMetadata({
+    completeObject: (request) =>
+      completeObject({
+        ...request,
+        modelId,
+        operation: "conversation_metadata",
+        cost: { conversationId, turnId },
+      }),
+    input,
+    previous: previous?.summary ? { summary: previous.summary } : undefined,
+  });
+  const stored = await writeConversationMetadata(db, {
+    conversationId,
+    throughSeq: terminalSeq,
+    ...generated,
+  });
+  if (!stored) {
+    logSkip(conversationId, "turn_already_covered");
+    return terminalSeq;
+  }
+  // The metadata is stored first, so an embedding failure cannot lose
+  // it. The failure fails the task, and its retry embeds again above.
+  await storeConversationEmbedding(db, embed, {
+    conversationId,
+    metadata: {
+      ...generated,
+      throughSeq: terminalSeq,
+      ...(input.title ? { title: input.title } : undefined),
+    },
+  });
+  return terminalSeq;
 }
 
 /**
@@ -144,74 +236,34 @@ export async function updateConversationMetadata(args: {
     `conversation_metadata:${conversationId}`,
     async () => {
       const db = getDb();
-      const embed = createConversationEmbedder({
-        cost: { conversationId, turnId },
-        operation: "conversation_embedding",
-      });
-      const terminalSeq = await readTurnCompletedSeq(
-        db,
-        conversationId,
+      let turn = {
+        terminalSeq: await readTurnCompletedSeq(db, conversationId, turnId),
         turnId,
-      );
-      const previous = await readConversationMetadata(db, conversationId);
-      if (
-        previous?.throughSeq !== undefined &&
-        previous.throughSeq >= terminalSeq
-      ) {
-        // A retry after the metadata write embeds again here. The embedding
-        // write skips a vector that is already current.
-        await storeConversationEmbedding(db, embed, {
+      };
+      /* oxlint-disable no-await-in-loop -- Each pass needs the metadata that the pass before stored. MAX_PASSES caps the loop. */
+      for (let pass = 1; ; pass++) {
+        const throughSeq = await storeMetadataThroughTurn(db, executor, {
           conversationId,
-          metadata: previous,
+          ...turn,
         });
-        logSkip(conversationId, "turn_already_covered");
-        return;
+        // A newer Turn that found this lock held skipped its update. Cover
+        // it now, or a Conversation that goes quiet keeps stale metadata.
+        const latest = await readLatestCompletedTurn(db, conversationId);
+        if (!latest || latest.seq <= throughSeq) return;
+        if (pass >= MAX_PASSES) {
+          // That Turn's own task already skipped. Fail so the queue retries
+          // this task, which goes straight to the newest Turn.
+          throw new Error(
+            `Conversation metadata catch-up stopped after ${MAX_PASSES} passes with Turn ${latest.turnId} uncovered in Conversation ${conversationId}`,
+          );
+        }
+        turn = { terminalSeq: latest.seq, turnId: latest.turnId };
       }
-      const input = await conversationMetadataInputFromSql(
-        executor,
-        conversationId,
-        terminalSeq,
-      );
-      // The update runs after the reply and shares no prompt prefix with the
-      // Turn, so the main model's cache cannot help.
-      const modelId = botConfig.fastModelId;
-      const generated = await generateConversationMetadata({
-        completeObject: (request) =>
-          completeObject({
-            ...request,
-            modelId,
-            operation: "conversation_metadata",
-            cost: { conversationId, turnId },
-          }),
-        input,
-        previous: previous?.summary ? { summary: previous.summary } : undefined,
-      });
-      const stored = await writeConversationMetadata(db, {
-        conversationId,
-        throughSeq: terminalSeq,
-        ...generated,
-      });
-      if (!stored) {
-        logSkip(conversationId, "turn_already_covered");
-        return;
-      }
-      // The metadata is stored first, so an embedding failure cannot lose
-      // it. The failure fails the task, and its retry embeds again above.
-      await storeConversationEmbedding(db, embed, {
-        conversationId,
-        metadata: {
-          ...generated,
-          throughSeq: terminalSeq,
-          ...(input.title ? { title: input.title } : undefined),
-        },
-      });
+      /* oxlint-enable no-await-in-loop */
     },
     { ttlMs: LOCK_TTL_MS, waitMs: LOCK_WAIT_MS },
   );
   if (!locked.acquired) {
-    // The queue retries the task after the current owner finishes.
-    throw new Error(
-      `Could not acquire the Conversation metadata lock for ${conversationId}`,
-    );
+    logSkip(conversationId, "update_in_progress");
   }
 }
