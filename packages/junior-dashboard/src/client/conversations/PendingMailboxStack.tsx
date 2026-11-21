@@ -45,7 +45,7 @@ import {
 } from "./TranscriptHeadingRow";
 import { SlackMark } from "./SlackMark";
 import { DisplayText } from "../display-text/DisplayText";
-import { ReviewItemChangeLabel } from "../inbox/ReviewItemChangeRow";
+import { InboxItemChangeLabel } from "../inbox/InboxItemChangeRow";
 import { displayPlainText } from "../display-text/plainText";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { getDashboardAgentName } from "../agentName";
@@ -380,7 +380,7 @@ function PendingRow(props: {
                 title={displayPlainText(text, mentions)}
               >
                 {props.message.reviewItemChange && props.conversationId ? (
-                  <ReviewItemChangeLabel
+                  <InboxItemChangeLabel
                     conversationId={props.conversationId}
                     fallback={
                       <DisplayText inline mentions={mentions} text={text} />

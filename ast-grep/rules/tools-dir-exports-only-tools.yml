@@ -1,0 +1,28 @@
+# A `tools` directory holds only model-facing tools, one tool per file:
+# `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Helpers, schemas, and
+# shared types go in a module outside `tools`. `policies/tool-design.md` owns
+# the layout.
+id: tools-dir-exports-only-tools
+language: TypeScript
+severity: error
+message: A file in a tools directory exports only its tool. Move this export to a module outside tools, such as tool-support or a feature directory.
+files:
+  - packages/*/src/**/tools/**/*.ts
+  - apps/**/src/**/tools/**/*.ts
+utils:
+  tool-call:
+    any:
+      - pattern: definePluginTool($$$)
+      - pattern: zodTool($$$)
+      - pattern: $_SERVER.registerTool($$$)
+  # zodToolDefinition is the input and output contract of a core tool.
+  tool-part:
+    any:
+      - matches: tool-call
+      - pattern: zodToolDefinition($$$)
+rule:
+  kind: export_statement
+  not:
+    has:
+      stopBy: end
+      matches: tool-part

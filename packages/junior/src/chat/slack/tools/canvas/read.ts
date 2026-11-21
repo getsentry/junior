@@ -6,8 +6,8 @@ import {
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { normalizeToLf } from "@/chat/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 const slackCanvasReadOutputSchema = juniorToolOutputSchema

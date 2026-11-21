@@ -6,13 +6,15 @@ import * as z from "zod";
 import {
   googleApiError,
   googleApiRequest,
+  timeZoneSchema,
+  type GoogleToolContext,
+} from "../google-api";
+import {
   ownEventIdSchema,
   ownEventOutputFields,
   ownEventResult,
   readOwnEventForRequester,
-  timeZoneSchema,
-  type GoogleToolContext,
-} from "./shared";
+} from "../calendar/events";
 
 const inputSchema = z
   .object({

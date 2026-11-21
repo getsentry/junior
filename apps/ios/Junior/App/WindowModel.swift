@@ -38,7 +38,7 @@ final class WindowModel {
       path = [.conversation(parts[1])]
     case "inbox":
       place = .inbox
-      path = item.map { [.reviewItem($0)] } ?? []
+      path = item.map { [.inboxItem($0)] } ?? []
     case "automations" where parts.count > 1 && parts[1] != "runs":
       place = .automations
       path = [.automation(parts[1])]

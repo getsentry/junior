@@ -24,8 +24,10 @@ const RUNTIME_INPUT_TAGS = [
   "agent-result",
   "agent-message",
   "parent-agent-task",
+  "inbox-item-answer",
+  // Only saved Turns have these. Junior no longer writes them, and they keep
+  // the names from before Review items became Inbox items.
   "review-item-answer",
-  // Saved Turns from before a dismiss stopped starting a Turn have it.
   "review-item-dismissed",
   "relayed-review-item-answer",
   "relayed-review-item-dismissed",

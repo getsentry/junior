@@ -22,12 +22,12 @@ import { readSlackActionToken } from "@/chat/slack/action-token";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import { createTools } from "@/chat/tools";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
 import {
   RUN_BUILT_TOOL_NAMES,
   staticToolDefinitions,
-} from "@/chat/tools/registry";
+} from "@/chat/tool-support/registry";
 
 type ToolContext = Parameters<typeof createTools>[2];
 
@@ -263,13 +263,13 @@ describe("static tool registry", () => {
           "reportBlocked",
         ]),
       );
-      expect(person.disabled).not.toContain("addReviewItem");
+      expect(person.disabled).not.toContain("addInboxItem");
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
-          "addReviewItem",
-          "searchReviewItems",
-          "updateReviewItem",
+          "addInboxItem",
+          "searchInboxItems",
+          "updateInboxItem",
         ]),
       );
       expect(agent.disabled).not.toContain("spawnAgent");
@@ -285,8 +285,8 @@ describe("static tool registry", () => {
       ).rejects.toThrow(
         "setConversationSubscription is disabled in this Turn.",
       );
-      await expect(callTool(agent, "addReviewItem")).rejects.toThrow(
-        "addReviewItem is disabled in this Turn.",
+      await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
+        "addInboxItem is disabled in this Turn.",
       );
       expect(person.spawnAgent).not.toHaveBeenCalled();
       expect(person.messageAgent).not.toHaveBeenCalled();
@@ -331,7 +331,7 @@ describe("static tool registry", () => {
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
     expect(person.disabled).not.toContain("spawnAgent");
-    expect(person.disabled).not.toContain("addReviewItem");
+    expect(person.disabled).not.toContain("addInboxItem");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");
     expect(silent.disabled).toContain("reply");

@@ -24,7 +24,7 @@ enum Place: Hashable {
 /// A pushed screen. Paths mirror the dashboard routes they render.
 enum Route: Hashable {
   case conversation(String)
-  case reviewItem(String)
+  case inboxItem(String)
   case automation(String)
   case settings
 }
@@ -56,7 +56,7 @@ final class AppModel {
 
   /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0
-  private(set) var reviewItemsVersion = 0
+  private(set) var inboxItemsVersion = 0
 
   /// A pinned "now" for deterministic screenshots (`-JuniorFixedNow`).
   let fixedNow: Date?
@@ -161,9 +161,9 @@ final class AppModel {
     await refreshInboxCount()
   }
 
-  /// Open Review items that wait on the viewer.
+  /// Open Inbox items that wait on the viewer.
   func refreshInboxCount() async {
-    if let list = try? await call("searchReviewItems", ["limit": 50], as: ReviewItemList.self) {
+    if let list = try? await call("searchInboxItems", ["limit": 50], as: InboxItemList.self) {
       inboxCount = list.items.filter(\.canAct).count
     }
   }
@@ -178,7 +178,7 @@ final class AppModel {
         try? await Task.sleep(for: .seconds(idle ? 60 : 15))
         guard let self, !Task.isCancelled, self.signedIn else { continue }
         self.conversationsVersion += 1
-        self.reviewItemsVersion += 1
+        self.inboxItemsVersion += 1
         await self.refreshInboxCount()
       }
     }
@@ -196,7 +196,7 @@ final class AppModel {
   /// Tell screens that data changed after a local write.
   func didWrite() {
     conversationsVersion += 1
-    reviewItemsVersion += 1
+    inboxItemsVersion += 1
   }
 }
 

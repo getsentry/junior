@@ -10,9 +10,9 @@ import {
   juniorInboxSnoozeTriggers,
 } from "@/db/schema/inbox-snoozes";
 import {
-  juniorReviewItemConversations,
-  juniorReviewItems,
-} from "@/db/schema/review-items";
+  juniorInboxItemConversations,
+  juniorInboxItems,
+} from "@/db/schema/inbox-items";
 
 /** A trigger as Event matching reads it. */
 export interface InboxSnoozeTriggerMatch {
@@ -33,7 +33,7 @@ const SNOOZE_RETENTION_LIMIT = 1000;
 export const SNOOZE_TIMER_EVENT_TYPE = "timer.fired";
 
 const linkRoot = alias(juniorConversations, "snooze_link_root");
-const itemLink = alias(juniorReviewItemConversations, "snooze_item_link");
+const itemLink = alias(juniorInboxItemConversations, "snooze_item_link");
 
 const queries = new QueryBuilder();
 
@@ -49,19 +49,19 @@ function rowRootsOfItem(itemId: SQL | string) {
 }
 
 /**
- * SQL: the Review item is in the Inbox row of this root Conversation: the
+ * SQL: the Inbox item is in the Inbox row of this root Conversation: the
  * item links that Conversation or one of its threads.
  */
-export function reviewItemInRow(rootConversationId: string): SQL {
+export function inboxItemInRow(rootConversationId: string): SQL {
   return inArray(
     sql`${rootConversationId}`,
-    rowRootsOfItem(sql`${juniorReviewItems.id}`),
+    rowRootsOfItem(sql`${juniorInboxItems.id}`),
   );
 }
 
-/** SQL: this User snoozed the Review item, and it has not woken. */
-export function reviewItemSnoozedBy(userId: string): SQL {
-  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.reviewItemId} = ${juniorReviewItems.id} and ${juniorInboxSnoozes.state} = 'snoozed')`;
+/** SQL: this User snoozed the Inbox item, and it has not woken. */
+export function inboxItemSnoozedBy(userId: string): SQL {
+  return sql`exists (select 1 from ${juniorInboxSnoozes} where ${juniorInboxSnoozes.userId} = ${userId} and ${juniorInboxSnoozes.inboxItemId} = ${juniorInboxItems.id} and ${juniorInboxSnoozes.state} = 'snoozed')`;
 }
 
 /**
@@ -106,7 +106,7 @@ export function snoozeTimerTrigger(timerId: string): InboxSnoozeTriggerInput {
 }
 
 /**
- * Snooze Review items for one User. Each item gets its own snooze with its
+ * Snooze Inbox items for one User. Each item gets its own snooze with its
  * own triggers. A new item in the row is not snoozed, so it shows by
  * itself. The User's earlier snooze on an item is cancelled. The caller
  * must check that the User can see each item. Returns the new snoozes.
@@ -115,7 +115,7 @@ export async function snoozeInboxItems(
   db: JuniorDatabase,
   input: {
     items: readonly {
-      reviewItemId: string;
+      inboxItemId: string;
       triggers: readonly InboxSnoozeTriggerInput[];
     }[];
     nowMs: number;
@@ -131,8 +131,8 @@ export async function snoozeInboxItems(
         and(
           eq(juniorInboxSnoozes.userId, input.userId),
           inArray(
-            juniorInboxSnoozes.reviewItemId,
-            input.items.map((item) => item.reviewItemId),
+            juniorInboxSnoozes.inboxItemId,
+            input.items.map((item) => item.inboxItemId),
           ),
           eq(juniorInboxSnoozes.state, "snoozed"),
         ),
@@ -140,7 +140,7 @@ export async function snoozeInboxItems(
     const snoozes = input.items.map((item) => ({
       createdAt: new Date(input.nowMs),
       id: randomUUID(),
-      reviewItemId: item.reviewItemId,
+      inboxItemId: item.inboxItemId,
       state: "snoozed" as const,
       userId: input.userId,
     }));
@@ -163,17 +163,17 @@ export async function snoozeInboxItems(
  */
 export async function unsnoozeInboxRow(
   db: JuniorDatabase,
-  input: ({ reviewItemId: string } | { rootConversationId: string }) & {
+  input: ({ inboxItemId: string } | { rootConversationId: string }) & {
     userId: string;
   },
 ): Promise<void> {
   const items = queries
-    .select({ id: juniorReviewItems.id })
-    .from(juniorReviewItems)
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
     .where(
-      "reviewItemId" in input
-        ? eq(juniorReviewItems.id, input.reviewItemId)
-        : reviewItemInRow(input.rootConversationId),
+      "inboxItemId" in input
+        ? eq(juniorInboxItems.id, input.inboxItemId)
+        : inboxItemInRow(input.rootConversationId),
     );
   await db.transaction(async (tx) => {
     await lockUserSnoozes(tx, input.userId);
@@ -183,7 +183,7 @@ export async function unsnoozeInboxRow(
       .where(
         and(
           eq(juniorInboxSnoozes.userId, input.userId),
-          inArray(juniorInboxSnoozes.reviewItemId, items),
+          inArray(juniorInboxSnoozes.inboxItemId, items),
           eq(juniorInboxSnoozes.state, "snoozed"),
         ),
       );
@@ -247,8 +247,8 @@ export async function settleInboxSnoozes(
         eq(juniorInboxSnoozes.state, "snoozed"),
       ),
     )
-    .returning({ reviewItemId: juniorInboxSnoozes.reviewItemId });
-  return rows.map((row) => row.reviewItemId);
+    .returning({ inboxItemId: juniorInboxSnoozes.inboxItemId });
+  return rows.map((row) => row.inboxItemId);
 }
 
 /**

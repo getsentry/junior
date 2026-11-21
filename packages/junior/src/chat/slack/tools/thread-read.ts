@@ -24,7 +24,7 @@ import {
   extractAttachmentFiles,
   renderAttachmentText,
 } from "@/chat/slack/message/attachments";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { matchSlackAttachments } from "@/chat/slack/attachments";
 import { getConversationStore } from "@/chat/db";

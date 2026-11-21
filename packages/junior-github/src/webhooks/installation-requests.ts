@@ -4,13 +4,20 @@
  * A webhook delivery has no Turn and no egress context, so these requests
  * call GitHub directly. Other plugin code must use host egress.
  */
-import type { PluginCache } from "@sentry/junior-plugin-api";
+import {
+  graphqlReactionContent,
+  pullRequestCommentReactionsPath,
+  pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
+} from "../pull-request-feedback.js";
+import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GitHubRequestError,
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import {
   ADD_REVIEW_REACTION,
   OPEN_PULL_REQUEST_MERGEABILITY,
@@ -20,18 +27,16 @@ import {
   pullRequestLifecycles,
 } from "../graphql-documents.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
-import {
-  graphqlReactionContent,
-  pullRequestCommentReactionsPath,
-  pullRequestFeedbackReactionContent,
-  pullRequestReviewPath,
-} from "../tools/update-pull-request-feedback.js";
 
 /** Environment variable names for the GitHub App installation. */
 export interface GitHubInstallationEnv {
   appIdEnv: string;
   installationIdEnv: string;
   privateKeyEnv: string;
+  /** Saved GET responses, as in `sendConditionalRequest`. */
+  responses?: PluginState | undefined;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
 }
 
 function splitRepository(fullName: string, label: string) {
@@ -60,7 +65,7 @@ export async function loadPullRequestCommitPages(
     await githubRequest(
       "https://api.github.com",
       `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}/commits?per_page=${perPage}&page=${page}`,
-      { token: token.token },
+      { responses: env.responses, token: token.token },
     );
 }
 
@@ -81,7 +86,7 @@ export async function loadPullRequest(
   return await githubRequest(
     "https://api.github.com",
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}`,
-    { token: token.token },
+    { responses: env.responses, token: token.token },
   );
 }
 
@@ -336,7 +341,7 @@ export async function loadRepositoryRole(
         await githubRequest(
           "https://api.github.com",
           `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/collaborators/${encodeURIComponent(target.login)}/permission`,
-          { token: token.token },
+          { responses: env.responses, token: token.token },
         ),
       );
       // role_name includes maintain, triage, and custom roles; permission does not.

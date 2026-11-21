@@ -114,7 +114,7 @@ struct RouteScreen: View {
     Group {
       switch route {
       case .conversation(let id): ConversationScreen(conversationId: id)
-      case .reviewItem(let id): ReviewItemScreen(itemId: id)
+      case .inboxItem(let id): InboxItemScreen(itemId: id)
       case .automation(let id): AutomationScreen(automationId: id)
       case .settings: SettingsScreen()
       }

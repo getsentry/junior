@@ -3,7 +3,7 @@ import Foundation
 
 /// Every scope of Junior's MCP server. The app asks for all of them.
 public let mcpScopes = [
-  "conversations:read", "conversations:manage", "conversations:write", "review_items:read", "automations:read",
+  "conversations:read", "conversations:manage", "conversations:write", "inbox_items:read", "automations:read",
 ]
 
 /// Tokens from Junior's MCP OAuth server. An access token lasts an hour, each

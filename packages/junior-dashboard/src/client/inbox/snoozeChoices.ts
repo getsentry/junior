@@ -1,6 +1,6 @@
 import type {
   InboxSnoozeTrigger,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 const MINUTE_MS = 60 * 1000;
@@ -96,7 +96,7 @@ export interface EventSnooze {
 
 /** The Event snooze of these items. Undefined when the row cannot snooze. */
 export function eventSnoozeOf(
-  items: readonly ReviewItemPayload[],
+  items: readonly InboxItemPayload[],
   onSnooze: ((end: CustomSnoozeEnd) => void) | undefined,
 ): EventSnooze | undefined {
   if (!onSnooze || items.length === 0) return undefined;

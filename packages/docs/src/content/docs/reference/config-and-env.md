@@ -377,14 +377,16 @@ likely to cost less than that write.
   budget adds output tokens to each warmup.
 - When a turn ends, Junior stores the last model request in the `StateAdapter`.
   Junior deletes it when the first model request of the next turn starts, when
-  warmups stop, or after 55 minutes.
+  warmups stop, or after 55 minutes (110 minutes while a child agent of the
+  Conversation still runs).
 - A delayed queue message sends the same request with a one-token output limit
   before the cache expires. Junior sends the next warmup only while the chance
   that the person replies soon is high enough to pay for it. Junior compares
   plans of one or more warmups in a row, so it also warms when the person
   usually replies a few TTLs later. The needed chance is the same for each
   warmup. Only replies in the first 55 minutes count, so for a 30-minute cache
-  the chance is a low estimate.
+  the chance is a low estimate. While a child agent runs, its result usually
+  starts the next Turn later, so replies in the first 110 minutes count.
 - Junior learns that chance from the reply gaps of idle periods. A period with
   no reply in 55 minutes counts as no reply. Junior keeps separate gaps for
   Turns that a person started and Turns that an event or automation started,
@@ -420,6 +422,8 @@ likely to cost less than that write.
   turn reads a much smaller prefix, but it gets a summary in place of
   history that it would have kept in that turn, which can make an answer
   worse. When no summary is ready, or a turn runs, Junior warms as usual.
+  A request that is too large to store for warmups gets no warmups. It
+  still gets one check for a ready summary, which swaps it in or stops.
   `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns this off. The default is
   `true`.
 - While warming is on, Junior sends model requests with the short cache

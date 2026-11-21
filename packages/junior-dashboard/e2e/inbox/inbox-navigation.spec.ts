@@ -2,13 +2,14 @@ import type { Page } from "@playwright/test";
 import {
   audit,
   expandRow,
-  mockReviewItems,
+  mockInboxItems,
   openRow,
   rollout,
   rowHead,
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { pickOption } from "../pick-option";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -46,7 +47,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.setViewportSize({ height: 560, width: 1440 });
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
@@ -110,7 +111,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     await openRow(
       page
@@ -135,7 +136,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     await page.getByRole("button", { name: "New conversation" }).click();
     await expect(page).toHaveURL(/\/conversations\/new$/);
@@ -191,7 +192,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         json: { ...(await response.json()), nextCursor: "older" },
       });
     });
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const older = page.getByRole("link", { name: /An older conversation/ });
     await expect(older).toHaveCount(0);
@@ -235,7 +236,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-other",
       title: "Pick the rollout window",
     };
-    await mockReviewItems(page, { open: [rollout, other] });
+    await mockInboxItems(page, { open: [rollout, other] });
     await page.goto(`${dashboard.baseURL}/?item=${other.id}`);
     // The Inbox has no row for it, so the link leaves the URL.
     await expect
@@ -261,8 +262,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Both linked items are past the first page, and later pages never
     // load, so the linked row shows only while the link keeps its item.
     const kept = { ...rollout, createdAt: "2026-08-06T09:00:00.000Z" };
-    await mockReviewItems(page, { open: [audit, kept, other], pageSize: 1 });
-    await page.route("**/api/review-items?**", (route) =>
+    await mockInboxItems(page, { open: [audit, kept, other], pageSize: 1 });
+    await page.route("**/api/inbox-items?**", (route) =>
       new URL(route.request().url()).searchParams.has("cursor")
         ? route.abort()
         : route.fallback(),
@@ -303,8 +304,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-sibling",
       title: "Pick the rollout window",
     };
-    await mockReviewItems(page, { open: [audit, kept, sibling], pageSize: 1 });
-    await page.route("**/api/review-items?**", (route) =>
+    await mockInboxItems(page, { open: [audit, kept, sibling], pageSize: 1 });
+    await page.route("**/api/inbox-items?**", (route) =>
       new URL(route.request().url()).searchParams.has("cursor")
         ? route.abort()
         : route.fallback(),
@@ -345,12 +346,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-sibling",
       title: "Pick the rollout window",
     };
-    await mockReviewItems(page, { open: [audit, kept, sibling], pageSize: 1 });
+    await mockInboxItems(page, { open: [audit, kept, sibling], pageSize: 1 });
     let releaseKeptPage = () => {};
     const keptPageHeld = new Promise<void>((resolve) => {
       releaseKeptPage = resolve;
     });
-    await page.route("**/api/review-items?**", async (route) => {
+    await page.route("**/api/inbox-items?**", async (route) => {
       const cursor = new URL(route.request().url()).searchParams.get("cursor");
       if (cursor === "2") return route.abort();
       if (cursor === "1") await keptPageHeld;
@@ -385,7 +386,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.setViewportSize({ height: 560, width: 1440 });
     // An item link names the Inbox entry, so phones open the list.
     await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
@@ -417,7 +418,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // The linked item is past the first page, so its row loads on its own.
-    await mockReviewItems(page, { open: [audit, rollout], pageSize: 1 });
+    await mockInboxItems(page, { open: [audit, rollout], pageSize: 1 });
     await page.goto(`${dashboard.baseURL}/?view=inbox&item=${rollout.id}`);
     const linkedRow = page.locator(`li[data-inbox-row="todo:${rollout.id}"]`);
     await expect(linkedRow).toHaveAttribute("data-expanded", "true");
@@ -468,7 +469,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await mockReviewItems(page, { open: [rollout] });
+    await mockInboxItems(page, { open: [rollout] });
     await page.goto(
       `${dashboard.baseURL}/?view=conversations&item=${rollout.id}`,
     );
@@ -532,7 +533,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         json: { ...(await response.json()), nextCursor: "older" },
       });
     });
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     const retry = page.getByRole("button", { name: "Try again" });
     const scrollToEnd = (name: string) =>
       page
@@ -579,7 +580,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
       page,
     }) => {
-      await mockReviewItems(page);
+      await mockInboxItems(page);
       // Old links redirect to the item's link, which names the Inbox entry.
       await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
       await expect(page).toHaveURL(/\/\?view=inbox$/);
@@ -592,7 +593,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
       page,
     }) => {
-      await mockReviewItems(page);
+      await mockInboxItems(page);
       await page.goto(`${dashboard.baseURL}/`);
       const entries = page.getByRole("navigation", { name: "Primary" });
       await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
@@ -623,7 +624,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
       page,
     }) => {
-      await mockReviewItems(page);
+      await mockInboxItems(page);
       await page.goto(`${dashboard.baseURL}/`);
       const entries = page.getByRole("navigation", { name: "Primary" });
       // A list leaves its path as the place Back returns to.
@@ -652,7 +653,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
       page,
     }) => {
-      await mockReviewItems(page);
+      await mockInboxItems(page);
       await page.goto(`${dashboard.baseURL}/?view=inbox`);
       const composer = page.getByLabel("Start a conversation");
       await page.getByRole("button", { name: "New conversation" }).click();
@@ -672,10 +673,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect(composer).toBeFocused();
       await page.goto(`${dashboard.baseURL}/settings`);
       await page.keyboard.press("ControlOrMeta+k");
-      await page
-        .getByRole("dialog", { name: "Go to conversation" })
-        .getByRole("option", { name: "New conversation" })
-        .click();
+      await pickOption(
+        page
+          .getByRole("dialog", { name: "Go to conversation" })
+          .getByRole("option", { name: "New conversation" }),
+      );
       await expect(page).toHaveURL(/\/conversations\/new$/);
       await expect(composer).toBeFocused();
     });
@@ -687,7 +689,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // A Conversations row names its Conversation; an Inbox row names its
     // item.
-    await mockReviewItems(page, { open: [rollout] });
+    await mockInboxItems(page, { open: [rollout] });
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
     const head = rowHead(list, checkout);
@@ -740,7 +742,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.clock.install();
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const list = page.getByRole("region", { name: "Conversations" });
     const head = rowHead(list, checkout);
@@ -822,7 +824,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     const record = page
       .getByLabel("Conversation transcript")
-      .locator("[data-review-item-ask]")
+      .locator("[data-inbox-item-ask]")
       .filter({ hasText: ask });
     // The record gets its mark once it scrolls into view. The transcript can
     // render from the top before it opens at the latest, so check the place

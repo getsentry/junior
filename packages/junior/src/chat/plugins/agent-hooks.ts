@@ -76,9 +76,9 @@ import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type {
   AnyToolDefinition,
   ToolExecuteOptions,
-} from "@/chat/tools/definition";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/definition";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { createPluginWatches } from "@/chat/plugins/watches";
 
@@ -88,7 +88,7 @@ import {
   readIdentityById,
   resolveViewerUser,
 } from "@/chat/plugins/viewer";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { createSlackDirectCredentialSubject } from "@/chat/credentials/subject";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
@@ -101,8 +101,8 @@ import {
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
-import { createPluginReviewItems } from "@/chat/review-items/plugin";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import {
   apiRoutePrefix,
   coreRegistrations,
@@ -1175,8 +1175,8 @@ export function createPluginEventPublisher(
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   dispatchForIdentity: IdentityDispatcher;
-  /** Shows a Review item that a plugin route changed. App setup supplies it. */
-  showReviewItem?: ShowReviewItem;
+  /** Shows an Inbox item that a plugin route changed. App setup supplies it. */
+  showInboxItem?: ShowInboxItem;
   events: AppEventPublisher;
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
@@ -1205,12 +1205,12 @@ export function getPluginRoutes(options: {
       },
       codeChanges: createCodeChangePublisher(pluginName),
       state: createPluginState(pluginName),
-      reviewItems: {
+      inboxItems: {
         forConversation: (conversationId) =>
-          createPluginReviewItems({
+          createPluginInboxItems({
             conversationId,
             plugin: pluginName,
-            show: options.showReviewItem ?? (async () => {}),
+            show: options.showInboxItem ?? (async () => {}),
           }),
       },
       users: { readIdentity: readIdentityById },

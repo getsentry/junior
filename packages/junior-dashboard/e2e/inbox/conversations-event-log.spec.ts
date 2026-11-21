@@ -8,6 +8,7 @@ import {
   routeConversationVersion,
   withRequestedMailbox,
 } from "../harness";
+import { pickOption } from "../pick-option";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -338,7 +339,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const events = palette.getByRole("group").first();
     await expect(events).toHaveAccessibleName("Events");
     await expect(events.getByRole("option")).toHaveCount(1);
-    await events.getByRole("option").click();
+    await pickOption(events.getByRole("option"));
     await expect(page).toHaveURL(/[?&]event=2(&|$)/);
     await expect(
       log.getByRole("button", { name: "Event 2: turn_context", exact: true }),
@@ -639,10 +640,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("ControlOrMeta+k");
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     await palette.getByRole("combobox").fill("row 1234.");
-    await palette
-      .getByRole("group", { name: "Events" })
-      .getByRole("option")
-      .click();
+    await pickOption(
+      palette.getByRole("group", { name: "Events" }).getByRole("option"),
+    );
     await expect(entry(1234)).toBeInViewport();
     await expect(entry(1234)).toHaveAttribute("aria-expanded", "true");
   });
@@ -833,15 +833,15 @@ test.describe("new UI", { tag: "@new" }, () => {
         dismissed
           ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
           : item;
-      await page.route(`**/api/review-items/${item.id}`, (route) =>
+      await page.route(`**/api/inbox-items/${item.id}`, (route) =>
         route.fulfill({ json: current() }),
       );
-      await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+      await page.route(`**/api/inbox-items/${item.id}/actions`, (route) => {
         dismissed = true;
         return route.fulfill({ json: current() });
       });
       // The Conversation also lists the open item above the message box.
-      await page.route(`**/api/review-items?*`, (route) =>
+      await page.route(`**/api/inbox-items?*`, (route) =>
         route.fulfill({ json: { items: dismissed ? [] : [item] } }),
       );
       report.events = [
@@ -863,7 +863,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             calls: [
               {
                 input: { kind: "action", title: item.title },
-                name: "addReviewItem",
+                name: "addInboxItem",
                 output: JSON.stringify({ item: { id: item.id } }),
                 status: "completed",
                 toolCallId: "review-1",
