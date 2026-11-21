@@ -53,7 +53,7 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
-import { renderScriptTools } from "@/chat/codemode/tool";
+import { renderScriptTools } from "@/chat/codemode/script-tools";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
 import { getDb, getSqlExecutor } from "@/chat/db";

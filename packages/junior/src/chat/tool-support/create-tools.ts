@@ -110,7 +110,12 @@ import { getPluginTools } from "@/chat/plugins/agent-hooks";
 import { createWebFetchTool } from "@/chat/tools/web/fetch-tool";
 import { createWebSearchTool } from "@/chat/tools/web/search";
 import { createWriteFileTool } from "@/chat/tools/sandbox/write-file";
-import { createWorkspaceTools } from "@/chat/workspaces/tools";
+import { workspaceProviderNames } from "@/chat/workspaces/tool-support";
+import { createWorkspaceTool } from "@/chat/workspaces/tools/create";
+import { createDeleteWorkspaceTool } from "@/chat/workspaces/tools/delete";
+import { createListWorkspacesTool } from "@/chat/workspaces/tools/list";
+import { createSwitchWorkspaceTool } from "@/chat/workspaces/tools/switch";
+import { createUpdateWorkspaceTool } from "@/chat/workspaces/tools/update";
 
 function createToolState(): ToolState {
   const operationResultCache = new Map<string, unknown>();
@@ -152,13 +157,22 @@ interface ToolRun {
   canSendFilesToActiveConversation: boolean;
   automation: AutomationToolContext;
   automationDisabledReason: string | undefined;
-  workspaceTools: () => ToolRegistry;
   reviewItemServices: () => ReturnType<
     typeof createSlackReviewItemToolServices
   >;
 }
 
 type ToolBinder = (run: ToolRun) => AnyToolDefinition | undefined;
+
+// Workspace write tools need the Run's Workspace switcher and a plugin that
+// can prepare repositories.
+function workspaceWriteTool(
+  run: ToolRun,
+  build: (providers: [string, ...string[]]) => AnyToolDefinition,
+): AnyToolDefinition | undefined {
+  const providers = workspaceProviderNames();
+  return run.context.workspaces && providers ? build(providers) : undefined;
+}
 
 function withDisabledReason(
   tool: AnyToolDefinition,
@@ -230,11 +244,15 @@ const STATIC_TOOL_BINDERS = {
       createRunAutomationNowTool(run.automation, run.catalog),
       run.automationDisabledReason,
     ),
-  createWorkspace: (run) => run.workspaceTools()["createWorkspace"],
-  updateWorkspace: (run) => run.workspaceTools()["updateWorkspace"],
-  deleteWorkspace: (run) => run.workspaceTools()["deleteWorkspace"],
-  listWorkspaces: (run) => run.workspaceTools()["listWorkspaces"],
-  switchWorkspace: (run) => run.workspaceTools()["switchWorkspace"],
+  createWorkspace: (run) => workspaceWriteTool(run, createWorkspaceTool),
+  updateWorkspace: (run) => workspaceWriteTool(run, createUpdateWorkspaceTool),
+  deleteWorkspace: (run) => workspaceWriteTool(run, createDeleteWorkspaceTool),
+  listWorkspaces: ({ context: { workspaces } }) =>
+    workspaces ? createListWorkspacesTool(workspaces) : undefined,
+  switchWorkspace: ({ context: { conversationId, workspaces } }) =>
+    workspaces
+      ? createSwitchWorkspaceTool({ conversationId, workspaces })
+      : undefined,
   runOperatorSql: (run) =>
     isPublic(run) ? undefined : createRunOperatorSqlTool(),
   updateUserCustomization: (run) =>
@@ -619,7 +637,6 @@ export function createTools(
     ),
     automation: automationToolContext(context),
     automationDisabledReason: automationToolsDisabledReason(context),
-    workspaceTools: once(() => createWorkspaceTools(context)),
     reviewItemServices: once(() =>
       createSlackReviewItemToolServices(
         () => context.conversationWorkQueue ?? getVercelConversationWorkQueue(),
