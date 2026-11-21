@@ -1,6 +1,6 @@
 {
-  "id": "5a1e63c6-65ba-4b46-bafc-7d4f3585369b",
-  "prevId": "77e12133-945e-475c-8833-49894f9abf45",
+  "id": "77e12133-945e-475c-8833-49894f9abf45",
+  "prevId": "0467c4ef-64d2-4496-9691-573866872db4",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -3675,22 +3675,6 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
-        },
-        "junior_conversations_lead_actor_idx": {
-          "name": "junior_conversations_lead_actor_idx",
-          "columns": [
-            {
-              "expression": "actor_identity_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "where": "\"junior_conversations\".\"kind\" = 'lead'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
         }
       },
       "foreignKeys": {
@@ -4462,6 +4446,12 @@
         "subject_url": {
           "name": "subject_url",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },
