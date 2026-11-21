@@ -42,6 +42,10 @@ export const juniorTurnInbox = pgTable(
       .references(() => juniorTurns.id),
     // The time the source gives for the input, such as a Slack message ts.
     sentAt: timestamptz("sent_at").notNull(),
+    // Set when an attempt of the Turn first claims it with the input unread. A
+    // failed Turn drops these inputs and moves only inputs that arrived after
+    // its last claim. It does not mean read.
+    attemptedAt: timestamptz("attempted_at"),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
   (table) => [

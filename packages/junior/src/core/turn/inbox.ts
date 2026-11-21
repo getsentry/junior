@@ -2,7 +2,7 @@
 // written, and its idempotency key is unique in the Conversation. An input is
 // read once the Conversation history has its event, keyed `inbox:<row id>`.
 import type { UserMessage } from "@earendil-works/pi-ai";
-import { and, asc, eq, notExists, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -63,6 +63,8 @@ export type UnreadInput = Pick<
 > & {
   inputId: string;
   traceContext: TurnInputTraceContext | null;
+  /** When an attempt of the Turn first claimed it with the input unread. */
+  attemptedAt: Date | null;
 };
 
 /** An unread input as the user message that a step reads, and its provenance. */
@@ -105,8 +107,27 @@ export async function findUnreadInputs(
       payload: juniorTurnInbox.payload,
       sentAt: juniorTurnInbox.sentAt,
       traceContext: juniorTurnInbox.traceContext,
+      attemptedAt: juniorTurnInbox.attemptedAt,
     })
     .from(juniorTurnInbox)
     .where(and(eq(juniorTurnInbox.turnId, turnId), notExists(readEvent)))
     .orderBy(asc(juniorTurnInbox.sentAt), asc(juniorTurnInbox.createdAt));
+}
+
+/**
+ * Records that an attempt of the Turn claimed it with these inputs unread.
+ * The first attempt keeps its time. It does not mark the inputs read.
+ */
+export async function markInputsAttempted(
+  executor: JuniorSqlDatabase,
+  inputIds: string[],
+): Promise<void> {
+  if (inputIds.length === 0) {
+    return;
+  }
+  await executor
+    .db()
+    .update(juniorTurnInbox)
+    .set({ attemptedAt: sql`coalesce(${juniorTurnInbox.attemptedAt}, now())` })
+    .where(inArray(juniorTurnInbox.id, inputIds));
 }
