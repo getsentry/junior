@@ -1,6 +1,6 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
-import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, lt, lte, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
@@ -11,6 +11,9 @@ import {
   renderEventBatchInputs,
 } from "@/chat/events/notification";
 import { cancelSubscriptions } from "@/chat/events/store";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { getEventBatchDelayMs } from "@/chat/task-execution/mailbox-turn";
 import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
@@ -41,6 +44,8 @@ export async function markConversationsStopped(
   options: {
     cancelWatches: boolean;
     nowMs?: number;
+    /** Delivers the stop to the Watches on each Conversation. */
+    queue?: ConversationWorkQueue | undefined;
     state?: StateAdapter | undefined;
   },
 ): Promise<void> {
@@ -53,17 +58,51 @@ export async function markConversationsStopped(
     );
   }
   const stoppedAt = new Date(options.nowMs ?? Date.now());
-  await getSqlExecutor()
-    .db()
+  const ids = [...conversationIds];
+  const db = getSqlExecutor().db();
+  // One statement claims each unstopped Conversation, so of concurrent stops
+  // only the first reports it.
+  const claimed = await db
     .update(juniorConversations)
     .set({ stoppedAt, detailVersion: nextDetailVersion })
     .where(
       and(
-        inArray(juniorConversations.conversationId, [...conversationIds]),
-        or(
-          isNull(juniorConversations.stoppedAt),
-          lt(juniorConversations.stoppedAt, stoppedAt),
-        ),
+        inArray(juniorConversations.conversationId, ids),
+        isNull(juniorConversations.stoppedAt),
+      ),
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  // A retry of a stop that failed before its report finds its own claim, and
+  // reports it again. The Event key holds the stop time, so it delivers once.
+  const retried = await db
+    .select({ conversationId: juniorConversations.conversationId })
+    .from(juniorConversations)
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, ids),
+        eq(juniorConversations.stoppedAt, stoppedAt),
+      ),
+    );
+  const reported = new Set(
+    [...claimed, ...retried].map(({ conversationId }) => conversationId),
+  );
+  const queue = options.queue ?? getVercelConversationWorkQueue();
+  await mapBounded([...reported], (conversationId) =>
+    publishConversationStatus(
+      conversationId,
+      { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
+      { nowMs: stoppedAt.getTime(), queue, state: options.state },
+    ),
+  );
+  // A retried or cascaded stop of a stopped Conversation moves `stoppedAt`
+  // later. It reported nothing above, because the stop time differs.
+  await db
+    .update(juniorConversations)
+    .set({ stoppedAt, detailVersion: nextDetailVersion })
+    .where(
+      and(
+        inArray(juniorConversations.conversationId, ids),
+        lt(juniorConversations.stoppedAt, stoppedAt),
       ),
     );
 }

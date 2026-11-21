@@ -23,6 +23,7 @@ import {
   isTerminalAgentInvocation,
   NON_TERMINAL_AGENT_INVOCATION_STATUSES,
 } from "./store";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { TerminalAgentInvocation } from "./types";
 
 /**
@@ -126,11 +127,13 @@ export async function stopChildAgentsBelow(
   conversationId: string,
   options: {
     nowMs: number;
+    /** Delivers each child agent's stop to its Watches. */
+    queue?: ConversationWorkQueue | undefined;
     stoppedAtMs: number;
     state?: StateAdapter | undefined;
   },
 ): Promise<void> {
-  const { nowMs, stoppedAtMs, state } = options;
+  const { nowMs, queue, stoppedAtMs, state } = options;
   const tree = await stopAgentInvocationTree(conversationId, nowMs, {
     includeRoot: false,
   });
@@ -139,6 +142,7 @@ export async function stopChildAgentsBelow(
   await finishStoppedTree(tree, stoppedIds, {
     cancelWatches: false,
     nowMs: stoppedAtMs,
+    queue,
     state,
   });
   await dropUnreadLoopReplies(tree.conversationIds, stoppedIds, state);
