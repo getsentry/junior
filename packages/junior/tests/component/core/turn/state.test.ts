@@ -3,10 +3,12 @@ import { eq } from "drizzle-orm";
 import type {
   AssistantMessage,
   ToolResultMessage,
+  UserMessage,
 } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import { findUnreadInputs } from "@/core/turn/inbox";
 import {
   cancelTurn,
   claimTurn,
@@ -17,6 +19,7 @@ import {
 import {
   juniorConversations,
   juniorIdentities,
+  juniorTurnInbox,
   juniorTurns,
 } from "@/db/schema";
 import {
@@ -88,6 +91,23 @@ describe("Turn state", () => {
     return claimTurn(fixture.sql, { turnId, owner, leaseMs });
   }
 
+  async function addTestInput(text: string) {
+    const inputId = randomUUID();
+    await fixture.sql
+      .db()
+      .insert(juniorTurnInbox)
+      .values({
+        id: inputId,
+        conversationId: CONVERSATION_ID,
+        turnId,
+        actorIdentityId: "identity:actor",
+        payload: { text },
+        idempotencyKey: `slack-event:${inputId}`,
+        sentAt: new Date(1_718_123_455_000),
+      });
+    return inputId;
+  }
+
   it("claims a queued Turn for exactly one of two concurrent workers", async () => {
     const claims = await Promise.all([claim("worker-a"), claim("worker-b")]);
 
@@ -135,9 +155,9 @@ describe("Turn state", () => {
 
     await expect(holdsLease(fixture.sql, taken!)).resolves.toBe(true);
     await expect(holdsLease(fixture.sql, stale)).resolves.toBe(false);
-    await expect(commitStep(fixture.sql, stale, finishedStep())).resolves.toBe(
-      false,
-    );
+    await expect(
+      commitStep(fixture.sql, stale, finishedStep(), []),
+    ).resolves.toBeUndefined();
     await expect(failTurn(fixture.sql, stale, "late")).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(running);
     await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
@@ -220,8 +240,8 @@ describe("Turn state", () => {
     const messages = [toolCallReply(), toolResult()];
 
     await expect(
-      commitStep(fixture.sql, claimed, { outcome: "continue", messages }),
-    ).resolves.toBe(true);
+      commitStep(fixture.sql, claimed, { outcome: "continue", messages }, []),
+    ).resolves.toBe("continue");
 
     await expect(readTurn()).resolves.toMatchObject({
       state: "queued",
@@ -240,10 +260,12 @@ describe("Turn state", () => {
 
   it("lets a new claim take the next step at once, and fences out the old lease", async () => {
     const first = (await claim("worker-a"))!;
-    await commitStep(fixture.sql, first, {
-      outcome: "continue",
-      messages: [toolCallReply(), toolResult()],
-    });
+    await commitStep(
+      fixture.sql,
+      first,
+      { outcome: "continue", messages: [toolCallReply(), toolResult()] },
+      [],
+    );
 
     await expect(claim("worker-b")).resolves.toEqual({
       turnId,
@@ -255,9 +277,9 @@ describe("Turn state", () => {
     const running = await readTurn();
     expect(running).toMatchObject({ state: "running", leaseOwner: "worker-b" });
 
-    await expect(commitStep(fixture.sql, first, finishedStep())).resolves.toBe(
-      false,
-    );
+    await expect(
+      commitStep(fixture.sql, first, finishedStep(), []),
+    ).resolves.toBeUndefined();
     await expect(readTurn()).resolves.toEqual(running);
   });
 
@@ -266,8 +288,8 @@ describe("Turn state", () => {
     const messages = [finalReply()];
 
     await expect(
-      commitStep(fixture.sql, claimed, { outcome: "completed", messages }),
-    ).resolves.toBe(true);
+      commitStep(fixture.sql, claimed, { outcome: "completed", messages }, []),
+    ).resolves.toBe("completed");
 
     const completed = await readTurn();
     expect(completed).toMatchObject({
@@ -293,12 +315,17 @@ describe("Turn state", () => {
   it("rejects a second commit of the same step, and appends nothing", async () => {
     const claimed = (await claim())!;
     const messages = [toolCallReply(), toolResult()];
-    await commitStep(fixture.sql, claimed, { outcome: "continue", messages });
+    await commitStep(
+      fixture.sql,
+      claimed,
+      { outcome: "continue", messages },
+      [],
+    );
     const committed = await readTurn();
 
     await expect(
-      commitStep(fixture.sql, claimed, { outcome: "continue", messages }),
-    ).resolves.toBe(false);
+      commitStep(fixture.sql, claimed, { outcome: "continue", messages }, []),
+    ).resolves.toBeUndefined();
 
     expect(committed.stepSeq).toBe(1);
     await expect(readTurn()).resolves.toEqual(committed);
@@ -308,14 +335,54 @@ describe("Turn state", () => {
     });
   });
 
+  it("appends the inputs before the step's messages, and writes each input once", async () => {
+    const inputId = await addTestInput("How many Turns?");
+    const input = { inputId, message: question() };
+    const first = (await claim())!;
+    await expect(
+      commitStep(
+        fixture.sql,
+        first,
+        { outcome: "continue", messages: [toolCallReply(), toolResult()] },
+        [input],
+      ),
+    ).resolves.toBe("continue");
+    const second = (await claim())!;
+
+    // The input again, as a step that read it a second time would pass it.
+    await expect(
+      commitStep(fixture.sql, second, finishedStep(), [input]),
+    ).resolves.toBe("completed");
+
+    const events = await createSqlConversationEventStore(
+      fixture.sql,
+    ).loadCurrentHistory(CONVERSATION_ID);
+    expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `inbox:${inputId}`,
+      undefined,
+      undefined,
+      undefined,
+    ]);
+    await expect(loadHistory()).resolves.toEqual({
+      types: [
+        "user_message",
+        "assistant_message",
+        "tool_result",
+        "assistant_message",
+      ],
+      messages: [question(), toolCallReply(), toolResult(), finalReply()],
+    });
+    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([]);
+  });
+
   it("rejects a commit after cancel, and appends nothing", async () => {
     const claimed = (await claim())!;
     await cancelTurn(fixture.sql, turnId);
     const cancelled = await readTurn();
 
     await expect(
-      commitStep(fixture.sql, claimed, finishedStep()),
-    ).resolves.toBe(false);
+      commitStep(fixture.sql, claimed, finishedStep(), []),
+    ).resolves.toBeUndefined();
     await expect(readTurn()).resolves.toEqual(cancelled);
     await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
   });
@@ -366,6 +433,14 @@ function toolResult(): ToolResultMessage {
     content: [{ type: "text", text: "3 Turns" }],
     isError: false,
     timestamp: 1_718_123_457_000,
+  };
+}
+
+function question(): UserMessage {
+  return {
+    role: "user",
+    content: [{ type: "text", text: "How many Turns?" }],
+    timestamp: 1_718_123_455_000,
   };
 }
 
