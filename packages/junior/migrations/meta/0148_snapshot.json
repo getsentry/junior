@@ -1,5 +1,5 @@
 {
-  "id": "f44e2fc1-a425-4609-af8e-151914741523",
+  "id": "8c016ebf-a0bb-49d0-bf98-29964629b681",
   "prevId": "394b8a22-6d6d-4b95-9e49-5667cc140029",
   "version": "7",
   "dialect": "postgresql",
@@ -2269,13 +2269,7 @@
           "name": "brief_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
-        },
-        "through_seq": {
-          "name": "through_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "provider": {
           "name": "provider",
@@ -2311,15 +2305,17 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "junior_conversation_embeddings_conversation_fk": {
-          "name": "junior_conversation_embeddings_conversation_fk",
+        "junior_conversation_embeddings_brief_fk": {
+          "name": "junior_conversation_embeddings_brief_fk",
           "tableFrom": "junior_conversation_embeddings",
-          "tableTo": "junior_conversations",
+          "tableTo": "junior_conversation_briefs",
           "columnsFrom": [
-            "conversation_id"
+            "conversation_id",
+            "brief_version"
           ],
           "columnsTo": [
-            "conversation_id"
+            "conversation_id",
+            "version"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -2654,6 +2650,28 @@
           ],
           "isUnique": false,
           "where": "\"junior_conversation_events\".\"type\" = 'guardian_action_reviewed'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_conversation_events_authorization_request_idx": {
+          "name": "junior_conversation_events_authorization_request_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_conversation_events\".\"type\" = 'authorization_requested'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -3386,18 +3404,6 @@
         "title": {
           "name": "title",
           "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata_through_seq": {
-          "name": "metadata_through_seq",
-          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },
