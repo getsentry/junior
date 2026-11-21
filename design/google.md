@@ -43,6 +43,8 @@ Workspace account, so the user connects nothing.
   working hours that it learns from them.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
+- A presentation that Junior creates goes to the requester as its owner.
+  Junior's account stays an editor, so Junior can keep building it.
 - Google Slides inserts an image only from a public URL. To add a Sandbox
   image, Junior publishes it at a temporary public URL and removes it after
   the edit.

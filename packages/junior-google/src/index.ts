@@ -34,6 +34,7 @@ import type { GoogleToolContext } from "./google-api";
 import { cancelCalendarEventTool } from "./tools/cancel-event";
 import { createGoogleDocTool } from "./tools/create-doc";
 import { createCalendarEventTool } from "./tools/create-event";
+import { createGoogleSlidesTool } from "./tools/create-slides";
 import { findMeetingTimesTool } from "./tools/find-meeting-times";
 import { insertGoogleDocContentTool } from "./tools/insert-doc-content";
 import { listGoogleFileCommentsTool } from "./tools/list-file-comments";
@@ -90,6 +91,7 @@ export function googlePlugin(): PluginRegistration {
             cancelCalendarEvent: cancelCalendarEventTool,
             createCalendarEvent: createCalendarEventTool,
             createGoogleDoc: createGoogleDocTool,
+            createGoogleSlides: createGoogleSlidesTool,
             findMeetingTimes: findMeetingTimesTool,
             getGoogleSlideThumbnail: getGoogleSlideThumbnailTool,
             insertGoogleDocContent: insertGoogleDocContentTool,

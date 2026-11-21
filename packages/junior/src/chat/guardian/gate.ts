@@ -656,6 +656,10 @@ export function createToolActionReview(options: {
 
   return {
     async review(actions, signal) {
+      // One span per batch. Each review sets `app.guardian.proposal.chars`
+      // and, when its model call aborts, `app.guardian.review.aborted_by`
+      // (`timeout` or `run`) on it, so a batch of several actions keeps the
+      // last value.
       return await withSpan(
         "guardian.action_review",
         "guardian.action_review",

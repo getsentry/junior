@@ -874,4 +874,85 @@ describe("Google Slides tools", () => {
       }),
     ).rejects.toThrow("Could not download the slide thumbnail: 403 Forbidden");
   });
+
+  it("creates a deck, makes the requester the owner, and keeps editing it", async () => {
+    const { call, calls } = slidesTools([
+      Response.json({ presentationId: DECK_ID, title: "Roadmap" }),
+      Response.json({ id: "perm-owner", role: "owner" }),
+      // The edit after the hand-over passes the editor check as the owner.
+      deckFile(),
+      permissions({ role: "owner", type: "user", emailAddress: REQUESTER }),
+      Response.json({
+        replies: [{}],
+        writeControl: { requiredRevisionId: "rev-2" },
+      }),
+      checkedDeck({ objectId: "p" }),
+    ]);
+
+    const created = await call("createGoogleSlides", { title: "Roadmap" });
+    await call("updateGoogleSlides", {
+      presentation: DECK_LINK,
+      requests: [{ insertText: { objectId: "title_1", text: "Q4" } }],
+      revision_id: "rev-1",
+    });
+
+    const [create, transfer, ...edit] = await calls();
+    expect(create.url.href).toBe(
+      "https://slides.googleapis.com/v1/presentations?fields=presentationId%2Ctitle",
+    );
+    expect(create.body).toEqual({ title: "Roadmap" });
+    expect(transfer.operation).toBe("google.drive.permission.create");
+    expect(transfer.url.pathname).toBe(
+      `/drive/v3/files/${DECK_ID}/permissions`,
+    );
+    expect(transfer.url.searchParams.get("transferOwnership")).toBe("true");
+    expect(transfer.body).toEqual({
+      emailAddress: REQUESTER,
+      role: "owner",
+      type: "user",
+    });
+    // Junior's account keeps its access, so no permission is deleted.
+    expect(edit.map((item) => item.operation)).toEqual([
+      "google.drive.file.get",
+      "google.drive.permissions.list",
+      "google.slides.presentation.batchUpdate",
+      "google.slides.presentation.get",
+    ]);
+    expect(created).toEqual({
+      target: "createGoogleSlides",
+      presentation_id: DECK_ID,
+      title: "Roadmap",
+      url: DECK_LINK,
+    });
+  });
+
+  it("deletes a new deck when the hand-over fails", async () => {
+    const created = () =>
+      Response.json({ presentationId: DECK_ID, title: "Roadmap" });
+    const forbidden = () =>
+      Response.json({ error: { message: "Denied" } }, { status: 403 });
+
+    const transferFailed = slidesTools([
+      created(),
+      forbidden(),
+      new Response(null, { status: 204 }),
+    ]);
+    await expect(
+      transferFailed.call("createGoogleSlides", { title: "Roadmap" }),
+    ).rejects.toThrow(
+      `Could not hand Google Slides presentation "Roadmap" (${DECK_LINK}) to ${REQUESTER}: Google google.drive.permission.create failed with HTTP 403: Denied. The presentation was deleted.`,
+    );
+    const deleted = (await transferFailed.calls())[2];
+    expect(deleted?.operation).toBe("google.drive.file.delete");
+    expect(deleted?.url.pathname).toBe(`/drive/v3/files/${DECK_ID}`);
+
+    await expect(
+      slidesTools([created(), forbidden(), forbidden()]).call(
+        "createGoogleSlides",
+        { title: "Roadmap" },
+      ),
+    ).rejects.toThrow(
+      "The presentation could not be deleted either. Your own Google account still owns it",
+    );
+  });
 });
