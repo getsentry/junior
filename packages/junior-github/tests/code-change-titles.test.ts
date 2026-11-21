@@ -73,6 +73,16 @@ describe("code change title parts", () => {
     });
   });
 
+  it("keeps the title whole when a repository pattern matches later in it", () => {
+    const categories = [
+      { custom: true, patterns: [/(?<type>feat:\s*)/i], title: "Features" },
+    ];
+    expect(parseCodeChangeTitle("[WIP] feat: New thing", categories)).toEqual({
+      text: "[WIP] feat: New thing",
+      type: "Feature",
+    });
+  });
+
   it("skips unsafe and invalid repository patterns", () => {
     const categories = parseReleaseCategories(`
 changelog:

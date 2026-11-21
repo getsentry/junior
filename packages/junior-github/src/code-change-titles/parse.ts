@@ -128,7 +128,10 @@ export function parseCodeChangeTitle(
   if (!found) return undefined;
   const prefix = found.match.groups?.["type"];
   const token = prefix ? /^\w+/.exec(prefix)?.[0] : undefined;
-  const rest = (prefix ? title.slice(prefix.length) : title)
+  // A repository pattern need not be anchored, so strip the type only where
+  // it leads the title.
+  const leads = prefix !== undefined && bounded.startsWith(prefix);
+  const rest = (leads ? title.slice(prefix.length) : title)
     .replace(PULL_REQUEST_SUFFIX, "")
     .trim();
   const type = typeWord(found.category, token, bounded);
