@@ -128,7 +128,7 @@ const listedAgentSchema = z
       .array(todoOutputSchema)
       .optional()
       .describe(
-        "Open To-dos of the parent, read-only. Only on the parent. Assignee self is this conversation; parent is the parent's own agent.",
+        "Open To-dos of the parent. Only on the parent. Assignee self is this conversation, which can set those to done or dropped with updateTodos; parent is the parent's own agent.",
       ),
   })
   .strict();
@@ -150,7 +150,7 @@ function parentTodo(todo: Todo, conversationId: string) {
   return outputTodo(todo, renderTodoAssignee(assignee));
 }
 
-/** Open To-dos of the parent. A child never edits them. */
+/** Open To-dos of the parent. A child can only close its own. */
 async function parentTodos(
   parentConversationId: string,
   conversationId: string,
