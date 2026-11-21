@@ -462,6 +462,54 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
+  test("a Conversations state filter pages on before it says none match", async ({
+    dashboard,
+    page,
+  }) => {
+    // The first page holds no running Conversation; the next page does.
+    let releaseOlder = () => {};
+    const olderHeld = new Promise<void>((resolve) => {
+      releaseOlder = resolve;
+    });
+    await page.route(/\/api\/conversations(\?|$)/, async (route) => {
+      const url = new URL(route.request().url());
+      const older = url.searchParams.has("cursor");
+      // Both pages split the mock's first page.
+      url.searchParams.delete("cursor");
+      const body = await (await route.fetch({ url: url.toString() })).json();
+      const running = (conversation: {
+        treeState?: string;
+        turnActive?: boolean;
+      }) =>
+        conversation.treeState === "working" ||
+        Boolean(conversation.turnActive);
+      if (older) await olderHeld;
+      await route.fulfill({
+        json: {
+          ...body,
+          conversations: body.conversations.filter(
+            (conversation: { treeState?: string; turnActive?: boolean }) =>
+              older ? running(conversation) : !running(conversation),
+          ),
+          nextCursor: older ? undefined : "older",
+        },
+      });
+    });
+    const older = page.waitForRequest((request) =>
+      /\/api\/conversations\?.*cursor=/.test(request.url()),
+    );
+    await page.goto(`${dashboard.baseURL}/?view=conversations&state=working`);
+    const list = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
+    await older;
+    await expect(list.getByText("No conversations match")).toHaveCount(0);
+    releaseOlder();
+    await expect(rowHead(list, "Investigate checkout latency")).toBeVisible();
+    await expect(list.getByText("No conversations match")).toHaveCount(0);
+  });
+
   /** Twelve questions, each in its own Conversation, two to a page. */
   function questionsByPage() {
     return Array.from({ length: 12 }, (_, index) => ({
