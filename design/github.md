@@ -35,11 +35,12 @@ also wake a Conversation or run an Event automation.
 - Images in PRs, issues, and comments are links to public Junior images.
 - Junior can review a PR and request changes.
 - When the requester requests changes on a Junior PR, the PR asks for
-  their review again, in the Inbox and on GitHub, when Junior acts after
-  them and the required checks pass. Junior acts when it pushes commits,
-  comments, replies to a review comment, or marks the change request
-  addressed. When the requester comments or reviews, Junior acts next, and
-  the Inbox stops asking. A requester who approved since is not asked.
+  their review again, in the Inbox and on GitHub, only when Junior marks
+  each comment of that change request addressed or declined and the
+  required checks pass. Pushes, merges of the base branch, comments, and
+  replies do not ask. When the requester comments or reviews, Junior acts
+  next, and the Inbox stops asking. A requester who approved since is not
+  asked.
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
@@ -53,9 +54,6 @@ also wake a Conversation or run an Event automation.
 
 ## Gaps
 
-- Junior asks the requester to review again as soon as it acts after their
-  change request, before the required checks pass. This breaks "asks for a
-  review only when the required checks pass" (Attention).
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
   only when the required checks pass" (Attention).
