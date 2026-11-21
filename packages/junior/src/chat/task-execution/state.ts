@@ -1711,9 +1711,11 @@ export async function moveIdleConversationDestination(args: {
 }
 
 /**
- * Run `work` while no Run holds the Conversation. A Run takes its lease under
- * the same mutation lock, so none can start until `work` ends. Returns `busy`
- * without calling `work` when a Run holds the Conversation. `work` calls
+ * Run `work` while no Run holds the Conversation and no work waits for one.
+ * A Run takes its lease under the same mutation lock, so none can start until
+ * `work` ends. Returns `busy` without calling `work` when a Run holds the
+ * Conversation or work waits, such as a pending mailbox message: that Run
+ * reads the history next, so `work` must not change it first. `work` calls
  * `fence` right before its durable write; it throws when the lock expired.
  */
 export async function withIdleConversation<T>(
@@ -1722,7 +1724,7 @@ export async function withIdleConversation<T>(
 ): Promise<T | "busy"> {
   return await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
-    if (existing && isHeldByRun(existing)) {
+    if (existing && (isHeldByRun(existing) || hasRunnableWork(existing))) {
       return "busy";
     }
     return await work(() =>

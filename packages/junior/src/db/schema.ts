@@ -43,7 +43,7 @@ import {
   juniorReviewItemSlackCards,
   juniorReviewItems,
 } from "./schema/review-items";
-import { juniorPlanItems, juniorPlanItemVersionSeq } from "./schema/plan-items";
+import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
@@ -82,8 +82,8 @@ export {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
-  juniorPlanItems,
-  juniorPlanItemVersionSeq,
+  juniorTodos,
+  juniorTodoVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
@@ -128,7 +128,7 @@ export const juniorSqlSchema = {
   juniorReviewItemConversations,
   juniorReviewItemSlackCards,
   juniorReviewItems,
-  juniorPlanItems,
+  juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
