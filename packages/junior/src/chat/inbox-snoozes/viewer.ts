@@ -304,7 +304,11 @@ export async function createViewerSnooze(
   // snooze and removes it. That can only happen once the wake time has
   // passed, so wake the snoozes here.
   if (wakeAtMs !== undefined && Date.now() >= wakeAtMs) {
-    await settleInboxSnoozes(getDb(), { snoozeIds, state: "woken" });
+    await settleInboxSnoozes(getDb(), {
+      reason: { kind: "time" },
+      snoozeIds,
+      state: "woken",
+    });
   }
   return snoozed.map(({ item }) => item.id);
 }

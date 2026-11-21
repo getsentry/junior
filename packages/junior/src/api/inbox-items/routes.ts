@@ -48,10 +48,16 @@ import {
 } from "@/chat/inbox-items/store";
 import type { InboxItemDelivery } from "@/chat/inbox-items/changes";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
+import {
+  clearInboxWakeReasons,
+  readInboxWakeReasons,
+} from "@/chat/inbox-snoozes/store";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
+import type { InboxSnoozeWake } from "@/api/schema/inbox-snooze";
+import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
 import { readItemRoots } from "./item-roots";
 import { readInboxItemMentions } from "./mentions";
 
@@ -180,6 +186,20 @@ function subjectPayload(
   };
 }
 
+// The Event's source says how it reads after the resource's name, such as
+// "is merged" from the GitHub plugin.
+function wakePayload(reason: InboxSnoozeWakeReason): InboxSnoozeWake {
+  if (reason.kind === "time") return reason;
+  const phrase =
+    getEventCatalog()[reason.namespace]?.events[reason.eventType]?.phrase;
+  return {
+    eventType: reason.eventType,
+    kind: "event",
+    resource: reason.identifier,
+    ...(phrase ? { phrase } : undefined),
+  };
+}
+
 /** Build the API payload of one Inbox item for its viewer. */
 function inboxItemPayload(
   item: InboxItem,
@@ -187,6 +207,7 @@ function inboxItemPayload(
   roots: Awaited<ReturnType<typeof readItemRoots>>,
   mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
+  wake: InboxSnoozeWakeReason | undefined,
 ): InboxItemPayload {
   const conversationId = ownerConversationId(item);
   const root = conversationId ? roots.get(conversationId) : undefined;
@@ -225,13 +246,14 @@ function inboxItemPayload(
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
     ...(todo ? { todoId: todo.id } : undefined),
+    ...(wake ? { wake: wakePayload(wake) } : undefined),
   };
 }
 
 /**
  * Build the payloads of a page of items, with the root of each one, the
- * people they mention, and the related work of the open ones. Each read
- * covers the page, and the reads run at once.
+ * people they mention, and the related work and wake reason of the open
+ * ones. Each read covers the page, and the reads run at once.
  */
 async function inboxItemPayloads(
   items: readonly InboxItem[],
@@ -239,10 +261,16 @@ async function inboxItemPayloads(
   reader: InboxItemReader,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const [roots, mentions, related] = await Promise.all([
+  const [roots, mentions, related, wakes] = await Promise.all([
     readItemRoots(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
+    readInboxWakeReasons(db, {
+      inboxItemIds: items
+        .filter((item) => item.status === "open")
+        .map((item) => item.id),
+      userId: viewer.id,
+    }),
   ]);
   return items.map((item, index) =>
     inboxItemPayload(
@@ -251,6 +279,7 @@ async function inboxItemPayloads(
       roots,
       mentions[index]!,
       related.get(item.id),
+      wakes.get(item.id),
     ),
   );
 }
@@ -475,6 +504,11 @@ export function createInboxItemRoutes(services: {
           ...(body.action === "submit"
             ? { answer: { ...body.answer, requestId: id } }
             : undefined),
+        });
+        // The viewer acted on the item, so it no longer says why it woke.
+        await clearInboxWakeReasons(getDb(), {
+          inboxItemIds: [id],
+          userId: viewer.id,
         });
         const [payload] = await inboxItemPayloads(
           [item],

@@ -38,6 +38,9 @@ const MANIFEST_PATH = `${DASHBOARD_DIST}/client-manifest.json`;
 const BASELINE_PATH = "scripts/dashboard-bundle-size-baseline.json";
 const BASE_BRANCH = "origin/main";
 const UPDATE_COMMAND = "pnpm dashboard-bundle-size:check --update";
+
+// CI runs this check in its own job, after the dashboard build.
+export const lint = false;
 const GROWTH_LIMIT = 0.02;
 // Two clean builds of one commit give the same bytes, and CI prints the same
 // sizes as a local build. The tolerance covers zlib output that can differ

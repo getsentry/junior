@@ -118,7 +118,7 @@ describe("To-dos for a person in the Inbox", () => {
     expect(await asBob.items(`q=rollback`)).toEqual([]);
     expect(await asBob.items(`conversationId=${ROOT}`)).toEqual([]);
     expect((await asBob.request(`/inbox-items/${item!.id}`)).status).toBe(404);
-    expect((await asBob.act(item!.id, "done")).status).toBe(404);
+    expect((await asBob.act(item!.id, { action: "done" })).status).toBe(404);
     expect(await asBob.count()).toEqual(
       expect.objectContaining({ needsViewer: 0 }),
     );
@@ -134,10 +134,10 @@ describe("To-dos for a person in the Inbox", () => {
     );
 
     // Only Done closes it. Dismiss and answers are for other items.
-    expect((await asAna.act(item!.id, "dismiss")).status).toBe(400);
-    expect((await asAna.act(item!.id, "take")).status).toBe(400);
+    expect((await asAna.act(item!.id, { action: "dismiss" })).status).toBe(400);
+    expect((await asAna.act(item!.id, { action: "take" })).status).toBe(400);
 
-    const done = await asAna.act(item!.id, "done");
+    const done = await asAna.act(item!.id, { action: "done" });
     expect(done.status).toBe(200);
     expect(await done.json()).toEqual(
       expect.objectContaining({
@@ -147,7 +147,7 @@ describe("To-dos for a person in the Inbox", () => {
       }),
     );
     // A retry of the same Done succeeds.
-    expect((await asAna.act(item!.id, "done")).status).toBe(200);
+    expect((await asAna.act(item!.id, { action: "done" })).status).toBe(200);
     expect(await asAna.items()).toEqual([]);
     expect(await asAna.count()).toEqual(
       expect.objectContaining({ needsViewer: 0 }),
@@ -295,7 +295,9 @@ describe("To-dos for a person in the Inbox", () => {
     expect(await inbox(ana).count()).toEqual(
       expect.objectContaining({ needsViewer: 0 }),
     );
-    expect((await inbox(ana).act(item!.id, "done")).status).toBe(404);
+    expect((await inbox(ana).act(item!.id, { action: "done" })).status).toBe(
+      404,
+    );
   });
 
   async function updateTodosFor(conversationId: string, title: string) {

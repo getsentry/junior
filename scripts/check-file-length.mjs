@@ -1,6 +1,6 @@
-import fs from "node:fs";
 import path from "node:path";
 import { fileLengthExceptions } from "./file-length-exceptions.mjs";
+import { readRepoFiles } from "./lib/repo-files.mjs";
 
 export const MAX_CODE_FILE_LINES = 1_000;
 const MAX_DOC_FILE_LINES = 120;
@@ -94,25 +94,27 @@ export function isReferenceDoc(filePath) {
 }
 
 /** Check code, core doc, and reference doc lengths, and nested AGENTS.md files. */
-export function run({ root, files }) {
-  const measure = (include) =>
-    files.filter(include).map((filePath) => ({
-      path: filePath,
-      lines: countFileLines(fs.readFileSync(path.join(root, filePath), "utf8")),
+export async function run({ root, files }) {
+  const measure = async (include) =>
+    (await readRepoFiles(root, files.filter(include))).map((file) => ({
+      path: file.path,
+      lines: countFileLines(file.contents),
     }));
   return [
     ...checkFileLengths(
-      measure((filePath) => CODE_EXTENSIONS.has(path.posix.extname(filePath))),
+      await measure((filePath) =>
+        CODE_EXTENSIONS.has(path.posix.extname(filePath)),
+      ),
       fileLengthExceptions,
     ),
     ...checkFileLengths(
-      measure(isCoreDoc),
+      await measure(isCoreDoc),
       {},
       MAX_DOC_FILE_LINES,
       DOC_GUIDANCE,
     ),
     ...checkFileLengths(
-      measure(isReferenceDoc),
+      await measure(isReferenceDoc),
       {},
       MAX_CODE_FILE_LINES,
       DOC_GUIDANCE,

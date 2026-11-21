@@ -9,63 +9,43 @@ import {
   parentPort,
   workerData,
 } from "node:worker_threads";
+import { mapBounded } from "./lib/map-bounded.mjs";
 import { listRepoFiles } from "./lib/repo-files.mjs";
 
 /**
  * Run repo checks by name: `node scripts/check.mjs file-length money-units`.
- * With no name, it runs every check that `pnpm lint` needs. The runner first
- * runs the `scripts/check-<file>.test.mjs` tests of the checks. Then it lists
- * the repo files once and runs each check in a worker thread, in parallel.
- * Each `scripts/check-<file>.mjs` exports `run({ root, files, args })`, which
- * returns the problems it finds. `files` comes from `lib/repo-files.mjs`, so a
- * check filters it instead of walking the repo. Flags, such as `--update`, are
- * `args`. Each `pnpm <name>:check` script calls this runner.
+ * Each `scripts/check-<name>.mjs` is a check. With no name, the runner runs
+ * every check except the ones whose module exports `lint = false`.
+ *
+ * The runner lists the repo files once and runs each check in a worker
+ * thread, in parallel. A worker first runs the check's
+ * `scripts/check-<name>.test.mjs` tests, if any. Then it calls the exported
+ * `run({ root, files, args })`, which returns the problems it finds. `files`
+ * comes from `lib/repo-files.mjs`, so a check filters it instead of walking
+ * the repo. Flags, such as `--update`, are `args`. Each `pnpm <name>:check`
+ * script calls this runner.
  */
 
-// `lint: true` checks run when no name is given.
-const CHECKS = {
-  "file-length": { file: "file-length", lint: true },
-  "baseline-growth": { file: "baseline-growth", lint: true },
-  "typecheck-coverage": { file: "typecheck-coverage", lint: true },
-  "migration-metadata": { file: "drizzle-migrations", lint: true },
-  "migration-locks": { file: "migration-locks", lint: true },
-  "money-units": { file: "money-units", lint: true },
-  "lockfile-families": { file: "lockfile-families", lint: true },
-  "test-architecture": { file: "test-architecture", lint: true },
-  "type-assertions": { file: "type-assertions", lint: true },
-  "await-in-loop": { file: "await-in-loop", lint: true },
-  "nav-request-budgets": { file: "nav-request-budgets", lint: true },
-  "dashboard-style": { file: "dashboard-styles", lint: true },
-  // `ast-grep:lint` runs this after the ast-grep scan.
-  "ast-grep-ignores": { file: "ast-grep-ignores", lint: false },
-  // CI runs these in their own jobs, after a build or on release changes.
-  "dashboard-bundle-size": { file: "dashboard-bundle-size", lint: false },
-  "package-types": { file: "package-types", lint: false },
-  release: { file: "release-config", lint: false },
-};
-
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const SCRIPTS = path.join(ROOT, "scripts");
 
-/** Return the check script files in `scripts/` that have no runner entry. */
-function unregisteredScripts() {
-  const registered = new Set(
-    Object.values(CHECKS).map((check) => `check-${check.file}.mjs`),
-  );
+/** Return the check names, from the `scripts/check-<name>.mjs` files. */
+function checkNames() {
   return fs
-    .readdirSync(path.join(ROOT, "scripts"))
-    .filter(
-      (name) =>
-        /^check-.+\.mjs$/.test(name) &&
-        !name.endsWith(".test.mjs") &&
-        !registered.has(name),
-    );
+    .readdirSync(SCRIPTS)
+    .map((file) => /^check-(.+)\.mjs$/.exec(file)?.[1])
+    .filter((name) => name && !name.endsWith(".test"))
+    .sort();
 }
 
-/** Run one check in a worker thread and resolve to the problems it finds. */
-function runInWorker(file, context) {
+/**
+ * Run one check in a worker thread. Resolve to the problems it finds, or to
+ * `undefined` when `lintOnly` is set and the check is not part of lint.
+ */
+function runInWorker(name, lintOnly, context) {
   return new Promise((resolve) => {
     const worker = new Worker(fileURLToPath(import.meta.url), {
-      workerData: { file, context },
+      workerData: { name, lintOnly, context },
     });
     worker.once("message", resolve);
     worker.once("error", (error) => resolve([error.stack ?? String(error)]));
@@ -75,63 +55,27 @@ function runInWorker(file, context) {
   });
 }
 
-/** Run `task` on each item, at most `limit` at a time, and keep the order. */
-async function mapBounded(items, limit, task) {
-  const results = [];
-  let next = 0;
-  async function drain() {
-    while (next < items.length) {
-      const index = next++;
-      results[index] = await task(items[index]);
-    }
-  }
-  await Promise.all(
-    Array.from({ length: Math.min(limit, items.length) }, drain),
-  );
-  return results;
-}
-
 async function main(names, args) {
-  const unregistered = unregisteredScripts();
-  if (unregistered.length > 0) {
-    console.error(
-      `Add each check script to CHECKS in scripts/check.mjs: ${unregistered.join(", ")}`,
-    );
-    return 1;
-  }
-  const unknown = names.filter((name) => !(name in CHECKS));
+  const known = checkNames();
+  const unknown = names.filter((name) => !known.includes(name));
   if (unknown.length > 0) {
     console.error(
-      `Unknown check: ${unknown.join(", ")}. Known: ${Object.keys(CHECKS).join(", ")}`,
+      `Unknown check: ${unknown.join(", ")}. Known: ${known.join(", ")}`,
     );
     return 1;
   }
-  const selected =
-    names.length > 0
-      ? names
-      : Object.keys(CHECKS).filter((name) => CHECKS[name].lint);
-
-  const tests = selected
-    .map((name) => `scripts/check-${CHECKS[name].file}.test.mjs`)
-    .filter((test) => fs.existsSync(path.join(ROOT, test)));
-  if (tests.length > 0) {
-    const result = spawnSync(process.execPath, ["--test", ...tests], {
-      cwd: ROOT,
-      stdio: "inherit",
-    });
-    if (result.error) throw result.error;
-    if (result.status !== 0) return result.status ?? 1;
-  }
-
+  const lintOnly = names.length === 0;
+  const selected = lintOnly ? known : names;
   const context = { root: ROOT, files: listRepoFiles(ROOT), args };
   const results = await mapBounded(
     selected,
     os.availableParallelism(),
-    (name) => runInWorker(CHECKS[name].file, context),
+    (name) => runInWorker(name, lintOnly, context),
   );
   let failed = false;
   for (const [index, name] of selected.entries()) {
     const errors = results[index];
+    if (errors === undefined) continue;
     if (errors.length === 0) {
       console.log(`PASS ${name}`);
       continue;
@@ -144,6 +88,24 @@ async function main(names, args) {
   return failed ? 1 : 0;
 }
 
+/** Run the check's tests, then the check, inside a worker thread. */
+async function runCheck({ name, lintOnly, context }) {
+  const check = await import(`./check-${name}.mjs`);
+  if (lintOnly && check.lint === false) return undefined;
+  const test = path.join(SCRIPTS, `check-${name}.test.mjs`);
+  if (fs.existsSync(test)) {
+    const result = spawnSync(process.execPath, ["--test", test], {
+      cwd: ROOT,
+      encoding: "utf8",
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) {
+      return `${result.stdout}${result.stderr}`.trim().split("\n");
+    }
+  }
+  return check.run(context);
+}
+
 if (isMainThread) {
   // lint-staged appends the staged file paths. The checks scan the whole repo,
   // so the runner ignores them.
@@ -153,7 +115,5 @@ if (isMainThread) {
     argv.filter((arg) => arg.startsWith("-")),
   );
 } else {
-  const { file, context } = workerData;
-  const { run } = await import(`./check-${file}.mjs`);
-  parentPort.postMessage(await run(context));
+  parentPort.postMessage(await runCheck(workerData));
 }
