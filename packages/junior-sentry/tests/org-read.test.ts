@@ -67,6 +67,22 @@ describe("sentry org read access", () => {
     expect(
       grantFor("GET", "https://sentry.io/api/0/users/me/regions/"),
     ).toBeUndefined();
+    // The personal inbox returns the caller's own items.
+    expect(
+      grantFor("GET", "https://us.sentry.io/api/0/organizations/sentry/inbox/"),
+    ).toBeUndefined();
+    expect(
+      grantFor(
+        "GET",
+        "https://us.sentry.io/api/0/organizations/sentry/inbox/count/",
+      ),
+    ).toBeUndefined();
+    expect(
+      grantFor(
+        "GET",
+        "https://us.sentry.io/api/0/organizations/sentry/inbox/42/events/",
+      ),
+    ).toBeUndefined();
   });
 
   it("issues the configured token for the org read grant", async () => {
