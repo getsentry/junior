@@ -405,7 +405,7 @@ test("jumps to the latest page without the newer pages", async ({
   await expect(
     transcript.getByRole("button", { name: "Load newer events" }),
   ).toHaveCount(0);
-  expect(pageRequests).toEqual(["?around=20", "?after=40"]);
+  expect(pageRequests).toEqual(["?around=20&limit=300", "?after=40&limit=119"]);
 
   // Earlier pages load above the latest page as the reader scrolls up.
   await transcript.evaluate((element) => {

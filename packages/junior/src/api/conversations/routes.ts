@@ -272,11 +272,13 @@ export function createConversationRoutes(
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
+        // A dashboard message steers the running Turn, like a Slack mention.
         await appendConversationMessageForViewer(
           viewer,
           conversationId,
           body,
           options,
+          "interrupt",
         ),
       );
     },

@@ -15,7 +15,10 @@ import {
 } from "@/chat/conversations/web-input";
 import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  getConversationWorkState,
+  type InboundMessageDelivery,
+} from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
@@ -144,12 +147,13 @@ export async function createConversationForViewer(
   }
 }
 
-/** Append one dashboard message to an existing conversation. */
+/** Append one viewer message to an existing conversation. */
 export async function appendConversationMessageForViewer(
   viewer: User,
   conversationId: string,
   body: CreateConversationMessageBody,
   services: WebInputServices,
+  delivery: InboundMessageDelivery,
 ): Promise<AcceptedConversationMessage> {
   await requireWebMessageConversation(
     viewer,
@@ -167,6 +171,7 @@ export async function appendConversationMessageForViewer(
       {
         actor,
         conversationId,
+        delivery,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
         uploads,
