@@ -67,12 +67,14 @@ child chooses to report reaches the parent.
 - Some behavior of a child agent branches on `kind` outside the one switch.
   This breaks "its `kind` is the only switch". getsentry/junior#3435,
   getsentry/junior#3060, and getsentry/junior#2567 track it.
-- A stopped Conversation still starts a Turn for Events other than Watch
-  Events, and for a person's message sent before the stop. This breaks "one
-  stop stops the whole tree". getsentry/junior#2888 tracks it.
 - A stopped parent's message to a child that has an Agent invocation still
   starts work and ends the child's stop. This breaks "a stopped parent gives
   no new work". getsentry/junior#3060 tracks it.
+- Some input to a child agent runs in a separate child worker, not in
+  the path that runs every Conversation. This breaks "one execution path
+  runs every Conversation". getsentry/junior#3060 tracks it.
+- When a stop ends, the parent messages to a grandchild that the stop
+  skipped run again. This breaks "one stop stops the whole tree".
 - A Watch Turn of a child that ends with `noReply` keeps the child in the
   siblings that did not report. The parent waits for a report that does not
   come. This breaks "a parent never waits forever".

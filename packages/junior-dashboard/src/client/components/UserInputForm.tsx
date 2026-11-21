@@ -244,6 +244,8 @@ export function UserInputForm(props: {
   request: UserInputRequest;
   requestId: string;
   secondaryActions?: ReactNode;
+  /** False when the answer takes no words, so the form has no Other…. */
+  words?: boolean;
 }) {
   const inbox = useInboxUi();
   const [sending, setSending] = useState(false);
@@ -359,7 +361,9 @@ export function UserInputForm(props: {
   // answer when no choice fits. One choice is a plugin's action, such as
   // Resume. The plugin reads no words, so it has no Other….
   const otherButton =
-    props.docked || buttonField?.options.length === 1 ? null : (
+    props.docked ||
+    props.words === false ||
+    buttonField?.options.length === 1 ? null : (
       <Button
         variant="outline"
         disabled={sending}

@@ -23,10 +23,8 @@ import {
 } from "@/chat/services/short-title";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-export const SPAWN_AGENT_TOOL_NAME = "spawnAgent";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z

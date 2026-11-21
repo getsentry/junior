@@ -15,9 +15,10 @@ import { withSpan, type SetSpanAttributes } from "@/chat/logging";
 
 /**
  * Where a compaction runs: `blocking` at Turn start, `active` between model
- * calls in a Turn, `background` in a job after a Turn.
+ * calls in a Turn, `background` in a job after a Turn, `idle` in a cache
+ * warmup job while no Run holds the Conversation.
  */
-export type CompactionMode = "blocking" | "active" | "background";
+export type CompactionMode = "blocking" | "active" | "background" | "idle";
 
 /**
  * `summary` may call the model. `swap` only checks for a prepared summary,

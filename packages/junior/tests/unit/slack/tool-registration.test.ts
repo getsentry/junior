@@ -8,9 +8,9 @@ import {
   createSlackSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { createApp } from "@/app";
 

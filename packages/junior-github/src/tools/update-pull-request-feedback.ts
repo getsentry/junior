@@ -14,6 +14,17 @@ import {
   REMOVE_REVIEW_REACTION,
   REVIEW_REACTIONS,
 } from "../graphql-documents.js";
+import {
+  FEEDBACK_REACTION_CONTENTS,
+  type FeedbackStatus,
+  graphqlReactionContent,
+  type PullRequestCommentRef,
+  pullRequestCommentPath,
+  pullRequestCommentReactionsPath,
+  pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
+  REST_REACTION_CONTENT,
+} from "../pull-request-feedback.js";
 import { loadLatestReviews } from "../pull-request-reviews.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
@@ -23,37 +34,6 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
-
-/**
- * GitHub has reactions but no feedback state. This tool maps each state to a
- * reaction and keeps at most one state reaction that Junior owns. It does not
- * change reactions from other users.
- */
-const STATUS_TO_REACTION_CONTENT = {
-  reviewing: "eyes",
-  addressed: "+1",
-  declined: "-1",
-} as const;
-const FEEDBACK_REACTION_CONTENTS = new Set<string>(
-  Object.values(STATUS_TO_REACTION_CONTENT),
-);
-type FeedbackStatus = keyof typeof STATUS_TO_REACTION_CONTENT;
-type FeedbackOutcome = Exclude<FeedbackStatus, "reviewing">;
-type PullRequestCommentKind = "conversation" | "review";
-
-// A review body has no REST reactions endpoint, so it uses GraphQL, which
-// names the same reactions differently.
-const GRAPHQL_REACTION_CONTENT: Record<string, string> = {
-  eyes: "EYES",
-  "+1": "THUMBS_UP",
-  "-1": "THUMBS_DOWN",
-};
-const REST_REACTION_CONTENT = new Map(
-  Object.entries(GRAPHQL_REACTION_CONTENT).map(([rest, graphql]) => [
-    graphql,
-    rest,
-  ]),
-);
 
 const inputSchema = z
   .object({
@@ -85,6 +65,8 @@ const inputSchema = z
   })
   .strict();
 
+type FeedbackOutcome = Exclude<FeedbackStatus, "reviewing">;
+
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("updatePullRequestFeedback"),
   repo: z.string(),
@@ -96,34 +78,6 @@ interface Result extends PluginToolOutput {
   repo: string;
   comment_id: number;
   status: FeedbackOutcome;
-}
-
-interface PullRequestCommentRef {
-  owner: string;
-  name: string;
-  commentKind: PullRequestCommentKind;
-  commentId: number;
-}
-
-function pullRequestCommentPath(input: PullRequestCommentRef): string {
-  // Conversation comments live under the issues endpoint; inline review
-  // comments live under the pulls endpoint. GitHub has no shared path.
-  const segment = input.commentKind === "conversation" ? "issues" : "pulls";
-  return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}`;
-}
-
-/** Build the GitHub API path for one pull request comment's reactions. */
-export function pullRequestCommentReactionsPath(
-  input: PullRequestCommentRef,
-): string {
-  return `${pullRequestCommentPath(input)}/reactions`;
-}
-
-/** Return the GitHub reaction for one feedback state. */
-export function pullRequestFeedbackReactionContent(
-  status: FeedbackStatus,
-): (typeof STATUS_TO_REACTION_CONTENT)[FeedbackStatus] {
-  return STATUS_TO_REACTION_CONTENT[status];
 }
 
 const reactionSchema = z.object({
@@ -206,21 +160,6 @@ async function assertBotAuthoredPullRequest(
       "This bot can only set feedback status on comments on pull requests it authored.",
     );
   }
-}
-
-/** Build the GitHub API path for one pull request review. */
-export function pullRequestReviewPath(input: {
-  owner: string;
-  name: string;
-  pullRequest: number;
-  reviewId: number;
-}): string {
-  return `${repoPath(input)}/pulls/${input.pullRequest}/reviews/${input.reviewId}`;
-}
-
-/** Return the GraphQL name of one REST reaction content. */
-export function graphqlReactionContent(content: string): string {
-  return GRAPHQL_REACTION_CONTENT[content] ?? content;
 }
 
 const reviewReactionsSchema = z.object({

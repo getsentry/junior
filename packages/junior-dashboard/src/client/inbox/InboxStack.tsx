@@ -3,7 +3,6 @@ import { Link } from "react-router";
 
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
 import { useConversationDensity } from "../conversations/conversationDensity";
-import { conversationPath } from "../conversations/conversationRoutes";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { cn } from "../styles";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
@@ -38,7 +37,6 @@ export function InboxStack(props: {
   children: ReactNode;
   /** The root, once loaded. It gives the stack its Conversation menu. */
   conversation?: Conversation;
-  conversationId: string;
   expandedKey: string;
   keys: readonly string[];
   /** How many asks Dismiss closes. */
@@ -51,6 +49,8 @@ export function InboxStack(props: {
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   snoozeMenuOpen: boolean;
+  /** Where its header opens: its root Conversation, or its owner. */
+  path: string;
   /** The stack's key in its section, as `todo:` and its Conversation. */
   stackKey: string;
   title: string;
@@ -60,8 +60,7 @@ export function InboxStack(props: {
   const [density] = useConversationDensity();
   const more = props.keys.length - STACK_FOLD;
   const folded = more > 0 && !unfolded && openIndex < STACK_FOLD;
-  const path = conversationPath(props.conversationId);
-  const headerClick = openOnClick(useOpenPath(path));
+  const headerClick = openOnClick(useOpenPath(props.path));
   const stack = {
     "aria-label": props.title,
     className: INBOX_STACK_CLASS,
@@ -80,7 +79,7 @@ export function InboxStack(props: {
       >
         <Link
           className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-          to={path}
+          to={props.path}
         >
           <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
             {props.title}

@@ -1,3 +1,4 @@
+import { createAddReviewItemTool } from "@/chat/review-items/tools/add";
 import type { User } from "@sentry/junior-plugin-api";
 import { expectSqlBudget } from "../../../fixtures/sql-budget";
 import { Hono } from "hono";
@@ -30,8 +31,7 @@ import { and, eq } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
-import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
+import type { UserInputRequest } from "@/chat/review-items/user-input-request";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -174,7 +174,7 @@ describe("review item actions API", () => {
       parentConversationId: "slack:CPUB:1.000004",
     });
     await insertReviewItem(getDb(), {
-      addedByConversationId: "agent:child-of-4",
+      owner: { id: "agent:child-of-4", kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
       body: "The initech entry changed its license.",
@@ -583,7 +583,7 @@ describe("review item actions API", () => {
     });
     const add = async (conversationId: string, title: string) => {
       const created = await insertReviewItem(getDb(), {
-        addedByConversationId: conversationId,
+        owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
         body: `${title}.`,
@@ -661,7 +661,7 @@ describe("review item actions API", () => {
       nowMs: number,
     ) => {
       const created = await insertReviewItem(getDb(), {
-        addedByConversationId: "slack:CPUB:1.000001",
+        owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
         body: `Item ${index}.`,
@@ -750,7 +750,7 @@ describe("review item actions API", () => {
         url: `https://github.com/getsentry/junior/pull/${index}`,
       };
       const created = await insertReviewItem(getDb(), {
-        addedByConversationId: "slack:CPUB:1.000001",
+        owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [(input.assignee ?? ana).id],
         body: `Item ${index}.`,

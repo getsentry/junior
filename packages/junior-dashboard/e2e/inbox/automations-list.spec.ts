@@ -1,5 +1,7 @@
 import { LIST_NOW, automationReport } from "./automation-fixture";
+import { automationAlert, license, mockReviewItems } from "./inbox-fixture";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
+import { NOW } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
@@ -130,5 +132,39 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("heading", { name: "Weekly project summary" }),
     ).toBeVisible();
     expect(summaryReads).toHaveLength(2);
+  });
+
+  test("To do lists an alert that the Inbox has not loaded yet", async ({
+    page,
+    dashboard,
+  }) => {
+    const report = structuredClone(automationReport);
+    Object.assign(
+      report.automations.find((automation) => automation.id === "scheduled-1")!,
+      { lastRunStatus: "failed" },
+    );
+    await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
+      route.fulfill({
+        json: mockAutomationCollection(
+          report,
+          new URL(route.request().url()).searchParams,
+        ),
+      }),
+    );
+    // Newer asks fill the Inbox's first page, so the alert is not on it.
+    const asks = Array.from({ length: 12 }, (_, index) => ({
+      ...license,
+      createdAt: new Date(Date.parse(NOW) - index * 60_000).toISOString(),
+      id: `item-ask-${index}`,
+      title: `Approve rollout step ${index}`,
+    }));
+    await mockReviewItems(page, {
+      open: [...asks, automationAlert("scheduled-1", "Weekly project summary")],
+      pageSize: 10,
+    });
+    await page.goto(`${dashboard.baseURL}/automations`);
+    await expect(
+      page.getByRole("region", { exact: true, name: "To do" }),
+    ).toContainText("Weekly project summary");
   });
 });

@@ -38,7 +38,7 @@ import {
 } from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
-import { mockQuestionConversations } from "./review-items";
+import { mockQuestionConversations } from "./question-conversations";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
 /** Fixed current time for mock reports and browser tests. */

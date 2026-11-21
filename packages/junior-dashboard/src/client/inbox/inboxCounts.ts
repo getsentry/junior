@@ -16,7 +16,7 @@ type ShownRows = {
   decisions: number;
   /** The entries under Waiting on you in Pull requests. */
   prs: number;
-  /** The rows in To do, without its Automation alerts. */
+  /** The rows in To do. */
   todo: number;
 };
 
@@ -29,8 +29,8 @@ type ShownRows = {
  *
  * - To do (the Inbox entry, the header, the tab, and the To do heading):
  *   each row in To do. That is one row per ask that waits on the viewer, as
- *   a stack shows a row for each of its asks, and one per Automation alert
- *   that the viewer did not put away.
+ *   a stack shows a row for each of its asks. An Automation alert is an
+ *   ask too.
  * - Decisions: each question row that Decisions lists, also a question for
  *   Everyone.
  * - Pull requests: each entry under Waiting on you, one per pull request.
@@ -45,8 +45,6 @@ type ShownRows = {
  * Returns undefined for a count that is not known yet.
  */
 export function inboxCounts(input: {
-  /** The Automation alert cards, or undefined until they are known. */
-  automationCards: number | undefined;
   /** More pages of open items follow the loaded ones. */
   hasMore: boolean;
   /** Every open item that the list knows, also a linked or held one. */
@@ -85,9 +83,6 @@ export function inboxCounts(input: {
       rows.prs,
       past((counts) => counts.codeChanges, isCodeChangeItem),
     ),
-    todo:
-      input.automationCards === undefined
-        ? undefined
-        : add(rows.todo + input.automationCards, todoItems),
+    todo: add(rows.todo, todoItems),
   };
 }

@@ -10,7 +10,6 @@ import type {
 import * as z from "zod";
 import {
   githubRequest,
-  isRecord,
   issueInstallationToken,
 } from "../credential-support.js";
 import type { GitHubStatusIncident } from "../github-status.js";
@@ -719,21 +718,30 @@ function checkRunsFromResponse(value: unknown): unknown[] {
   return parsed.data.check_runs ?? [];
 }
 
+// Each field is optional on its own: a wrong field drops only that fact.
+const pullRequestFactsResponseSchema = z.object({
+  draft: z.boolean().optional().catch(undefined),
+  user: z
+    .object({
+      email: z.string().optional().catch(undefined),
+      login: z.string().optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
+});
+
 function pullRequestFactsFromResponse(
   value: unknown,
 ): GitHubCheckSuitePullRequestFacts | undefined {
-  if (!isRecord(value)) return undefined;
+  const parsed = pullRequestFactsResponseSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const { draft, user } = parsed.data;
   const facts: GitHubCheckSuitePullRequestFacts = {};
-  if (typeof value["draft"] === "boolean") facts.isDraft = value["draft"];
-  const user = value["user"];
-  if (isRecord(user)) {
-    const username =
-      typeof user["login"] === "string" ? user["login"].trim() : undefined;
-    if (username) facts.openerUsername = username;
-    const email =
-      typeof user["email"] === "string" ? user["email"].trim() : undefined;
-    if (email) facts.openerEmail = email;
-  }
+  if (draft !== undefined) facts.isDraft = draft;
+  const username = user?.login?.trim();
+  if (username) facts.openerUsername = username;
+  const email = user?.email?.trim();
+  if (email) facts.openerEmail = email;
   return Object.keys(facts).length > 0 ? facts : undefined;
 }
 

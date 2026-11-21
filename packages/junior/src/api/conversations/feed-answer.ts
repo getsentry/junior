@@ -1,10 +1,11 @@
 import { and, desc, eq, isNotNull, sql, type SQL } from "drizzle-orm";
 import type { ConversationFeedViewerAnswer } from "@/api/schema/conversation-feed";
+import { reviewItemOwnedByConversation } from "@/chat/review-items/access";
 import type { ReviewItemRequest } from "@/chat/review-items/evidence";
 import {
   answeredChoices,
   type UserInputAnswer,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/review-items/user-input-request";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations, juniorReviewItems } from "@/db/schema";
 
@@ -31,10 +32,7 @@ export function feedViewerAnswerSql(
     .from(juniorReviewItems)
     .where(
       and(
-        eq(
-          juniorReviewItems.addedByConversationId,
-          juniorConversations.conversationId,
-        ),
+        reviewItemOwnedByConversation(juniorConversations.conversationId),
         eq(juniorReviewItems.closedByUserId, userId),
         isNotNull(juniorReviewItems.answer),
         isNotNull(juniorReviewItems.request),

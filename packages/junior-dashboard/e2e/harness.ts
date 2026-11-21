@@ -215,48 +215,45 @@ export async function mockDashboardApis(
       ],
     });
   });
-  await page.route(
-    "**/api/plugins/memory/conversations/*/memories",
-    async (route) => {
-      await route.fulfill({
-        json: {
-          events: [
-            {
-              memoryIds: ["memory-checkout-runbook"],
-              seq: 2,
-              source: "recalled",
-              turnId: "active-turn",
-            },
-            {
-              memoryIds: ["captured-memory-1", "captured-memory-2"],
-              seq: 13,
-              source: "captured",
-              turnId: "qa-turn",
-            },
-          ],
-          memories: [
-            {
-              content:
-                "Checkout latency investigations start with the deployment comparison dashboard.",
-              id: "memory-checkout-runbook",
-              visibility: "public",
-            },
-            {
-              content: "Use pnpm for repository commands.",
-              id: "captured-memory-1",
-              visibility: "private",
-            },
-            {
-              content: "Dashboard transcript events should remain expandable.",
-              id: "captured-memory-2",
-              visibility: "public",
-            },
-          ],
-        },
-      });
-    },
-  );
-  await page.route("**/api/plugins/memory/memories/*", async (route) => {
+  await page.route("**/api/memory/conversations/*/memories", async (route) => {
+    await route.fulfill({
+      json: {
+        events: [
+          {
+            memoryIds: ["memory-checkout-runbook"],
+            seq: 2,
+            source: "recalled",
+            turnId: "active-turn",
+          },
+          {
+            memoryIds: ["captured-memory-1", "captured-memory-2"],
+            seq: 13,
+            source: "captured",
+            turnId: "qa-turn",
+          },
+        ],
+        memories: [
+          {
+            content:
+              "Checkout latency investigations start with the deployment comparison dashboard.",
+            id: "memory-checkout-runbook",
+            visibility: "public",
+          },
+          {
+            content: "Use pnpm for repository commands.",
+            id: "captured-memory-1",
+            visibility: "private",
+          },
+          {
+            content: "Dashboard transcript events should remain expandable.",
+            id: "captured-memory-2",
+            visibility: "public",
+          },
+        ],
+      },
+    });
+  });
+  await page.route("**/api/memory/memories/*", async (route) => {
     if (route.request().method() !== "GET") {
       await route.fallback();
       return;
@@ -321,7 +318,7 @@ export async function mockDashboardApis(
         actions: [
           {
             confirmation: "Forget this memory?",
-            href: "/api/plugins/memory/memories/memory-1",
+            href: "/api/memory/memories/memory-1",
             label: "Forget",
             method: "DELETE",
             tone: "danger",
@@ -435,7 +432,7 @@ export async function mockDashboardApis(
       },
     });
   });
-  await page.route("**/api/plugins/memory/dashboard", async (route) => {
+  await page.route("**/api/memory/dashboard", async (route) => {
     const start = Date.parse("2026-05-02T00:00:00.000Z");
     const days = Array.from({ length: 90 }, (_, index) => {
       const date = new Date(start + index * 24 * 60 * 60 * 1_000);

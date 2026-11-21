@@ -19,7 +19,7 @@ import {
 import { Type, type Static } from "@sinclair/typebox";
 import { Value } from "@sinclair/typebox/value";
 import * as z from "zod";
-import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubFooter } from "../conversation-footer.js";
 import {
   gitHubPullRequestCreateWatch,
   gitHubPullRequestSubscribable,
@@ -41,7 +41,7 @@ import {
   stackTargetSchema,
   type GitHubPullRequestStack,
   type GitHubStackTarget,
-} from "./stack-pull-request.js";
+} from "../tool-support/stack-pull-request.js";
 import {
   checkPullRequestDescription,
   PULL_REQUEST_BODY_RULES,

@@ -47,9 +47,21 @@ how the dashboard groups and acts on its rows.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - The answer to an item that a plugin added goes to that plugin, which does
-  the work, such as Resume on a stopped merge conflict fix. It starts no
-  Turn.
+  the work, such as Resume on a merge conflict fix that did not land. It
+  starts no Turn.
 - An item from a public Conversation is visible to the whole workspace.
+- An Automation alert follows its Automation's Destination: a public
+  channel makes it visible to the workspace. Only core changes or closes
+  it, and a person can dismiss it.
+- A failed-run Automation alert offers Run again and Pause, and core takes
+  the step. Run again starts a run now, as a manual run does. Pause pauses
+  the Automation. The alert closes and does not open again. An event
+  Automation runs only on its events, so its alert offers only Pause.
+- A dismissed Automation alert hides every alert of that Automation, also
+  for a new failure or a new run, until the Automation recovers: it is
+  active, its last run succeeded, and its trigger is available. A pause is
+  no recovery. The next problem then adds a new alert. An alert that core closes on recovery
+  hides nothing.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open Plan item
   for a person, or an answer that its starter has not read.
@@ -67,5 +79,6 @@ how the dashboard groups and acts on its rows.
 - The "Needs you" list of Conversations also shows Conversations that wait
   for a sign-in. This breaks "'Needs you' means one thing".
 - The "Needs you" group of the classic Inbox also shows open actions for
-  Everyone and actions with no assignees. The Inbox count and To do in the
-  new Inbox leave them out. This breaks "'Needs you' means one thing".
+  Everyone and actions with no assignees. To do in the new Inbox shows
+  actions with no assignees, and the Inbox count leaves them out. This
+  breaks "'Needs you' means one thing".

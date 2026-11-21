@@ -22,7 +22,7 @@ import {
 } from "@/chat/conversations/event-search-backfill";
 import { storeConversationEventLexemes } from "@/chat/conversations/event-lexemes";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   juniorConversationEventEmbeddings,
   juniorConversationEventLexemes,
