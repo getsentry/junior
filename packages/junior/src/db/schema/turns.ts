@@ -17,6 +17,14 @@ import { timestamptz } from "./timestamps";
 /** The kind of the Source that started a Turn. */
 type SourceKind = Source["kind"];
 
+/** The state of a Turn. */
+export type TurnState =
+  | "queued"
+  | "running"
+  | "completed"
+  | "failed"
+  | "cancelled";
+
 /**
  * One row per Turn: its state and the lease of the invocation that runs its
  * current step. A lease covers one step, not the whole Turn. `lease_epoch`
@@ -31,9 +39,7 @@ export const juniorTurns = pgTable(
     actorIdentityId: text("actor_identity_id")
       .notNull()
       .references(() => juniorIdentities.id),
-    state: text("state")
-      .$type<"queued" | "running" | "completed" | "failed" | "cancelled">()
-      .notNull(),
+    state: text("state").$type<TurnState>().notNull(),
     // Lower runs first. The scheduler sets it; core only sorts by it.
     priority: integer("priority").notNull(),
     // The kind of the Source that started the Turn. The scheduler compares

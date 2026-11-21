@@ -44,8 +44,7 @@ import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
-
-type TurnState = (typeof juniorTurns.$inferSelect)["state"];
+import type { TurnState } from "@/db/schema/turns";
 
 /** A Turn's id and state. */
 export type Turn = { turnId: string; state: TurnState };

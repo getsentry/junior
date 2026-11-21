@@ -5,19 +5,21 @@ import { and, eq } from "drizzle-orm";
 import type { Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
-
-type InboxRow = typeof juniorTurnInbox.$inferInsert;
+import type {
+  TurnInputKind,
+  TurnInputTraceContext,
+} from "@/db/schema/turn-inbox";
 
 /** One input from a source, such as a message, before it has a Turn. */
 export type Input = {
   conversationId: string;
-  kind: InboxRow["kind"];
+  kind: TurnInputKind;
   actorIdentityId: string;
-  payload: InboxRow["payload"];
+  payload: Record<string, unknown>;
   /** The source's id for the input, such as a Slack event id. */
   idempotencyKey: string;
   sentAt: Date;
-  traceContext?: NonNullable<InboxRow["traceContext"]>;
+  traceContext?: TurnInputTraceContext;
 };
 
 /** Adds an input to a Turn of the same Conversation. */
