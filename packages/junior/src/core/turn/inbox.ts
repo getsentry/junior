@@ -10,22 +10,34 @@ import type {
   TurnInputTraceContext,
 } from "@/db/schema/turn-inbox";
 
-/** One input from a source, such as a message, before it has a Turn. */
-export type Input = {
+/**
+ * Something that arrived in a Conversation for Junior to act on: a person's
+ * message, or an account that a person connected (`kind`). It waits in the
+ * inbox until a Turn reads it, and each input belongs to exactly one Turn.
+ * This type is the row before the scheduler sets its `turnId`.
+ */
+export type TurnInput = {
   conversationId: string;
   kind: TurnInputKind;
   actorIdentityId: string;
   payload: Record<string, unknown>;
-  /** The source's id for the input, such as a Slack event id. */
+  /**
+   * The same key on every delivery of this input, so a redelivery writes
+   * nothing. The Source gives it, for example the Slack message id or the
+   * `idempotencyKey` that a web or MCP client sends with a message.
+   */
   idempotencyKey: string;
   sentAt: Date;
   traceContext?: TurnInputTraceContext;
 };
 
-/** Adds an input to a Turn of the same Conversation. */
+/**
+ * Adds an input to a Turn of the same Conversation. It resolves once the row
+ * is written and throws on any failure, such as a duplicate idempotency key.
+ */
 export async function addInput(
   executor: JuniorSqlDatabase,
-  input: Input & { turnId: string },
+  input: TurnInput & { turnId: string },
 ): Promise<void> {
   await executor
     .db()

@@ -6,16 +6,19 @@
 // `assignTurn` picks which Turn takes the input.
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
-import { addInput, findInputTurn, type Input } from "@/core/turn/inbox";
+import { addInput, findInputTurn, type TurnInput } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import { createTurn, findOpenTurn, type Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
 
-/** An input with the kind of the Source it came from. */
-type ArrivingInput = Input & { source: Source["kind"] };
+/**
+ * A `TurnInput` with the kind of the Source that sent it. A Turn that the
+ * input creates keeps that Source.
+ */
+type IncomingTurnInput = TurnInput & { source: Source["kind"] };
 
-/** The Turn that an input went to, and whether the input started it. */
-type ScheduledInput = { turnId: string; created: boolean };
+/** The Turn that an input went to, and whether the input created it. */
+type ScheduleResult = { turnId: string; created: boolean };
 
 type ScheduleOptions = {
   /**
@@ -27,15 +30,15 @@ type ScheduleOptions = {
    */
   assignTurn: (
     openTurn: Turn | undefined,
-    input: ArrivingInput,
+    input: IncomingTurnInput,
   ) => { join: string } | { create: { priority: number } };
 };
 
-type Placement = ScheduledInput & { publish: boolean };
+type Placement = ScheduleResult & { publish: boolean };
 
 async function placeInput(
   executor: JuniorSqlDatabase,
-  input: ArrivingInput,
+  input: IncomingTurnInput,
   { assignTurn }: ScheduleOptions,
 ): Promise<Placement> {
   const { source, ...inboxInput } = input;
@@ -79,9 +82,9 @@ async function placeInput(
  */
 export async function scheduleInput(
   executor: JuniorSqlDatabase,
-  input: ArrivingInput,
+  input: IncomingTurnInput,
   options: ScheduleOptions,
-): Promise<ScheduledInput> {
+): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
     executor,
     input.conversationId,
