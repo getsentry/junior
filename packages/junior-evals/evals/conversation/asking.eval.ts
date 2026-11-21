@@ -10,6 +10,10 @@ import {
   insertWatch,
   slackChannel,
 } from "@junior-evals/fixture/insert";
+import {
+  readAskedRequests,
+  readTodosForPeople,
+} from "@junior-evals/fixture/items";
 import { rubric, RubricJudge } from "@junior-evals/fixture/judge";
 import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
 import { test, type ToolCall } from "@junior-evals/fixture/test";
@@ -113,7 +117,7 @@ describe("Asking a Person", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        `Thanks for the picomatch patch in ${RELEASE_BLOCKER}. It's the last blocker before the Craft release.`,
+        "Thanks for the picomatch patch. It's the last blocker before the Craft release.",
         { author: MAYA },
       ),
     );
@@ -128,20 +132,16 @@ describe("Asking a Person", () => {
 
     const delivery = await conversation.continue(releaseBlockerMerged());
 
-    // Cutting the release is Maya's decision, so it is an action item.
-    expect(askedRequests(delivery)).not.toHaveLength(0);
+    expect(delivery.turns).not.toHaveLength(0);
+    // Read the stored items: a `codemode` call shows no input. Cutting the
+    // release is Maya's decision, so it is an action item.
+    expect(
+      await readAskedRequests(conversation.conversationId),
+    ).not.toHaveLength(0);
     // Only Maya can dismiss the alerts, so that task is a To-do for her.
-    const forMaya = completedToolCalls("updateTodos", delivery).flatMap(
-      (call) =>
-        (
-          (call.input as { add?: Array<{ assignee?: string }> }).add ?? []
-        ).filter(
-          (todo) =>
-            todo.assignee?.includes(MAYA.userId) ||
-            todo.assignee?.toLowerCase().includes("maya"),
-        ),
-    );
-    expect(forMaya).not.toHaveLength(0);
+    expect(
+      await readTodosForPeople(conversation.conversationId),
+    ).not.toHaveLength(0);
   });
 
   test("when a scope choice does not block the work, choose the conventional option and state it without an item", async ({
