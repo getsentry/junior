@@ -241,11 +241,12 @@ struct Avatar: View {
     let path: String
     @State private var image: UIImage?
 
+    // `Color.clear`, not an empty view, so `task` runs before the photo loads.
     var body: some View {
-      Group {
-        if let image { Image(uiImage: image).resizable().scaledToFill().clipShape(Circle()) }
-      }
-      .task(id: path) { image = await app.photo(path) }
+      Color.clear
+        .overlay { if let image { Image(uiImage: image).resizable().scaledToFill() } }
+        .clipShape(Circle())
+        .task(id: path) { image = await app.photo(path) }
     }
   }
 
