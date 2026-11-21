@@ -5,20 +5,15 @@ import { and, eq } from "drizzle-orm";
 import type { Turn } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
-import type {
-  TurnInputKind,
-  TurnInputTraceContext,
-} from "@/db/schema/turn-inbox";
+import type { TurnInputTraceContext } from "@/db/schema/turn-inbox";
 
 /**
- * Something that arrived in a Conversation for Junior to act on: a person's
- * message, or an account that a person connected (`kind`). It waits in the
- * inbox until a Turn reads it, and each input belongs to exactly one Turn.
+ * Something that arrived in a Conversation for Junior to act on. It waits in
+ * the inbox until a Turn reads it, and each input belongs to exactly one Turn.
  * This type is the row before the scheduler sets its `turnId`.
  */
 export type TurnInput = {
   conversationId: string;
-  kind: TurnInputKind;
   actorIdentityId: string;
   payload: Record<string, unknown>;
   /**

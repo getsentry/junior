@@ -1,5 +1,5 @@
 {
-  "id": "5ae18e4f-bf29-43bc-94db-4889b3306e4f",
+  "id": "fcce21ae-1feb-4487-bd3f-e278fe96ffd1",
   "prevId": "92170853-e7fa-4c70-a2a9-bed27e498a9f",
   "version": "7",
   "dialect": "postgresql",
@@ -5383,12 +5383,6 @@
           "primaryKey": false,
           "notNull": true
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "actor_identity_id": {
           "name": "actor_identity_id",
           "type": "text",
@@ -5522,10 +5516,6 @@
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {
-        "junior_turn_inbox_kind_check": {
-          "name": "junior_turn_inbox_kind_check",
-          "value": "\"junior_turn_inbox\".\"kind\" in ('message', 'account_connected')"
-        },
         "junior_turn_inbox_payload_check": {
           "name": "junior_turn_inbox_payload_check",
           "value": "jsonb_typeof(\"junior_turn_inbox\".\"payload\") = 'object'"

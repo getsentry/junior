@@ -94,7 +94,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   function input(idempotencyKey: string): Parameters<typeof scheduleInput>[1] {
     return {
       conversationId: CONVERSATION_ID,
-      kind: "message",
       actorIdentityId: "identity:actor",
       payload: { text: `Message ${idempotencyKey}` },
       idempotencyKey,
