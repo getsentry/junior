@@ -6,7 +6,7 @@ import {
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import { updateTimerIndex, type TimerIndex } from "@/chat/events/timer-index";
 import { mapBounded } from "@/chat/fan-out";
-import { dismissOpenReviewItems } from "@/chat/review-items/store";
+import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -65,7 +65,7 @@ async function fireTriggers(
       snoozeIds: [...resolving],
       state: "cancelled",
     });
-    await dismissOpenReviewItems(tx, {
+    await dismissOpenInboxItems(tx, {
       ids: resolvedItemIds,
       nowMs,
       reason: "A snooze trigger resolved it.",

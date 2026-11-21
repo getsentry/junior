@@ -109,7 +109,7 @@ export const IDLE_HORIZON_MS = 55 * MINUTE_MS;
  * returns get rare. Two horizons, 110 minutes, cover the late returns and
  * limit the cost of a child agent that never returns.
  *
- * A Review item wait keeps `IDLE_HORIZON_MS`: its return chance in the same
+ * An Inbox item wait keeps `IDLE_HORIZON_MS`: its return chance in the same
  * backtest was borderline.
  */
 export const CHILD_WAIT_IDLE_HORIZON_MS = 2 * IDLE_HORIZON_MS;
@@ -296,7 +296,7 @@ export function parentGapSegment(input: GapSegmentInput): string | undefined {
 /**
  * What else an idle period waits for when it starts. `child`: a child agent
  * still runs, and its result starts a Turn. `review`: the Turn asked a
- * Review item. `watch`: an Automation run has an active Watch, such as a
+ * Inbox item. `watch`: an Automation run has an active Watch, such as a
  * timer or a pull request Watch, and no child agent.
  */
 export type WaitingOn = "child" | "review" | "watch";
@@ -310,7 +310,7 @@ const WAITING_SEGMENT_SUFFIXES: Record<WaitingOn, string> = {
 
 /**
  * Child of a segment for an idle period that waits on a child agent, a
- * Review item, or a Watch (`:automation`). Its parent is the segment, so a
+ * Inbox item, or a Watch (`:automation`). Its parent is the segment, so a
  * thin child leans on the segment, and a thin segment on its own parent.
  */
 export function waitingGapSegment(segment: string, waitingOn: WaitingOn) {

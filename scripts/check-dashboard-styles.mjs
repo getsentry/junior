@@ -166,7 +166,7 @@ export function findComposerSafeAreaBottomPadding(files) {
 // classic UI, which keeps its ellipsis.
 const NEW_UI_PATH_PATTERN = /\/client\/(?:shell|inbox)\//;
 const SHARED_WITH_CLASSIC_PATH_PATTERN =
-  /\/client\/inbox\/(?:ComposerQuestion|InboxSidebar|ReviewItemCard|ReviewItemChangeRow|ReviewItemDetails)\.tsx$/;
+  /\/client\/inbox\/(?:ComposerQuestion|InboxSidebar|InboxItemCard|InboxItemChangeRow|InboxItemDetails)\.tsx$/;
 const ELLIPSIS_PATTERN =
   /(?<![\w-])(?:[a-z-]+:)*(?:truncate|text-ellipsis)(?![\w-])/;
 

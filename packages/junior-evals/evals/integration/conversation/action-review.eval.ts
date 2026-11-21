@@ -55,7 +55,7 @@ describe("Action Review", () => {
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(0);
     // No child agent started, so no result Turn follows.
     expect(conversation.turns).toHaveLength(1);
-    const cards = completedToolCalls("addReviewItem", conversation);
+    const cards = completedToolCalls("addInboxItem", conversation);
     expect(cards).toHaveLength(1);
     expect(cards[0]!.input).toMatchObject({ kind: "action" });
     const { title } = cards[0]!.input as { title: string };

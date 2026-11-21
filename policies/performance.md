@@ -25,10 +25,10 @@ each rule, so new code cannot drift from it.
 - Use `for…of`, not `forEach`. A `forEach` callback hides `await`, `return`,
   and `break` from the loop. Check: oxlint `unicorn/no-array-for-each`.
 - In the dashboard, refresh only the queries that a change touched. Build query
-  keys with a key factory, such as `reviewItemListQueryKey`. Write a mutation
+  keys with a key factory, such as `inboxItemListQueryKey`. Write a mutation
   response into the cache with `setQueryData`, and do not refetch it. When a
   change touches a family of queries, call the helper that owns that family,
-  such as `invalidateConversationFeeds` or `invalidateReviewItemCollections`.
+  such as `invalidateConversationFeeds` or `invalidateInboxItemCollections`.
   Do not invalidate, refetch, reset, or remove a key with two or fewer parts,
   unless you pass `exact: true`. Check: dashboard oxlint `query-invalidation/no-broad-query-invalidation`.
 - In the dashboard, do not poll a query with `refetchInterval`. `/api/versions`

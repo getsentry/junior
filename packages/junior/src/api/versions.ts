@@ -2,7 +2,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
-import { reviewItemsNeedingUserVersionQuery } from "@/chat/review-items/store";
+import { inboxItemsNeedingUserVersionQuery } from "@/chat/inbox-items/store";
 import { juniorUsers } from "@/db/schema";
 import { conversationVersionQuery } from "./conversations/detail-etag";
 import { conversationFeedVersionQuery } from "./conversations/list";
@@ -51,7 +51,7 @@ export async function readVersions(
         viewer.id,
       ),
       conversations: sql<string>`(${conversationFeedVersionQuery(db, viewer.id)})`,
-      reviewItems: sql<string>`(${reviewItemsNeedingUserVersionQuery(db, viewer.id)})`,
+      inboxItems: sql<string>`(${inboxItemsNeedingUserVersionQuery(db, viewer.id)})`,
       spend: sql<string>`(${personalSpendVersionQuery(db, viewer.email, Date.now())})`,
     })
     // The viewer's row anchors the one-row select.

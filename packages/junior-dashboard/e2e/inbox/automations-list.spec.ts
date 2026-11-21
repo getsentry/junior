@@ -1,5 +1,5 @@
 import { LIST_NOW, automationReport } from "./automation-fixture";
-import { automationAlert, license, mockReviewItems } from "./inbox-fixture";
+import { automationAlert, license, mockInboxItems } from "./inbox-fixture";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
@@ -158,7 +158,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: `item-ask-${index}`,
       title: `Approve rollout step ${index}`,
     }));
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [...asks, automationAlert("scheduled-1", "Weekly project summary")],
       pageSize: 10,
     });

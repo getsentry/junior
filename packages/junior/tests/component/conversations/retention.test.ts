@@ -20,8 +20,8 @@ import {
   juniorAutomations,
   juniorIdentities,
   juniorInboxSnoozes,
-  juniorReviewItemConversations,
-  juniorReviewItems,
+  juniorInboxItemConversations,
+  juniorInboxItems,
   juniorUsers,
 } from "@/db/schema";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
@@ -34,10 +34,10 @@ import {
   seedDestination,
 } from "../../fixtures/conversation-retention";
 import {
-  dismissOpenReviewItems,
-  getReviewItem,
-  insertReviewItem,
-} from "@/chat/review-items/store";
+  dismissOpenInboxItems,
+  getInboxItem,
+  insertInboxItem,
+} from "@/chat/inbox-items/store";
 import {
   snoozeInboxItems,
   snoozeTimerTrigger,
@@ -114,7 +114,7 @@ describe("retention purge job", () => {
       automationId?: string,
       visibility: "public" | "private" = "public",
     ) =>
-      (await insertReviewItem(fixture.sql.db(), {
+      (await insertInboxItem(fixture.sql.db(), {
         owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [],
@@ -178,13 +178,13 @@ describe("retention purge job", () => {
     expect(
       (await readConversation(fixture.sql, "pub")).transcriptPurgedAt,
     ).toBe(null);
-    expect((await getReviewItem(fixture.sql.db(), pubItem))?.status).toBe(
+    expect((await getInboxItem(fixture.sql.db(), pubItem))?.status).toBe(
       "open",
     );
     // A purge deletes a private item, but not an open item of an
     // Automation, because a later run can still change it.
     expect(
-      (await getReviewItem(fixture.sql.db(), privateAutomationItem))?.status,
+      (await getInboxItem(fixture.sql.db(), privateAutomationItem))?.status,
     ).toBe("open");
 
     // At 91 days: the public conversation crosses its 90-day window. No
@@ -194,14 +194,14 @@ describe("retention purge job", () => {
     });
     expect(second.purged).toBe(1);
     expect(await eventCount(fixture.sql, "pub")).toBe(0);
-    expect(await getReviewItem(fixture.sql.db(), pubItem)).toMatchObject({
+    expect(await getInboxItem(fixture.sql.db(), pubItem)).toMatchObject({
       closeReason: "Conversation purged",
       status: "dismissed",
     });
     // A later run of the Automation can still change its item.
-    expect(
-      (await getReviewItem(fixture.sql.db(), automationItem))?.status,
-    ).toBe("open");
+    expect((await getInboxItem(fixture.sql.db(), automationItem))?.status).toBe(
+      "open",
+    );
 
     // An older purge left an item open. The next run closes it. Then the
     // tree has no more work, because the Automation item is not work.
@@ -210,7 +210,7 @@ describe("retention purge job", () => {
       nowMs: BASE_MS + 91 * DAY_MS,
     });
     expect(third.purged).toBe(1);
-    expect((await getReviewItem(fixture.sql.db(), privItem))?.status).toBe(
+    expect((await getInboxItem(fixture.sql.db(), privItem))?.status).toBe(
       "dismissed",
     );
     const fourth = await runRetentionPurge(fixture.sql, {
@@ -219,7 +219,7 @@ describe("retention purge job", () => {
     expect(fourth.purged).toBe(0);
 
     // After the Automation item closes, the next purge deletes it.
-    await dismissOpenReviewItems(fixture.sql.db(), {
+    await dismissOpenInboxItems(fixture.sql.db(), {
       automationId: "auto-rollout",
       nowMs: BASE_MS + 91 * DAY_MS,
       reason: "Automation deleted",
@@ -229,7 +229,7 @@ describe("retention purge job", () => {
     });
     expect(fifth.purged).toBe(1);
     expect(
-      await getReviewItem(fixture.sql.db(), privateAutomationItem),
+      await getInboxItem(fixture.sql.db(), privateAutomationItem),
     ).toBeUndefined();
   });
 
@@ -250,7 +250,7 @@ describe("retention purge job", () => {
         primaryEmailNormalized: "snoozer@example.com",
         updatedAt: new Date(BASE_MS),
       });
-    const item = await insertReviewItem(fixture.sql.db(), {
+    const item = await insertInboxItem(fixture.sql.db(), {
       owner: { id: "snoozed", kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],
@@ -266,7 +266,7 @@ describe("retention purge job", () => {
       const [id] = await snoozeInboxItems(fixture.sql.db(), {
         items: [
           {
-            reviewItemId: item!.id,
+            inboxItemId: item!.id,
             triggers: [snoozeTimerTrigger(`inbox-snooze:${nowMs}`)],
           },
         ],
@@ -712,7 +712,7 @@ describe("retention purge job", () => {
         { conversationId: "pub", ...embedding },
         { conversationId: "priv", ...embedding },
       ]);
-    const reviewItem = (
+    const inboxItem = (
       conversationId: string,
       visibility: "public" | "private",
     ) => ({
@@ -730,16 +730,16 @@ describe("retention purge job", () => {
     });
     await fixture.sql
       .db()
-      .insert(juniorReviewItems)
+      .insert(juniorInboxItems)
       .values([
-        reviewItem("pub", "public"),
-        reviewItem("priv", "private"),
+        inboxItem("pub", "public"),
+        inboxItem("priv", "private"),
         // Added while the destination of "priv" was still public.
-        { ...reviewItem("priv", "public"), dedupeKey: "flip", id: "flip-item" },
+        { ...inboxItem("priv", "public"), dedupeKey: "flip", id: "flip-item" },
       ]);
     await fixture.sql
       .db()
-      .insert(juniorReviewItemConversations)
+      .insert(juniorInboxItemConversations)
       .values([
         { itemId: "pub-item", conversationId: "pub" },
         { itemId: "priv-item", conversationId: "priv" },
@@ -766,21 +766,21 @@ describe("retention purge job", () => {
     await expect(
       fixture.sql.db().select().from(juniorConversationEmbeddings),
     ).resolves.toMatchObject([{ conversationId: "pub", briefVersion: 1 }]);
-    // A private Review item holds content from its Conversation, so it goes
+    // A private Inbox item holds content from its Conversation, so it goes
     // with the Brief. Its links go with it.
     await expect(
-      fixture.sql.db().select().from(juniorReviewItems),
+      fixture.sql.db().select().from(juniorInboxItems),
     ).resolves.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: "pub-item" }),
         expect.objectContaining({ id: "flip-item" }),
       ]),
     );
-    expect(
-      await fixture.sql.db().select().from(juniorReviewItems),
-    ).toHaveLength(2);
+    expect(await fixture.sql.db().select().from(juniorInboxItems)).toHaveLength(
+      2,
+    );
     await expect(
-      fixture.sql.db().select().from(juniorReviewItemConversations),
+      fixture.sql.db().select().from(juniorInboxItemConversations),
     ).resolves.toMatchObject([{ itemId: "pub-item" }]);
     // The metadata row itself survives the purge.
     expect(priv.conversationId).toBe("priv");

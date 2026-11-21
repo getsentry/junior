@@ -13,7 +13,7 @@ import {
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationFeed,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
@@ -79,8 +79,8 @@ import { ConversationForkLinks } from "./ConversationForkLinks";
 import { ChildConversationStatusPill } from "./ChildConversationStatus";
 import {
   itemConversationId,
-  reviewItemIdFromToolCall,
-} from "../inbox/reviewItemFormat";
+  inboxItemIdFromToolCall,
+} from "../inbox/inboxItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -476,7 +476,7 @@ export function ConversationPage(props: {
     return Boolean(start);
   });
   const showQuestion = useCallback(
-    (item: ReviewItemPayload, arrived: boolean) =>
+    (item: InboxItemPayload, arrived: boolean) =>
       setAskReveal((current) => ({
         arrived,
         itemId: item.id,
@@ -498,7 +498,7 @@ export function ConversationPage(props: {
       (event) =>
         event.data.type === "tool_calls" &&
         event.data.calls.some(
-          (call) => reviewItemIdFromToolCall(call) === itemId,
+          (call) => inboxItemIdFromToolCall(call) === itemId,
         ),
     );
     if (!held) openLink({ turn: turnId });

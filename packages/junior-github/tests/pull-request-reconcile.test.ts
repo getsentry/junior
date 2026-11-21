@@ -170,7 +170,7 @@ describe("daily reconcile of open pull requests", () => {
         repositoryFullName: "getsentry/junior",
         updatedAt: new Date(now - 3 * day),
       });
-    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+    await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       assigneeIdentityIds: ["identity-jane"],
       body: "Pull request 949 has merge conflicts.",
       dedupeKey: "merge-conflict:getsentry/junior#949",
@@ -180,7 +180,7 @@ describe("daily reconcile of open pull requests", () => {
 
   it("records closes that GitHub did not deliver, once a day", async () => {
     await noticeFor949();
-    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+    await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       assigneeIdentityIds: ["identity-jane"],
       body: "GitHub asks you to review #949.",
       dedupeKey: "pull-request-action:getsentry/junior#949",
@@ -376,8 +376,8 @@ describe("daily reconcile of open pull requests", () => {
 
   it("keeps a close open for the next reconcile when its notice close fails", async () => {
     await noticeFor949();
-    const desk = h.reviewItems.forConversation("slack:C1:1.0");
-    vi.spyOn(h.reviewItems, "forConversation").mockReturnValueOnce({
+    const desk = h.inboxItems.forConversation("slack:C1:1.0");
+    vi.spyOn(h.inboxItems, "forConversation").mockReturnValueOnce({
       ...desk,
       close: () => Promise.reject(new Error("The Inbox is down")),
     });

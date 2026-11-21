@@ -39,10 +39,10 @@ final class ManualClock: @unchecked Sendable {
       _ = try await client.call(
         "listConversationMessages", id(row.conversationId).merging(["limit": 30]) { a, _ in a }, as: MessagePage.self)
     }
-    let items = try await client.call("searchReviewItems", ["limit": 50], as: ReviewItemList.self)
+    let items = try await client.call("searchInboxItems", ["limit": 50], as: InboxItemList.self)
     #expect(!items.items.isEmpty)
     for item in items.items {
-      _ = try await client.call("getReviewItem", ["id": .string(item.id)], as: ReviewItemResult.self)
+      _ = try await client.call("getInboxItem", ["id": .string(item.id)], as: InboxItemResult.self)
       for conversationId in item.conversationIds {
         _ = try await client.call("getConversation", id(conversationId), as: ConversationState.self)
       }

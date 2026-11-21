@@ -103,7 +103,7 @@ describe("Child Agents", () => {
     // Only the child agent has reportBlocked.
     expect(requestedTools).toContain("reportBlocked");
     expect(conversation.turns).toHaveLength(2);
-    // The parent can end the result Turn with only a review item card, so
+    // The parent can end the result Turn with only an inbox item card, so
     // `no_reply` is a success. `asking.eval.ts` owns how the parent asks.
     expect(["no_reply", "succeeded"]).toContain(conversation.turns[1]?.status);
   });

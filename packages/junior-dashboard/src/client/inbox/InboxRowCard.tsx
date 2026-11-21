@@ -2,8 +2,8 @@ import { CornerDownRight } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router";
 import type {
-  ReviewItemActionBody,
-  ReviewItemPayload,
+  InboxItemActionBody,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { ClampedDisplayText } from "../display-text/DisplayText";
@@ -13,23 +13,23 @@ import { FoldedNotice } from "./FoldedNotice";
 import { AutomationAlertDetails } from "./InboxAutomationRow";
 import { Pill } from "./inboxAsks";
 import { inboxItemKind, textRepeatsHead } from "./inboxModel";
-import { ReviewItemActions } from "./ReviewItemActions";
-import { ReviewItemObjects } from "./ReviewItemObjects";
+import { InboxItemActions } from "./InboxItemActions";
+import { InboxItemObjects } from "./InboxItemObjects";
 import {
-  ReviewItemSubjectPreview,
+  InboxItemSubjectPreview,
   SubjectMergeConflict,
-} from "./ReviewItemSubjectPreview";
-import { ReviewItemTurnMessage } from "./ReviewItemTurnMessage";
+} from "./InboxItemSubjectPreview";
+import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
-import { ReviewItemTitle } from "./ReviewItemPeople";
+import { InboxItemTitle } from "./InboxItemPeople";
 import {
   itemConversationId,
   itemNeedsViewer,
   itemOwnerPath,
-  reviewItemText,
-  reviewItemTitleText,
-} from "./reviewItemFormat";
+  inboxItemText,
+  inboxItemTitleText,
+} from "./inboxItemFormat";
 
 /**
  * The card of one ask in an open row: its message, form, subject, and
@@ -39,10 +39,10 @@ export function InboxRowCard(props: {
   actions?: InboxCardActions;
   /** The row's head shows the item's title. */
   headTitled: boolean;
-  item: ReviewItemPayload;
+  item: InboxItemPayload;
   /** Notices about the item's subject (`foldNotices`). */
-  notices: readonly ReviewItemPayload[];
-  onAction?(item: ReviewItemPayload, body: ReviewItemActionBody): Promise<void>;
+  notices: readonly InboxItemPayload[];
+  onAction?(item: InboxItemPayload, body: InboxItemActionBody): Promise<void>;
   /** The row's own actions, such as Open, on the card's action line. */
   rowActions?: ReactNode;
   /** The row's head shows the subject's size. */
@@ -50,7 +50,7 @@ export function InboxRowCard(props: {
   take?: string;
 }) {
   const { actions, item, onAction } = props;
-  const text = reviewItemText(item);
+  const text = inboxItemText(item);
   // Text that only says the head's state and number shows in Slack, not
   // here.
   const showBody =
@@ -77,7 +77,7 @@ export function InboxRowCard(props: {
     ) : undefined;
   return (
     <section
-      aria-label={reviewItemTitleText(item)}
+      aria-label={inboxItemTitleText(item)}
       className={cn(
         "grid min-w-0 font-sans text-sm focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
         // An item row's head names the item, so its one card is the row's
@@ -114,7 +114,7 @@ export function InboxRowCard(props: {
               )}
               ref={fadeWhenOverflowing}
             >
-              <ReviewItemTitle item={item} links />
+              <InboxItemTitle item={item} links />
             </h4>
           </div>
           {item.addedByLabel ? (
@@ -137,19 +137,19 @@ export function InboxRowCard(props: {
         </>
       )}
       {/* What Junior said comes first, then its question and the form. */}
-      {item.request ? <ReviewItemTurnMessage item={item} /> : null}
-      <ReviewItemObjects conversationId={itemConversationId(item)}>
+      {item.request ? <InboxItemTurnMessage item={item} /> : null}
+      <InboxItemObjects conversationId={itemConversationId(item)}>
         {showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
-            label={reviewItemTitleText(item)}
+            label={inboxItemTitleText(item)}
             lines={4}
             mentions={item.mentions}
             text={text}
           />
         ) : null}
         {item.subject ? (
-          <ReviewItemSubjectPreview
+          <InboxItemSubjectPreview
             // The Conversation that added the item keeps its subject card.
             conversationId={itemConversationId(item)}
             subject={item.subject}
@@ -158,7 +158,7 @@ export function InboxRowCard(props: {
             sizeShown={props.sizeShown}
           />
         ) : null}
-      </ReviewItemObjects>
+      </InboxItemObjects>
       {item.owner.kind === "automation" ? (
         <AutomationAlertDetails automationId={item.owner.id} />
       ) : null}
@@ -173,7 +173,7 @@ export function InboxRowCard(props: {
       {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a
           Conversation, keeps the plain one. */}
-      <ReviewItemActions
+      <InboxItemActions
         dismiss={!cardActions}
         extra={cardActions}
         item={item}

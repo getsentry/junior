@@ -6,7 +6,7 @@ import {
   eventTaskFacts,
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { renderTaskInput } from "@/chat/task-input";
 
@@ -99,26 +99,24 @@ describe("timer Watch credential subject", () => {
 });
 
 describe("event batch message meta", () => {
-  const reviewItemChange = (
-    record: ReviewItemChangeRecord,
-  ): InboundMessage => ({
+  const reviewItemChange = (record: InboxItemChangeRecord): InboundMessage => ({
     conversationId: "local:cli:events",
     createdAtMs: 1,
     delivery: "defer",
-    inboundMessageId: `review-item:${record.kind}`,
+    inboundMessageId: `inbox-item:${record.kind}`,
     input: {
       metadata: {
         kind: "event",
         event: {
-          eventKey: `review-item:${record.kind}`,
-          eventType: `review_item.${record.kind}`,
+          eventKey: `inbox-item:${record.kind}`,
+          eventType: `inbox_item.${record.kind}`,
           identifier: record.reviewItemId,
           namespace: "junior",
-          trustedSummary: `Review item "Ship it" changed: ${record.kind}.`,
+          trustedSummary: `Inbox item "Ship it" changed: ${record.kind}.`,
         },
       },
       reviewItemChange: record,
-      text: "review item change",
+      text: "inbox item change",
     },
     receivedAtMs: 1,
     source: "event",
@@ -153,18 +151,18 @@ describe("event batch message meta", () => {
   const taken = { kind: "taken", reviewItemId: "item-1" } as const;
   const submitted = { kind: "submitted", reviewItemId: "item-1" } as const;
 
-  it("keeps the record of one Review item change, with no own Event", () => {
+  it("keeps the record of one Inbox item change, with no own Event", () => {
     expect(eventBatchMessageMeta([reviewItemChange(taken)])).toEqual({
       eventNamespace: "junior",
-      eventType: "review_item.taken",
+      eventType: "inbox_item.taken",
       reviewItemChanges: [taken],
-      trustedSummary: 'Review item "Ship it" changed: taken.',
+      trustedSummary: 'Inbox item "Ship it" changed: taken.',
     });
   });
 
   // A take and the later answer can share a Turn. Each keeps its own record,
   // so the take does not read as the answer.
-  it("records each Review item change of a batch, with no own Event", () => {
+  it("records each Inbox item change of a batch, with no own Event", () => {
     expect(
       eventBatchMessageMeta([
         reviewItemChange(taken),
@@ -179,9 +177,9 @@ describe("event batch message meta", () => {
     ).not.toHaveProperty("events");
   });
 
-  // Review item changes are not Watch Events: the heading counts what the task message
+  // Inbox item changes are not Watch Events: the heading counts what the task message
   // counts, and keeps the shared label.
-  it("keeps Review item changes out of the Watch Events of a mixed batch", () => {
+  it("keeps Inbox item changes out of the Watch Events of a mixed batch", () => {
     const meta = eventBatchMessageMeta([
       reviewItemChange(taken),
       watchEvent(1),

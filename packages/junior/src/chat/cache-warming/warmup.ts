@@ -113,7 +113,7 @@ interface WarmState {
   /** The `parentGapSegment` that a thin `segment` leans on. */
   parentSegment?: string;
   /**
-   * A child agent or a Review item that the idle period also waits on. The
+   * A child agent or an Inbox item that the idle period also waits on. The
    * gap is also recorded in the segment's `waitingGapSegment` child, which
    * the decision reads first.
    */
@@ -705,7 +705,7 @@ export function createCacheWarmingRecorder(
  * its `gapSegment`. `turn_ending` is how the Turn before the idle period
  * ended: `reply` (a final response or `reply`), `no_reply` (`noReply`), or
  * `blocked` (`reportBlocked`). `waiting_on` is `child` (a child agent still
- * ran), `review` (the Turn asked a Review item), or `watch` (an Automation
+ * ran), `review` (the Turn asked an Inbox item), or `watch` (an Automation
  * run had an active Watch and no child agent) when the idle period starts,
  * and picks the segment's `waitingGapSegment` child. `timer_due_ms`
  * is the idle time at which a timer is due, when it is due within
