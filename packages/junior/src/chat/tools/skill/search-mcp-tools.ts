@@ -4,6 +4,7 @@ import type {
 } from "@/chat/mcp/tool-manager";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
+import { summarizeModelVisibleDescription } from "@/chat/tool-support/catalog-search";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -239,6 +240,28 @@ function unknownProviderSuggestions(
   return matches.length > 0 ? matches : searchProviderCatalog(configured, "");
 }
 
+/**
+ * Name the configured providers in the description, as searchTools names its
+ * sources. Without the list, a provider that no skill names is invisible
+ * until a search finds it. The list leaves out connection state so the
+ * description stays the same on every Turn of a deployment.
+ */
+function renderSearchMcpToolsDescription(providers: ProviderSummary[]): string {
+  const intro =
+    "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, the runtime connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.";
+  if (providers.length === 0) {
+    return intro;
+  }
+  return [
+    intro,
+    "Configured providers:",
+    ...providers.map(
+      (entry) =>
+        `- ${entry.provider}: ${summarizeModelVisibleDescription(entry.description)}`,
+    ),
+  ].join("\n");
+}
+
 // TODO(dcramer): Fold MCP discovery into searchTools once the shared catalog can
 // connect a selected provider and return its full tool schemas.
 /**
@@ -254,8 +277,9 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       openWorldHint: true,
       readOnlyHint: true,
     },
-    description:
-      "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, the runtime connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
+    description: renderSearchMcpToolsDescription(
+      mcpToolManager.getAvailableProviderCatalog(),
+    ),
     inputSchema: z
       .object({
         query: z

@@ -16,7 +16,6 @@ import { sendDuringFirstModelRequest } from "@junior-evals/fixture/progress";
 import {
   completedMcpToolCalls,
   completedToolCalls,
-  toolCallsOf,
 } from "@junior-evals/fixture/results";
 import {
   test,
@@ -56,7 +55,9 @@ async function connectAlice(run: RunAgent) {
   expect(turnStates(paused)).toEqual(["started"]);
 
   // The agent says why it connects the provider, and the notice shows it.
-  const connect = toolCallsOf("searchMcpTools", paused).find(
+  // A call that the schema rejects for a missing intent connects nothing, so
+  // only a completed call can be the one that asked for authorization.
+  const connect = completedToolCalls("searchMcpTools", paused).find(
     (call) =>
       (call.input as { provider?: unknown } | undefined)?.provider ===
       "eval-auth",

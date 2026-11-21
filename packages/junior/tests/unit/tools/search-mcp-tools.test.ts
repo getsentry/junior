@@ -121,6 +121,8 @@ describe("searchMcpTools", () => {
   it("lists active provider tools without a query", async () => {
     const manager = buildManager();
     const searchMcpTools = createSearchMcpToolsTool(manager);
+    // The description reads the catalog once; the search itself must not.
+    manager.getAvailableProviderCatalog.mockClear();
 
     const result = (await searchMcpTools.execute!(
       { provider: "demo", max_results: 10 },
@@ -227,5 +229,13 @@ describe("searchMcpTools", () => {
     expect(searchMcpTools.prepareArguments({ query: "issue" })).toEqual({
       query: "issue",
     });
+  });
+
+  it("names every configured provider in its description", () => {
+    const searchMcpTools = createSearchMcpToolsTool(buildManager());
+
+    expect(searchMcpTools.description).toContain(
+      "Configured providers:\n- demo: Demo provider\n- linear: Linear issues",
+    );
   });
 });
