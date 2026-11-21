@@ -37,7 +37,7 @@ export const inboxItemSchema = z
     assignees: z.array(personSchema),
     automationId: z.string().min(1).optional(),
     body: z.string(),
-    /** True when the viewer can take, submit, or dismiss it. */
+    /** True when the viewer can take, submit, dismiss, or mark it done. */
     canAct: z.boolean(),
     /** True when the viewer can act and is not already the only assignee. */
     canTake: z.boolean(),
@@ -111,6 +111,12 @@ export const inboxItemSchema = z
       .strict()
       .optional(),
     title: z.string().min(1),
+    /**
+     * The id of the To-do that the item shows, for a To-do assigned to the
+     * viewer. Its owner Conversation holds the To-do. The item takes Done
+     * instead of an answer or Dismiss.
+     */
+    todoId: z.number().int().positive().optional(),
     updatedAt: z.string().datetime(),
     visibility: z.enum(["public", "private"]),
   })
@@ -271,6 +277,8 @@ export const inboxItemParamsSchema = z
 export const inboxItemActionSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("take") }).strict(),
   z.object({ action: z.literal("dismiss") }).strict(),
+  /** Mark the To-do of a To-do item done. */
+  z.object({ action: z.literal("done") }).strict(),
   z
     .object({
       action: z.literal("submit"),

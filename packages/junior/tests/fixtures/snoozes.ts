@@ -219,6 +219,13 @@ export function api(fixture: ConversationFixture, viewer: User) {
       method,
     });
   return {
+    /** Take one person action on an Inbox item, such as Done. */
+    act: (id: string, action: string) =>
+      app.request(`http://localhost/api/inbox-items/${id}/actions`, {
+        body: JSON.stringify({ action }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
     /** Read one API path, with these request headers. */
     request: (path: string, headers?: Record<string, string>) =>
       app.request(`http://localhost/api${path}`, { headers }),

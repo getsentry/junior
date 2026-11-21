@@ -199,7 +199,9 @@ Canonical words for Junior code and docs. One concept, one word.
   one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
   status is open, in progress, done, or dropped. It has one Assignee: the
   Conversation's own agent, one of its child agents, or a User. Each change
-  gets a new version. In code: `todo`.
+  gets a new version. In code: `todo`. A User's open To-do shows in their
+  Inbox as a **To do for you** item. **Done** on that row marks the To-do
+  done; it has no Dismiss.
 
 ## Naming
 

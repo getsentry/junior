@@ -13,6 +13,7 @@ import { DashboardApiError } from "../http";
 import { useFailedInboxItemAnswer, useInboxItemAction } from "./queries";
 import { InboxItemEvidence } from "./InboxItemEvidence";
 import { answerRows } from "./inboxItemFormat";
+import { RowDoneButton } from "./RowSnoozeDismiss";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
@@ -67,7 +68,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
 /**
  * Show the actions that the viewer can take on one Inbox item, or how it
  * closed. The Inbox and the side panel use it. A caller that shows
- * its own Dismiss turns this one off. `onAction` takes the actions in its
+ * its own Dismiss turns this one off. A To-do for the viewer has Done in
+ * place of Dismiss. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
@@ -125,7 +127,9 @@ export function InboxItemActions(props: {
     }
   }
 
-  const dismiss = props.dismiss ?? true;
+  // A To-do for the viewer closes with Done, its main action, not Dismiss.
+  const todo = item.todoId !== undefined;
+  const dismiss = !todo && (props.dismiss ?? true);
   const take = item.canTake ? (props.take ?? "Take") : false;
   // Take and Dismiss are quiet, so the answer stays the main action.
   const secondaryActions = (
@@ -149,6 +153,12 @@ export function InboxItemActions(props: {
         </Button>
       ) : null}
       {props.extra}
+      {todo ? (
+        <RowDoneButton
+          disabled={action.isPending || sending}
+          onClick={() => void run({ action: "done" }).catch(() => {})}
+        />
+      ) : null}
     </>
   );
 
@@ -182,7 +192,7 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || dismiss || props.extra ? (
+      ) : take || dismiss || todo || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex flex-wrap gap-1 sm:ml-auto">
             {secondaryActions}

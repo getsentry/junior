@@ -7,13 +7,19 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import {
+  RowDismissButton,
+  RowDoneButton,
+  RowSnoozeButton,
+} from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 
-/** What one card does by itself: its Dismiss and Snooze. */
+/** What one card does by itself: its Dismiss, or Done, and Snooze. */
 export type InboxCardActions = {
   eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
+  /** Marks a To-do for the viewer done. */
+  onDone?(): void;
   onSnooze?(untilMs: number): void;
   onSnoozeMenu(open: boolean): void;
   snoozeMenuOpen: boolean;
@@ -53,8 +59,9 @@ export function RowActionButton(props: {
 }
 
 /**
- * The quick actions of a row with one ask: Open, Snooze and Dismiss. While
- * the row is open, its card's action line holds all three, so these go.
+ * The quick actions of a row with one ask: Open, Snooze and Dismiss, or
+ * Done for a To-do. While the row is open, its card's action line holds
+ * all three, so these go.
  */
 export function RowQuickActions(props: {
   actions: InboxCardActions;
@@ -75,9 +82,12 @@ export function RowQuickActions(props: {
           open={actions.snoozeMenuOpen}
         />
       ) : null}
-      {/* Dismiss is the main action, so it goes right-most. */}
+      {/* Dismiss or Done is the main action, so it goes right-most. */}
       {actions.onDismiss ? (
         <RowDismissButton look="icon" onClick={actions.onDismiss} />
+      ) : null}
+      {actions.onDone ? (
+        <RowDoneButton look="icon" onClick={actions.onDone} />
       ) : null}
     </>
   );

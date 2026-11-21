@@ -68,7 +68,7 @@ export type MockItemSeed = Pick<
   Partial<
     Pick<
       InboxItemPayload,
-      "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
+      "assignedToEveryone" | "closeReason" | "closedAt" | "kind" | "todoId"
     >
   > & {
     /** The Automation that owns an alert. An alert has no Conversation. */
@@ -438,6 +438,16 @@ export function seeds(nowMs: number): MockItemSeed[] {
       subject: PAYMENTS_V42,
       title: "Checkout p95 rose after payments-v42",
     },
+    // To-do 13 of the latency Conversation (`todos.ts`) is the viewer's.
+    {
+      body: "Check the deploy calendar before the next release.",
+      conversationId: LATENCY_CONVERSATION_ID,
+      createdAt: at(6),
+      id: "qa-todo-rollback-window",
+      status: "open",
+      title: "Confirm the rollback window",
+      todoId: 13,
+    },
     {
       assignedToEveryone: true,
       body: "Morgan asked to hold the payments-v42 deploy until the serializer fix lands.",
@@ -706,10 +716,14 @@ function payload(
     assignees: everyone ? [] : [viewer],
     canAct: item.status === "open",
     canTake: false,
-    conversationIds: [
-      ...(conversationId ? [conversationId] : []),
-      ...linkedConversationIds,
-    ],
+    // A To-do's item links no Conversation, like the API.
+    conversationIds:
+      seed.todoId === undefined
+        ? [
+            ...(conversationId ? [conversationId] : []),
+            ...linkedConversationIds,
+          ]
+        : [],
     kind: seed.kind ?? "action",
     owner: automationId
       ? { id: automationId, kind: "automation" }

@@ -1,4 +1,4 @@
-import { Clock3, X } from "lucide-react";
+import { Check, Clock3, X } from "lucide-react";
 import {
   type KeyboardEvent,
   type ReactElement,
@@ -179,6 +179,30 @@ export function RowDismissButton(props: {
     >
       <X aria-hidden="true" size={15} />
       <ButtonLabel look={props.look}>{label}</ButtonLabel>
+    </Button>
+  );
+}
+
+/**
+ * Mark a To-do for the viewer done. It takes the place of Dismiss, so the
+ * person closes their own work, not hides it.
+ */
+export function RowDoneButton(props: {
+  disabled?: boolean;
+  /** The main action of the card by default (`ButtonLook`). */
+  look?: ButtonLook;
+  onClick(): void;
+}) {
+  return (
+    <Button
+      className={props.look && LOOK_CLASSES[props.look]}
+      disabled={props.disabled}
+      onClick={props.onClick}
+      title={props.look === "icon" ? "Done" : undefined}
+      variant={props.look ? "ghost" : "default"}
+    >
+      <Check aria-hidden="true" size={15} />
+      <ButtonLabel look={props.look}>Done</ButtonLabel>
     </Button>
   );
 }

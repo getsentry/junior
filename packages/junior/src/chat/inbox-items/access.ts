@@ -300,6 +300,29 @@ export const PLUGIN_INBOX_ITEM_KEY_PREFIX = "plugin:";
  */
 export const AUTOMATION_INBOX_ITEM_KEY_PREFIX = "automation:";
 
+/**
+ * Dedupe keys with this prefix belong to To-dos for a person, which core
+ * adds and closes as the To-do changes (`syncTodoInboxItems`). An agent
+ * cannot use the prefix.
+ */
+export const TODO_INBOX_ITEM_KEY_PREFIX = "todo:";
+
+/**
+ * Return the To-do that an item shows, or undefined for any other item. The
+ * key is `todo:<conversationId>:<todoId>`, and a Conversation id can hold
+ * colons.
+ */
+export function inboxItemTodo(
+  item: Pick<InboxItem, "dedupeKey">,
+): { conversationId: string; id: number } | undefined {
+  if (!item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return undefined;
+  const rest = item.dedupeKey.slice(TODO_INBOX_ITEM_KEY_PREFIX.length);
+  const split = rest.lastIndexOf(":");
+  const id = Number(rest.slice(split + 1));
+  if (split <= 0 || !Number.isSafeInteger(id) || id <= 0) return undefined;
+  return { conversationId: rest.slice(0, split), id };
+}
+
 /** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
 export function inboxItemPlugin(dedupeKey: string): string | undefined {
   if (!dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return undefined;
@@ -332,6 +355,7 @@ export function canAgentChangeInboxItem(
   scope: InboxItemAgentScope,
 ): boolean {
   if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return false;
+  if (item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return false;
   if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;

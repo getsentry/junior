@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, count, eq, inArray, sql } from "drizzle-orm";
+import { and, count, eq, inArray, notLike, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -10,9 +10,11 @@ import {
   inboxItemForUser,
   inboxItemReaderForUser,
   inboxItemReaderForUserInConversation,
+  inboxItemTodo,
   inboxItemVisibleTo,
+  TODO_INBOX_ITEM_KEY_PREFIX,
 } from "@/chat/inbox-items/access";
-import { getInboxItem } from "@/chat/inbox-items/store";
+import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorInboxItems } from "@/db/schema/inbox-items";
 import {
@@ -76,7 +78,10 @@ async function rootConversationIds(
 
 /** An open item of an Inbox row, as a snooze of it reads it. */
 interface RowItem {
-  /** The viewer can dismiss it (`canActOnInboxItem`). */
+  /**
+   * The viewer can dismiss it (`canActOnInboxItem`). Nobody dismisses a
+   * To-do's item: it closes with its To-do.
+   */
   canAct: boolean;
   id: string;
   subjectUrl: string | null;
@@ -95,11 +100,16 @@ async function visibleRowItems(
 ): Promise<RowItem[]> {
   if (inboxItemId) {
     const item = await getInboxItem(getDb(), inboxItemId);
+    const owner = item && ownerConversationId(item);
     const inRow =
       root === undefined ||
-      (item ? await rootConversationIds(item.conversationIds) : []).includes(
-        root,
-      );
+      (item
+        ? await rootConversationIds([
+            ...item.conversationIds,
+            ...(owner ? [owner] : []),
+          ])
+        : []
+      ).includes(root);
     if (
       item?.status === "open" &&
       inRow &&
@@ -107,7 +117,7 @@ async function visibleRowItems(
     ) {
       return [
         {
-          canAct: canActOnInboxItem(item, user.id),
+          canAct: canActOnInboxItem(item, user.id) && !inboxItemTodo(item),
           id: item.id,
           subjectUrl: item.subject?.url ?? null,
         },
@@ -119,7 +129,7 @@ async function visibleRowItems(
   const reader = await inboxItemReaderForUserInConversation(user, root);
   return getDb()
     .select({
-      canAct: sql<boolean>`${inboxItemForUser(user.id)}`,
+      canAct: sql<boolean>`${and(inboxItemForUser(user.id), notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`))}`,
       id: juniorInboxItems.id,
       subjectUrl: juniorInboxItems.subjectUrl,
     })

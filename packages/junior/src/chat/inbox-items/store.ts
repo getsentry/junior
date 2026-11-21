@@ -8,6 +8,7 @@ import {
   gt,
   ilike,
   inArray,
+  like,
   isNull,
   lt,
   not,
@@ -40,6 +41,7 @@ import {
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import {
   PLUGIN_INBOX_ITEM_KEY_PREFIX,
+  TODO_INBOX_ITEM_KEY_PREFIX,
   inboxItemAssignedTo,
   inboxItemForUser,
   inboxItemLinkedTo,
@@ -337,7 +339,8 @@ export async function getInboxItem(
  * Read the action items that the agent added in one Conversation and that a
  * reply can answer: the open items, and the items that a reply closed. A
  * plugin's items are left out: the plugin closes them when its provider
- * state changes, such as when a pull request merges.
+ * state changes, such as when a pull request merges. A To-do's items are
+ * left out too: they close when the To-do does.
  */
 export async function listReplyActionItems(
   db: JuniorDatabase,
@@ -351,6 +354,7 @@ export async function listReplyActionItems(
         inboxItemOwnedByConversation(conversationId),
         eq(juniorInboxItems.kind, "action"),
         notLike(juniorInboxItems.dedupeKey, `${PLUGIN_INBOX_ITEM_KEY_PREFIX}%`),
+        notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
         or(
           eq(juniorInboxItems.status, "open"),
           eq(juniorInboxItems.closeReason, INBOX_ITEM_REPLIED_REASON),
@@ -881,50 +885,28 @@ export type WaitingConversation = {
 
 // The root of a linked Conversation. An item that a child agent adds links
 // the child, and the feed lists only roots.
-const waitingRootId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorInboxItemConversations.conversationId})`;
+const waitingRootId =
+  sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorInboxItemConversations.conversationId})`.as(
+    "waiting_root_id",
+  );
 
-/**
- * Return a query for the ids of the root Conversations that wait on a User,
- * as `listWaitingConversations` lists them, to filter another query by.
- */
-export function waitingConversationIdsQuery(
-  db: JuniorDatabase,
-  userId: string,
-) {
+// The root of the Conversation that owns a To-do's item. The item links no
+// Conversation, so it waits on the person in its owner's tree.
+const waitingTodoRootId =
+  sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorInboxItems.ownerId})`.as(
+    "waiting_root_id",
+  );
+
+/** Open items that need the User now, with the root where each one waits. */
+function waitingItemsQuery(db: JuniorDatabase, userId: string) {
+  const columns = {
+    createdAt: juniorInboxItems.createdAt,
+    dedupeKey: juniorInboxItems.dedupeKey,
+    itemId: juniorInboxItems.id,
+    title: juniorInboxItems.title,
+  };
   return db
-    .select({ conversationId: waitingRootId })
-    .from(juniorInboxItemConversations)
-    .innerJoin(
-      juniorInboxItems,
-      eq(juniorInboxItems.id, juniorInboxItemConversations.itemId),
-    )
-    .leftJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorInboxItemConversations.conversationId,
-      ),
-    )
-    .where(inboxItemNeedsUserNow(userId));
-}
-
-/**
- * List the root Conversations that wait on a User: each root or one of its
- * child conversations is linked to an open item that needs the User now
- * (`inboxItemNeedsUserNow`), so a snoozed item leaves it out.
- */
-export async function listWaitingConversations(
-  db: JuniorDatabase,
-  userId: string,
-): Promise<WaitingConversation[]> {
-  const rows = await db
-    .selectDistinct({
-      conversationId: waitingRootId,
-      itemId: juniorInboxItems.id,
-      dedupeKey: juniorInboxItems.dedupeKey,
-      title: juniorInboxItems.title,
-      createdAt: juniorInboxItems.createdAt,
-    })
+    .select({ conversationId: waitingRootId, ...columns })
     .from(juniorInboxItemConversations)
     .innerJoin(
       juniorInboxItems,
@@ -938,7 +920,50 @@ export async function listWaitingConversations(
       ),
     )
     .where(inboxItemNeedsUserNow(userId))
-    .orderBy(desc(juniorInboxItems.createdAt), desc(juniorInboxItems.id));
+    .union(
+      db
+        .select({ conversationId: waitingTodoRootId, ...columns })
+        .from(juniorInboxItems)
+        .leftJoin(
+          juniorConversations,
+          eq(juniorConversations.conversationId, juniorInboxItems.ownerId),
+        )
+        .where(
+          and(
+            inboxItemNeedsUserNow(userId),
+            eq(juniorInboxItems.ownerKind, "conversation"),
+            like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+          ),
+        ),
+    );
+}
+
+/**
+ * Return a query for the ids of the root Conversations that wait on a User,
+ * as `listWaitingConversations` lists them, to filter another query by.
+ */
+export function waitingConversationIdsQuery(
+  db: JuniorDatabase,
+  userId: string,
+) {
+  const items = waitingItemsQuery(db, userId).as("waiting_items");
+  return db.select({ conversationId: items.conversationId }).from(items);
+}
+
+/**
+ * List the root Conversations that wait on a User: each root or one of its
+ * child conversations is linked to, or owns a To-do's, open item that needs
+ * the User now (`inboxItemNeedsUserNow`), so a snoozed item leaves it out.
+ */
+export async function listWaitingConversations(
+  db: JuniorDatabase,
+  userId: string,
+): Promise<WaitingConversation[]> {
+  const rows = (await waitingItemsQuery(db, userId)).sort(
+    (left, right) =>
+      right.createdAt.getTime() - left.createdAt.getTime() ||
+      right.itemId.localeCompare(left.itemId),
+  );
   const waiting = new Map<string, WaitingConversation>();
   for (const row of rows) {
     const plugin = inboxItemPlugin(row.dedupeKey);

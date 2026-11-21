@@ -23,6 +23,7 @@ import {
   wakeMockRow,
 } from "./inbox-items";
 import { readMockSnoozeResource } from "./snooze-resources";
+import { setMockTodoStatus } from "./todos";
 
 function errorResponse(error: string, status: 400 | 404): Response {
   return jsonResponse(apiErrorSchema, { error }, { status });
@@ -79,6 +80,15 @@ export function addMockInboxItemRoutes(
   app.post("/inbox-items/:id/actions", async (c) => {
     const body = inboxItemActionSchema.safeParse(await c.req.json());
     if (!body.success) return errorResponse("Invalid action.", 400);
+    // Only Done closes a To-do's item, and only those, like the API.
+    const current = readMockInboxItem(NOW_MS, c.req.param("id"));
+    if (
+      current &&
+      (current.todoId !== undefined) !== (body.data.action === "done")
+    )
+      return errorResponse("Invalid action.", 400);
+    if (current?.todoId !== undefined && current.status === "open")
+      setMockTodoStatus(current.owner.id, current.todoId, { status: "done" });
     const item = actOnMockInboxItem(NOW_MS, c.req.param("id"), body.data);
     return item
       ? jsonResponse(inboxItemSchema, item)

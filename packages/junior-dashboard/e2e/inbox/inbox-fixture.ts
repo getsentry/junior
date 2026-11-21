@@ -50,6 +50,20 @@ export const rollout = {
   title: "Approve the payments-v42 rollout",
 };
 
+// A To-do that the checkout Conversation's agent gave the viewer. Its item
+// links no Conversation, as the server sends it.
+export const todoForYou = {
+  ...base,
+  owner: { id: conversationId, kind: "conversation" },
+  rootConversationId: conversationId,
+  body: "Check the deploy calendar before the next release.",
+  createdAt: "2026-08-07T11:56:00.000Z",
+  id: "item-todo-rollback-window",
+  title: "Confirm the rollback window",
+  todoId: 13,
+  visibility: "private" as const,
+};
+
 export const license = {
   ...base,
   body: "The acme entry changed its license.",

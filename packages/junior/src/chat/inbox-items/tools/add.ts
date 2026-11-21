@@ -2,11 +2,13 @@ import { randomUUID } from "node:crypto";
 import * as z from "zod";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
+import { UPDATE_TODOS_TOOL_NAME } from "@/chat/todos/types";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
   canAgentChangeInboxItem,
   AUTOMATION_INBOX_ITEM_KEY_PREFIX,
   PLUGIN_INBOX_ITEM_KEY_PREFIX,
+  TODO_INBOX_ITEM_KEY_PREFIX,
   canReadInboxItem,
   readInboxItemAgentScope,
   requireInboxItemAssignees,
@@ -270,6 +272,11 @@ export function createAddInboxItemTool(
       if (input.dedupe_key?.startsWith(AUTOMATION_INBOX_ITEM_KEY_PREFIX)) {
         throw new ToolInputError(
           `A \`dedupe_key\` that starts with \`${AUTOMATION_INBOX_ITEM_KEY_PREFIX}\` belongs to an Automation alert. Use a different key.`,
+        );
+      }
+      if (input.dedupe_key?.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) {
+        throw new ToolInputError(
+          `A \`dedupe_key\` that starts with \`${TODO_INBOX_ITEM_KEY_PREFIX}\` belongs to a To-do. Assign a To-do to the person with ${UPDATE_TODOS_TOOL_NAME} instead.`,
         );
       }
       const db = getDb();

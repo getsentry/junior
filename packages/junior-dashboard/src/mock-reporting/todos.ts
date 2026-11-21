@@ -51,6 +51,7 @@ const MOCK_TODOS: Record<string, () => ConversationTodo[]> = {
     {
       id: 13,
       title: "Confirm the rollback window",
+      notes: "Check the deploy calendar before the next release.",
       status: "open",
       assignee: { kind: "user", name: "Morgan Lee" },
       updatedAt: iso(-6 * MINUTE_MS),

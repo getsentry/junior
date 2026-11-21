@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, lt, ne, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, lt, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias, QueryBuilder } from "drizzle-orm/pg-core";
 import type { EventMatch } from "@sentry/junior-plugin-api";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
@@ -33,6 +33,7 @@ const SNOOZE_RETENTION_LIMIT = 1000;
 export const SNOOZE_TIMER_EVENT_TYPE = "timer.fired";
 
 const linkRoot = alias(juniorConversations, "snooze_link_root");
+const ownerRoot = alias(juniorConversations, "snooze_owner_root");
 const itemLink = alias(juniorInboxItemConversations, "snooze_item_link");
 
 const queries = new QueryBuilder();
@@ -50,13 +51,31 @@ function rowRootsOfItem(itemId: SQL | string) {
 
 /**
  * SQL: the Inbox item is in the Inbox row of this root Conversation: the
- * item links that Conversation or one of its threads.
+ * item links that Conversation or one of its threads, or one of them owns
+ * it. A To-do's item links nothing, so its owner puts it in the row.
  */
 export function inboxItemInRow(rootConversationId: string): SQL {
-  return inArray(
-    sql`${rootConversationId}`,
-    rowRootsOfItem(sql`${juniorInboxItems.id}`),
-  );
+  return or(
+    inArray(
+      sql`${rootConversationId}`,
+      rowRootsOfItem(sql`${juniorInboxItems.id}`),
+    ),
+    and(
+      eq(juniorInboxItems.ownerKind, "conversation"),
+      inArray(
+        juniorInboxItems.ownerId,
+        queries
+          .select({ id: ownerRoot.conversationId })
+          .from(ownerRoot)
+          .where(
+            or(
+              eq(ownerRoot.conversationId, rootConversationId),
+              eq(ownerRoot.rootConversationId, rootConversationId),
+            ),
+          ),
+      ),
+    ),
+  )!;
 }
 
 /** SQL: this User snoozed the Inbox item, and it has not woken. */

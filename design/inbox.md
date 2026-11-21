@@ -2,7 +2,8 @@
 
 The Inbox is where work waits for a person. Junior or a plugin adds a
 Inbox item: an action that asks a question, or a notice that names a step
-for a person.
+for a person. A To-do that an agent assigns to a person shows as a "To do
+for you" item.
 Its assignees see it in the Inbox and in its linked Slack threads, and the
 first answer lets the work continue. [Inbox stacks](./inbox-stacks.md) owns
 how the dashboard groups and acts on its rows.
@@ -19,6 +20,8 @@ how the dashboard groups and acts on its rows.
   implements an issue it filed, is the requester's decision, not an offer.
 - A notice tells a person about something that they must fix, such as a
   blocked Automation, and says what to do. It never asks.
+- A task for a person is a To-do assigned to them. They see it with their
+  other asks, close it themselves, and the agent learns that it is done.
 - Only an assignee answers, and the answer carries their authority. Junior,
   an Event, or a trigger never answers or approves for a person.
 - "Needs you" means one thing on every surface: an open action assigned to
@@ -28,7 +31,7 @@ how the dashboard groups and acts on its rows.
 
 - Slack: the item card in each linked thread, and a thread reply.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
-  and the question above the message box.
+  and the question above the message box. Done on a "To do for you" row.
 - Settings: "Show the Inbox count in the tab".
 - MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
@@ -58,6 +61,16 @@ how the dashboard groups and acts on its rows.
 - A dismissed Automation alert hides every alert of that Automation until
   the Automation recovers: it is active, its last run succeeded, and its
   trigger is available. A pause is no recovery.
+- A To-do for a person is an open action for that person alone, in the
+  stack of its Conversation. Its title and notes follow the To-do. Only the
+  assignee sees it, and only while they can see the Conversation's private
+  content. No other person and no agent sees or changes it.
+- Done is the only way to close a "To do for you" item, and it marks the
+  To-do done. It starts no Turn: the agent sees the change in its next
+  Turn. It cannot be dismissed, and Snooze works as on any row.
+- When the agent closes, drops, or removes the To-do, or gives it to
+  itself or a child agent, its item closes. A To-do that goes to another
+  person takes its item along. A To-do that opens again gets a new item.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open To-do
   for a person, or an answer that its starter has not read.
@@ -78,6 +91,13 @@ how the dashboard groups and acts on its rows.
   something that they must fix" and "there is one way to ask a person".
 - The "Needs you" list of Conversations also shows Conversations that wait
   for a sign-in. This breaks "'Needs you' means one thing".
+- A "To do for you" item has no Slack card. In Slack, the person learns of
+  the To-do only from the reply. This breaks "its assignees see it in the
+  Inbox and in its linked Slack threads".
+- A "To do for you" item checks the assignee's access only when its To-do
+  changes. A person who can see the Conversation only later gets no item
+  until then, and one who loses access keeps it. This breaks "only while
+  they can see the Conversation's private content".
 - The "Needs you" group of the classic Inbox also shows open actions for
   Everyone and actions with no assignees. To do in the new Inbox shows
   actions with no assignees, and the Inbox count leaves them out. This

@@ -274,10 +274,12 @@ export function textRepeatsHead(item: InboxItemPayload, text: string): boolean {
 
 /**
  * What one item is, as its row says: Question, Approval, the pull request
- * state that a plugin ask names, or FYI. A closed item says how it closed.
+ * state that a plugin ask names, To do for you, or FYI. A closed item says
+ * how it closed.
  */
 export function inboxItemKind(item: InboxItemPayload): string {
   if (item.status !== "open") return inboxItemStatusLabel(item);
+  if (item.todoId !== undefined) return "To do for you";
   if (item.kind === "notice") return "FYI";
   if (item.request) return "Question";
   const state = pullRequestState(item);

@@ -42,7 +42,8 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 - When Junior stops upkeep that it owns, such as fixes on a pull request
   that nobody works on, it tells nobody.
 - Junior asks a person only with an Inbox item
-  ([Inbox](./inbox.md)).
+  ([Inbox](./inbox.md)). A decision is an action. A task for the person is
+  a To-do assigned to them, which shows in their Inbox as "To do for you".
 
 ## Gaps
 

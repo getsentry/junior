@@ -21,6 +21,7 @@ import { requireViewer } from "@/api/viewer";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
+  inboxItemTodo,
   isOnlyAssignee,
   itemNeedsUser,
   inboxItemReaderForUser,
@@ -189,6 +190,7 @@ function inboxItemPayload(
 ): InboxItemPayload {
   const conversationId = ownerConversationId(item);
   const root = conversationId ? roots.get(conversationId) : undefined;
+  const todo = inboxItemTodo(item);
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
@@ -222,6 +224,7 @@ function inboxItemPayload(
       : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
+    ...(todo ? { todoId: todo.id } : undefined),
   };
 }
 

@@ -34,13 +34,13 @@ can act on it.
   menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
 - On each row, on hover: Open, Snooze, and Dismiss, as icons with their
-  names as tooltips. A touch screen has no hover, so there a row shows its
+  names as tooltips. A "To do for you" row has Done in place of Dismiss. A touch screen has no hover, so there a row shows its
   actions only once it is open. Rows do not repeat them.
 - On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
   count once, right-most. The buttons do not repeat the count. Their names
   say what they cover, such as "Snooze 3 items in this stack". Snooze
   covers every row. Dismiss covers the open asks that the viewer can act
-  on. Dismiss is the main action, so it comes last.
+  on, except To-dos. Dismiss is the main action, so it comes last.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
 ## Rules
@@ -71,7 +71,8 @@ Grouping:
 Actions:
 
 - Each row carries its own answer, Dismiss, and Snooze. An answer closes
-  the item as done. None of them act on the other rows of the stack.
+  the item as done. A "To do for you" row carries Done and Snooze: only
+  its assignee closes their To-do. None of them act on the other rows of the stack.
 - A row that closes leaves with one motion, whatever closed it: its own
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only
