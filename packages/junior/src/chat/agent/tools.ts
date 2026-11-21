@@ -10,7 +10,7 @@
  */
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import {
-  promptModeTurnTools,
+  listedTurnTools,
   type AgentTools,
   type TurnBehavior,
 } from "@/chat/conversations/kind-behavior";
@@ -763,7 +763,7 @@ export function bindTurnTools(
   // The listed tools come from the Prompt mode only. A run with no outcomes
   // still lists `reply`, like every other Turn of its Conversation, and
   // cannot call it.
-  const listedTools = promptModeTurnTools(behavior.promptMode);
+  const listedTools = listedTurnTools(behavior);
   return {
     turnTools:
       run.dispatch?.outcomes?.length === 0

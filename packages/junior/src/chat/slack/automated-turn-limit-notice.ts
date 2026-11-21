@@ -5,7 +5,7 @@
  * The consecutive-turn limit claims the notice slot before this post. Clear that
  * claim when the post fails or is skipped so a later paused wake can try again.
  */
-import { enqueueAgentMessageToParent } from "@/chat/agent-invocations/result";
+import { enqueueAgentMessageToParent } from "@/chat/agent-invocations/agent-message";
 import { readChildConversationSender } from "@/chat/agent-invocations/child-input";
 import { getLatestAgentInvocationForConversation } from "@/chat/agent-invocations/store";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";

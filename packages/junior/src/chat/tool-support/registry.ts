@@ -207,7 +207,11 @@ const CORE_TOOLS = {
   publishImage: RUN_BUILT,
   unpublishImage: RUN_BUILT,
   transcribeAudio: RUN_BUILT,
-  spawnAgent: { when: hasAgents, definition: () => spawnAgentToolDefinition },
+  spawnAgent: {
+    when: hasAgents,
+    definition: () =>
+      spawnAgentToolDefinition(isExperimentalFeatureEnabled("code-channels")),
+  },
   stopAgent: { when: hasAgents, definition: () => stopAgentToolDefinition },
   archiveAgent: {
     when: hasAgents,
@@ -219,7 +223,8 @@ const CORE_TOOLS = {
   },
   messageAgent: {
     when: hasAgents,
-    definition: () => messageAgentToolDefinition,
+    definition: ({ listedTools }) =>
+      messageAgentToolDefinition(listedTools.messageAgent),
   },
   [REPLY_TOOL_NAME]: {
     when: ({ listedTools }) => listedTools.reply !== "none",

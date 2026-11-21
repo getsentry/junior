@@ -90,6 +90,11 @@ export type SpawnAgentInput = {
 /** Handle returned after a child-agent task is durably scheduled. */
 export type SpawnAgentResult = {
   childConversationId: string;
+  /**
+   * The provider channel of a channel Thread, such as a Slack code channel.
+   * `reused` means an open channel Thread of this Conversation got the task.
+   */
+  channel?: { id: string; reused: boolean };
 };
 
 /** Runtime-bound child-agent capability exposed to model-facing tool wiring. */

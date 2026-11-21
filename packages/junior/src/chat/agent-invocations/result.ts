@@ -1,5 +1,6 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
+import { isChannelThread } from "@/chat/conversations/channel-thread";
 import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -84,7 +85,6 @@ import { renderUntrustedTag } from "@/chat/input-tags";
 import { listUnreportedSiblingAgents } from "./list";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
-  AGENT_MESSAGE_EVENT_TYPE,
   agentInvocationResultEventType,
   AGENT_REPLY_EVENT_TYPE,
 } from "./result-event-type";
@@ -113,7 +113,7 @@ const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
  * share a Turn and its credentials with another Actor or with watch Events.
  * Keep this id unique per Actor if either rule changes.
  */
-function resultAuthorId(actor: Actor): string {
+export function resultAuthorId(actor: Actor): string {
   switch (actor.platform) {
     case "system":
       return `agent-invocation:system:${actor.name}`;
@@ -370,7 +370,8 @@ async function readParentChildMessages(
   );
 }
 
-function childAgentLabel(sender: ChildAgentSender): string {
+/** Name one child agent in a trusted summary. */
+export function childAgentLabel(sender: ChildAgentSender): string {
   return sender.agentName ? `Child agent "${sender.agentName}"` : "Child agent";
 }
 
@@ -379,7 +380,7 @@ function childAgentLabel(sender: ChildAgentSender): string {
  * invocation names. It carries the Actor of the child's Turn, so the parent
  * runs with no more authority than that Turn. The author id must match it.
  */
-function senderEventMetadata(
+export function senderEventMetadata(
   sender: ChildAgentSender,
   actor: Actor,
   event: EventMailboxMetadata["event"],
@@ -394,67 +395,6 @@ function senderActorFromMetadata(metadata: unknown): Actor | undefined {
   const actor = (metadata as { actor?: unknown } | undefined)?.actor;
   const parsed = actorSchema.safeParse(actor);
   return parsed.success ? parsed.data : undefined;
-}
-
-function renderMessageInput(sender: ChildAgentSender, text: string): string {
-  return renderUntrustedTag(
-    "agent-message",
-    {
-      conversation_id: sender.childConversationId,
-      name: sender.agentName,
-      source: "child_agent",
-      title: sender.title,
-    },
-    "A child agent that you started",
-    text.trim(),
-  );
-}
-
-/**
- * Append one message from a child agent to its parent mailbox and wake the
- * parent. `sender` names the child, and `actor` is the Actor of the child's
- * Turn. The parent handles the message like a result. Repeat calls with the
- * same `messageKey` are safe.
- */
-export async function enqueueAgentMessageToParent(args: {
-  actor: Actor;
-  messageKey: string;
-  nowMs?: number;
-  queue: ConversationWorkQueue;
-  sender: ChildAgentSender;
-  state?: StateAdapter | undefined;
-  text: string;
-}): Promise<void> {
-  const nowMs = args.nowMs ?? Date.now();
-  const senderId = args.sender.invocationId ?? args.sender.childConversationId;
-  const inboundMessageId = `agent-invocation:${senderId}:message:${args.messageKey}`;
-  const summary = `${childAgentLabel(args.sender)} sent a message.`;
-  const metadata = senderEventMetadata(args.sender, args.actor, {
-    eventKey: inboundMessageId,
-    eventType: AGENT_MESSAGE_EVENT_TYPE,
-    identifier: senderId,
-    namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
-    trustedSummary: summary,
-  });
-  await appendAndEnqueueInboundMessage({
-    message: {
-      conversationId: args.sender.parentConversationId,
-      createdAtMs: nowMs,
-      delivery: "defer",
-      inboundMessageId,
-      input: {
-        authorId: resultAuthorId(args.actor),
-        authorIdentityId: SYSTEM_IDENTITY_ID,
-        metadata,
-        text: renderMessageInput(args.sender, args.text),
-      },
-      receivedAtMs: nowMs,
-      source: "event",
-    },
-    queue: args.queue,
-    queueDelayMs: EVENT_WAIT_MS,
-    state: args.state,
-  });
 }
 
 const RESULT_SUMMARIES = {
@@ -903,6 +843,12 @@ async function reportParentWithoutOpenWork(
   options: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
 ): Promise<void> {
   if (await getLatestAgentInvocationForConversation(conversationId)) {
+    return;
+  }
+  // A channel Thread never reports to its parent, not even this way.
+  if (
+    await isChannelThread(await getConversationStore().get({ conversationId }))
+  ) {
     return;
   }
   const sender = await readChildConversationSender(conversationId);

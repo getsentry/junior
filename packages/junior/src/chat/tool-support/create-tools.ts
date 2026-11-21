@@ -314,7 +314,10 @@ const STATIC_TOOL_BINDERS = {
       : undefined,
   messageAgent: (run) =>
     run.context.messageAgent
-      ? createMessageAgentTool(run.context.messageAgent)
+      ? createMessageAgentTool(
+          run.context.messageAgent,
+          run.listedTools.messageAgent,
+        )
       : undefined,
   [REPLY_TOOL_NAME]: (run) =>
     createReplyTool(enabledMode(run.listedTools.reply)),

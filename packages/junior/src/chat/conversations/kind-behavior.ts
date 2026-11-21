@@ -85,6 +85,12 @@ export type TurnBehavior = {
      */
     reportBlocked: "none" | "parent" | "automation";
     noReply: boolean;
+    /**
+     * `channel_thread`: the Turn's final response goes to its own channel,
+     * so `messageAgent` is its only way to reach its parent. Its description
+     * says when to use it.
+     */
+    messageAgent?: "channel_thread";
   };
 };
 
@@ -137,6 +143,21 @@ const CHILD_AGENT_TURN: TurnBehavior = {
     reply: "parent",
     reportBlocked: "parent",
     noReply: true,
+  },
+};
+
+// A channel Thread owns a whole provider place, such as a Slack code channel,
+// as its Location. Every Turn, from a person, its parent, its Tasks, or its
+// Watches, runs like a root Turn there: the people in that place are its
+// audience. It reaches its parent only with `messageAgent`, and it never
+// reports a result or a failure to the parent.
+const CHANNEL_THREAD: TurnBehavior = {
+  ...ROOT,
+  sessionTasks: false,
+  tools: {
+    ...ROOT.tools,
+    agents: "children_and_parent",
+    messageAgent: "channel_thread",
   },
 };
 
@@ -193,10 +214,18 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
 
 /** Return the behavior of one Turn. */
 export function turnBehavior(args: {
+  /** The Conversation is a channel Thread (`isChannelThread`). */
+  channelThread?: boolean;
   kind: ConversationKind;
   personInput: boolean;
 }): TurnBehavior {
   if (args.kind === "root") return ROOT;
+  if (args.channelThread) {
+    if (args.kind !== "thread") {
+      throw new Error("Only a Thread can own a channel");
+    }
+    return CHANNEL_THREAD;
+  }
   if (args.kind === "automation") {
     return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
   }
@@ -209,6 +238,26 @@ export function turnBehavior(args: {
 }
 
 /**
+ * Return whether a Conversation of this kind can own a whole provider place,
+ * such as a Slack code channel, as a channel Thread.
+ */
+export function canOwnChannel(kind: ConversationKind): boolean {
+  return kind === "thread";
+}
+
+/**
+ * Return whether a new child of `childKind` under a `parentKind` parent may
+ * open a provider channel. Only a root's direct Thread may; a Task, or a
+ * Thread deeper in the tree, stays in its parent's place.
+ */
+export function opensChildChannel(args: {
+  childKind: ConversationKind;
+  parentKind: ConversationKind;
+}): boolean {
+  return args.parentKind === "root" && canOwnChannel(args.childKind);
+}
+
+/**
  * Return the tools that every Turn of one Prompt mode lists. A Turn of a mode
  * with two senders can list more than its own tools. The listed tools that it
  * cannot use are disabled.
@@ -218,6 +267,16 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   if (mode === "child_agent") return AGENT_IN_TASK.tools;
   if (mode === "thread") return THREAD_TOOLS;
   return ROOT.tools;
+}
+
+/**
+ * Return the tools that one Turn lists. A channel Thread is not a Prompt
+ * mode: it runs with the root prompt, but lists its own tools, because its
+ * `messageAgent` reaches its parent.
+ */
+export function listedTurnTools(behavior: TurnBehavior): TurnBehavior["tools"] {
+  if (behavior === CHANNEL_THREAD) return CHANNEL_THREAD.tools;
+  return promptModeTurnTools(behavior.promptMode);
 }
 
 /** Return whether a Conversation of this kind has no parent. */

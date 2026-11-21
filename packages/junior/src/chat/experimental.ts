@@ -4,6 +4,7 @@
  * once they become stable defaults.
  */
 export const EXPERIMENTAL_FEATURES = [
+  "code-channels",
   "operator-tools",
   "passive-routing",
   "user-customization",

@@ -3,8 +3,10 @@
     "message": ["actor", "authority", "index", "is_run_actor", "role"],
     "tool-result": ["index", "is_error", "tool"]
   },
+  "packages/junior/src/chat/agent-invocations/agent-message.ts": {
+    "agent-message": ["conversation_id", "name", "source", "title"]
+  },
   "packages/junior/src/chat/agent-invocations/result.ts": {
-    "agent-message": ["conversation_id", "name", "source", "title"],
     "agent-result": [
       "conversation_id",
       "name",

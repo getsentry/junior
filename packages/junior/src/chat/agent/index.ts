@@ -141,6 +141,7 @@ import {
 } from "@/chat/agent/types";
 import { actionConfirmationRetryMessages } from "@/chat/agent/action-confirmation-retry";
 import { readParentAgentTask } from "@/chat/input-tags";
+import { isChannelThread } from "@/chat/conversations/channel-thread";
 import { loadTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import {
   discoverRunSkills,
@@ -286,6 +287,7 @@ export async function executeAgentRun(
     runId: run.runId,
     assistantUserName: botConfig.userName,
   };
+  const channelThread = await isChannelThread(conversation);
   return withLogContext(runLogContext, () =>
     runWithConversationPrivacy(conversationPrivacy, async () =>
       reportFailedRun(
@@ -297,6 +299,7 @@ export async function executeAgentRun(
           run.dispatch?.declaresResult
             ? "automation"
             : (conversation?.kind ?? "root"),
+          channelThread,
           conversationPrivacy,
           runLogContext,
           streamFn,
@@ -330,6 +333,7 @@ function reportFailedRun(
 async function executeAgentRunInPrivacyContext(
   run: AgentRun,
   conversationKind: ConversationKind,
+  channelThread: boolean,
   conversationPrivacy: ConversationPrivacy | undefined,
   runLogContext: LogContext,
   streamFn: AgentRequestStreamFn | undefined,
@@ -338,6 +342,7 @@ async function executeAgentRunInPrivacyContext(
   const conversationId = run.conversationId;
   const turnId = run.turnId;
   const behavior = turnBehavior({
+    channelThread,
     kind: conversationKind,
     personInput: isPersonInput(run.source.kind),
   });

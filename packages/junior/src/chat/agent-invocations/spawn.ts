@@ -1,12 +1,35 @@
 import type { StateAdapter } from "chat";
 import type { ConversationStore } from "@/chat/conversations/store";
-import type { AgentRun, SpawnAgent, SpawnAgentInput } from "@/chat/agent/types";
+import type { Actor } from "@sentry/junior-plugin-api";
+import type {
+  AgentRun,
+  SpawnAgent,
+  SpawnAgentInput,
+  SpawnAgentResult,
+} from "@/chat/agent/types";
 import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
 import { botConfig } from "@/chat/config";
 import { readConversationLineage } from "@/chat/conversations/lineage";
+import { opensChildChannel } from "@/chat/conversations/kind-behavior";
+import { getConversationStore } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  findOpenChannelThread,
+  isChannelThread,
+} from "@/chat/conversations/channel-thread";
+import {
+  bindThreadCodeChannel,
+  createThreadCodeChannel,
+  readCodeChannelOrigin,
+} from "@/chat/slack/code-channel/open";
 import { getAgentBinding } from "./bindings";
+import {
+  assertCanCreateChildWithoutAgentInvocation,
+  createChildWithoutAgentInvocation,
+  newChildAgentConversationId,
+} from "./create";
+import { appendParentMessage } from "./parent-message";
 import { AgentDepthLimitError } from "./errors";
 import {
   getAgentInvocationId,
@@ -37,10 +60,13 @@ async function assertCanStartChildAgent(
 ): Promise<void> {
   const lineage = await readConversationLineage(conversationId);
   const root = lineage[0];
+  // A channel Thread acts as a root in its channel, so depth counts from it.
+  // It is always a direct child of a root.
+  const anchor = lineage[1] && (await isChannelThread(lineage[1])) ? 1 : 0;
   if (
     !root ||
     root.parentConversationId ||
-    lineage.length - 1 > maxAgentDepth
+    lineage.length - 1 - anchor > maxAgentDepth
   ) {
     throw new AgentDepthLimitError(maxAgentDepth);
   }
@@ -86,6 +112,92 @@ async function findSpawnedChildAgent(args: {
     : undefined;
 }
 
+/**
+ * Start a Thread as a channel Thread when it can get a code channel, or give
+ * the task to the open channel Thread of this root: one origin thread has at
+ * most one. A channel Thread gets its work as parent messages and has no
+ * Agent invocation, so no result of it reaches the parent. Returns undefined
+ * when the Thread must start as a plain Thread.
+ */
+async function spawnChannelThread(args: {
+  actor: Actor;
+  call: { toolCallId: string };
+  idempotencyKey: string;
+  input: SpawnAgentInput;
+  queue: ConversationWorkQueue;
+  run: AgentRun;
+  /** A replayed spawn that already gave its task to this child. */
+  spawned?: string;
+  state?: StateAdapter;
+}): Promise<SpawnAgentResult | undefined> {
+  const { input, run } = args;
+  const sendTask = async (childConversationId: string) =>
+    await appendParentMessage({
+      actor: args.actor,
+      childConversationId,
+      ...(run.credentialContext
+        ? { credentialContext: run.credentialContext }
+        : undefined),
+      ...(input.fork ? { fork: true as const } : undefined),
+      idempotencyKey: args.idempotencyKey,
+      parentConversationId: run.conversationId,
+      parentToolCallId: args.call.toolCallId,
+      queue: args.queue,
+      state: args.state,
+      text: input.task,
+    });
+  const open = await findOpenChannelThread(run.conversationId);
+  if (open) {
+    if (args.spawned !== open.conversationId) {
+      await sendTask(open.conversationId);
+    }
+    return {
+      childConversationId: open.conversationId,
+      channel: {
+        id: open.providerDestinationId,
+        reused: args.spawned !== open.conversationId,
+      },
+    };
+  }
+  if (args.spawned) return undefined;
+  const origin = await readCodeChannelOrigin(run);
+  if (!origin) return undefined;
+  const child = {
+    agentConfig: {
+      ...(input.agentType ? { agentType: input.agentType } : undefined),
+      ...(input.fork ? { fork: true as const } : undefined),
+      ...(input.reasoningLevel
+        ? { reasoningLevel: input.reasoningLevel }
+        : undefined),
+    },
+    ...(input.name ? { agentName: input.name } : undefined),
+    idempotencyKey: args.idempotencyKey,
+    kind: "thread" as const,
+    parentConversationId: run.conversationId,
+    ...(input.title ? { title: input.title } : undefined),
+  };
+  // Check the limits first: a refused spawn must not leave a code channel,
+  // and its card, behind.
+  await assertCanCreateChildWithoutAgentInvocation(child);
+  const threadConversationId = newChildAgentConversationId(child);
+  const channelId = await createThreadCodeChannel({
+    origin,
+    threadConversationId,
+  });
+  if (!channelId) return undefined;
+  await createChildWithoutAgentInvocation(child);
+  await bindThreadCodeChannel({
+    channelId,
+    teamId: origin.teamId,
+    threadConversationId,
+  });
+  await sendTask(threadConversationId);
+  return {
+    childConversationId: threadConversationId,
+    channel: { id: channelId, reused: false },
+  };
+}
+
 /** Bind a Run's Actor and credentials to new Agent invocations. */
 export function bindSpawnAgent(
   run: AgentRun,
@@ -111,11 +223,33 @@ export function bindSpawnAgent(
       parentConversationId: run.conversationId,
       state: options.state,
     });
+    const queue =
+      typeof options.queue === "function" ? options.queue() : options.queue;
+    const parent = await getConversationStore().get({
+      conversationId: run.conversationId,
+    });
+    if (
+      input.kind &&
+      parent &&
+      opensChildChannel({ childKind: input.kind, parentKind: parent.kind })
+    ) {
+      const channelThread = await spawnChannelThread({
+        actor,
+        call,
+        idempotencyKey,
+        input,
+        queue,
+        run,
+        ...(spawned ? { spawned } : undefined),
+        state: options.state,
+      });
+      if (channelThread) {
+        return channelThread;
+      }
+    }
     if (spawned) {
       return { childConversationId: spawned };
     }
-    const queue =
-      typeof options.queue === "function" ? options.queue() : options.queue;
     const invocation = await createAndEnqueueAgentInvocation(
       {
         actor,
