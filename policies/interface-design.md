@@ -55,7 +55,7 @@ function names are part of the interface.
 ### Layout
 
 - People and models read a path before the code. A path names the feature,
-  then the role of the code in it: `chat/review-items/tools/search.ts`.
+  then the role of the code in it: `chat/inbox-items/tools/search.ts`.
 - Group files by feature. Put code in the feature that owns the concern, not
   next to the first caller.
 - A role directory or file holds only that role. `tools/` holds only tools,

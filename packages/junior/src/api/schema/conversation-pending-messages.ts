@@ -1,6 +1,6 @@
 import * as z from "zod";
 import { messageAttachmentSchema } from "@/chat/attachments/input";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import {
   actorIdentitySchema,
   conversationDetailReportSchema,
@@ -29,8 +29,8 @@ export const conversationPendingMessageSchema = z
     /** People mentioned in the text, resolved at read time. */
     mentions: z.array(actorIdentitySchema).optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
-    /** Review item change that this Message records. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
+    /** Inbox item change that this Message records. */
+    reviewItemChange: inboxItemChangeRecordSchema.optional(),
     redacted: z.literal(true).optional(),
   })
   .strict()
@@ -51,7 +51,7 @@ export const conversationPendingMessageSchema = z
       context.addIssue({
         code: "custom",
         message:
-          "redacted pending messages must not expose actor identity, attachments, mentions, or a review item",
+          "redacted pending messages must not expose actor identity, attachments, mentions, or an inbox item",
       });
     }
   });

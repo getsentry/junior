@@ -9,7 +9,7 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 import type { Conversation } from "../types";
 import { INBOX_STACK_CLASS } from "./inboxRowStyles";
 import { openOnClick, useOpenPath } from "./rowClick";
-import { itemNeedsViewer, type InboxBundle } from "./reviewItemFormat";
+import { itemNeedsViewer, type InboxBundle } from "./inboxItemFormat";
 import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 

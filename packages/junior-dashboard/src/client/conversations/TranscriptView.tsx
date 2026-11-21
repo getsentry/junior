@@ -1,7 +1,7 @@
 import { useMemo, useState, type ReactNode, type Ref } from "react";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { ArrowDown } from "lucide-react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import type {
   ConversationTranscript,
@@ -58,7 +58,7 @@ export function Transcript(props: {
   /** Receive the last event sequence the reader saw in the transcript. */
   onRead?: ((seq: number) => void) | undefined;
   /** Show the row of a question that an answer row quotes. */
-  onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
+  onShowQuestion?(item: InboxItemPayload, arrived: boolean): void;
   /** The reader acted outside the transcript, such as in the composer. */
   readEngaged?: boolean;
   onSelectedEventSeqChange?(seq: number | undefined): void;
@@ -127,7 +127,7 @@ export function Transcript(props: {
   const showQuestion = useMemo(
     () =>
       onShowQuestion &&
-      ((item: ReviewItemPayload) => onShowQuestion(item, false)),
+      ((item: InboxItemPayload) => onShowQuestion(item, false)),
     [onShowQuestion],
   );
 

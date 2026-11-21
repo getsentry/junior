@@ -77,11 +77,11 @@ import {
   watchParamsSchema,
 } from "../schema/watch";
 import {
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
-  planItemParamsSchema,
-  planItemStatusBodySchema,
-} from "../schema/plan";
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoParamsSchema,
+  todoStatusBodySchema,
+} from "../schema/todos";
 import { apiOperationHandler } from "../operation";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
@@ -127,7 +127,7 @@ import {
   cancelConversationWatchForViewer,
   requireConversationWatches,
 } from "./watches";
-import { requireConversationPlan, setConversationPlanItemStatus } from "./plan";
+import { requireConversationTodos, setConversationTodoStatus } from "./todos";
 
 /** Create the HTTP routes owned by the conversations API. */
 export function createConversationRoutes(
@@ -641,7 +641,7 @@ export function createConversationRoutes(
   );
 
   app.get(
-    "/:conversationId/plan",
+    "/:conversationId/todos",
     validateRequest(
       "param",
       conversationParamsSchema,
@@ -651,25 +651,25 @@ export function createConversationRoutes(
       const { conversationId } = context.req.valid("param");
       const viewer = context.get("viewer");
       return jsonResponse(
-        conversationPlanReportSchema,
-        await requireConversationPlan(conversationId, { viewer }),
+        conversationTodosReportSchema,
+        await requireConversationTodos(conversationId, { viewer }),
       );
     },
   );
 
   app.patch(
-    "/:conversationId/plan/:itemId",
+    "/:conversationId/todos/:todoId",
     requireViewer,
-    validateRequest("param", planItemParamsSchema, "Invalid route parameters."),
-    validateRequest("json", planItemStatusBodySchema, "Invalid request body."),
+    validateRequest("param", todoParamsSchema, "Invalid route parameters."),
+    validateRequest("json", todoStatusBodySchema, "Invalid request body."),
     async (context) => {
-      const { conversationId, itemId } = context.req.valid("param");
+      const { conversationId, todoId } = context.req.valid("param");
       return jsonResponse(
-        conversationPlanItemSchema,
-        await setConversationPlanItemStatus(
+        conversationTodoSchema,
+        await setConversationTodoStatus(
           context.get("viewer"),
           conversationId,
-          itemId,
+          todoId,
           context.req.valid("json"),
         ),
       );

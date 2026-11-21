@@ -3,12 +3,12 @@ import * as z from "zod";
 const conversationRowSchema = z
   .object({
     conversationId: z.string().min(1),
-    reviewItemId: z.string().min(1).optional(),
+    inboxItemId: z.string().min(1).optional(),
   })
   .strict();
 // An item whose owner is not a Conversation, such as an Automation alert,
 // has a row of its own.
-const itemRowSchema = z.object({ reviewItemId: z.string().min(1) }).strict();
+const itemRowSchema = z.object({ inboxItemId: z.string().min(1) }).strict();
 
 /**
  * The Inbox row of a snooze: one Conversation, one item in it, or one item
@@ -83,7 +83,7 @@ export const inboxSnoozeCreateSchema = z
 
 /** The items that a snooze hid from the viewer, one snooze each. */
 export const inboxSnoozeSchema = z
-  .object({ reviewItemIds: z.array(z.string().min(1)).min(1) })
+  .object({ inboxItemIds: z.array(z.string().min(1)).min(1) })
   .strict();
 
 export type InboxSnoozeCreateBody = z.input<typeof inboxSnoozeCreateSchema>;

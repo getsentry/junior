@@ -101,8 +101,8 @@ import {
 } from "@/chat/workspaces/store";
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
-import { createPluginReviewItems } from "@/chat/review-items/plugin";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import {
   apiRoutePrefix,
   coreRegistrations,
@@ -1181,8 +1181,8 @@ export function createPluginEventPublisher(
 /** Collect route handlers exposed by plugins for app-level mounting. */
 export function getPluginRoutes(options: {
   dispatchForIdentity: IdentityDispatcher;
-  /** Shows a Review item that a plugin route changed. App setup supplies it. */
-  showReviewItem?: ShowReviewItem;
+  /** Shows an Inbox item that a plugin route changed. App setup supplies it. */
+  showInboxItem?: ShowInboxItem;
   events: AppEventPublisher;
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
@@ -1211,12 +1211,12 @@ export function getPluginRoutes(options: {
       },
       codeChanges: createCodeChangePublisher(pluginName),
       state: createPluginState(pluginName),
-      reviewItems: {
+      inboxItems: {
         forConversation: (conversationId) =>
-          createPluginReviewItems({
+          createPluginInboxItems({
             conversationId,
             plugin: pluginName,
-            show: options.showReviewItem ?? (async () => {}),
+            show: options.showInboxItem ?? (async () => {}),
           }),
       },
       users: { readIdentity: readIdentityById },

@@ -1,5 +1,7 @@
+import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGitHubFixture } from "./github-db";
+import { mswServer } from "./msw";
 import {
   DEDUPE_KEY,
   PULL_URL,
@@ -11,7 +13,7 @@ import {
   seedJuniorPullRequest,
   stubGitHubAppEnv,
   type GitHubState,
-  type ReviewItemCall,
+  type InboxItemCall,
 } from "./pull-request-action-harness";
 
 describe("next action item", () => {
@@ -25,7 +27,7 @@ describe("next action item", () => {
 
   it("adds one notice for the requester while the pull request is ready, and closes it when that stops", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const errors: string[] = [];
     const failures = { close: 0 };
     const requests: string[] = [];
@@ -218,7 +220,7 @@ describe("next action item", () => {
 
   it("shows one item that changes from review to merge", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const github: GitHubState = {
       draft: false,
       mergeableStates: ["blocked"],
@@ -301,9 +303,47 @@ describe("next action item", () => {
     }
   });
 
+  it("reuses one installation token for later webhooks", async () => {
+    const fixture = await createGitHubFixture();
+    const requests: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["clean"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      requests,
+    );
+    let minted = 0;
+    mswServer.use(
+      http.post(
+        "https://api.github.com/app/installations/456/access_tokens",
+        () => {
+          minted += 1;
+          return HttpResponse.json({
+            expires_at: "2027-01-01T00:00:00.000Z",
+            token: "installation-token",
+          });
+        },
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, []);
+      await webhook.handler(checkSuiteCompleted());
+      await webhook.handler(reviewSubmitted("approved"));
+      expect(requests).toEqual(["pull", "pull"]);
+      expect(minted).toBe(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("reads nothing from GitHub for a pull request with no requester Conversation", async () => {
     const fixture = await createGitHubFixture();
-    const calls: ReviewItemCall[] = [];
+    const calls: InboxItemCall[] = [];
     const requests: string[] = [];
     mockGitHub(
       {

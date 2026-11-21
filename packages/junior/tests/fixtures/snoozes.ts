@@ -8,7 +8,7 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { insertReviewItem } from "@/chat/review-items/store";
+import { insertInboxItem } from "@/chat/inbox-items/store";
 import { mswServer } from "../msw/server";
 import type { ConversationFixture } from "./conversation";
 
@@ -56,7 +56,7 @@ export async function addItem(
   ownerConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -153,7 +153,7 @@ export async function addPullRequestItem(
   assignees: User[],
   title: string,
 ): Promise<string> {
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -187,7 +187,7 @@ export async function addNotice(
   assignees: User[],
   title: string,
 ): Promise<string> {
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -249,7 +249,7 @@ export function api(fixture: ConversationFixture, viewer: User) {
     /** The subject of each item in the viewer's Inbox. */
     subjects: async () =>
       (
-        (await json("/review-items?for=viewer")) as {
+        (await json("/inbox-items?for=viewer")) as {
           items: { subject?: unknown }[];
         }
       ).items.map((item) => item.subject),
@@ -257,33 +257,33 @@ export function api(fixture: ConversationFixture, viewer: User) {
     /** What Snoozed shows: its count and its item titles. */
     snoozed: async () => ({
       count: (
-        (await json("/review-items/count?include=snoozed")) as {
+        (await json("/inbox-items/count?include=snoozed")) as {
           snoozed: number;
         }
       ).snoozed,
       items: (
-        (await json("/review-items?for=viewer&snoozed=true")) as {
+        (await json("/inbox-items?for=viewer&snoozed=true")) as {
           items: { title: string }[];
         }
       ).items.map((item) => item.title),
     }),
     /** Every Inbox number: the badge, the waiting list and the Inbox list. */
     inbox: async () => ({
-      count: ((await json("/review-items/count")) as { needsViewer: number })
+      count: ((await json("/inbox-items/count")) as { needsViewer: number })
         .needsViewer,
       inbox: (
-        (await json("/review-items?for=viewer")) as {
+        (await json("/inbox-items?for=viewer")) as {
           items: { title: string }[];
         }
       ).items.map((item) => item.title),
       waiting: (
-        (await json("/review-items/waiting-conversations")) as {
+        (await json("/inbox-items/waiting-conversations")) as {
           conversations: { conversationId: string }[];
         }
       ).conversations.map((row) => row.conversationId),
     }),
     versions: async () =>
-      ((await json("/versions")) as { reviewItems: string }).reviewItems,
+      ((await json("/versions")) as { inboxItems: string }).inboxItems,
   };
 }
 

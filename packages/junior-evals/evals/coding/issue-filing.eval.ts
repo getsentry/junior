@@ -17,9 +17,9 @@ function createdIssues(result: { toolCalls: ToolCall[] }): string[] {
   });
 }
 
-/** Dedupe keys of the Review items that the agent added. */
-function reviewItemKeys(result: { toolCalls: ToolCall[] }): unknown[] {
-  return toolCallsOf("addReviewItem", result).map(
+/** Dedupe keys of the Inbox items that the agent added. */
+function inboxItemKeys(result: { toolCalls: ToolCall[] }): unknown[] {
+  return toolCallsOf("addInboxItem", result).map(
     (call) => (call.input as { dedupe_key?: unknown }).dedupe_key,
   );
 }
@@ -35,7 +35,7 @@ function threadsStarted(result: { toolCalls: ToolCall[] }): ToolCall[] {
 // item, when it starts the work, and when it does neither. Automation runs
 // get no note at all; `github-plugin.test.ts` covers that fixed rule.
 describe("Filing Issues", () => {
-  test("when someone only asks for an issue, file it and ask with a Review item whether to start a Thread", async ({
+  test("when someone only asks for an issue, file it and ask with an Inbox item whether to start a Thread", async ({
     run,
   }) => {
     const conversation = await run(
@@ -48,14 +48,14 @@ describe("Filing Issues", () => {
     expect(issue, "No issue: this run does not test the next step").toEqual(
       expect.any(String),
     );
-    expect(reviewItemKeys(conversation)).toContain(
+    expect(inboxItemKeys(conversation)).toContain(
       `github-issue-implement:${issue}`,
     );
     // The person did not ask for the work yet, so it waits for the answer.
     expect(threadsStarted(conversation)).toHaveLength(0);
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
-      // Visible text includes the Review item, so the judge checks only
+      // Visible text includes the Inbox item, so the judge checks only
       // that the issue is named.
       rubric({ pass: ["The reply names or links the created issue."] }),
     );
@@ -74,7 +74,7 @@ describe("Filing Issues", () => {
     // Only the first Turn: a later Turn reads the Thread's result.
     const [first] = conversation.turns;
     expect(threadsStarted(first!)).toHaveLength(1);
-    expect(reviewItemKeys(first!)).toEqual([]);
+    expect(inboxItemKeys(first!)).toEqual([]);
   });
 
   test("when the issue hands work to another team, do not ask whether to implement it", async ({
@@ -87,7 +87,7 @@ describe("Filing Issues", () => {
     );
 
     expect(createdIssues(conversation)).toHaveLength(1);
-    expect(reviewItemKeys(conversation)).toEqual([]);
+    expect(inboxItemKeys(conversation)).toEqual([]);
     expect(threadsStarted(conversation)).toHaveLength(0);
   });
 });

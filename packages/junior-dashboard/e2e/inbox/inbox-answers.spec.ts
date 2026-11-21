@@ -38,13 +38,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       let release = () => {};
       const held = new Promise<void>((resolve) => (release = resolve));
       // Hold the answer, so the row leaves before the server answers.
-      await page.route(
-        /\/api\/review-items\/[^/]+\/actions$/,
-        async (route) => {
-          await held;
-          await route.fallback();
-        },
-      );
+      await page.route(/\/api\/inbox-items\/[^/]+\/actions$/, async (route) => {
+        await held;
+        await route.fallback();
+      });
       await page.setViewportSize(view);
       await page.goto(`${dashboard.baseURL}/?view=inbox`);
       await answerHold(page);
@@ -57,7 +54,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       // after a reload too.
       const answered = page.waitForResponse(
         (response) =>
-          /\/api\/review-items\/[^/]+\/actions$/.test(response.url()) &&
+          /\/api\/inbox-items\/[^/]+\/actions$/.test(response.url()) &&
           response.request().method() === "POST",
       );
       release();
@@ -75,7 +72,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await page.route(/\/api\/review-items\/[^/]+\/actions$/, (route) =>
+    await page.route(/\/api\/inbox-items\/[^/]+\/actions$/, (route) =>
       route.fulfill({ json: { error: "Down." }, status: 503 }),
     );
     await page.goto(`${dashboard.baseURL}/?view=inbox`);

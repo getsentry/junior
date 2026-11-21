@@ -359,7 +359,7 @@ export function githubPlugin(
           },
         ];
       },
-      async reviewItemAnswered(ctx) {
+      async inboxItemAnswered(ctx) {
         const ref = parseGitHubConflictItemKey(ctx.dedupeKey);
         if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
@@ -387,7 +387,7 @@ export function githubPlugin(
             await loadPullRequestConflictHistory(installationEnv, ref),
           log: ctx.log,
           now: new Date(ctx.nowMs),
-          reviewItems: ctx.reviewItems,
+          inboxItems: ctx.inboxItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -412,7 +412,7 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
-          reviewItems: ctx.reviewItems,
+          inboxItems: ctx.inboxItems,
           state: ctx.state,
         });
       },
@@ -438,6 +438,8 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
+          responses: ctx.state,
+          tokens: new Map(),
         };
         return [
           createGitHubWebhookRoute({
@@ -484,8 +486,9 @@ export function githubPlugin(
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
-            reviewItems: ctx.reviewItems,
+            inboxItems: ctx.inboxItems,
             state: ctx.state,
+            tokens: installationEnv.tokens,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

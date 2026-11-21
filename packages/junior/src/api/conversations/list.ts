@@ -26,14 +26,14 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorIdentities,
-  juniorReviewItems,
+  juniorInboxItems,
   juniorUsers,
 } from "@/db/schema";
 import {
-  reviewItemForUser,
-  reviewItemNeedsInput,
-  reviewItemOwnedByConversation,
-} from "@/chat/review-items/access";
+  inboxItemForUser,
+  inboxItemNeedsInput,
+  inboxItemOwnedByConversation,
+} from "@/chat/inbox-items/access";
 import { awaitsAuthorizationFrom } from "@/chat/conversations/sql/authorization-wait";
 import { resolveSlackTeamDomains } from "@/chat/slack/team-domain";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
@@ -74,7 +74,7 @@ import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
-import { waitingConversationIdsQuery } from "@/chat/review-items/store";
+import { waitingConversationIdsQuery } from "@/chat/inbox-items/store";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";
@@ -308,7 +308,7 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * The rows are in feed order, so a move that reorders them moves the token.
  * The newest Message of each role stands for the preview and participants.
  * Threads and annotations show from the whole tree. Waiting roots outside
- * the page move the Review items token.
+ * the page move the Inbox items token.
  */
 export function conversationFeedVersionQuery(
   db: JuniorDatabase,
@@ -325,10 +325,10 @@ export function conversationFeedVersionQuery(
         count(*) filter (where ${feedTree.archivedAt} is not null),
         count(*) filter (where ${feedTree.stoppedAt} is not null),
         coalesce(bool_or(${conversationIsActiveSql(feedTree)}) filter (where ${ne(feedTree.conversationId, conversationId)}), false),
-        bool_or(exists (select 1 from ${juniorReviewItems} where ${and(
-          reviewItemOwnedByConversation(feedTree.conversationId),
-          reviewItemNeedsInput(),
-          reviewItemForUser(userId),
+        bool_or(exists (select 1 from ${juniorInboxItems} where ${and(
+          inboxItemOwnedByConversation(feedTree.conversationId),
+          inboxItemNeedsInput(),
+          inboxItemForUser(userId),
         )}) or ${awaitsAuthorizationFrom(feedTree.conversationId, userId)}),
         string_agg(concat_ws('/',
           ${feedTree.conversationId}, ${feedTree.title},

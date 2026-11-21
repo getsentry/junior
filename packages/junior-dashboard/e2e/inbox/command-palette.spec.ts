@@ -2,7 +2,7 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
-import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
+import { expandRow, mockInboxItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
@@ -49,12 +49,12 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   /**
    * Make the viewer a participant, so the Conversation has a reply box. With
-   * `reviewItemId`, Junior added that Review item last.
+   * `inboxItemId`, Junior added that Inbox item last.
    */
   async function routeAsParticipant(
     page: Page,
     conversationId: string,
-    reviewItemId?: string,
+    inboxItemId?: string,
   ) {
     await page.route(
       `**/api/conversations/${encodeURIComponent(conversationId)}*`,
@@ -67,7 +67,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         });
         const detail = await response.json();
         const last = detail.events.at(-1);
-        const events = reviewItemId
+        const events = inboxItemId
           ? [
               ...detail.events,
               {
@@ -75,10 +75,10 @@ test.describe("new UI", { tag: "@new" }, () => {
                 data: {
                   calls: [
                     {
-                      name: "addReviewItem",
-                      output: { item: { id: reviewItemId } },
+                      name: "addInboxItem",
+                      output: { item: { id: inboxItemId } },
                       status: "completed",
-                      toolCallId: "add-review-item",
+                      toolCallId: "add-inbox-item",
                     },
                   ],
                   type: "tool_calls",
@@ -165,7 +165,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const lastPageHeld = new Promise<void>((resolve) => {
       releaseLastPage = resolve;
     });
-    await page.route(`**/api/review-items?*`, async (route) => {
+    await page.route(`**/api/inbox-items?*`, async (route) => {
       const url = new URL(route.request().url());
       if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
         return route.fallback();
@@ -321,7 +321,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   test("ranks the active tab's results first", async ({ page, dashboard }) => {
     await page.setViewportSize({ height: 800, width: 1280 });
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await mockLandingAutomationApis(page);
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     for (const [path, group] of [
@@ -371,7 +371,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.setViewportSize({ height: 800, width: 1280 });
-    await mockReviewItems(page, { open: [rollout] });
+    await mockInboxItems(page, { open: [rollout] });
     await page.goto(dashboard.baseURL);
     await expandRow(rowHead(page, "Investigate checkout latency"));
     await page.getByRole("button", { name: "Snooze" }).click();
@@ -475,7 +475,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(dashboard.baseURL);
     await page.keyboard.press("ControlOrMeta+k");
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
