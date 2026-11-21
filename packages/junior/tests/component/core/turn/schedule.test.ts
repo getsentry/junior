@@ -1,11 +1,10 @@
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getQueueProvider } from "@/chat/queue/provider";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { scheduleInput } from "@/core/turn/schedule";
-import { cancelTurn, claimTurn, type Turn } from "@/core/turn/state";
+import { cancelTurn, claimTurn } from "@/core/turn/state";
 import {
   juniorConversations,
   juniorIdentities,
@@ -21,11 +20,6 @@ import {
 
 const CONVERSATION_ID = "local:conversation-1";
 const LEASE_MS = 60_000;
-
-// The v1 rule: one Actor, so an input joins the open Turn or starts one.
-function joinOrCreate(openTurn: Turn | undefined) {
-  return openTurn ? { join: openTurn.turnId } : { create: { priority: 0 } };
-}
 
 const stepMessageSchema = z.looseObject({ turnId: z.string() });
 
@@ -103,9 +97,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
   }
 
   function schedule(idempotencyKey: string) {
-    return scheduleInput(fixture.sql, input(idempotencyKey), {
-      assignTurn: joinOrCreate,
-    });
+    return scheduleInput(fixture.sql, input(idempotencyKey));
   }
 
   async function readTurns() {
@@ -186,21 +178,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(2);
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toHaveLength(1);
-  });
-
-  it("rejects a join of a Turn that is not the open Turn, and writes nothing", async () => {
-    const first = await schedule("event-1");
-
-    await expect(
-      scheduleInput(fixture.sql, input("event-2"), {
-        assignTurn: () => ({ join: randomUUID() }),
-      }),
-    ).rejects.toThrow(`but the open Turn is ${first.turnId}`);
-    await expect(readTurns()).resolves.toHaveLength(1);
-    await expect(readInputs()).resolves.toEqual([
-      { turnId: first.turnId, idempotencyKey: "event-1" },
-    ]);
-    expect(publishes).toHaveLength(1);
   });
 
   it("keeps the Turn and its input when the publish fails, and the retry publishes it", async () => {
