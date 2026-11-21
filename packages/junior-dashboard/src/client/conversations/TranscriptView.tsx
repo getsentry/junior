@@ -54,6 +54,8 @@ export function Transcript(props: {
   lastReadSeq?: number | undefined;
   /** Scroll to this Message once the loaded rows hold it. */
   linkedMessageId?: string | undefined;
+  /** The event seq of a `#event-<seq>` link. A Message link wins. */
+  linkedRowSeq?: number | undefined;
   loadingPreviousPage?: boolean;
   /**
    * Newer pages between the read position and the latest. They load on
@@ -126,7 +128,14 @@ export function Transcript(props: {
   const linkSeq = useMessageLinkJump({
     content: bottomPinning.contentElement,
     events: props.transcript?.events,
-    messageId: view === "rich" ? props.linkedMessageId : undefined,
+    link:
+      view !== "rich"
+        ? undefined
+        : props.linkedMessageId !== undefined
+          ? { message: props.linkedMessageId }
+          : props.linkedRowSeq !== undefined
+            ? { event: props.linkedRowSeq }
+            : undefined,
     showRow,
   });
   const askReveal = useMemo(

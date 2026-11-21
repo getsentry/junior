@@ -53,6 +53,8 @@
     "e2e/question-cards.spec.ts",
     "e2e/request-budget.ts",
     "e2e/inbox-item-evidence.spec.ts",
+    "e2e/conversations-outline.spec.ts",
+    "e2e/long-transcript-fixture.ts",
     "playwright.config.ts",
     "tsdown.client.config.ts"
   ]
