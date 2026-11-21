@@ -270,7 +270,7 @@ describe("Pi tool adapter integration", () => {
           tool_name: toolName,
           arguments: {},
         }),
-      ).rejects.toThrow("can only call catalog tools");
+      ).rejects.toThrow("is not a catalog tool");
     }
     await expect(
       executeTool.execute("tool-direct", {
@@ -290,7 +290,7 @@ describe("Pi tool adapter integration", () => {
         arguments: {},
       }),
     ).rejects.toThrow(
-      /^executeTool can only call catalog tools returned by searchTools: hiddenDemo\.$/,
+      /^`hiddenDemo` is not a catalog tool\. Call searchTools to find its exact name\.$/,
     );
     await expect(
       executeTool.execute("tool-missing", {
@@ -298,16 +298,16 @@ describe("Pi tool adapter integration", () => {
         arguments: {},
       }),
     ).rejects.toThrow(
-      /^executeTool can only call catalog tools returned by searchTools: missingDemo\.$/,
+      /^`missingDemo` is not a catalog tool\. Call searchTools to find its exact name\.$/,
     );
-    // A close name gets a hint, never a guessed call.
+    // A close name gets a hint and the next call, never a guessed call.
     await expect(
       executeTool.execute("tool-misspelled", {
         tool_name: "catalog_only_demo",
         arguments: {},
       }),
     ).rejects.toThrow(
-      "executeTool can only call catalog tools returned by searchTools: catalog_only_demo. Did you mean `catalogOnlyDemo`?",
+      /^`catalog_only_demo` is not a catalog tool\. Did you mean `catalogOnlyDemo`\? Call executeTool again with the exact name as tool_name\.$/,
     );
   });
 
@@ -352,7 +352,7 @@ describe("Pi tool adapter integration", () => {
           tool_name: toolName,
           arguments: {},
         }),
-      ).rejects.toThrow("can only call catalog tools");
+      ).rejects.toThrow("is not a catalog tool");
     }
     expect(spawnAgent).not.toHaveBeenCalled();
     expect(messageAgent).not.toHaveBeenCalled();
