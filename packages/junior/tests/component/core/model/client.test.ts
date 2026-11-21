@@ -8,7 +8,7 @@ describe("model client", () => {
     const client = modelClient({
       apiKey: async () => "test-key",
       resolveModel: resolveGatewayModel,
-      stream: streamSimple,
+      send: streamSimple,
     });
     const controller = new AbortController();
     controller.abort();
