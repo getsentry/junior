@@ -38,20 +38,6 @@ export const CONVERSATION_METADATA_TASK = {
 
 const LOCK_TTL_MS = 10 * 60 * 1_000;
 
-let enabled = false;
-
-/** Replace the app-level metadata setting and return the previous one. */
-export function setConversationMetadataEnabled(next: boolean): boolean {
-  const previous = enabled;
-  enabled = next;
-  return previous;
-}
-
-/** Return whether Turns update Conversation metadata. */
-export function isConversationMetadataEnabled(): boolean {
-  return enabled;
-}
-
 /** Return whether a user gave this Turn an instruction. */
 function hasUserInstruction(record: TurnRecord): boolean {
   const start = record.turnStartMessageIndex ?? 0;

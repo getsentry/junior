@@ -178,21 +178,9 @@ Provider credentials and other plugin-specific variables live on each plugin set
 
 ## Conversation metadata
 
-Conversation metadata updates are off by default. When they are on, Junior
-updates the summary and outcome status of a Conversation after each completed
-Turn. Search, the dashboard, unfurls, and MCP read them. Enable them in app
-configuration:
-
-```ts
-import { createApp } from "@sentry/junior";
-
-const app = await createApp({
-  conversationMetadata: { enabled: true },
-});
-```
-
-This option costs one fast-model call and one embedding per completed Turn.
-The example app and `junior chat` enable it.
+After each completed Turn, Junior updates the summary of the Conversation and
+its embedding. Search, the dashboard, unfurls, and MCP read them. This is
+always on and costs one fast-model call and one embedding per completed Turn.
 
 ## Event embeddings
 

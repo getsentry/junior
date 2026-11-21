@@ -11,6 +11,7 @@ import {
 } from "@/api";
 import { notificationSettingsSchema } from "@/api/schema";
 import { createSlackActor } from "@/chat/actor";
+import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
@@ -145,6 +146,8 @@ async function completeDashboardTurn(
   await scheduleSessionCompletedPluginTasks(
     { conversationId, sessionId: "turn-1" },
     async (message) => {
+      // The Conversation metadata task is out of scope here.
+      if (message.plugin === CONVERSATION_METADATA_TASK.plugin) return;
       scheduled.push(`${message.plugin}.${message.name}`);
       await processPluginTask(message);
     },

@@ -228,10 +228,12 @@ describe("plugin background tasks", () => {
       (message) => queue.send(message),
     );
     const messages = queue.queuedMessages();
-    // Core event search also stores lexemes after every completed Turn.
+    // Core event search and Conversation metadata also run after every
+    // completed Turn.
     expect(messages.map((message) => message.plugin)).toEqual([
       "task-demo",
       "event-search",
+      "junior",
     ]);
 
     await processPluginTask(messages[0]!);
@@ -867,6 +869,7 @@ describe("plugin background tasks", () => {
       "task-send-failure-demo",
       "task-send-success-demo",
       "event-search",
+      "junior",
     ]);
   });
 

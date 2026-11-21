@@ -236,11 +236,8 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const { setConversationMetadataEnabled } =
-    await import("@/chat/conversations/metadata/task");
   const { setEventEmbeddingsConfig } =
     await import("@/chat/conversations/event-embedding-config");
-  setConversationMetadataEnabled(true);
   setEventEmbeddingsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =

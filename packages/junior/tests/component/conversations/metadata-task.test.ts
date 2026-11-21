@@ -12,10 +12,7 @@ import { createLocalSource } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import { botConfig } from "@/chat/config";
 import { writeConversationMetadata } from "@/chat/conversations/metadata/store";
-import {
-  CONVERSATION_METADATA_TASK,
-  setConversationMetadataEnabled,
-} from "@/chat/conversations/metadata/task";
+import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import {
   juniorConversationEmbeddings,
@@ -198,7 +195,6 @@ describe("Conversation metadata task", () => {
   let fixture: LocalJuniorSqlFixture;
 
   beforeEach(async () => {
-    setConversationMetadataEnabled(true);
     process.env["JUNIOR_STATE_ADAPTER"] = "memory";
     fixture = await createJuniorSqlFixture();
     TEST.sql = fixture.sql;
@@ -209,7 +205,6 @@ describe("Conversation metadata task", () => {
   });
 
   afterEach(async () => {
-    setConversationMetadataEnabled(false);
     const { closeDb } = await import("@/chat/db");
     const { disconnectStateAdapter } = await import("@/chat/state/adapter");
     await disconnectStateAdapter();
@@ -404,14 +399,5 @@ describe("Conversation metadata task", () => {
     await expect(readMetadata(childConversationId)).resolves.toMatchObject({
       summary: null,
     });
-
-    // The disabled setting schedules and runs nothing.
-    setConversationMetadataEnabled(false);
-    const disabledSend = vi.fn();
-    await scheduleSessionCompletedPluginTasks(
-      task("turn-4").params,
-      disabledSend,
-    );
-    expect(disabledSend).not.toHaveBeenCalledWith(task("turn-4"));
   }, 30_000);
 });

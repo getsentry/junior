@@ -53,7 +53,6 @@ import {
 } from "@/chat/task-execution/checkpoint";
 import {
   CONVERSATION_METADATA_TASK,
-  isConversationMetadataEnabled,
   updateConversationMetadata,
 } from "@/chat/conversations/metadata/task";
 import { getRegistrations } from "./agent-hooks";
@@ -508,11 +507,8 @@ export async function scheduleSessionCompletedPluginTasks(
         plugin: plugin.manifest.name,
       })),
     ),
-    ...(isConversationMetadataEnabled() ? [CONVERSATION_METADATA_TASK] : []),
+    CONVERSATION_METADATA_TASK,
   ];
-  if (tasks.length === 0) {
-    return;
-  }
   const record = await getTurnRecord(
     coreParams.conversationId,
     coreParams.sessionId,
@@ -550,12 +546,10 @@ export async function processPluginTask(
     () =>
       withPluginTaskLock(pluginTaskId(message), async () => {
         if (isConversationMetadataTask(message)) {
-          if (isConversationMetadataEnabled()) {
-            await updateConversationMetadata({
-              conversationId: params.conversationId,
-              turnId: params.sessionId,
-            });
-          }
+          await updateConversationMetadata({
+            conversationId: params.conversationId,
+            turnId: params.sessionId,
+          });
           return;
         }
         const resolved = findPluginTask(message);
