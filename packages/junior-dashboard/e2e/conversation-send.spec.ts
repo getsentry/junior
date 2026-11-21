@@ -13,6 +13,7 @@ import { expect, test } from "./test";
 import { routeConversationVersion, withRequestedMailbox } from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
+import { pickOption } from "./pick-option";
 
 // Classic home sends to the Lead. lead-home.spec.ts covers it.
 test("starts and continues conversations from the dashboard @new", async ({
@@ -112,7 +113,7 @@ test("starts and continues conversations from the dashboard @new", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await page.getByRole("combobox", { name: "Conversation visibility" }).click();
-  await page.getByRole("option", { name: "Private" }).click();
+  await pickOption(page.getByRole("option", { name: "Private" }));
   const startComposer = page.getByLabel("Start a conversation");
   const imageBase64 = mockChartPng.toString("base64");
   // Any file type goes. A file over the per-file cap does not. Build large

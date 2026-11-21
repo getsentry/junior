@@ -52,6 +52,8 @@ import {
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
   cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
   objectLinksQuerySchema,
@@ -130,7 +132,10 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
-import { readMockCacheWarmingSavings } from "./cache-warming";
+import {
+  readMockCacheHealth,
+  readMockCacheWarmingSavings,
+} from "./cache-warming";
 import {
   cancelMockConversationWatch,
   readMockConversationWatches,
@@ -264,6 +269,16 @@ export function createMockReportingApi(): Hono<{
       }),
   );
   mountMockPeopleRoutes(app);
+  app.get("/cache-warming/health", (c) => {
+    const query = cacheHealthQuerySchema.safeParse(c.req.query());
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    return jsonResponse(
+      cacheHealthReportSchema,
+      readMockCacheHealth(query.data.window),
+    );
+  });
   app.get("/cache-warming/savings", (c) => {
     const days = Number(c.req.query("days") ?? 30);
     if (![1, 7, 30, 90].includes(days)) {

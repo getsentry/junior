@@ -25,7 +25,7 @@ Read the reference files at the end when your work touches their area.
 - Store money in Postgres as whole micro-USD: a `bigint` column or an integer
   metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`.
   Check: `pnpm money-units:check`.
-- Group files by feature. No feature-directory barrels.
+- Group files by feature and name paths by role. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
 - This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
@@ -94,7 +94,7 @@ One simulator can use about 10 GB of memory, so:
 - `TELEMETRY.md`: span, metric, and attribute names.
 - `design/`: the goals and rules of each major system.
 - `policies/correctness-complexity.md`: how much design a fix needs.
-- `policies/interface-design.md`: function and module shape, lifecycle state.
+- `policies/interface-design.md`: module shape, file layout, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.
 - `policies/runtime-boundary-schemas.md`: validating data at runtime edges.
 - `policies/provider-boundaries.md`: what belongs in core vs. a plugin.

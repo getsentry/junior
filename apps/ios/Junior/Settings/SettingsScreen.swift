@@ -58,6 +58,7 @@ struct SettingsScreen: View {
           }
         }
         .padding(16)
+        .readableWidth()
       }
     }
     .background(Tokens.bg)

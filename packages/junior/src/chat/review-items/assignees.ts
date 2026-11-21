@@ -2,7 +2,7 @@ import { mapBounded } from "@/chat/fan-out";
 import { and, eq, inArray, isNull, sql, type SQL } from "drizzle-orm";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAutomations,

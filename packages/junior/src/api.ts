@@ -27,7 +27,7 @@ import { createReviewItemRoutes } from "./api/review-items/routes";
 import { createInboxSnoozeRoutes } from "./api/inbox-snoozes/routes";
 import { createWorkspaceRoutes } from "./api/workspaces/routes";
 import type { JuniorApiEnv, JuniorApiVariables } from "./api/route";
-import { apiErrorSchema } from "./api/schema/common";
+import { apiErrorSchema } from "./api/schema/response";
 import {
   healthReportSchema,
   pluginOperationalReportFeedSchema,

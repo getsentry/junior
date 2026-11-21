@@ -9,12 +9,14 @@ struct HomeScreen: View {
   @State private var archiveError: String?
   @State private var undo: MCPConversation?
   @FocusState private var searchFocused: Bool
+  @Environment(\.splitColumn) private var column
 
   var body: some View {
     VStack(spacing: 0) {
       AppHeader(title: app.agentName)
       ScrollView {
         LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
+          if column == .list { NewConversationRow().padding(.bottom, 8) }
           SearchField(placeholder: "Search conversations…", text: $model.query)
             .focused($searchFocused)
             .padding(.bottom, 12)
@@ -27,7 +29,8 @@ struct HomeScreen: View {
       .scrollDismissesKeyboard(.interactively)
       .refreshable { await model.load(app) }
       .overlay(alignment: .bottom) { toast }
-      NewConversationComposer()
+      // Beside the list, the open pane has the composer.
+      if column != .list { NewConversationComposer() }
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
@@ -157,6 +160,33 @@ extension HomeScreen {
   }
 }
 
+/// Above the list beside the open item: closes it to show the
+/// new-conversation composer (`ConversationSidebar.tsx`).
+private struct NewConversationRow: View {
+  @Environment(AppModel.self) private var app
+
+  var body: some View {
+    Button {
+      app.path = []
+    } label: {
+      HStack(spacing: 8) {
+        Icon("pencil", size: 12)
+          .foregroundStyle(Tokens.accentText)
+          .frame(width: 18, height: 18)
+          .background(Tokens.accent.opacity(0.18), in: RoundedRectangle(cornerRadius: 6))
+        Text("New conversation").type(.sm, .medium).foregroundStyle(Tokens.text)
+        Spacer(minLength: 0)
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 8)
+      .background(app.path.isEmpty ? Tokens.fillHover : .clear, in: RoundedRectangle(cornerRadius: 8))
+      .contentShape(RoundedRectangle(cornerRadius: 8))
+    }
+    .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft))
+    .accessibilityAddTraits(app.path.isEmpty ? .isSelected : [])
+  }
+}
+
 /// One home card (`ConversationHomeList.tsx`): title, state, time, and where
 /// the Conversation lives.
 struct ConversationCard: View {
@@ -167,7 +197,7 @@ struct ConversationCard: View {
 
   var body: some View {
     Button {
-      app.path.append(.conversation(row.conversationId))
+      app.path = [route]
     } label: {
       // A card with only a title centers it against the tile, as the web's
       // stretched column does.
@@ -191,7 +221,7 @@ struct ConversationCard: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 10)
-      .listCard()
+      .listCard(selected: app.path.first == route)
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft, scale: 0.99))
@@ -203,7 +233,8 @@ struct ConversationCard: View {
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(accessibilityText)
     .accessibilityAddTraits(.isButton)
-    .accessibilityAction { app.path.append(.conversation(row.conversationId)) }
+    .accessibilityAddTraits(app.path.first == route ? .isSelected : [])
+    .accessibilityAction { app.path = [route] }
     .accessibilityAction(named: row.pinnedAt == nil ? "Pin" : "Unpin", onPin)
     .accessibilityAction(named: row.archivedAt == nil ? "Archive" : "Restore", onArchive)
   }
@@ -224,6 +255,8 @@ struct ConversationCard: View {
   }
 
   private var hasBody: Bool { row.turnActive || row.locationLabel != nil }
+
+  private var route: Route { .conversation(row.conversationId) }
 
   private var tile: some View {
     Icon(row.surface == "scheduler" ? "clock" : "message-square", size: 15)

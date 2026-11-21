@@ -1710,6 +1710,27 @@ export async function moveIdleConversationDestination(args: {
   });
 }
 
+/**
+ * Run `work` while no Run holds the Conversation. A Run takes its lease under
+ * the same mutation lock, so none can start until `work` ends. Returns `busy`
+ * without calling `work` when a Run holds the Conversation. `work` calls
+ * `fence` right before its durable write; it throws when the lock expired.
+ */
+export async function withIdleConversation<T>(
+  args: { conversationId: string; state?: StateAdapter },
+  work: (fence: () => Promise<void>) => Promise<T>,
+): Promise<T | "busy"> {
+  return await withConversationMutation(args, async (state, lock) => {
+    const existing = await readConversation(state, args.conversationId);
+    if (existing && isHeldByRun(existing)) {
+      return "busy";
+    }
+    return await work(() =>
+      fenceConversationMutation(state, lock, args.conversationId),
+    );
+  });
+}
+
 function isHeldByRun(conversation: ConversationExecutionState): boolean {
   return (
     conversation.execution.lease !== undefined ||

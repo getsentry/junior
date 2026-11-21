@@ -16,7 +16,7 @@ import {
   juniorConversations,
   juniorMessageAttachments,
 } from "@/db/schema";
-import type { SandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import type { SandboxFileUpload } from "@/chat/sandbox/file-uploads";
 import {
   conversationDetailTouch,
   touchConversationDetail,

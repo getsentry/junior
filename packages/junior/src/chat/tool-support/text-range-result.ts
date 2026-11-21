@@ -1,6 +1,6 @@
 import { TOOL_RESULT_MAX_CHARS } from "@/chat/tool-support/result-cap";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const DEFAULT_READ_LIMIT = 1000;
 /**

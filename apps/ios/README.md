@@ -1,9 +1,9 @@
 # Junior for iOS
 
-A native SwiftUI client for Junior. It matches the mobile layout of the
-dashboard (the `classic` shell): Conversations, the Inbox, Automations, and the
-navigation drawer, in dark and light themes. It uses only Junior's public API,
-the MCP server at `/api/mcp`, and signs in with its OAuth flow.
+A native SwiftUI client for Junior, laid out like the dashboard (the `classic`
+shell): Conversations, the Inbox, Automations, and the drawer, in dark and light
+themes. On a phone it has the mobile layout; on an iPad, each list shows beside
+the open item. It uses only the MCP server at `/api/mcp` and its OAuth sign-in.
 
 ## Layout
 

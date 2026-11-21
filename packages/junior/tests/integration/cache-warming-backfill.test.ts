@@ -555,9 +555,10 @@ describe("cache warming savings re-fill", () => {
     const read = (60_000 * cost.cacheRead) / 1_000_000;
     const write = (60_000 * cost.cacheWrite) / 1_000_000;
     const close = (usd: number) => expect.closeTo(usd, 3);
-    // Two idle periods and two tool waits, each with one warmed hit.
+    // Two idle periods and two tool waits, each with one warmed hit. The
+    // oracle prices a warmup at 1.1 reads.
     const saved = 2 * (write - read);
-    const oracle = 4 * (write - 2 * read);
+    const oracle = 4 * (write - 2.1 * read);
     expect(report.days.at(-3)).toMatchObject({
       date: "2031-07-01",
       history: true,

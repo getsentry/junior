@@ -6,7 +6,7 @@ import {
 } from "@/chat/db";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { parseSlackTeamId } from "@/chat/slack/ids";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { chatGetPermalinkOk } from "../fixtures/slack/factories/api";
 import { queueSlackApiResponse } from "../msw/handlers/slack-api";
 
