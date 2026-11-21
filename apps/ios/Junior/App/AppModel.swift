@@ -61,6 +61,8 @@ final class AppModel {
   var focusSearch = false
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
+  /// What's New after an update, or the full changelog from Settings.
+  var changelog: ChangelogPage?
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
 
@@ -96,6 +98,7 @@ final class AppModel {
     self.signedIn = store.load()?.server == server
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
     self.fixedNow = launch.fixedNow
+    self.changelog = ChangelogPage.whatsNew()
     if let open = launch.open { self.open(dashboardPath: open) }
   }
 
@@ -190,6 +193,8 @@ final class AppModel {
     // `?drawer=1` opens the navigation drawer over the page (screenshots).
     drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
+    // `/settings?changelog=1` opens the full changelog (screenshots).
+    if components.queryItems?.contains(where: { $0.name == "changelog" }) == true { changelog = .full() }
   }
 
   func go(_ place: Place) {

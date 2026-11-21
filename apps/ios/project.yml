@@ -41,6 +41,9 @@ targets:
     platform: iOS
     sources:
       - path: Junior
+      # Settings and What's New read it from the app bundle.
+      - path: CHANGELOG.md
+        buildPhase: resources
     dependencies:
       - package: JuniorKit
     settings:

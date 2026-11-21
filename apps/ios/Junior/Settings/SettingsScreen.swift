@@ -49,6 +49,11 @@ struct SettingsScreen: View {
               .buttonStyle(.dashboard(.outline))
               .accessibilityIdentifier("sign-out")
           }
+          card("Changelog", description: "Version \(appVersion)") {
+            Button("Show changelog") { app.changelog = .full() }
+              .buttonStyle(.dashboard(.outline))
+              .accessibilityIdentifier("show-changelog")
+          }
           card("Logs", description: "Copy this launch's logs for a bug report. Message text is left out.") {
             Button("Copy logs", action: copyLogs)
               .buttonStyle(.dashboard(.outline))
@@ -84,9 +89,8 @@ struct SettingsScreen: View {
   private func copyLogs() {
     do {
       let lines = try recentLogLines()
-      let info = Bundle.main.infoDictionary
       let header = [
-        "Junior iOS \(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))",
+        "Junior iOS \(appVersion)",
         "Server \(app.server.baseURL.absoluteString), junior \(app.serverVersion ?? "unknown")",
       ]
       UIPasteboard.general.string = (header + lines).joined(separator: "\n")
@@ -94,6 +98,12 @@ struct SettingsScreen: View {
     } catch {
       logsResult = "Could not read the logs. \(error.localizedDescription)"
     }
+  }
+
+  /// This app's version and build, such as `0.1.0 (42)`.
+  private var appVersion: String {
+    let info = Bundle.main.infoDictionary
+    return "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
   }
 
   /// A raised card: `text-lg font-bold` title, `text-sm` description.
