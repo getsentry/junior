@@ -3,6 +3,7 @@ import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { getQueueProvider, type QueueWorker } from "@/chat/queue/provider";
@@ -53,6 +54,7 @@ vi.hoisted(() => {
 });
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
+const ACTOR = { platform: "slack", teamId: "T123", userId: "U123" } as const;
 const LEASE_MS = 60_000;
 const MAX_ATTEMPTS = 3;
 // A lease that has expired by the next statement.
@@ -164,7 +166,7 @@ type Prepare = Parameters<typeof advanceTurn>[2]["prepare"];
 /** How a test prepares a step, and the model client that the step uses. */
 type Step = { prepare: Prepare; client?: ModelClient };
 
-/** Formats an input as the user message of its text. */
+/** Formats an input as an instruction of the test Actor with its text. */
 function inputMessage(input: UnreadInput): InputMessage {
   return {
     inputId: input.inputId,
@@ -173,6 +175,7 @@ function inputMessage(input: UnreadInput): InputMessage {
       content: [{ type: "text", text: String(input.payload["text"]) }],
       timestamp: input.sentAt.getTime(),
     },
+    provenance: instructionProvenanceFor(ACTOR),
   };
 }
 
@@ -681,6 +684,10 @@ describe("advanceTurn", () => {
       `inbox:${inputId}`,
       undefined,
     ]);
+    expect(events[0]!.data).toMatchObject({
+      type: "user_message",
+      provenance: { authority: "instruction", actor: ACTOR },
+    });
     await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([]);
   });
 

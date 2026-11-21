@@ -6,6 +6,7 @@ import type {
   UserMessage,
 } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { findUnreadInputs } from "@/core/turn/inbox";
@@ -29,6 +30,7 @@ import {
 } from "../../../fixtures/sql";
 
 const CONVERSATION_ID = "slack:C123:1718123456.000000";
+const ACTOR = { platform: "slack", teamId: "T123", userId: "U123" } as const;
 const LEASE_MS = 60_000;
 // A lease that has expired by the next statement.
 const EXPIRED_LEASE_MS = 0;
@@ -337,7 +339,11 @@ describe("Turn state", () => {
 
   it("appends the inputs before the step's messages, and writes each input once", async () => {
     const inputId = await addTestInput("How many Turns?");
-    const input = { inputId, message: question() };
+    const input = {
+      inputId,
+      message: question(),
+      provenance: instructionProvenanceFor(ACTOR),
+    };
     const first = (await claim())!;
     await expect(
       commitStep(
@@ -363,6 +369,10 @@ describe("Turn state", () => {
       undefined,
       undefined,
     ]);
+    expect(events[0]!.data).toMatchObject({
+      type: "user_message",
+      provenance: { authority: "instruction", actor: ACTOR },
+    });
     await expect(loadHistory()).resolves.toEqual({
       types: [
         "user_message",

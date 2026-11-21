@@ -48,9 +48,10 @@ type AdvanceTurnOptions = {
   client: ModelClient;
   /**
    * Builds the system prompt, tools and model settings for the claimed Turn,
-   * and turns each unread input into a user message. It must return every
-   * input it gets, once, in the order the step reads them. It gets no inputs
-   * when the step runs tool calls.
+   * and turns each unread input into a user message with its provenance,
+   * such as instruction authority for the Actor who sent it. It must return
+   * every input it gets, once, in the order the step reads them. It gets no
+   * inputs when the step runs tool calls.
    */
   prepare: (
     turn: ClaimedTurn,

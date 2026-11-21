@@ -234,8 +234,8 @@ export async function commitStep(
       await createSqlConversationEventStore(executor).append(
         turn.conversationId,
         [
-          ...inputs.map(({ inputId, message }) => ({
-            data: historyItemFromPiMessage(message, contextProvenance),
+          ...inputs.map(({ inputId, message, provenance }) => ({
+            data: historyItemFromPiMessage(message, provenance),
             idempotencyKey: inputEventKey(inputId),
             createdAtMs: message.timestamp,
           })),
