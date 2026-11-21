@@ -22,7 +22,7 @@ import {
 } from "@/chat/db";
 import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -359,7 +359,7 @@ describe("conversation auto-archive API", () => {
         });
     }
     // An open action item for the viewer keeps the conversation in the feed.
-    await insertReviewItem(getDb(), {
+    await insertInboxItem(getDb(), {
       owner: { id: waitingId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
@@ -616,7 +616,7 @@ describe("conversation auto-archive API", () => {
 
     // An action item for Everyone waits on a person too, until it closes.
     for (const conversationId of [childItemId, childItemClosedId]) {
-      const item = await insertReviewItem(getDb(), {
+      const item = await insertInboxItem(getDb(), {
         owner: { id: `${conversationId}:child`, kind: "conversation" },
         assignedToEveryone: true,
         assigneeUserIds: [],
@@ -630,7 +630,7 @@ describe("conversation auto-archive API", () => {
         visibility: "public",
       });
       if (conversationId === childItemClosedId) {
-        await closeReviewItem(getDb(), {
+        await closeInboxItem(getDb(), {
           id: item!.id,
           nowMs: quietMs,
           status: "dismissed",

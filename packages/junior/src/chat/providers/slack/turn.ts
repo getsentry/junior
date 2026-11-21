@@ -27,11 +27,11 @@ import {
   getSlackErrorObservabilityAttributes,
   isRetryableSlackPostError,
 } from "@/chat/slack/errors";
-import { getMessageReviewItemChange } from "@/chat/review-items/message-change";
+import { getMessageInboxItemChange } from "@/chat/inbox-items/message-change";
 import {
-  loadReviewItemInput,
+  loadInboxItemInput,
   savedInputInstruction,
-} from "@/chat/review-items/prompt-input";
+} from "@/chat/inbox-items/prompt-input";
 import {
   buildSteeringPiMessage,
   withoutSavedSteeringMessages,
@@ -470,15 +470,15 @@ export function createSlackTurn(deps: SlackTurnDeps) {
         ): Promise<AgentSteeringMessage[]> => {
           return await mapBounded(queuedMessages, async (queued) => {
             const attachments = queued.message.attachments;
-            // An answer steers in as its Review item tag.
-            const reviewItemInput = await loadReviewItemInput(
-              getMessageReviewItemChange(queued.message),
+            // An answer steers in as its Inbox item tag.
+            const inboxItemInput = await loadInboxItemInput(
+              getMessageInboxItemChange(queued.message),
             );
             return {
               actor: inboundMessageActor(queued),
-              ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
+              ...(inboxItemInput ? { kind: "runtime" as const } : undefined),
               provenance: inboundMessageProvenance(queued, teamId),
-              text: reviewItemInput?.text ?? queued.userText,
+              text: inboxItemInput?.text ?? queued.userText,
               timestampMs: queued.message.metadata.dateSent.getTime(),
               omittedImageAttachmentCount:
                 !canReadImages() && hasPotentialImageAttachment(attachments)
@@ -1085,7 +1085,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
           )?.location;
           const savedInput = await savedInputInstruction({
             runtime: Boolean(options.execution?.dispatch),
-            reviewItemChange: getMessageReviewItemChange(message),
+            reviewItemChange: getMessageInboxItemChange(message),
             text: effectiveUserText,
           });
           const run: AgentRun = {

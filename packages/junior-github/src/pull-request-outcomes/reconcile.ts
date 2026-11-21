@@ -14,7 +14,7 @@ import type {
   CodeChangePublisher,
   EventPublisher,
   PluginConversationAnnotations,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -102,7 +102,7 @@ interface ReconcileArgs {
   }): Promise<unknown>;
   log: Pick<PluginLogger, "error" | "warn">;
   nowMs: number;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
 }
 
@@ -231,7 +231,7 @@ async function reconcilePullRequest(
   await closeGitHubConflictItem({
     db: args.db,
     ref: { number: pullRequest.number, repositoryFullName: nameWithOwner },
-    reviewItems: args.reviewItems,
+    inboxItems: args.inboxItems,
     ...(pullRequest.merged
       ? { reason: "The pull request merged.", status: "done" }
       : {
@@ -245,7 +245,7 @@ async function reconcilePullRequest(
     db: args.db,
     log: args.log,
     outcome,
-    reviewItems: args.reviewItems,
+    inboxItems: args.inboxItems,
   });
 }
 

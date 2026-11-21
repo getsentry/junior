@@ -12,7 +12,7 @@
  * MCP tools, the `codemode` declarations and the `searchTools` sources are
  * also built by each run, outside `createTools`.
  */
-import { searchReviewItemsToolDefinition } from "@/chat/review-items/tools/search";
+import { searchInboxItemsToolDefinition } from "@/chat/inbox-items/tools/search";
 import type { Platform } from "@sentry/junior-plugin-api";
 import type { ZodTypeAny } from "zod";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
@@ -51,8 +51,8 @@ import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
 import { runOperatorSqlToolDefinition } from "@/chat/tools/operator-sql";
 import { readConversationEventToolDefinition } from "@/chat/tools/read-conversation-event";
-import { updateReviewItemToolDefinition } from "@/chat/review-items/tools/update";
-import { addReviewItemToolDefinition } from "@/chat/review-items/tools/add";
+import { updateInboxItemToolDefinition } from "@/chat/inbox-items/tools/update";
+import { addInboxItemToolDefinition } from "@/chat/inbox-items/tools/add";
 import { archiveAgentToolDefinition } from "@/chat/tools/runtime/archive-agent";
 import { messageAgentToolDefinition } from "@/chat/tools/runtime/message-agent";
 import { noReplyToolDefinition } from "@/chat/tools/runtime/no-reply";
@@ -292,9 +292,9 @@ const CORE_TOOLS = {
     definition: () => slackChannelListMessagesToolDefinition,
   },
   addReaction: RUN_BUILT,
-  addReviewItem: always(addReviewItemToolDefinition),
-  searchReviewItems: always(searchReviewItemsToolDefinition),
-  updateReviewItem: always(updateReviewItemToolDefinition),
+  addInboxItem: always(addInboxItemToolDefinition),
+  searchInboxItems: always(searchInboxItemsToolDefinition),
+  updateInboxItem: always(updateInboxItemToolDefinition),
 } satisfies Record<string, StaticToolEntry | RunBuiltToolEntry>;
 
 type CoreToolSlotKey = keyof typeof CORE_TOOLS;

@@ -1,4 +1,4 @@
-import { mockReviewItems, rowHead } from "./inbox-fixture";
+import { mockInboxItems, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Pins in In flight keep the viewer's order: only pins drag, and a drag
@@ -37,7 +37,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveText([
@@ -103,7 +103,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
@@ -151,7 +151,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     const saves: unknown[] = [];
     page.on("request", (request) => {
       if (

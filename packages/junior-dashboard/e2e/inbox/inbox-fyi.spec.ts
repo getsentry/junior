@@ -1,5 +1,5 @@
 import {
-  mockReviewItems,
+  mockInboxItems,
   pinChecks,
   pinReview,
   prReview,
@@ -22,7 +22,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...pinReview,
       body: "#91 has new commits since you requested changes.\n\nhttps://github.com/getsentry/payments/pull/91",
     };
-    await mockReviewItems(page, { open: [rereview] });
+    await mockInboxItems(page, { open: [rereview] });
     await page.goto(`${dashboard.baseURL}/?item=${rereview.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(asks.getByRole("region", { name: card })).toHaveCount(1);
@@ -35,7 +35,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [prReview] });
+    await mockInboxItems(page, { open: [prReview] });
     // Only a live read knows this change, so its size shows on the card.
     await page.route("**/api/objects?**", (route) =>
       route.fulfill({
@@ -81,7 +81,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [pinReview, pinChecks],
     });
     await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
@@ -167,7 +167,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       body: `${pinChecks.body}\n\n<@U0MOCKADA> owns the flaky suite.`,
       mentions: [{ fullName: "Ada Lovelace", slackUserId: "U0MOCKADA" }],
     };
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [pinReview, notice],
     });
     // A link to the notice opens the review's row, which holds it.
@@ -189,7 +189,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, pinChecks] });
+    await mockInboxItems(page, { open: [pinReview, pinChecks] });
     await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     const asks = todo.getByRole("region", { name: /: asks$/ });
@@ -213,7 +213,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [pinReview, releaseNotes] });
+    await mockInboxItems(page, { open: [pinReview, releaseNotes] });
     await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
     // Its Conversation's row in To do holds the ask only.
     const todo = page.getByRole("region", { name: "To do" });

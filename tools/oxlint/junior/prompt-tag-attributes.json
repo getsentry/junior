@@ -34,8 +34,8 @@
     "plugin-contribution": ["id", "plugin"],
     "tool": ["name"]
   },
-  "packages/junior/src/chat/review-items/prompt-input.ts": {
-    "review-item-answer": ["id"]
+  "packages/junior/src/chat/inbox-items/prompt-input.ts": {
+    "inbox-item-answer": ["id"]
   },
   "packages/junior/src/chat/services/conversation-memory.ts": {
     "message": ["author_id", "author_name", "index", "role", "slack_ts", "ts"]

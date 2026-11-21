@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
-// Mock Conversations with open Review items that wait on the viewer.
+// Mock Conversations with open Inbox items that wait on the viewer.
 const ONE_QUESTION_ID = "internal:question-qa";
 const THREE_QUESTIONS_ID = "internal:questions-qa";
 
@@ -155,7 +155,7 @@ test("a record's Answer waits for its question to load", async ({
   let held: { title: string }[] = [];
   await page.route(
     (url) =>
-      url.pathname === "/api/review-items" &&
+      url.pathname === "/api/inbox-items" &&
       url.searchParams.get("conversationId") === THREE_QUESTIONS_ID,
     async (route) => {
       const url = new URL(route.request().url());
@@ -263,7 +263,7 @@ test("steps through several questions with the keyboard", async ({
   // its error. The message waits with the draft.
   await question.getByRole("button", { name: "Next question" }).click();
   await expect(question).toContainText("2 of 2", { useInnerText: true });
-  const failing = "**/api/review-items/qa-migration-tables/actions";
+  const failing = "**/api/inbox-items/qa-migration-tables/actions";
   await page.route(failing, (route) =>
     route.fulfill({ json: { error: "The batch is locked." }, status: 409 }),
   );
@@ -305,7 +305,7 @@ for (const view of [{ ...desktop, height: 560 }, mobile]) {
       releaseTables = resolve;
     });
     await page.route(
-      "**/api/review-items/qa-migration-tables",
+      "**/api/inbox-items/qa-migration-tables",
       async (route) => {
         await tablesHeld;
         await route.fallback();
@@ -370,11 +370,11 @@ test("a question that docks while the reader reads back does not move the transc
   await page.setViewportSize({ ...desktop, height: 480 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   // The question docks only after the reader scrolled up, as if Junior just
-  // asked it. The versions poll then reads the Review items again.
+  // asked it. The versions poll then reads the Inbox items again.
   let asked = false;
   await page.route(
     (url) =>
-      url.pathname === "/api/review-items" &&
+      url.pathname === "/api/inbox-items" &&
       url.searchParams.get("conversationId") === ONE_QUESTION_ID,
     async (route) => {
       if (asked) await route.fallback();
@@ -385,7 +385,7 @@ test("a question that docks while the reader reads back does not move the transc
     const response = await route.fetch();
     const versions = await response.json();
     await route.fulfill({
-      json: { ...versions, reviewItems: asked ? "asked" : "waiting" },
+      json: { ...versions, inboxItems: asked ? "asked" : "waiting" },
       response,
     });
   });
@@ -419,7 +419,7 @@ test("a question open on load does not mark its record while later pages load", 
   });
   await page.route(
     (url) =>
-      url.pathname === "/api/review-items" &&
+      url.pathname === "/api/inbox-items" &&
       url.searchParams.get("conversationId") === ONE_QUESTION_ID,
     async (route) => {
       if (new URL(route.request().url()).searchParams.has("cursor")) {
@@ -469,7 +469,7 @@ for (const failingPage of ["first", "second"] as const) {
     let healthy = false;
     await page.route(
       (url) =>
-        url.pathname === "/api/review-items" &&
+        url.pathname === "/api/inbox-items" &&
         url.searchParams.get("conversationId") === ONE_QUESTION_ID,
       async (route) => {
         const url = new URL(route.request().url());

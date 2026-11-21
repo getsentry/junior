@@ -25,7 +25,7 @@ table documents its attributes and how to read them. Paths are under
 | `app.credential.provider`           | auth provider                | auth logs                   |
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
-| `app.review_item.id`                | Review item                  | Inbox, delivery logs  |
+| `app.inbox_item.id`                | Inbox item                  | Inbox, delivery logs  |
 | `vcs.change.id`                     | Code change number           | code change record spans    |
 
 - `gen_ai.conversation.id` also names child agents. Count root Conversations
@@ -79,7 +79,7 @@ attributes. Nested logs and spans inherit them.
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
 | Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
-| Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                          | `chat/review-items/`                                            |
+| Inbox item change not delivered     | `inbox_item.*`, span `inbox_item.deliver`                                                          | `chat/inbox-items/`                                            |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |

@@ -4,7 +4,7 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
   expandRow,
   license,
-  mockReviewItems,
+  mockInboxItems,
   rollout,
   rowHead,
 } from "./inbox-fixture";
@@ -34,7 +34,7 @@ test.describe("snooze times", { tag: "@new" }, () => {
   test.beforeEach(async ({ dashboard, page }) => {
     await page.clock.install({ time: NOW_MS });
     // The server checks the wake time against the page's clock.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       now: () => page.evaluate(() => Date.now()),
       open: [license, rollout],
     });

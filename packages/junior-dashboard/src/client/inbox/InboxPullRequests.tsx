@@ -9,7 +9,7 @@ import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
 import { cn } from "../styles";
 import { inboxCardClass } from "./inboxRowStyles";
 import type { InboxFeedPages } from "./inboxData";
-import type { InboxBundle } from "./reviewItemFormat";
+import type { InboxBundle } from "./inboxItemFormat";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 /** One open code change, with the pull request asks that name it. */

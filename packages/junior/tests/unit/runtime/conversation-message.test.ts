@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { Message } from "chat";
 import { bindMessageActorIdentity } from "@/chat/services/message-actor-identity";
-import { bindMessageReviewItemChange } from "@/chat/review-items/message-change";
+import { bindMessageInboxItemChange } from "@/chat/inbox-items/message-change";
 import { toConversationMessage } from "@/chat/runtime/conversation-message";
 
 function createMessage(authorUserId = "U039RR91S") {
@@ -129,13 +129,13 @@ describe("conversation message actor identity", () => {
   });
 });
 
-describe("conversation message Review item change", () => {
+describe("conversation message Inbox item change", () => {
   // A Slack card click becomes Slack input. Its record must reach the saved
   // Message, so the dashboard shows the click as a change.
   it("saves the record bound to a restored Slack input", () => {
     const message = createMessage();
     const record = { kind: "dismissed", reviewItemId: "item-1" } as const;
-    bindMessageReviewItemChange(message, record);
+    bindMessageInboxItemChange(message, record);
 
     expect(
       toConversationMessage({ entry: message, text: message.text }).meta

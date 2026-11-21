@@ -5,7 +5,7 @@ import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  // Mock Conversations with open Review items that wait on the viewer.
+  // Mock Conversations with open Inbox items that wait on the viewer.
   const ONE_QUESTION_ID = "internal:question-qa";
   const THREE_QUESTIONS_ID = "internal:questions-qa";
 
@@ -200,7 +200,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // its error. The message waits with the draft.
     await question.getByRole("button", { name: "Next question" }).click();
     await expect(question).toContainText("2 of 2", { useInnerText: true });
-    const failing = "**/api/review-items/qa-migration-tables/actions";
+    const failing = "**/api/inbox-items/qa-migration-tables/actions";
     await page.route(failing, (route) =>
       route.fulfill({ json: { error: "The batch is locked." }, status: 409 }),
     );
@@ -245,7 +245,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         releaseTables = resolve;
       });
       await page.route(
-        "**/api/review-items/qa-migration-tables",
+        "**/api/inbox-items/qa-migration-tables",
         async (route) => {
           await tablesHeld;
           await route.fallback();
@@ -310,11 +310,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize({ ...desktop, height: 480 });
     await page.emulateMedia({ reducedMotion: "reduce" });
     // The question docks only after the reader scrolled up, as if Junior just
-    // asked it. The versions poll then reads the Review items again.
+    // asked it. The versions poll then reads the Inbox items again.
     let asked = false;
     await page.route(
       (url) =>
-        url.pathname === "/api/review-items" &&
+        url.pathname === "/api/inbox-items" &&
         url.searchParams.get("conversationId") === ONE_QUESTION_ID,
       async (route) => {
         if (asked) await route.fallback();
@@ -325,7 +325,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       const response = await route.fetch();
       const versions = await response.json();
       await route.fulfill({
-        json: { ...versions, reviewItems: asked ? "asked" : "waiting" },
+        json: { ...versions, inboxItems: asked ? "asked" : "waiting" },
         response,
       });
     });
@@ -359,7 +359,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.route(
       (url) =>
-        url.pathname === "/api/review-items" &&
+        url.pathname === "/api/inbox-items" &&
         url.searchParams.get("conversationId") === ONE_QUESTION_ID,
       async (route) => {
         if (new URL(route.request().url()).searchParams.has("cursor")) {
@@ -410,7 +410,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       let healthy = false;
       await page.route(
         (url) =>
-          url.pathname === "/api/review-items" &&
+          url.pathname === "/api/inbox-items" &&
           url.searchParams.get("conversationId") === ONE_QUESTION_ID,
         async (route) => {
           const url = new URL(route.request().url());

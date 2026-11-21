@@ -11,8 +11,8 @@ import {
   type Ref,
 } from "react";
 import type {
-  ReviewItemActionBody,
-  ReviewItemPayload,
+  InboxItemActionBody,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
@@ -25,11 +25,11 @@ import { Button } from "../components/ui/button";
 import { Kbd } from "../components/ui/kbd";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
-import { useReviewItemAction, useReviewItemsData } from "./queries";
-import { ReviewItemEvidence } from "./ReviewItemEvidence";
-import { reviewItemWaitsForAnswer } from "./reviewItemFormat";
-import { ReviewItemTitle } from "./ReviewItemPeople";
-import { reviewItemTitleText } from "./reviewItemFormat";
+import { useInboxItemAction, useInboxItemsData } from "./queries";
+import { InboxItemEvidence } from "./InboxItemEvidence";
+import { inboxItemWaitsForAnswer } from "./inboxItemFormat";
+import { InboxItemTitle } from "./InboxItemPeople";
+import { inboxItemTitleText } from "./inboxItemFormat";
 
 /** Lets the message box send the picks of the docked questions. */
 export type ComposerQuestionAnswers = {
@@ -44,7 +44,7 @@ export type ComposerQuestionAnswers = {
  * oldest first, so the question that waited longest docks first.
  */
 export function useComposerQuestions(conversationId: string) {
-  const { items, query } = useReviewItemsData({ conversationId });
+  const { items, query } = useInboxItemsData({ conversationId });
   // The list keeps the items of the last Conversation while the new one
   // loads. Those questions are not for this Conversation.
   const stale = query.isPlaceholderData;
@@ -61,7 +61,7 @@ export function useComposerQuestions(conversationId: string) {
     void fetchNextPage();
   }, [failed, fetchNextPage, hasNextPage, isFetching, pageCount, stale]);
   const questions = useMemo(
-    () => (stale ? [] : items.filter(reviewItemWaitsForAnswer)),
+    () => (stale ? [] : items.filter(inboxItemWaitsForAnswer)),
     [items, stale],
   );
   // A failed page hides the questions on it and after it.
@@ -130,8 +130,8 @@ export function ComposerQuestion(props: {
   /** Reports whether a question has picks that are not sent. */
   onAnswersChange(hasAnswers: boolean): void;
   /** Reports the question that shows, and whether the reader moved to it. */
-  onShow?(item: ReviewItemPayload, byReader: boolean): void;
-  questions: readonly ReviewItemPayload[];
+  onShow?(item: InboxItemPayload, byReader: boolean): void;
+  questions: readonly InboxItemPayload[];
   ref?: Ref<HTMLElement>;
 }) {
   const [selectedId, setSelectedId] = useState<string>();
@@ -257,7 +257,7 @@ export function ComposerQuestion(props: {
 
   return (
     <MessageCard
-      aria-label={`Question: ${reviewItemTitleText(item)}`}
+      aria-label={`Question: ${inboxItemTitleText(item)}`}
       // Esc here dismisses the question, so it does not leave the page.
       data-escape-scope=""
       className="mb-2 grid gap-2 px-4 py-3 outline-none focus-visible:ring-2 focus-visible:ring-dashboard-focus/50 md:max-h-[50vh] md:overflow-y-auto md:px-5"
@@ -326,7 +326,7 @@ export function ComposerQuestion(props: {
 function DockedQuestion(props: {
   afterAction(closed: boolean): void;
   formRef: Ref<UserInputFormHandle>;
-  item: ReviewItemPayload;
+  item: InboxItemPayload;
   /** An action starts to close this question, or failed to close it. */
   onCloseShown(closing: boolean): void;
   onShowRecord(): void;
@@ -334,14 +334,14 @@ function DockedQuestion(props: {
   stepper: ReactNode;
 }) {
   const { item, onPicksChange } = props;
-  const action = useReviewItemAction();
+  const action = useInboxItemAction();
   const [error, setError] = useState<string>();
   const [unsent, setUnsent] = useState(false);
   useEffect(() => {
     onPicksChange(item.id, unsent);
   }, [item.id, onPicksChange, unsent]);
 
-  async function run(body: ReviewItemActionBody) {
+  async function run(body: InboxItemActionBody) {
     setError(undefined);
     const closing = body.action !== "take";
     // The list can drop the item before the action resolves.
@@ -371,7 +371,7 @@ function DockedQuestion(props: {
             onClick={props.onShowRecord}
             variant="link"
           >
-            <ReviewItemTitle item={item} />
+            <InboxItemTitle item={item} />
           </Button>
         </h2>
         {props.stepper}
@@ -400,7 +400,7 @@ function DockedQuestion(props: {
               text={item.request.question}
             />
           </div>
-          <ReviewItemEvidence item={item} />
+          <InboxItemEvidence item={item} />
           <UserInputForm
             docked
             ref={props.formRef}
