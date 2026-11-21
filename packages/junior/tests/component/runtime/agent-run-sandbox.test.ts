@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { createLocalSource } from "@sentry/junior-plugin-api";
 
 const {
@@ -10,7 +11,7 @@ const {
   sessionRecordPiMessageProvenance,
   sessionRecordPiMessages,
   sessionRecordResumed,
-  sessionRecordTurnStartMessageIndex,
+  sessionRecordTurnStart,
   selectedThinkingLevels,
 } = vi.hoisted(() => ({
   agentMode: {
@@ -37,8 +38,8 @@ const {
   sessionRecordResumed: {
     value: false,
   },
-  sessionRecordTurnStartMessageIndex: {
-    value: undefined as number | undefined,
+  sessionRecordTurnStart: {
+    value: undefined as { createdAtMs: number; seq: number } | undefined,
   },
   selectedThinkingLevels: {
     value: [] as unknown[],
@@ -295,6 +296,13 @@ vi.mock("@/chat/oauth-flow", () => ({
   extractOAuthStartedMessageFromToolResults: () => undefined,
 }));
 
+vi.mock("@/chat/conversations/turn-lifecycle", async (importOriginal) => ({
+  ...(await importOriginal<
+    typeof import("@/chat/conversations/turn-lifecycle")
+  >()),
+  loadTurnStart: async () => sessionRecordTurnStart.value,
+}));
+
 vi.mock("@/chat/task-execution/checkpoint", () => ({
   continuableMessages: (messages: unknown[]) => messages,
   loadTurnCheckpoint: async () => ({
@@ -305,12 +313,10 @@ vi.mock("@/chat/task-execution/checkpoint", () => ({
         ? {
             piMessages: [...sessionRecordPiMessages.value],
             piMessageProvenance: [...sessionRecordPiMessageProvenance.value],
-            ...(sessionRecordTurnStartMessageIndex.value !== undefined
-              ? {
-                  turnStartMessageIndex:
-                    sessionRecordTurnStartMessageIndex.value,
-                }
-              : undefined),
+            piMessageSeqs: sessionRecordPiMessages.value.map(
+              (_, index) => index + 1,
+            ),
+            promptSaved: true,
           }
         : undefined,
   }),
@@ -562,7 +568,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     sessionRecordPiMessageProvenance.value = [];
     sessionRecordPiMessages.value = [];
     sessionRecordResumed.value = false;
-    sessionRecordTurnStartMessageIndex.value = undefined;
+    sessionRecordTurnStart.value = undefined;
     selectedThinkingLevels.value = [];
   });
 
@@ -609,7 +615,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
   it("keeps restored AGENTS context when no sandbox is available", async () => {
     sessionRecordResumed.value = true;
-    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordTurnStart.value = { createdAtMs: 0, seq: 0 };
     sessionRecordPiMessages.value = [
       {
         role: "user",
@@ -637,7 +643,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
   it("removes restored AGENTS context when the repository is gone", async () => {
     repositoryInstructionsAvailable.value = false;
     sessionRecordResumed.value = true;
-    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordTurnStart.value = { createdAtMs: 0, seq: 0 };
     sessionRecordPiMessages.value = [
       {
         role: "user",
@@ -687,7 +693,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
       ],
       timestamp: 5,
     };
-    sessionRecordTurnStartMessageIndex.value = 0;
+    sessionRecordTurnStart.value = { createdAtMs: 0, seq: 0 };
     sessionRecordPiMessages.value = [
       checkpointedContext,
       checkpointedInstruction,
@@ -698,7 +704,10 @@ describe("executeAgentRun lazy sandbox boot", () => {
     ];
 
     const reply = await generateLocalReply("continue the work", {
-      history: [checkpointedContext, checkpointedInstruction] as never,
+      history: committedHistory([
+        checkpointedContext,
+        checkpointedInstruction,
+      ] as never),
       state: {
         sandboxRef: { id: "sandbox-test", profileHash: "hash-test" },
       },
@@ -767,7 +776,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     expect(agentsBlocks(first.piMessages)).toEqual([original]);
 
     const second = await generateLocalReply("second request", {
-      history: first.piMessages,
+      history: committedHistory(first.piMessages ?? []),
       state,
     });
     expect(agentsBlocks(second.piMessages)).toEqual([original]);
@@ -775,7 +784,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     // No sandbox at Turn start: the bash call boots one and reads AGENTS.md.
     createSandboxCallCount.value = 0;
     const lazyBoot = await generateLocalReply("lazy boot request", {
-      history: first.piMessages,
+      history: committedHistory(first.piMessages ?? []),
     });
     expect(agentsBlocks(lazyBoot.piMessages)).toEqual([original]);
 
@@ -786,14 +795,14 @@ describe("executeAgentRun lazy sandbox boot", () => {
       userMessage(renderCompactionSummary("Earlier work.")),
     ];
     const afterCompaction = await generateLocalReply("third request", {
-      history: compacted,
+      history: committedHistory(compacted),
       state,
     });
     expect(agentsBlocks(afterCompaction.piMessages)).toEqual([original]);
 
     activeSandboxVersion.value = 2;
     const changed = await generateLocalReply("fourth request", {
-      history: afterCompaction.piMessages,
+      history: committedHistory(afterCompaction.piMessages ?? []),
       state,
     });
     expect(agentsBlocks(changed.piMessages)).toEqual([
@@ -803,7 +812,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
 
     // Unchanged after a replacement: the replacement notice must not count as a change.
     const afterReplace = await generateLocalReply("fifth request", {
-      history: changed.piMessages,
+      history: committedHistory(changed.piMessages ?? []),
       state,
     });
     expect(agentsBlocks(afterReplace.piMessages)).toHaveLength(2);
@@ -811,7 +820,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
     // Removed: one removal notice, then nothing more.
     repositoryInstructionsAvailable.value = false;
     const removed = await generateLocalReply("sixth request", {
-      history: afterReplace.piMessages,
+      history: committedHistory(afterReplace.piMessages ?? []),
       state,
     });
     const removedBlocks = agentsBlocks(removed.piMessages);
@@ -820,7 +829,7 @@ describe("executeAgentRun lazy sandbox boot", () => {
       renderAgentsInstructions({ text: AGENTS_REMOVAL_NOTICE }),
     );
     const afterRemoved = await generateLocalReply("seventh request", {
-      history: removed.piMessages,
+      history: committedHistory(removed.piMessages ?? []),
       state,
     });
     expect(agentsBlocks(afterRemoved.piMessages)).toHaveLength(3);

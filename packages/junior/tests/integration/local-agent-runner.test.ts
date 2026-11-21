@@ -22,7 +22,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import {
   commitMessages,
-  loadProjection,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -653,7 +653,7 @@ describe("local agent runner", () => {
     );
 
     // Agent history carries the first exchange, so thread context omits it.
-    const secondHistory = JSON.stringify(agentRuns[1]?.history ?? []);
+    const secondHistory = JSON.stringify(agentRuns[1]?.history?.messages ?? []);
     expect(secondHistory).toContain("first question");
     expect(secondHistory).toContain("reply to first question");
     expect(agentRuns[1]?.instruction.context).toBeUndefined();
@@ -711,9 +711,11 @@ describe("local agent runner", () => {
       },
     );
 
-    const generatedMessages = await loadProjection({
-      conversationId: conversationId!,
-    });
+    const generatedMessages = (
+      await loadConversationProjection({
+        conversationId: conversationId!,
+      })
+    ).messages;
     expect(generatedMessages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -748,7 +750,7 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[0]?.history).toEqual(generatedMessages);
+    expect(agentRuns[0]?.history?.messages).toEqual(generatedMessages);
   });
 
   it("keeps the delivered local reply successful when a background task fails", async () => {
@@ -839,7 +841,7 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[0]?.history).toEqual(projectedMessages);
+    expect(agentRuns[0]?.history?.messages).toEqual(projectedMessages);
   });
 
   it("does not commit generated Pi output when local delivery fails", async () => {
@@ -878,9 +880,11 @@ describe("local agent runner", () => {
       ),
     ).rejects.toThrow(rawDeliveryError);
 
-    const projection = await loadProjection({
-      conversationId: conversationId!,
-    });
+    const projection = (
+      await loadConversationProjection({
+        conversationId: conversationId!,
+      })
+    ).messages;
     expect(projection).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

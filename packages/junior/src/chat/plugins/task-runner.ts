@@ -62,6 +62,8 @@ import {
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
 import { mapBounded } from "@/chat/fan-out";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 
 // Plugin task messages that one run sends at once.
 const PLUGIN_MESSAGE_SEND_CONCURRENCY = 5;
@@ -185,30 +187,23 @@ function runTranscriptEntry(
 }
 
 /**
- * Slice the current turn's Pi messages with their aligned provenance and strip
- * runtime turn context, keeping each surviving message paired with the exact
- * provenance recorded for it. Stripping can drop or rewrite messages, so the
- * pairing is applied per message rather than by post-strip index.
+ * The current turn's Pi messages with their aligned provenance, without
+ * runtime turn context. Stripping can drop or rewrite messages, so each
+ * surviving message keeps the exact provenance recorded for it.
  */
-function turnMessagesWithProvenance(
+async function turnMessagesWithProvenance(
   record: TurnRecord,
-): Array<{ message: PiMessage; provenance: ConversationMessageProvenance }> {
-  const startIndex = record.turnStartMessageIndex ?? 0;
-  const messages = record.piMessages.slice(startIndex);
-  const provenance = record.piMessageProvenance.slice(startIndex);
-  const paired: Array<{
-    message: PiMessage;
-    provenance: ConversationMessageProvenance;
-  }> = [];
-  for (const [index, message] of messages.entries()) {
-    for (const stripped of stripRuntimeTurnContext([message])) {
-      paired.push({
+): Promise<
+  Array<{ message: PiMessage; provenance: ConversationMessageProvenance }>
+> {
+  const turnStart = await loadTurnStart(record.conversationId, record.turnId);
+  return savedTurnMessages(record, turnStart).flatMap(
+    ({ message, provenance }) =>
+      stripRuntimeTurnContext([message]).map((stripped) => ({
         message: stripped,
-        provenance: provenance[index] ?? { authority: "context" },
-      });
-    }
-  }
-  return paired;
+        provenance,
+      })),
+  );
 }
 
 /** Recover the Slack context author identity from a persisted thread message. */
@@ -374,7 +369,7 @@ async function loadPluginRun(
   const actorUser = runActor
     ? (await readActorIdentity(runActor))?.user
     : undefined;
-  const runEntries = turnMessagesWithProvenance(record)
+  const runEntries = (await turnMessagesWithProvenance(record))
     .map(({ message, provenance }) =>
       runTranscriptEntry(message, provenance, runActor),
     )

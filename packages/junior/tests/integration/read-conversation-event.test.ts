@@ -72,6 +72,7 @@ async function runScript(source: string) {
     reviewer: { review },
   });
   const resume = createResumeState({
+    historySeqs: [],
     checkpoint: { resumed: false, sliceId: 1 },
     conversationId: CURRENT_CONVERSATION_ID,
     destination: context().destination,
