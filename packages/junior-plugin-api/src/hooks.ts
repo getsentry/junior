@@ -62,6 +62,12 @@ export interface FormatMarkdownHookContext {
    */
   mention(account: { provider: string; handle: string }): string | undefined;
   /**
+   * Return the URL of this plugin's object with this annotation key that
+   * the Conversation already has, such as a pull request that Junior opened
+   * or read. Undefined when the Conversation does not have it.
+   */
+  objectUrl(key: string): string | undefined;
+  /**
    * Where the text shows: a Slack message, or the dashboard (`web`). The
    * dashboard shows a bare object link as a card, so keep bare links there.
    */

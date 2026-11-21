@@ -293,6 +293,7 @@ describe("GitHub reply markdown", () => {
       hook?.({
         config: { repo: "getsentry/junior" },
         mention: () => undefined,
+        objectUrl: () => undefined,
         platform: "slack",
         text: "#1509",
       }),
@@ -305,6 +306,7 @@ describe("GitHub reply markdown", () => {
       hook?.({
         config: {},
         mention: () => undefined,
+        objectUrl: () => undefined,
         platform: "web",
         provider: "github",
         text: "@octocat see https://github.com/getsentry/junior/pull/1",
