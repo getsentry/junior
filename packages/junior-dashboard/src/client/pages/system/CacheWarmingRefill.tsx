@@ -6,12 +6,17 @@ import {
 } from "@sentry/junior/api/schema";
 import { Button } from "../../components/ui/button";
 import { formatCompactNumber } from "../../format";
-import { fetchDashboardJson, post } from "../../http";
+import { post } from "../../http";
+import { revalidatedJsonQuery } from "../../revalidation";
 import { formatRelativeTime } from "../../time";
 
 const refillQueryKey = ["dashboard", "cache-warming", "refill"] as const;
 const savingsQueryKey = ["dashboard", "cache-warming", "savings"] as const;
 const REFILL_PATH = "/api/cache-warming/savings/refill";
+const readRefill = revalidatedJsonQuery(
+  cacheWarmingSavingsRefillResponseSchema,
+  REFILL_PATH,
+);
 
 const isActive = (refill: CacheWarmingSavingsRefill | undefined) =>
   refill?.status === "pending" || refill?.status === "running";
@@ -39,13 +44,9 @@ export function CacheWarmingRefill() {
   const queryClient = useQueryClient();
   const query = useQuery({
     queryKey: refillQueryKey,
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        cacheWarmingSavingsRefillResponseSchema,
-        REFILL_PATH,
-        signal,
-      ),
+    queryFn: readRefill,
     // A slice runs about once a minute.
+    // oxlint-disable-next-line query-invalidation/no-refetch-interval -- A re-fill has no version to watch.
     refetchInterval: (current) =>
       isActive(current.state.data?.refill) ? 10_000 : false,
     retry: false,

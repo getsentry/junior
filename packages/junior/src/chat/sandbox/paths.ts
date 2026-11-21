@@ -22,6 +22,8 @@ export const SANDBOX_JUNIOR_ROOT = `${SANDBOX_WORKSPACE_ROOT}/.junior`;
  * root short.
  */
 export const SANDBOX_SCRATCH_ROOT = "/tmp/jr";
+/** Sandbox directory for attachment files that tools write. */
+export const ATTACHMENT_DIR = ".junior/attachments";
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_JUNIOR_ROOT}/bin`;
 
 /**

@@ -4,9 +4,9 @@ import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-l
 import { createSlackMessageAddReactionTool } from "@/chat/slack/tools/message-add-reaction";
 import { createSlackSendFilesTool } from "@/chat/slack/tools/send-files";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
-import { readSandboxFileUpload } from "@/chat/tools/sandbox/file-uploads";
+import { readSandboxFileUpload } from "@/chat/sandbox/file-uploads";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
-import type { ToolState } from "@/chat/tools/types";
+import type { ToolState } from "@/chat/tool-support/types";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import { parseSlackMessageTs } from "@/chat/slack/timestamp";
 import {
@@ -162,6 +162,7 @@ describe("slack channel tools", () => {
         createMaterializeFile({
           "/tmp/shared.txt": Buffer.from("shared update"),
         }),
+        "conversation-test",
       ),
       { files: [{ path: "/tmp/shared.txt" }] },
     );

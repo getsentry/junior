@@ -2,7 +2,6 @@ import {
   objectAnnotationSchema,
   type OwnedObjectAnnotation,
 } from "@sentry/junior-plugin-api";
-import { isRecord } from "@/chat/coerce";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 
@@ -15,11 +14,13 @@ export async function saveObjectAnnotations(
   const annotations = objectAnnotationSchema.array().parse(value);
   await getDb().transaction(async (db) => {
     const store = createPluginAnnotations({ conversationId, plugin, db });
+    /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
     for (const annotation of annotations) {
       await store.upsert(annotation);
       // Replace a legacy link for the same object without changing other annotations.
       await store.remove("resource_link", annotation.key);
     }
+    /* oxlint-enable no-await-in-loop */
   });
   return annotations.map((annotation) => ({ ...annotation, plugin }));
 }
@@ -35,12 +36,19 @@ export async function annotateToolResult(
   result: unknown,
   options: { readOnly: boolean },
 ): Promise<unknown> {
-  if (!isRecord(result) || result["isError"] === true) return result;
-  const details = isRecord(result["details"]) ? result["details"] : result;
+  if (typeof result !== "object" || result === null) return result;
+  if ("isError" in result && result.isError === true) return result;
+  const details =
+    "details" in result &&
+    typeof result.details === "object" &&
+    result.details !== null
+      ? result.details
+      : result;
   if (
-    details["timed_out"] === true ||
-    details["isError"] === true ||
-    !Array.isArray(details["objectAnnotations"])
+    ("timed_out" in details && details.timed_out === true) ||
+    ("isError" in details && details.isError === true) ||
+    !("objectAnnotations" in details) ||
+    !Array.isArray(details.objectAnnotations)
   )
     return result;
   if (options.readOnly) {
@@ -51,10 +59,10 @@ export async function annotateToolResult(
   const cards = await saveObjectAnnotations(
     conversationId,
     plugin,
-    details["objectAnnotations"],
+    details.objectAnnotations,
   );
   const { objectAnnotations: _annotations, ...rest } = details;
   const annotated = { ...rest, objectCards: cards };
-  if (isRecord(result["details"])) return { ...result, details: annotated };
+  if (details !== result) return { ...result, details: annotated };
   return annotated;
 }

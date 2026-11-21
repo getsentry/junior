@@ -11,6 +11,8 @@ function formatAuthRequest(requestText: string): string | undefined {
     normalized.length > MAX_AUTH_REQUEST_LENGTH
       ? `${normalized.slice(0, MAX_AUTH_REQUEST_LENGTH - 1).trimEnd()}…`
       : normalized;
+  // Slack mrkdwn, not prompt text. chat/services may not import chat/slack.
+  // oxlint-disable-next-line junior/no-prompt-text-escapes
   return bounded
     .replaceAll("&", "&amp;")
     .replaceAll("<", "&lt;")

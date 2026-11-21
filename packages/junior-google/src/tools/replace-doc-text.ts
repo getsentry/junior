@@ -12,9 +12,9 @@ import {
   requireRevision,
   revisionAfterUpdate,
   revisionIdSchema,
-} from "./doc-edits";
-import { googleFileRequest } from "./files";
-import type { GoogleToolContext } from "./shared";
+} from "../docs/edits";
+import { googleFileRequest } from "../drive/files";
+import type { GoogleToolContext } from "../google-api";
 
 const inputSchema = z
   .object({
@@ -106,7 +106,7 @@ export const replaceGoogleDocTextTool = definePluginTool({
     }
     const reply = await batchUpdateDoc(
       ctx,
-      doc.ref,
+      doc,
       [
         {
           replaceAllText: {

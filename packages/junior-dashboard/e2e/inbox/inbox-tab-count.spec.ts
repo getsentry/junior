@@ -1,8 +1,19 @@
 import type { Page } from "@playwright/test";
 
-import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
-import { attentionCount, automationReport } from "./automation-fixture";
-import { mockReviewItems, rollout, rowHead } from "./inbox-fixture";
+import {
+  automationAlert,
+  conversationId,
+  expandRow,
+  grab,
+  license,
+  migration,
+  mockInboxItems,
+  mockViewerCodeChanges,
+  prMerge,
+  prReview,
+  rollout,
+  rowHead,
+} from "./inbox-fixture";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -11,7 +22,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   // One ask, so its row's Done takes the count to zero.
   async function mockOneAsk(page: Page) {
-    await mockReviewItems(page, { automations: () => 0, open: [rollout] });
+    await mockInboxItems(page, { automations: () => 0, open: [rollout] });
   }
 
   function inboxTab(page: Page) {
@@ -44,8 +55,21 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   }
 
+  function navEntry(page: Page, label: string) {
+    return page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: new RegExp(`^${label}`) });
+  }
+
+  /** Answer an open question with its first field's choice, then Send. */
+  async function answer(page: Page, title: string, choice: string) {
+    const ask = page.getByRole("region", { name: title, exact: true });
+    await ask.getByRole("radio", { name: choice }).click();
+    await ask.getByRole("button", { name: "Send" }).click();
+  }
+
   async function closeCheckoutAsks(page: Page) {
-    await rowHead(page, checkout).click();
+    await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Dismiss", exact: true }).click();
   }
 
@@ -107,6 +131,69 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
   });
 
+  test.describe("in a hidden tab", () => {
+    test.use({ controlTimers: true });
+    test("the tab count refreshes about once a minute", async ({
+      dashboard,
+      page,
+    }) => {
+      // The mock counts this list on each request.
+      const open: unknown[] = [rollout];
+      await mockInboxItems(page, { automations: () => 0, open });
+      const versions = {
+        conversationDetails: {},
+        conversations: "mock",
+        inboxItems: "review-1",
+        spend: "mock",
+      };
+      // Page clock time of each answered check.
+      const checks: number[] = [];
+      // A timer that fires while a check is in flight joins that check. Let
+      // the page finish each answer before the clock moves.
+      const answered = async (count: number) => {
+        await expect.poll(() => checks.length).toBe(count);
+        await page.evaluate(
+          () => new Promise((resolve) => setTimeout(resolve)),
+        );
+      };
+      await page.route("**/api/versions*", async (route) => {
+        const at = await page.evaluate(() => Date.now());
+        await route.fulfill({ json: versions });
+        checks.push(at);
+      });
+      await page.goto(`${dashboard.baseURL}/settings`);
+      await expect(page).toHaveTitle("(1) Settings - Junior");
+      await answered(1);
+      const icon = page.locator('link[rel="icon"]');
+      await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
+      const oneIcon = await icon.getAttribute("href");
+
+      await page.evaluate(() => {
+        Object.defineProperty(document, "visibilityState", {
+          configurable: true,
+          get: () => "hidden",
+        });
+        Object.defineProperty(document, "hidden", {
+          configurable: true,
+          get: () => true,
+        });
+        document.dispatchEvent(new Event("visibilitychange"));
+      });
+      // The check that was due runs, then one each minute.
+      await page.clock.fastForward(5_000);
+      await answered(2);
+      open.push(license);
+      versions.inboxItems = "review-2";
+      await page.clock.fastForward(30_000);
+      await page.clock.fastForward(30_000);
+      await answered(3);
+      expect(checks[2]! - checks[1]!).toBeGreaterThanOrEqual(60_000);
+      await expect(page).toHaveTitle("(2) Settings - Junior");
+      await expect(icon).not.toHaveAttribute("href", oneIcon!);
+      await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
+    });
+  });
+
   test("moving between pages never flashes the bare agent name in the tab", async ({
     dashboard,
     page,
@@ -132,70 +219,118 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
-  test("the tab count waits for the alerts that this browser put away", async ({
+  test("the tab count counts an Automation alert, and its snooze leaves the count", async ({
     dashboard,
     page,
   }) => {
-    const report = structuredClone(automationReport);
-    const blocked = report.automations[1]!;
-    Object.assign(blocked, {
-      lastRunAt: "2026-01-01T10:00:00.000Z",
-      lastRunStatus: "blocked",
-      status: "blocked",
-      statusReason: "GitHub access expired.",
-    });
-    const total = 1 + attentionCount(report);
-    await mockReviewItems(page, {
-      automations: () => attentionCount(report),
-      open: [rollout],
-    });
-    // The attention list can be held, as a slow list is on a real server.
-    let held: Promise<void> | undefined;
-    let release = () => {};
-    await page.route(/\/api\/automations(?:\?.*)?$/, async (route) => {
-      await held;
-      await route.fulfill({
-        json: mockAutomationCollection(
-          report,
-          new URL(route.request().url()).searchParams,
-        ),
-      });
+    const alert = automationAlert("event-1", "Closed issue summary");
+    await mockInboxItems(page, { open: [rollout, alert] });
+    await page.goto(`${dashboard.baseURL}/`);
+    await expect(page).toHaveTitle("(2) Inbox - Junior");
+    const todo = page.getByRole("region", { name: "To do" });
+    const head = rowHead(todo, alert.title);
+    await head.hover();
+    await head
+      .locator("xpath=ancestor::*[@data-inbox-row][1]")
+      .getByRole("button", { exact: true, name: "Snooze" })
+      .click();
+    await page.getByRole("button", { name: "Tomorrow" }).click();
+    await expect(page).toHaveTitle("(1) Inbox - Junior");
+
+    // The server keeps the snooze, so a reload never counts the alert.
+    await recordTitles(page);
+    await page.reload();
+    await expect(rowHead(page, checkout)).toBeVisible();
+    await expect(page).toHaveTitle("(1) Inbox - Junior");
+    expect(
+      (await recordedTitles(page)).filter((title) => title.startsWith("(2) ")),
+    ).toEqual([]);
+  });
+  test("To do counts its rows, also each row of a stack, before and after an answer", async ({
+    dashboard,
+    page,
+  }) => {
+    // Two asks in one Conversation make a stack of two rows, and one ask
+    // makes another row.
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [rollout, migration, license],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    await expect(page).toHaveTitle(`(${total}) Inbox - Junior`);
     const todo = page.getByRole("region", { name: "To do" });
-    await todo.getByRole("button", { name: new RegExp(blocked.title) }).click();
+    const cards = todo.locator("[data-inbox-row]");
+    await expect(cards).toHaveCount(3);
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 3 waiting");
+    await expect(page).toHaveTitle("(3) Inbox - Junior");
+    await expect(todo.getByText("3", { exact: true })).toBeVisible();
+
+    await expandRow(rowHead(todo, license.title));
+    await answer(page, license.title, "Approve");
+    await expect(cards).toHaveCount(2);
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 2 waiting");
+    await expect(page).toHaveTitle("(2) Inbox - Junior");
+  });
+
+  test("Decisions counts every question that it lists, before and after an answer", async ({
+    dashboard,
+    page,
+  }) => {
+    // A question for Everyone is a Decisions row too.
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [license, grab],
+    });
+    await page.goto(`${dashboard.baseURL}/?view=decisions`);
+    const rows = page
+      .getByRole("region", { name: "Decisions" })
+      .locator("[data-inbox-row]");
+    await expect(rows).toHaveCount(2);
+    await expect(navEntry(page, "Decisions")).toHaveText(/^Decisions\s*2$/);
+
+    await rowHead(page, license.title).click();
+    await answer(page, license.title, "Approve");
+    await expect(rows).toHaveCount(1);
+    await expect(navEntry(page, "Decisions")).toHaveText(/^Decisions\s*1$/);
+  });
+
+  test("Pull requests counts the changes under Waiting on you, before and after a dismiss", async ({
+    dashboard,
+    page,
+  }) => {
+    // A second ask on #42 shares its change, and #42 is a draft.
+    const squash = {
+      ...license,
+      owner: { id: conversationId, kind: "conversation" },
+      rootConversationId: conversationId,
+      id: "item-pr-squash",
+      subject: prMerge.subject,
+      title: "Squash #42 before the merge?",
+    };
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [prMerge, squash, prReview],
+    });
+    await mockViewerCodeChanges(page, [
+      { draft: true, idleDays: 0, number: 42, title: "Retry checkout writes" },
+      { idleDays: 1, number: 91, title: "Pin the release train" },
+    ]);
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    const waiting = page
+      .getByRole("region", { name: "Waiting on you" })
+      .locator('[data-dock-key^="change:"]');
+    await expect(waiting).toHaveCount(2);
+    await expect(navEntry(page, "Pull requests")).toHaveText(
+      /^Pull requests\s*2$/,
+    );
+
+    await rowHead(page, prReview.title).click();
     await page
-      .getByRole("region", { name: `${blocked.title}: attention` })
+      .locator("li[data-expanded]")
       .getByRole("button", { name: "Dismiss", exact: true })
       .click();
-    await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
-
-    // Reload while the list that says which alert was put away is held.
-    held = new Promise((resolve) => {
-      release = resolve;
-    });
-    await recordTitles(page);
-    const counted = page.waitForResponse((response) =>
-      response.url().includes("/api/review-items/count"),
+    await expect(waiting).toHaveCount(1);
+    await expect(navEntry(page, "Pull requests")).toHaveText(
+      /^Pull requests\s*1$/,
     );
-    await page.reload();
-    await counted;
-    await expect(rowHead(page, checkout)).toBeVisible();
-    // Let the count render before the list arrives.
-    await page.evaluate(
-      () =>
-        new Promise((resolve) =>
-          requestAnimationFrame(() => requestAnimationFrame(resolve)),
-        ),
-    );
-    release();
-    await expect(page).toHaveTitle(`(${total - 1}) Inbox - Junior`);
-    // The count never showed the put-away alert, so it never dropped.
-    expect(
-      (await recordedTitles(page)).filter((title) =>
-        title.startsWith(`(${total}) `),
-      ),
-    ).toEqual([]);
   });
 });

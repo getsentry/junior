@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import type { SlackAdapter } from "@chat-adapter/slack";
 import type { AgentDurability } from "@/chat/agent/types";
 import {
@@ -45,8 +44,8 @@ import {
   ensureSlackMessageActorIdentity,
   getMessageAuthorIdentityId,
 } from "@/chat/services/message-actor-identity";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
-import { bindMessageReviewItemChange } from "@/chat/review-items/message-change";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
+import { bindMessageInboxItemChange } from "@/chat/inbox-items/message-change";
 import { lookupSlackUser } from "@/chat/slack/user";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { getSqlExecutor } from "@/chat/db";
@@ -64,6 +63,7 @@ import {
 } from "@/chat/task-execution/attempt-selection";
 import type { TurnRecord } from "@/chat/task-execution/checkpoint";
 import { supersedeTurnForInput } from "@/chat/task-execution/supersede-turns";
+import { mapBounded } from "@/chat/fan-out";
 
 // Slack authors that one backfill looks up at once.
 const SLACK_AUTHOR_LOOKUP_CONCURRENCY = 5;
@@ -502,15 +502,14 @@ export async function clearSlackPendingReactions(args: {
   messages: readonly InboundMessage[];
   state?: StateAdapter;
 }): Promise<void> {
-  for (const record of args.messages) {
-    if (record.source !== "slack") continue;
+  const clear = async (record: InboundMessage) => {
     try {
       const metadata = parseSlackMetadata(record.input.metadata);
-      if (!metadata || metadata.route !== "mention") continue;
+      if (!metadata || metadata.route !== "mention") return;
       const timestamp = getMessageTs(Message.fromJSON(metadata.message));
       // ast-grep-ignore: no-slack-thread-from-conversation-id -- reads the Slack-native Thread.id of an inbound message
       const target = parseSlackThreadId(metadata.thread.id);
-      if (!timestamp || !target) continue;
+      if (!timestamp || !target) return;
       await runWithSlackInstallation({
         adapter: args.getSlackAdapter(),
         installation: metadata.installation ?? {},
@@ -529,7 +528,11 @@ export async function clearSlackPendingReactions(args: {
         "messaging.message.id": record.inboundMessageId,
       });
     }
-  }
+  };
+  await mapBounded(
+    args.messages.filter((record) => record.source === "slack"),
+    clear,
+  );
 }
 
 function compareInboundMessages(
@@ -571,7 +574,7 @@ function restoreMessage(args: {
   );
   rehydrateAttachmentFetchers(message);
   bindMessageAuthorIdentityId(message, args.record.input.authorIdentityId);
-  bindMessageReviewItemChange(message, args.record.input.reviewItemChange);
+  bindMessageInboxItemChange(message, args.record.input.reviewItemChange);
   return message;
 }
 
@@ -585,33 +588,30 @@ async function bindSlackActorIdentities(args: {
     byAuthorId.set(authorId, [...(byAuthorId.get(authorId) ?? []), message]);
   }
 
-  const limit = pLimit(SLACK_AUTHOR_LOOKUP_CONCURRENCY);
-  await Promise.all(
-    [...byAuthorId].map(([authorId, messages]) =>
-      limit(async () => {
-        const profile = await lookupSlackUser(args.teamId, authorId);
-        await Promise.all(
-          messages.map((message) =>
-            ensureSlackMessageActorIdentity(
-              message,
-              args.teamId,
-              async () => profile,
-            ),
-          ),
+  await mapBounded(
+    [...byAuthorId],
+    async ([authorId, messages]) => {
+      const profile = await lookupSlackUser(args.teamId, authorId);
+      await mapBounded(messages, (message) =>
+        ensureSlackMessageActorIdentity(
+          message,
+          args.teamId,
+          async () => profile,
+        ),
+      );
+      if (profile && messages.some(getMessageAuthorIdentityId)) {
+        // Ingress resolved the Identity without a profile lookup. Save the
+        // profile names on it. Message writes never saved the email.
+        await resolveActorIdentityId(
+          getSqlExecutor(),
+          createSlackActor(args.teamId, authorId, {
+            fullName: profile.fullName,
+            userName: profile.userName,
+          }),
         );
-        if (profile && messages.some(getMessageAuthorIdentityId)) {
-          // Ingress resolved the Identity without a profile lookup. Save the
-          // profile names on it. Message writes never saved the email.
-          await resolveActorIdentityId(
-            getSqlExecutor(),
-            createSlackActor(args.teamId, authorId, {
-              fullName: profile.fullName,
-              userName: profile.userName,
-            }),
-          );
-        }
-      }),
-    ),
+      }
+    },
+    SLACK_AUTHOR_LOOKUP_CONCURRENCY,
   );
 }
 
@@ -894,7 +894,7 @@ export function buildSlackInboundMessage(args: {
   installation?: SlackInstallationContext;
   message: Message;
   receivedAtMs: number;
-  reviewItemChange?: ReviewItemChangeRecord | undefined;
+  reviewItemChange?: InboxItemChangeRecord | undefined;
   route: SlackConversationRoute;
   thread: ThreadImpl;
 }): InboundMessage {

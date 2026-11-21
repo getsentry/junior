@@ -70,23 +70,12 @@ export const guardianStatsSchema = z
 
 export const conversationStatsReportSchema = z
   .object({
-    active: z.number(),
-    cachedInputTokens: z.number().optional(),
-    cacheCreationTokens: z.number().optional(),
-    conversations: z.number(),
-    durationMs: z.number(),
-    failed: z.number(),
     generatedAt: z.string(),
     guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
     metricHours: z.array(conversationMetricDaySchema).optional(),
     metricSixHours: z.array(conversationMetricDaySchema).optional(),
-    locations: z.array(conversationStatsItemSchema),
-    actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),
-    costUsd: z.number().optional(),
-    inputTokens: z.number().optional(),
-    tokens: z.number().optional(),
     windowEnd: z.string(),
     windowStart: z.string(),
   })

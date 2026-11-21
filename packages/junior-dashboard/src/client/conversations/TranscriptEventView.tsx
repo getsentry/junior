@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { Collapsible, CollapsibleContent } from "../components/ui/collapsible";
 import { cn, dashboardDisclosureChevronClass } from "../styles";
 import { DisplayText } from "../display-text/DisplayText";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { InboxItemChangeRow } from "../inbox/InboxItemChangeRow";
 import { messageRawText } from "./transcriptRenderModel";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
 import { RedactedMarker } from "./TranscriptRedacted";
@@ -167,7 +167,7 @@ export function TranscriptEventView(props: {
       {changes.length ? (
         <div className={cn("grid min-w-0 gap-2", !onlyChanges && "mt-2")}>
           {changes.map((record, index) => (
-            <ReviewItemChangeRow
+            <InboxItemChangeRow
               conversationId={props.conversationId}
               fallback={onlyChanges && changes.length === 1 ? view : null}
               key={index}

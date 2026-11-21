@@ -1,5 +1,6 @@
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
+import { pickOption } from "../pick-option";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -181,7 +182,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   });
 
   test("shows the memory overview error state", async ({ page, dashboard }) => {
-    await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    await page.route("**/api/memory/dashboard", async (route) => {
       await route.fulfill({ json: { error: "Unavailable" }, status: 500 });
     });
 
@@ -200,7 +201,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     let forgotMemory = false;
     let forgetRequests = 0;
     let dashboardRequestCount = 0;
-    await page.route("**/api/plugins/memory/dashboard", async (route) => {
+    await page.route("**/api/memory/dashboard", async (route) => {
       dashboardRequestCount += 1;
       await route.fallback();
     });
@@ -219,7 +220,7 @@ test.describe("new UI", { tag: "@new" }, () => {
                 actions: [
                   {
                     confirmation: "Forget this memory for everyone?",
-                    href: "/api/plugins/memory/memories/memory-search",
+                    href: "/api/memory/memories/memory-search",
                     label: "Forget",
                     method: "DELETE",
                     tone: "danger",
@@ -244,36 +245,33 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await page.route(
-      "**/api/plugins/memory/memories/memory-search",
-      async (route) => {
-        if (route.request().method() === "GET") {
-          if (forgotMemory) {
-            await route.fulfill({
-              json: { error: "Memory was not found." },
-              status: 404,
-            });
-            return;
-          }
+    await page.route("**/api/memory/memories/memory-search", async (route) => {
+      if (route.request().method() === "GET") {
+        if (forgotMemory) {
           await route.fulfill({
-            json: {
-              content: "Deploy runbooks live in Notion.",
-              createdAt: "2026-07-30T12:00:00.000Z",
-              id: "memory-search",
-              kind: "knowledge",
-              observedAt: "2026-07-30T12:00:00.000Z",
-              origin: "explicit",
-              sourcePlatform: "slack",
-            },
+            json: { error: "Memory was not found." },
+            status: 404,
           });
           return;
         }
-        forgetRequests += 1;
-        expect(route.request().method()).toBe("DELETE");
-        forgotMemory = true;
-        await route.fulfill({ status: 204 });
-      },
-    );
+        await route.fulfill({
+          json: {
+            content: "Deploy runbooks live in Notion.",
+            createdAt: "2026-07-30T12:00:00.000Z",
+            id: "memory-search",
+            kind: "knowledge",
+            observedAt: "2026-07-30T12:00:00.000Z",
+            origin: "explicit",
+            sourcePlatform: "slack",
+          },
+        });
+        return;
+      }
+      forgetRequests += 1;
+      expect(route.request().method()).toBe("DELETE");
+      forgotMemory = true;
+      await route.fulfill({ status: 204 });
+    });
 
     // Load the summary first, so the forget must invalidate a cached copy.
     await page.goto(`${dashboard.baseURL}/memories`);
@@ -303,7 +301,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(memories).toHaveAccessibleName("Memories");
     const match = memories.getByRole("option").first();
     await expect(match).toHaveAccessibleName(/Deploy runbooks live in Notion/);
-    await match.click();
+    await pickOption(match);
     await expect(page).toHaveURL(/\/memories\/memory-search$/);
 
     await page
@@ -322,5 +320,131 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     await memoryNavigation.getByRole("link", { name: "Overview" }).click();
     await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+  });
+
+  test("lists archived memories and restores one", async ({
+    page,
+    dashboard,
+  }) => {
+    let restoreMethod: string | undefined;
+    let restoreBody: unknown;
+    let activeReads = 0;
+    // Off when the permalink opens, as if the memory were past the first page.
+    let listed = true;
+    // Holds the first archived list read, so the tab switch can be checked.
+    let releaseArchived = () => {};
+    const archivedGate = new Promise<void>((resolve) => {
+      releaseArchived = resolve;
+    });
+    await page.route("**/api/user-pages/memory/memories*", async (route) => {
+      const archived =
+        new URL(route.request().url()).searchParams.get("filter") ===
+        "archived";
+      if (archived) await archivedGate;
+      const records = !archived
+        ? [{ id: "memory-1", title: "First page memory." }]
+        : restoreMethod || !listed
+          ? []
+          : [
+              {
+                id: "memory-archived",
+                metadata: [
+                  { label: "Type", value: "Knowledge" },
+                  { label: "Learned", value: "Automatic" },
+                  { label: "Source", value: "Slack" },
+                  { label: "Remembered", value: "Jul 1, 2026, 12:00 PM" },
+                  { label: "Archived", value: "Jul 30, 2026, 12:00 PM" },
+                  { label: "Reason", value: "Contradicted" },
+                ],
+                title: "Junior's updatePlan tool does not persist plan steps.",
+              },
+            ];
+      await route.fulfill({
+        json: {
+          type: "list",
+          emptyText: archived ? "No archived memories." : "No memories yet.",
+          records,
+          searchPlaceholder: "Search memories",
+        },
+      });
+    });
+    await page.route(
+      "**/api/memory/memories/memory-archived**",
+      async (route) => {
+        if (route.request().method() === "PATCH") {
+          restoreMethod = route.request().method();
+          restoreBody = route.request().postDataJSON();
+          await route.fulfill({
+            json: {
+              content: "Junior's updatePlan tool does not persist plan steps.",
+              createdAt: "2026-07-01T12:00:00.000Z",
+              id: "memory-archived",
+              kind: "knowledge",
+              observedAt: "2026-07-01T12:00:00.000Z",
+              origin: "automatic",
+              sourcePlatform: "slack",
+            },
+          });
+          return;
+        }
+        if (
+          new URL(route.request().url()).searchParams.get("archived") !== "true"
+        ) {
+          activeReads += 1;
+        }
+        await route.fulfill({
+          json: {
+            archiveReason: "contradicted",
+            archivedAt: "2026-07-30T12:00:00.000Z",
+            content: "Junior's updatePlan tool does not persist plan steps.",
+            createdAt: "2026-07-01T12:00:00.000Z",
+            id: "memory-archived",
+            kind: "knowledge",
+            observedAt: "2026-07-01T12:00:00.000Z",
+            origin: "automatic",
+            sourcePlatform: "slack",
+          },
+        });
+      },
+    );
+
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(`${dashboard.baseURL}/memories/library`);
+    await page
+      .getByRole("tablist", { name: "Memory state" })
+      .getByRole("tab", { name: "Archived" })
+      .click();
+    await expect(page).toHaveURL(/filter=archived/);
+    // Active rows do not stay on the Archived tab while it loads.
+    await expect(
+      page.getByRole("button", { name: /^View memory details: First page/ }),
+    ).toHaveCount(0);
+    releaseArchived();
+    await expect(
+      page.getByRole("heading", { name: "Archived memories" }),
+    ).toBeVisible();
+    await page
+      .getByRole("button", {
+        name: /^View memory details: Junior's updatePlan tool/,
+      })
+      .click();
+    const details = page.getByRole("complementary", { name: "Memory details" });
+    await expect(details.getByText("Contradicted")).toBeVisible();
+    await expect(
+      details.getByRole("button", { name: "Forget this memory" }),
+    ).toHaveCount(0);
+    await screenshot(page, "inbox-memories-archived-details");
+
+    // A permalink opens without the list, through the archived detail read.
+    listed = false;
+    await page.goto(
+      `${dashboard.baseURL}/memories/memory-archived?filter=archived`,
+    );
+    await details.getByRole("button", { name: "Restore" }).click();
+    await expect(page.getByText("No archived memories.")).toBeVisible();
+    expect(restoreMethod).toBe("PATCH");
+    expect(restoreBody).toEqual({ archived: false });
+    expect(activeReads).toBe(0);
+    await screenshot(page, "inbox-memories-archived-empty");
   });
 });

@@ -16,11 +16,16 @@ import {
   getDb,
 } from "@/chat/db";
 import { embedConversationEvents } from "@/chat/conversations/event-embedding";
+import {
+  backfillEventSearchIndex,
+  runEventSearchBackfill,
+} from "@/chat/conversations/event-search-backfill";
 import { storeConversationEventLexemes } from "@/chat/conversations/event-lexemes";
 import { createSearchConversationEventsTool } from "@/chat/tools/search-conversation-events";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   juniorConversationEventEmbeddings,
+  juniorConversationEventLexemes,
   juniorConversationEvents,
 } from "@/db/schema";
 
@@ -82,6 +87,7 @@ async function executeTool(
 async function recordSlackConversation(args: {
   channelId: string;
   conversationId: string;
+  nowMs?: number;
   teamId?: string;
   visibility: "private" | "public";
 }) {
@@ -92,7 +98,7 @@ async function recordSlackConversation(args: {
       teamId: args.teamId ?? "T123",
       channelId: args.channelId,
     },
-    nowMs: 1,
+    nowMs: args.nowMs ?? 1,
     source: "slack",
     visibility: args.visibility,
   });
@@ -499,6 +505,150 @@ describe("searchConversationEvents", () => {
     ).resolves.toBe(4);
     await expect(executeTool({ query: "4822" })).resolves.toMatchObject({
       events: [{ seq: 6 }],
+    });
+
+    // The input of the running Turn is in the model context already, so a
+    // search in that Turn does not return it.
+    await events.append(CURRENT_CONVERSATION_ID, [
+      {
+        createdAtMs: 10,
+        data: {
+          type: "message",
+          messageId: "m-ask",
+          role: "user",
+          text: "Which lease.ts line failed?",
+        },
+      },
+      {
+        createdAtMs: 11,
+        data: {
+          type: "turn_started",
+          turnId: "turn-ask",
+          inputMessageIds: ["m-ask"],
+          surface: "slack",
+        },
+      },
+      {
+        createdAtMs: 12,
+        data: {
+          type: "user_message",
+          content: [{ type: "text", text: "Which lease.ts line failed?" }],
+          timestamp: 12,
+          provenance: { authority: "instruction" },
+        },
+      },
+    ]);
+    const withInput = await executeTool({ query: "lease.ts" });
+    expect(
+      withInput.events.map((event) => event.seq).sort((a, b) => a - b),
+    ).toEqual([2, 9, 11]);
+    await expect(
+      executeTool({ query: "lease.ts" }, { ...context(), turnId: "turn-ask" }),
+    ).resolves.toMatchObject({ events: [{ seq: 2 }] });
+  });
+
+  it("backfills the index of recently active Conversations from the heartbeat", async () => {
+    const dayMs = 24 * 60 * 60 * 1_000;
+    const nowMs = 30 * dayMs;
+    await recordSlackConversation({
+      channelId: "C123",
+      conversationId: CURRENT_CONVERSATION_ID,
+      nowMs: nowMs - dayMs,
+      visibility: "public",
+    });
+    const staleConversationId = "slack:C123:1700000000.300000";
+    await recordSlackConversation({
+      channelId: "C123",
+      conversationId: staleConversationId,
+      nowMs: nowMs - 8 * dayMs,
+      visibility: "public",
+    });
+    // History from before the index: no Turn completed since, so the task
+    // never indexed it.
+    for (const conversationId of [
+      CURRENT_CONVERSATION_ID,
+      staleConversationId,
+    ]) {
+      await getConversationEventStore().append(conversationId, [
+        {
+          createdAtMs: 1,
+          data: {
+            type: "message",
+            messageId: "m-pr",
+            role: "assistant",
+            text: "Opened getsentry/junior#4821 with the fix.",
+          },
+        },
+        {
+          createdAtMs: 2,
+          data: {
+            type: "message",
+            messageId: "m-blank",
+            role: "assistant",
+            text: "\n\t\n",
+          },
+        },
+      ]);
+    }
+    const storedRows = async (conversationId: string) => {
+      const [lexemes, vectors] = await Promise.all([
+        getDb()
+          .select({ seq: juniorConversationEventLexemes.seq })
+          .from(juniorConversationEventLexemes)
+          .where(
+            eq(juniorConversationEventLexemes.conversationId, conversationId),
+          ),
+        getDb()
+          .select({ seq: juniorConversationEventEmbeddings.seq })
+          .from(juniorConversationEventEmbeddings)
+          .where(
+            eq(
+              juniorConversationEventEmbeddings.conversationId,
+              conversationId,
+            ),
+          ),
+      ]);
+      return { lexemes: lexemes.length, vectors: vectors.length };
+    };
+
+    // Without event embeddings, the backfill stores lexemes only.
+    await runEventSearchBackfill({ nowMs });
+    await expect(storedRows(CURRENT_CONVERSATION_ID)).resolves.toEqual({
+      lexemes: 2,
+      vectors: 0,
+    });
+    await runEventSearchBackfill({ embedder, nowMs });
+    await expect(storedRows(CURRENT_CONVERSATION_ID)).resolves.toEqual({
+      lexemes: 2,
+      vectors: 1,
+    });
+    const byMeaning = await executeTool({ query: "pull request" }, context(), {
+      embedder,
+    });
+    expect(byMeaning.events[0]).toMatchObject({ seq: 0 });
+    // A Conversation without activity in the last week waits for its next
+    // Turn.
+    await expect(storedRows(staleConversationId)).resolves.toEqual({
+      lexemes: 0,
+      vectors: 0,
+    });
+    // Nothing is left, so a retry stores nothing and calls no model.
+    await expect(
+      backfillEventSearchIndex({
+        db: getDb(),
+        deadlineMs: Date.now() + 10_000,
+        embedder: {
+          ...embedder,
+          async embedTexts() {
+            throw new Error("No event is left to embed");
+          },
+        },
+        nowMs,
+      }),
+    ).resolves.toMatchObject({
+      backlog: { conversations: 0 },
+      done: true,
+      stored: { lexemes: 0, vectors: 0 },
     });
   });
 

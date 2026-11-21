@@ -5,8 +5,8 @@ import { Hono } from "hono";
 import { createConversationRoutes } from "@/api/conversations/routes";
 import type { JuniorApiEnv } from "@/api/route";
 import { getConversationEventStore } from "@/chat/db";
-import { createTools } from "@/chat/tools";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import {
   createConversationFixture,
@@ -87,6 +87,7 @@ describe("web file delivery", () => {
       createConversationRoutes({
         attachmentStorage: storage,
         queue: fixture.queue,
+        waitUntil: () => undefined,
       }),
     );
     const base = `/api/conversations/${encodeURIComponent(conversationId)}`;

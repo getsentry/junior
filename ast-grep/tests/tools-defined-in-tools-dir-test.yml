@@ -1,0 +1,9 @@
+id: tools-defined-in-tools-dir
+valid:
+  - "import { readFileTool } from './tools/read-file';"
+  - "const tools = { readFile: createReadFileTool(deps) };"
+invalid:
+  - "export const readFileTool = definePluginTool({});"
+  - "export function createBashTool(deps) { return zodTool(bashToolDefinition, deps); }"
+  - "export const bashToolDefinition = zodToolDefinition({});"
+  - "server.registerTool('search', {}, run);"

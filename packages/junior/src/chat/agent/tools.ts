@@ -42,10 +42,10 @@ import {
   getMcpProviderErrorAttributes,
   McpServiceAccountRequiredError,
 } from "@/chat/mcp/errors";
-import { createTools } from "@/chat/tools";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type { DisabledToolPromptContext } from "@/chat/prompt";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import {
   toActiveMcpCatalogSummaries,
@@ -53,12 +53,13 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
-import { renderScriptTools } from "@/chat/codemode/tool";
+import { renderScriptTools } from "@/chat/codemode/script-tools";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { createArtifactSync } from "@/chat/artifacts/sync";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
-import type { PromptHookContext } from "@/chat/agent/prompt";
+import { turnRequestText, type PromptHookContext } from "@/chat/agent/prompt";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -78,7 +79,7 @@ import {
   type AgentRun,
   type AgentRunState,
 } from "@/chat/agent/types";
-import { loadableSkills, upsertActiveSkill } from "@/chat/agent/skills";
+import { loadableSkills } from "@/chat/agent/skills";
 import type { ResumeState } from "@/chat/agent/resume";
 import {
   credentialAuditAttributes,
@@ -92,7 +93,11 @@ import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { buildToolActionEvidence } from "@/chat/guardian/evidence";
 import { restoreToolActionRejections } from "@/chat/guardian/history";
-import { recordGuardianActionReviewed } from "@/chat/conversations/projection";
+import { guardianPluginFacts } from "@/chat/guardian/policy";
+import {
+  recordGuardianActionReviewed,
+  recordSkillLoaded,
+} from "@/chat/conversations/projection";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -137,6 +142,7 @@ export async function createRunSandbox(
   const workspace = args.state.sandboxRef?.workspaceId
     ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
     : undefined;
+  const attachmentStorage = args.run.environment?.attachmentStorage;
   const agentSandbox = createAgentSandbox({
     sandboxRef: args.state.sandboxRef,
     workspace,
@@ -148,6 +154,13 @@ export async function createRunSandbox(
     credentialEgress: args.run.credentialContext,
     credentialAuditSource: credentialAuditSource(args.run.source),
     actor: args.currentActor,
+    artifacts: attachmentStorage
+      ? createArtifactSync({
+          conversationId: args.run.conversationId,
+          db: getSqlExecutor(),
+          storage: attachmentStorage,
+        })
+      : undefined,
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
@@ -173,7 +186,6 @@ export async function createRunSandbox(
 export function createPromptHookContext(args: {
   actor?: Actor | undefined;
   run: AgentRun;
-  userInput: string;
 }): PromptHookContext {
   const actor = args.actor;
   return {
@@ -183,13 +195,12 @@ export function createPromptHookContext(args: {
     ...(actor
       ? { resolveActorIdentity: async () => await readActorIdentity(actor) }
       : undefined),
-    userText: args.userInput,
+    userText: turnRequestText(args.run),
   };
 }
 
 interface ToolWiringArgs {
   abortAgent: () => void;
-  activeSkills: Skill[];
   behavior: TurnBehavior;
   currentActor?: Actor | undefined;
   /** Live Pi transcript used to give Guardian bounded action context. */
@@ -205,7 +216,9 @@ interface ToolWiringArgs {
   durability: AgentDurability;
   authorization?: OAuthAuthorization | undefined;
   generatedFiles: FileUpload[];
-  invokedSkill: SkillMetadata | null;
+  invokedSkillNames: readonly string[];
+  /** Manual-only skills that `loadSkill` loaded earlier in the Conversation. */
+  conversationSkillNames: readonly string[];
   onEvent?: ((event: AgentEvent) => void | Promise<void>) | undefined;
   onFatalToolError(error: Error): void;
   preAgentPromptMessages: () => PiMessage[];
@@ -532,18 +545,18 @@ export async function wireAgentTools(
     priorRejections: restoreToolActionRejections(args.currentTurnMessages),
     reviewer: createGuardianActionReviewer({
       completeObject,
-      destinationFacts: pluginCatalogRuntime
-        .getProviders()
-        .flatMap(({ manifest }) =>
-          manifest.reviewContext
-            ? [{ plugin: manifest.name, text: manifest.reviewContext }]
-            : [],
-        ),
+      destinationFacts: guardianPluginFacts(
+        pluginCatalogRuntime.getProviders().map(({ manifest }) => manifest),
+      ),
       modelId: botConfig.guardianModelId,
     }),
   });
+  const skills = loadableSkills(args.availableSkills, [
+    ...args.invokedSkillNames,
+    ...args.conversationSkillNames,
+  ]);
   const tools = createTools(
-    loadableSkills(args.availableSkills, args.invokedSkill?.name),
+    skills,
     {
       writeGeneratedFiles: async (files) => {
         const refs = await agentSandbox.writeGeneratedFiles(files);
@@ -556,7 +569,12 @@ export async function wireAgentTools(
           loadedSkill.name,
         );
         const effective = resolvedSkill ?? loadedSkill;
-        upsertActiveSkill(args.activeSkills, effective);
+        if (effective.disableModelInvocation) {
+          await recordSkillLoaded({
+            conversationId: args.run.conversationId,
+            skillName: effective.name,
+          });
+        }
         await tryRecordSkillLoadStat(effective);
       },
     },
@@ -610,7 +628,9 @@ export async function wireAgentTools(
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
       }
       try {
+        // oxlint-disable-next-line no-await-in-loop -- Stop at the first provider that needs sign-in.
         if (await mcpToolManager.activateProvider(provider)) {
+          // oxlint-disable-next-line no-await-in-loop -- Stop at the first provider that needs sign-in.
           await args.recordConnectedMcpProvider(provider);
         }
       } catch (error) {

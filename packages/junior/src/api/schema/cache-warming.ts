@@ -56,25 +56,23 @@ export const cacheWarmingSavingsReportSchema = z
     days: z.array(
       cacheWarmingSavingsSchema.extend({
         date: z.string(),
+        /** Saved less warmup cost. */
+        netSavingsUsd: z.number(),
         /**
-         * Saved less warmup cost. Null on a day filled from history, which
-         * has no warmup calls, so its warmup cost is unknown.
+         * Filled from history: hits count only when a recorded warmup call
+         * reached the return, and the warm state split is unknown.
          */
-        netSavingsUsd: z.number().nullable(),
+        history: z.boolean(),
       }),
     ),
     totals: cacheWarmingSavingsSchema.extend({
-      /** Net savings of the days with known warmup cost. */
       netSavingsUsd: z.number(),
-      /** Oracle savings of the days with known warmup cost. */
-      knownCostOracleSavingsUsd: z.number().nonnegative(),
-      /**
-       * Net savings over oracle savings of the days with known warmup cost.
-       * Null with no oracle savings on those days.
-       */
+      /** Oracle savings of the days with live counters. */
+      liveOracleSavingsUsd: z.number().nonnegative(),
+      /** Net savings over oracle savings. Null with no oracle savings. */
       effectiveness: z.number().nullable(),
-      /** Days filled from history, with unknown warmup cost. */
-      unknownCostDays: z.number().int().nonnegative(),
+      /** Days filled from history. The totals include them. */
+      historyDays: z.number().int().nonnegative(),
     }),
   })
   .strict();
@@ -101,3 +99,92 @@ export const cacheWarmingSavingsRefillResponseSchema = z
 export type CacheWarmingSavingsRefill = z.output<
   typeof cacheWarmingSavingsRefillSchema
 >;
+
+export const cacheHealthQuerySchema = z
+  .object({ window: z.enum(["24h", "7d"]).default("24h") })
+  .strict();
+
+/** Prompt cache of agent model calls, without warmups. */
+const cacheHealthCallsSchema = z
+  .object({
+    calls: z.number().int().nonnegative(),
+    /** Input tokens, cache reads and writes included. */
+    inputTokens: z.number().int().nonnegative(),
+    cacheWriteTokens: z.number().int().nonnegative(),
+  })
+  .strict();
+
+/**
+ * Cache health of a recent window, read from Junior's own Sentry telemetry.
+ * A full rewrite wrote over 50k tokens to the cache and read under 20k.
+ */
+const cacheHealthDataSchema = z
+  .object({
+    status: z.literal("ok"),
+    window: z.enum(["24h", "7d"]),
+    /** The agent model whose calls count. */
+    modelId: z.string(),
+    /** When Sentry answered. */
+    fetchedAt: z.string(),
+    /** Sentry rate limited a newer read, so this is an older answer. */
+    stale: z.boolean(),
+    buckets: z.array(
+      cacheHealthCallsSchema.extend({
+        /** UTC bucket start, `YYYY-MM-DDTHH`. */
+        start: z.string(),
+        fullRewrites: z.number().int().nonnegative(),
+      }),
+    ),
+    /** The same window a week earlier. */
+    lastWeek: cacheHealthCallsSchema,
+    warmups: z
+      .object({
+        /** Warmup calls by how the Turn before ended, or `tool_wait`. */
+        sentByTurnEnding: z.record(z.string(), z.number().int().nonnegative()),
+        skipReasons: z.record(z.string(), z.number().int().nonnegative()),
+        /** Cost of every warmup call. */
+        costUsd: z.number().nonnegative(),
+      })
+      .strict(),
+    /** Idle periods that count, by `IdlePeriodOutcome`. */
+    idlePeriods: z
+      .object({
+        saved: z.number().int().nonnegative(),
+        notWarmed: z.number().int().nonnegative(),
+        stoppedEarly: z.number().int().nonnegative(),
+        cacheLost: z.number().int().nonnegative(),
+        /** Cache writes that the saved periods avoided, less their reads. */
+        savedUsd: z.number().nonnegative(),
+      })
+      .strict(),
+    breakers: z.array(cacheWarmingBreakerSchema),
+    /** Breaker changes in the window. A close at the end of a pause is not one. */
+    breakerEvents: z
+      .object({
+        opened: z.number().int().nonnegative(),
+        closed: z.number().int().nonnegative(),
+      })
+      .strict(),
+  })
+  .strict();
+
+export const cacheHealthReportSchema = z.discriminatedUnion("status", [
+  cacheHealthDataSchema,
+  /** Junior cannot read its telemetry until these settings are set. */
+  z
+    .object({
+      status: z.literal("unconfigured"),
+      missing: z.array(
+        z.enum(["SENTRY_DSN", "SENTRY_ORG_SLUG", "SENTRY_READ_TOKEN"]),
+      ),
+    })
+    .strict(),
+  /** Sentry rejected the token. */
+  z.object({ status: z.literal("denied") }).strict(),
+  /** Sentry rate limited the read, and no earlier answer is stored. */
+  z.object({ status: z.literal("rate_limited") }).strict(),
+  /** Another load is still reading Sentry, and no earlier answer is stored. */
+  z.object({ status: z.literal("busy") }).strict(),
+]);
+
+export type CacheHealthReport = z.output<typeof cacheHealthReportSchema>;

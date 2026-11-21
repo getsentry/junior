@@ -45,7 +45,7 @@ describe("location detail API", () => {
         recentConversations: [
           expect.objectContaining({
             conversationId: "slack:C1:detail",
-            status: "stopped",
+            status: "done",
           }),
         ],
       });

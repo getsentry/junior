@@ -15,3 +15,6 @@ domains:
 
 api-headers:
   Authorization: Bearer ${X_BEARER_TOKEN}
+
+# The skill sends no credential header. Junior adds it.
+tools-send-no-credential: true

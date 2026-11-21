@@ -73,9 +73,9 @@ export function buildSentryEventUrl(eventId: string): string | undefined {
   });
 }
 
-/** Build a Sentry trace URL only when the runtime has enough Sentry config. */
-export function buildSentryTraceUrl(traceId: string): string | undefined {
-  return buildSentryOrgPath({
-    path: `performance/trace/${encodeURIComponent(traceId)}/`,
-  });
+/** Format a failure reference, linked to the Sentry event when the runtime can build the URL. */
+export function formatSentryEventReference(eventId: string): string {
+  const reference = `event_id=${eventId}`;
+  const url = buildSentryEventUrl(eventId);
+  return url ? `[${reference}](${url})` : `\`${reference}\``;
 }

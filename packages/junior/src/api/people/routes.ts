@@ -1,6 +1,12 @@
 import { Hono } from "hono";
 import { AVATAR_WIDTH } from "@/chat/identities/avatar";
+import { getDb } from "@/chat/db";
 import { readImage } from "@/chat/images/read";
+import type { WaitUntilFn } from "@/handlers/types";
+import {
+  readableSlackTeamId,
+  readConversationAccessFromSql,
+} from "../conversations/access";
 import { jsonResponse, throwApiError } from "../http";
 import { imageResponse } from "../images/response";
 import type { JuniorApiEnv } from "../route";
@@ -8,21 +14,28 @@ import {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
   avatarParamsSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
   personParamsSchema,
+  personCardReportSchema,
   personalSpendReportSchema,
 } from "../schema/person";
 import { codePersonReportSchema, personCodeQuerySchema } from "../schema/code";
 import { pluginOperationalReportFeedSchema } from "../../reporting-schema";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";
+import { readPersonCard } from "./card";
 import { readPeopleCode } from "./code";
 import { readPeopleList } from "./list";
 import { readPeoplePluginReports } from "./plugin-reports";
-import { readPeopleProfile } from "./profile";
+import { readPeopleProfileFromSql } from "./profile.query";
+import { readPeopleSearchFromSql } from "./search.query";
 import { readPersonalSpendFromSql } from "./spend.query";
 
 /** Create the HTTP routes owned by the People API. */
-export function createPeopleRoutes(): Hono<JuniorApiEnv> {
+export function createPeopleRoutes(options: {
+  waitUntil: WaitUntilFn;
+}): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   // Profile photos keep this stable path. The shared image code fetches and
@@ -52,7 +65,34 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
   });
 
   app.get("/", async () =>
-    jsonResponse(actorDirectoryReportSchema, await readPeopleList()),
+    jsonResponse(
+      actorDirectoryReportSchema,
+      await readPeopleList({ waitUntil: options.waitUntil }),
+    ),
+  );
+
+  // Before `/:email`, which would also match `/search`.
+  app.get(
+    "/search",
+    requireViewer,
+    validateRequest("query", peopleSearchQuerySchema, "Invalid search query."),
+    async (context) => {
+      const { conversationId, q } = context.req.valid("query");
+      const slackTeamId = conversationId
+        ? readableSlackTeamId(
+            (
+              await readConversationAccessFromSql(
+                getDb(),
+                [conversationId],
+                context.get("viewer"),
+              )
+            ).get(conversationId),
+          )
+        : undefined;
+      return jsonResponse(peopleSearchReportSchema, {
+        people: await readPeopleSearchFromSql(q, slackTeamId),
+      });
+    },
   );
 
   app.get(
@@ -67,6 +107,28 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
         await readPeoplePluginReports({ email, viewer }),
       );
     },
+  );
+
+  app.get(
+    "/:email/card",
+    requireViewer,
+    validateRequest("param", personParamsSchema, "Invalid route parameters."),
+    async (context) =>
+      jsonResponse(
+        personCardReportSchema,
+        await readPersonCard(
+          context.req.valid("param").email,
+          context.get("viewer"),
+        ),
+        // The card holds what this viewer may read. Only this browser keeps
+        // it, as long as the server cache does.
+        {
+          headers: {
+            "cache-control": "private, max-age=60",
+            vary: "Authorization, Cookie",
+          },
+        },
+      ),
   );
 
   app.get(
@@ -91,7 +153,7 @@ export function createPeopleRoutes(): Hono<JuniorApiEnv> {
       const viewer = context.get("viewer");
       return jsonResponse(
         actorProfileReportSchema,
-        await readPeopleProfile(email, viewer ? { viewer } : {}),
+        await readPeopleProfileFromSql(email, viewer ? { viewer } : {}),
       );
     },
   );

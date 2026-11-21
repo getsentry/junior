@@ -4,6 +4,7 @@ import { Link, useLocation } from "react-router";
 import { cn } from "../../styles";
 import { useCurrentAnchor } from "./AnchorHeading";
 import { usePaneBack, usePaneNavItems } from "./PaneNav";
+import { NAV_PAGES } from "../../navPages";
 
 /** One page in an area, such as "Users" in System, or a section of one. */
 type AreaItem = {
@@ -106,8 +107,8 @@ export function AreaSidebar(props: { area: Area; phone?: boolean }) {
           {inboxCount ? (
             <Link
               aria-label={`Inbox, ${inboxCount} waiting`}
-              className="inline-flex items-center gap-1 rounded-full bg-dashboard-accent px-1.5 font-sans text-2xs leading-4 font-semibold tabular-nums text-dashboard-text-inverse no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
-              to="/"
+              className="inline-flex items-center gap-1 rounded-md font-sans text-xs font-medium tabular-nums text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+              to={NAV_PAGES.inbox.to}
             >
               <Inbox aria-hidden="true" size={11} strokeWidth={2.2} />
               {inboxCount}

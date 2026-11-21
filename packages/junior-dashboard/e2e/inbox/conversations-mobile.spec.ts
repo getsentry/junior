@@ -38,7 +38,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("heading", { name: "Investigate checkout latency" }),
     ).toBeVisible();
 
-    const composer = page.getByPlaceholder("Message Junior…");
+    const composer = page.locator('[aria-placeholder="Message Junior…"]');
     await composer.focus();
     await page.evaluate(
       ({ height, offsetTop }) => {
@@ -193,7 +193,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     releaseCreate();
     await expect(page).toHaveURL(/\/conversations\/.+/);
     await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
-    const reply = page.getByPlaceholder("Message Junior…");
+    const reply = page.locator('[aria-placeholder="Message Junior…"]');
     await reply.focus();
     await expectFocusedComposerAtVisualViewportBottom(reply, 844);
   });
@@ -213,7 +213,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       await composer.fill("First line");
       await composer.press("Enter");
       await composer.pressSequentially("Second line");
-      await expect(composer).toHaveValue("First line\nSecond line");
+      await expect(composer).toHaveText("First line\nSecond line", {
+        useInnerText: true,
+      });
       await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
     });
 
@@ -226,18 +228,20 @@ test.describe("new UI", { tag: "@new" }, () => {
       const composer = page.getByLabel("Start a conversation");
       await expect(composer).toBeFocused();
 
-      // A browser back and forward is not a request to type.
-      await page.getByRole("link", { name: "Back to Inbox" }).click();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      // A browser back and forward is not a request to type. A direct link
+      // has no origin, so Back goes to Conversations.
+      const conversationsUrl = `${dashboard.baseURL}/?view=conversations`;
+      await page.getByRole("link", { name: "Back to Conversations" }).click();
+      await expect(page).toHaveURL(conversationsUrl);
       await page.goBack();
       await page.goForward();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      await expect(page).toHaveURL(conversationsUrl);
       await page.goBack();
       await expect(composer).toBeVisible();
       await expect(composer).not.toBeFocused();
 
       // "+" asks to type.
-      await page.getByRole("link", { name: "Back to Inbox" }).click();
+      await page.getByRole("link", { name: "Back to Conversations" }).click();
       await page.getByRole("button", { name: "New conversation" }).click();
       await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
       await expect(composer).toBeFocused();
@@ -421,7 +425,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       )
       .toBeLessThanOrEqual(1);
 
-    const composer = page.getByPlaceholder("Message Junior…");
+    const composer = page.locator('[aria-placeholder="Message Junior…"]');
     await expect(composer).toBeVisible();
     await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
     await composer.focus();
@@ -682,7 +686,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await composer.fill("Keep the mobile composer ready");
     await composer.press("Enter");
     await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue("");
+    await expect(composer).toHaveText("", { useInnerText: true });
     await expect
       .poll(() =>
         transcript.evaluate(
@@ -758,7 +762,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       lastProgressAt: generatedAt,
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
-      status: "completed",
+      status: "done",
+      turnActive: false,
       surface: "internal",
     };
     const events = (from: number, to: number) =>

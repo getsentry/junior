@@ -13,7 +13,7 @@
 import { randomUUID } from "node:crypto";
 import { bypass, http, HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
-import { USER_AGENT } from "@/chat/tools/web/constants";
+import { USER_AGENT } from "@/chat/tool-support/web/constants";
 import { mswServer } from "@junior-tests/msw/server";
 
 let mockedPages: Record<string, string> = {};

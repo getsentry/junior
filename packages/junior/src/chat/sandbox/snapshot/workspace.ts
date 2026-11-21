@@ -684,6 +684,7 @@ export async function resolveWorkspaceSnapshot(params: {
 }): Promise<Snapshot> {
   // Do some work before the first time check. This prevents empty job runs.
   let advanced = false;
+  /* oxlint-disable no-await-in-loop -- Advance the snapshot one step at a time until it is ready. */
   for (;;) {
     params.signal?.throwIfAborted();
     const workspace = await getWorkspace(getDb(), params.workspace.id);
@@ -712,4 +713,5 @@ export async function resolveWorkspaceSnapshot(params: {
     }
     await sleep(WAIT_POLL_MS, params.signal);
   }
+  /* oxlint-enable no-await-in-loop */
 }

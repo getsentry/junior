@@ -28,6 +28,12 @@ describe("event search ranking", () => {
     ).toEqual([2, 3, 1]);
   });
 
+  it("ranks a tool call below a result at a lower rank in the same list", () => {
+    expect(fuseEventRanks([[1, 2]], new Set([1]))).toEqual([2, 1]);
+    // A tool call in both lists still ranks above a result in one.
+    expect(fuseEventRanks([[1, 2], [1]], new Set([1]))).toEqual([1, 2]);
+  });
+
   it("centers the excerpt on the rarest query word", () => {
     const text = `${"step ok ".repeat(100)}step 0042 checksum deadbeef ${"step ok ".repeat(100)}`;
     const excerpt = eventExcerpt(text, excerptTerms("step 0042?"));

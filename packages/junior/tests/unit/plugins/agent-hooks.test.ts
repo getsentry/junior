@@ -46,10 +46,10 @@ import {
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { createTools } from "@/chat/tools";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type {
   SandboxCommandInput,
   SandboxSession,
@@ -185,6 +185,12 @@ function fakeSandbox(
       );
     },
   };
+}
+
+/** Operational reports of the test plugins, without the core Memory report. */
+async function testPluginReports() {
+  const reports = await getPluginOperationalReports(123);
+  return reports.filter((report) => report.pluginName !== "memory");
 }
 
 describe("agent plugin hooks", () => {
@@ -443,9 +449,9 @@ describe("agent plugin hooks", () => {
     const previous = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
-          displayName: "Memory",
-          description: "Memory",
+          name: "notes",
+          displayName: "Notes",
+          description: "Notes",
         },
         hooks: {
           userPrompt() {
@@ -471,7 +477,7 @@ describe("agent plugin hooks", () => {
       ).resolves.toEqual([
         {
           id: "userPrompt:0",
-          pluginName: "memory",
+          pluginName: "notes",
           text: "Use pnpm.",
           context: {
             content: {
@@ -479,7 +485,7 @@ describe("agent plugin hooks", () => {
             },
             kind: "recall",
             loadedAtMs: expect.any(Number),
-            pluginName: "memory",
+            pluginName: "notes",
             version: 1,
           },
         },
@@ -1456,7 +1462,9 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      const routes = getPluginApiRoutes();
+      const routes = getPluginApiRoutes().filter(
+        (route) => route.pluginName !== "memory",
+      );
 
       expect(routes).toHaveLength(1);
       expect(routes[0]?.pluginName).toBe("agent-demo");
@@ -1574,7 +1582,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(getPluginOperationalReports(123)).resolves.toEqual([
+      await expect(testPluginReports()).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",
@@ -1672,7 +1680,7 @@ describe("agent plugin hooks", () => {
       }),
     ]);
     try {
-      await expect(getPluginOperationalReports(123)).resolves.toEqual([
+      await expect(testPluginReports()).resolves.toEqual([
         {
           pluginName: "agent-demo",
           title: "Agent Demo",

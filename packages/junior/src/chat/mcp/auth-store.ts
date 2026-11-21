@@ -5,19 +5,20 @@ import type {
 import type { OAuthDiscoveryState } from "@modelcontextprotocol/sdk/client/auth.js";
 
 import {
+  destinationSchema,
   sourceSchema,
   type Destination,
   type Source,
 } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
+import * as z from "zod";
 import { findLegacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
-import { parseDestination } from "@/chat/destination";
-import { isRecord } from "@/chat/coerce";
 import {
   createEncryptedState,
   readEncryptedState,
 } from "@/chat/encryption/state";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { mapBounded } from "@/chat/fan-out";
 
 const MCP_AUTH_SESSION_PREFIX = "junior:mcp_oauth_attempt:v2";
 const MCP_AUTH_CREDENTIALS_PREFIX = "junior:mcp_auth_credentials";
@@ -92,78 +93,37 @@ function parseSessionIndex(value: unknown): string[] {
   }
 }
 
+const optionalStoredString = z.string().optional().catch(undefined);
+
+const mcpAuthSessionSchema = z.object({
+  schemaVersion: z.literal(2),
+  authSessionId: z.string(),
+  provider: z.string(),
+  userId: z.string(),
+  conversationId: z.string(),
+  destination: destinationSchema.optional(),
+  source: sourceSchema.optional(),
+  sessionId: z.string(),
+  userMessage: z.string(),
+  channelId: optionalStoredString,
+  threadTs: optionalStoredString,
+  toolChannelId: optionalStoredString,
+  configuration: z.record(z.string(), z.unknown()).optional().catch(undefined),
+  authorizationUrl: optionalStoredString,
+  codeVerifier: optionalStoredString,
+  createdAtMs: z.number(),
+  updatedAtMs: z.number(),
+});
+
 function parseMcpAuthSession(value: unknown): McpAuthSessionState | undefined {
-  if (!isRecord(value)) {
-    return undefined;
-  }
-
-  try {
-    const parsed = value;
-
-    if (
-      parsed["schemaVersion"] !== 2 ||
-      typeof parsed["authSessionId"] !== "string" ||
-      typeof parsed["provider"] !== "string" ||
-      typeof parsed["userId"] !== "string" ||
-      typeof parsed["conversationId"] !== "string" ||
-      typeof parsed["sessionId"] !== "string" ||
-      typeof parsed["userMessage"] !== "string" ||
-      typeof parsed["createdAtMs"] !== "number" ||
-      typeof parsed["updatedAtMs"] !== "number"
-    ) {
-      return undefined;
-    }
-
-    const destination =
-      parsed["destination"] === undefined
-        ? undefined
-        : parseDestination(parsed["destination"]);
-    if (parsed["destination"] !== undefined && !destination) {
-      return undefined;
-    }
-    const source =
-      parsed["source"] === undefined
-        ? undefined
-        : sourceSchema.safeParse(parsed["source"]);
-    if (parsed["source"] !== undefined && (!source || !source.success)) {
-      return undefined;
-    }
-
-    return {
-      schemaVersion: 2,
-      authSessionId: parsed["authSessionId"],
-      provider: parsed["provider"],
-      userId: parsed["userId"],
-      conversationId: parsed["conversationId"],
-      ...(destination ? { destination } : undefined),
-      ...(source?.success ? { source: source.data } : undefined),
-      sessionId: parsed["sessionId"],
-      userMessage: parsed["userMessage"],
-      createdAtMs: parsed["createdAtMs"],
-      updatedAtMs: parsed["updatedAtMs"],
-      ...(typeof parsed["channelId"] === "string"
-        ? { channelId: parsed["channelId"] }
-        : undefined),
-      ...(typeof parsed["threadTs"] === "string"
-        ? { threadTs: parsed["threadTs"] }
-        : undefined),
-      ...(typeof parsed["toolChannelId"] === "string"
-        ? { toolChannelId: parsed["toolChannelId"] }
-        : undefined),
-      ...(isRecord(parsed["configuration"])
-        ? { configuration: parsed["configuration"] }
-        : undefined),
-      ...(typeof parsed["authorizationUrl"] === "string"
-        ? { authorizationUrl: parsed["authorizationUrl"] }
-        : undefined),
-      ...(typeof parsed["codeVerifier"] === "string"
-        ? { codeVerifier: parsed["codeVerifier"] }
-        : undefined),
-    };
-  } catch {
-    return undefined;
-  }
+  const parsed = mcpAuthSessionSchema.safeParse(value);
+  return parsed.success ? parsed.data : undefined;
 }
+
+const serverSessionSchema = z.object({
+  sessionId: z.string(),
+  updatedAtMs: z.number(),
+});
 
 function parseServerSession(value: unknown): McpServerSessionState | undefined {
   if (typeof value !== "string") {
@@ -171,53 +131,43 @@ function parseServerSession(value: unknown): McpServerSessionState | undefined {
   }
 
   try {
-    const parsed = JSON.parse(value) as Record<string, unknown>;
-    if (
-      !isRecord(parsed) ||
-      typeof parsed["sessionId"] !== "string" ||
-      typeof parsed["updatedAtMs"] !== "number"
-    ) {
-      return undefined;
-    }
-
-    return {
-      sessionId: parsed["sessionId"],
-      updatedAtMs: parsed["updatedAtMs"],
-    };
+    const parsed = serverSessionSchema.safeParse(JSON.parse(value));
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
 }
+
+// OAuth payloads are stored as the MCP SDK returned them. Only their object
+// shape is checked here.
+const storedOAuthClientInformationSchema =
+  z.custom<OAuthClientInformationMixed>(
+    (value) => typeof value === "object" && value !== null,
+  );
+const storedOAuthDiscoveryStateSchema = z.custom<OAuthDiscoveryState>(
+  (value) => typeof value === "object" && value !== null,
+);
+const storedOAuthTokensSchema = z.custom<OAuthTokens>(
+  (value) => typeof value === "object" && value !== null,
+);
+
+const storedCredentialsSchema = z.object({
+  clientInformation: storedOAuthClientInformationSchema
+    .optional()
+    .catch(undefined),
+  discoveryState: storedOAuthDiscoveryStateSchema.optional().catch(undefined),
+  tokens: storedOAuthTokensSchema.optional().catch(undefined),
+});
 
 function parseStoredCredentials(
   value: unknown,
 ): McpStoredOAuthCredentials | undefined {
   try {
     // Plaintext values from before encryption are JSON strings.
-    const parsed: unknown =
-      typeof value === "string" ? JSON.parse(value) : value;
-    if (!isRecord(parsed)) {
-      return undefined;
-    }
-
-    return {
-      ...(isRecord(parsed["clientInformation"])
-        ? {
-            clientInformation: parsed[
-              "clientInformation"
-            ] as OAuthClientInformationMixed,
-          }
-        : undefined),
-      ...(isRecord(parsed["discoveryState"])
-        ? {
-            // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-            discoveryState: parsed.discoveryState as OAuthDiscoveryState,
-          }
-        : undefined),
-      ...(isRecord(parsed["tokens"])
-        ? { tokens: parsed["tokens"] as OAuthTokens }
-        : undefined),
-    };
+    const parsed = storedCredentialsSchema.safeParse(
+      typeof value === "string" ? JSON.parse(value) : value,
+    );
+    return parsed.success ? parsed.data : undefined;
   } catch {
     return undefined;
   }
@@ -346,9 +296,9 @@ export async function deleteMcpAuthSessionsForUserProvider(
   const indexKey = sessionIndexKey(userId, provider);
   const authSessionIds = parseSessionIndex(await stateAdapter.get(indexKey));
 
-  for (const authSessionId of authSessionIds) {
-    await stateAdapter.delete(sessionKey(authSessionId));
-  }
+  await mapBounded(authSessionIds, (authSessionId) =>
+    stateAdapter.delete(sessionKey(authSessionId)),
+  );
 
   await stateAdapter.delete(indexKey);
 }
@@ -362,11 +312,11 @@ export async function getLatestMcpAuthSessionForUserProvider(
     await stateAdapter.get(sessionIndexKey(userId, provider)),
   );
 
+  const sessions = await mapBounded(authSessionIds, async (authSessionId) =>
+    parseMcpAuthSession(await readMcpAuthSession(stateAdapter, authSessionId)),
+  );
   let latestSession: McpAuthSessionState | undefined;
-  for (const authSessionId of authSessionIds) {
-    const session = parseMcpAuthSession(
-      await readMcpAuthSession(stateAdapter, authSessionId),
-    );
+  for (const session of sessions) {
     if (!session) {
       continue;
     }

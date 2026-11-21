@@ -1,0 +1,17 @@
+// Signing for device builds. The simulator signs ad hoc and needs none of it.
+// Debug device builds use the match development profile: `make signing` puts it
+// and its certificate on this Mac. The beta lane signs Release with its own.
+//
+// Without access to Sentry's match repo, sign with your own team in
+// Local.xcconfig next to this file; git ignores that file:
+//
+//   DEVELOPMENT_TEAM = ABCDE12345
+//   CODE_SIGN_STYLE = Automatic
+//   PROVISIONING_PROFILE_SPECIFIER =
+//   JUNIOR_BUNDLE_ID = com.example.junior   // Only if your team cannot use the default.
+JUNIOR_BUNDLE_ID = io.sentry.junior
+DEVELOPMENT_TEAM = 97JCY7859U
+CODE_SIGN_STYLE = Manual
+CODE_SIGN_IDENTITY = Apple Development
+PROVISIONING_PROFILE_SPECIFIER = match Development $(JUNIOR_BUNDLE_ID)
+#include? "Local.xcconfig"

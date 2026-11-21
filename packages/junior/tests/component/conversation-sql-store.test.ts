@@ -1312,7 +1312,7 @@ ORDER BY metric
       ).toEqual([
         { metric: "cache_creation_tokens", value: 2 },
         { metric: "cached_input_tokens", value: 5 },
-        { metric: "cost_usd", value: 0.015 },
+        { metric: "cost_micro_usd", value: 15_000 },
         { metric: "duration_ms", value: 1_500 },
         { metric: "input_tokens", value: 5 },
         { metric: "output_tokens", value: 3 },
@@ -1434,7 +1434,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "failed",
+            status: "needs_input",
           }),
         ],
       });
@@ -1444,7 +1444,7 @@ ORDER BY metric
     }
   });
 
-  it("reports stale running SQL execution status as active", async () => {
+  it("reports stale running SQL execution status as working", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
@@ -1468,7 +1468,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "active",
+            status: "working",
           }),
         ],
       });
@@ -1479,7 +1479,7 @@ ORDER BY metric
     }
   });
 
-  it("maps idle SQL execution status to completed", async () => {
+  it("maps idle SQL execution status to done", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
 
     try {
@@ -1506,7 +1506,7 @@ ORDER BY metric
         conversations: [
           expect.objectContaining({
             conversationId: CONVERSATION_ID,
-            status: "completed",
+            status: "done",
           }),
         ],
       });
@@ -1558,7 +1558,7 @@ ORDER BY metric
             conversationId: CONVERSATION_ID,
             lastProgressAt: new Date(600_000).toISOString(),
             lastSeenAt: new Date(600_000).toISOString(),
-            status: "active",
+            status: "working",
           }),
         ],
       });

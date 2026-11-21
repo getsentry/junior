@@ -1,7 +1,10 @@
 import { describe, it } from "node:test";
 import { RuleTester } from "oxlint/plugins-dev";
 
-import { noBroadQueryInvalidationRule } from "./query-invalidation.ts";
+import {
+  noBroadQueryInvalidationRule,
+  noRefetchIntervalRule,
+} from "./query-invalidation.ts";
 
 RuleTester.describe = describe;
 RuleTester.it = it;
@@ -13,10 +16,10 @@ new RuleTester({
   languageOptions: { parserOptions: { lang: "tsx" } },
 }).run("no-broad-query-invalidation", noBroadQueryInvalidationRule, {
   valid: [
-    "queryClient.invalidateQueries({ queryKey: reviewItemListQueryKey(filters) });",
+    "queryClient.invalidateQueries({ queryKey: inboxItemListQueryKey(filters) });",
     "queryClient.invalidateQueries({ exact: true, queryKey: KEY });",
     `queryClient.invalidateQueries({ queryKey: ["dashboard", "plugin-user-page", name] });`,
-    `const PREFIX = ["dashboard", "review-items"] as const;
+    `const PREFIX = ["dashboard", "inbox-items"] as const;
     queryClient.invalidateQueries({ queryKey: [...PREFIX, "count"] });`,
     `queryClient.invalidateQueries({ queryKey: [...IMPORTED_PREFIX, "count"] });`,
     `const key = conversationDetailQueryKey(id);
@@ -43,12 +46,12 @@ new RuleTester({
       errors: broadKey,
     },
     {
-      code: `const PREFIX = ["dashboard", "review-items"] as const;
+      code: `const PREFIX = ["dashboard", "inbox-items"] as const;
       queryClient.removeQueries({ queryKey: PREFIX });`,
       errors: broadKey,
     },
     {
-      code: "queryClient.invalidateQueries({ queryKey: REVIEW_ITEMS_QUERY_KEY });",
+      code: "queryClient.invalidateQueries({ queryKey: INBOX_ITEMS_QUERY_KEY });",
       errors: broadKey,
     },
     {
@@ -59,6 +62,29 @@ new RuleTester({
     {
       code: 'queryClient.invalidateQueries({ type: "active" });',
       errors: noKey,
+    },
+  ],
+});
+
+const poll = [{ messageId: "poll" }];
+
+new RuleTester({
+  languageOptions: { parserOptions: { lang: "tsx" } },
+}).run("no-refetch-interval", noRefetchIntervalRule, {
+  valid: [
+    "useQuery({ queryKey, queryFn, staleTime: 30_000 });",
+    "const refetchInterval = 1_000;",
+    "options[refetchInterval] = 1_000;",
+  ],
+  invalid: [
+    {
+      code: "useQuery({ queryKey, queryFn, refetchInterval: 5_000 });",
+      errors: poll,
+    },
+    { code: "useQuery({ queryKey, queryFn, refetchInterval });", errors: poll },
+    {
+      code: `const options = { "refetchInterval": () => 1_000 };`,
+      errors: poll,
     },
   ],
 });

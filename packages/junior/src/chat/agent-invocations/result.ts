@@ -1,5 +1,4 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import type { Actor } from "@/chat/actor";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
@@ -14,10 +13,11 @@ import {
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { getConversationStore } from "@/chat/db";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { closeOpenTodosOfChild } from "@/chat/todos/store";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   getEventBatchDelayMs,
@@ -305,6 +305,18 @@ export async function enqueueAgentInvocationResult(
     }
     return;
   }
+  // A `reply` closed them when it was sent, and a quiet Turn sends no result.
+  // A retry after the append must not close To-dos assigned after it.
+  const resultMessageId = getAgentInvocationResultMessageId(
+    invocation.invocationId,
+  );
+  if (
+    !parentMessages.some(
+      (message) => message.inboundMessageId === resultMessageId,
+    )
+  ) {
+    await closeTodosForResult(invocation, invocation.status, nowMs);
+  }
   await appendAndEnqueueInboundMessage({
     message: buildResultInboundMessage(invocation, nowMs),
     renderText: renderResultUnderLock(invocation, terminalResult(invocation)),
@@ -316,6 +328,28 @@ export async function enqueueAgentInvocationResult(
     invocation.invocationId,
     nowMs,
   );
+}
+
+/**
+ * Close the child's open To-dos of the parent before the parent reads the
+ * child's result: done when it completed, dropped when it stopped. A
+ * blocked or failed child did not finish that work.
+ */
+async function closeTodosForResult(
+  sender: Pick<
+    ChildAgentSender,
+    "childConversationId" | "parentConversationId"
+  >,
+  status: TerminalAgentInvocation["status"],
+  nowMs: number,
+): Promise<void> {
+  if (status !== "completed" && status !== "stopped") return;
+  await closeOpenTodosOfChild(getSqlExecutor(), {
+    childConversationId: sender.childConversationId,
+    nowMs,
+    parentConversationId: sender.parentConversationId,
+    status: status === "completed" ? "done" : "dropped",
+  });
 }
 
 /**
@@ -479,6 +513,23 @@ export async function enqueueChildResultToParent(args: {
     }),
     ...childMessageSenderMetadata(sender),
   };
+  // A `reply` of an agent invocation is its result. A reply from a Turn on
+  // the Conversation loop is not, so the child's work may go on. Only the
+  // first send closes: a retry must not close To-dos assigned after it.
+  const replyingInvocationId =
+    args.result.kind === "reply" ? ownAgentInvocation(sender) : undefined;
+  if (
+    replyingInvocationId &&
+    !hasAgentInvocationReply(
+      await readParentChildMessages(
+        args.sender.parentConversationId,
+        args.state,
+      ),
+      replyingInvocationId,
+    )
+  ) {
+    await closeTodosForResult(args.sender, "completed", nowMs);
+  }
   await appendAndEnqueueInboundMessage({
     message: {
       conversationId: args.sender.parentConversationId,
@@ -643,8 +694,8 @@ async function startAgentInvocationsForChildInput(
     return undefined;
   }
   const stoppedAtMs = await getConversationStoppedAtMs(context.conversationId);
-  const routes = await Promise.all(
-    messages.map((message) => routeChildInput(message, latest, stoppedAtMs)),
+  const routes = await mapBounded(messages, (message) =>
+    routeChildInput(message, latest, stoppedAtMs),
   );
   if (!routes.includes("agent invocation")) {
     return undefined;
@@ -672,8 +723,10 @@ async function startAgentInvocationsForChildInput(
       // invocation stores its input as parts.
       input: renderEventBatchInputs(
         messages,
-        await eventReviewItemInputs(messages),
-      ).join("\n\n"),
+        await eventInboxItemInputs(messages),
+      )
+        .map((input) => input.text)
+        .join("\n\n"),
       invocationId: getAgentInvocationIdForEvents(
         messages[0]!.inboundMessageId,
       ),
@@ -705,7 +758,9 @@ async function startAgentInvocationsForChildInput(
     if (parentMessage) {
       // A parent message to a child with an open Agent invocation queues
       // behind it, as `messageAgent` does with a row.
+      // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
       await enqueueAgentInvocation(
+        // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
         await createAgentInvocationFromLatest({
           input: message.input.text.trim(),
           invocationId: getAgentInvocationIdForMessage(
@@ -725,10 +780,12 @@ async function startAgentInvocationsForChildInput(
     }
     const input = inputs[index]!;
     // Only an agent invocation sends a result.
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     const { invocation: source } = await getChildAgentInputSender(
       message,
       input,
     );
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     const invocation = await createAgentInvocationFromLatest({
       input: message.input.text.trim(),
       invocationId:
@@ -748,6 +805,7 @@ async function startAgentInvocationsForChildInput(
           }
         : undefined),
     });
+    // oxlint-disable-next-line no-await-in-loop -- Queue invocations in message order.
     await enqueueAgentInvocation(invocation, {
       ...options,
       eventMeta: eventBatchMessageMeta([message]),
@@ -880,69 +938,61 @@ export async function withAgentInvocationResultActors(
         getConversationStoppedAtMs(conversationId),
       ])
     : [undefined, undefined];
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const batch = await Promise.all(
-    work.batch.map((entry) =>
-      limit(async () => {
-        // A parent message from the stored parent runs as the Actor of the
-        // parent's Turn, with its grants and text, as on an Agent invocation.
-        const parentMessage = readParentMessage(entry.message);
-        if (parentMessage) {
-          if (
-            (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
-            "dropped"
-          ) {
-            logDroppedParentMessage(entry.message, parentMessage);
-            return undefined;
-          }
-          const text = await parentMessageText(entry.message, parentMessage);
-          return {
-            ...entry,
-            actor: parentMessage.actor,
-            ...(parentMessage.credentialContext
-              ? { credentialContext: parentMessage.credentialContext }
-              : undefined),
-            message: {
-              ...entry.message,
-              input: { ...entry.message.input, text },
-            },
-          };
+  const batch = await mapBounded(work.batch, async (entry) => {
+    // A parent message from the stored parent runs as the Actor of the
+    // parent's Turn, with its grants and text, as on an Agent invocation.
+    const parentMessage = readParentMessage(entry.message);
+    if (parentMessage) {
+      if (
+        (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
+        "dropped"
+      ) {
+        logDroppedParentMessage(entry.message, parentMessage);
+        return undefined;
+      }
+      const text = await parentMessageText(entry.message, parentMessage);
+      return {
+        ...entry,
+        actor: parentMessage.actor,
+        requestText: entry.message.input.text.trim(),
+        ...(parentMessage.credentialContext
+          ? { credentialContext: parentMessage.credentialContext }
+          : undefined),
+        message: {
+          ...entry.message,
+          input: { ...entry.message.input, text },
+        },
+      };
+    }
+    const input = childAgentInput(entry.message);
+    if (!input) {
+      return entry;
+    }
+    if (
+      (await routeChildInput(entry.message, latest, stoppedAtMs)) === "dropped"
+    ) {
+      return undefined;
+    }
+    const { invocation } = await getChildAgentInputSender(entry.message, input);
+    // A child that no agent invocation names sends its Turn's Actor with
+    // the input. The author id must match either Actor.
+    const actor =
+      invocation?.actor ??
+      senderActorFromMetadata(entry.message.input.metadata);
+    if (!actor || entry.message.input.authorId !== resultAuthorId(actor)) {
+      return { ...entry, actor: EVENT_SYSTEM_ACTOR };
+    }
+    // Only a result continues the work of the Turn that spawned the child,
+    // so only a result keeps that Turn's grants, such as a timer owner's. A
+    // reply or message runs as the Actor only.
+    return input.kind === "result" && invocation?.credentialContext
+      ? {
+          ...entry,
+          actor,
+          credentialContext: invocation.credentialContext,
         }
-        const input = childAgentInput(entry.message);
-        if (!input) {
-          return entry;
-        }
-        if (
-          (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
-          "dropped"
-        ) {
-          return undefined;
-        }
-        const { invocation } = await getChildAgentInputSender(
-          entry.message,
-          input,
-        );
-        // A child that no agent invocation names sends its Turn's Actor with
-        // the input. The author id must match either Actor.
-        const actor =
-          invocation?.actor ??
-          senderActorFromMetadata(entry.message.input.metadata);
-        if (!actor || entry.message.input.authorId !== resultAuthorId(actor)) {
-          return { ...entry, actor: EVENT_SYSTEM_ACTOR };
-        }
-        // Only a result continues the work of the Turn that spawned the child,
-        // so only a result keeps that Turn's grants, such as a timer owner's. A
-        // reply or message runs as the Actor only.
-        return input.kind === "result" && invocation?.credentialContext
-          ? {
-              ...entry,
-              actor,
-              credentialContext: invocation.credentialContext,
-            }
-          : { ...entry, actor };
-      }),
-    ),
-  );
+      : { ...entry, actor };
+  });
   const kept = batch.filter((entry) => entry !== undefined);
   return kept.length > 0 ? { kind: "mailbox", batch: kept } : undefined;
 }

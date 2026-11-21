@@ -41,10 +41,10 @@ test.describe("new UI", { tag: "@new" }, () => {
             name: "Investigate checkout latency",
           }),
         })
-        .getByRole("status", { name: "Running" }),
+        .getByRole("status", { name: "Working" }),
     ).toBeVisible();
     await expect(
-      publicRow.getByRole("status", { name: "Running" }),
+      publicRow.getByRole("status", { name: "Working" }),
     ).toHaveCount(0);
     await openRow(publicConversation);
     await expect(page).toHaveURL(
@@ -220,6 +220,52 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("note")).toContainText("Private conversation");
   });
 
+  test("the header toggles auto archive, and details no longer show it", async ({
+    dashboard,
+    page,
+  }) => {
+    const conversationId = "slack:CQA123:1770003600.000200";
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    await expect(details).toBeVisible();
+    await expect(details.getByText("Auto archive")).toHaveCount(0);
+
+    const toggle = page.getByRole("button", { name: "Auto archive" });
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+    // Tooltips open on keyboard focus, not on focus after a mouse click.
+    await page.keyboard.press("Shift");
+    await toggle.focus();
+    await expect(page.getByRole("tooltip")).toContainText(
+      "Auto archive is off",
+    );
+
+    const save = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/auto-archive"),
+    );
+    await toggle.press("Enter");
+    expect((await save).postDataJSON()).toEqual({ autoArchive: true });
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("tooltip")).toContainText("Auto archive is on");
+    await screenshot(page, "conversation-header-auto-archive", {
+      lightTheme: true,
+    });
+
+    // A phone shows the toggle in the app header, beside the menu.
+    await page.setViewportSize({ height: 844, width: 390 });
+    await expect(toggle).toHaveAttribute("aria-pressed", "true");
+    // Touch opens no tooltip, so the help is the accessible description.
+    await expect(toggle).toHaveAccessibleDescription(/linked work is merged/);
+    await toggle.click();
+    await expect(toggle).toHaveAttribute("aria-pressed", "false");
+  });
+
   test("shows a Watch on linked work in its linked work row", async ({
     page,
     dashboard,
@@ -239,7 +285,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(watched).toHaveCount(1);
     await expect(details.getByText("Also waiting on")).toBeVisible();
     await expect(
-      details.getByRole("link", { name: /getsentry\/junior#2351/ }),
+      details.getByRole("link", {
+        name: /^Reply to new review comments on the PR\. expires/,
+      }),
     ).toBeVisible();
 
     await details
@@ -253,7 +301,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "conversation-details-watched-linked-work");
   });
 
-  test("shows recalled and captured memories in popovers", async ({
+  test("keeps memories out of the transcript and jumps to their Turn", async ({
     page,
     dashboard,
   }) => {
@@ -262,29 +310,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
     );
 
-    // Captured memories stay out of the collapsed activity rows.
-    const captured = page.getByRole("button", { name: "Captured 2 memories" });
-    await expect(captured).toBeVisible();
-    await captured.click();
-    const capturedPopover = page.getByRole("dialog", {
-      name: "Captured 2 memories",
-    });
-    await expect(
-      capturedPopover.getByText("Use pnpm for repository commands."),
-    ).toBeVisible();
-    await expect(
-      capturedPopover.getByRole("img", { name: "Private" }),
-    ).toBeVisible();
-    await screenshot(page, "conversation-captured-memories-popover");
-    await page.keyboard.press("Escape");
-    await expect(capturedPopover).toBeHidden();
-
-    // A memory in details opens its Turn's popover in the transcript, even
-    // when a search hides that row.
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Search transcript" }).click();
-    await page.getByPlaceholder("Search transcript…").fill("no such text");
-    await expect(captured).toBeHidden();
     const details = page.getByRole("complementary", {
       name: "Conversation details",
       exact: true,
@@ -292,40 +317,30 @@ test.describe("new UI", { tag: "@new" }, () => {
     await details
       .getByRole("button", { name: "1 recalled · 2 captured" })
       .click();
+    const captured = details
+      .getByRole("listitem")
+      .filter({ hasText: "Use pnpm for repository commands." });
+    await expect(captured).toBeVisible();
+    await expect(captured.getByRole("img", { name: "Private" })).toBeVisible();
+    // The transcript shows no memory chips or capture rows.
+    await expect(page.getByText(/^(Captured|Recalled) \d+ memor/)).toHaveCount(
+      0,
+    );
+
+    // A memory jump shows its Turn, even when a search hides that row.
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page.getByRole("menuitem", { name: "Search transcript" }).click();
+    await page.getByPlaceholder("Search transcript…").fill("no such text");
     await details
       .getByRole("listitem")
       .filter({ hasText: "Dashboard transcript events should remain" })
       .getByRole("button", { name: "Go to message" })
       .click();
-    await expect(capturedPopover).toBeVisible();
     await expect(
-      details.getByRole("heading", { name: "Memories" }),
-    ).toBeVisible();
-    await screenshot(page, "conversation-memory-list-jump");
-  });
-
-  test("shows recalled memories under their prompt", async ({
-    page,
-    dashboard,
-  }) => {
-    await page.setViewportSize({ height: 900, width: 1600 });
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
-    );
-
-    const recalled = page.getByRole("button", { name: "Recalled 1 memory" });
-    await recalled.click();
-    const popover = page.getByRole("dialog", { name: "Recalled 1 memory" });
-    await expect(
-      popover.getByText(
-        "Checkout latency investigations start with the deployment comparison dashboard.",
-      ),
-    ).toBeVisible();
-    await expect(
-      popover.getByRole("link", { name: /^Checkout latency investigations/ }),
-    ).toHaveAttribute("href", "/memories/memory-checkout-runbook");
-    await screenshot(page, "conversation-recalled-memories-popover");
-    await recalled.click();
-    await expect(popover).toBeHidden();
+      page
+        .getByLabel("Conversation transcript")
+        .locator("[data-transcript-seq][data-highlighted]"),
+    ).toBeInViewport();
+    await screenshot(page, "conversation-memory-list");
   });
 });

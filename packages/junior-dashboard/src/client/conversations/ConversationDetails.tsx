@@ -3,11 +3,10 @@ import { useState, type ReactNode } from "react";
 import type {
   ConversationAgentTreeNode,
   ConversationDetailReport,
-  ConversationWatch,
 } from "@sentry/junior/api/schema";
 
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
-import { ConversationReviewItems } from "../review-desk/ConversationReviewItems";
+import { ConversationInboxItems } from "../inbox/ConversationInboxItems";
 import { Button } from "../components/ui/button";
 import { ConversationBrief } from "./ConversationBrief";
 import {
@@ -17,7 +16,7 @@ import {
 } from "./ConversationChildAgents";
 import { conversationPath } from "./conversationRoutes";
 import {
-  ConversationLinkedWork,
+  ConversationLinkedWorkCard,
   type ConversationLink,
 } from "./ConversationLinkedWork";
 import {
@@ -26,14 +25,10 @@ import {
 } from "./ConversationMemories";
 import {
   conversationMemoryEntries,
-  useConversationMemoryState,
   type ConversationMemoryEntry,
+  type ConversationMemoryList,
 } from "./conversationMemory";
-import { ConversationPlan } from "./ConversationPlan";
-import {
-  ConversationWatches,
-  useConversationWatches,
-} from "./ConversationWatches";
+import { ConversationTodos } from "./ConversationTodos";
 import { DetailsCard, DetailsRow } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
 import { formatRelativeTime, formatTime } from "../time";
@@ -49,23 +44,24 @@ export function ConversationDetails(props: {
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
   brief?: Brief | undefined;
-  /** True when the viewer can close or reopen Plan items. */
-  canEditPlan: boolean;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
   identity: ReactNode;
+  /** True when the viewer can close To-dos and cancel Watches. */
+  isParticipant: boolean;
   links: ConversationLink[];
+  memoryList?: ConversationMemoryList | undefined;
   onClose(): void;
   /** Open one Task transcript. A details sheet closes first. */
   onOpenSubagent(target: ConversationDrawerTarget): void;
-  /** Show one memory where its Turn recalled or captured it. */
-  onSelectMemory(entry: ConversationMemoryEntry & { turnId: string }): void;
+  /** Show the Turn that recalled or captured one memory. */
+  onSelectMemory(entry: ConversationMemoryEntry): void;
   overview: ReactNode;
   usage: ReactNode;
 }) {
   const panel = useDetailsPanel();
-  const memoryList = useConversationMemoryState()?.list;
+  const { memoryList } = props;
   const [memoriesOpen, setMemoriesOpen] = useState(false);
   const [memoryConversationId, setMemoryConversationId] = useState(
     props.conversationId,
@@ -79,22 +75,6 @@ export function ConversationDetails(props: {
   const tasks = agents?.filter((agent) => agent.kind === "task") ?? [];
   // The last node is this Conversation, so the one before it is the parent.
   const parent = props.agentTree?.at(-2);
-  const allWatches =
-    useConversationWatches(props.conversationId).data?.watches ?? [];
-  // A Watch on linked work shows in that row, so the resource shows once.
-  const linkUrls = new Set(props.links.map((link) => link.url));
-  const watchesByUrl = new Map<string, ConversationWatch[]>();
-  const watches: ConversationWatch[] = [];
-  for (const watch of allWatches) {
-    if (watch.url && linkUrls.has(watch.url)) {
-      watchesByUrl.set(watch.url, [
-        ...(watchesByUrl.get(watch.url) ?? []),
-        watch,
-      ]);
-    } else {
-      watches.push(watch);
-    }
-  }
 
   if (memoriesOpen && memoryList) {
     // The list replaces details in place, so nothing stacks over the panel.
@@ -166,7 +146,7 @@ export function ConversationDetails(props: {
     >
       <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
         {parent ? (
-          <DetailsCard flat title="Parent">
+          <DetailsCard title="Parent">
             <DetailsRow
               icon={<CornerLeftUp aria-hidden="true" size={14} />}
               title={parent.label}
@@ -174,7 +154,7 @@ export function ConversationDetails(props: {
             />
           </DetailsCard>
         ) : null}
-        <ConversationReviewItems
+        <ConversationInboxItems
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />
@@ -183,35 +163,16 @@ export function ConversationDetails(props: {
             <ConversationBrief brief={props.brief} variant="summary" />
           </div>
         ) : null}
-        <ConversationPlan
-          canEdit={props.canEditPlan}
+        <ConversationTodos
+          canEdit={props.isParticipant}
           conversationId={props.conversationId}
         />
         {threads.length > 0 ? <ConversationThreads threads={threads} /> : null}
-        {props.links.length > 0 || watches.length > 0 ? (
-          // A Watch waits on something. It shows with linked work, so the
-          // work and what Junior waits on read as one list.
-          <DetailsCard
-            count={props.links.length || watches.length}
-            flat
-            title={props.links.length > 0 ? "Linked work" : "Waiting on"}
-          >
-            {props.links.length > 0 ? (
-              <ConversationLinkedWork
-                links={props.links}
-                watchesByUrl={watchesByUrl}
-              />
-            ) : null}
-            {props.links.length > 0 && watches.length > 0 ? (
-              <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-semibold text-dashboard-text-muted">
-                Also waiting on
-              </h4>
-            ) : null}
-            {watches.length > 0 ? (
-              <ConversationWatches watches={watches} />
-            ) : null}
-          </DetailsCard>
-        ) : null}
+        <ConversationLinkedWorkCard
+          canCancelWatches={props.isParticipant}
+          conversationId={props.conversationId}
+          links={props.links}
+        />
         {/* Linked work decides when auto-archive runs, so it follows. */}
         {props.autoArchive != null ? (
           <DetailsCard>{props.autoArchive}</DetailsCard>
@@ -227,13 +188,11 @@ export function ConversationDetails(props: {
           />
         ) : null}
         {props.overview != null ? (
-          <DetailsCard flat>{props.overview}</DetailsCard>
+          <DetailsCard>{props.overview}</DetailsCard>
         ) : null}
         {props.usage}
         {props.identity != null ? (
-          <DetailsCard flat title="Participants">
-            {props.identity}
-          </DetailsCard>
+          <DetailsCard title="Participants">{props.identity}</DetailsCard>
         ) : null}
         {memoryList?.events.length ? (
           <ConversationMemoryCard

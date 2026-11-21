@@ -13,13 +13,13 @@ import {
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { EventRegistrationInput } from "@/chat/events/catalog";
 import type { SlackBotId } from "@/chat/slack/ids";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 /** Core-owned event namespace for Slack Events. Not a plugin publisher. */
 export const SLACK_EVENT_NAMESPACE = "slack";
 
 /** The trigger identifier that names the channel of the automation. */
-export const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
+const SLACK_CURRENT_CHANNEL_IDENTIFIER = "current_channel";
 
 const CHANNEL_RESOURCE_TYPE = "channel";
 const MESSAGE_POSTED_EVENT = "message.posted";

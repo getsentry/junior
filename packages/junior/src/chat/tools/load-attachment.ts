@@ -12,16 +12,15 @@ import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import { readLiveAttachment } from "@/chat/attachments/store";
 import { attachmentIdParam } from "@/chat/attachments/tool-params";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { ATTACHMENT_DIR } from "@/chat/sandbox/paths";
 import type {
   SandboxCommandInput,
   SandboxWorkspace,
 } from "@/chat/sandbox/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
-/** Sandbox directory for attachment files that tools write. */
-export const ATTACHMENT_DIR = ".junior/attachments";
 /** Bytes held in memory and sent to the sandbox in one write. */
 const PART_BYTES = 8 * 1024 * 1024;
 
@@ -80,6 +79,7 @@ async function writeParts(args: {
   const reader = args.body.getReader();
   try {
     for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- A stream reader gives each chunk after the one before.
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
@@ -89,6 +89,7 @@ async function writeParts(args: {
         const take = PART_BYTES - pendingBytes;
         pending.push(chunk.subarray(0, take));
         pendingBytes += take;
+        // oxlint-disable-next-line no-await-in-loop -- Write the parts in order.
         await flush();
         chunk = chunk.subarray(take);
       }

@@ -1,7 +1,11 @@
+import { renderTag } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
+import type {
+  ImageGenerateToolDeps,
+  ToolHooks,
+} from "@/chat/tool-support/types";
 import { botConfig } from "@/chat/config";
 import {
   completeText,
@@ -10,9 +14,9 @@ import {
 } from "@/chat/core-model";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
-import { generatedFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
-import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { generatedFileRefSchema } from "@/chat/sandbox/file-uploads";
+import { readSandboxImage } from "@/chat/sandbox/image-files";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
@@ -53,9 +57,7 @@ const imageGenerateOutputSchema = juniorToolOutputSchema
 
 const ENRICHMENT_SYSTEM_PROMPT = `You are an image prompt enrichment agent. Your job is to rewrite image generation requests to reflect a specific visual identity and mood.
 
-<personality>
-${JUNIOR_PERSONALITY}
-</personality>
+${renderTag("personality", {}, [JUNIOR_PERSONALITY])}
 
 Rewrite the user's image request into a detailed image generation prompt that encodes this personality's visual aesthetic. Output ONLY the rewritten prompt text — no explanation, no wrapper.`;
 
@@ -103,6 +105,7 @@ async function shrinkImage(
       fit: "inside",
       withoutEnlargement: true,
     });
+    // oxlint-disable-next-line no-await-in-loop -- Try a smaller edge only when the one before is too large.
     const { data, info } = await (
       hasAlpha ? resized.webp({ quality: 90 }) : resized.jpeg({ quality: 90 })
     ).toBuffer({ resolveWithObject: true });
@@ -145,6 +148,7 @@ async function fitImagesToRequest(images: InputImage[]): Promise<{
       remainingBytes -= image.data.byteLength;
       continue;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Each share uses the bytes that the images before it left.
     const smaller = await shrinkImage(image, share);
     fitted[index] = smaller.image;
     remainingBytes -= smaller.image.data.byteLength;

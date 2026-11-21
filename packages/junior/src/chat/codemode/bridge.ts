@@ -25,7 +25,7 @@ import {
 import type { ScriptCallStatus } from "@/chat/guardian/proposal";
 import * as Sentry from "@/chat/sentry";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type {
   ScriptToolCallOutcome,
   ToolPipeline,
@@ -85,6 +85,16 @@ export interface CodeModeScriptRun {
   signal?: AbortSignal | undefined;
 }
 
+/** Services of one Run that the `codemode` tool needs. */
+export interface CodeModeToolOptions {
+  /** Tools a script may call: `scriptTools` from `planToolExposure`. */
+  scriptTools: Record<string, AnyToolDefinition>;
+  modelOnlyTools: CodeModeScriptRun["modelOnlyTools"];
+  pipeline: CodeModeScriptRun["pipeline"];
+  /** Charge one nested call to the Turn's durable tool-call total. */
+  countToolCall(): number;
+}
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => {
@@ -103,9 +113,11 @@ async function settleCalls(pending: Set<Promise<void>>): Promise<void> {
     timer = setTimeout(done, CALL_SETTLE_GRACE_MS);
   });
   const settled = (async () => {
+    /* oxlint-disable no-await-in-loop -- New calls can start while earlier ones settle. */
     while (pending.size > 0) {
       await Promise.allSettled(pending);
     }
+    /* oxlint-enable no-await-in-loop */
   })();
   try {
     await Promise.race([settled, grace]);

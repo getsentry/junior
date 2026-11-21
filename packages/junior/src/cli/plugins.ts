@@ -16,6 +16,7 @@ import { getDb } from "@/chat/db";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { setPlugins, validatePlugins } from "@/chat/plugins/agent-hooks";
+import { coreRegistrations } from "@/chat/plugins/core-registrations";
 import {
   validatePluginEgressCredentialHooks,
   validatePluginRegistrations,
@@ -227,11 +228,15 @@ async function loadPluginRegistrations(args: {
   runtimePlugins: PluginRegistration[];
 }> {
   const pluginSet = args.pluginSet;
+  const coreCliPlugins = coreRegistrations().filter((plugin) => plugin.cli);
   if (!pluginSet) {
-    return { cliPlugins: [], runtimePlugins: [] };
+    return { cliPlugins: coreCliPlugins, runtimePlugins: [] };
   }
 
-  const cliPlugins = pluginCliRegistrationsFromPluginSet(pluginSet);
+  const cliPlugins = [
+    ...pluginCliRegistrationsFromPluginSet(pluginSet),
+    ...coreCliPlugins,
+  ];
   const runtimePlugins = pluginRuntimeRegistrationsFromPluginSet(pluginSet);
   const pluginConfig = pluginCatalogConfigFromPluginSet(pluginSet);
   validatePlugins(runtimePlugins);

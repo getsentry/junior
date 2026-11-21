@@ -69,6 +69,19 @@ describe("conversation annotations", () => {
         }),
       ).toEqual({ icon: "bell", tone, label: "Monitor" });
     }
+    // An alert's tone follows whether it is on, whatever its status says.
+    for (const [enabled, tone] of [
+      [true, "success"],
+      [false, "neutral"],
+    ] as const) {
+      expect(
+        objectPresentation({
+          objectType: "alert",
+          status: "Muted",
+          facts: { type: "alert", enabled },
+        }),
+      ).toEqual({ icon: "bell", tone, label: "Alert" });
+    }
   });
 
   it("bounds typed object facts without rejecting old cards or accepting arbitrary provider JSON", () => {

@@ -3,7 +3,8 @@
 // time, and save evidence. Steps run in the order given.
 //
 // Usage:
-//   node browse.mjs --out DIR [--base URL] [--width PX] [--timeout MS] STEP...
+//   node browse.mjs --out DIR [--base URL] [--width PX] [--touch] [--timeout MS] STEP...
+// --touch emulates a phone: a touch screen at --width (use 390) by 844.
 // --timeout sets the wait of each step (default 30000). A live Turn can take
 // minutes, so give drives that wait for a reply 300000 or more.
 // Steps:
@@ -11,7 +12,13 @@
 //   --back NAME            Open the URL that an earlier --snap NAME saved in DIR.
 //   --click SELECTOR       Click a Playwright selector, such as 'role=button[name="Hold"]'.
 //   --fill SELECTOR=TEXT   Type TEXT into the element.
+//   --type SELECTOR=TEXT   Type TEXT into the element key by key, as a person does.
+//   --hover SELECTOR       Move the pointer over the element and leave it there.
+//   --tap SELECTOR         Tap the element. Needs --touch.
 //   --press KEY            Press a key on the focused element, such as Enter.
+//   --upload SELECTOR=PATH Set the file of a file input, such as 'role=button[name="Choose files"]'.
+//                          Repeat PATH with commas for several files.
+//   --select SELECTOR      Select all the text of the element, as a mouse drag does.
 //   --expect SELECTOR      Wait until the element is visible. Fails the run if it is not.
 //   --absent SELECTOR      Wait until no such element is visible. Fails the run if one stays.
 //   --title TEXT           Wait until the tab title starts with TEXT.
@@ -45,10 +52,16 @@ let out;
 let base = "http://localhost:3000";
 let width = 1440;
 let timeout = 30_000;
+let touch = false;
 const steps = [];
 for (let i = 0; i < args.length; i += 2) {
   if (args[i] === "--idle") {
     steps.push(["idle", ""]);
+    i -= 1;
+    continue;
+  }
+  if (args[i] === "--touch") {
+    touch = true;
     i -= 1;
     continue;
   }
@@ -68,7 +81,11 @@ const log = (line) => {
 };
 
 const browser = await chromium.launch();
-const page = await browser.newPage({ viewport: { width, height: 900 } });
+const page = await browser.newPage({
+  viewport: { width, height: touch ? 844 : 900 },
+  hasTouch: touch,
+  isMobile: touch,
+});
 page.setDefaultTimeout(timeout);
 let failed = false;
 try {
@@ -84,8 +101,37 @@ try {
           .locator(value.slice(0, at))
           .first()
           .fill(value.slice(at + 1));
-      } else if (step === "press") await page.keyboard.press(value);
-      else if (step === "expect")
+      } else if (step === "type") {
+        const at = value.lastIndexOf("=");
+        await page
+          .locator(value.slice(0, at))
+          .first()
+          .pressSequentially(value.slice(at + 1));
+      } else if (step === "hover") await page.locator(value).first().hover();
+      else if (step === "tap") await page.locator(value).first().tap();
+      else if (step === "press") await page.keyboard.press(value);
+      else if (step === "upload") {
+        const at = value.lastIndexOf("=");
+        await page
+          .locator(value.slice(0, at))
+          .first()
+          .setInputFiles(value.slice(at + 1).split(","));
+      } else if (step === "select") {
+        const target = page.locator(value).first();
+        await target.scrollIntoViewIfNeeded();
+        await target.evaluate((element) => {
+          const range = document.createRange();
+          range.selectNodeContents(element);
+          const selection = window.getSelection();
+          selection?.removeAllRanges();
+          selection?.addRange(range);
+          // The dashboard reads the selection after the pointer comes up.
+          element.dispatchEvent(
+            new PointerEvent("pointerup", { bubbles: true }),
+          );
+          element.dispatchEvent(new MouseEvent("mouseup", { bubbles: true }));
+        });
+      } else if (step === "expect")
         await page.locator(value).first().waitFor({ state: "visible" });
       else if (step === "absent")
         await page.locator(value).first().waitFor({ state: "hidden" });
@@ -132,7 +178,8 @@ try {
       log(`ok    --${step} ${value}`);
     } catch (error) {
       log(`FAIL  --${step} ${value}: ${error.message.split("\n")[0]}`);
-      await page.screenshot({ path: join(out, "failure.png") });
+      // The browser can be gone when a signal ended the run. Keep the log line.
+      await page.screenshot({ path: join(out, "failure.png") }).catch(() => {});
       failed = true;
       break;
     }

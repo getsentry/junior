@@ -481,7 +481,7 @@ describe("scheduled automation heartbeat", () => {
       expect(dispatchRecord?.skill).toBe("manual-digest");
       expect(dispatchRecord?.input).toContain(
         [
-          "Run the manual-digest skill. The instructions below add context for this run.",
+          "Run the $manual-digest skill. The instructions below add context for this run.",
           "<instructions>Only cover getsentry/junior.</instructions>",
         ].join("\n"),
       );

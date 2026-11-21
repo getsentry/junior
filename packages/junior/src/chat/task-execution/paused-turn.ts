@@ -7,7 +7,7 @@
  * pause, or another safe pause boundary.
  */
 import { instructionActorFor } from "@/chat/agent/prompt";
-import { savedInputInstruction } from "@/chat/review-items/prompt-input";
+import { savedInputInstruction } from "@/chat/inbox-items/prompt-input";
 import {
   buildTurnFailureResponse,
   logException,
@@ -607,6 +607,7 @@ async function runPausedTurnInContext(
                 runtime:
                   Boolean(dispatchId) ||
                   isEventConversationMessage(userMessage),
+                requestText: userMessage.meta?.requestText,
                 reviewItemChange: userMessage.meta?.reviewItemChanges?.[0],
                 text: userMessage.text,
               })),
@@ -882,6 +883,7 @@ async function runNextPausedTurnInContext(
     summaries = await listTurnSummaries(conversationId);
   }
 
+  /* oxlint-disable no-await-in-loop -- Run the first paused Turn that can resume, and stop there. */
   for (const summary of summaries) {
     if (!isPausedTurn(summary)) {
       continue;
@@ -925,6 +927,7 @@ async function runNextPausedTurnInContext(
       errorMessage: "Awaiting paused turn was stale before it could run",
     });
   }
+  /* oxlint-enable no-await-in-loop */
 
   return false;
 }

@@ -11,6 +11,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import type { SlackUserId } from "@/chat/slack/ids";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 export interface ListColumnMap {
   titleColumnId?: string | undefined;
@@ -140,7 +141,7 @@ export async function createTodoList(name: string): Promise<{
 }
 
 /** Read a Slack list schema and map its standard columns. */
-export async function getListColumnMap(listId: string): Promise<ListColumnMap> {
+async function getListColumnMap(listId: string): Promise<ListColumnMap> {
   const client = getSlackClient();
   const response = await withSlackRetries(
     () => client.files.info({ file: listId }),
@@ -170,6 +171,7 @@ export async function addListItems(input: {
 
   const createdItemIds: string[] = [];
 
+  /* oxlint-disable no-await-in-loop -- Create list items in the order given. */
   for (const title of input.titles) {
     const initialFields: NonNullable<
       SlackListsItemsCreateArguments["initial_fields"]
@@ -203,6 +205,7 @@ export async function addListItems(input: {
       createdItemIds.push(response.item.id);
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   return {
     createdItemIds,
@@ -220,6 +223,7 @@ export async function listItems(
   let cursor: string | undefined;
   const cappedLimit = Math.max(1, Math.min(limit, 200));
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   do {
     const response: SlackListsItemsListResponse = await withSlackRetries(
       () =>
@@ -242,6 +246,7 @@ export async function listItems(
     }
     cursor = response.response_metadata?.next_cursor || undefined;
   } while (cursor);
+  /* oxlint-enable no-await-in-loop */
 
   return items;
 }
@@ -281,8 +286,8 @@ export async function updateListItem(input: {
   }
 
   if (cells.length === 0) {
-    throw new Error(
-      "No updatable fields were provided or inferred for this list item",
+    throw new ToolInputError(
+      "No updatable fields were provided or inferred for this list item. Provide a title, or set completed only on a list that has a checkbox column.",
     );
   }
 

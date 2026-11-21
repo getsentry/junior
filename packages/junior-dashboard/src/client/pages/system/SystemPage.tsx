@@ -3,11 +3,14 @@ import { TriangleAlert } from "lucide-react";
 import { Navigate, useLocation } from "react-router";
 
 import { agentNamePossessive, getDashboardAgentName } from "../../agentName";
+import { useConversationStatsData, useSystemPluginsData } from "../../api";
+import { LoadingView } from "../../components/LoadingView";
 import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector";
 
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
-import type { SystemData } from "../../types";
+import type { DashboardCoreData, SystemPluginsData } from "../../types";
+import { CacheHealth } from "./CacheHealth";
 import { CacheWarmingSavings } from "./CacheWarmingSavings";
 import { PluginDetails } from "./PluginDetails";
 import { PluginPanels } from "./PluginPanels";
@@ -25,25 +28,67 @@ import {
 
 /**
  * Own System overview, plugin inventory, and plugin detail route selection,
- * redirecting paths that do not identify a loaded page.
+ * redirecting paths that do not identify a page.
  */
-export function SystemPage(props: { data: SystemData }) {
+export function SystemPage(props: { coreData: DashboardCoreData }) {
   const [range, setRange] = useState<TimeRangeDays>(30);
-  const location = useLocation();
-  const reports = props.data.pluginReports?.reports ?? [];
-  const plugins = buildSystemPlugins({
-    plugins: props.data.plugins,
-    reports,
-    skills: props.data.skills,
-  });
-  const pathname = normalizeSystemPath(location.pathname);
-  const pluginsPath = pathname === systemPluginsPath;
-  const plugin = plugins.find(
-    (candidate) => systemPluginPath(candidate.name) === pathname,
-  );
-  const pluginPath = pathname.startsWith(`${systemPluginsPath}/`);
+  const pathname = normalizeSystemPath(useLocation().pathname);
 
-  if (pluginPath && !plugin && props.data.pluginReportsLoading) {
+  if (pathname === "/system") {
+    return (
+      <SystemPageLayout>
+        <OverviewSystemPage
+          admin={props.coreData.me.user.isAdmin}
+          range={range}
+          onRangeChange={setRange}
+        />
+      </SystemPageLayout>
+    );
+  }
+  if (
+    pathname !== systemPluginsPath &&
+    !pathname.startsWith(`${systemPluginsPath}/`)
+  ) {
+    return <Navigate replace to="/system" />;
+  }
+  return (
+    <PluginsRoute pathname={pathname} range={range} onRangeChange={setRange} />
+  );
+}
+
+// Only the Plugins pages wait on the plugin inventory and its reports.
+function PluginsRoute(props: {
+  onRangeChange(value: TimeRangeDays): void;
+  pathname: string;
+  range: TimeRangeDays;
+}) {
+  const query = useSystemPluginsData();
+  const pluginsPath = props.pathname === systemPluginsPath;
+  if (!query.data) {
+    return query.error ? (
+      <SystemPageLayout>
+        <LoadingView label={query.error.message} />
+      </SystemPageLayout>
+    ) : (
+      <SystemRouteLoading
+        description="Loaded capabilities and operational reports."
+        label={pluginsPath ? "Loading plugins" : "Loading plugin"}
+        title={pluginsPath ? "Plugins" : "Plugin"}
+      />
+    );
+  }
+
+  const data = query.data;
+  const plugins = buildSystemPlugins({
+    plugins: data.plugins,
+    reports: data.pluginReports?.reports ?? [],
+    skills: data.skills,
+  });
+  const plugin = plugins.find(
+    (candidate) => systemPluginPath(candidate.name) === props.pathname,
+  );
+
+  if (!pluginsPath && !plugin && data.pluginReportsLoading) {
     return (
       <SystemRouteLoading
         description="Loading plugin details and operational reports."
@@ -52,40 +97,32 @@ export function SystemPage(props: { data: SystemData }) {
       />
     );
   }
-  if (pluginPath && !plugin) {
+  if (!pluginsPath && !plugin) {
     return <Navigate replace to={systemPluginsPath} />;
-  }
-  if (pathname !== "/system" && !pluginsPath && !plugin) {
-    return <Navigate replace to="/system" />;
   }
 
   return (
     <SystemPageLayout>
       {plugin ? (
         <PluginSystemPage
-          data={props.data}
-          onRangeChange={setRange}
+          data={data}
+          onRangeChange={props.onRangeChange}
           plugin={plugin}
-          range={range}
+          range={props.range}
         />
-      ) : pluginsPath ? (
-        <PluginsSystemPage data={props.data} plugins={plugins} />
       ) : (
-        <OverviewSystemPage
-          data={props.data}
-          range={range}
-          onRangeChange={setRange}
-        />
+        <PluginsSystemPage data={data} plugins={plugins} />
       )}
     </SystemPageLayout>
   );
 }
 
 function OverviewSystemPage(props: {
-  data: SystemData;
+  admin: boolean;
   onRangeChange(value: TimeRangeDays): void;
   range: TimeRangeDays;
 }) {
+  const stats = useConversationStatsData();
   return (
     <>
       <PageHeader
@@ -95,21 +132,19 @@ function OverviewSystemPage(props: {
         title="System"
       />
       <SystemActivity
-        error={props.data.conversationStatsError}
+        error={Boolean(stats.error)}
         range={props.range}
-        loading={props.data.conversationStatsLoading}
-        stats={props.data.conversationStats}
+        loading={stats.isPending}
+        stats={stats.data}
       />
-      <CacheWarmingSavings
-        admin={props.data.me.user.isAdmin}
-        range={props.range}
-      />
+      <CacheWarmingSavings admin={props.admin} range={props.range} />
+      <CacheHealth range={props.range} />
     </>
   );
 }
 
 function PluginsSystemPage(props: {
-  data: SystemData;
+  data: SystemPluginsData;
   plugins: SystemPlugin[];
 }) {
   return (
@@ -132,7 +167,7 @@ function PluginsSystemPage(props: {
 }
 
 function PluginSystemPage(props: {
-  data: SystemData;
+  data: SystemPluginsData;
   onRangeChange(value: TimeRangeDays): void;
   plugin: SystemPlugin;
   range: TimeRangeDays;

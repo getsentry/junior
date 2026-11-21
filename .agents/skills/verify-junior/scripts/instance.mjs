@@ -8,7 +8,9 @@
 //       `pnpm dev` on them, wait until it is ready, and print the run
 //       directory on the last line. `--mock` sets
 //       JUNIOR_DASHBOARD_MOCK_CONVERSATIONS=true. DIR defaults to
-//       ${TMPDIR:-/tmp}/verify-junior/<UTC time>-<pid>.
+//       ${TMPDIR:-/tmp}/verify-junior/<UTC time>-<pid>. Every error, span,
+//       and log that Nitro and the queue worker send to Sentry Local goes
+//       to DIR/telemetry.ndjson.
 //   node instance.mjs doctor RUN_DIR
 //       Read-only. Exit 0 only when the instance of RUN_DIR is safe to drive.
 //   node instance.mjs crash-worker RUN_DIR [--when FILE]
@@ -44,7 +46,9 @@ const repoRoot = execFileSync("git", ["rev-parse", "--show-toplevel"], {
 const baseUrl = "http://localhost:3000";
 // `pnpm dev` binds 3000 (dashboard and API) and 8969 (Sentry Local UI).
 // Both are fixed, so only one instance can run on a machine.
-const ports = [3000, 8969];
+const sentryLocalPort = "8969";
+const ports = [3000, Number(sentryLocalPort)];
+const sentryCli = join(repoRoot, "node_modules/sentry/dist/bin.cjs");
 
 const git = (...args) =>
   execFileSync("git", args, { cwd: repoRoot, encoding: "utf8" }).trim();
@@ -119,28 +123,42 @@ function alive(pid) {
   }
 }
 
-function parentOf(pid) {
-  const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
-  // The second field is the command in parentheses, and it can have spaces.
-  return Number(stat.slice(stat.lastIndexOf(")") + 2).split(" ")[1]);
+/** Parent pid of each running process. `ps` works on Linux and macOS. */
+function parents() {
+  const out = execFileSync("ps", ["-A", "-o", "pid=,ppid="], {
+    encoding: "utf8",
+  });
+  return new Map(
+    out
+      .trim()
+      .split("\n")
+      .map((line) => line.trim().split(/\s+/).map(Number)),
+  );
 }
 
-function descendants(pid) {
-  const children = readdirSync("/proc")
-    .filter((entry) => /^\d+$/.test(entry))
-    .map(Number)
-    .filter((child) => {
-      try {
-        return parentOf(child) === pid;
-      } catch {
-        return false;
-      }
-    });
-  return children.flatMap((child) => [child, ...descendants(child)]);
+function descendants(pid, parentOf = parents()) {
+  const children = [...parentOf]
+    .filter(([, ppid]) => ppid === pid)
+    .map(([child]) => child);
+  return children.flatMap((child) => [child, ...descendants(child, parentOf)]);
 }
 
-/** The pid that listens on a TCP port, from /proc, or undefined. */
+/** The pid that listens on a TCP port, or undefined. */
 function listenerOf(port) {
+  try {
+    // macOS, and Linux hosts with lsof. lsof exits 1 when nothing listens.
+    const out = execFileSync(
+      "lsof",
+      ["-nP", `-iTCP:${port}`, "-sTCP:LISTEN", "-t"],
+      {
+        encoding: "utf8",
+      },
+    );
+    return Number(out.split("\n")[0]) || undefined;
+  } catch (error) {
+    if (error.code !== "ENOENT") return undefined;
+  }
+  // Linux without lsof: map the listening socket inode to its process.
   const hex = port.toString(16).toUpperCase().padStart(4, "0");
   const inodes = new Set(
     ["/proc/net/tcp", "/proc/net/tcp6"]
@@ -175,7 +193,13 @@ function removeInjectedDistLinks() {
     if (!existsSync(scope)) continue;
     for (const name of readdirSync(scope)) {
       const dist = join(scope, name, "dist");
-      if (existsSync(dist) && lstatSync(dist).isSymbolicLink()) rmSync(dist);
+      // lstat, not existsSync: existsSync follows the link and misses a
+      // link whose target is gone.
+      try {
+        if (lstatSync(dist).isSymbolicLink()) rmSync(dist);
+      } catch (error) {
+        if (error.code !== "ENOENT") throw error;
+      }
     }
   }
 }
@@ -248,15 +272,53 @@ async function launch(args) {
   // Ready means the dashboard shell and the health report both answer.
   for (let i = 0; i < 120; i++) {
     if (!alive(child.pid))
-      throw new Error(`pnpm dev exited; see ${join(runDir, "dev.log")}`);
+      return failLaunch(
+        runDir,
+        `pnpm dev exited; see ${join(runDir, "dev.log")}`,
+      );
     if ((await status("/")) === 200 && (await status("/api/health")) === 200) {
+      startTelemetry(runDir);
       console.log(`ready: ${baseUrl} (mock=${mock})`);
       console.log(runDir);
       return 0;
     }
     await sleep(5000);
   }
-  throw new Error(`not ready after 10 minutes; see ${join(runDir, "dev.log")}`);
+  return failLaunch(
+    runDir,
+    `not ready after 10 minutes; see ${join(runDir, "dev.log")}`,
+  );
+}
+
+// Tail the Sentry Local server of `pnpm dev` as NDJSON. A new consumer gets
+// the events that the server has kept, so a start after ready loses none.
+function startTelemetry(runDir) {
+  const out = openSync(join(runDir, "telemetry.ndjson"), "a");
+  const err = openSync(join(runDir, "telemetry.log"), "a");
+  const child = spawn(
+    process.execPath,
+    [
+      sentryCli,
+      "local",
+      "serve",
+      "--port",
+      sentryLocalPort,
+      "--format",
+      "json",
+      "--attributes",
+    ],
+    { cwd: repoRoot, detached: true, stdio: ["ignore", out, err] },
+  );
+  writeFileSync(join(runDir, "telemetry.pid"), String(child.pid));
+  child.unref();
+}
+
+// A failed launch stops what it started, so that the ports are free again.
+async function failLaunch(runDir, message) {
+  console.error(message);
+  // stderr: the last stdout line of launch is the run directory.
+  await stop(runDir, console.error);
+  return 1;
 }
 
 async function doctor(runDir) {
@@ -269,9 +331,10 @@ async function doctor(runDir) {
   );
 
   const listener = listenerOf(3000);
+  const parentOf = parents();
   let ancestor = listener;
   while (ancestor && ancestor > 1 && ancestor !== pid)
-    ancestor = parentOf(ancestor);
+    ancestor = parentOf.get(ancestor);
   check(
     `port 3000 is owned by this run (pid ${listener})`,
     !listener
@@ -279,6 +342,14 @@ async function doctor(runDir) {
       : ancestor === pid
         ? undefined
         : `pid ${listener} does not descend from ${pid}`,
+  );
+
+  const telemetryPid = Number(
+    readFileSync(join(runDir, "telemetry.pid"), "utf8"),
+  );
+  check(
+    `telemetry tail ${telemetryPid} writes telemetry.ndjson`,
+    alive(telemetryPid) ? undefined : "not running",
   );
 
   const health = await status("/api/health");
@@ -294,7 +365,7 @@ async function doctor(runDir) {
   } catch {
     // Reported by the check below.
   }
-  const servesMock = versions.includes('"reviewItems":"mock"');
+  const servesMock = versions.includes('"inboxItems":"mock"');
   check(
     `dashboard serves ${mock ? "mock" : "live"} data`,
     servesMock === mock
@@ -334,7 +405,7 @@ async function doctor(runDir) {
   return results.some(([, problem]) => problem) ? 1 : 0;
 }
 
-async function stop(runDir) {
+async function stop(runDir, log = console.log) {
   const pid = Number(readFileSync(join(runDir, "dev.pid"), "utf8"));
   if (alive(pid)) {
     // `pnpm dev` puts some children in their own process groups, so a group
@@ -343,18 +414,22 @@ async function stop(runDir) {
     for (const p of tree) if (alive(p)) process.kill(p, "SIGTERM");
     for (let i = 0; i < 30 && tree.some(alive); i++) await sleep(1000);
     for (const p of tree) if (alive(p)) process.kill(p, "SIGKILL");
-    console.log(`stopped pnpm dev ${pid} and its children`);
+    log(`stopped pnpm dev ${pid} and its children`);
+  }
+  if (existsSync(join(runDir, "telemetry.pid"))) {
+    const tail = Number(readFileSync(join(runDir, "telemetry.pid"), "utf8"));
+    if (alive(tail)) process.kill(tail, "SIGTERM");
   }
   // A launch that failed early has no databases yet.
   if (existsSync(join(runDir, "database.txt"))) {
     const database = readFileSync(join(runDir, "database.txt"), "utf8");
     psql(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
-    console.log(`dropped database ${database}`);
+    log(`dropped database ${database}`);
   }
   if (existsSync(join(runDir, "redis-db.txt"))) {
     const redisDb = readFileSync(join(runDir, "redis-db.txt"), "utf8");
     redis(redisDb, "FLUSHDB");
-    console.log(`flushed Redis database ${redisDb}`);
+    log(`flushed Redis database ${redisDb}`);
   }
   const before = readFileSync(join(runDir, "compose-before.txt"), "utf8").split(
     "\n",
@@ -366,10 +441,10 @@ async function stop(runDir) {
       cwd: repoRoot,
       stdio: "ignore",
     });
-    console.log(`stopped compose ${service}`);
+    log(`stopped compose ${service}`);
   }
   removeInjectedDistLinks();
-  console.log(`evidence kept in ${join(runDir, "evidence")}`);
+  log(`evidence kept in ${join(runDir, "evidence")}`);
   return 0;
 }
 
@@ -377,9 +452,15 @@ async function stop(runDir) {
 function queueWorkerOf(pid) {
   return descendants(pid).find((child) => {
     try {
-      return readFileSync(`/proc/${child}/cmdline`, "utf8").includes(
-        "dev-queue-worker.mjs",
-      );
+      // ps, not /proc: macOS has no /proc. -ww stops ps from cutting the
+      // command at the terminal width.
+      return execFileSync(
+        "ps",
+        ["-ww", "-o", "command=", "-p", String(child)],
+        {
+          encoding: "utf8",
+        },
+      ).includes("dev-queue-worker.mjs");
     } catch {
       return false;
     }

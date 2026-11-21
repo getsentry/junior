@@ -137,6 +137,12 @@ export interface ChatConfig {
   functionMaxDurationSeconds: number;
   /** Kill switch for prompt cache warming. Defaults to true. */
   cacheWarmingEnabled: boolean;
+  /**
+   * Kill switch for compaction on idle: a warmup of a prefix at or above the
+   * background compaction mark swaps in a ready background summary instead.
+   * Defaults to true. It runs only while cache warming is on.
+   */
+  idleCompactionEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
   /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
@@ -359,7 +365,7 @@ function readBotConfig(
       env["AI_VISION_MODEL"] === undefined
         ? DEFAULT_VISION_MODEL_ID
         : validateGatewayModelId(env["AI_VISION_MODEL"]),
-    maxAgentDepth: 0,
+    maxAgentDepth: 1,
     maxSlicesPerTurn: MAX_SLICES_PER_TURN,
     maxToolCallsPerTurn: MAX_TOOL_CALLS_PER_TURN,
     maxTurnCostUsd: MAX_TURN_COST_USD,
@@ -443,6 +449,10 @@ export function readChatConfig(
       "JUNIOR_CACHE_WARMING_ENABLED",
       env["JUNIOR_CACHE_WARMING_ENABLED"],
     ),
+    idleCompactionEnabled: parseKillSwitch(
+      "JUNIOR_IDLE_COMPACTION_ENABLED",
+      env["JUNIOR_IDLE_COMPACTION_ENABLED"],
+    ),
     conversationWorkEnabled: parseKillSwitch(
       "JUNIOR_CONVERSATION_WORK_ENABLED",
       env["JUNIOR_CONVERSATION_WORK_ENABLED"],
@@ -492,7 +502,8 @@ export interface RuntimeLimits {
   contextWindowTokens?: number;
   /**
    * Levels of child agents that can start their own child agents. The
-   * default, 0, lets only the root Conversation start child agents.
+   * default, 1, lets a child of the root start child agents, and those
+   * cannot start more. 0 lets only the root Conversation start them.
    */
   maxAgentDepth?: number;
   /** Automated turns in a row before Junior stops answering automation. */
@@ -661,10 +672,6 @@ export function getSlackClientId(): string | undefined {
 
 export function getSlackClientSecret(): string | undefined {
   return chatConfig.slack.clientSecret;
-}
-
-export function hasRedisConfig(): boolean {
-  return Boolean(chatConfig.state.redisUrl);
 }
 
 // ---------------------------------------------------------------------------

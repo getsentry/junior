@@ -168,7 +168,7 @@ try {
     writeFileSync(join(temporary, asset.name), bytes);
   }
   verifyReleaseArtifacts(root, temporary, commit);
-  verifyReleaseInstall(temporary, manifest);
+  verifyReleaseInstall(root, temporary, manifest);
 
   // Do not publish a tag or asset set changed by another actor during verification.
   const remoteCommit = gh([

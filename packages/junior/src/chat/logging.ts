@@ -57,6 +57,7 @@ import {
 } from "@/chat/log-context";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import * as Sentry from "@/chat/sentry";
+import { formatSentryEventReference } from "@/chat/sentry-links";
 import {
   captureException as captureSentryException,
   captureMessage,
@@ -1387,7 +1388,7 @@ export function registerLogRecordSink(
   };
 }
 
-export function createLogContextFromRequest(
+function createLogContextFromRequest(
   request: Request,
   context: Partial<LogContext> = {},
 ): LogContext {
@@ -1404,7 +1405,7 @@ export function createLogContextFromRequest(
 }
 
 /** Attach filterable non-user context tags to Sentry. */
-export function setSentryTagsFromContext(context: LogContext): void {
+function setSentryTagsFromContext(context: LogContext): void {
   const attrs = contextToAttributes(context);
   for (const [key, value] of Object.entries(attrs)) {
     if (!SENTRY_TAG_ATTRIBUTE_KEYS.has(key)) {
@@ -1719,20 +1720,6 @@ export function setSpanStatus(status: "ok" | "error"): void {
   );
 }
 
-/** Capture an exception within an isolated Sentry scope. */
-export function captureExceptionInScope(
-  error: unknown,
-  context: LogContext = {},
-): void {
-  const normalizedError =
-    error instanceof Error ? error : new Error(String(error));
-
-  withScope((scope) => {
-    setSentryScopeContext(scope, context);
-    captureSentryException(normalizedError);
-  });
-}
-
 /** Return the trace ID from the active Sentry span, if any. */
 export function getActiveTraceId(): string | undefined {
   try {
@@ -1746,12 +1733,9 @@ export function getActiveTraceId(): string | undefined {
   }
 }
 
-const TURN_FAILURE_RESPONSE_TEMPLATE =
-  "I ran into an internal error while processing that. Reference: `event_id={eventId}`.";
-
 /** Build the static user-facing response for a failed turn. */
 export function buildTurnFailureResponse(eventId: string): string {
-  return TURN_FAILURE_RESPONSE_TEMPLATE.replace("{eventId}", eventId);
+  return `I ran into an internal error while processing that. Reference: ${formatSentryEventReference(eventId)}.`;
 }
 
 // ---------------------------------------------------------------------------

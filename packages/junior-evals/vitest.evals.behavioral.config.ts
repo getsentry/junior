@@ -14,7 +14,6 @@ const juniorPackageRoot = path.resolve(__dirname, "../junior");
 const workspaceRoot = path.resolve(__dirname, "../..");
 const evalsPackageRoot = __dirname;
 const pluginApiPackageRoot = path.resolve(__dirname, "../junior-plugin-api");
-const memoryPackageRoot = path.resolve(__dirname, "../junior-memory");
 // Leave room for harness cleanup and rubric judging after a reply reaches its
 // separate 60-second behavior budget.
 const EVAL_TEST_TIMEOUT_MS = 120_000;
@@ -34,6 +33,9 @@ process.env["JUNIOR_SECRET"] = "junior-test-secret";
 // apps/example/.env.example sets both to an empty string.
 process.env["AI_MODEL"] ||= "openai/gpt-6-luna";
 process.env["AI_REASONING_LEVEL"] ||= "high";
+// Embed with the model that production configures, so meaning search ranks
+// as it does there.
+process.env["AI_EMBEDDING_MODEL"] ||= "voyage/voyage-4-lite";
 process.env["JUNIOR_BASE_URL"] ??= "https://junior.example.com";
 // The agent test fixture calls the heartbeat route with this secret.
 process.env["JUNIOR_SCHEDULER_SECRET"] ??= "junior-test-scheduler-secret";
@@ -58,12 +60,6 @@ if (evalRedisHostname !== "localhost" && evalRedisHostname !== "127.0.0.1") {
 const resolve = {
   alias: {
     "@": path.resolve(juniorPackageRoot, "src"),
-    "@sentry/junior-memory": path.resolve(memoryPackageRoot, "src/index.ts"),
-    // Before the package root, which would also match this subpath.
-    "@sentry/junior-plugin-api/embeddings": path.resolve(
-      pluginApiPackageRoot,
-      "src/embeddings.ts",
-    ),
     "@sentry/junior-plugin-api": path.resolve(
       pluginApiPackageRoot,
       "src/index.ts",

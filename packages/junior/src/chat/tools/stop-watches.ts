@@ -7,8 +7,8 @@ import {
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const resultDataSchema = z
   .object({
@@ -74,6 +74,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
         for (const { watch } of await listOwnedWatches(
           context.conversationId,
         )) {
+          // oxlint-disable-next-line no-await-in-loop -- Each stop takes the shared timer index lock, so stop one watch at a time.
           const stopped = await stopOwnedWatch({
             conversationId: context.conversationId,
             watch,

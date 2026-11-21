@@ -22,9 +22,14 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import {
+  GITHUB_CONFLICT_RESUME,
+  parseGitHubConflictItemKey,
+} from "./merge-conflict-checks/policy.js";
+import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
-import { gitHubResourceUrl } from "./events/resource-url.js";
+import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestConflictHistory,
@@ -66,7 +71,7 @@ import {
   GITHUB_REPOSITORY_IDENTIFIER,
   GITHUB_REPOSITORY_SUGGESTED_EVENTS,
 } from "./events/repository.js";
-import type { GitHubDb } from "./db/database.js";
+import { gitHubDbSchema } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
@@ -235,6 +240,7 @@ export function githubPlugin(
       ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      resourceForUrl: gitHubUrlResource,
       resourceUrl: gitHubResourceUrl,
     },
     manifest: {
@@ -244,6 +250,9 @@ export function githubPlugin(
         "GitHub deployment, issue, pull request, release, and repository workflows via GitHub App",
       configKeys: ["org", "repo"],
       domains: ["api.github.com", "github.com", "uploads.github.com"],
+      // Git sends no credential, so a request without one gets the GitHub
+      // credential. `gh` sends the placeholder in `GITHUB_TOKEN`.
+      toolsSendNoCredential: true,
       envVars: {
         [appIdEnv]: {},
         [privateKeyEnv]: {},
@@ -350,8 +359,26 @@ export function githubPlugin(
           },
         ];
       },
+      async inboxItemAnswered(ctx) {
+        const ref = parseGitHubConflictItemKey(ctx.dedupeKey);
+        if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
+        const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
+        await resumeGitHubConflictFixes({
+          db: gitHubDbSchema.parse(ctx.db),
+          events: ctx.events,
+          itemId: ctx.itemId,
+          loadPullRequest: async (pullRequest) =>
+            await loadPullRequest(installationEnv, pullRequest),
+          nowMs: ctx.nowMs,
+          ref,
+          subscription: gitHubPullRequestSubscription(
+            options.pullRequestEvents?.subscribeAfterCreate,
+          ),
+          watches: ctx.watches,
+        });
+      },
       async heartbeat(ctx) {
-        const db = ctx.db as GitHubDb;
+        const db = gitHubDbSchema.parse(ctx.db);
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
           db,
@@ -360,7 +387,7 @@ export function githubPlugin(
             await loadPullRequestConflictHistory(installationEnv, ref),
           log: ctx.log,
           now: new Date(ctx.nowMs),
-          reviewItems: ctx.reviewItems,
+          inboxItems: ctx.inboxItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -385,12 +412,12 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
-          reviewItems: ctx.reviewItems,
+          inboxItems: ctx.inboxItems,
           state: ctx.state,
         });
       },
       async unfinishedWork(ctx) {
-        const db = ctx.db as GitHubDb;
+        const db = gitHubDbSchema.parse(ctx.db);
         const [
           conversationIds,
           assignedConversationIds,
@@ -411,6 +438,8 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
+          responses: ctx.state,
+          tokens: new Map(),
         };
         return [
           createGitHubWebhookRoute({
@@ -429,7 +458,7 @@ export function githubPlugin(
                 ),
               }),
             codeChanges: ctx.codeChanges,
-            db: ctx.db as GitHubDb,
+            db: gitHubDbSchema.parse(ctx.db),
             installationId: () => readEnv(installationIdEnv),
             loadGitHubIncidents: async () =>
               await loadGitHubStatusIncidents(
@@ -457,8 +486,9 @@ export function githubPlugin(
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
-            reviewItems: ctx.reviewItems,
+            inboxItems: ctx.inboxItems,
             state: ctx.state,
+            tokens: installationEnv.tokens,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

@@ -3,12 +3,14 @@
  * viewer, so the bot reads the message, and the card shows only what the
  * viewer's own linked Slack account can see in that workspace.
  */
+import pLimit from "p-limit";
 import type {
   ObjectAnnotation,
   ObjectLinkFilter,
   User,
 } from "@sentry/junior-plugin-api";
 import { getProductionSlackAdapter } from "@/chat/app/production";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { logWarn } from "@/chat/logging";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import {
@@ -136,8 +138,8 @@ export async function resolveSlackMessageLink(
   const parsed = parseSlackMessageReference(url.href);
   if (!parsed.ok) return undefined;
   // Look up the domain of each linked Slack workspace at once.
+  const limit = pLimit(FAN_OUT_CONCURRENCY);
   const workspaces = await Promise.all(
-    // oxlint-disable-next-line junior/bounded-fan-out -- A viewer links few Slack workspaces.
     viewer.identities.map(async (identity) => {
       const teamId = parseSlackTeamId(identity.providerTenantId);
       if (identity.provider !== "slack" || !teamId) return undefined;
@@ -148,7 +150,9 @@ export async function resolveSlackMessageLink(
           task,
         });
       try {
-        const domain = await run(() => resolveSlackTeamDomain(teamId));
+        const domain = await limit(() =>
+          run(() => resolveSlackTeamDomain(teamId)),
+        );
         return { domain, identity, run, teamId };
       } catch (error) {
         // A workspace that removed Junior has no token. Check the next one.

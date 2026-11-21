@@ -7,10 +7,12 @@ import type {
   CodeChangeInput,
   CodeChangePublisher,
   PluginConversationAnnotations,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import { updateGitHubAnnotations } from "../annotations.js";
 import type { GitHubDb } from "../db/database.js";
+import { closeEndedGitHubPullRequestItems } from "../webhooks/pull-request-action.js";
 import {
   type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestOutcome,
@@ -34,6 +36,7 @@ export function githubCodeChange(
       providerId: outcome.repositoryId,
       url: `https://github.com/${outcome.repositoryFullName}`,
     },
+    size: outcome.size,
     state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
     title: outcome.title,
     updatedAt: outcome.updatedAt,
@@ -44,14 +47,17 @@ export function githubCodeChange(
 /**
  * Record one pull request outcome. When the stored row changes, update the
  * code index, and mark the chip of each linked conversation merged or closed.
- * A failed chip is logged, so it does not stop the work after it.
+ * A merged or closed pull request closes its Inbox items first, so no
+ * reader sees a merged chip next to an open item. A failed chip or item is
+ * logged, so it does not stop the work after it.
  */
 export async function applyGitHubPullRequestOutcome(args: {
   annotations: PluginConversationAnnotations;
   codeChanges: CodeChangePublisher;
   db: GitHubDb;
-  log?: Pick<PluginLogger, "error"> | undefined;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   outcome: GitHubPullRequestOutcomeInput;
+  inboxItems: PluginConversationInboxItems;
 }): Promise<Awaited<ReturnType<typeof recordGitHubPullRequestOutcome>>> {
   const { outcome } = args;
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
@@ -60,6 +66,14 @@ export async function applyGitHubPullRequestOutcome(args: {
     githubCodeChange(outcome, recorded.conversationIds),
   );
   if (outcome.state !== "open") {
+    const state = outcome.state === "merged" ? "merged" : "closed";
+    await closeEndedGitHubPullRequestItems({
+      db: args.db,
+      log: args.log,
+      inboxItems: args.inboxItems,
+      state,
+      target: outcome,
+    });
     await updateGitHubAnnotations({
       annotations: args.annotations,
       conversationIds: recorded.conversationIds,
@@ -68,7 +82,7 @@ export async function applyGitHubPullRequestOutcome(args: {
         repo: outcome.repositoryFullName,
         number: outcome.number,
         objectType: "code_change",
-        status: outcome.state === "merged" ? "merged" : "closed",
+        status: state,
       },
     });
   }

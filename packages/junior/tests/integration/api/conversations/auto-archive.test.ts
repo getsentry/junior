@@ -18,9 +18,11 @@ import {
   getConversationEventStore,
   getConversationStore,
   getDb,
+  getSqlExecutor,
 } from "@/chat/db";
+import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import {
   juniorConversationParticipants,
   juniorConversations,
@@ -28,6 +30,12 @@ import {
 import { JUNIOR_AUTO_ARCHIVE_ROUTE } from "@/deployment";
 import { defineJuniorPlugins } from "@/plugins";
 import { isNotNull } from "drizzle-orm";
+import {
+  REQUEST,
+  SLACK_VIEWER,
+  lastSeq,
+  recordAnswer,
+} from "../../../fixtures/conversation-status";
 
 async function authenticatedApi(email: string) {
   const viewer = await resolveViewerUser(email);
@@ -351,8 +359,8 @@ describe("conversation auto-archive API", () => {
         });
     }
     // An open action item for the viewer keeps the conversation in the feed.
-    await insertReviewItem(getDb(), {
-      addedByConversationId: waitingId,
+    await insertInboxItem(getDb(), {
+      owner: { id: waitingId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Merge or close the follow-up?",
@@ -550,5 +558,140 @@ describe("conversation auto-archive API", () => {
         .map((conversation) => conversation.conversationId)
         .sort(),
     ).toEqual([childConnectingId, connectingId].sort());
+  });
+  it("keeps a conversation whose tree needs a person", async () => {
+    const nowMs = Date.now();
+    const hour = 60 * 60 * 1000;
+    const quietMs = nowMs - 3 * hour;
+    // Each case that needs a person has an otherwise identical twin that
+    // does not.
+    const childItemId = "local:test:archive-needs-child-item";
+    const childItemClosedId = "local:test:archive-needs-child-item-closed";
+    const todoId = "local:test:archive-needs-todo";
+    const todoDoneId = "local:test:archive-needs-todo-done";
+    const childTodoId = "local:test:archive-needs-child-todo";
+    const childAgentTodoId = "local:test:archive-needs-child-agent-todo";
+    const unreadId = "local:test:archive-needs-unread";
+    const readId = "local:test:archive-needs-read";
+    const ids = [
+      childItemId,
+      childItemClosedId,
+      todoId,
+      todoDoneId,
+      childTodoId,
+      childAgentTodoId,
+      unreadId,
+      readId,
+    ];
+    for (const conversationId of ids) {
+      await getConversationStore().recordActivity({
+        actor: { platform: "slack", ...SLACK_VIEWER },
+        conversationId,
+        destination: { platform: "local" as const, conversationId },
+        nowMs: quietMs,
+        source: "local",
+        visibility: "public",
+      });
+    }
+    for (const parentConversationId of [
+      childItemId,
+      childItemClosedId,
+      childTodoId,
+      childAgentTodoId,
+    ]) {
+      await getConversationStore().createChild({
+        childConversationId: `${parentConversationId}:child`,
+        kind: "thread",
+        nowMs: quietMs,
+        parentConversationId,
+      });
+    }
+    // The starter's message made them a participant.
+    const viewer = await resolveViewerUser(SLACK_VIEWER.email);
+    if (!viewer) throw new Error("missing starter viewer");
+    await updateUserSettings(viewer.id, {
+      autoArchiveDefault: true,
+      autoArchiveGraceHours: 1,
+    });
+
+    // An action item for Everyone waits on a person too, until it closes.
+    for (const conversationId of [childItemId, childItemClosedId]) {
+      const item = await insertInboxItem(getDb(), {
+        owner: { id: `${conversationId}:child`, kind: "conversation" },
+        assignedToEveryone: true,
+        assigneeUserIds: [],
+        body: "Ship the release now?",
+        conversationIds: [`${conversationId}:child`],
+        dedupeKey: `archive-needs:${conversationId}`,
+        kind: "action",
+        nowMs: quietMs,
+        request: REQUEST,
+        title: "Release",
+        visibility: "public",
+      });
+      if (conversationId === childItemClosedId) {
+        await closeInboxItem(getDb(), {
+          id: item!.id,
+          nowMs: quietMs,
+          status: "dismissed",
+        });
+      }
+    }
+    const addTodo = async (
+      conversationId: string,
+      assignee: { conversationId: string } | { userId: string },
+      status: "open" | "in_progress" | "done",
+    ) =>
+      await changeTodos(getSqlExecutor(), {
+        change: {
+          add: [{ assignee, status, title: "Approve the rollout" }],
+          remove: [],
+          update: [],
+        },
+        conversationId,
+        nowMs: quietMs,
+      });
+    await addTodo(todoId, { userId: viewer.id }, "open");
+    await addTodo(todoDoneId, { userId: viewer.id }, "done");
+    await addTodo(`${childTodoId}:child`, { userId: viewer.id }, "in_progress");
+    await addTodo(
+      `${childAgentTodoId}:child`,
+      { conversationId: `${childAgentTodoId}:child` },
+      "open",
+    );
+    for (const conversationId of [unreadId, readId]) {
+      await recordAnswer(conversationId, 1, quietMs);
+    }
+
+    process.env["JUNIOR_SCHEDULER_SECRET"] = "auto-archive-secret";
+    const juniorApp = await createApp({ dashboard: { disabled: true } });
+    const { app } = await authenticatedApi(viewer.email);
+    const read = await app.request(
+      `http://localhost/api/conversations/${readId}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: await lastSeq(readId) }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
+
+    const response = await juniorApp.request(
+      `http://localhost${JUNIOR_AUTO_ARCHIVE_ROUTE}`,
+      { headers: { authorization: "Bearer auto-archive-secret" } },
+    );
+    expect(response.status).toBe(200);
+    // A tree that needs a person is not a candidate.
+    await expect(response.json()).resolves.toEqual({
+      archived: 4,
+      scanned: 4,
+    });
+    const archived = await getDb()
+      .select({ conversationId: juniorConversations.conversationId })
+      .from(juniorConversations)
+      .where(isNotNull(juniorConversations.archivedAt));
+    expect(archived.map((row) => row.conversationId).sort()).toEqual(
+      [childItemClosedId, todoDoneId, childAgentTodoId, readId].sort(),
+    );
   });
 });

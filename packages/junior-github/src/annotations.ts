@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import {
   objectFactsMatchType,
   type ConversationAnnotation,
@@ -51,11 +52,19 @@ export function githubSidebarAnnotations(
       };
       if (annotation.kind === "object") {
         sidebar.title = annotation.title;
-        const image =
-          annotation.facts?.type === "code_change"
-            ? annotation.facts.previewImageUrls?.[0]
-            : undefined;
-        if (image) sidebar.imageUrl = image;
+        if (annotation.facts?.type === "code_change") {
+          const { additions, changedFiles, deletions, previewImageUrls } =
+            annotation.facts;
+          const image = previewImageUrls?.[0];
+          if (image) sidebar.imageUrl = image;
+          if (
+            additions !== undefined ||
+            deletions !== undefined ||
+            changedFiles !== undefined
+          ) {
+            sidebar.size = { additions, changedFiles, deletions };
+          }
+        }
       }
       if (annotation.url) sidebar.url = annotation.url;
       return [{ annotation: sidebar, updatedAt: annotation.updatedAt }];
@@ -139,6 +148,9 @@ async function updateGitHubAnnotation(
   });
 }
 
+/** Conversations whose annotation one update changes at once. */
+export const ANNOTATION_UPDATE_CONCURRENCY = 8;
+
 /**
  * Refresh the status of one object in each linked conversation. One failed
  * conversation does not stop the others. Each failure is logged.
@@ -149,11 +161,14 @@ export async function updateGitHubAnnotations(args: {
   log?: Pick<PluginLogger, "error"> | undefined;
   update: Parameters<typeof updateGitHubAnnotation>[1];
 }): Promise<void> {
+  const limit = pLimit(ANNOTATION_UPDATE_CONCURRENCY);
   const results = await Promise.allSettled(
     args.conversationIds.map((conversationId) =>
-      updateGitHubAnnotation(
-        args.annotations.forConversation(conversationId),
-        args.update,
+      limit(() =>
+        updateGitHubAnnotation(
+          args.annotations.forConversation(conversationId),
+          args.update,
+        ),
       ),
     ),
   );

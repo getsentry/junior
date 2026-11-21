@@ -125,10 +125,74 @@ const DETECTORS: Record<string, unknown> = {
     dataSources: [snubaSource("events", ["error"])],
   }),
   "105": detector("105", { name: "Error monitor", type: "error" }),
+  "201": detector("201", { name: "Issue stream", type: "issue_stream" }),
+};
+
+const ALERT_URL = "https://sentry.sentry.io/monitors/alerts/301/";
+const WORKFLOWS: Record<string, unknown> = {
+  "301": {
+    id: "301",
+    name: "New UI feedback",
+    type: "alert",
+    organizationId: "1",
+    createdBy: "7",
+    dateCreated: "2026-11-17T09:00:00Z",
+    dateUpdated: "2026-11-17T09:00:00Z",
+    enabled: true,
+    environment: null,
+    config: { frequency: 30 },
+    detectorIds: ["201"],
+    lastTriggered: "2026-11-17T09:30:00Z",
+    triggers: {
+      logicType: "any-short",
+      conditions: [{ id: "1", type: "first_seen_event", comparison: true }],
+    },
+    actionFilters: [
+      {
+        logicType: "all",
+        conditions: [
+          { id: "2", type: "issue_category", comparison: { value: 6 } },
+          {
+            id: "3",
+            type: "tagged_event",
+            comparison: {
+              key: "app.feedback.topic",
+              match: "eq",
+              value: "new_ui",
+            },
+          },
+        ],
+        actions: [
+          {
+            id: "4",
+            type: "email",
+            config: { targetType: "user", targetIdentifier: "7" },
+          },
+          {
+            id: "5",
+            type: "slack",
+            config: {
+              targetType: "specific",
+              targetIdentifier: "U7",
+              targetDisplay: "@burak.kaya",
+            },
+          },
+          {
+            id: "6",
+            type: "webhook",
+            config: {
+              targetType: "specific",
+              targetDisplay: "ops@example.com",
+            },
+          },
+        ],
+      },
+    ],
+  },
 };
 
 /**
- * Fake Sentry's org, monitor, check-in, project, and timeseries APIs.
+ * Fake Sentry's org, monitor, alert, check-in, project, and timeseries APIs.
  * Like Sentry, a token reads monitors only in the projects that `projects`
  * lists for its viewer, and Junior's org read token reads none.
  */
@@ -150,6 +214,16 @@ function fakeSentry(projects: Record<string, string[]>) {
     ),
     http.get(`${ORG_API}/detectors/:id/`, ({ params, request }) => {
       const found = DETECTORS[String(params["id"])];
+      return found && canRead(request) ? HttpResponse.json(found) : notFound();
+    }),
+    http.get(`${ORG_API}/detectors/`, ({ request }) => {
+      const ids = new URL(request.url).searchParams.getAll("id");
+      return canRead(request)
+        ? HttpResponse.json(ids.map((id) => DETECTORS[id]).filter(Boolean))
+        : notFound();
+    }),
+    http.get(`${ORG_API}/workflows/:id/`, ({ params, request }) => {
+      const found = WORKFLOWS[String(params["id"])];
       return found && canRead(request) ? HttpResponse.json(found) : notFound();
     }),
     http.get(`${ORG_API}/monitors/:slug/`, ({ params, request }) =>
@@ -407,5 +481,81 @@ describe("Sentry monitor link cards", () => {
 
     expect(objects).toHaveLength(1);
     expect(queries).toHaveLength(2);
+  });
+});
+
+describe("Sentry alert link cards", () => {
+  beforeEach(async () => {
+    vi.stubEnv("SENTRY_READ_TOKEN", ORG_READ_TOKEN);
+    await createApp({
+      dashboard: { disabled: true },
+      plugins: defineJuniorPlugins([sentryPlugin()]),
+    });
+  });
+
+  afterEach(async () => {
+    vi.unstubAllEnvs();
+    await closeDb();
+  });
+
+  it("draws an alert card from each URL form with the viewer's own read", async () => {
+    const { queries } = fakeSentry({ alice: ["11"] });
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const urls = [
+      ALERT_URL,
+      "https://sentry.io/organizations/sentry/monitors/alerts/301/",
+    ];
+
+    const { body, objects } = await readCards(alice, urls);
+
+    expect(objects.map(({ object }) => object)).toEqual(
+      urls.map((url) => ({
+        kind: "object",
+        objectType: "alert",
+        plugin: "sentry",
+        key: "alert:sentry:301",
+        label: "New UI feedback",
+        title: "New UI feedback",
+        url,
+        status: "Enabled",
+        displayType: "Sentry alert",
+        facts: {
+          type: "alert",
+          enabled: true,
+          projects: ["checkout"],
+          trigger: "First seen · Feedback · app.feedback.topic is new_ui",
+          notifies: ["Email member", "Slack @burak.kaya", "Webhook"],
+          lastTriggeredAt: "2026-11-17T09:30:00.000Z",
+        },
+      })),
+    );
+    // A notification target can be an email address.
+    expect(body).not.toContain("ops@example.com");
+    // Alice's own token reads the alert, its monitors, and their project
+    // once, on the region host.
+    expect(queries).toEqual([
+      "Bearer alice-token us.sentry.io/api/0/organizations/sentry/workflows/301/",
+      "Bearer alice-token us.sentry.io/api/0/organizations/sentry/detectors/?id=201",
+      "Bearer alice-token us.sentry.io/api/0/organizations/sentry/projects/?query=id%3A11",
+    ]);
+  });
+
+  it("shows nothing of an alert to a viewer who cannot see its project", async () => {
+    const { queries } = fakeSentry({ alice: ["11"], bob: ["99"] });
+    const alice = testViewer("alice@example.com");
+    const bob = testViewer("bob@example.com");
+    await connectSentry(alice, "alice");
+    await connectSentry(bob, "bob");
+
+    // Alice's cached alert must not reach Bob.
+    expect((await readCards(alice, [ALERT_URL])).objects).toHaveLength(1);
+    const { body, objects } = await readCards(bob, [ALERT_URL]);
+
+    expect(objects).toEqual([]);
+    expect(body).not.toContain("New UI feedback");
+    expect(queries.filter((query) => query.includes("bob-token"))).toEqual([
+      "Bearer bob-token us.sentry.io/api/0/organizations/sentry/workflows/301/",
+    ]);
   });
 });

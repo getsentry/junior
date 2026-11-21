@@ -1,5 +1,4 @@
-import pLimit from "p-limit";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
+import { mapBounded } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import {
   objectAnnotationSchema,
@@ -208,6 +207,25 @@ export async function resolveObjectLinkNow(
 }
 
 /**
+ * Return whether a link type of `plugin` claims the URL, lets the viewer
+ * see it now, and reads an object there. A missing or deleted object does
+ * not count. Neither does the web page card: it shows what anyone can read
+ * signed out, not what the viewer can see.
+ */
+export async function viewerCanViewPluginLink(
+  viewer: User,
+  url: URL,
+  plugin: string,
+): Promise<boolean> {
+  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  return (
+    linkType?.owner === plugin &&
+    (await linkType.canView(viewer, url)) &&
+    Boolean(await linkType.resolve(viewer, url))
+  );
+}
+
+/**
  * Resolve links to object cards for one viewer. A link without a link type,
  * without access, or with a failed read gets no card. Nothing is saved on a
  * Conversation.
@@ -218,35 +236,30 @@ export async function resolveObjectLinks(
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
   const cache = createCache(getStateAdapter(), "object-links");
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  const results = await Promise.all(
-    [...new Set(urls)].map((url) =>
-      limit(async () => {
-        const parsed = URL.canParse(url) ? new URL(url) : undefined;
-        const linkType = parsed && findObjectLinkType(linkTypes, parsed);
-        if (!parsed || !linkType) return [];
-        // Each viewer has their own entry: a card holds only what they see.
-        const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
-        const resolve = async () =>
-          (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
-        try {
-          const object =
-            linkType.cacheCards === false
-              ? await resolve()
-              : await cache.getOrLoad(key, async () => ({
-                  value: await resolve(),
-                  ttlMs: OBJECT_LINK_TTL_MS,
-                }));
-          return object ? [{ object, url }] : [];
-        } catch (error) {
-          // One failed provider read must not hide the other cards.
-          logException(error, "object_link.resolve.failed", {
-            "app.plugin.name": linkType.owner,
-          });
-          return [];
-        }
-      }),
-    ),
-  );
+  const results = await mapBounded([...new Set(urls)], async (url) => {
+    const parsed = URL.canParse(url) ? new URL(url) : undefined;
+    const linkType = parsed && findObjectLinkType(linkTypes, parsed);
+    if (!parsed || !linkType) return [];
+    // Each viewer has their own entry: a card holds only what they see.
+    const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
+    const resolve = async () =>
+      (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
+    try {
+      const object =
+        linkType.cacheCards === false
+          ? await resolve()
+          : await cache.getOrLoad(key, async () => ({
+              value: await resolve(),
+              ttlMs: OBJECT_LINK_TTL_MS,
+            }));
+      return object ? [{ object, url }] : [];
+    } catch (error) {
+      // One failed provider read must not hide the other cards.
+      logException(error, "object_link.resolve.failed", {
+        "app.plugin.name": linkType.owner,
+      });
+      return [];
+    }
+  });
   return results.flat();
 }
