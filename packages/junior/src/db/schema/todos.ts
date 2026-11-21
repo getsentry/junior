@@ -24,8 +24,10 @@ export const juniorTodoVersionSeq = pgSequence("junior_todo_version_seq");
  * One To-do: work that a Conversation has not finished. At most one
  * assignee: a Conversation (the list's own agent or one of its child agents)
  * or a User. A To-do without one belongs to the list's own agent.
- * `changed_by_user_id` is set when a person made the latest change, and null
- * when the list's own agent did. Both User keys block deleting the User, as
+ * `changed_by_user_id` is set when a person made the latest change.
+ * `changed_by_conversation_id` is set when the assignee child agent closed
+ * it, or core closed it on that child's result. Both are null when the
+ * list's own agent made the latest change. Both User keys block deleting the User, as
  * Conversation participants do: setting them null would turn a person's
  * To-do into the agent's and hide an unseen change from `<todo-delta>`.
  */
@@ -43,6 +45,7 @@ export const juniorTodos = pgTable(
     changedByUserId: text("changed_by_user_id").references(
       () => juniorUsers.id,
     ),
+    changedByConversationId: text("changed_by_conversation_id"),
     createdAt: timestamptz("created_at").notNull(),
     updatedAt: timestamptz("updated_at").notNull(),
   },
