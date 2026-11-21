@@ -28,10 +28,10 @@ import {
 } from "../src/client/conversations/queries";
 import { conversationSideReadQueryKey } from "../src/client/conversations/conversationSideReads";
 import {
-  REVIEW_ITEMS_QUERY_KEY,
-  reviewItemListQueryKey,
-  useConversationReviewItemData,
-} from "../src/client/review-desk/queries";
+  INBOX_ITEMS_QUERY_KEY,
+  inboxItemListQueryKey,
+  useConversationInboxItemData,
+} from "../src/client/inbox/queries";
 import { dashboardCoreQueryOptions } from "../src/client/api";
 import { fetchDashboardJson } from "../src/client/http";
 
@@ -207,17 +207,17 @@ describe("dashboard client API", () => {
     ).rejects.toThrow("Conversation history cursor did not advance");
   });
 
-  it("reads a transcript Review item from its Conversation's list", () => {
+  it("reads a transcript Inbox item from its Conversation's list", () => {
     const conversationId = "slack:C1:123";
     const client = new QueryClient();
-    client.setQueryData(reviewItemListQueryKey({ conversationId }), {
+    client.setQueryData(inboxItemListQueryKey({ conversationId }), {
       pageParams: [undefined],
       pages: [{ items: [{ id: "listed", title: "Listed item" }] }],
     });
     const detail = (id: string) =>
       client.getQueryCache().find({
         exact: true,
-        queryKey: [...REVIEW_ITEMS_QUERY_KEY, "detail", id],
+        queryKey: [...INBOX_ITEMS_QUERY_KEY, "detail", id],
       });
     const render = (id: string) =>
       renderToStaticMarkup(
@@ -225,7 +225,7 @@ describe("dashboard client API", () => {
           QueryClientProvider,
           { client },
           createElement(function Row() {
-            const { data } = useConversationReviewItemData(conversationId, id);
+            const { data } = useConversationInboxItemData(conversationId, id);
             return data?.title ?? "loading";
           }),
         ),
@@ -264,24 +264,38 @@ describe("dashboard client API", () => {
     const options = conversationDetailQueryOptions(ARCHIVED_CONVERSATION_ID);
     const detailPath = `/api/conversations/${encodeURIComponent(ARCHIVED_CONVERSATION_ID)}`;
     // The details panel reads these beside the detail report, and the
-    // transcript reads its open items from the list. The versions poll
-    // refreshes the other Review item reads.
+    // transcript reads its open items from the list. An Inbox list that
+    // shows an item of this Conversation shows its subject from this
+    // detail, so it refreshes with it. The versions poll refreshes the other
+    // Inbox item reads.
+    const inbox = inboxItemListQueryKey({ forViewer: true, sort: "waiting" });
+    const otherInbox = inboxItemListQueryKey({ forViewer: true });
     const sideReads = [
       conversationSideReadQueryKey(ARCHIVED_CONVERSATION_ID, "agents"),
-      reviewItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
-      [...REVIEW_ITEMS_QUERY_KEY, "detail", "item-1"],
-      reviewItemListQueryKey({ conversationId: "slack:C1:other" }),
-      [...REVIEW_ITEMS_QUERY_KEY, "count"],
-      [...REVIEW_ITEMS_QUERY_KEY, "waiting-conversations"],
+      inboxItemListQueryKey({ conversationId: ARCHIVED_CONVERSATION_ID }),
+      inbox,
+      [...INBOX_ITEMS_QUERY_KEY, "detail", "item-1"],
+      inboxItemListQueryKey({ conversationId: "slack:C1:other" }),
+      otherInbox,
+      [...INBOX_ITEMS_QUERY_KEY, "count"],
+      [...INBOX_ITEMS_QUERY_KEY, "waiting-conversations"],
     ];
+    const listOf = (ownerId: string) => ({
+      pageParams: [undefined],
+      pages: [{ items: [{ owner: { id: ownerId, kind: "conversation" } }] }],
+    });
     const sideReadsInvalidated = () =>
       sideReads.map((key) => client.getQueryState(key)?.isInvalidated);
     try {
       const first = await client.fetchQuery(options);
       for (const key of sideReads) client.setQueryData(key, {});
+      client.setQueryData(inbox, listOf(ARCHIVED_CONVERSATION_ID));
+      client.setQueryData(otherInbox, listOf("slack:C1:other"));
       const second = await client.fetchQuery(options);
       expect(second.events).toBe(first.events);
       expect(sideReadsInvalidated()).toEqual([
+        false,
+        false,
         false,
         false,
         false,
@@ -307,6 +321,8 @@ describe("dashboard client API", () => {
       expect(sideReadsInvalidated()).toEqual([
         true,
         true,
+        true,
+        false,
         false,
         false,
         false,

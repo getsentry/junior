@@ -1,27 +1,18 @@
 import { useCodeOverviewData } from "./api";
 import type { Area } from "./components/layout/AreaSidebar";
-import type { DashboardHeaderNavItem } from "./inbox/components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "./shell/components/layout/DashboardHeader";
 import { codeRepositoryPath } from "./pages/code/codeRepositoryRoutes";
-import {
-  memoryNavigationItems,
-  memoryOverviewSections,
-} from "./inbox/pages/memory/MemoryPageLayout";
-import { settingsSections } from "./inbox/pages/settings/SettingsPageLayout";
+import { memoryNavigationItems } from "./shell/pages/memory/MemoryPageLayout";
+import { NAV_PAGES, navAreaPages } from "./navPages";
 import { systemNavigationItems } from "./pages/system/SystemNavigation";
 
 function under(pathname: string, root: string): boolean {
   return pathname === root || pathname.startsWith(`${root}/`);
 }
 
-function sectionItems(
-  page: string,
-  sections: readonly { anchor: string; label: string }[],
-) {
-  return sections.map((section) => ({
-    anchor: section.anchor,
-    label: section.label,
-    to: `${page}#${section.anchor}`,
-  }));
+/** The sections of an area's root page. */
+function sectionItems(root: string) {
+  return navAreaPages(root).filter((page) => page.anchor);
 }
 
 /**
@@ -42,11 +33,11 @@ export function useArea(
   const code = under(pathname, "/code");
   const repositories = useCodeOverviewData(code).data?.repositories ?? [];
   if (isTabPath) return undefined;
-  if (under(pathname, "/settings"))
+  if (under(pathname, NAV_PAGES.settings.to))
     return {
-      items: sectionItems("/settings", settingsSections),
-      label: "Settings",
-      root: "/settings",
+      items: sectionItems(NAV_PAGES.settings.to),
+      label: NAV_PAGES.settings.label,
+      root: NAV_PAGES.settings.to,
     };
   if (under(pathname, "/system"))
     return { items: systemNavigationItems, label: "System", root: "/system" };
@@ -54,7 +45,7 @@ export function useArea(
     return {
       items: [
         memoryNavigationItems[0]!,
-        ...sectionItems("/memories", memoryOverviewSections),
+        ...sectionItems(NAV_PAGES.memoryLibrary.area),
         ...memoryNavigationItems.slice(1),
       ],
       label: "Memories",
@@ -63,7 +54,7 @@ export function useArea(
   if (code)
     return {
       items: [
-        { end: true, label: "Overview", to: "/code" },
+        { end: true, label: "Overview", to: NAV_PAGES.code.to },
         ...repositories.map((repository) => ({
           detail: repository.provider,
           label: repository.name,
@@ -75,7 +66,7 @@ export function useArea(
     };
   const more = [
     ...navItems.profile.map((item) => ({ label: item.label, to: item.to })),
-    { label: "Settings", to: "/settings" },
+    NAV_PAGES.settings,
   ];
   if (under(pathname, "/plugins"))
     return {

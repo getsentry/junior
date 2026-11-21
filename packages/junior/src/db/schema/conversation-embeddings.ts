@@ -2,7 +2,7 @@ import { sql } from "drizzle-orm";
 import { check, foreignKey, integer, pgTable, text } from "drizzle-orm/pg-core";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
-import { embeddingVector } from "@sentry/junior-plugin-api/embeddings";
+import { embeddingVector } from "@/db/embeddings";
 
 /**
  * One embedding per Conversation, for semantic search. Its text is the

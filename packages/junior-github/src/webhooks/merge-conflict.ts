@@ -12,7 +12,7 @@
 import type {
   EventInput,
   EventPublisher,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
@@ -36,7 +36,7 @@ const CLOSED_EVENT_TYPES = new Set([
 ]);
 
 /** The pull request fields that tell if it has a conflict. */
-const pullRequestSchema = z.object({
+export const gitHubPullRequestMergeSchema = z.object({
   base: z.object({ ref: z.string().min(1) }),
   draft: z.boolean().optional(),
   number: z.number().int().positive().optional(),
@@ -115,9 +115,9 @@ function pullRequestRefs(events: EventInput[]): GitHubPullRequestRef[] {
 function deliveredPullRequest(
   payload: unknown,
   ref: GitHubPullRequestRef,
-): z.infer<typeof pullRequestSchema> | undefined {
+): z.infer<typeof gitHubPullRequestMergeSchema> | undefined {
   const parsed = z
-    .object({ pull_request: pullRequestSchema })
+    .object({ pull_request: gitHubPullRequestMergeSchema })
     .safeParse(payload);
   const pullRequest = parsed.success ? parsed.data.pull_request : undefined;
   return pullRequest?.number === ref.number &&
@@ -149,7 +149,7 @@ export async function loadGitHubMergeConflictEvents(args: {
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
@@ -160,7 +160,7 @@ export async function loadGitHubMergeConflictEvents(args: {
     try {
       const loaded =
         deliveredPullRequest(args.pullRequestPayload, ref) ??
-        pullRequestSchema.parse(await loadPullRequest(ref));
+        gitHubPullRequestMergeSchema.parse(await loadPullRequest(ref));
       if (
         loaded.state !== "open" ||
         loaded.mergeable !== false ||
@@ -182,7 +182,7 @@ export async function loadGitHubMergeConflictEvents(args: {
         log: args.log,
         now: new Date(),
         ref,
-        reviewItems: args.reviewItems,
+        inboxItems: args.inboxItems,
         ...(loaded.title ? { title: loaded.title } : undefined),
       });
     } catch (error) {

@@ -1,6 +1,6 @@
 {
-  "id": "3fe34c12-b078-48d8-bccb-7876355c5679",
-  "prevId": "506030a7-6109-409e-b317-d8e2ec0de5ba",
+  "id": "4bf676d4-c49c-4f8d-ba11-823eae4b5806",
+  "prevId": "1d8a9e04-2dd2-418a-a1b5-46f588d121ec",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2054,6 +2054,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "outcome_status": {
+          "name": "outcome_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "search_text": {
           "name": "search_text",
           "type": "text",
@@ -2188,13 +2194,7 @@
           "name": "brief_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": false
-        },
-        "through_seq": {
-          "name": "through_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
+          "notNull": true
         },
         "provider": {
           "name": "provider",
@@ -2230,15 +2230,17 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "junior_conversation_embeddings_conversation_fk": {
-          "name": "junior_conversation_embeddings_conversation_fk",
+        "junior_conversation_embeddings_brief_fk": {
+          "name": "junior_conversation_embeddings_brief_fk",
           "tableFrom": "junior_conversation_embeddings",
           "columnsFrom": [
-            "conversation_id"
+            "conversation_id",
+            "brief_version"
           ],
-          "tableTo": "junior_conversations",
+          "tableTo": "junior_conversation_briefs",
           "columnsTo": [
-            "conversation_id"
+            "conversation_id",
+            "version"
           ],
           "onUpdate": "no action",
           "onDelete": "cascade"
@@ -3308,18 +3310,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "summary": {
-          "name": "summary",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "metadata_through_seq": {
-          "name": "metadata_through_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3609,21 +3599,6 @@
           "isUnique": false,
           "with": {},
           "method": "btree",
-          "concurrently": false
-        },
-        "junior_conversations_search_idx": {
-          "name": "junior_conversations_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('english', coalesce(\"title\", '') || ' ' || coalesce(\"summary\", ''))",
-              "isExpression": true,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "with": {},
-          "method": "gin",
           "concurrently": false
         }
       },

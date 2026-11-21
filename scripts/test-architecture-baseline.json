@@ -79,7 +79,6 @@
     "packages/junior/tests/component/events/events.test.ts": 1,
     "packages/junior/tests/component/handlers/handlers-webhooks-lazy-load.test.ts": 1,
     "packages/junior/tests/component/linear-native-create.test.ts": 4,
-    "packages/junior/tests/component/memory-plugin-storage.test.ts": 3,
     "packages/junior/tests/component/plugins/amplitude-plugin.test.ts": 2,
     "packages/junior/tests/component/plugins/notion-plugin.test.ts": 2,
     "packages/junior/tests/component/plugins/plugin-conversation-events.test.ts": 7,

@@ -75,6 +75,8 @@ export interface Conversation {
   lastActivityAtMs: number;
   /** Immutable parent Conversation. */
   parentConversationId?: string;
+  /** Immutable root of the Conversation tree, read from storage. */
+  rootConversationId?: string;
   /**
    * When the Conversation was archived for everyone. Only archive, auto-archive,
    * pin, and a person's message write it; `upsertConversation` does not.

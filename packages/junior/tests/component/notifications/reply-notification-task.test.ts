@@ -227,6 +227,7 @@ describe("reply notification task", () => {
       completeDashboardTurn("The deploy finished."),
     ).resolves.toEqual([
       "event-search.indexEvents",
+      "memory.processSession",
       "notifications.notifyReply",
     ]);
 

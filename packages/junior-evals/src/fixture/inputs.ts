@@ -88,20 +88,20 @@ export interface WebMessageInput {
 }
 
 /**
- * A person's answer or dismiss on the review desk, through
- * `POST /api/review-items/:id/actions`. The fixture first links `item` to the
- * web Conversation and assigns it to the person, as `addReviewItem` would.
+ * A person's answer or dismiss in the Inbox, through
+ * `POST /api/inbox-items/:id/actions`. The fixture first links `item` to the
+ * web Conversation and assigns it to the person, as `addInboxItem` would.
  */
-export interface ReviewItemActionInput {
-  kind: "review_item_action";
+export interface InboxItemActionInput {
+  kind: "inbox_item_action";
   action: "submit" | "dismiss";
-  item: ReviewDeskItem;
+  item: InboxItem;
   /** The answer, by field id. */
   values?: Record<string, string[]>;
 }
 
-/** An open item that a `ReviewItemActionInput` acts on. */
-export interface ReviewDeskItem {
+/** An open item that a `InboxItemActionInput` acts on. */
+export interface InboxItem {
   body: string;
   /** Without a request, the item is a notice. */
   request?: {
@@ -153,7 +153,7 @@ export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
 export type Input =
   | MessageInput
-  | ReviewItemActionInput
+  | InboxItemActionInput
   | AutomationInput
   | CompleteAuthInput
   | AppHomeUnlinkInput;
@@ -236,17 +236,17 @@ export function webMessage(
   return { kind: "web_message", text, ...options };
 }
 
-/** Answer a review desk item from the dashboard, by field id. */
-export function reviewItemAnswer(
-  item: ReviewDeskItem,
+/** Answer an Inbox item from the dashboard, by field id. */
+export function inboxItemAnswer(
+  item: InboxItem,
   values: Record<string, string[]>,
-): ReviewItemActionInput {
-  return { kind: "review_item_action", action: "submit", item, values };
+): InboxItemActionInput {
+  return { kind: "inbox_item_action", action: "submit", item, values };
 }
 
-/** Dismiss a review desk item from the dashboard. */
-export function reviewItemDismiss(item: ReviewDeskItem): ReviewItemActionInput {
-  return { kind: "review_item_action", action: "dismiss", item };
+/** Dismiss an Inbox item from the dashboard. */
+export function inboxItemDismiss(item: InboxItem): InboxItemActionInput {
+  return { kind: "inbox_item_action", action: "dismiss", item };
 }
 
 /** A file for `files`. A string is the text of the file. */

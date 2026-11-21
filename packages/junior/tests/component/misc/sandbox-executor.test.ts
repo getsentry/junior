@@ -212,7 +212,7 @@ import {
 import { SandboxCallTimeoutError } from "@/chat/sandbox/errors";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 interface SandboxFixtureOptions {
   sandboxId?: string;
   sandboxDependencyProfileHash?: string;

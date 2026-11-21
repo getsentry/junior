@@ -21,6 +21,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import type * as z from "zod";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   conversationSimilarity,
@@ -79,6 +80,17 @@ export interface ConversationSearchResult {
   /** Its transcript is purged. Only the summary and title remain. */
   transcriptPurged: boolean;
   updatedAtMs: number;
+}
+
+/** Provider-owned channel filter and match details for Conversation search. */
+export interface ConversationSearchChannelPort {
+  channelFilterSchema: z.ZodString;
+  describeMatch(match: ConversationSearchResult): Promise<{
+    channel_id?: string;
+    channel_name?: string;
+    permalink?: string;
+  }>;
+  resolveChannel(input: string): Promise<string>;
 }
 
 /** Filters for one Conversation search. All are optional. */

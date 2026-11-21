@@ -25,13 +25,26 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     #expect(page.messages.map(\.seq) == page.messages.map(\.seq).sorted())
     _ = try fixture("sendMessage", as: AcceptedMessage.self)
     _ = try fixture("createConversation", as: AcceptedMessage.self)
-    let items = try fixture("searchReviewItems", as: ReviewItemList.self)
+    let items = try fixture("searchInboxItems", as: InboxItemList.self)
     #expect(items.items.allSatisfy { $0.status == "open" })
-    _ = try fixture("getReviewItem", as: ReviewItemResult.self)
+    _ = try fixture("getInboxItem", as: InboxItemResult.self)
     let automations = try fixture("searchAutomations", as: AutomationList.self)
     #expect(automations.total >= automations.automations.count)
     let automation = try fixture("getAutomation", as: AutomationDetail.self)
     #expect(!automation.automation.task.text.isEmpty)
+  }
+
+  @Test func readsConversationsFromAnOlderJunior() throws {
+    // Junior 0.310 and older send their old statuses and no `turnActive`.
+    func row(_ status: String) throws -> MCPConversation {
+      let json = """
+        {"conversationId":"c1","title":"T","status":"\(status)","surface":"api",\
+        "startedAt":"2026-08-07T12:00:00Z","lastSeenAt":"2026-08-07T12:00:00Z"}
+        """
+      return try JSONDecoder.junior.decode(MCPConversation.self, from: Data(json.utf8))
+    }
+    #expect(try row("active").turnActive)
+    #expect(try !row("completed").turnActive)
   }
 
   @Test func archiveKeepsTheExactLastSeenAt() throws {

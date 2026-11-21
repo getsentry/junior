@@ -28,7 +28,7 @@ A Prompt mode (`conversation`, `automation`, `child_agent`, `thread`) can
 replace the content of a block. It must not add or move a block.
 `<tool-call-style>`, `<conversation>`, and the conversation lines of
 `<context-trust>` are only for a person's input. `child_agent` mode also
-gets the Review item line of `<context-trust>`, because a child gets answers
+gets the Inbox item line of `<context-trust>`, because a child gets answers
 to its own items. `<slack-actions>` is only for a person's input on Slack.
 `thread` and `automation` hold two rule sets, with `for` set to the sender.
 
@@ -43,7 +43,7 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
    No tag table and no context data.
 4. **Actions and safety.** `<safety>`: action limits, approvals, and retries
    with side effects.
-5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<planning>`:
+5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<todo-policy>`:
    cross-tool rules only. A rule for one tool goes in its description.
 6. **Communication and output.** `<tool-call-style>`, `<conversation>`,
    `<slack-actions>`, `<failure-reporting>`, `<output>`. `<output>` states

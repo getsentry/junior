@@ -30,14 +30,6 @@ excluded_rules = [
 # Shipped migrations already ran.
 excluded_paths = [
   "packages/junior-github/migrations/0007_shallow_millenium_guard.sql",
-  "packages/junior-memory/migrations/0001_closed_madrox.sql",
-  "packages/junior-memory/migrations/0004_gigantic_celestials.sql",
-  "packages/junior-memory/migrations/0005_short_jamie_braddock.sql",
-  "packages/junior-memory/migrations/0006_friendly_hydra.sql",
-  "packages/junior-memory/migrations/0007_military_tyger_tiger.sql",
-  "packages/junior-memory/migrations/0008_web_memory_source_platform.sql",
-  "packages/junior-memory/migrations/0009_faithful_whizzer.sql",
-  "packages/junior-memory/migrations/0013_memory_embedding_models.sql",
   "packages/junior/migrations/0002_conversation_message_search.sql",
   "packages/junior/migrations/0005_conversation_events.sql",
   "packages/junior/migrations/0007_thick_sugar_man.sql",

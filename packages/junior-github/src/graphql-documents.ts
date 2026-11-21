@@ -203,7 +203,7 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
  * Read what decides a merge conflict fix on one pull request: the review
  * decision, when it opened, and its latest pushes, reviews, and comments.
  * Pushes have their own window, so comments, which anyone can add, cannot
- * push Junior's earlier fixes out of it.
+ * push a person's latest push out of it.
  */
 export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
   query PullRequestConflictHistory($owner: String!, $name: String!, $number: Int!) {
@@ -214,7 +214,7 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
         pushes: timelineItems(last: 100, itemTypes: [PULL_REQUEST_COMMIT, HEAD_REF_FORCE_PUSHED_EVENT]) {
           nodes {
             __typename
-            ... on PullRequestCommit { commit { committedDate parents { totalCount } author { user { login } } } }
+            ... on PullRequestCommit { commit { committedDate author { user { login } } } }
             ... on HeadRefForcePushedEvent { createdAt actor { __typename } }
           }
         }
@@ -227,6 +227,74 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
         }
       }
     }
+  }
+`);
+
+/**
+ * Read what decides the requester's next action on one pull request: its
+ * state, merge state, review requests, latest reviews, head commit, and
+ * latest comments and review requests. A review comment reply is a review,
+ * so `reviews` holds it too.
+ */
+export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
+  query PullRequestNextAction($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        autoMergeRequest { enabledAt }
+        headRefOid
+        isDraft
+        mergeStateStatus
+        state
+        title
+        url
+        reviewRequests(first: 100) {
+          nodes { requestedReviewer { __typename ... on User { login } } }
+        }
+        reviews(last: 100) {
+          pageInfo { hasPreviousPage startCursor }
+          nodes { ...NextActionReview }
+        }
+        commits(last: 1) { nodes { commit { committedDate } } }
+        timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, REVIEW_REQUESTED_EVENT]) {
+          nodes {
+            __typename
+            ... on IssueComment { createdAt author { __typename login } }
+            ... on ReviewRequestedEvent {
+              createdAt
+              requestedReviewer { __typename ... on User { login } }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  fragment NextActionReview on PullRequestReview {
+    state
+    submittedAt
+    author { __typename login }
+    commit { oid }
+  }
+`);
+
+/** Read the page of a pull request's reviews before `before`. */
+export const PULL_REQUEST_REVIEWS_BEFORE = githubGraphql(`
+  query PullRequestReviewsBefore($owner: String!, $name: String!, $number: Int!, $before: String!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        reviews(last: 100, before: $before) {
+          pageInfo { hasPreviousPage startCursor }
+          nodes { ...NextActionReview }
+        }
+      }
+    }
+  }
+
+  fragment NextActionReview on PullRequestReview {
+    state
+    submittedAt
+    author { __typename login }
+    commit { oid }
   }
 `);
 

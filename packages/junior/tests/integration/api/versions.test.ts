@@ -7,6 +7,7 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   CONVERSATION_VERSION_HEADER,
   type Versions,
+  VERSIONS_CONVERSATION_LIMIT,
   versionsSchema,
 } from "@/api/schema";
 import {
@@ -17,7 +18,7 @@ import {
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   appendVisibleHistory,
@@ -72,6 +73,19 @@ async function childAgentTurn(conversationId: string, atMs: number) {
   });
 }
 
+async function readVersions(
+  app: Awaited<ReturnType<typeof authenticatedApi>>["app"],
+  conversationIds: string[],
+) {
+  return versionsSchema.parse(
+    await (
+      await app.request(
+        `http://localhost/api/versions?${new URLSearchParams({ conversationIds: conversationIds.join(",") })}`,
+      )
+    ).json(),
+  );
+}
+
 /** Name the tokens that differ between two reads. */
 function changed(
   before: Record<string, string | undefined>,
@@ -83,7 +97,10 @@ function changed(
 }
 
 /** Name the feed-row inputs whose part of the feed token differs. */
-function feedMoved(before: Versions, after: Versions) {
+function feedMoved(
+  before: Pick<Versions, "conversations">,
+  after: Pick<Versions, "conversations">,
+) {
   const parts = new Set(before.conversations.split(" "));
   return after.conversations
     .split(" ")
@@ -101,14 +118,14 @@ describe("versions API", () => {
     const { app, viewer } = await authenticatedApi();
     await recordRoot(OWN, "private", SLACK_ACTOR);
     await recordRoot(OTHER, "private");
-    const read = async (conversationId = OWN) =>
-      versionsSchema.parse(
-        await (
-          await app.request(
-            `http://localhost/api/versions?conversationId=${encodeURIComponent(conversationId)}`,
-          )
-        ).json(),
-      );
+    // The one Conversation's token reads as `conversation`, so each step
+    // names the tokens that moved.
+    const read = async (conversationId = OWN) => {
+      const { conversationDetails, ...tokens } = await readVersions(app, [
+        conversationId,
+      ]);
+      return { ...tokens, conversation: conversationDetails[conversationId] };
+    };
     const detailVersion = async () =>
       (
         await app.request(`http://localhost/api/conversations/${OWN}`)
@@ -184,8 +201,8 @@ describe("versions API", () => {
     expect(feedMoved(withInput, withPin)).toEqual(["pin"]);
     expect(await detailVersion()).toBe(withPin.conversation);
 
-    const item = await insertReviewItem(getDb(), {
-      addedByConversationId: OWN,
+    const item = await insertInboxItem(getDb(), {
+      owner: { id: OWN, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Approve the change.",
@@ -213,9 +230,9 @@ describe("versions API", () => {
     expect(changed(withPin, withItem)).toEqual([
       "conversation",
       "conversations",
-      "reviewItems",
+      "inboxItems",
     ]);
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: item!.id,
       nowMs: Date.parse("2026-10-01T12:01:00.000Z"),
       status: "done",
@@ -224,7 +241,7 @@ describe("versions API", () => {
     expect(changed(withItem, closed)).toEqual([
       "conversation",
       "conversations",
-      "reviewItems",
+      "inboxItems",
     ]);
 
     // A recorded Turn changes the viewer's spend. It starts on a whole
@@ -432,5 +449,52 @@ describe("versions API", () => {
       lastReadSeq: reply!.seq!,
     });
     expect(changed(withReply, await read())).toEqual([]);
+  });
+  it("reads a token for each Conversation on screen in one statement", async () => {
+    const { app } = await authenticatedApi();
+    await recordRoot(OWN, "private", SLACK_ACTOR);
+    await recordRoot(OTHER, "private");
+    const missing = "slack:CVERSIONS:missing";
+    const onScreen = [
+      OWN,
+      OTHER,
+      missing,
+      ...Array.from(
+        { length: VERSIONS_CONVERSATION_LIMIT - 3 },
+        (_, index) => `slack:CVERSIONS:absent-${index}`,
+      ),
+    ];
+    const detailVersion = async (conversationId: string) =>
+      (
+        await app.request(
+          `http://localhost/api/conversations/${encodeURIComponent(conversationId)}`,
+        )
+      ).headers.get(CONVERSATION_VERSION_HEADER);
+
+    const first = await expectSqlBudget(() => readVersions(app, onScreen), {
+      statements: 1,
+      serialRounds: 1,
+    });
+    // Each token is the one that the detail report sends. A Conversation
+    // that does not exist has no entry.
+    expect(first.conversationDetails).toEqual({
+      [OTHER]: await detailVersion(OTHER),
+      [OWN]: await detailVersion(OWN),
+    });
+
+    // A change to one Conversation moves only its token.
+    await appendVisibleHistory(OTHER);
+    const next = await readVersions(app, onScreen);
+    expect(next.conversationDetails[OWN]).toBe(first.conversationDetails[OWN]);
+    expect(next.conversationDetails[OTHER]).not.toBe(
+      first.conversationDetails[OTHER],
+    );
+    expect(next.conversationDetails[OTHER]).toBe(await detailVersion(OTHER));
+
+    // One read covers at most the cap.
+    const tooMany = await app.request(
+      `http://localhost/api/versions?${new URLSearchParams({ conversationIds: [...onScreen, "slack:CVERSIONS:extra"].join(",") })}`,
+    );
+    expect(tooMany.status).toBe(400);
   });
 });

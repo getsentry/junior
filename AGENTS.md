@@ -7,6 +7,8 @@ Read the reference files at the end when your work touches their area.
 - Don't state the obvious. Minimize visual noise in UI. In UI copy, agent
   replies, Slack messages, docs, and PR text, cut what the context already shows.
 - Use the words in `TERMINOLOGY.md`. Do not invent synonyms.
+- Never ask a person to do the obviously right thing; do it. Ask for a
+  person's attention only as `design/attention.md` allows.
 - Build the smallest design that solves the proven problem. No speculative
   abstractions, configuration, or wrappers.
 - Write TypeScript, not Java: functions, plain objects, simple types, small
@@ -23,7 +25,7 @@ Read the reference files at the end when your work touches their area.
 - Store money in Postgres as whole micro-USD: a `bigint` column or an integer
   metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`.
   Check: `pnpm money-units:check`.
-- Group files by feature. No feature-directory barrels.
+- Group files by feature and name paths by role. No feature-directory barrels.
 - Exported functions get a brief JSDoc that states intent.
 - Docs use ASD-STE100 English: common words, active voice, short sentences.
 - This is the only `AGENTS.md`. Do not add one in a directory. Put intent in
@@ -92,18 +94,16 @@ One simulator can use about 10 GB of memory, so:
 - `TELEMETRY.md`: span, metric, and attribute names.
 - `design/`: the goals and rules of each major system.
 - `policies/correctness-complexity.md`: how much design a fix needs.
-- `policies/interface-design.md`: function and module shape, lifecycle state.
+- `policies/interface-design.md`: module shape, file layout, lifecycle state.
 - `policies/error-handling.md`: where failures are caught or retried.
 - `policies/runtime-boundary-schemas.md`: validating data at runtime edges.
 - `policies/provider-boundaries.md`: what belongs in core vs. a plugin.
-- `policies/context-bound-systems.md`: passing authority, destination, and
-  scope.
+- `policies/context-bound-systems.md`: passing authority, destination, scope.
 - `policies/security.md`: credentials, sandbox, and model access.
 - `policies/conversation-access.md`: when one Conversation may read, find,
   or act on another.
 - `policies/data-redaction.md`: conversation privacy and redaction.
-- `policies/serverless-background-work.md`: work that must survive request
-  edges.
+- `policies/serverless-background-work.md`: work that must outlive a request.
 - `policies/observability.md`: telemetry for diagnosis.
 - `policies/performance.md`: awaits, fan-out, and query refreshes.
 - `policies/system-prompt.md`: system prompt blocks.

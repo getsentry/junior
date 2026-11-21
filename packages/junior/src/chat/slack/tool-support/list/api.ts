@@ -11,6 +11,7 @@ import {
   withSlackRetries,
 } from "@/chat/slack/client";
 import type { SlackUserId } from "@/chat/slack/ids";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 export interface ListColumnMap {
   titleColumnId?: string | undefined;
@@ -285,8 +286,8 @@ export async function updateListItem(input: {
   }
 
   if (cells.length === 0) {
-    throw new Error(
-      "No updatable fields were provided or inferred for this list item",
+    throw new ToolInputError(
+      "No updatable fields were provided or inferred for this list item. Provide a title, or set completed only on a list that has a checkbox column.",
     );
   }
 

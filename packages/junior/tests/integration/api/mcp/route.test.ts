@@ -29,7 +29,7 @@ import {
 } from "../../../msw/handlers/mcp-client-metadata";
 
 const ALL_SCOPES =
-  "conversations:read conversations:manage conversations:write review_items:read automations:read";
+  "conversations:read conversations:manage conversations:write inbox_items:read automations:read";
 
 mockMcpDashboardConfig();
 
@@ -345,13 +345,13 @@ describe("remote MCP HTTP", () => {
       "createConversation",
       "getAutomation",
       "getConversation",
-      "getReviewItem",
+      "getInboxItem",
       "listConversationMessages",
       "markConversationRead",
       "pinConversation",
       "searchAutomations",
       "searchConversations",
-      "searchReviewItems",
+      "searchInboxItems",
       "sendMessage",
       "setConversationAutoArchive",
       "setConversationSubscription",
@@ -370,6 +370,35 @@ describe("remote MCP HTTP", () => {
     await expect(widenedRefresh.json()).resolves.toMatchObject({
       error: "invalid_scope",
     });
+  });
+
+  it("reads the old review_items:read scope as inbox_items:read", async () => {
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const tokens = (await (
+      await exchangeMcpCode(
+        app,
+        await approveMcpClient(app, MCP_TEST_VIEWER, "review_items:read"),
+      )
+    ).json()) as McpTokenBody;
+    const refreshed = await requestMcpTokens(app, {
+      client_id: MCP_CLIENT_ID,
+      grant_type: "refresh_token",
+      refresh_token: tokens.refresh_token,
+      resource: MCP_TEST_URL,
+      scope: "review_items:read",
+    });
+
+    expect(tokens.scope).toBe("inbox_items:read");
+    expect(
+      (
+        await withMcpClient(app, tokens.access_token, (client) =>
+          client.listTools(),
+        )
+      ).tools
+        .map((tool) => tool.name)
+        .sort(),
+    ).toEqual(["getInboxItem", "searchInboxItems"]);
+    expect(refreshed.status).toBe(200);
   });
 
   it("does not mount when dashboard sign-in is not required", async () => {

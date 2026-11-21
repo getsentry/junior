@@ -49,15 +49,31 @@ contradictory or unsafe requests.
   it.
 - `privateTraceResult` may select only static, public, or non-conversation
   data. Omit it for metadata-only traces. Return `undefined` to record nothing.
-- Put shared tool infrastructure in `tool-support` (host:
-  `packages/junior/src/chat/tool-support`) or another non-`tools` module.
-  Files under `tools` are concrete tools only, one tool per file.
 - Prefer direct imports over injected ports. Inject only when production needs
   more than one implementation.
 - Make a tool direct only when many Conversations use it or the system prompt
   names it. Each direct tool adds its schema to every Turn. Give other tools
   `exposure: "deferred"` and a `source`, so `searchTools` lists the source.
   Core tools are direct when `exposure` is not set.
+
+### Layout
+
+- Define every tool in a `tools` directory, such as `chat/tools`,
+  `chat/slack/tools`, `chat/workspaces/tools`, or a plugin's `src/tools`.
+  Code outside `tools` imports and binds tools, but does not define them.
+- A `tools` directory holds only tools, one tool per file, at
+  `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Do not nest deeper. A
+  tool file exports only its tool, or its definition and the function that
+  builds the tool.
+- Put code that only tools use in a `tool-support` directory next to `tools`,
+  or in a `tool-support.ts` file for a small feature. Code for one collection
+  goes in `tool-support/<collection>/`. The host registry, tool creation,
+  execution, and tool errors are in `packages/junior/src/chat/tool-support`.
+- Put code that other features also use in the feature module that owns it,
+  such as `chat/sandbox` or `chat/inbox-items`.
+- The `tools-dir-*` and `tools-defined-in-tools-dir` ast-grep rules enforce
+  the layout.
+  `tool-error-classification:check` scans `tools` and `tool-support`.
 
 ### Descriptions and params
 

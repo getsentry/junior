@@ -14,7 +14,7 @@ import type {
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
-  ReviewItemChangeRecord,
+  InboxItemChangeRecord,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -135,8 +135,8 @@ export type TranscriptViewMessage = {
   quiet?: true;
   /** Event message whose Turn ended without a reply. */
   noReply?: true;
-  /** Person changes to Review items that this message records. */
-  reviewItemChanges?: ReviewItemChangeRecord[];
+  /** Person changes to Inbox items that this message records. */
+  reviewItemChanges?: InboxItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */
   mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */

@@ -155,9 +155,18 @@ export async function put<T>(
   return readResponseJson(response, schema);
 }
 
-/** Delete one authenticated dashboard resource. */
-export async function deleteDashboardResource(path: string): Promise<void> {
+/** Delete one authenticated dashboard resource, named by a JSON `body` if given. */
+export async function deleteDashboardResource(
+  path: string,
+  body?: unknown,
+): Promise<void> {
   const response = await fetchDashboard(path, {
+    ...(body === undefined
+      ? undefined
+      : {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json" },
+        }),
     credentials: "same-origin",
     method: "DELETE",
   });

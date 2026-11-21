@@ -27,6 +27,8 @@ export const juniorConversationBriefs = pgTable(
     turnId: text("turn_id").notNull(),
     throughSeq: integer("through_seq").notNull(),
     content: jsonb("content").notNull(),
+    // `content.outcome.status`. Null on rows that older runtimes wrote.
+    outcomeStatus: text("outcome_status"),
     searchText: text("search_text").notNull(),
     modelId: text("model_id").notNull(),
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }),
@@ -52,6 +54,12 @@ export const juniorConversationBriefs = pgTable(
     index("junior_conversation_briefs_conversation_version_idx").on(
       table.conversationId,
       table.version.desc(),
+    ),
+    // The System page counts the Briefs and Conversations of a recent
+    // window from this index alone.
+    index("junior_conversation_briefs_created_at_idx").on(
+      table.createdAt,
+      table.conversationId,
     ),
     index("junior_conversation_briefs_search_idx").using(
       "gin",

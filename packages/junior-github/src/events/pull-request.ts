@@ -95,7 +95,7 @@ export interface GitHubPullRequestSubscriptionConfig {
  * Junior maintains the pull requests it creates. The pull request is its own
  * work, so it answers and fixes review feedback without asking first.
  * GitHub already tells people about reviews, approvals, merges, and closes,
- * and the review desk shows the next action. So the Watch gets approvals,
+ * and the Inbox shows the next action. So the Watch gets approvals,
  * merges, and closes only as Quiet Events, and posts in the thread only when
  * a person must act.
  */
@@ -129,7 +129,7 @@ export function gitHubPullRequestSubscription(
  * checks unfinished must stay silent, or every suite posts.
  */
 const DRAFT_CHECKS_RECOVERED_GUIDANCE =
-  "If the pull request is still a draft, call github_getPullRequest and read its `checks`, `code_owners`, and `agents_md`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open review item that waits on the person who asked for it: mark it ready with github_updatePullRequest and draft false, when the person who asked for it said to mark it ready, or when `code_owners` is empty and `agents_md` does not ask for draft pull requests or say that a person marks them ready. Otherwise keep it a draft: marking it ready would ask the code owners to review, or break the AGENTS.md rule. Tell the person who asked for it in the originating thread that the checks pass and the draft waits for their review, and name why: the code owners that marking it ready asks, or the AGENTS.md rule. If you already told them for this head commit, stay silent. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
+  "If the pull request is still a draft, call github_getPullRequest and read its `checks`, `code_owners`, and `agents_md`. When `checks.required` is `passing` and no decision is open, in the pull request body or in an open inbox item that waits on the person who asked for it: mark it ready with github_updatePullRequest and draft false, when the person who asked for it said to mark it ready, or when `code_owners` is empty and `agents_md` does not ask for draft pull requests or say that a person marks them ready. Otherwise keep it a draft: marking it ready would ask the code owners to review, or break the AGENTS.md rule. Tell the person who asked for it in the originating thread that the checks pass and the draft waits for their review, and name why: the code owners that marking it ready asks, or the AGENTS.md rule. If you already told them for this head commit, stay silent. When it is `failing`, fix the failing checks like a failed check. When it is `pending` or `not_reported`, stay silent: a later passing suite wakes you again. `not_reported` means the required checks may not have started on the latest commit yet, not that none are required.";
 
 /**
  * State changes that need no action but that a later Turn must know, so that

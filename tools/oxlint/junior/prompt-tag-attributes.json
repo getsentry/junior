@@ -1,5 +1,5 @@
 {
-  "packages/junior-memory/src/agent.ts": {
+  "packages/junior/src/chat/memory/agent.ts": {
     "message": ["actor", "authority", "index", "is_run_actor", "role"],
     "tool-result": ["index", "is_error", "tool"]
   },
@@ -34,8 +34,8 @@
     "plugin-contribution": ["id", "plugin"],
     "tool": ["name"]
   },
-  "packages/junior/src/chat/review-items/prompt-input.ts": {
-    "review-item-answer": ["id"]
+  "packages/junior/src/chat/inbox-items/prompt-input.ts": {
+    "inbox-item-answer": ["id"]
   },
   "packages/junior/src/chat/services/conversation-memory.ts": {
     "message": ["author_id", "author_name", "index", "role", "slack_ts", "ts"]

@@ -3,7 +3,7 @@ import {
   messageAttachmentSchema,
 } from "@/chat/attachments/input";
 import { messageCardRefSchema } from "@/chat/conversations/cards";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
 import { conversationTitleSchema } from "./conversation-title";
@@ -22,6 +22,7 @@ import {
   conversationEventPresentationSchema,
 } from "@sentry/junior-plugin-api";
 import { objectPreviewImageSchema } from "./object-preview-image";
+import { ACTIVITY_PREVIEW_MAX_LENGTH } from "./activity-preview-text";
 
 export {
   conversationTurnFailureCodeSchema,
@@ -248,7 +249,7 @@ export const conversationActivityPreviewSchema = z
     createdAt: z.string().datetime(),
     mentions: z.array(actorIdentitySchema).optional(),
     role: z.enum(["assistant", "user"]),
-    text: z.string().min(1),
+    text: z.string().min(1).max(ACTIVITY_PREVIEW_MAX_LENGTH),
   })
   .strict();
 
@@ -368,13 +369,13 @@ const conversationReportMessageEventDataSchema = z
     trustedSummary: z.string().min(1).optional(),
     /**
      * The Watch Events when several arrived together. A message that also
-     * records Review item changes lists its own Event here even when it has
+     * records Inbox item changes lists its own Event here even when it has
      * one.
      */
     events: z.array(conversationReportMessageEventSchema).optional(),
     cards: z.array(messageCardRefSchema).optional(),
-    /** Person changes to Review items that this message records. */
-    reviewItemChanges: z.array(reviewItemChangeRecordSchema).min(1).optional(),
+    /** Person changes to Inbox items that this message records. */
+    reviewItemChanges: z.array(inboxItemChangeRecordSchema).min(1).optional(),
     text: z.string().optional(),
     attachments: z.array(messageAttachmentSchema).optional(),
     redacted: z.literal(true).optional(),
@@ -398,7 +399,7 @@ const conversationReportMessageEventDataSchema = z
       context.addIssue({
         code: "custom",
         message:
-          "redacted messages must not expose actor identity, cards, attachments, events, or review item changes",
+          "redacted messages must not expose actor identity, cards, attachments, events, or inbox item changes",
       });
     }
   });
@@ -857,8 +858,7 @@ export const conversationEventPageSchema = z
 
 /**
  * Carries the detail version token in both directions. A custom header, not
- * `ETag` / `If-None-Match`: in production the Vercel CDN answered standard
- * validators itself, after the function had already built the full report.
+ * `ETag`, for the reason on `CONTENT_VERSION_HEADER`.
  */
 export const CONVERSATION_DETAIL_VERSION_HEADER = "x-junior-detail-version";
 

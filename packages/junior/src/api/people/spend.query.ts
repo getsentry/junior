@@ -12,7 +12,7 @@ import {
   normalizeEmail,
   turnMetricColumns,
   verifiedActorWhere,
-} from "./shared";
+} from "./person-report";
 
 const SEVEN_DAY_OFFSET = 6;
 const THIRTY_DAY_OFFSET = 29;

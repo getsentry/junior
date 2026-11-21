@@ -10,7 +10,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 import type {
   AnyToolDefinition,
   ToolApprovalResolution,
-} from "@/chat/tools/definition";
+} from "@/chat/tool-support/definition";
 import type {
   ToolActionPriorRejection,
   ToolActionRejectionMarker,
@@ -31,7 +31,7 @@ import type {
 } from "@/chat/guardian/proposal";
 import { mapBounded } from "@/chat/fan-out";
 import { logException, withSpan } from "@/chat/logging";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 /** Core-owned context used to prepare one exact action for Guardian. */
 export interface ToolActionReviewContext {

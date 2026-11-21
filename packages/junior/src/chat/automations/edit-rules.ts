@@ -2,7 +2,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { AutomationEditFields } from "./edit-schema";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import { findAutomationSkill } from "./skill";

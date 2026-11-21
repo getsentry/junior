@@ -37,13 +37,8 @@ import {
   invalidateConversationFeeds,
 } from "./conversationFeedCache";
 import { readResponseJson } from "../sentry";
-import {
-  DashboardApiError,
-  del,
-  fetchDashboardJson,
-  post,
-  readDashboardResponse,
-} from "../http";
+import { DashboardApiError, del, fetchDashboardJson, post } from "../http";
+import { readRevalidated } from "../revalidation";
 import {
   conversationOutboxMessageForSubmit,
   conversationOutboxQueryKey,
@@ -147,11 +142,6 @@ export function conversationDetailQueryOptions(
     fastPollUntilMs?: number | undefined;
     /** Also read the page around the read position. */
     unreadPage?: boolean;
-    /**
-     * The versions poll refreshes this Conversation while it is idle, so
-     * the detail does not poll then.
-     */
-    versionsPoll?: boolean | undefined;
   },
 ) {
   // `unreadPage` adds a page to one fetch. The detail in the cache is the
@@ -186,15 +176,14 @@ export function conversationDetailQueryOptions(
         ),
       );
     },
+    // While idle, the versions poll refreshes every mounted detail.
     // oxlint-disable-next-line query-invalidation/no-refetch-interval -- The open Conversation polls fast while a reply streams in.
     refetchInterval: (query) =>
       options?.fastPollUntilMs && Date.now() < options.fastPollUntilMs
         ? FAST_POLL_INTERVAL_MS
         : options?.awaitingMessage || conversationDetailIsLive(query.state.data)
           ? 2_000
-          : options?.versionsPoll
-            ? false
-            : 10_000,
+          : false,
     retry: false,
   });
 }
@@ -415,14 +404,14 @@ export function useCancelConversationPendingMessages(conversationId: string) {
         );
       }
     },
-    onSettled: async () => {
-      await Promise.all([
-        invalidateConversationFeeds(queryClient),
-        queryClient.invalidateQueries({
-          exact: true,
-          queryKey: conversationDetailQueryKey(conversationId),
-        }),
-      ]);
+    // Do not await the refreshes. An edit waits for this mutation before its
+    // files join the composer.
+    onSettled: () => {
+      void invalidateConversationFeeds(queryClient);
+      void queryClient.invalidateQueries({
+        exact: true,
+        queryKey: conversationDetailQueryKey(conversationId),
+      });
     },
   });
 }
@@ -528,8 +517,6 @@ export function useConversationData(
      * position. Polls do not ask, so the server reads that page once.
      */
     unreadPageAtOpen?: boolean;
-    /** See `conversationDetailQueryOptions`. */
-    versionsPoll?: boolean;
   },
 ) {
   const queryClient = useQueryClient();
@@ -589,7 +576,6 @@ export function useConversationData(
         ? latestSendAtMs + FAST_POLL_WINDOW_MS
         : undefined,
       unreadPage: Boolean(options?.unreadPageAtOpen) && !fetchedAtOpen,
-      versionsPoll: options?.versionsPoll,
     }),
   });
   // A reopened Conversation shows the cached copy at once, but it can miss
@@ -841,39 +827,47 @@ export async function readConversationData(
   if (after) query.set("after", after);
   const search = query.size ? `?${query}` : "";
   const mailboxReadAtMs = Date.now();
-  const response = await readDashboardResponse(
-    `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
-    signal,
-    previous?.detailEtag
-      ? { [CONVERSATION_DETAIL_VERSION_HEADER]: previous.detailEtag }
-      : undefined,
+  return readRevalidated(
+    {
+      header: CONVERSATION_DETAIL_VERSION_HEADER,
+      path: `/api/conversations/${encodeURIComponent(conversationId)}${search}`,
+      signal,
+    },
+    previous && { data: previous, version: previous.detailEtag },
+    async (response, detailEtag) => {
+      const tokens = {
+        conversationVersion:
+          response.headers.get(CONVERSATION_VERSION_HEADER) ?? undefined,
+        detailEtag,
+      };
+      if (!options?.mailbox) {
+        return {
+          ...withCachedEvents(
+            await readResponseJson(response, conversationDetailReportSchema),
+            previous,
+          ),
+          ...tokens,
+        };
+      }
+      const report = await readResponseJson(
+        response,
+        z.union([
+          conversationUnchangedDetailWithMailboxSchema,
+          conversationDetailWithMailboxReportSchema,
+        ]),
+      );
+      if (!("unchanged" in report)) {
+        return {
+          ...withCachedEvents(report, previous),
+          ...tokens,
+          mailboxReadAtMs,
+        };
+      }
+      // Only a request that sent a version can get this answer.
+      if (!previous) throw new Error("Unchanged detail without a cached copy");
+      return { ...previous, mailbox: report.mailbox, mailboxReadAtMs };
+    },
   );
-  if (response.status === 304 && previous) return previous;
-  if (!options?.mailbox) {
-    return withDetailEtag(
-      withCachedEvents(
-        await readResponseJson(response, conversationDetailReportSchema),
-        previous,
-      ),
-      response,
-    );
-  }
-  const report = await readResponseJson(
-    response,
-    z.union([
-      conversationUnchangedDetailWithMailboxSchema,
-      conversationDetailWithMailboxReportSchema,
-    ]),
-  );
-  if (!("unchanged" in report)) {
-    return {
-      ...withDetailEtag(withCachedEvents(report, previous), response),
-      mailboxReadAtMs,
-    };
-  }
-  // Only a request that sent a version can get this answer.
-  if (!previous) throw new Error("Unchanged detail without a cached copy");
-  return { ...previous, mailbox: report.mailbox, mailboxReadAtMs };
 }
 
 /**
@@ -908,22 +902,6 @@ function withCachedEvents(
     ...(behind && previous.unreadCursor
       ? { unreadCursor: previous.unreadCursor, unreadPage: previous.unreadPage }
       : undefined),
-  };
-}
-
-function withDetailEtag<T extends ConversationDetailReport>(
-  report: T,
-  response: Response,
-): T & {
-  conversationVersion?: string | undefined;
-  detailEtag?: string | undefined;
-} {
-  return {
-    ...report,
-    conversationVersion:
-      response.headers.get(CONVERSATION_VERSION_HEADER) ?? undefined,
-    detailEtag:
-      response.headers.get(CONVERSATION_DETAIL_VERSION_HEADER) ?? undefined,
   };
 }
 

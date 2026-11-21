@@ -1,3 +1,4 @@
+import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
@@ -19,10 +20,11 @@ import {
 } from "@/chat/agent-invocations/work";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
-import { createEventTools } from "@/chat/tools/events";
+import { createListWatchesTool } from "@/chat/tools/list-watches";
+import { createStopWatchingResourcesTool } from "@/chat/tools/stop-watches";
+import { createWatchTimerTool } from "@/chat/tools/watch-timer";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   getConversationEventStore,
@@ -30,9 +32,8 @@ import {
   getDb,
 } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { actOnReviewItem } from "@/chat/review-items/actions";
-import { createSlackReviewItemToolServices } from "@/chat/slack/review-item-tools";
-import { createAddReviewItemTool } from "@/chat/tools/review-items";
+import { actOnInboxItem } from "@/chat/inbox-items/actions";
+import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { context, execute } from "../fixtures/event-automations";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -444,10 +445,14 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      const childTools = createEventTools(
-        { ...context(), conversationId: child.childConversationId },
-        getEventCatalog(),
-      );
+      const childContext = {
+        ...context(),
+        conversationId: child.childConversationId,
+      };
+      const childTools = {
+        listWatches: createListWatchesTool(childContext),
+        watchTimer: createWatchTimerTool(childContext),
+      };
       const timer = (await execute(
         childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check the deploy again." },
@@ -696,7 +701,7 @@ describe("agent invocation identity and concurrency", () => {
     },
   );
 
-  it("gives a child the Review item tag for an answer to its item", async () => {
+  it("gives a child the Inbox item tag for an answer to its item", async () => {
     const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
     const harness = await createHarness(taskModel);
     try {
@@ -722,13 +727,13 @@ describe("agent invocation identity and concurrency", () => {
       )) as User;
       // The child opened the item, so it is the only linked Conversation.
       const added = (await (
-        createAddReviewItemTool(
+        createAddInboxItemTool(
           {
             conversationId: child.childConversationId,
             resolveActorIdentity: async () => undefined,
             source: { kind: "scheduled_automation" },
           },
-          createSlackReviewItemToolServices(() => harness.queue),
+          createSlackInboxItemToolServices(() => harness.queue),
         ) as any
       ).execute(
         {
@@ -744,7 +749,7 @@ describe("agent invocation identity and concurrency", () => {
         {},
       )) as { item: { id: string } };
       const id = added.item.id;
-      await actOnReviewItem({
+      await actOnInboxItem({
         action: "submit",
         answer: { requestId: id, values: { owner: ["Bob"] } },
         delivery: { queue: harness.queue, show: async () => {} },
@@ -759,10 +764,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(requests).toHaveLength(2);
       expect(requests[1]!.instruction.text).toBe(
         [
-          `<review-item-answer id="${id}">`,
+          `<inbox-item-answer id="${id}">`,
           "Question: Who should own the login bug?",
           "Owner (owner): Bob",
-          "</review-item-answer>",
+          "</inbox-item-answer>",
         ].join("\n"),
       );
     } finally {
@@ -824,8 +829,14 @@ describe("agent invocation identity and concurrency", () => {
       });
       await harness.drainQueuedWork();
 
-      const toolsFor = (conversationId: string) =>
-        createEventTools({ ...context(), conversationId }, getEventCatalog());
+      const toolsFor = (conversationId: string) => {
+        const toolContext = { ...context(), conversationId };
+        return {
+          listWatches: createListWatchesTool(toolContext),
+          stopWatchingResources: createStopWatchingResourcesTool(toolContext),
+          watchTimer: createWatchTimerTool(toolContext),
+        };
+      };
       const parentTools = toolsFor(parentConversationId);
       const watcherTools = toolsFor(watcher.childConversationId);
       const watchTimer = async (

@@ -34,10 +34,7 @@ import {
   readConversationTreeMetricsFromSql,
 } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import {
-  CONVERSATION_EVENT_PAGE_LIMIT,
-  conversationDetailReportSchema,
-} from "../schema/conversation";
+import { CONVERSATION_EVENT_PAGE_LIMIT } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
@@ -396,7 +393,7 @@ export async function readConversationDetail(
     viewer?: User;
   } = {},
 ): Promise<ConversationDetailReport | undefined> {
-  const report = await readConversationDetailFromSql(conversationId, {
+  return await readConversationDetailFromSql(conversationId, {
     ...options,
     ...(options.limit === undefined
       ? {
@@ -405,9 +402,4 @@ export async function readConversationDetail(
         }
       : { limit: options.limit }),
   });
-  if (!report) return undefined;
-  return startSpan(
-    { name: "Validate conversation detail", op: "function" },
-    () => conversationDetailReportSchema.parse(report),
-  );
 }

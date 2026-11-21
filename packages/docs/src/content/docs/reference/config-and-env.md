@@ -23,6 +23,7 @@ related:
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
 | `JUNIOR_CACHE_WARMING_ENABLED`              | No          | Operational kill switch for [prompt cache warming](#prompt-cache-warming). Defaults to `true`; set `false` to stop storing requests and drop queued warmups.                |
+| `JUNIOR_IDLE_COMPACTION_ENABLED`            | No          | Operational kill switch for [compaction on idle](#prompt-cache-warming). Defaults to `true`; set `false` to warm large idle Conversations instead of compacting them.       |
 | `JUNIOR_SECRET`                             | Yes         | Signs internal queue/callback payloads and sandbox egress actor context.                                                                                                    |
 | `JUNIOR_ENCRYPTION_KEYS`                    | Yes         | Keys that encrypt stored provider credentials, as comma-separated `<id>:<key>` entries. See [Encryption keys](#encryption-keys).                                            |
 | `JUNIOR_ENCRYPTION_KEY_ID`                  | Conditional | Id of the key for new values. Required when `JUNIOR_ENCRYPTION_KEYS` has more than one key.                                                                                 |
@@ -32,8 +33,8 @@ related:
 | `AI_FAST_MODEL`                             | No          | Faster model for lightweight tasks and classification passes. Defaults to `openai/gpt-6-luna`.                                                                              |
 | `AI_GUARDIAN_MODEL`                         | No          | Model for Guardian action review. Defaults to `openai/gpt-6-luna`.                                                                                                          |
 | `AI_DECISION_MODEL`                         | No          | Decision model for passive reply routing in subscribed threads. Uses the AI SDK decision API. Defaults to `typesafe-ai/jev`.                                                |
-| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for plugin-owned vector retrieval. Defaults to `openai/text-embedding-3-small`; memory stores 1024- or 1536-dimensional vectors.                            |
-| `AI_RERANKING_MODEL`                        | No          | Reranking model that scores plugin retrieval candidates, such as memory recall. Defaults to `voyage/rerank-2.5-lite`.                                                       |
+| `AI_EMBEDDING_MODEL`                        | No          | Embedding model for vector retrieval, such as memory recall. Defaults to `openai/text-embedding-3-small`; memory stores 1024- or 1536-dimensional vectors.                            |
+| `AI_RERANKING_MODEL`                        | No          | Reranking model that scores retrieval candidates, such as memory recall. Defaults to `voyage/rerank-2.5-lite`.                                                       |
 | `AI_VISION_MODEL`                           | No          | Image summary model for thread history and a text-only `AI_MODEL`. Defaults to `openai/gpt-5.6-sol` when absent; an explicitly empty value disables it.                     |
 | `AI_WEB_SEARCH_MODEL`                       | No          | Override for the `webSearch` tool model. Defaults to `openai/gpt-6-luna`; does not fall through to `AI_MODEL`.                                                              |
 | `AI_TRANSCRIPTION_MODEL`                    | No          | Model for the `transcribeAudio` tool. Defaults to `elevenlabs/scribe-v2`. It must accept an ElevenLabs `sourceUrl`, and the storage must be internet-reachable.             |
@@ -350,7 +351,7 @@ const app = await createApp({
 });
 ```
 
-The memory model belongs to the memory plugin. Set it with `memoryPlugin({ modelId })` in the plugin set.
+Set the Memory model with `createApp({ memory: { modelId } })`. See [Memory](/operate/memory/).
 
 ## Prompt cache warming
 
@@ -366,14 +367,16 @@ likely to cost less than that write.
   budget adds output tokens to each warmup.
 - When a turn ends, Junior stores the last model request in the `StateAdapter`.
   Junior deletes it when the first model request of the next turn starts, when
-  warmups stop, or after 55 minutes.
+  warmups stop, or after 55 minutes (110 minutes while a child agent of the
+  Conversation still runs).
 - A delayed queue message sends the same request with a one-token output limit
   before the cache expires. Junior sends the next warmup only while the chance
   that the person replies soon is high enough to pay for it. Junior compares
   plans of one or more warmups in a row, so it also warms when the person
   usually replies a few TTLs later. The needed chance is the same for each
   warmup. Only replies in the first 55 minutes count, so for a 30-minute cache
-  the chance is a low estimate.
+  the chance is a low estimate. While a child agent runs, its result usually
+  starts the next Turn later, so replies in the first 110 minutes count.
 - Junior learns that chance from the reply gaps of idle periods. A period with
   no reply in 55 minutes counts as no reply. Junior keeps separate gaps for
   Turns that a person started and Turns that an event or automation started,
@@ -400,6 +403,19 @@ likely to cost less than that write.
 - `JUNIOR_CACHE_WARMING_ENABLED=false` turns warming off. Junior stores no
   requests and drops warmups that are already in the queue. The default is
   `true`.
+- Compaction on idle: when the cached prefix is at or above the background
+  compaction mark (85% of the compaction threshold), a warmup first looks
+  for a background summary that is ready. When it finds one, it takes the
+  cheapest of three options: warm the full prefix, swap the summary in, or
+  stop. A swap replaces the history and warming stops for that idle period.
+  A likely quick return warms first and swaps at a later warmup. The returning
+  turn reads a much smaller prefix, but it gets a summary in place of
+  history that it would have kept in that turn, which can make an answer
+  worse. When no summary is ready, or a turn runs, Junior warms as usual.
+  A request that is too large to store for warmups gets no warmups. It
+  still gets one check for a ready summary, which swaps it in or stops.
+  `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns this off. The default is
+  `true`.
 - While warming is on, Junior sends model requests with the short cache
   retention, so `PI_CACHE_RETENTION` does not change it. With
   `JUNIOR_CACHE_WARMING_ENABLED=false`, Pi's retention applies again.
@@ -407,7 +423,20 @@ likely to cost less than that write.
 Warmups show in Sentry as `gen_ai.chat` spans with `gen_ai.prompt.name` set to
 `junior.cache_warmup`, and as `cache_warming.*` logs. Their cost is added to the
 cost of the Conversation. The `app.cache_warming.trigger` log attribute is
-`idle` or `tool_wait`.
+`idle` or `tool_wait`. A warmup that compacted on idle has the skip reason
+`compacted_on_idle`, and one that chose to stop has `idle_compaction_stopped`.
+`app.cache_warming.idle_compaction` is `applied`, `deferred` (warmed), or
+`stopped`, with the expected cost of each option in
+`app.cache_warming.compact_cost_micro_usd`, `warm_cost_micro_usd`, and
+`stop_cost_micro_usd`.
+
+The System page shows cache warming in two panels. **Cache warming** shows the
+daily savings from Junior's database. **Cache health** reads the last 24 hours
+or 7 days from Junior's own Sentry telemetry: the prompt cache write share of
+agent calls, full rewrites, warmups, idle period outcomes, and breaker changes.
+It reads the project of `SENTRY_DSN` in the `SENTRY_ORG_SLUG` org with
+`SENTRY_READ_TOKEN`, an internal integration token with **Issue & Event** read
+access. Without them, the panel names the setting to add.
 
 ## Install-wide config defaults
 

@@ -18,12 +18,12 @@ export {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/inbox-items/user-input-request";
 export type {
   UserInputAnswer,
   UserInputField,
   UserInputRequest,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/inbox-items/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
@@ -56,6 +56,8 @@ export type { ConversationChildAgentTotals } from "./schema/child-agent-totals";
 export type { DailyConversationActivity } from "./activity";
 export {
   codeActivityDaySchema,
+  codeChangeSearchQuerySchema,
+  codeChangeSearchReportSchema,
   codeChangeSummaryReportSchema,
   codeChangeSummarySchema,
   codeOverviewReportSchema,
@@ -65,14 +67,17 @@ export {
   codeRepositoryReportSchema,
   codeRepositorySummarySchema,
   IDLE_CHANGE_DAYS,
+  mentionableCodeChangeSchema,
 } from "./schema/code";
 export type {
   CodeActivityDay,
+  CodeChangeSearchReport,
   CodeChangeSummaryReport,
   CodeOverviewReport,
   CodePersonReport,
   CodeRepositoryReport,
   CodeRepositorySummary,
+  MentionableCodeChange,
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
@@ -96,6 +101,7 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export { activityPreviewText } from "./schema/activity-preview-text";
 export {
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
@@ -185,10 +191,13 @@ export type {
   ConversationDeliveryResponse,
 } from "./schema/conversation-delivery";
 export {
+  conversationInviteBodySchema,
+  conversationInviteResponseSchema,
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "./schema/conversation-subscription";
 export type {
+  ConversationInviteResponse,
   ConversationSubscriptionBody,
   ConversationSubscriptionResponse,
 } from "./schema/conversation-subscription";
@@ -251,17 +260,18 @@ export type {
 export {
   conversationWatchSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
 } from "./schema/watch";
 export {
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
-  planItemStatusBodySchema,
-} from "./schema/plan";
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoStatusBodySchema,
+} from "./schema/todos";
 export type {
-  ConversationPlanItem,
-  ConversationPlanReport,
-  PlanItemStatusBody,
-} from "./schema/plan";
+  ConversationTodo,
+  ConversationTodosReport,
+  TodoStatusBody,
+} from "./schema/todos";
 export type {
   ConversationWatch,
   ConversationWatchesReport,
@@ -269,6 +279,9 @@ export type {
 export {
   actorDirectoryReportSchema,
   actorProfileReportSchema,
+  mentionablePersonSchema,
+  peopleSearchQuerySchema,
+  peopleSearchReportSchema,
   PERSON_CARD_RECENT_LIMIT,
   personCardReportSchema,
   personalSpendReportSchema,
@@ -296,13 +309,15 @@ export type {
   ActorSummaryReport,
   ActorTotalsReport,
   ActorWindowMetrics,
+  MentionablePerson,
   PeopleActivityDayReport,
+  PeopleSearchReport,
   PersonalSpendReport,
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema } from "./schema/common";
-export type { ApiError } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/response";
+export type { ApiError } from "./schema/response";
 export {
   connectionListSchema,
   connectionParamsSchema,
@@ -322,15 +337,24 @@ export type {
   NotificationSettings,
 } from "./schema/notification";
 export {
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
   cacheWarmingBreakerListSchema,
   cacheWarmingSavingsRefillResponseSchema,
   cacheWarmingSavingsReportSchema,
   closeCacheWarmingBreakerResponseSchema,
 } from "./schema/cache-warming";
 export type {
+  CacheHealthReport,
   CacheWarmingSavingsRefill,
   CacheWarmingSavingsReport,
 } from "./schema/cache-warming";
+export {
+  gatewayOnlyProviders,
+  gatewayProvidersSchema,
+  updateGatewayProvidersBodySchema,
+} from "./schema/gateway-providers";
+export type { GatewayProviders } from "./schema/gateway-providers";
 export {
   disconnectServiceAccountResponseSchema,
   serviceAccountListSchema,
@@ -439,16 +463,29 @@ export type {
   SkillReports,
 } from "../reporting-schema";
 export {
-  reviewItemActionSchema,
-  reviewItemCountSchema,
-  reviewItemListSchema,
-  reviewItemSchema,
-  reviewItemWaitingConversationsSchema,
-} from "./schema/review-item";
+  inboxItemActionSchema,
+  inboxItemCountSchema,
+  inboxItemListSchema,
+  inboxItemSchema,
+  inboxItemWaitingConversationsSchema,
+} from "./schema/inbox-item";
 export type {
-  ReviewItemActionBody,
-  ReviewItemChangeRecord,
-  ReviewItemPayload,
-} from "./schema/review-item";
-export { versionsSchema } from "./schema/versions";
+  InboxItemActionBody,
+  InboxItemChangeRecord,
+  InboxItemPayload,
+} from "./schema/inbox-item";
+export {
+  INBOX_SNOOZE_MAX_TRIGGERS,
+  inboxSnoozeCreateSchema,
+  inboxSnoozeResourceSchema,
+  inboxSnoozeSchema,
+  inboxSnoozeSubjectSchema,
+} from "./schema/inbox-snooze";
+export type {
+  InboxSnoozeCreateBody,
+  InboxSnoozeResource,
+  InboxSnoozeSubjectBody,
+  InboxSnoozeTrigger,
+} from "./schema/inbox-snooze";
+export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

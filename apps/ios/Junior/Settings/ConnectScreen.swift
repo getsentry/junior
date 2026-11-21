@@ -32,13 +32,17 @@ struct ConnectScreen: View {
             .buttonStyle(.dashboard(.primary))
             .disabled(signingIn || serverURL == nil)
             .accessibilityIdentifier("sign-in")
+          Button("Try the demo", action: startDemo)
+            .buttonStyle(.dashboard(.outline))
+            .disabled(signingIn)
+            .accessibilityIdentifier("try-demo")
           if let error { InlineError(text: error) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(20)
         .panelCard(radius: 10)
         Text(
-          "The app reads your Conversations, Review items, and Automations, and sends messages as you. Answer Review items and change Automations on the web."
+          "The app reads your Conversations, Inbox items, and Automations, and sends messages as you. Answer Inbox items and change Automations on the web."
         )
         .type(.xs, lineHeight: 1.625)
         .foregroundStyle(Tokens.textMuted)
@@ -47,12 +51,21 @@ struct ConnectScreen: View {
       .padding(16)
     }
     .background(Tokens.bg)
-    .onAppear { serverText = app.server.baseURL.absoluteString }
+    .onAppear { serverText = app.server.isDemo ? "" : app.server.baseURL.absoluteString }
   }
 
   private var serverURL: URL? {
     let url = URL(string: serverText.trimmingCharacters(in: .whitespacesAndNewlines))
     return url?.scheme == nil || url?.host == nil ? nil : url
+  }
+
+  private func startDemo() {
+    signingIn = true
+    error = nil
+    Task {
+      defer { signingIn = false }
+      await app.startDemo()
+    }
   }
 
   private func signIn() {

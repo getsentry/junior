@@ -4,7 +4,6 @@ import {
   createWebSource,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { promptPlatform } from "@/chat/agent/prompt";
@@ -23,12 +22,12 @@ import { readSlackActionToken } from "@/chat/slack/action-token";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import { createTools } from "@/chat/tools";
-import type { ToolRegistry } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
 import {
   RUN_BUILT_TOOL_NAMES,
   staticToolDefinitions,
-} from "@/chat/tools/registry";
+} from "@/chat/tool-support/registry";
 
 type ToolContext = Parameters<typeof createTools>[2];
 
@@ -104,7 +103,7 @@ function modelFacing(tools: ToolRegistry): Record<string, unknown> {
   );
 }
 
-const plugins = () => defineJuniorPlugins([githubPlugin(), memoryPlugin()]);
+const plugins = () => defineJuniorPlugins([githubPlugin()]);
 
 // A Turn's run as the agent gets it: a person's Turn runs on the
 // Conversation loop with a Delivery, and any other Turn has none. All have
@@ -264,13 +263,13 @@ describe("static tool registry", () => {
           "reportBlocked",
         ]),
       );
-      expect(person.disabled).not.toContain("addReviewItem");
+      expect(person.disabled).not.toContain("addInboxItem");
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
-          "addReviewItem",
-          "searchReviewItems",
-          "updateReviewItem",
+          "addInboxItem",
+          "searchInboxItems",
+          "updateInboxItem",
         ]),
       );
       expect(agent.disabled).not.toContain("spawnAgent");
@@ -286,8 +285,8 @@ describe("static tool registry", () => {
       ).rejects.toThrow(
         "setConversationSubscription is disabled in this Turn.",
       );
-      await expect(callTool(agent, "addReviewItem")).rejects.toThrow(
-        "addReviewItem is disabled in this Turn.",
+      await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
+        "addInboxItem is disabled in this Turn.",
       );
       expect(person.spawnAgent).not.toHaveBeenCalled();
       expect(person.messageAgent).not.toHaveBeenCalled();
@@ -332,7 +331,7 @@ describe("static tool registry", () => {
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
     expect(person.disabled).not.toContain("spawnAgent");
-    expect(person.disabled).not.toContain("addReviewItem");
+    expect(person.disabled).not.toContain("addInboxItem");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");
     expect(silent.disabled).toContain("reply");

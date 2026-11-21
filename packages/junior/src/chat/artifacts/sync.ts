@@ -11,12 +11,13 @@
 import { createHash, randomUUID } from "node:crypto";
 import path from "node:path";
 import { and, eq, inArray, isNotNull, isNull } from "drizzle-orm";
+import * as z from "zod";
 import { bufferBody, type AttachmentStorage } from "@/chat/attachments/storage";
 import { logException, logWarn } from "@/chat/logging";
 import { SANDBOX_WORKSPACE_ROOT } from "@/chat/sandbox/paths";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
-import { inferMimeType } from "@/chat/tools/sandbox/file-uploads";
+import { inferMimeType } from "@/chat/sandbox/file-uploads";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
 
@@ -146,23 +147,25 @@ async function hashArtifactFiles(
   );
 }
 
+const structuredResultSchema = z.object({
+  content: z.unknown().optional(),
+  details: z.looseObject({}),
+});
+
 /**
  * Put the note in the structured result, so direct calls and script calls
  * both see it. Other content parts stay after it.
  */
 export function withArtifactNote(result: unknown, note: string): unknown {
-  if (!isRecord(result) || !isRecord(result["details"])) return result;
-  const content = result["content"];
+  const parsed = structuredResultSchema.safeParse(result);
+  if (!parsed.success) return result;
+  const { content, details } = parsed.data;
   const rest: unknown[] = Array.isArray(content) ? content.slice(1) : [];
   const output = makeStructuredToolOutput({
-    ...result["details"],
+    ...details,
     artifacts_note: note,
   });
   return { ...output, content: [...output.content, ...rest] };
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
 /** Create save and restore steps that share one file list for the Run. */

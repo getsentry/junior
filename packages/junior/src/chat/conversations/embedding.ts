@@ -13,7 +13,7 @@ import {
   refreshEmbeddings,
   type EmbeddingBatch,
   type EmbeddingVector,
-} from "@sentry/junior-plugin-api/embeddings";
+} from "@/db/embeddings";
 import {
   and,
   asc,

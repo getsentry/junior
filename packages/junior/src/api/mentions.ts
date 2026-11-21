@@ -3,7 +3,7 @@ import { alias } from "drizzle-orm/pg-core";
 import {
   hasUserPhoto,
   identityAvatarUrl,
-  userAvatarUrlsFromIdentities,
+  userAvatarUrlsFromJoinedPhotos,
 } from "@/chat/identities/avatar";
 import { slackMentionedUserIds } from "@/chat/slack/mrkdwn";
 import { lookupSlackUserNames } from "@/chat/slack/user";
@@ -120,21 +120,7 @@ async function readMentionedPeople(
       ),
     );
 
-  const userAvatarUrls = userAvatarUrlsFromIdentities(
-    rows.flatMap(({ photo, userId }) =>
-      photo?.identityId && photo.provider && photo.updatedAt
-        ? [
-            {
-              avatarUrl: photo.avatarUrl,
-              identityId: photo.identityId,
-              provider: photo.provider,
-              updatedAt: photo.updatedAt,
-              userId,
-            },
-          ]
-        : [],
-    ),
-  );
+  const userAvatarUrls = userAvatarUrlsFromJoinedPhotos(rows);
   const people = new Map<string, ActorIdentity>();
   for (const row of rows) {
     if (people.has(row.providerSubjectId)) continue;

@@ -8,7 +8,7 @@ import {
 import { getDb } from "@/chat/db";
 import { juniorConversations } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
@@ -88,8 +88,8 @@ describe("conversation tree state", () => {
     fixture.queue.takeMessageFor(asking.childConversationId);
     // An item for another person is not shown to the viewer.
     const other = await resolveViewerUser("bob@example.com");
-    const forOther = await insertReviewItem(getDb(), {
-      addedByConversationId: asking.childConversationId,
+    const forOther = await insertInboxItem(getDb(), {
+      owner: { id: asking.childConversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
@@ -107,7 +107,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "working",
     });
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: forOther!.id,
       nowMs: Date.now(),
       status: "dismissed",
@@ -121,7 +121,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: everyone,
       nowMs: Date.now(),
       status: "dismissed",
@@ -142,7 +142,7 @@ describe("conversation tree state", () => {
       watching: false,
     });
 
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: item,
       nowMs: Date.now(),
       status: "dismissed",
@@ -382,8 +382,8 @@ describe("conversation tree state", () => {
       "local:web:tree-token",
     );
     const other = await resolveViewerUser("bob@example.com");
-    await insertReviewItem(getDb(), {
-      addedByConversationId: conversationId,
+    await insertInboxItem(getDb(), {
+      owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
       body: "Bob decides.",
@@ -431,7 +431,7 @@ describe("conversation tree state", () => {
     }) => {
       const feed = await expectSqlBudget(
         () => fixture.request("/api/conversations"),
-        { statements: 20, serialRounds: 5 },
+        { statements: 17, serialRounds: 3 },
       );
       const row = conversationFeedSchema
         .parse(await feed.json())
@@ -441,7 +441,7 @@ describe("conversation tree state", () => {
       );
       const detail = await expectSqlBudget(
         () => fixture.request(detailPath(conversationId)),
-        { statements: 20, serialRounds: 5 },
+        { statements: 19, serialRounds: 5 },
       );
       const report = conversationDetailReportSchema.parse(await detail.json());
       expect({

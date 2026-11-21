@@ -222,7 +222,9 @@ test("shows a Watch on linked work in its linked work row", async ({
   await expect(watched).toHaveCount(1);
   await expect(details.getByText("Also waiting on")).toBeVisible();
   await expect(
-    details.getByRole("link", { name: /getsentry\/junior#2351/ }),
+    details.getByRole("link", {
+      name: /^Reply to new review comments on the PR\. expires/,
+    }),
   ).toBeVisible();
 
   await details

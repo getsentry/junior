@@ -15,11 +15,13 @@ import type {
 } from "@sentry/junior/api/schema";
 import type { LocationDetailReport } from "@sentry/junior/api/schema";
 import {
+  CONTENT_VERSION_HEADER,
   conversationFeedSchema,
   conversationStatsReportSchema,
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryReportSchema,
+  cacheHealthReportSchema,
   cacheWarmingSavingsReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
@@ -36,7 +38,10 @@ import {
   automationRunListSchema,
   automationVersionListSchema,
 } from "@sentry/junior/api/schema";
-import { joinConversationFeedPages } from "./conversations/conversationFeedCache";
+import {
+  joinConversationFeedPages,
+  type ConversationFeedPage,
+} from "./conversations/conversationFeedCache";
 import {
   pluginOperationalReportFeedSchema,
   pluginsSchema,
@@ -55,6 +60,8 @@ import {
 } from "../api/schema";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
+import { readRevalidated } from "./revalidation";
+import { readResponseJson } from "./sentry";
 import { useInboxUi } from "./uiShell";
 import type { DashboardCoreData, SystemPluginsData } from "./types";
 
@@ -136,16 +143,32 @@ export function useConversationsData(search = "") {
     // The feed keeps its data and refetches when the save ends.
     enabled: !pinOrderSaving,
     queryKey: ["dashboard", "conversations", "viewer", { include, search }],
-    queryFn: ({ pageParam, signal }) => {
+    queryFn: ({ client, pageParam, queryKey, signal }) => {
       const params = new URLSearchParams();
       if (search) params.set("q", search);
       if (include) params.set("include", include);
       if (pageParam) params.set("cursor", pageParam);
       const query = params.toString();
-      return fetchDashboardJson(
-        conversationFeedSchema,
-        `/api/conversations${query ? `?${query}` : ""}`,
-        signal,
+      // A refetch reads every loaded page again. Each page sends the version
+      // of the cached page with the same cursor, so an unchanged page comes
+      // back with no body.
+      const cached =
+        client.getQueryData<
+          InfiniteData<ConversationFeedPage, string | undefined>
+        >(queryKey);
+      const index = cached?.pageParams.indexOf(pageParam) ?? -1;
+      const page = index >= 0 ? cached?.pages[index] : undefined;
+      return readRevalidated<ConversationFeedPage>(
+        {
+          header: CONTENT_VERSION_HEADER,
+          path: `/api/conversations${query ? `?${query}` : ""}`,
+          signal,
+        },
+        page && { data: page, version: page.pageVersion },
+        async (response, pageVersion) => {
+          const read = await readResponseJson(response, conversationFeedSchema);
+          return pageVersion ? { ...read, pageVersion } : read;
+        },
       );
     },
     initialPageParam: undefined as string | undefined,
@@ -429,7 +452,9 @@ export function useActorDirectoryData(enabled = true) {
     queryKey: ["dashboard", "people"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(actorDirectoryReportSchema, "/api/people", signal),
+    refetchOnWindowFocus: false,
     retry: false,
+    staleTime: dashboardAggregateStaleTimeMs,
   });
 }
 
@@ -577,8 +602,9 @@ export function useSkillDetail(name: string) {
   });
 }
 
-// Reports and conversation stats are aggregates that are slow to build and
-// change slowly. Keep them across route changes and window focus.
+// Reports, conversation stats, and the people directory are aggregates that
+// are slow to build and change slowly. Keep them across route changes and
+// window focus.
 const dashboardAggregateStaleTimeMs = 5 * 60_000;
 
 /** Fetch operational plugin reports shown on the System Plugins pages. */
@@ -632,6 +658,24 @@ export function useCacheWarmingSavings(days: number) {
       fetchDashboardJson(
         cacheWarmingSavingsReportSchema,
         `/api/cache-warming/savings?days=${days}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/**
+ * Fetch the cache health of the last 24 hours or 7 days. The server reads it
+ * from Sentry and shares one answer between page loads for a minute.
+ */
+export function useCacheHealth(window: "24h" | "7d") {
+  return useQuery({
+    queryKey: ["dashboard", "cache-warming", "health", window],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        cacheHealthReportSchema,
+        `/api/cache-warming/health?window=${window}`,
         signal,
       ),
     placeholderData: keepPreviousData,

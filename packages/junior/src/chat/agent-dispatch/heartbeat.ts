@@ -4,13 +4,16 @@ import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding
 import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
+import { syncAutomationAlerts } from "@/chat/automations/alert-items";
+import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
+import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
 import {
   createPluginEventPublisher,
   getRegistrations,
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
 import { mapBounded } from "@/chat/fan-out";
@@ -74,7 +77,7 @@ async function runPluginHeartbeats(args: {
   events: AppEventPublisher;
   limit?: number;
   nowMs: number;
-  showReviewItem?: ShowReviewItem | undefined;
+  showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   let count = 0;
   /* oxlint-disable no-await-in-loop -- Plugin dispatches take the shared pending-append index lock, which does not wait. */
@@ -98,7 +101,7 @@ async function runPluginHeartbeats(args: {
               events: createPluginEventPublisher(plugin, args.events),
               plugin,
               nowMs: args.nowMs,
-              showReviewItem: args.showReviewItem,
+              showInboxItem: args.showInboxItem,
             }),
           ),
         ),
@@ -251,8 +254,8 @@ export async function runHeartbeat(args: {
   /** The app's event publisher. */
   events: AppEventPublisher;
   nowMs: number;
-  /** Shows a Review item that a plugin heartbeat changed. */
-  showReviewItem?: ShowReviewItem | undefined;
+  /** Shows an Inbox item that a plugin heartbeat changed. */
+  showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
   // Runs before result recovery, so an invocation that this ends is sent to
@@ -292,6 +295,21 @@ export async function runHeartbeat(args: {
     logException(error, "scheduled_automations.heartbeat.failed");
   }
   try {
+    const woke = await runInboxSnoozeTimers(getDb(), args.nowMs);
+    if (woke > 0) {
+      logInfo("inbox_snoozes.heartbeat.woken", {
+        "app.inbox_snooze.count": woke,
+      });
+    }
+  } catch (error) {
+    logException(error, "inbox_snoozes.heartbeat.failed");
+  }
+  try {
+    await syncAutomationAlerts(getDb(), args.nowMs);
+  } catch (error) {
+    logException(error, "automation_alerts.heartbeat.failed");
+  }
+  try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });
   } catch (error) {
     // Timer claims expire for retry; a failure must not block plugin heartbeats.
@@ -302,7 +320,7 @@ export async function runHeartbeat(args: {
     dispatchForIdentity: args.dispatchForIdentity,
     events: args.events,
     nowMs: args.nowMs,
-    showReviewItem: args.showReviewItem,
+    showInboxItem: args.showInboxItem,
   });
   try {
     // Last, so a long first run does not delay the work above.

@@ -1,0 +1,93 @@
+import type { ReactNode } from "react";
+import { useLocation } from "react-router";
+
+import { PageContentSkeleton } from "../../../components/PageContentSkeleton";
+import { PageHeader } from "../../../components/layout/PageHeader";
+import { PageLayout } from "../../../components/layout/PageLayout";
+import { SecondaryNavigation } from "../../../components/layout/SecondaryNavigation";
+import { getDashboardAgentName } from "../../../agentName";
+import { NAV_PAGES } from "../../../navPages";
+
+const MEMORY_LIBRARY_PATH = NAV_PAGES.memoryLibrary.to;
+const RESERVED_MEMORY_SEGMENTS = new Set(["library"]);
+
+/** The Memories pages, for the in-page links and the pane list. */
+export const memoryNavigationItems = [
+  // The Overview is the area's root page.
+  { end: true, label: "Overview", to: NAV_PAGES.memoryLibrary.area },
+  { ...NAV_PAGES.memoryLibrary, isActive: isMemoryLibraryPath },
+];
+
+/** Identify library and memory routes that keep the list beside its details. */
+export function isMemoryLibraryPath(pathname: string): boolean {
+  if (
+    pathname === MEMORY_LIBRARY_PATH ||
+    pathname.startsWith(`${MEMORY_LIBRARY_PATH}/`)
+  ) {
+    return true;
+  }
+  const match = pathname.match(/^\/memories\/([^/]+)$/);
+  return Boolean(match?.[1] && !RESERVED_MEMORY_SEGMENTS.has(match[1]));
+}
+
+/**
+ * Place the shared secondary navigation above one Memories page. Library
+ * children fill the remaining height and own their scroll frames.
+ */
+export function MemoryPageLayout(props: { children: ReactNode }) {
+  const library = isMemoryLibraryPath(useLocation().pathname);
+  return (
+    <SecondaryNavigation
+      ariaLabel="Memory navigation"
+      className={
+        library
+          ? "grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] md:grid-rows-[minmax(0,1fr)]"
+          : undefined
+      }
+      items={memoryNavigationItems}
+      listedInPane
+      opensOnPhone
+    >
+      {library ? (
+        <div className="min-h-0">{props.children}</div>
+      ) : (
+        <PageLayout className="gap-6 sm:gap-8">{props.children}</PageLayout>
+      )}
+    </SecondaryNavigation>
+  );
+}
+
+/** Keep Memories chrome stable while shell or page data is still loading. */
+export function MemoryRouteLoading(props: {
+  description?: string;
+  label: string;
+  title?: string;
+}) {
+  const library = isMemoryLibraryPath(useLocation().pathname);
+  const content = (
+    <>
+      <PageHeader
+        description={
+          props.description ??
+          `Personal and public memories ${getDashboardAgentName()} can use across conversations.`
+        }
+        title={props.title ?? "Memories"}
+      />
+      <PageContentSkeleton
+        label={props.label}
+        variant={library ? "library" : "overview"}
+      />
+    </>
+  );
+  return (
+    <MemoryPageLayout>
+      {library ? (
+        <div className="h-full overflow-y-auto">
+          <PageLayout className="gap-6 sm:gap-8">{content}</PageLayout>
+        </div>
+      ) : (
+        content
+      )}
+    </MemoryPageLayout>
+  );
+}

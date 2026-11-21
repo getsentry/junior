@@ -49,7 +49,6 @@ export function ConversationDetailsPanel(props: {
           />
         )
       }
-      canEditPlan={detail?.isParticipant === true}
       conversationId={props.conversationId}
       highlightReview={props.highlightReview}
       identity={
@@ -57,6 +56,7 @@ export function ConversationDetailsPanel(props: {
           <ParticipantAvatarStack participants={participants} size="detail" />
         ) : null
       }
+      isParticipant={detail?.isParticipant === true}
       onClose={props.onClose}
       onOpenSubagent={props.onOpenSubagent}
       onSelectMemory={props.onSelectMemory}

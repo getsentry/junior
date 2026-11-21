@@ -2,7 +2,7 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import * as z from "zod";
 import { startSpan } from "@/chat/sentry";
-import { apiErrorSchema } from "./schema/common";
+import { apiErrorSchema } from "./schema/response";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" } as const;
 
@@ -16,11 +16,20 @@ function noStoreInit(init?: ResponseInit): ResponseInit {
   return { ...init, headers };
 }
 
+/** A JSON body and the span attributes that describe it. */
+export interface SerializedResponse {
+  attributes?: Record<string, number>;
+  body: string;
+}
+
 /** Serialize a REST response only after it satisfies its declared schema. */
 export function jsonResponse<TSchema extends z.ZodType>(
   schema: TSchema,
   value: z.input<TSchema>,
   init?: ResponseInit,
+  serialize: (parsed: z.output<TSchema>) => SerializedResponse = (parsed) => ({
+    body: JSON.stringify(parsed),
+  }),
 ): Response {
   // Validation and serialization run after the last query. Large reports
   // spend real time here, and without this span it is a gap at the end of
@@ -29,8 +38,9 @@ export function jsonResponse<TSchema extends z.ZodType>(
     const startedAt = performance.now();
     const parsed = schema.parse(value);
     const parsedAt = performance.now();
-    const body = JSON.stringify(parsed);
+    const { attributes, body } = serialize(parsed);
     span.setAttributes({
+      ...attributes,
       "app.api.response.chars": body.length,
       "app.api.response.json_stringify_ms": Math.round(
         performance.now() - parsedAt,

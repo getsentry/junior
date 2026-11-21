@@ -30,7 +30,7 @@ type ConversationRecordedOperation =
   | "conversation_title"
   | "image_generation"
   | "image_prompt_enrichment"
-  | "review_item_reply_match"
+  | "inbox_item_reply_match"
   | "run_title"
   | "task_title"
   | "tool_search_rerank"
