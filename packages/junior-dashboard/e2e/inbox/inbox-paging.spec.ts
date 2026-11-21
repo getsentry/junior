@@ -374,9 +374,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(filters.getByRole("link", { name: /^Decisions/ })).toHaveText(
       /^Decisions\s*11$/,
     );
-    await expect(
-      filters.getByRole("link", { name: /^Pull requests/ }),
-    ).toHaveText(/^Pull requests\s*2$/);
+    await expect(filters.getByRole("link", { name: /^PRs/ })).toHaveText(
+      /^PRs\s*2$/,
+    );
     await expect(nav.getByRole("link", { name: /^Snoozed/ })).toHaveText(
       /^Snoozed\s*1$/,
     );

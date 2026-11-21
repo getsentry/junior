@@ -276,4 +276,68 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(list.getByText(/^Nothing pinned\./)).toBeVisible();
     await expect(list.getByRole("link", { name: /^Open / })).toHaveCount(0);
   });
+
+  test("the repository Conversations tab filters by state, also after a reload", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.route(
+      /\/api\/conversations\?.*codeRepositoryId=/,
+      async (route) => {
+        const response = await route.fetch();
+        const feed = await response.json();
+        const [first] = feed.conversations;
+        const listed = (name: string, treeState: string) => ({
+          ...first,
+          conversationId: `${first.conversationId}-${treeState}`,
+          displayTitle: name,
+          pinnedAt: null,
+          treeState,
+        });
+        return route.fulfill({
+          response,
+          json: {
+            ...feed,
+            conversations: [
+              listed("Working conversation", "working"),
+              listed("Done conversation", "done"),
+            ],
+          },
+        });
+      },
+    );
+    const list = await openRepositoryConversations(page, dashboard.baseURL);
+    const working = list.getByRole("link", {
+      name: "Open Working conversation",
+    });
+    const done = list.getByRole("link", { name: "Open Done conversation" });
+    await expect(working).toBeVisible();
+    await expect(done).toBeVisible();
+
+    const filters = list.getByRole("navigation", {
+      name: "Conversations to show",
+    });
+    await filters.getByRole("link", { name: "Working" }).click();
+    await expect(page).toHaveURL(/\/conversations\?state=working$/);
+    await expect(working).toBeVisible();
+    await expect(done).toHaveCount(0);
+    await page.reload();
+    await expect(
+      filters.getByRole("link", { name: "Working" }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(working).toBeVisible();
+    await expect(done).toHaveCount(0);
+
+    await filters.getByRole("link", { name: "Done" }).click();
+    await expect(done).toBeVisible();
+    await expect(working).toHaveCount(0);
+    await filters.getByRole("link", { name: "Watching" }).click();
+    await expect(
+      list.getByText("No conversations match these filters."),
+    ).toBeVisible();
+    await filters.getByRole("link", { name: "All" }).click();
+    await expect(page).not.toHaveURL(/[?&]state=/);
+    await expect(working).toBeVisible();
+    await expect(done).toBeVisible();
+  });
 });

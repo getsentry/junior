@@ -7,6 +7,8 @@ import { cn, dashboardCountClass } from "../../styles";
 export type ScopeTab = {
   count?: number;
   icon?: LucideIcon;
+  /** On a phone the tab shows only its icon, so the tabs fit one row. */
+  iconOnlyOnPhone?: boolean;
   label: string;
   on: boolean;
   search: string;
@@ -29,7 +31,7 @@ export function ScopeTabs(props: { label: string; tabs: readonly ScopeTab[] }) {
           <Link
             aria-current={tab.on ? "page" : undefined}
             className={cn(
-              "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 font-sans text-xs font-medium whitespace-nowrap no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 font-sans max-md:px-2 text-xs font-medium whitespace-nowrap no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
               tab.on
                 ? "bg-dashboard-surface-active text-dashboard-text"
                 : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
@@ -45,7 +47,13 @@ export function ScopeTabs(props: { label: string; tabs: readonly ScopeTab[] }) {
                 strokeWidth={1.9}
               />
             ) : null}
-            {tab.label}
+            <span
+              className={
+                Icon && tab.iconOnlyOnPhone ? "max-md:sr-only" : undefined
+              }
+            >
+              {tab.label}
+            </span>
             {tab.count === undefined ? null : (
               <span className={dashboardCountClass}>{tab.count}</span>
             )}

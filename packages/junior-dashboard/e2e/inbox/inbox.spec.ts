@@ -88,7 +88,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // "Pull request ready for review" notice does not.
     await expect(
       page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
-    ).toHaveText([/^All\s*6$/, /^Pull requests\s*2$/, /^Decisions\s*4$/]);
+    ).toHaveText([/^All\s*6$/, /^PRs\s*2$/, /^Decisions\s*4$/]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 
     // Pull requests list the viewer's open changes, with their asks.

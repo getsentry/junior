@@ -22,7 +22,13 @@ import { Card } from "../../../components/layout/Card";
 import { ConversationHomeList } from "../../conversations/ConversationHomeList";
 import { newestFirst } from "../../../conversations/conversationSections";
 import { buildConversations } from "../../../format";
-import { PinnedFilter, pinnedOnlyOf } from "../../../inbox/inboxFilters";
+import {
+  ConversationStateFilters,
+  conversationStateOf,
+  inConversationState,
+  PinnedFilter,
+  pinnedOnlyOf,
+} from "../../../inbox/inboxFilters";
 import { useWaitingConversations } from "../../../inbox/queries";
 import { CodeActivityChart } from "../../../pages/code/CodeActivityChart";
 import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
@@ -33,23 +39,34 @@ const PAGE_SIZE = 25;
 
 /**
  * Conversations linked to the repository, in the home list layout. A pin
- * stays in its time section. `?pinned=1` shows only the viewer's pins.
+ * stays in its time section. `?state=` shows the Conversations in one viewer
+ * state, and `?pinned=1` only the viewer's pins.
  */
 export function RepositoryConversationsTab(props: { repositoryId: string }) {
   const [page, setPage] = useState(1);
   const [params] = useSearchParams();
   const pinnedOnly = pinnedOnlyOf(params);
+  const state = conversationStateOf(params);
   useEffect(() => {
     setPage(1);
-  }, [pinnedOnly]);
+  }, [pinnedOnly, state]);
   const feed = useCodeRepositoryConversationsData(props.repositoryId);
+  const waitingConversations = useWaitingConversations();
   const conversations = newestFirst(
     buildConversations(feed.data?.conversations ?? []),
-  ).filter((conversation) => !pinnedOnly || conversation.pinnedAt);
-  const waitingConversations = useWaitingConversations();
+  ).filter(
+    (conversation) =>
+      (!pinnedOnly || conversation.pinnedAt) &&
+      inConversationState(
+        conversation,
+        waitingConversations.has(conversation.id),
+        state,
+      ),
+  );
   return (
     <section aria-label="Conversations" className="grid gap-3">
-      <div className="flex justify-end">
+      <div className="flex items-center justify-end gap-2">
+        <ConversationStateFilters search={params.toString()} state={state} />
         <PinnedFilter on={pinnedOnly} search={params.toString()} />
       </div>
       {feed.error ? (
@@ -60,9 +77,11 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
         <ConversationHomeList
           conversations={pageItems(conversations, page, PAGE_SIZE)}
           emptyLabel={
-            pinnedOnly
-              ? "Nothing pinned. Pin a conversation from its menu."
-              : "No conversations are linked to this repository yet."
+            state !== "all"
+              ? "No conversations match these filters."
+              : pinnedOnly
+                ? "Nothing pinned. Pin a conversation from its menu."
+                : "No conversations are linked to this repository yet."
           }
           loading={!feed.data}
           timeZone={getDashboardTimeZone()}

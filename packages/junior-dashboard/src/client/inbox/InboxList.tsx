@@ -31,6 +31,9 @@ import {
   askTypeOf,
   InboxTypeFilters,
   inboxTypeOf,
+  ConversationStateFilters,
+  conversationStateOf,
+  inConversationState,
   PinnedFilter,
   pinnedOnlyOf,
 } from "./inboxFilters";
@@ -165,6 +168,9 @@ export function InboxList(props: {
     (view === "inbox" || view === "conversations") &&
     pinnedOnlyOf(params);
   const type = data.signedIn && view === "inbox" ? inboxTypeOf(params) : "all";
+  // `?state=` shows the Conversations in one viewer state.
+  const conversationState =
+    view === "conversations" ? conversationStateOf(params) : "all";
   const inboxRows =
     pinnedOnly || type !== "all"
       ? data.rowsOf(
@@ -180,7 +186,13 @@ export function InboxList(props: {
   const latestStreamRows =
     view === "conversations"
       ? data.conversationRows.filter(
-          (row) => !pinnedOnly || row.conversation?.pinnedAt,
+          (row) =>
+            (!pinnedOnly || row.conversation?.pinnedAt) &&
+            inConversationState(
+              row.conversation,
+              row.bundle?.needsYou ?? false,
+              conversationState,
+            ),
         )
       : [];
   const streamRows = heldRows(latestStreamRows, held);
@@ -742,7 +754,13 @@ export function InboxList(props: {
   } else if (view === "conversations") {
     body =
       streamRows.length === 0 ? (
-        <InboxEmptyState label="No conversations yet" />
+        <InboxEmptyState
+          label={
+            conversationState === "all" && !pinnedOnly
+              ? "No conversations yet"
+              : "No conversations match these filters"
+          }
+        />
       ) : (
         stream()
       );
@@ -879,7 +897,19 @@ export function InboxList(props: {
     data.signedIn && (view === "inbox" || view === "conversations") ? (
       <PinnedFilter on={pinnedOnly} search={params.toString()} />
     ) : null;
-  // Desktop Conversations shows Pinned only in its header. The Inbox, and
+  const conversationFilters =
+    view === "conversations" ? (
+      <>
+        <ConversationStateFilters
+          search={params.toString()}
+          state={conversationState}
+        />
+        {pinFilter}
+      </>
+    ) : (
+      pinFilter
+    );
+  // Desktop Conversations shows its filters in its header. The Inbox, and
   // every list on a phone, show the filters above the rows.
   const filterBar =
     view === "inbox" && data.signedIn ? (
@@ -892,7 +922,7 @@ export function InboxList(props: {
         {pinFilter}
       </>
     ) : headerBar ? null : (
-      pinFilter
+      conversationFilters
     );
   return (
     <section
@@ -900,7 +930,7 @@ export function InboxList(props: {
       className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg"
     >
       {headerBar ? (
-        <HeaderBar actions={pinFilter} title={heading} />
+        <HeaderBar actions={conversationFilters} title={heading} />
       ) : (
         <div className="absolute top-2 left-3 z-10 max-md:hidden">
           <PaneCollapsedControls />
@@ -930,9 +960,10 @@ export function InboxList(props: {
           style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
         >
           {filterBar ? (
-            // Right-aligned, clear of the pane controls that float at the
-            // top left while the pane is collapsed.
-            <div className="flex flex-wrap items-center justify-end gap-2 pb-2">
+            // One right-aligned row, also on a phone, clear of the pane
+            // controls that float at the top left while the pane is
+            // collapsed.
+            <div className="flex items-center justify-end gap-2 pb-2">
               {filterBar}
             </div>
           ) : null}

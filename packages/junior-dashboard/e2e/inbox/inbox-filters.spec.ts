@@ -46,9 +46,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Pull requests counts each ask, and a pull request ask with a question
     // is not also a Decision.
     await expect(typeFilter(page, "All")).toHaveText(/^All\s*6$/);
-    await expect(typeFilter(page, "Pull requests")).toHaveText(
-      /^Pull requests\s*2$/,
-    );
+    await expect(typeFilter(page, "PRs")).toHaveText(/^PRs\s*2$/);
     await expect(typeFilter(page, "Decisions")).toHaveText(/^Decisions\s*3$/);
     await expect(typeFilter(page, "Other")).toHaveText(/^Other\s*1$/);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 6 waiting");
@@ -57,7 +55,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "page",
     );
 
-    await typeFilter(page, "Pull requests").click();
+    await typeFilter(page, "PRs").click();
     await expect(page).toHaveURL(/[?&]type=prs/);
     const todoList = page.getByRole("region", { name: "To do" });
     const todoRows = todoList.locator("[data-inbox-row]");
@@ -68,7 +66,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
 
     await page.reload();
-    await expect(typeFilter(page, "Pull requests")).toHaveAttribute(
+    await expect(typeFilter(page, "PRs")).toHaveAttribute(
       "aria-current",
       "page",
     );

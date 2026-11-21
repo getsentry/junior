@@ -105,6 +105,63 @@ test.describe("new UI", { tag: "@new" }, () => {
       await expect.poll(() => sectionOf(list, title)).toBe(section);
     });
 
+    test("the state filters list only the Conversations in that state, also after a reload", async ({
+      page,
+      dashboard,
+    }) => {
+      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      const list = conversationsList(page);
+      const rows = list.locator("[data-inbox-row]");
+      const waiting = rows.filter({
+        has: page.locator('[aria-label="Waiting on you"]'),
+      });
+      const working = rowLink(list, "Investigate checkout latency");
+      const asking = rowLink(list, "Roll out payments-v42");
+      await expect(working).toBeVisible();
+      await expect(asking).toBeVisible();
+      const filters = page.getByRole("navigation", {
+        name: "Conversations to show",
+      });
+      const filter = (name: string) =>
+        filters.getByRole("link", { exact: true, name });
+      await expect(filter("All")).toHaveAttribute("aria-current", "page");
+
+      // Needs you lists only the rows that wait on the viewer.
+      await filter("Needs you").click();
+      await expect(page).toHaveURL(/[?&]state=needs_you/);
+      await expect(asking).toBeVisible();
+      await expect(working).toHaveCount(0);
+      await expect.poll(() => rows.count()).toBeGreaterThan(0);
+      expect(await waiting.count()).toBe(await rows.count());
+      await page.reload();
+      await expect(filter("Needs you")).toHaveAttribute("aria-current", "page");
+      await expect(asking).toBeVisible();
+      await expect(working).toHaveCount(0);
+
+      // Working lists the row whose Turn runs.
+      await filter("Working").click();
+      await expect(working).toBeVisible();
+      await expect(asking).toHaveCount(0);
+
+      // Done lists neither.
+      await filter("Done").click();
+      await expect(rowLink(list, "Direct Message")).toBeVisible();
+      await expect(working).toHaveCount(0);
+      await expect(asking).toHaveCount(0);
+      await expect(waiting).toHaveCount(0);
+
+      // Watching finds none here.
+      await filter("Watching").click();
+      await expect(
+        page.getByText("No conversations match these filters"),
+      ).toBeVisible();
+
+      await filter("All").click();
+      await expect(page).not.toHaveURL(/[?&]state=/);
+      await expect(working).toBeVisible();
+      await expect(asking).toBeVisible();
+    });
+
     test("lists the rows of the conversation menu in the row menu", async ({
       page,
       dashboard,
