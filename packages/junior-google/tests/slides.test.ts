@@ -747,20 +747,36 @@ describe("Google Slides tools", () => {
       /^revisionId,pageSize,layouts\(objectId,.*\),slides\(objectId,/,
     );
 
+    // The sourceUrl of a sandbox image is its download URL, which works
+    // until it expires, so no read returns any image's sourceUrl.
+    const image = {
+      contentUrl: "https://lh7-us.googleusercontent.com/image",
+      sourceUrl: "https://blob.example.com/sandbox-image.png?token=signed",
+    };
     const slide = slidesTools([
       deckFile(),
-      Response.json({ objectId: "g1:2", revisionId: "rev-1" }),
+      Response.json({
+        objectId: "g1:2",
+        pageElements: [{ image, objectId: "img1" }],
+        revisionId: "rev-1",
+      }),
     ]);
-    await slide.call("readGoogleSlidesLayout", {
-      fields: "pageElements(objectId)",
+    const read = await slide.call("readGoogleSlidesLayout", {
+      fields: "pageElements(objectId,image)",
       presentation: DECK_ID,
       slide_object_id: "g1:2",
     });
+    expect(read).toMatchObject({
+      content: {
+        pageElements: [{ image: { contentUrl: image.contentUrl } }],
+      },
+    });
+    expect(JSON.stringify(read)).not.toContain(image.sourceUrl);
     const [, page] = await slide.calls();
     expect(page?.operation).toBe("google.slides.page.get");
     expect(page?.url.pathname).toBe(`/v1/presentations/${DECK_ID}/pages/g1:2`);
     expect(page?.url.searchParams.get("fields")).toBe(
-      "revisionId,pageElements(objectId)",
+      "revisionId,pageElements(objectId,image)",
     );
 
     // A revisionId inside a nested selection is not the deck's revision.

@@ -43,6 +43,7 @@ Workspace account, so the user connects nothing.
   through a download URL that expires within 5 minutes. The URL that the
   deck keeps opens nothing after that, even when the copy is not deleted.
   An install whose storage cannot sign reads inserts no Sandbox image.
+  No read returns an image's saved URL to the model.
 - Junior reads a file or its comments only for a requester who can open it
   through their own email, their domain when that domain owns the file, or
   a link that anyone can open.

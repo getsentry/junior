@@ -155,3 +155,24 @@ export async function withSandboxImages<T>(
     );
   }
 }
+
+/**
+ * Return Slides API JSON without the `sourceUrl` of any image.
+ *
+ * Google saves the url that inserted an image as its `sourceUrl`. For a
+ * sandbox image that is a download URL, a bearer credential until it
+ * expires, so no read returns any image's `sourceUrl` to the model.
+ */
+export function withoutImageSourceUrls(value: unknown): unknown {
+  return strip(value, false);
+}
+
+function strip(value: unknown, inImage: boolean): unknown {
+  if (Array.isArray(value)) return value.map((item) => strip(item, false));
+  if (typeof value !== "object" || value === null) return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .filter(([key]) => !(inImage && key === "sourceUrl"))
+      .map(([key, child]) => [key, strip(child, key === "image")]),
+  );
+}
