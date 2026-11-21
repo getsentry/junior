@@ -25,6 +25,9 @@
 // commitStep (completed) queues the Turn instead, like commitStep (continue),
 // while the Turn has an input that no step has read.
 //
+// cancelTurn publishes the Turn after the cancel. That message claims nothing,
+// so the step consumer runs the Turn's end work, `turnEnded`.
+//
 // Expired: running, but `lease_expires_at` has passed. Only claimTurn takes
 // over such a Turn, so the queue's redelivery after a crash resumes it.
 //
@@ -50,6 +53,7 @@ import {
   inputEventKey,
   type InputMessage,
 } from "@/core/turn/inbox";
+import { publishTurnStep } from "@/core/turn/queue";
 import type { StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
@@ -100,6 +104,32 @@ export async function createTurn(
     .insert(juniorTurns)
     .values({ ...args, id: turnId, state: "queued" });
   return { turnId, state: "queued" };
+}
+
+/** A Turn with the facts that its end work needs. */
+export type TurnRecord = Turn & {
+  conversationId: string;
+  source: Source["kind"];
+  actorIdentityId: string;
+};
+
+/** Finds a Turn by id. Undefined when it does not exist. */
+export async function findTurn(
+  executor: JuniorSqlDatabase,
+  turnId: string,
+): Promise<TurnRecord | undefined> {
+  const [turn] = await executor
+    .db()
+    .select({
+      turnId: juniorTurns.id,
+      state: juniorTurns.state,
+      conversationId: juniorTurns.conversationId,
+      source: juniorTurns.source,
+      actorIdentityId: juniorTurns.actorIdentityId,
+    })
+    .from(juniorTurns)
+    .where(eq(juniorTurns.id, turnId));
+  return turn;
 }
 
 /**
@@ -319,7 +349,8 @@ export async function releaseTurn(
 /**
  * Cancels a queued or running Turn. It needs no lease. It moves
  * `lease_epoch`, so the invocation that runs the step cannot commit it.
- * False when the Turn has already ended.
+ * After the cancel it publishes the Turn: that message claims nothing and
+ * runs the Turn's end work. False when the Turn has already ended.
  */
 export async function cancelTurn(
   executor: JuniorSqlDatabase,
@@ -343,5 +374,9 @@ export async function cancelTurn(
       ),
     )
     .returning({ id: juniorTurns.id });
-  return rows.length > 0;
+  if (rows.length === 0) {
+    return false;
+  }
+  await publishTurnStep(turnId);
+  return true;
 }

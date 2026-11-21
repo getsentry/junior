@@ -2,9 +2,10 @@ import { eq } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getQueueProvider } from "@/chat/queue/provider";
+import { markInputsAttempted } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
-import { scheduleInput } from "@/core/turn/schedule";
-import { cancelTurn, claimTurn } from "@/core/turn/state";
+import { scheduleInput, turnEnded } from "@/core/turn/schedule";
+import { cancelTurn, claimTurn, failTurn } from "@/core/turn/state";
 import {
   juniorConversations,
   juniorIdentities,
@@ -100,6 +101,14 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     return scheduleInput(fixture.sql, input(idempotencyKey));
   }
 
+  async function claim(turnId: string) {
+    return (await claimTurn(fixture.sql, {
+      turnId,
+      owner: "worker-a",
+      leaseMs: LEASE_MS,
+    }))!;
+  }
+
   async function readTurns() {
     return fixture.sql
       .db()
@@ -173,9 +182,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
     await cancelTurn(fixture.sql, first.turnId);
+    // cancelTurn's own message.
+    expect(publishes).toHaveLength(3);
     await expect(schedule("event-1")).resolves.toEqual(duplicate);
 
-    expect(publishes).toHaveLength(2);
+    expect(publishes).toHaveLength(3);
     await expect(readTurns()).resolves.toHaveLength(1);
     await expect(readInputs()).resolves.toHaveLength(1);
   });
@@ -199,5 +210,109 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       created: false,
     });
     expect(publishes).toEqual([{ turnId: turn!.id, committed: true }]);
+  });
+
+  it("moves a failed Turn's inputs to a new Turn and publishes it, and a second run moves nothing", async () => {
+    const failed = await schedule("event-1");
+    const claimed = await claim(failed.turnId);
+    await schedule("event-2");
+    await failTurn(fixture.sql, claimed, "overloaded");
+    publishes = [];
+
+    await turnEnded(fixture.sql, failed.turnId);
+
+    const next = (await readTurns()).find((turn) => turn.id !== failed.turnId);
+    expect(next).toEqual({
+      id: expect.any(String),
+      state: "queued",
+      priority: 0,
+      source: "local",
+      actorIdentityId: "identity:actor",
+    });
+    const moved = [
+      { turnId: next!.id, idempotencyKey: "event-1" },
+      { turnId: next!.id, idempotencyKey: "event-2" },
+    ];
+    await expect(readInputs()).resolves.toEqual(moved);
+    expect(publishes).toEqual([{ turnId: next!.id, committed: true }]);
+
+    await turnEnded(fixture.sql, failed.turnId);
+
+    await expect(readTurns()).resolves.toHaveLength(2);
+    await expect(readInputs()).resolves.toEqual(moved);
+    expect(publishes).toEqual([
+      { turnId: next!.id, committed: true },
+      { turnId: next!.id, committed: true },
+    ]);
+  });
+
+  it("moves a failed Turn's inputs to the open Turn when one exists", async () => {
+    const failed = await schedule("event-1");
+    await failTurn(fixture.sql, await claim(failed.turnId), "overloaded");
+    const open = await schedule("event-2");
+
+    await turnEnded(fixture.sql, failed.turnId);
+
+    await expect(readTurns()).resolves.toHaveLength(2);
+    await expect(readInputs()).resolves.toEqual([
+      { turnId: open.turnId, idempotencyKey: "event-1" },
+      { turnId: open.turnId, idempotencyKey: "event-2" },
+    ]);
+  });
+
+  it("moves nothing for a completed Turn", async () => {
+    const completed = await schedule("event-1");
+    await fixture.sql
+      .db()
+      .update(juniorTurns)
+      .set({ state: "completed", endedAt: new Date() })
+      .where(eq(juniorTurns.id, completed.turnId));
+
+    await turnEnded(fixture.sql, completed.turnId);
+
+    await expect(readInputs()).resolves.toEqual([
+      { turnId: completed.turnId, idempotencyKey: "event-1" },
+    ]);
+    expect(publishes).toHaveLength(1);
+  });
+
+  it("publishes a cancelled Turn, and its end work leaves its inputs on it", async () => {
+    const cancelled = await schedule("event-1");
+
+    await cancelTurn(fixture.sql, cancelled.turnId);
+    await turnEnded(fixture.sql, cancelled.turnId);
+
+    expect(publishes).toEqual([
+      { turnId: cancelled.turnId, committed: true },
+      { turnId: cancelled.turnId, committed: true },
+    ]);
+    await expect(readTurns()).resolves.toHaveLength(1);
+    await expect(readInputs()).resolves.toEqual([
+      { turnId: cancelled.turnId, idempotencyKey: "event-1" },
+    ]);
+  });
+
+  it("keeps the first attempt time of an input", async () => {
+    await schedule("event-1");
+    const [input] = await fixture.sql
+      .db()
+      .select({ id: juniorTurnInbox.id })
+      .from(juniorTurnInbox);
+    const readAttemptedAt = async () =>
+      (
+        await fixture.sql
+          .db()
+          .select({ attemptedAt: juniorTurnInbox.attemptedAt })
+          .from(juniorTurnInbox)
+      )[0]!.attemptedAt;
+
+    await markInputsAttempted(fixture.sql, [input!.id]);
+    const first = await readAttemptedAt();
+    // A later attempt has a later now().
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await markInputsAttempted(fixture.sql, [input!.id]);
+
+    expect(first).toBeInstanceOf(Date);
+    await expect(readAttemptedAt()).resolves.toEqual(first);
   });
 });

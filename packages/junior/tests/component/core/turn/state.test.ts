@@ -5,10 +5,11 @@ import type {
   ToolResultMessage,
   UserMessage,
 } from "@earendil-works/pi-ai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import { getQueueProvider } from "@/chat/queue/provider";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import {
   cancelTurn,
@@ -64,9 +65,12 @@ describe("Turn state", () => {
       priority: 0,
       source: "slack",
     });
+    // The queue is the external edge: cancelTurn publishes the Turn.
+    vi.spyOn(getQueueProvider(), "send").mockResolvedValue({});
   });
 
   afterEach(async () => {
+    vi.restoreAllMocks();
     await fixture.close();
   });
 

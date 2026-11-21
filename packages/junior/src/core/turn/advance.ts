@@ -5,7 +5,8 @@
 // invocation checks its lease and aborts the step when the lease is lost.
 // When the invocation throws, it queues the Turn again for the queue's retry.
 // The queue retries without a limit, so a claim past `maxAttempts` fails the
-// Turn instead of running the step again.
+// Turn instead of running the step again. After each end commit, and for a
+// message whose claim finds the Turn ended, it runs the Turn's end work.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
@@ -13,10 +14,12 @@ import type { ModelClient } from "@/core/model/client";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import {
   findUnreadInputs,
+  markInputsAttempted,
   type InputMessage,
   type UnreadInput,
 } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
+import { turnEnded } from "@/core/turn/schedule";
 import {
   claimTurn,
   commitStep,
@@ -82,12 +85,19 @@ export async function advanceTurn(
     leaseMs: options.leaseMs,
   });
   if (!claim) {
+    // The Turn may have ended without its end work, for example in a crash
+    // after the end commit. The end work is safe to repeat.
+    await turnEnded(executor, message.turnId);
     return;
   }
   try {
-    // Inside the try, so a failed write here also releases the lease.
+    // Inside the try, so a failed write here also releases the lease. After
+    // the Turn ends, the release matches nothing, so an error in the end
+    // work only makes the queue retry, and that retry runs it again.
     if (claim.attempts > options.maxAttempts) {
-      await failTurn(executor, claim, "attempts_exhausted");
+      if (await failTurn(executor, claim, "attempts_exhausted")) {
+        await turnEnded(executor, claim.turnId);
+      }
       return;
     }
     await runClaimedStep(executor, claim, options);
@@ -127,6 +137,10 @@ async function runClaimedStep(
     : await findUnreadInputs(executor, claim.turnId);
   const { inputs, ...prepared } = await prepare(claim, unread);
   checkPreparedInputs(unread, inputs);
+  await markInputsAttempted(
+    executor,
+    unread.map((input) => input.inputId),
+  );
   const result = await runStepWhileLeased(executor, claim, {
     ...prepared,
     client,
@@ -140,13 +154,19 @@ async function runClaimedStep(
   }
   switch (result.outcome) {
     case "continue":
-    case "completed":
-      if ((await commitStep(executor, claim, result, inputs)) === "continue") {
+    case "completed": {
+      const next = await commitStep(executor, claim, result, inputs);
+      if (next === "continue") {
         await publishTurnStep(claim.turnId);
+      } else if (next === "completed") {
+        await turnEnded(executor, claim.turnId);
       }
       return;
+    }
     case "failed":
-      await failTurn(executor, claim, result.error);
+      if (await failTurn(executor, claim, result.error)) {
+        await turnEnded(executor, claim.turnId);
+      }
       return;
     default: {
       const unhandled: never = result;
