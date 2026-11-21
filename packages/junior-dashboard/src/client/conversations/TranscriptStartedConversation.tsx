@@ -10,6 +10,7 @@ import { LeadWorkLabel, LeadWorkTile } from "../lead/LeadWorkStatus";
 import { displayPlainText } from "../display-text/plainText";
 import { cn } from "../styles";
 import { formatCompactAge } from "../time";
+import { linkLabel, referenceText } from "./composerReferences";
 import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath, conversationUrl } from "./conversationRoutes";
 import { transcriptColumnsClass } from "./TranscriptRows";
@@ -31,11 +32,16 @@ export function TranscriptStartedConversation(props: {
   const lead = useContext(LeadPage);
   const watched = lead?.watchedIds.has(id) ?? false;
   const prefetch = usePrefetchConversation(id);
-  // A started Conversation is a root of the person, so it is a feed row.
+  // A started Conversation is a root of the person, so it is a feed row. The
+  // row can be past the loaded feed pages. Then only a Review item tells its
+  // state, and the card shows none rather than a wrong one.
   const conversation = lead?.conversations.get(id);
+  const waiting = lead?.waiting.get(id);
   const state = conversation
-    ? leadWorkState(conversation, lead?.waiting.get(id))
-    : undefined;
+    ? leadWorkState(conversation, waiting)
+    : waiting
+      ? "needs_you"
+      : undefined;
   const input = startConversationInputSchema.safeParse(props.input);
   const title =
     conversation?.displayTitle ??
@@ -64,7 +70,7 @@ export function TranscriptStartedConversation(props: {
           className="group/started flex min-w-0 items-start gap-3 rounded-lg px-3 py-2.5 text-inherit no-underline transition-colors hover:bg-dashboard-surface-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
           to={conversationPath(id)}
         >
-          <LeadWorkTile state={state ?? "done"} />
+          <LeadWorkTile state={state} />
           <span className="grid min-w-0 flex-1 gap-0.5">
             <span className="flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1">
               <span className="min-w-0 flex-1 truncate font-sans text-base font-semibold text-dashboard-text max-md:basis-full">
@@ -104,14 +110,21 @@ export function TranscriptStartedConversation(props: {
           <div className="flex flex-wrap gap-2 px-3 pb-3 pl-[3.375rem]">
             <Link
               className={buttonVariants({ variant: "default" })}
-              to={conversationPath(id, { reviewItems: state === "needs_you" })}
+              to={conversationPath(id, { reviewItems: Boolean(waiting) })}
             >
-              {state === "needs_you" ? "Open to approve" : "Open"}
+              {/* A sign-in wait has no Review item to approve. */}
+              {waiting ? "Open to approve" : "Open"}
             </Link>
             {lead ? (
               <Button
                 onClick={() =>
-                  lead.prefill(`<${conversationUrl(id)}|${title}>`)
+                  lead.prefill(
+                    referenceText({
+                      kind: "conversation",
+                      title: linkLabel(title) || id,
+                      url: conversationUrl(id),
+                    }),
+                  )
                 }
                 variant="outline"
               >

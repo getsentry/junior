@@ -25,7 +25,10 @@ import {
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
 import type { ConversationData } from "./queries";
-import { FOCUS_REPLY_STATE, NEW_CONVERSATION_PATH } from "./conversationRoutes";
+import {
+  COMPOSE_REPLY_STATE,
+  NEW_CONVERSATION_PATH,
+} from "./conversationRoutes";
 import { pinnedAndWaitingFirst } from "./conversationSections";
 import { buildConversations } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
@@ -98,10 +101,11 @@ export function ConversationWorkspace(props: {
     [feed.data?.conversations, pendingArchiveUpdates, search],
   );
   // Only the wide layout has the sidebar and its button.
+  // From home, a new request stays on the Lead, so it adds no history entry.
   const openCreate = () => {
     void navigate(NEW_CONVERSATION_PATH, {
-      replace: home,
-      state: FOCUS_REPLY_STATE,
+      replace: home && !listRoute,
+      state: COMPOSE_REPLY_STATE,
     });
   };
 

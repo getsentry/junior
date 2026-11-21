@@ -179,6 +179,8 @@ export function ClassicShell() {
     location.pathname === "/" ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
+  // The Conversations nav item goes to the list. Home is the Lead, not the list.
+  const conversationsActive = workspace && location.pathname !== "/";
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
   // Home shows the viewer's Lead, and so does the wide conversation list.
@@ -265,7 +267,7 @@ export function ClassicShell() {
                 />
               ) : undefined
             }
-            workspaceActive={workspace}
+            workspaceActive={conversationsActive}
           />
         )}
         <VisualViewportShell
@@ -340,7 +342,7 @@ export function ClassicShell() {
                   ) : undefined
                 }
                 version={data?.config.version}
-                workspaceActive={workspace}
+                workspaceActive={conversationsActive}
               />
             }
           />

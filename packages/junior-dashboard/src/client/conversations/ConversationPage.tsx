@@ -98,6 +98,7 @@ import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
+import { useLead } from "../lead/Lead";
 import { LeadFirstRun } from "../lead/LeadFirstRun";
 import { LeadHeader, leadColumnClass } from "../lead/LeadHeader";
 import { LeadPageScope } from "../lead/LeadPageProvider";
@@ -225,8 +226,11 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
-  // A Lead has no details: it is private and never archives.
-  const lead = props.detail.data?.kind === "lead";
+  // A Lead has no details: it is private and never archives. Home knows the
+  // Lead's id before its detail loads, so its chrome does not flash.
+  const leadId = useLead(false).data?.conversationId;
+  const lead =
+    props.detail.data?.kind === "lead" || leadId === props.conversationId;
   const showDetails =
     !lead && detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   useLayoutEffect(() => {
@@ -410,6 +414,7 @@ export function ConversationPage(props: {
   const replyFocusRequest =
     replyFocus && location.key !== replyFocusDoneKey
       ? {
+          compose: replyFocus.compose,
           draftFrom: replyFocus.draftFrom,
           key: location.key,
           questionId: replyFocus.questionId,

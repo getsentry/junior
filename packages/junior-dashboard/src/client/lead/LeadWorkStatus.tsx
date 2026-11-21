@@ -45,11 +45,25 @@ export const leadWorkStatus: Record<
   },
 };
 
-/** Show a Lead state as a small tinted tile with its icon. */
+/**
+ * Show a Lead state as a small tinted tile with its icon. An unknown state
+ * shows an empty tile.
+ */
 export function LeadWorkTile(props: {
   className?: string;
-  state: LeadWorkState;
+  state: LeadWorkState | undefined;
 }) {
+  if (!props.state) {
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          "size-[1.875rem] shrink-0 rounded-md bg-dashboard-surface-hover",
+          props.className,
+        )}
+      />
+    );
+  }
   const status = leadWorkStatus[props.state];
   const Icon = status.icon;
   return (

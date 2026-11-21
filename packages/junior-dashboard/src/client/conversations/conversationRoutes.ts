@@ -43,6 +43,8 @@ export function conversationUrl(conversationId: string): string {
  * question to show and focus.
  */
 export type ReplyFocusState = {
+  /** The reader asked to type, so the reply box takes focus on touch too. */
+  compose?: true | undefined;
   draftFrom?: string | undefined;
   focusReply: true;
   questionId?: string | undefined;
@@ -50,6 +52,9 @@ export type ReplyFocusState = {
 
 /** Ask the opened Conversation to focus its reply box. */
 export const FOCUS_REPLY_STATE = { focusReply: true } as const;
+
+/** Ask the opened Conversation for its reply box, to type a new request. */
+export const COMPOSE_REPLY_STATE = { compose: true, focusReply: true } as const;
 
 /** Read the reply focus that navigation state asks for, if any. */
 export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
@@ -62,6 +67,7 @@ export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
     return undefined;
   }
   return {
+    compose: "compose" in state && state.compose === true ? true : undefined,
     draftFrom:
       "draftFrom" in state && typeof state.draftFrom === "string"
         ? state.draftFrom

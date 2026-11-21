@@ -37,6 +37,12 @@ test("home shows the Lead and the Conversations it started @classic", async ({
     page.getByRole("navigation", { name: "Your conversations" }),
   ).toHaveCount(0);
   await expect(page.getByRole("button", { name: /details/i })).toHaveCount(0);
+  // The Conversations nav item is the list, not the Lead.
+  await expect(
+    page
+      .getByRole("navigation", { name: "Primary" })
+      .getByRole("link", { name: "Conversations" }),
+  ).not.toHaveAttribute("aria-current", "page");
   await expect(
     transcript.getByRole("separator", { name: "Today" }),
   ).toBeVisible();

@@ -10,9 +10,11 @@ import { useNavigate } from "react-router";
 
 import { useConversationsData } from "../api";
 import {
+  COMPOSE_REPLY_STATE,
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
   conversationPath,
+  type ReplyFocusState,
 } from "../conversations/conversationRoutes";
 import { useDebouncedValue } from "../debouncedValue";
 import { buildConversations, conversationDisplayTitle } from "../format";
@@ -53,7 +55,7 @@ type PaletteItem = {
   meta?: string;
   score: number;
   /** Navigation state for the destination page. */
-  state?: typeof FOCUS_REPLY_STATE;
+  state?: ReplyFocusState;
   to: string;
 };
 
@@ -209,11 +211,19 @@ function paletteItems(input: {
     conversations.filter(
       (conversation) => conversation.id !== input.currentConversationId,
     );
-  const pages = [
+  const pages: {
+    icon: LucideIcon;
+    key: string;
+    label: string;
+    state?: ReplyFocusState;
+    to: string;
+  }[] = [
     {
       icon: SquarePen,
       key: "new-conversation",
       label: "New conversation",
+      // The reader chose to type a new request.
+      state: COMPOSE_REPLY_STATE,
       to: NEW_CONVERSATION_PATH,
     },
     ...input.navItems.map((item) => ({
@@ -229,6 +239,7 @@ function paletteItems(input: {
     id: `page-${page.key}`,
     label: page.label,
     score: 0,
+    state: page.state,
     to: page.to,
   });
 

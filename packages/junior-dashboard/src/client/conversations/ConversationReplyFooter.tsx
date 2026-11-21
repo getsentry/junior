@@ -46,6 +46,8 @@ import { getDashboardAgentName } from "../agentName";
 
 /** Ask the reply box for focus once per navigation `key`. */
 export type ReplyFocusRequest = {
+  /** The reader asked to type, so focus opens the keyboard on touch too. */
+  compose?: boolean | undefined;
   /** Draft id of the composer the reader typed in before. Its text moves here. */
   draftFrom?: string;
   key: string;
@@ -281,6 +283,7 @@ function ReplyFooter(props: {
   const { onFocusRequestDone } = props;
   const focusKey = props.focusRequest?.key;
   const draftFrom = props.focusRequest?.draftFrom;
+  const compose = props.focusRequest?.compose === true;
   const focusQuestionId = props.focusRequest?.questionId;
   const questionShown = questions.length > 0;
   // A request for one question waits until a later page brings it in.
@@ -296,13 +299,14 @@ function ReplyFooter(props: {
     // even on a touch screen where the keyboard is already open.
     const text = draftFrom ? takeStoredDraftText(draftFrom) : "";
     if (text) composerRef.current?.restoreMessage({ text });
-    else if (draftFrom) composerRef.current?.focus();
+    else if (draftFrom || compose) composerRef.current?.focus();
     else if (!touchKeyboardMatches()) {
       if (focusQuestionId) questionAnswersRef.current?.show(focusQuestionId);
       if (questionShown) questionRef.current?.focus();
       else composerRef.current?.focus();
     }
   }, [
+    compose,
     draftFrom,
     focusKey,
     focusQuestionId,
