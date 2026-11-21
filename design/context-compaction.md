@@ -72,6 +72,11 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 - A slot that the timer floor covers warms, so the timer's Turn reads the
   cache. With too few gaps, the warmup rule does not warm, so a return
   writes P either way, and compaction wins.
+- An idle period whose request snapshot is too large to store gets no
+  warmups. At or above the background compaction mark, it still gets its
+  first warmup slot, because compaction on idle needs no snapshot. That
+  slot can only compact or stop, and it sends no warmup. Then the idle
+  period stops.
 - After compaction on idle, Junior sends no warmups in that idle period.
   The compacted prefix is not in the cache, so its warmup would be a cache
   write. A return writes it once either way, so no return chance pays for
@@ -80,10 +85,3 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   Run holds the Conversation, Junior warms instead.
 - Compaction on idle runs only while cache warming is on.
   `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns off only compaction on idle.
-
-## Gaps
-
-- An idle period whose request snapshot is too large to store gets no
-  warmups, so it does not compact on idle either. This breaks "at or above
-  the background compaction mark, an idle Conversation compacts instead of
-  warming".

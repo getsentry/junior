@@ -422,6 +422,8 @@ likely to cost less than that write.
   turn reads a much smaller prefix, but it gets a summary in place of
   history that it would have kept in that turn, which can make an answer
   worse. When no summary is ready, or a turn runs, Junior warms as usual.
+  A request that is too large to store for warmups gets no warmups. It
+  still gets one check for a ready summary, which swaps it in or stops.
   `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns this off. The default is
   `true`.
 - While warming is on, Junior sends model requests with the short cache
