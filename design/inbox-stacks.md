@@ -39,11 +39,12 @@ can act on it.
   GitHub". A row with no main step, such as a question, shows Expand. A
   touch screen has no hover, so there a row shows its actions only once it
   is open. Rows do not repeat them.
-- On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
-  count once, right-most. The buttons do not repeat the count. Their names
-  say what they cover, such as "Snooze 3 items in this stack". Snooze
-  covers every row. Dismiss covers the open asks that the viewer can act
-  on. Dismiss is the main action, so it comes last.
+- On a stack: Dismiss and Snooze, as quiet buttons in the order of a
+  row's actions, and the stack's item count once, right-most. The buttons
+  do not repeat the count. Their names say what they cover, such as
+  "Snooze 3 items in this stack". Snooze covers every row. Dismiss covers
+  the open asks that the viewer can act on.
+- On a Conversation row, on hover: Archive, Pin, then Open, last.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
 ## Rules

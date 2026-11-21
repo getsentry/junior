@@ -298,7 +298,23 @@ function ConversationInboxRow(
   // meta's cell, so they never cover the title or summary.
   const hoverActions = props.quickActions ?? (
     <>
-      <RowOpenLink {...rowOpenTarget(props)} />
+      {/* Archive, Pin, then Open last, in the order of an item row's
+          actions. */}
+      {participant ? (
+        <RowActionButton
+          disabled={actions.pending.archive}
+          icon={
+            actions.archived ? (
+              <ArchiveRestore aria-hidden="true" size={14} />
+            ) : (
+              <Archive aria-hidden="true" size={14} />
+            )
+          }
+          label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
+          onClick={actions.toggleArchive}
+          tooltip={actions.archived ? "Restore" : "Archive"}
+        />
+      ) : null}
       {participant && !actions.archived ? (
         <RowActionButton
           disabled={actions.pending.pin}
@@ -315,21 +331,7 @@ function ConversationInboxRow(
           tooltip={actions.pinned ? "Unpin" : "Pin"}
         />
       ) : null}
-      {participant ? (
-        <RowActionButton
-          disabled={actions.pending.archive}
-          icon={
-            actions.archived ? (
-              <ArchiveRestore aria-hidden="true" size={14} />
-            ) : (
-              <Archive aria-hidden="true" size={14} />
-            )
-          }
-          label={`${actions.archived ? "Restore" : "Archive"} ${actions.title}`}
-          onClick={actions.toggleArchive}
-          tooltip={actions.archived ? "Restore" : "Archive"}
-        />
-      ) : null}
+      <RowOpenLink {...rowOpenTarget(props)} />
     </>
   );
   return (

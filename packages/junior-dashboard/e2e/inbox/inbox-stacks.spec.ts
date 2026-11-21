@@ -366,6 +366,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       stackOf(page).getByText("3 items", { exact: true }),
     ).toHaveCount(1);
+    // Its buttons come in the order of a row's actions: Dismiss, then
+    // Snooze.
+    expect(
+      await stackOf(page)
+        .locator("[data-inbox-stack-head] button")
+        .evaluateAll((nodes) =>
+          nodes.map((node) => node.getAttribute("aria-label")),
+        ),
+    ).toEqual([
+      "Dismiss 3 items in this stack",
+      "Snooze 3 items in this stack",
+    ]);
     await rowOf(page, childReview).locator("[data-inbox-head]").click();
     await expect(rowOf(page, childReview)).toHaveAttribute(
       "data-expanded",
