@@ -1,5 +1,5 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, asc, desc, eq, gte, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, desc, eq, gte, isNull, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
@@ -44,6 +44,12 @@ import type {
 
 const RECENT_LIMIT = 25;
 const ACTIVITY_DAYS = 90;
+/**
+ * Location id for every public Conversation with a `local` destination. Each
+ * such Conversation has its own destination row, so they report as one
+ * Dashboard location instead of one row per Conversation.
+ */
+const DASHBOARD_LOCATION_ID = "dashboard";
 const treeConversation = alias(
   juniorConversations,
   "location_tree_conversation",
@@ -116,25 +122,19 @@ function emptyActor(actor: ActorIdentity): LocationActorSummaryReport {
   };
 }
 
-/**
- * Match top-level Conversations outside dashboard and CLI destinations. A
- * `local` destination is Junior's own record, not an outside Location, so the
- * Locations report leaves it out.
- */
 function topLevelWhere() {
-  return and(
-    isNull(juniorConversations.parentConversationId),
-    or(
-      isNull(juniorDestinations.provider),
-      ne(juniorDestinations.provider, "local"),
-    ),
-  );
+  return isNull(juniorConversations.parentConversationId);
 }
 
-function publicLocationWhere(destinationId: string) {
+function publicLocationWhere(locationId: string) {
   return and(
     topLevelWhere(),
-    eq(juniorDestinations.id, destinationId),
+    locationId === DASHBOARD_LOCATION_ID
+      ? eq(juniorDestinations.provider, "local")
+      : and(
+          eq(juniorDestinations.id, locationId),
+          ne(juniorDestinations.provider, "local"),
+        ),
     eq(juniorDestinations.visibility, "public"),
   );
 }
@@ -187,22 +187,50 @@ function locationFromAggregate(
   ) {
     return undefined;
   }
+  const dashboard = row.destinationProvider === "local";
   const location: LocationSummaryReport = {
     ...emptyMetrics(),
     firstSeenAt: row.firstSeenAt.toISOString(),
-    id: row.destinationId,
+    id: dashboard ? DASHBOARD_LOCATION_ID : row.destinationId,
     kind: row.destinationKind,
-    label: publicLabel({
-      displayName: row.destinationDisplayName,
-      providerDestinationId: row.destinationProviderId,
-    }),
+    label: dashboard
+      ? "Dashboard"
+      : publicLabel({
+          displayName: row.destinationDisplayName,
+          providerDestinationId: row.destinationProviderId,
+        }),
     lastSeenAt: row.lastSeenAt.toISOString(),
     provider: row.destinationProvider,
-    providerDestinationId: row.destinationProviderId,
+    providerDestinationId: dashboard
+      ? DASHBOARD_LOCATION_ID
+      : row.destinationProviderId,
     visibility: "public",
   };
   addMetrics(location, row);
   return location;
+}
+
+/** Add one location, merging it into an earlier one with the same id. */
+function mergeLocation(
+  locations: Map<string, LocationSummaryReport>,
+  location: LocationSummaryReport,
+): void {
+  const existing = locations.get(location.id);
+  if (!existing) {
+    locations.set(location.id, location);
+    return;
+  }
+  addMetrics(existing, {
+    ...location,
+    costUsd: location.costUsd ?? null,
+    tokens: location.tokens ?? null,
+  });
+  if (location.firstSeenAt < existing.firstSeenAt) {
+    existing.firstSeenAt = location.firstSeenAt;
+  }
+  if (location.lastSeenAt > existing.lastSeenAt) {
+    existing.lastSeenAt = location.lastSeenAt;
+  }
 }
 
 async function directoryRows(db: JuniorDatabase) {
@@ -366,7 +394,7 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
     directoryRows(getDb()),
     directoryActivityRows(getDb(), start, hourWindow.start),
   ]);
-  const locations: LocationSummaryReport[] = [];
+  const locations = new Map<string, LocationSummaryReport>();
   const privateActivity = {
     ...emptyMetrics(),
     label: "Private activity",
@@ -374,7 +402,7 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
 
   for (const row of rows) {
     const location = locationFromAggregate(row);
-    if (location) locations.push(location);
+    if (location) mergeLocation(locations, location);
     else addMetrics(privateActivity, row);
   }
 
@@ -383,7 +411,7 @@ export async function readLocationDirectoryFromSql(): Promise<LocationDirectoryR
     activityHours: directoryActivityHours(activity.hourRows, nowMs),
     activitySixHours: directoryActivitySixHours(activity.hourRows, nowMs),
     generatedAt: new Date(nowMs).toISOString(),
-    locations: locations.sort(
+    locations: [...locations.values()].sort(
       (left, right) =>
         Date.parse(right.lastSeenAt) - Date.parse(left.lastSeenAt) ||
         right.conversations - left.conversations ||
@@ -566,8 +594,12 @@ export async function readLocationDetailFromSql(
       recentLocationRows(getDb(), locationId),
     ]);
 
-  const locationRow = locationRows[0];
-  const location = locationRow ? locationFromAggregate(locationRow) : undefined;
+  const locations = new Map<string, LocationSummaryReport>();
+  for (const row of locationRows) {
+    const item = locationFromAggregate(row);
+    if (item) mergeLocation(locations, item);
+  }
+  const location = locations.get(locationId);
   if (!location) return undefined;
 
   const days = new Map<string, DailyConversationActivity>();
