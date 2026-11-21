@@ -31,12 +31,25 @@ how the dashboard groups and acts on its rows.
 
 - Slack: the item card in each linked thread, and a thread reply.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
-  and the question above the message box. Done on a "To do for you" row.
+  the question card in the Conversation transcript, and the questions pill.
+  Done on a "To do for you" row.
 - Settings: "Show the Inbox count in the tab".
 - MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
 ## Rules
 
+- A question never blocks its Conversation. It shows as a card in the
+  transcript where Junior asked it. Nothing docks over the message box, and
+  nothing takes the focus. A typed message still answers it.
+- While a waiting card is not in full view, a "N questions waiting" pill
+  shows above the message box and goes to the oldest such card.
+- A question card has one layout in the Inbox and the transcript: the
+  question under its "Question" label, then the last message of the Turn
+  that asked it (about 12 lines, then Show more), then the form. The card
+  has no subject preview: the row head and Related link the subject. In
+  the transcript, a waiting card spans the transcript width.
+- A click on a choice picks it. Send answers, with the note line. An
+  action that takes no words, such as a plugin's Resume, is one click.
 - The first answer or dismiss closes the item for everyone. A dismiss is
   not a decision, so it does not continue the work.
 - Every item has at least one assignee: a User, or Everyone. When no

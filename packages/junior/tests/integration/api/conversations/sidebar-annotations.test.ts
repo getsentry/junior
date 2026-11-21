@@ -141,4 +141,64 @@ describe("conversation list sidebar annotations", () => {
       await fixture.close();
     }
   });
+
+  test("search matches Annotations in the tree that the reader can see", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    const store = createSqlStore(fixture.sql);
+    const publicId = "slack:C123:roach-public";
+    const childId = "agent:roach-child";
+    const privateId = "slack:D123:roach-private";
+
+    try {
+      await migrateSchema(fixture.sql);
+      for (const [conversationId, visibility] of [
+        [publicId, "public"],
+        [privateId, "private"],
+      ] as const) {
+        await store.recordActivity({
+          conversationId,
+          destination: {
+            channelId: visibility === "public" ? "C123" : "D123",
+            platform: "slack",
+            teamId: "T123",
+          },
+          nowMs: 1_000,
+          source: "slack",
+          title: "Tidy up the release",
+          visibility,
+        });
+      }
+      // A child agent opens the pull request, so its root must match.
+      await store.createChild({
+        childConversationId: childId,
+        kind: "task",
+        parentConversationId: publicId,
+      });
+      for (const conversationId of [childId, privateId]) {
+        await createPluginAnnotations({
+          conversationId,
+          db: fixture.sql.db(),
+          plugin: "github",
+        }).upsert({
+          kind: "object",
+          objectType: "code_change",
+          key: "getsentry/roach#12",
+          label: "getsentry/roach#12",
+          title: "Retry flaky uploads",
+          status: "open",
+          url: "https://github.com/getsentry/roach/pull/12",
+        });
+      }
+
+      const ids = async (q: string) =>
+        (await readConversationFeedFromSql({ q })).conversations.map(
+          (conversation) => conversation.conversationId,
+        );
+      await expect(ids("roach")).resolves.toEqual([publicId]);
+      await expect(ids("FLAKY uploads")).resolves.toEqual([publicId]);
+      await expect(ids("sentry/relay")).resolves.toEqual([]);
+    } finally {
+      await fixture.close();
+    }
+  });
 });

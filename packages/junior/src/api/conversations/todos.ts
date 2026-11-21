@@ -32,7 +32,9 @@ function reportTodo(
               : assignee,
           ...(todo.changedBy
             ? { changedBy: todo.changedBy.name ?? todo.changedBy.email }
-            : undefined),
+            : todo.changedByAgent?.name
+              ? { changedBy: todo.changedByAgent.name }
+              : undefined),
         }
       : {
           assignee:

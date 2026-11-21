@@ -9,6 +9,7 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
+import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 import type { InboxItemRequest } from "@/chat/inbox-items/evidence";
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import { juniorAutomations } from "./automations";
@@ -54,6 +55,10 @@ export const juniorInboxItems = pgTable(
     subjectId: text("subject_id"),
     subjectTitle: text("subject_title"),
     subjectUrl: text("subject_url"),
+    /** The parsed subject title of a code change (`InboxItemSubjectTitleParts`). */
+    subjectTitleParts: jsonb(
+      "subject_title_parts",
+    ).$type<InboxItemSubjectTitleParts>(),
     // The default filled the rows from before owners had kinds.
     ownerKind: text("owner_kind")
       .$type<InboxItemOwnerKind>()

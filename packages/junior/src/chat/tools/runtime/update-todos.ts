@@ -5,6 +5,8 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import { renderTodoAssignee } from "@/chat/todos/prompt";
 import {
   changeTodos,
+  closeTodosForChild,
+  listParentTodoIds,
   listTodos,
   type StoredTodoAssignee,
 } from "@/chat/todos/store";
@@ -19,6 +21,7 @@ import {
   isOpenTodoStatus,
   TODO_STATUSES,
   SELF_TODO_ASSIGNEE,
+  type ClosedTodoStatus,
   type Todo,
 } from "@/chat/todos/types";
 import {
@@ -98,7 +101,9 @@ const updateTodosInputSchema = z
           assignee: assigneeSchema.nullable().optional(),
         })
         .strict(),
-    ).describe("Changes to existing To-dos. Null or omitted fields stay."),
+    ).describe(
+      "Changes to existing To-dos. Null or omitted fields stay. A child agent can also set its parent's To-dos with assignee self in listAgents to done or dropped, and change nothing else on them.",
+    ),
     remove: changesSchema(todoIdSchema).describe(
       "Ids of To-dos added by mistake. Close finished or dropped work with a status instead.",
     ),
@@ -182,6 +187,46 @@ async function resolveTodoAssignee(
   );
 }
 
+type TodoUpdateInput = NonNullable<
+  z.output<typeof updateTodosInputSchema>["update"]
+>[number];
+
+function closedStatus(update: TodoUpdateInput): ClosedTodoStatus {
+  const { assignee, id, notes, status, title } = update;
+  if (
+    (status !== "done" && status !== "dropped") ||
+    title ||
+    notes !== undefined ||
+    assignee
+  ) {
+    throw new ToolInputError(
+      `${id} is a To-do of your parent. Set only its status, to done or dropped.`,
+    );
+  }
+  return status;
+}
+
+/**
+ * Split updates into the parent's To-dos assigned to this child agent and
+ * the conversation's own. The parent's go to `closeTodosForChild`, which
+ * checks the assignee again under the parent's lock.
+ */
+async function splitParentUpdates(
+  conversationId: string,
+  update: TodoUpdateInput[],
+) {
+  const parent = new Map<number, ClosedTodoStatus>();
+  if (update.length === 0) return { own: update, parent };
+  const parentIds = await listParentTodoIds(getSqlExecutor(), conversationId);
+  const own: TodoUpdateInput[] = [];
+  for (const entry of update) {
+    const id = parseTodoRef(entry.id);
+    if (parentIds.has(id)) parent.set(id, closedStatus(entry));
+    else own.push(entry);
+  }
+  return { own, parent };
+}
+
 /** Create the tool that changes the durable To-dos of one conversation. */
 export function createUpdateTodosTool(
   context: Pick<ToolRuntimeContext, "conversationId">,
@@ -193,10 +238,19 @@ export function createUpdateTodosTool(
     ...updateTodosToolDefinition,
     execute: async (input) => {
       const add = input.add ?? [];
-      const update = input.update ?? [];
       const remove = (input.remove ?? []).map(parseTodoRef);
       const executor = getSqlExecutor();
-      if (add.length + update.length + remove.length === 0) {
+      // Split before any write, so a bad change to a parent's To-do fails
+      // the whole call.
+      const split = await splitParentUpdates(
+        context.conversationId,
+        input.update ?? [],
+      );
+      const update = split.own;
+      if (
+        add.length + update.length + remove.length + split.parent.size ===
+        0
+      ) {
         const todos = await listTodos(executor, context.conversationId);
         return {
           todos: todos
@@ -204,46 +258,69 @@ export function createUpdateTodosTool(
             .map(outputTodoWithAssignee),
         };
       }
-      const { todos, replacedPersonChanges } = await changeTodos(executor, {
-        conversationId: context.conversationId,
-        nowMs: Date.now(),
-        change: {
-          add: await Promise.all(
-            // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
-            add.map(async (todo) => ({
-              title: todo.title,
-              ...(todo.notes ? { notes: todo.notes } : undefined),
-              status: todo.status ?? "open",
-              assignee: await assignee(todo.assignee ?? SELF_TODO_ASSIGNEE),
-            })),
-          ),
-          update: await Promise.all(
-            // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
-            update.map(async (todo) => ({
-              id: parseTodoRef(todo.id),
-              ...(todo.title ? { title: todo.title } : undefined),
-              ...(todo.notes !== undefined ? { notes: todo.notes } : undefined),
-              ...(todo.status ? { status: todo.status } : undefined),
-              ...(todo.assignee
-                ? { assignee: await assignee(todo.assignee) }
-                : undefined),
-            })),
-          ),
-          remove,
-        },
-      });
+      const own =
+        add.length + update.length + remove.length > 0
+          ? await changeTodos(executor, {
+              conversationId: context.conversationId,
+              nowMs: Date.now(),
+              change: {
+                add: await Promise.all(
+                  // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
+                  add.map(async (todo) => ({
+                    title: todo.title,
+                    ...(todo.notes ? { notes: todo.notes } : undefined),
+                    status: todo.status ?? "open",
+                    assignee: await assignee(
+                      todo.assignee ?? SELF_TODO_ASSIGNEE,
+                    ),
+                  })),
+                ),
+                update: await Promise.all(
+                  // oxlint-disable-next-line junior/bounded-fan-out -- The tool schema allows at most 50 To-dos.
+                  update.map(async (todo) => ({
+                    id: parseTodoRef(todo.id),
+                    ...(todo.title ? { title: todo.title } : undefined),
+                    ...(todo.notes !== undefined
+                      ? { notes: todo.notes }
+                      : undefined),
+                    ...(todo.status ? { status: todo.status } : undefined),
+                    ...(todo.assignee
+                      ? { assignee: await assignee(todo.assignee) }
+                      : undefined),
+                  })),
+                ),
+                remove,
+              },
+            })
+          : { todos: [], replacedPersonChanges: [] };
+      const closedForParent =
+        split.parent.size > 0
+          ? await closeTodosForChild(executor, {
+              childConversationId: context.conversationId,
+              nowMs: Date.now(),
+              statuses: split.parent,
+            })
+          : [];
       return {
-        todos: todos.map(outputTodoWithAssignee),
+        todos: [
+          ...own.todos.map(outputTodoWithAssignee),
+          // The parent assigned these to this child, so they show assignee self.
+          ...closedForParent.map((todo) =>
+            outputTodo(todo, SELF_TODO_ASSIGNEE),
+          ),
+        ],
         ...(remove.length > 0
           ? { removed_ids: remove.map(todoRef) }
           : undefined),
-        ...(replacedPersonChanges.length > 0
+        ...(own.replacedPersonChanges.length > 0
           ? {
-              replaced_person_changes: replacedPersonChanges.map((todo) => ({
-                id: todoRef(todo.id),
-                status: todo.status,
-                changed_by: todo.changedBy!.email,
-              })),
+              replaced_person_changes: own.replacedPersonChanges.map(
+                (todo) => ({
+                  id: todoRef(todo.id),
+                  status: todo.status,
+                  changed_by: todo.changedBy!.email,
+                }),
+              ),
             }
           : undefined),
       };

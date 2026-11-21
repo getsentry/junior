@@ -156,6 +156,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # baseline-growth:check compares baselines to the merge base with origin/main.
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Type-aware lint reads the declarations that workspace packages build.

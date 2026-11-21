@@ -195,6 +195,8 @@ export interface GitHubState {
     user: { login: string };
   }>;
   state: "closed" | "open";
+  /** The pull request title. */
+  title?: string;
 }
 
 // Each pull request read takes the next merge state, after any hold.
@@ -258,10 +260,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
             (login) => ({ login }),
           ),
           state: github.state,
-          title: "Add the Inbox notice",
+          title: github.title ?? "Add the Inbox notice",
           user: { id: BOT_USER_ID },
         });
       },
+    ),
+    // The repository has no changelog categories, so defaults apply.
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/contents/.github/release.yml",
+      () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
     ),
     // The merge webhook also classifies the commits.
     http.get(
@@ -333,7 +340,7 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                     })),
                   ],
                 },
-                title: "Add the Inbox notice",
+                title: github.title ?? "Add the Inbox notice",
                 url: PULL_URL,
               },
             },

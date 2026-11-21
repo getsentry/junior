@@ -1,10 +1,12 @@
 /**
  * Durable To-dos of a Conversation. The list's own agent changes them with
- * `updateTodos`; a person can change a status in the dashboard. Each
+ * `updateTodos`; a person can change a status in the dashboard. A child
+ * agent can close the To-dos assigned to it, and core closes the rest on the
+ * child's result. Each
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
-import { and, asc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
@@ -17,7 +19,12 @@ import { touchConversationDetail } from "@/chat/conversations/sql/detail-version
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { syncTodoInboxItems } from "./inbox-items";
 import { todoRef } from "./tool-output";
-import type { Todo, TodoStatus } from "./types";
+import {
+  isOpenTodoStatus,
+  type ClosedTodoStatus,
+  type Todo,
+  type TodoStatus,
+} from "./types";
 
 const TODOS_LOCK_PREFIX = "junior:todos";
 
@@ -161,6 +168,7 @@ export async function changeTodos(
           ...(update.status ? { status: update.status } : undefined),
           ...(update.assignee ? assigneeColumns(update.assignee) : undefined),
           changedByUserId: null,
+          changedByConversationId: null,
           updatedAt: now,
           version: nextVersion(),
         })
@@ -226,6 +234,7 @@ export async function setTodoStatusByUser(
       .set({
         status: args.status,
         changedByUserId: args.userId,
+        changedByConversationId: null,
         updatedAt: new Date(args.nowMs),
         version: nextVersion(),
       })
@@ -247,6 +256,167 @@ export async function setTodoStatusByUser(
   });
 }
 
+/**
+ * Close To-dos of one Conversation that are assigned to one of its child
+ * agents, for that child. Each change names the child, so the parent sees it
+ * in its next `<todo-delta>`. Returns the changed To-dos.
+ */
+async function closeChildTodos(
+  db: JuniorDatabase,
+  args: {
+    childConversationId: string;
+    conversationId: string;
+    nowMs: number;
+    statuses: ReadonlyMap<number, ClosedTodoStatus>;
+  },
+): Promise<Todo[]> {
+  const ids = [...args.statuses.keys()];
+  if (ids.length === 0) return [];
+  /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
+  for (const [id, status] of args.statuses) {
+    await db
+      .update(juniorTodos)
+      .set({
+        status,
+        changedByUserId: null,
+        changedByConversationId: args.childConversationId,
+        updatedAt: new Date(args.nowMs),
+        version: nextVersion(),
+      })
+      .where(
+        and(
+          eq(juniorTodos.conversationId, args.conversationId),
+          eq(juniorTodos.id, id),
+        ),
+      );
+  }
+  /* oxlint-enable no-await-in-loop */
+  await touchConversationDetail(db, [args.conversationId]);
+  return (await readTodos(db, args.conversationId)).filter((todo) =>
+    ids.includes(todo.id),
+  );
+}
+
+function selectChildTodos(
+  db: JuniorDatabase,
+  conversationId: string,
+  childConversationId: string,
+) {
+  return db
+    .select({ id: juniorTodos.id, status: juniorTodos.status })
+    .from(juniorTodos)
+    .where(
+      and(
+        eq(juniorTodos.conversationId, conversationId),
+        eq(juniorTodos.assigneeConversationId, childConversationId),
+      ),
+    );
+}
+
+/**
+ * List the ids of To-dos assigned to one Conversation in other lists. Only a
+ * parent can assign a To-do to a Conversation, so they are its parent's.
+ */
+export async function listParentTodoIds(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<Set<number>> {
+  const rows = await executor
+    .db()
+    .select({ id: juniorTodos.id })
+    .from(juniorTodos)
+    .where(
+      and(
+        eq(juniorTodos.assigneeConversationId, conversationId),
+        ne(juniorTodos.conversationId, conversationId),
+      ),
+    );
+  return new Set(rows.map((row) => row.id));
+}
+
+/**
+ * Close To-dos of the parent that are assigned to the calling child agent.
+ * Throws `ToolInputError` for an id that the parent did not assign to it.
+ */
+export async function closeTodosForChild(
+  executor: JuniorSqlDatabase,
+  args: {
+    childConversationId: string;
+    nowMs: number;
+    statuses: ReadonlyMap<number, ClosedTodoStatus>;
+  },
+): Promise<Todo[]> {
+  const ids = [...args.statuses.keys()];
+  const assigned = and(
+    inArray(juniorTodos.id, ids),
+    eq(juniorTodos.assigneeConversationId, args.childConversationId),
+    ne(juniorTodos.conversationId, args.childConversationId),
+  );
+  const [owner] = await executor
+    .db()
+    .selectDistinct({ conversationId: juniorTodos.conversationId })
+    .from(juniorTodos)
+    .where(assigned);
+  if (!owner) return rejectUnassigned(ids);
+  return await withTodosLock(executor, owner.conversationId, async (db) => {
+    const rows = await db
+      .select({ id: juniorTodos.id })
+      .from(juniorTodos)
+      .where(
+        and(eq(juniorTodos.conversationId, owner.conversationId), assigned),
+      );
+    const found = new Set(rows.map((row) => row.id));
+    const others = ids.filter((id) => !found.has(id));
+    if (others.length > 0) return rejectUnassigned(others);
+    return await closeChildTodos(db, {
+      childConversationId: args.childConversationId,
+      conversationId: owner.conversationId,
+      nowMs: args.nowMs,
+      statuses: args.statuses,
+    });
+  });
+}
+
+function rejectUnassigned(ids: readonly number[]): never {
+  throw new ToolInputError(
+    `Your parent did not assign ${ids.map(todoRef).join(", ")} to you. You can only set your own To-dos of the parent to done or dropped.`,
+  );
+}
+
+/**
+ * Close every open To-do of the parent that is assigned to one child agent,
+ * when the child's result reaches the parent. Returns the closed To-dos.
+ */
+export async function closeOpenTodosOfChild(
+  executor: JuniorSqlDatabase,
+  args: {
+    childConversationId: string;
+    nowMs: number;
+    parentConversationId: string;
+    status: ClosedTodoStatus;
+  },
+): Promise<Todo[]> {
+  return await withTodosLock(
+    executor,
+    args.parentConversationId,
+    async (db) => {
+      const open = (
+        await selectChildTodos(
+          db,
+          args.parentConversationId,
+          args.childConversationId,
+        )
+      ).filter((row) => isOpenTodoStatus(row.status));
+      return await closeChildTodos(db, {
+        childConversationId: args.childConversationId,
+        conversationId: args.parentConversationId,
+        nowMs: args.nowMs,
+        statuses: new Map(open.map((row) => [row.id, args.status])),
+      });
+    },
+  );
+}
+
 /** List every To-do of one Conversation, oldest first, with assignees resolved. */
 export async function listTodos(
   executor: JuniorSqlDatabase,
@@ -261,6 +431,7 @@ async function readTodos(
 ): Promise<Todo[]> {
   const assignedUser = alias(juniorUsers, "assigned_user");
   const changedByUser = alias(juniorUsers, "changed_by_user");
+  const changedByAgent = alias(juniorAgentBindings, "changed_by_agent");
   const rows = await db
     .select({
       todo: juniorTodos,
@@ -269,6 +440,7 @@ async function readTodos(
       assignedUserName: assignedUser.displayName,
       changedByEmail: changedByUser.primaryEmail,
       changedByName: changedByUser.displayName,
+      changedByAgentName: changedByAgent.name,
     })
     .from(juniorTodos)
     .leftJoin(
@@ -283,6 +455,16 @@ async function readTodos(
     )
     .leftJoin(assignedUser, eq(assignedUser.id, juniorTodos.assigneeUserId))
     .leftJoin(changedByUser, eq(changedByUser.id, juniorTodos.changedByUserId))
+    .leftJoin(
+      changedByAgent,
+      and(
+        eq(changedByAgent.parentConversationId, conversationId),
+        eq(
+          changedByAgent.childConversationId,
+          juniorTodos.changedByConversationId,
+        ),
+      ),
+    )
     .where(eq(juniorTodos.conversationId, conversationId))
     .orderBy(asc(juniorTodos.id));
   return rows.map(
@@ -293,6 +475,7 @@ async function readTodos(
       assignedUserName,
       changedByEmail,
       changedByName,
+      changedByAgentName,
     }) => ({
       id: todo.id,
       title: todo.title,
@@ -320,6 +503,16 @@ async function readTodos(
               userId: todo.changedByUserId,
               email: changedByEmail ?? "",
               ...(changedByName ? { name: changedByName } : undefined),
+            },
+          }
+        : undefined),
+      ...(todo.changedByConversationId
+        ? {
+            changedByAgent: {
+              conversationId: todo.changedByConversationId,
+              ...(changedByAgentName
+                ? { name: changedByAgentName }
+                : undefined),
             },
           }
         : undefined),
