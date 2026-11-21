@@ -40,6 +40,31 @@ describe("userLookup without a provider", () => {
     });
   });
 
+  it("keeps an exact match when Slack name hits fill the cap", async () => {
+    await seedLinkedIdentities({
+      githubId: "12345",
+      githubHandle: "dcramer",
+      slackUserId: "U039RR91S",
+      slackHandle: "david",
+    });
+    queueSlackApiResponse("users.list", {
+      body: usersListPage({
+        members: Array.from({ length: 10 }, (_, index) => ({
+          id: `UNAME${index}`,
+          name: `dcramer${index}`,
+        })),
+      }),
+    });
+
+    const result = await executeTool(lookupTool(), { query: "dcramer" });
+
+    expect(result).toMatchObject({ count: 10, ambiguous: true });
+    expect(result.users[0]).toMatchObject({
+      id: "U039RR91S",
+      matched_providers: ["github"],
+    });
+  });
+
   it("finds a person by a Slack mention", async () => {
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({ userId: "U039RR91S", userName: "david" }),

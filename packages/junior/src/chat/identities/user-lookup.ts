@@ -348,8 +348,9 @@ async function findPluginUsers(
 }
 
 /**
- * Merge each provider's matches into one candidate per person, in provider
- * order, with the providers that matched and the person's linked accounts.
+ * Merge each provider's matches into one candidate per person, with the
+ * providers that matched and the person's linked accounts. Exact matches
+ * come before Slack name hits, so the cap never drops them.
  */
 async function lookupResult(args: {
   teamId: SlackTeamId;
@@ -360,8 +361,12 @@ async function lookupResult(args: {
   accounts: UnlinkedAccount[];
 }): Promise<UserLookupResult> {
   const byUserId = new Map<string, UserLookupMatch>();
-  for (const { provider, users } of args.matches) {
+  const exactUserIds = new Set<string>();
+  for (const { provider, search, users } of args.matches) {
     for (const user of users) {
+      // Only the Slack name search is fuzzy. An ID, handle, or email match
+      // must not lose its place to name hits.
+      if (!search) exactUserIds.add(user.id);
       const existing = byUserId.get(user.id);
       if (existing) {
         if (!existing.matched_providers.includes(provider)) {
@@ -376,7 +381,12 @@ async function lookupResult(args: {
       });
     }
   }
-  const candidates = [...byUserId.values()].slice(0, MAX_LOOKUP_USERS);
+  const candidates = [...byUserId.values()]
+    .sort(
+      (left, right) =>
+        Number(exactUserIds.has(right.id)) - Number(exactUserIds.has(left.id)),
+    )
+    .slice(0, MAX_LOOKUP_USERS);
   const linked = await linkedIdentitiesBySlackUser(
     args.teamId,
     candidates.map((user) => user.id),
