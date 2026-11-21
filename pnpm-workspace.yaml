@@ -17,6 +17,7 @@ catalog:
   "@vitest/coverage-v8": 4.1.12
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.4
+  p-limit: ^7.3.3
   tsdown: 0.23.7
   typescript: 7.0.2
   vitest: ^4.1.12

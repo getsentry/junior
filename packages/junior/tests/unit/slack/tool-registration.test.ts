@@ -107,7 +107,7 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
-  it("lists only plugins that can verify identity accounts", () => {
+  it("lists only plugins that can verify or search identity accounts", () => {
     setPlugins([
       eventPlugin(),
       defineJuniorPlugin({
@@ -120,12 +120,22 @@ describe("Slack tool registration", () => {
           resolveOAuthAccount: () => ({ id: "account-1" }),
         },
       }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "search-test",
+          displayName: "Search test",
+          description: "Searches test accounts",
+        },
+        hooks: {
+          searchUsers: () => [],
+        },
+      }),
     ]);
 
     const tools = createTools([], {}, ctx("D12345"));
     expect(tools["userLookup"]?.inputSchema).toMatchObject({
       properties: {
-        provider: { enum: ["slack", "identity-test"] },
+        provider: { enum: ["slack", "identity-test", "search-test"] },
       },
     });
   });
