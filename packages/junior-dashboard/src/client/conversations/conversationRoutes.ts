@@ -31,6 +31,11 @@ export function conversationPath(
   return search ? `${path}?${search}` : path;
 }
 
+/** The same-origin link of a Conversation, as message text holds it. */
+export function conversationUrl(conversationId: string): string {
+  return `${window.location.origin}${conversationPath(conversationId)}`;
+}
+
 /**
  * Navigation state that asks the opened Conversation to focus its reply box.
  * `draftFrom` names the draft of a composer the reader typed in before the

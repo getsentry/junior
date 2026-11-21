@@ -13,6 +13,7 @@ import {
   webActorFromUser,
 } from "@/chat/conversations/web-input";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { createWatch } from "@/chat/events/store";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { closeConversationFixture } from "../../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
@@ -30,10 +31,14 @@ function apiFor(email?: string): Hono<JuniorApiEnv> {
   return app;
 }
 
-async function readLeadId(app: Hono<JuniorApiEnv>): Promise<string> {
+async function readLead(app: Hono<JuniorApiEnv>) {
   const response = await app.request("http://localhost/api/lead");
   expect(response.status).toBe(200);
-  return leadSchema.parse(await response.json()).conversationId;
+  return leadSchema.parse(await response.json());
+}
+
+async function readLeadId(app: Hono<JuniorApiEnv>): Promise<string> {
+  return (await readLead(app)).conversationId;
 }
 
 async function postMessage(
@@ -75,6 +80,37 @@ describe("Lead API", () => {
     expect((await postMessage(bo, leadId, "lead-api-bo-message")).status).toBe(
       403,
     );
+  });
+
+  it("lists the Conversations that the Lead watches", async () => {
+    const api = apiFor("lead-api-watches@example.com");
+    const leadId = await readLeadId(api);
+    const watch = {
+      conversationId: leadId,
+      events: ["conversation.completed"],
+      expiresAtMs: Date.now() + 3_600_000,
+      intent: "Tell the person when it finishes.",
+    };
+    await createWatch({
+      ...watch,
+      identifier: "slack:C1:1.0",
+      label: "Conversation Checkout latency",
+      namespace: "junior",
+      resourceType: "conversation",
+    });
+    // A Watch on another kind of resource is not a watched Conversation.
+    await createWatch({
+      ...watch,
+      events: ["pull_request.merged"],
+      identifier: "getsentry/junior#1",
+      label: "getsentry/junior#1",
+      namespace: "github",
+      resourceType: "pull_request",
+    });
+
+    expect((await readLead(api)).watchedConversationIds).toEqual([
+      "slack:C1:1.0",
+    ]);
   });
 
   it("keeps the Lead out of the conversation lists of its person", async () => {

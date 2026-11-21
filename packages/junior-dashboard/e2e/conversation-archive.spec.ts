@@ -9,7 +9,7 @@ test("finds an old archived conversation by title and restores it", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
   const sidebarLink = page.getByRole("link", {
     name: /Archived restore target/,
   });
@@ -72,7 +72,7 @@ test("archives and restores a conversation from the sidebar", async ({
       json: { archivedAt: archived ? "2026-08-21T16:45:00.000Z" : null },
     });
   });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
   const selectedConversation = page.getByRole("link", {
     name: /Investigate checkout latency/,
   });
@@ -148,7 +148,7 @@ for (const outcome of ["success", "error"] as const) {
           : { json: { error: "Archive failed" }, status: 500 },
       );
     });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     await page.getByRole("link", { name: /Dashboard QA edge cases/ }).click();
     await expect(
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
@@ -160,7 +160,9 @@ for (const outcome of ["success", "error"] as const) {
     await page.getByRole("menuitem", { name: "Archive", exact: true }).click();
 
     // Home shows before the archive request finishes.
-    await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+    await expect(page).toHaveURL(
+      new URL("/conversations", dashboard.baseURL).href,
+    );
     const conversationLink = page.getByRole("link", {
       name: /Dashboard QA edge cases/,
     });
@@ -210,7 +212,9 @@ test("confirms a child archive and archives its children too", async ({
     applyToChildren: true,
     archived: true,
   });
-  await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+  await expect(page).toHaveURL(
+    new URL("/conversations", dashboard.baseURL).href,
+  );
 });
 
 test("shows why a child restore is refused", async ({ page, dashboard }) => {
@@ -235,7 +239,7 @@ test.describe("expires the archive undo notice", () => {
         json: { archivedAt: "2026-08-21T16:45:00.000Z" },
       });
     });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const conversationLink = page.getByRole("link", {
       name: /Dashboard QA edge cases/,
@@ -283,7 +287,7 @@ test.describe("keeps undo through a slow failed restore", () => {
       }
       await route.fulfill({ json: { archivedAt: null } });
     });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
     await page
@@ -324,7 +328,7 @@ test.describe("resets the archive undo timer when archiving another conversation
         json: { archivedAt: "2026-08-21T16:45:00.000Z" },
       });
     });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     await page.getByRole("link", { name: /Dashboard QA edge cases/ }).hover();
     await page
@@ -337,7 +341,10 @@ test.describe("resets the archive undo timer when archiving another conversation
 
     // Burn most of the first notice's timer, then archive a second conversation.
     await page.clock.fastForward(5_000);
-    await page.getByRole("link", { name: /Checkout latency triage/ }).hover();
+    await page
+      .getByRole("navigation", { name: "Your conversations" })
+      .getByRole("link", { name: /Checkout latency triage/ })
+      .hover();
     await page
       .getByRole("button", { name: "Archive Checkout latency triage" })
       .click();
@@ -376,7 +383,7 @@ test("shows archive failures after the row returns", async ({
       json: { archivedAt: "2026-08-21T16:45:00.000Z" },
     });
   });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   const conversationLink = page.getByRole("link", {
     name: /Dashboard QA edge cases/,
@@ -427,7 +434,7 @@ test("keeps undo available when another archive fails", async ({
       status: 500,
     });
   });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   const firstConversation = page.getByRole("link", {
     name: /Dashboard QA edge cases/,
@@ -441,9 +448,9 @@ test("keeps undo available when another archive fails", async ({
   });
   await expect(undo).toBeVisible();
 
-  const secondConversation = page.getByRole("link", {
-    name: /Checkout latency triage/,
-  });
+  const secondConversation = page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Checkout latency triage/ });
   await secondConversation.hover();
   await page
     .getByRole("button", { name: "Archive Checkout latency triage" })

@@ -409,6 +409,10 @@ function reportEventData(args: {
         ...(typeof data.meta?.["eventNamespace"] === "string"
           ? { eventNamespace: data.meta["eventNamespace"] }
           : undefined),
+        ...(args.canExposePayload &&
+        typeof data.meta?.["eventIdentifier"] === "string"
+          ? { eventIdentifier: data.meta["eventIdentifier"] }
+          : undefined),
         ...(typeof data.meta?.["explicitMention"] === "boolean"
           ? { explicitMention: data.meta["explicitMention"] }
           : undefined),

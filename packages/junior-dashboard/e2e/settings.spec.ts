@@ -313,7 +313,7 @@ test("turns on composer autocorrect for this browser", async ({
   dashboard,
 }) => {
   await page.goto(dashboard.baseURL);
-  const composer = page.locator('[aria-placeholder="Message Junior…"]');
+  const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
   await expect(composer).toHaveAttribute("spellcheck", "false");

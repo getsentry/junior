@@ -30,7 +30,7 @@ import { formatAttachmentBytes } from "./TranscriptAttachment";
 import { mentionName } from "./composerMentionToken";
 import { rankPeople } from "./composerPeopleSearch";
 import { linkLabel, type ComposerReference } from "./composerReferences";
-import { conversationPath } from "./conversationRoutes";
+import { conversationUrl } from "./conversationRoutes";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
@@ -273,11 +273,6 @@ function useFileSource(
       };
     });
   return { pending: false, rows };
-}
-
-/** The same-origin link of a Conversation, as message text holds it. */
-function conversationUrl(conversationId: string): string {
-  return `${window.location.origin}${conversationPath(conversationId)}`;
 }
 
 /** True from the first render where `value` is true. */

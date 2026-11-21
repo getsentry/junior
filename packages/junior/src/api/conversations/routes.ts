@@ -7,9 +7,11 @@ import { CONTENT_VERSION_HEADER } from "../schema/common";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
-  acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
+} from "../schema/conversation-fork";
+import {
+  acceptedConversationMessageSchema,
   conversationAttachmentParamsSchema,
   conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,

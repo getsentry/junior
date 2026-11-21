@@ -35,11 +35,8 @@ export type TranscriptViewToolCallPart = {
   output?: unknown;
   resultTimestamp?: number | undefined;
   startedTimestamp?: number | undefined;
-  /**
-   * The Conversation that this `startConversation` call started. `watched`
-   * is set when a later `watchEvents` call watches it.
-   */
-  startedConversation?: { id: string; watched?: true };
+  /** The Conversation that this `startConversation` call started. */
+  startedConversationId?: string;
   status: "completed" | "error" | "running";
   type: "tool_call";
 };
@@ -129,6 +126,8 @@ export type TranscriptViewMessage = {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
+  /** Resource identifier of the first Event, such as a Conversation id. */
+  eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;

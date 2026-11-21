@@ -192,7 +192,7 @@ test.describe("on a touch screen", () => {
     await page.setViewportSize(mobile);
     await routeSkills(page);
     await page.goto(dashboard.baseURL);
-    const composer = page.getByLabel("Message your Lead");
+    const composer = page.getByLabel("Continue this conversation");
     await expect(composer).toHaveAttribute("contenteditable", "true");
     await composer.fill("$");
     const skills = page.getByRole("grid", { name: "Skills" });

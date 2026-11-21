@@ -155,7 +155,9 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
     .getByRole("alertdialog", { name: "Also archive its child conversations?" })
     .getByRole("button", { name: "Archive" })
     .click();
-  await expect(page).toHaveURL(new URL("/", dashboard.baseURL).href);
+  await expect(page).toHaveURL(
+    new URL("/conversations", dashboard.baseURL).href,
+  );
   await expect
     .poll(() => archiveCalls)
     .toEqual([

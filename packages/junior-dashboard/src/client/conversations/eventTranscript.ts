@@ -4,8 +4,6 @@ import type {
   ConversationReportEvent,
 } from "@sentry/junior/api/schema";
 
-import * as z from "zod";
-
 import type {
   ConversationTranscript,
   TranscriptViewMessage,
@@ -30,13 +28,6 @@ type ToolCall =
       >["parts"][number],
       { type: "tool_call" }
     >;
-
-/** A `watchEvents` input that watches one Junior Conversation. */
-const conversationWatchInputSchema = z.object({
-  identifier: z.string().min(1),
-  namespace: z.literal("junior"),
-  resource_type: z.literal("conversation"),
-});
 
 function eventTimestamp(event: ConversationReportEvent): number {
   return Date.parse(event.createdAt);
@@ -165,29 +156,14 @@ export function transcriptMessagesFromEvents(
     Extract<TranscriptViewPart, { type: "tool_call" }>
   >();
   const standaloneToolMessages = new Map<string, TranscriptViewMessage>();
-  const startedConversations = new Map<
-    string,
-    NonNullable<TranscriptViewToolCallPart["startedConversation"]>
-  >();
-  // A started Conversation card shows whether a later completed watchEvents
-  // call watches it.
-  const noteConversationLinks = (
+  // A started Conversation shows as a card that links it.
+  const noteStartedConversation = (
     part: TranscriptViewToolCallPart,
     call: ToolCall,
   ): void => {
     if ("startedConversationId" in call && call.startedConversationId) {
-      part.startedConversation ??= { id: call.startedConversationId };
-      startedConversations.set(
-        call.startedConversationId,
-        part.startedConversation,
-      );
+      part.startedConversationId = call.startedConversationId;
     }
-    if (part.name !== "watchEvents" || part.status !== "completed") return;
-    const watch = conversationWatchInputSchema.safeParse(part.input);
-    const started = watch.success
-      ? startedConversations.get(watch.data.identifier)
-      : undefined;
-    if (started) started.watched = true;
   };
   const subagents = new Map<
     string,
@@ -213,7 +189,7 @@ export function transcriptMessagesFromEvents(
       if (call.status !== "running") {
         existing.resultTimestamp = eventTimestamp(event);
       }
-      noteConversationLinks(existing, call);
+      noteStartedConversation(existing, call);
       return;
     }
 
@@ -235,7 +211,7 @@ export function transcriptMessagesFromEvents(
         ? Date.parse(call.startedAt)
         : eventTimestamp(event),
     };
-    noteConversationLinks(part, call);
+    noteStartedConversation(part, call);
     tools.set(call.toolCallId, part);
     standaloneToolMessages.set(call.toolCallId, message);
     messages.push(message);
@@ -269,6 +245,9 @@ export function transcriptMessagesFromEvents(
         ...(data.eventType ? { eventType: data.eventType } : undefined),
         ...(data.eventNamespace
           ? { eventNamespace: data.eventNamespace }
+          : undefined),
+        ...(data.eventIdentifier
+          ? { eventIdentifier: data.eventIdentifier }
           : undefined),
         eventObjectType: data.eventObjectType,
         ...(data.trustedSummary

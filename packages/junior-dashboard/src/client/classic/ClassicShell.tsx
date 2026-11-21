@@ -31,7 +31,7 @@ import { isNewConversationPath } from "../conversations/conversationRoutes";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "../conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "../conversations/ConversationWorkspaceLoading";
-import { useLead } from "../conversations/Lead";
+import { useLead } from "../lead/Lead";
 import { useConversationData } from "../conversations/queries";
 import { readConversationStartPosition } from "../conversations/transcriptReadPosition";
 import { codeRepositoryTabs } from "../pages/code/codeRepositoryRoutes";
@@ -181,8 +181,9 @@ export function ClassicShell() {
     location.pathname.startsWith("/conversations/");
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
-  // Home shows the viewer's Lead.
-  const home = location.pathname === "/";
+  // Home shows the viewer's Lead, and so does the wide conversation list.
+  const home =
+    location.pathname === "/" || location.pathname === "/conversations";
   const leadId = useLead(loggedIn && home).data?.conversationId;
   const openConversationId = conversationId ?? (home ? leadId : undefined);
   // The shell owns the open Conversation's data, and the page reads it. On a
@@ -288,7 +289,7 @@ export function ClassicShell() {
             header={
               <DashboardHeader
                 desktopTopBar={desktopTopBar}
-                mobileBackTo={conversationId ? "/" : undefined}
+                mobileBackTo={conversationId ? "/conversations" : undefined}
                 mobileTitle={mobileConversationTitle}
                 mobileNavigationOpen={mobileNavigationOpen}
                 navItems={primaryNavItems}
@@ -535,7 +536,17 @@ export function ClassicShell() {
               path="/conversations/:conversationId"
             />
             <Route
-              element={<Navigate replace to="/" />}
+              element={
+                loading ? (
+                  <ConversationWorkspaceLoading detail={false} />
+                ) : data ? (
+                  <ConversationWorkspace detail={conversationDetail} />
+                ) : (
+                  <LoadingView
+                    label={query.error?.message ?? "Dashboard unavailable"}
+                  />
+                )
+              }
               path="/conversations"
             />
             <Route

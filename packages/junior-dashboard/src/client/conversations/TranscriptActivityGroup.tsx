@@ -34,7 +34,7 @@ export function isCollapsibleActivityEntry(
   // Thread cards, Task lines, and started Conversation cards stay in the
   // main view.
   if (entry.kind === "subagent") return false;
-  if (entry.kind === "tool" && entry.part.startedConversation) return false;
+  if (entry.kind === "tool" && entry.part.startedConversationId) return false;
   // An agent invocation result left only for its recalled memories is
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.

@@ -135,7 +135,7 @@ test("starts a new conversation from a centered compose empty state @new", async
   dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
@@ -221,7 +221,7 @@ test.describe("on a touch screen", () => {
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const composer = page.getByLabel("Start a conversation");
     await expect(composer).toHaveAttribute("enterkeyhint", "enter");
@@ -240,7 +240,7 @@ test.describe("on a touch screen", () => {
   }) => {
     await viewAsParticipant(page);
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const card = page.getByRole("link", { name: "Open Closed issue summary" });
     await expect(card).toBeVisible();
@@ -266,7 +266,7 @@ test.describe("on a touch screen", () => {
         .locator("section:has(#conversation-section-pinned)")
         .getByRole("link", { name: "Open Closed issue summary" }),
     ).toBeVisible();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/conversations`);
   });
 
   test("moves a pinned home card from its row sheet", async ({
@@ -275,7 +275,7 @@ test.describe("on a touch screen", () => {
   }) => {
     await viewAsParticipant(page);
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const pinned = page.locator(
       'section[aria-labelledby="conversation-section-pinned"] a[aria-label]',
@@ -309,7 +309,7 @@ test.describe("on a touch screen", () => {
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const composer = page.getByLabel("Start a conversation");
     await expect(composer).toBeFocused();
@@ -360,7 +360,7 @@ test("opens and closes a conversation on mobile", async ({
     });
   });
   await page.goto(`${dashboard.baseURL}/conversations`);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations`);
   await expect(
     page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
@@ -811,7 +811,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByPlaceholder("Search events…")).toBeHidden();
   await expect(page).toHaveURL(/\/conversations\//);
   await page.getByRole("link", { name: "Back to conversations" }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations`);
   await expect(
     page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();

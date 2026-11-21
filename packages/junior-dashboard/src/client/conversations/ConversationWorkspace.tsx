@@ -1,11 +1,6 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { PanelLeft } from "lucide-react";
-import {
-  NavigationType,
-  useNavigate,
-  useNavigationType,
-  useParams,
-} from "react-router";
+import { useLocation, useNavigate, useParams } from "react-router";
 import type { PanelImperativeHandle } from "react-resizable-panels";
 
 import { useConversationsData } from "../api";
@@ -16,7 +11,6 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../components/ui/resizable";
-import { composerDockClass } from "./ComposerDock";
 import { ConversationHomeList } from "./ConversationHomeList";
 import {
   ConversationFeedLoadMore,
@@ -24,23 +18,14 @@ import {
 } from "./ConversationFeedLoadMore";
 import { useConversationActionToasts } from "./conversationActionToasts";
 import { useConversationPageArchiveResult } from "./conversationArchive";
-import {
-  ConversationComposer,
-  touchKeyboardMatches,
-  type ConversationComposerHandle,
-} from "./ConversationComposer";
 import { HeaderIconButton } from "./ConversationHeaderActions";
 import {
   usePendingArchiveConversationUpdates,
   withoutThreads,
   type PendingArchiveConversationUpdate,
 } from "./conversationArchive";
-import { useAppendConversationMessage, type ConversationData } from "./queries";
-import {
-  conversationPath,
-  FOCUS_REPLY_STATE,
-  NEW_CONVERSATION_PATH,
-} from "./conversationRoutes";
+import type { ConversationData } from "./queries";
+import { FOCUS_REPLY_STATE, NEW_CONVERSATION_PATH } from "./conversationRoutes";
 import { pinnedAndWaitingFirst } from "./conversationSections";
 import { buildConversations } from "../format";
 import { useDebouncedValue } from "../debouncedValue";
@@ -52,7 +37,7 @@ import { useWaitingConversations } from "../inbox/queries";
 import { UnsentAnswersProvider } from "../inbox/UnsentAnswers";
 import { useReorderPinnedConversations } from "./useReorderPinnedConversations";
 import { LoadingView } from "../components/LoadingView";
-import { LeadLink, useLead } from "./Lead";
+import { LeadLink, useLead } from "../lead/Lead";
 import {
   readSidebarWidth,
   saveSidebarWidth,
@@ -66,8 +51,8 @@ const SIDEBAR_PANEL_ID = "conversation-list";
 
 /**
  * Render the conversation list beside one selected conversation. Home shows
- * the viewer's Lead. Narrow screens without room for the list get a stacked
- * home: the list above a reply box that sends to the Lead.
+ * only the viewer's Lead. `/conversations` shows the list: beside the Lead
+ * when it fits, or alone on a narrow screen.
  */
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
@@ -83,25 +68,26 @@ export function ConversationWorkspace(props: {
   const sidebarPanel = useRef<PanelImperativeHandle>(null);
   const sidebarGroup = useRef<HTMLDivElement>(null);
   const sidebarId = useId();
-  // Only the stacked home has a search box. The sidebar lists every
+  // Only the narrow list has a search box. The sidebar lists every
   // conversation; the command palette searches them. Debounce only the typed
   // text, so the sidebar drops a stale search at once.
   const debouncedQuery = useDebouncedValue(query.trim());
   const search = sidebarFits ? "" : debouncedQuery;
   const params = useParams();
   const navigate = useNavigate();
-  const navigationType = useNavigationType();
   const routeId = params["conversationId"];
   const home = !routeId;
-  // New work goes through the Lead, so the wide home is the Lead itself.
+  const listRoute = useLocation().pathname === "/conversations";
+  // Home is the Lead alone. The list shows on `/conversations` and beside
+  // other Conversations.
+  const showSidebar = sidebarFits && !(home && !listRoute);
+  const narrowList = listRoute && !sidebarFits;
   const lead = useLead(home);
   const leadId = lead.data?.conversationId;
-  const selectedId = routeId ?? (sidebarFits ? leadId : undefined);
-  const sendToLead = useAppendConversationMessage(leadId ?? "");
+  const selectedId = routeId ?? (narrowList ? undefined : leadId);
   const feed = useConversationsData(search);
   const pendingArchiveUpdates = usePendingArchiveConversationUpdates();
   const reorderPins = useReorderPinnedConversations();
-  const homeComposer = useRef<ConversationComposerHandle>(null);
   const conversations = useMemo(
     () =>
       applyPendingArchiveUpdates(
@@ -111,8 +97,7 @@ export function ConversationWorkspace(props: {
       ),
     [feed.data?.conversations, pendingArchiveUpdates, search],
   );
-  // Only the wide layout has the sidebar and its button. Home shows the Lead,
-  // and its reply box takes focus.
+  // Only the wide layout has the sidebar and its button.
   const openCreate = () => {
     void navigate(NEW_CONVERSATION_PATH, {
       replace: home,
@@ -148,41 +133,6 @@ export function ConversationWorkspace(props: {
     onLoadMore: () => void feed.fetchNextPage({ cancelRefetch: false }),
   };
 
-  // The narrow home exists to ask the Lead, so the reader can type at once.
-  // On a touch screen, focus opens the keyboard over the conversation list.
-  // There, focus only when the dashboard opens on home, not when they come
-  // back from a conversation or follow a link.
-  const homeShown = useRef(false);
-  useEffect(() => {
-    if (!home) return;
-    const returned =
-      homeShown.current || navigationType === NavigationType.Push;
-    homeShown.current = true;
-    if (returned && touchKeyboardMatches()) return;
-    homeComposer.current?.focus();
-  }, [home, navigationType]);
-
-  const leadComposer = (
-    <ConversationComposer
-      draftId="new"
-      error={
-        sendToLead.error ? "Message failed to send. Try again." : undefined
-      }
-      label="Message your Lead"
-      holdDraftUntilAccept
-      ref={homeComposer}
-      submitLabel="Send"
-      onSubmit={async (message, idempotencyKey, files) => {
-        if (!leadId) throw new Error("Your Lead is still loading.");
-        await sendToLead.mutateAsync({ idempotencyKey, message, files });
-        // The Lead's reply box takes focus for the next message.
-        await navigate(conversationPath(leadId), {
-          state: FOCUS_REPLY_STATE,
-        });
-      }}
-    />
-  );
-
   const toggleSidebar = () => {
     const panel = sidebarPanel.current;
     if (!panel) return;
@@ -200,11 +150,11 @@ export function ConversationWorkspace(props: {
     </HeaderIconButton>
   );
 
-  // Only the narrow home shows this pane. The top space is inside the
+  // Only the narrow list shows this pane. The top space is inside the
   // content, not the scroller's padding, so the sticky section labels meet
   // the page header.
   const homePane = (
-    <main className="grid h-full min-h-0 w-full grid-rows-[minmax(0,1fr)_auto] overflow-hidden">
+    <main className="grid h-full min-h-0 w-full grid-rows-[minmax(0,1fr)] overflow-hidden">
       <div
         className="min-h-0 overflow-y-auto overscroll-contain px-4 pb-3 sm:px-6"
         ref={homeList}
@@ -238,15 +188,6 @@ export function ConversationWorkspace(props: {
           )}
         </section>
       </div>
-      {/* Narrow screens dock the composer at the bottom, in thumb reach. */}
-      <div
-        className={cn(
-          composerDockClass,
-          "overflow-y-auto border-t border-dashboard-border-subtle sm:px-6",
-        )}
-      >
-        <div className="mx-auto grid w-full max-w-3xl">{leadComposer}</div>
-      </div>
     </main>
   );
 
@@ -262,7 +203,7 @@ export function ConversationWorkspace(props: {
         if (percent > 0) saveSidebarWidth((percent / 100) * groupWidth);
       }}
     >
-      {sidebarFits ? (
+      {showSidebar ? (
         <>
           <ResizablePanel
             collapsible
@@ -306,7 +247,7 @@ export function ConversationWorkspace(props: {
         </>
       ) : null}
       <ResizablePanel id="selected-conversation">
-        {home && !sidebarFits ? homePane : null}
+        {narrowList ? homePane : null}
         {selectedId ? (
           <section
             aria-label="Selected conversation"
@@ -327,12 +268,15 @@ export function ConversationWorkspace(props: {
                   pendingArchiveUpdate={pendingArchiveUpdates.find(
                     (update) => update.conversationId === selectedId,
                   )}
-                  sidebarToggle={sidebarToggle}
+                  // Home has no list, so it has nothing to show or hide.
+                  sidebarToggle={
+                    home && !showSidebar ? undefined : sidebarToggle
+                  }
                 />
               </FeedThreads>
             </UnsentAnswersProvider>
           </section>
-        ) : home && sidebarFits ? (
+        ) : home && !narrowList ? (
           <LoadingView
             label={lead.error ? lead.error.message : "Loading your Lead"}
           />

@@ -274,9 +274,7 @@ function createdConversation(
     return {
       ...base,
       displayTitle: created.title ?? "New conversation",
-      events: created.lead
-        ? mockLeadEvents(created.actorIdentity, created.createdAtMs)
-        : [],
+      events: created.lead ? mockLeadEvents(created.actorIdentity) : [],
     };
   }
   const { messageId, sourceConversationId } = created.fork;
