@@ -119,36 +119,34 @@ function conversationWaitsOnStarterSql(
   conversation: ConversationStatusColumns,
 ): SQL<boolean> {
   const id = conversation.conversationId;
+  // Postgres runs a subquery each place that names it, so each fact below
+  // is read once, in one row, and the rule reads it by name. `offset 0`
+  // keeps Postgres from copying the starter lookup back into each use.
+  const starter = sql.identifier("status_starter");
+  const brief = sql.identifier("status_brief");
+  const reply = sql.identifier("status_reply");
+  const starterUserId = sql`${starter}.user_id`;
+  const briefStatus = sql`${brief}.status`;
+  const briefThroughSeq = sql`${brief}.through_seq`;
+  const replySeq = sql`${reply}.seq`;
+  const replyInSlack = sql`${reply}.in_slack`;
   // Reads `junior_conversation_briefs_conversation_version_idx`.
-  const latestBrief = (column: SQL) =>
-    sql`(select ${column} from ${juniorConversationBriefs} where ${eq(
-      juniorConversationBriefs.conversationId,
-      id,
-    )} order by ${desc(juniorConversationBriefs.version)} limit 1)`;
-  const briefStatus = latestBrief(
-    sql`${juniorConversationBriefs.content}->'outcome'->>'status'`,
-  );
-  const briefThroughSeq = latestBrief(
-    sql`${juniorConversationBriefs.throughSeq}`,
-  );
+  const latestBrief = sql`(select ${juniorConversationBriefs.content}->'outcome'->>'status' as status, ${juniorConversationBriefs.throughSeq} as through_seq from ${juniorConversationBriefs} where ${eq(
+    juniorConversationBriefs.conversationId,
+    id,
+  )} order by ${desc(juniorConversationBriefs.version)} limit 1)`;
   // Transcript order, the order of read positions, is `seq`, not time.
   // Reads `junior_conversation_events_message_role_idx` and sorts the
   // Conversation's assistant Messages by `seq`.
-  const latestReply = (column: SQL) =>
-    sql`(select ${column} from ${juniorConversationEvents} where ${and(
-      eq(juniorConversationEvents.conversationId, id),
-      eq(juniorConversationEvents.type, "message"),
-      sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
-    )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
-  const replySeq = latestReply(sql`${juniorConversationEvents.seq}`);
   // A reply has source `slack` only when Slack accepted it. A reply that a
   // delivery pause held back has no source and no other mark. Pauses started
   // with #3050, so a reply with no source from before then reached Slack.
   // TODO(dcramer): Drop the date once no root's latest reply predates it.
-  const replyInSlack = latestReply(
-    sql`coalesce(${juniorConversationEvents.payload}->'meta'->>'source' = 'slack', ${juniorConversationEvents.createdAt} < ${DELIVERY_PAUSE_START})`,
-  );
-  const starterUserId = conversationStarterUserIdSql(conversation);
+  const latestReply = sql`(select ${juniorConversationEvents.seq} as seq, coalesce(${juniorConversationEvents.payload}->'meta'->>'source' = 'slack', ${juniorConversationEvents.createdAt} < ${DELIVERY_PAUSE_START}) as in_slack from ${juniorConversationEvents} where ${and(
+    eq(juniorConversationEvents.conversationId, id),
+    eq(juniorConversationEvents.type, "message"),
+    sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
+  )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const readByStarter = or(
     and(
       sql`${conversation.parentConversationId} is null`,
@@ -173,13 +171,16 @@ function conversationWaitsOnStarterSql(
   );
   // With no starter, nobody can read the answer, so nothing waits on it.
   const unreadAnswer = sql`${replySeq} is not null and ${starterUserId} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
+  const waitsOnFacts = sql`(select ${briefStatus} in ('partial', 'blocked') or (${unreadAnswer})
+    from (select ${conversationStarterUserIdSql(conversation)} as user_id offset 0) as ${starter}
+    left join lateral ${latestBrief} as ${brief} on true
+    left join lateral ${latestReply} as ${reply} on true)`;
   return sql<boolean>`(${conversation.stoppedAt} is null
     and ${conversationKindSql(conversation)} <> 'task'
     and not ${conversationIsActiveSql(conversation)}
     and (
       ${conversationTurnFailedSql(conversation)}
-      or ${briefStatus} in ('partial', 'blocked')
-      or (${unreadAnswer})
+      or ${waitsOnFacts}
     ))`;
 }
 
