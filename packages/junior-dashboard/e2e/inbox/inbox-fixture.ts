@@ -616,15 +616,15 @@ export function rowHead(scope: Page | Locator, title: string) {
 
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
- * row's Open action.
+ * row's Open action: on hover on a Conversation row, or on the open card
+ * of an item row.
  */
 export async function openRow(head: Locator) {
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  const open = row.getByRole("link", { name: "Open conversation" }).first();
   await head.hover();
-  await head
-    .locator("xpath=ancestor::*[@data-inbox-row][1]")
-    .getByRole("link", { name: "Open conversation" })
-    .first()
-    .click();
+  if (!(await open.isVisible())) await expandRow(head);
+  await open.click();
 }
 
 /**

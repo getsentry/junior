@@ -60,8 +60,8 @@ export function InboxRowCard(props: {
     (item.kind === "notice" || !item.request) &&
     !(props.headTitled && textRepeatsHead(item, text));
   const kind = inboxItemKind(item);
-  // Next to a main action, the others show only their icons on a phone, so
-  // the line fits.
+  // Next to a main action, Snooze and Dismiss show only their icons on a
+  // phone, so the line fits.
   const look = props.primaryAction ? "narrow" : undefined;
   const notices = props.notices.map((notice) => (
     <FoldedNotice
@@ -70,12 +70,14 @@ export function InboxRowCard(props: {
       onAction={onAction ? (body) => onAction(notice, body) : undefined}
     />
   ));
-  // The card's own Snooze and Dismiss: they act on this item only.
+  // The card's own Snooze and Dismiss act on this item only. The main
+  // action goes last, at the right end of the line.
   const cardActions =
     actions || props.rowActions ? (
       <>
-        {props.primaryAction}
-        {props.rowActions}
+        {actions?.onDismiss ? (
+          <RowDismissButton look={look} onClick={actions.onDismiss} />
+        ) : null}
         {actions?.onSnooze ? (
           <RowSnoozeButton
             eventSnooze={actions.eventSnooze}
@@ -85,9 +87,8 @@ export function InboxRowCard(props: {
             open={actions.snoozeMenuOpen}
           />
         ) : null}
-        {actions?.onDismiss ? (
-          <RowDismissButton look={look} onClick={actions.onDismiss} />
-        ) : null}
+        {props.rowActions}
+        {props.primaryAction}
       </>
     ) : undefined;
   return (
