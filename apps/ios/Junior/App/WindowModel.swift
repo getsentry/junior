@@ -88,5 +88,7 @@ final class WindowModel {
   func reset() {
     path = []
     drawerOpen = false
+    webPage = nil
+    demoWebNotice = false
   }
 }
