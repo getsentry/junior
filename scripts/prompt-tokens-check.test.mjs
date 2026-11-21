@@ -6,7 +6,7 @@ import test from "node:test";
 import {
   findPromptTokensBase,
   promptTokensArtifactName,
-  publishPromptTokensCheck,
+  publishPromptTokensStatus,
 } from "./prompt-tokens-check.mjs";
 
 const repo = { owner: "getsentry", repo: "junior" };
@@ -54,9 +54,9 @@ function fakeGithub(artifacts = []) {
           return { data: { artifacts } };
         },
       },
-      checks: {
-        create: async (params) => {
-          calls.push(["checks.create", params]);
+      repos: {
+        createCommitStatus: async (params) => {
+          calls.push(["createCommitStatus", params]);
         },
       },
     },
@@ -109,11 +109,11 @@ test("uses the previous commit of a push as the base", async () => {
   assert.deepEqual(core.outputs, {});
 });
 
-test("publishes the check on the pull request head with the change", async () => {
+test("publishes the status on the pull request head with the change", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "prompt-tokens-check-"));
   const github = fakeGithub();
   const core = fakeCore();
-  await publishPromptTokensCheck({
+  await publishPromptTokensStatus({
     github,
     context: pullRequestContext(),
     core,
@@ -122,36 +122,40 @@ test("publishes the check on the pull request head with the change", async () =>
     baseSha: "base-sha-full",
   });
 
-  const [[name, check]] = github.calls;
-  assert.equal(name, "checks.create");
-  assert.equal(check.name, "prompt tokens");
-  assert.equal(check.head_sha, "head-sha");
-  assert.equal(check.conclusion, "success");
-  assert.equal(
-    check.details_url,
-    "https://github.com/getsentry/junior/actions/runs/42",
-  );
-  assert.equal(check.output.title, "40 tokens (+10 vs base-sh)");
-  assert.match(check.output.summary, /^\+10 tokens .* vs `base-sh`\.$/m);
-  assert.deepEqual(core.summaries, [check.output.summary]);
+  assert.deepEqual(github.calls, [
+    [
+      "createCommitStatus",
+      {
+        ...repo,
+        sha: "head-sha",
+        state: "success",
+        context: "prompt tokens",
+        description: "40 tokens (+10 vs base-sh)",
+        target_url: "https://github.com/getsentry/junior/actions/runs/42",
+      },
+    ],
+  ]);
+  assert.equal(core.summaries.length, 1);
+  assert.match(core.summaries[0], /^\+10 tokens .* vs `base-sh`\.$/m);
 });
 
-test("publishes the check of a push without base stats", async () => {
+test("publishes the status of a push without base stats", async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "prompt-tokens-check-"));
   const github = fakeGithub();
-  await publishPromptTokensCheck({
+  const core = fakeCore();
+  await publishPromptTokensStatus({
     github,
     context: { repo, sha: "push-sha", runId: 1, serverUrl: "", payload: {} },
-    core: fakeCore(),
+    core,
     statsPath: writeStats(dir, "current.json", 30),
     basePath: "",
     baseSha: "",
   });
 
-  const [[, check]] = github.calls;
-  assert.equal(check.head_sha, "push-sha");
-  assert.equal(check.output.title, "40 tokens");
-  assert.doesNotMatch(check.output.summary, /vs/);
+  const [[, status]] = github.calls;
+  assert.equal(status.sha, "push-sha");
+  assert.equal(status.description, "40 tokens");
+  assert.doesNotMatch(core.summaries[0], /vs/);
 });
 
 test("rejects stats that do not validate before it writes", async () => {
@@ -160,7 +164,7 @@ test("rejects stats that do not validate before it writes", async () => {
   fs.writeFileSync(statsPath, JSON.stringify({ version: 1, model: "x" }));
   const github = fakeGithub();
   await assert.rejects(
-    publishPromptTokensCheck({
+    publishPromptTokensStatus({
       github,
       context: pullRequestContext(),
       core: fakeCore(),

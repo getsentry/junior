@@ -12,7 +12,7 @@ import {
  * before it, when that run uploaded them.
  */
 
-const CHECK_NAME = "prompt tokens";
+const STATUS_CONTEXT = "prompt tokens";
 
 /** The artifact name of the stats that a run on one commit uploads. */
 export function promptTokensArtifactName(sha) {
@@ -53,11 +53,15 @@ function readStats(file) {
 }
 
 /**
- * Publish the report as the `prompt tokens` check run on the measured
- * commit and as the job summary. `basePath` and `baseSha` are empty when
- * there are no base stats.
+ * Publish the total as the `prompt tokens` commit status and the report as
+ * the job summary, which the status links to. `basePath` and `baseSha` are
+ * empty when there are no base stats.
+ *
+ * A commit status shows its description in the pull request checks list. A
+ * check run that `GITHUB_TOKEN` creates joins an arbitrary Actions check
+ * suite, so the list can hide it.
  */
-export async function publishPromptTokensCheck({
+export async function publishPromptTokensStatus({
   github,
   context,
   core,
@@ -69,19 +73,15 @@ export async function publishPromptTokensCheck({
   const base = basePath ? readStats(basePath) : undefined;
   const shortSha = baseCommit.slice(0, 7);
   const report = renderPromptTokensReport(stats, base, `\`${shortSha}\``);
-  await github.rest.checks.create({
+  await core.summary.addRaw(report).write();
+  await github.rest.repos.createCommitStatus({
     owner: context.repo.owner,
     repo: context.repo.repo,
-    name: CHECK_NAME,
-    // A pull request run measures a merge commit. Its check goes on the head.
-    head_sha: context.payload.pull_request?.head.sha ?? context.sha,
-    status: "completed",
-    conclusion: "success",
-    details_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
-    output: {
-      title: promptTokensTitle(stats, base, shortSha),
-      summary: report,
-    },
+    // A pull request run measures a merge commit. Its status goes on the head.
+    sha: context.payload.pull_request?.head.sha ?? context.sha,
+    state: "success",
+    context: STATUS_CONTEXT,
+    description: promptTokensTitle(stats, base, shortSha),
+    target_url: `${context.serverUrl}/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`,
   });
-  await core.summary.addRaw(report).write();
 }

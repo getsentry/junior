@@ -1,7 +1,8 @@
 name: Prompt Tokens
 
 # Report the always-on prompt of the example app as the `prompt tokens`
-# check. It only reports: no size makes it fail. See scripts/prompt-tokens.mjs.
+# commit status. It only reports: no size makes it fail. See
+# scripts/prompt-tokens.mjs.
 
 permissions:
   contents: read
@@ -56,7 +57,7 @@ jobs:
           retention-days: 90
 
   # Only this job can write. It runs the report scripts, not the measured
-  # app. Fork pull requests get no write token, so they get no check.
+  # app. Fork pull requests get no write token, so they get no status.
   report:
     name: report / prompt tokens
     needs: measure
@@ -64,8 +65,8 @@ jobs:
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       actions: read
-      checks: write
       contents: read
+      statuses: write
     timeout-minutes: 5
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -89,7 +90,7 @@ jobs:
           path: ${{ runner.temp }}/base
           run-id: ${{ steps.base.outputs.run-id }}
           github-token: ${{ github.token }}
-      - name: Publish check
+      - name: Publish status
         uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
         env:
           STATS_PATH: ${{ runner.temp }}/current/prompt-tokens.json
@@ -97,8 +98,8 @@ jobs:
           BASE_SHA: ${{ steps.base.outputs.sha }}
         with:
           script: |
-            const { publishPromptTokensCheck } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/prompt-tokens-check.mjs`);
-            await publishPromptTokensCheck({
+            const { publishPromptTokensStatus } = await import(`${process.env.GITHUB_WORKSPACE}/scripts/prompt-tokens-check.mjs`);
+            await publishPromptTokensStatus({
               github,
               context,
               core,

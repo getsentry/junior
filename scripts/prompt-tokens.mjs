@@ -17,8 +17,8 @@ import { parseArgs } from "node:util";
  *   pnpm prompt-tokens --out stats.json        # also keep the stats
  *   pnpm prompt-tokens --base main-stats.json  # compare with other stats
  *
- * CI publishes the report as the `prompt tokens` check. See
- * `scripts/prompt-tokens-check.mjs`.
+ * CI publishes the total as the `prompt tokens` commit status, which links
+ * to the report. See `scripts/prompt-tokens-check.mjs`.
  */
 
 const REPO_ROOT = path.resolve(
