@@ -78,3 +78,18 @@ it("serves the same failed PR through host and Sandbox inspection", async () => 
     ).status,
   ).toBe(501);
 });
+
+it("serves the merged Craft release blocker with no Dependabot alerts", async () => {
+  const api = "https://api.github.com/repos/getsentry/craft";
+  const serve = (path: string) =>
+    interceptTestHttp({
+      provider: "github",
+      request: new Request(`${api}${path}`),
+      upstreamUrl: new URL(`${api}${path}`),
+    }).then((response) => response.json());
+  expect(await serve("/pulls/983")).toMatchObject({
+    number: 983,
+    merged: true,
+  });
+  expect(await serve("/dependabot/alerts")).toEqual([]);
+});
