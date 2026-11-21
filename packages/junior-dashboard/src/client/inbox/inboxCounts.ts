@@ -66,11 +66,12 @@ export function inboxCounts(input: {
   const all = todo.length + past(server.needsViewer, () => true);
   const prs = shown("prs") + past(server.codeChanges, isCodeChangeItem);
   // The server counts a question about a pull request in both, so
-  // Decisions takes no more than Pull requests leaves.
+  // Decisions takes no more than Pull requests and the Other asks that To
+  // do shows leave. Other keeps at least the asks that To do shows.
   const decisions = Math.max(
-    0,
+    shown("decisions"),
     Math.min(
-      all - prs,
+      all - prs - shown("other"),
       shown("decisions") + past(server.decisions, isDecisionItem),
     ),
   );
