@@ -33,15 +33,18 @@ can act on it.
 - A right-click anywhere on a stack, which opens the root Conversation's
   menu, as on its Conversation row.
 - A row click, which opens the row and its answer form.
-- On each row, on hover: Open, Snooze, and Dismiss, as icons with their
-  names as tooltips. A code change row first opens the change on its
-  provider, such as "Review on GitHub". A touch screen has no hover, so there a row shows its
-  actions only once it is open. Rows do not repeat them.
-- On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
-  count once, right-most. The buttons do not repeat the count. Their names
-  say what they cover, such as "Snooze 3 items in this stack". Snooze
-  covers every row. Dismiss covers the open asks that the viewer can act
-  on. Dismiss is the main action, so it comes last.
+- On each row, on hover: Dismiss, Snooze, and the row's main step, as
+  icons with their names as tooltips. The main step comes last. On a code
+  change row it opens the change on its provider, such as "Review on
+  GitHub". A row with no main step, such as a question, shows Expand. A
+  touch screen has no hover, so there a row shows its actions only once it
+  is open. Rows do not repeat them.
+- On a stack: Dismiss and Snooze, as quiet buttons in the order of a
+  row's actions, and the stack's item count once, right-most. The buttons
+  do not repeat the count. Their names say what they cover, such as
+  "Snooze 3 items in this stack". Snooze covers every row. Dismiss covers
+  the open asks that the viewer can act on.
+- On a Conversation row, on hover: Archive, Pin, then Open, last.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
 ## Rules
@@ -75,9 +78,11 @@ Grouping:
   edge. The plugin that owns the change parses the title. A title with no
   known type shows as it is, with no tag. The number and the size go to
   the second line.
-- A click on a code change row opens it, as on other rows. The open row's
-  first action opens the change on its provider. On a phone, the other
-  actions next to it show only their icons.
+- A click on a code change row opens it, as on other rows.
+- An open row's actions are Dismiss, Snooze, Conversation, then the main
+  action, last. On a code change row, the main action opens the change on
+  its provider. Conversation opens the row's Conversation in the
+  dashboard. On a phone, Dismiss and Snooze show only their icons.
 - The Conversations view keeps one Conversation row each, with Pin and
   Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
 
@@ -89,10 +94,6 @@ Actions:
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only
   that row comes back, and a toast offers Retry.
-- A toast shows only with an action, such as Undo or Retry, for an error,
-  or for a result that the screen does not show. An answer gets no toast.
-  On a phone, toasts sit at the top, away from the composer and the
-  keyboard, and swipe up to dismiss.
 - When an open row leaves, the next row of its stack opens, also past the
   fold. After the last row of the stack, the row before it opens. When the
   stack has no other row, the next row of the list opens.

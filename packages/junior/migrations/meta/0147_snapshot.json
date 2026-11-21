@@ -1,5 +1,5 @@
 {
-  "id": "c3db4b27-8dd5-4ec2-9971-52200258fa02",
+  "id": "394b8a22-6d6d-4b95-9e49-5667cc140029",
   "prevId": "0467c4ef-64d2-4496-9691-573866872db4",
   "version": "7",
   "dialect": "postgresql",
@@ -2654,28 +2654,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_conversation_events_authorization_request_idx": {
-          "name": "junior_conversation_events_authorization_request_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'authorization_requested'",
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_conversation_events_plugin_conversation_idx": {
           "name": "junior_conversation_events_plugin_conversation_idx",
           "columns": [
@@ -4902,6 +4880,12 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true
+        },
+        "wake_reason": {
+          "name": "wake_reason",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "created_at": {
           "name": "created_at",
