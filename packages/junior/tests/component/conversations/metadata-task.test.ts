@@ -328,6 +328,9 @@ describe("Conversation metadata task", () => {
       { throughSeq: secondTurn.throughSeq },
     ]);
     expect(TEST.calls[1]?.prompt).toContain('"summary":"Metadata summary 1."');
+    // The cost events of the first update took seqs before this Turn. The
+    // prompt has no seq, time, or Turn id, so it does not change with them.
+    expect(TEST.calls[1]?.prompt).not.toMatch(/"(index|createdAtMs|turnId)"/);
 
     // An older Turn that runs late never replaces newer metadata.
     const thirdTurn = await recordCompletedTurn({

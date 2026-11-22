@@ -58,13 +58,22 @@ function truncateSentence(value: string, limit: number): string {
   return `${trimmed.slice(0, limit - 1).trimEnd()}…`;
 }
 
-function boundedEntries(entries: TranscriptEntry[]): TranscriptEntry[] {
-  return entries.map((entry) => {
+/** One transcript row as the metadata model reads it. */
+type ModelEntry = Pick<TranscriptEntry, "role" | "author" | "text">;
+
+function boundedEntries(entries: TranscriptEntry[]): ModelEntry[] {
+  // Only the text, role, and author. The summary needs no event seq, time,
+  // or Turn id, and a seq changes when background work, such as a cost
+  // event, lands between the messages, so the same Conversation would give
+  // another prompt.
+  return entries.map(({ role, author, text }) => {
     const limit =
-      entry.role === "tool" ? MAX_TOOL_TEXT_CHARS : MAX_MESSAGE_TEXT_CHARS;
-    return entry.text.length > limit
-      ? { ...entry, text: `${entry.text.slice(0, limit - 1)}…` }
-      : entry;
+      role === "tool" ? MAX_TOOL_TEXT_CHARS : MAX_MESSAGE_TEXT_CHARS;
+    return {
+      role,
+      ...(author ? { author } : undefined),
+      text: text.length > limit ? `${text.slice(0, limit - 1)}…` : text,
+    };
   });
 }
 
@@ -80,7 +89,7 @@ function promptInput(args: {
   const messages = entries.filter((entry) => entry.role !== "tool");
   const tools = entries.filter((entry) => entry.role === "tool");
   const keptMessages = [...messages];
-  const keptTools: TranscriptEntry[] = [];
+  const keptTools: ModelEntry[] = [];
   const base = {
     conversation: {
       title: args.input.title,
