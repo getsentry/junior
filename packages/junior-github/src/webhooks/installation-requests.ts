@@ -478,6 +478,12 @@ export interface GitHubPullRequestMergeState {
   mergeableState?: string;
   /** Logins of the people whose review GitHub still requests. */
   requestedReviewers: string[];
+  /**
+   * Logins of the people who submitted a review that was not dismissed,
+   * including a comment-only review. Read only when the pull request is open
+   * and not a draft.
+   */
+  reviewedBy: string[];
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -597,6 +603,7 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
+    reviewedBy: [],
     state:
       pull.state === "MERGED"
         ? "merged"
@@ -619,6 +626,18 @@ export async function loadPullRequestMergeState(
       latest.set(review.author.login.toLowerCase(), review);
     }
   }
+  state.reviewedBy = [
+    ...new Set(
+      reviews.flatMap((review) =>
+        review.author &&
+        review.submittedAt &&
+        review.state !== "DISMISSED" &&
+        review.state !== "PENDING"
+          ? [review.author.login.toLowerCase()]
+          : [],
+      ),
+    ),
+  ];
   const reviewStates = [...latest.values()].map((review) => review.state);
   if (!state.autoMerge && state.mergeableState === "clean") {
     state.approved =
