@@ -302,6 +302,10 @@ async function savePaused(
     const latest = await getTurnRecord(args.conversationId, args.turnId);
     // Committed history stays whole. A trimmed copy is a branch of it, and
     // the resumed turn adds its prompt after the tail.
+    const keepsMessages =
+      args.reason === "yield" ||
+      args.beforePrompt === true ||
+      continuableMessages(args.messages).length > 0;
     const messages =
       args.reason === "yield" || args.beforePrompt
         ? [...args.messages]
@@ -330,6 +334,9 @@ async function savePaused(
         errorMessage: args.errorMessage,
       }),
       piMessages: messages,
+      // The stored boundary keeps its own prompt flag. The flag in `args`
+      // describes messages that this save does not store.
+      ...(keepsMessages ? undefined : { promptSaved: undefined }),
       resumeReason: args.reason,
     };
 

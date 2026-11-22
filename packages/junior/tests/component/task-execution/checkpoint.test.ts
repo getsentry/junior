@@ -1374,6 +1374,7 @@ describe("turn checkpoint", () => {
         },
       ],
       errorMessage: "plugin auth pause",
+      promptSaved: true,
     });
 
     expect(authSessionRecord).toMatchObject({
@@ -1382,6 +1383,8 @@ describe("turn checkpoint", () => {
       resumeReason: "auth",
       piMessages: safeBoundary,
     });
+    // The stored boundary does not hold the prompt that the tail claimed.
+    expect(authSessionRecord?.promptSaved).toBeUndefined();
 
     await expect(
       getTurnRecord("conversation-auth-tail", "turn-auth-tail"),
