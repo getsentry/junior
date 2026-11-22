@@ -24,10 +24,9 @@ import {
 } from "@/chat/agent-invocations/store";
 import { stopConversationTree } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
-import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
-import { changeTodos, listTodos } from "@/chat/todos/store";
 import {
   countAutomatedTurn,
   getAutomatedTurnLimitState,
@@ -193,45 +192,18 @@ describe("child agents that no Agent invocation names", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      const assignTodo = async (title: string) =>
-        await changeTodos(getSqlExecutor(), {
-          change: {
-            add: [
-              { assignee: { conversationId: childId }, status: "open", title },
-            ],
-            remove: [],
-            update: [],
-          },
-          conversationId: slackParentConversationId,
-          nowMs: Date.now(),
-        });
-      const deliverReply = async () =>
-        await createDeliverToParent({
-          queue: harness.queue,
-          state: harness.state,
-        })({
-          actor: slackInvocationInput.actor,
-          conversationId: childId,
-          result: {
-            kind: "reply",
-            reply: { text: "Deploy is green.", toolCallId: "call-reply" },
-          },
-          turnId: "turn_child",
-        });
-      await assignTodo("Check the deploy");
-      await deliverReply();
-      // The child's result closes its To-dos. A retry of the same result
-      // leaves a To-do assigned after it open.
-      await assignTodo("Watch the canary");
-      await deliverReply();
-      expect(
-        (await listTodos(getSqlExecutor(), slackParentConversationId)).map(
-          (todo) => [todo.title, todo.status],
-        ),
-      ).toEqual([
-        ["Check the deploy", "done"],
-        ["Watch the canary", "open"],
-      ]);
+      await createDeliverToParent({
+        queue: harness.queue,
+        state: harness.state,
+      })({
+        actor: slackInvocationInput.actor,
+        conversationId: childId,
+        result: {
+          kind: "reply",
+          reply: { text: "Deploy is green.", toolCallId: "call-reply" },
+        },
+        turnId: "turn_child",
+      });
       // The reply stores who sent it; readers never parse its id.
       const [reply] =
         (

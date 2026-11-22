@@ -18,8 +18,7 @@ import {
   getConversationStoppedAtMs,
 } from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { closeOpenTodosOfChild } from "@/chat/todos/store";
+import { getConversationStore } from "@/chat/db";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   getEventBatchDelayMs,
@@ -289,18 +288,6 @@ export async function enqueueAgentInvocationResult(
     }
     return;
   }
-  // A `reply` closed them when it was sent, and a quiet Turn sends no result.
-  // A retry after the append must not close To-dos assigned after it.
-  const resultMessageId = getAgentInvocationResultMessageId(
-    invocation.invocationId,
-  );
-  if (
-    !parentMessages.some(
-      (message) => message.inboundMessageId === resultMessageId,
-    )
-  ) {
-    await closeTodosForResult(invocation, invocation.status, nowMs);
-  }
   await enqueueAutomatedInput({
     message: buildResultInboundMessage(invocation, nowMs),
     renderText: renderResultUnderLock(invocation, terminalResult(invocation)),
@@ -312,28 +299,6 @@ export async function enqueueAgentInvocationResult(
     invocation.invocationId,
     nowMs,
   );
-}
-
-/**
- * Close the child's open To-dos of the parent before the parent reads the
- * child's result: done when it completed, dropped when it stopped. A
- * blocked or failed child did not finish that work.
- */
-async function closeTodosForResult(
-  sender: Pick<
-    ChildAgentSender,
-    "childConversationId" | "parentConversationId"
-  >,
-  status: TerminalAgentInvocation["status"],
-  nowMs: number,
-): Promise<void> {
-  if (status !== "completed" && status !== "stopped") return;
-  await closeOpenTodosOfChild(getSqlExecutor(), {
-    childConversationId: sender.childConversationId,
-    nowMs,
-    parentConversationId: sender.parentConversationId,
-    status: status === "completed" ? "done" : "dropped",
-  });
 }
 
 /**
@@ -508,35 +473,6 @@ export async function enqueueChildResultToParent(args: {
     }),
     ...childMessageSenderMetadata(sender),
   };
-  // A result closes the child's open To-dos: a `reply` that ends the
-  // child's work closes them done, and `stopped` drops them. A reply from a
-  // Turn on the Conversation loop of a child with an agent invocation is not
-  // its result. Only the first send closes: a retry must not close To-dos
-  // assigned after it.
-  const invocationId = ownAgentInvocation(sender);
-  const todoStatus =
-    args.result.kind === "stopped"
-      ? ("stopped" as const)
-      : args.result.kind === "reply" &&
-          !stillWorks &&
-          (invocationId || !args.sender.invocationId)
-        ? ("completed" as const)
-        : undefined;
-  if (todoStatus) {
-    const sent = await readParentChildMessages(
-      args.sender.parentConversationId,
-      args.state,
-    );
-    const firstSend =
-      todoStatus === "completed" && invocationId
-        ? !hasAgentInvocationReply(sent, invocationId)
-        : !sent.some(
-            (message) => message.inboundMessageId === inboundMessageId,
-          );
-    if (firstSend) {
-      await closeTodosForResult(args.sender, todoStatus, nowMs);
-    }
-  }
   await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,

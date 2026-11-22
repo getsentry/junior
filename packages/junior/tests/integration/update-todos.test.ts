@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import {
   enqueueAgentInvocationResult,
@@ -109,6 +109,7 @@ async function createHarness() {
 
 describe("updateTodos", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
   });
 
@@ -342,66 +343,47 @@ describe("updateTodos", () => {
     }
   });
 
-  it("closes a child's open To-dos when its completed or stopped result arrives", async () => {
+  it("closes a child's open To-dos once its completed or stopped work ends after them", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const tick = () => vi.setSystemTime(Date.now() + 1_000);
     const harness = await createHarness();
     try {
       const children = {
         completed: harness.child,
-        replied: await harness.spawn("India"),
-        quiet: await harness.spawn("Juliet"),
         stopped: await harness.spawn("Foxtrot"),
         failed: await harness.spawn("Golf"),
         blocked: await harness.spawn("Hotel"),
       };
+      tick();
       await harness.updateTodos({
         add: [
           { title: "Echo open", assignee: "Echo" },
           { title: "Echo started", assignee: "Echo", status: "in_progress" },
           { title: "Echo dropped", assignee: "Echo", status: "dropped" },
-          { title: "India open", assignee: "India" },
-          { title: "Juliet open", assignee: "Juliet" },
           { title: "Foxtrot open", assignee: "Foxtrot" },
           { title: "Golf open", assignee: "Golf" },
           { title: "Hotel open", assignee: "Hotel" },
           { title: "Parent open" },
         ],
       });
-      const statusOf = async (title: string) =>
-        (await listTodos(getSqlExecutor(), parentConversationId)).find(
-          (todo) => todo.title === title,
-        )?.status;
+      const readTodos = async () =>
+        (await listTodos(getSqlExecutor(), parentConversationId)).map(
+          (todo) => [todo.title, todo.status, todo.changedByAgent?.name],
+        );
 
-      // A `reply` closes them as it reaches the parent, before the
-      // invocation ends, so the parent Turn that reads it sees the change.
-      await harness.reply(children.replied, "Reviewed.");
-      await expect(statusOf("India open")).resolves.toBe("done");
-      // A retry of the same reply leaves To-dos assigned after it open.
-      await harness.updateTodos({
-        add: [{ title: "India next", assignee: "India" }],
-      });
-      await harness.reply(children.replied, "Reviewed.");
-      await expect(statusOf("India next")).resolves.toBe("open");
+      // A `reply` alone ends no work, so nothing closes yet.
+      await harness.reply(children.completed, "Reviewed.");
+      await expect(readTodos()).resolves.toContainEqual([
+        "Echo open",
+        "open",
+        undefined,
+      ]);
+      tick();
       await harness.finish({
-        invocationId: children.replied.invocationId,
-        result: "",
-        status: "completed",
-      });
-      // A Turn that ends with `noReply` sends no result, so nothing closes.
-      await harness.finish({
-        invocationId: children.quiet.invocationId,
-        result: "",
-        status: "completed",
-      });
-      const completed = await harness.finish({
         invocationId: children.completed.invocationId,
         result: "Done.",
         status: "completed",
       });
-      // A retry of the same result leaves To-dos assigned after it open.
-      await harness.updateTodos({
-        add: [{ title: "Echo next", assignee: "Echo" }],
-      });
-      await harness.resend(completed);
       for (const status of ["stopped", "failed", "blocked"] as const) {
         await harness.finish({
           errorMessage: `Child ${status}.`,
@@ -409,30 +391,25 @@ describe("updateTodos", () => {
           status,
         });
       }
+      // A To-do given to a child after its work ended waits for its next work.
+      tick();
+      await harness.updateTodos({
+        add: [{ title: "Echo next", assignee: "Echo" }],
+      });
 
-      const parentTodos = await listTodos(
-        getSqlExecutor(),
-        parentConversationId,
-      );
-      expect(
-        parentTodos.map((todo) => [
-          todo.title,
-          todo.status,
-          todo.changedByAgent?.name,
-        ]),
-      ).toEqual([
+      const expected = [
         ["Echo open", "done", "Echo"],
         ["Echo started", "done", "Echo"],
         ["Echo dropped", "dropped", undefined],
-        ["India open", "done", "India"],
-        ["Juliet open", "open", undefined],
         ["Foxtrot open", "dropped", "Foxtrot"],
         ["Golf open", "open", undefined],
         ["Hotel open", "open", undefined],
         ["Parent open", "open", undefined],
-        ["India next", "open", undefined],
         ["Echo next", "open", undefined],
-      ]);
+      ];
+      await expect(readTodos()).resolves.toEqual(expected);
+      // The read wrote the change once; a second read changes nothing.
+      await expect(readTodos()).resolves.toEqual(expected);
     } finally {
       await harness.close();
     }

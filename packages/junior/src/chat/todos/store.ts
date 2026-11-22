@@ -1,8 +1,8 @@
 /**
  * Durable To-dos of a Conversation. The list's own agent changes them with
  * `updateTodos`; a person can change a status in the dashboard. A child
- * agent can close the To-dos assigned to it, and core closes the rest on the
- * child's result. Each
+ * agent can close the To-dos assigned to it, and a read closes the rest
+ * once the child has finished or stopped. Each
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
@@ -15,6 +15,8 @@ import {
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
+import { listChildAgents } from "@/chat/agent-invocations/list";
+import type { ChildAgent } from "@/chat/agent-invocations/types";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { todoRef } from "./tool-output";
@@ -137,7 +139,7 @@ export async function changeTodos(
       .map((update) => update.id);
     const replacedPersonChanges =
       replacedIds.length > 0
-        ? (await listTodos(executor, conversationId)).filter((todo) =>
+        ? (await readTodos(executor, conversationId)).filter((todo) =>
             replacedIds.includes(todo.id),
           )
         : [];
@@ -197,7 +199,7 @@ export async function changeTodos(
     /* oxlint-enable no-await-in-loop */
     // Open detail views of the Conversation reload the To-dos on this bump.
     await touchConversationDetail(db, [conversationId]);
-    const todos = await listTodos(executor, conversationId);
+    const todos = await readTodos(executor, conversationId);
     return {
       todos: changedIds.flatMap(
         (id) => todos.find((todo) => todo.id === id) ?? [],
@@ -241,7 +243,7 @@ export async function setTodoStatusByUser(
       .returning({ id: juniorTodos.id });
     if (updated.length === 0) return undefined;
     await touchConversationDetail(executor.db(), [args.conversationId]);
-    const todos = await listTodos(executor, args.conversationId);
+    const todos = await readTodos(executor, args.conversationId);
     return todos.find((todo) => todo.id === args.id);
   });
 }
@@ -283,26 +285,9 @@ async function closeChildTodos(
   }
   /* oxlint-enable no-await-in-loop */
   await touchConversationDetail(db, [args.conversationId]);
-  return (await listTodos(executor, args.conversationId)).filter((todo) =>
+  return (await readTodos(executor, args.conversationId)).filter((todo) =>
     ids.includes(todo.id),
   );
-}
-
-function selectChildTodos(
-  executor: JuniorSqlDatabase,
-  conversationId: string,
-  childConversationId: string,
-) {
-  return executor
-    .db()
-    .select({ id: juniorTodos.id, status: juniorTodos.status })
-    .from(juniorTodos)
-    .where(
-      and(
-        eq(juniorTodos.conversationId, conversationId),
-        eq(juniorTodos.assigneeConversationId, childConversationId),
-      ),
-    );
 }
 
 /**
@@ -376,38 +361,97 @@ function rejectUnassigned(ids: readonly number[]): never {
   );
 }
 
-/**
- * Close every open To-do of the parent that is assigned to one child agent,
- * when the child's result reaches the parent. Returns the closed To-dos.
- */
-export async function closeOpenTodosOfChild(
-  executor: JuniorSqlDatabase,
-  args: {
-    childConversationId: string;
-    nowMs: number;
-    parentConversationId: string;
-    status: ClosedTodoStatus;
-  },
-): Promise<Todo[]> {
-  return await withTodosLock(executor, args.parentConversationId, async () => {
-    const open = (
-      await selectChildTodos(
-        executor,
-        args.parentConversationId,
-        args.childConversationId,
-      )
-    ).filter((row) => isOpenTodoStatus(row.status));
-    return await closeChildTodos(executor, {
-      childConversationId: args.childConversationId,
-      conversationId: args.parentConversationId,
-      nowMs: args.nowMs,
-      statuses: new Map(open.map((row) => [row.id, args.status])),
-    });
-  });
+/** The status that a child agent's own state gives its open To-dos. */
+function childTodoStatus(
+  child: ChildAgent | undefined,
+  todo: Todo,
+): ClosedTodoStatus | undefined {
+  // Only work that ended after the To-do's last change closes it, so a
+  // To-do given to an idle child stays open until the child works on it.
+  if (!child || child.updatedAtMs <= todo.updatedAtMs) return undefined;
+  if (child.status === "completed") return "done";
+  if (child.status === "stopped") return "dropped";
+  return undefined;
 }
 
-/** List every To-do of one Conversation, oldest first, with assignees resolved. */
+/**
+ * Close the open To-dos of a Conversation whose child agent finished or
+ * stopped after the To-do last changed: done when it completed, dropped
+ * when it stopped. The child's own state decides it, so a repeat read
+ * changes nothing.
+ */
+async function settleChildTodos(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+  todos: readonly Todo[],
+): Promise<boolean> {
+  const assigned = todos.filter(
+    (todo) => todo.assignee.kind === "agent" && isOpenTodoStatus(todo.status),
+  );
+  if (assigned.length === 0) return false;
+  const children = new Map(
+    (await listChildAgents(conversationId)).map((child) => [
+      child.childConversationId,
+      child,
+    ]),
+  );
+  const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
+  for (const todo of assigned) {
+    if (todo.assignee.kind !== "agent") continue;
+    const childId = todo.assignee.conversationId;
+    const status = childTodoStatus(children.get(childId), todo);
+    if (!status) continue;
+    const statuses =
+      byChild.get(childId) ?? new Map<number, ClosedTodoStatus>();
+    statuses.set(todo.id, status);
+    byChild.set(childId, statuses);
+  }
+  if (byChild.size === 0) return false;
+  const nowMs = Date.now();
+  await withTodosLock(executor, conversationId, async () => {
+    // Close only To-dos that no change replaced since the read.
+    const current = new Map(
+      (await readTodos(executor, conversationId)).map((todo) => [
+        todo.id,
+        todo.version,
+      ]),
+    );
+    /* oxlint-disable no-await-in-loop -- Writes share one transaction. */
+    for (const [childConversationId, statuses] of byChild) {
+      const unchanged = new Map(
+        [...statuses].filter(
+          ([id]) =>
+            current.get(id) === todos.find((todo) => todo.id === id)?.version,
+        ),
+      );
+      await closeChildTodos(executor, {
+        childConversationId,
+        conversationId,
+        nowMs,
+        statuses: unchanged,
+      });
+    }
+    /* oxlint-enable no-await-in-loop */
+  });
+  return true;
+}
+
+/**
+ * List every To-do of one Conversation, oldest first, with assignees
+ * resolved. A To-do assigned to a child agent that has finished or stopped
+ * since it last changed is closed first.
+ */
 export async function listTodos(
+  executor: JuniorSqlDatabase,
+  conversationId: string,
+): Promise<Todo[]> {
+  const todos = await readTodos(executor, conversationId);
+  return (await settleChildTodos(executor, conversationId, todos))
+    ? await readTodos(executor, conversationId)
+    : todos;
+}
+
+async function readTodos(
   executor: JuniorSqlDatabase,
   conversationId: string,
 ): Promise<Todo[]> {
