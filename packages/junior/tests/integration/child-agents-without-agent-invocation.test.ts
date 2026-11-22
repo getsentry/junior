@@ -10,7 +10,12 @@ import {
 } from "@/chat/agent-invocations/errors";
 import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
 import { turnRequestText } from "@/chat/agent/prompt";
-import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
+import {
+  listOpenChildAgents,
+  listUnreportedSiblingAgents,
+} from "@/chat/agent-invocations/list";
+import { eq } from "drizzle-orm";
+import { juniorConversations } from "@/db/schema";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -19,7 +24,7 @@ import {
   stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import {
@@ -377,6 +382,42 @@ describe("child agents", () => {
       await expect(listAgents.execute!({}, {})).resolves.toEqual({
         agents: [expect.objectContaining({ status: "stopped" })],
       });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("counts a child with open work behind 200 older finished children", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      // The finished children were written before the open one.
+      const [parent] = await getDb()
+        .select()
+        .from(juniorConversations)
+        .where(
+          eq(juniorConversations.conversationId, slackParentConversationId),
+        );
+      const finishedAt = new Date(1_700_000_000_000);
+      await getDb()
+        .insert(juniorConversations)
+        .values(
+          Array.from({ length: 200 }, (_, index) => ({
+            ...parent!,
+            agentConfig: {},
+            conversationId: `agent:finished-${index}`,
+            executionUpdatedAt: finishedAt,
+            kind: "task" as const,
+            parentConversationId: slackParentConversationId,
+            rootConversationId: slackParentConversationId,
+            updatedAt: finishedAt,
+          })),
+        );
+      const childId = await spawnChild(harness, "parent-turn:call-1");
+
+      await expect(
+        listOpenChildAgents(slackParentConversationId),
+      ).resolves.toEqual([childId]);
     } finally {
       await harness.close();
     }

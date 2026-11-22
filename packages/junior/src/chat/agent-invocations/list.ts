@@ -1,4 +1,4 @@
-import { and, eq, isNotNull, ne } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import pLimit from "p-limit";
 import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { Source } from "@sentry/junior-plugin-api";
@@ -72,6 +72,13 @@ export async function listChildAgents(
       and(
         eq(juniorConversations.parentConversationId, parentConversationId),
         isNotNull(juniorConversations.agentConfig),
+      ),
+    )
+    // The limit keeps the newest activity, so a child with open work stays
+    // in the listing.
+    .orderBy(
+      desc(
+        sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`,
       ),
     )
     .limit(CHILD_AGENT_LIST_LIMIT);
