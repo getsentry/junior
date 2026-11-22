@@ -69,7 +69,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
         ["Check the deploy", "open", undefined],
       ]);
       vi.setSystemTime(Date.now() + 1_000);
-      harness.onPersonRun(
+      harness.onRun(
         async (run) =>
           await finishRun(
             run,
@@ -100,7 +100,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
         kind: "thread",
       });
       // The Thread takes its task quietly, so its parent gets nothing.
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.drain(childId);
       vi.setSystemTime(Date.now() + 1_000);
       await changeTodos(getSqlExecutor(), {
@@ -122,7 +122,7 @@ describe("To-dos of child agents that no Agent invocation names", () => {
       // A person's Turn in the Thread answers the person, not the parent.
       vi.setSystemTime(Date.now() + 1_000);
       await sendPersonMessage(harness, childId, "person-1");
-      harness.onPersonRun(
+      harness.onRun(
         async (run) =>
           await finishRun(
             run,

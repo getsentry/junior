@@ -214,6 +214,8 @@ export type Conversation = {
   parentConversationId?: string | undefined;
   /** Visible Threads under this row, newest first. */
   threads?: Conversation[] | undefined;
+  /** Threads that the feed left out of `threads`. Roots only. */
+  omittedThreadCount?: number | undefined;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean | undefined;
   /** The latest Turn failed and no newer Turn started. Server-owned. */

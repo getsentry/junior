@@ -26,9 +26,8 @@ function names are part of the interface.
 
 ### Lifecycle state
 
-- Store each lifecycle, such as a Turn, an agent invocation, or an
-  Automation run, as one status value. Use a discriminated union when a field
-  is valid only in some states.
+- Store each lifecycle, such as a Turn or an Automation run, as one status
+  value. Use a discriminated union when a field is valid only in some states.
 - One function owns the transitions of each lifecycle and rejects an illegal
   one. Other code calls it. It does not write the status directly.
 - A terminal state stays terminal. A late writer must not move it back.

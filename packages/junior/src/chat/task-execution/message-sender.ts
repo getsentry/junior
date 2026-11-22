@@ -3,12 +3,10 @@ import * as z from "zod";
 /**
  * The Conversation and Turn that sent one inbound message, such as a child's
  * reply to its parent. The sender writes it at `input.metadata.sender`, so
- * readers never take meaning from the message id. `agentInvocationId` names
- * the Agent invocation that the message comes from, when there is one.
+ * readers never take meaning from the message id.
  */
 export const inboundMessageSenderSchema = z
   .object({
-    agentInvocationId: z.string().min(1).optional(),
     conversationId: z.string().min(1),
     turnId: z.string().min(1),
   })

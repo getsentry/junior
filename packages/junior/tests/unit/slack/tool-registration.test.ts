@@ -285,7 +285,7 @@ describe("Slack tool registration", () => {
       },
       {
         actor: slackActor,
-        source: { kind: "agent_invocation" as const },
+        source: { kind: "parent_message" as const },
       },
     ];
 

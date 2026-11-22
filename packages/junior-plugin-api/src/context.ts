@@ -44,10 +44,7 @@ export type EventAutomationSource = Extract<
   { kind: "event_automation" }
 >;
 export type PluginDispatchSource = Extract<Source, { kind: "plugin_dispatch" }>;
-export type AgentInvocationSource = Extract<
-  Source,
-  { kind: "agent_invocation" }
->;
+export type ParentMessageSource = Extract<Source, { kind: "parent_message" }>;
 export type SourceVisibility = z.output<typeof sourceVisibilitySchema>;
 
 export type Destination = z.output<typeof destinationSchema>;
@@ -191,7 +188,7 @@ export type InvocationContext =
       destination: Destination;
       actor?: Actor | undefined;
       source:
-        | AgentInvocationSource
+        | ParentMessageSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource
@@ -277,7 +274,7 @@ export function getSourceKey(source: Source): string | undefined {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return undefined;
   }
 }

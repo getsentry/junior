@@ -1,14 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
-import {
-  enqueueAgentInvocationResult,
-  enqueueChildResultToParent,
-} from "@/chat/agent-invocations/result";
-import {
-  completeAgentInvocation,
-  isTerminalAgentInvocation,
-} from "@/chat/agent-invocations/store";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import { createDeliverToParent } from "@/chat/agent-invocations/result";
+import type { ParentResult } from "@/chat/task-execution/conversation-turn";
 import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
@@ -31,16 +24,20 @@ async function createHarness() {
   const { conversationStore, fixture } = await prepareParentConversation();
   const work = await createConversationWorkHarness(neverRunAgentRunner());
   const spawn = async (agentName: string) =>
-    await createAndEnqueueAgentInvocation(
-      {
-        ...invocationInput,
-        agentName,
-        idempotencyKey: `todos-${agentName}`,
-        input: "Review the draft",
-      },
-      { conversationStore, queue: work.queue, state: work.state },
-    );
-  const child = await spawn("Echo");
+    (
+      await spawnChildAgent(
+        {
+          ...invocationInput,
+          agentName,
+          idempotencyKey: `todos-${agentName}`,
+          input: "Review the draft",
+          parentToolCallId: `todos-${agentName}`,
+          parentTurnId: "parent-turn",
+        },
+        { conversationStore, queue: work.queue, state: work.state },
+      )
+    ).childConversationId;
+  const childConversationId = await spawn("Echo");
   const { findMentionedUserId } = createSlackInboxItemToolServices(
     () => work.queue,
   );
@@ -49,7 +46,7 @@ async function createHarness() {
     findMentionedUserId,
   );
   const childContext = {
-    conversationId: child.childConversationId,
+    conversationId: childConversationId,
     parentConversationId,
   };
   const childListAgents = createListAgentsTool(childContext);
@@ -57,42 +54,20 @@ async function createHarness() {
     childContext,
     findMentionedUserId,
   );
+  const deliverToParent = createDeliverToParent({
+    queue: work.queue,
+    state: work.state,
+  });
   return {
-    child,
-    childConversationId: child.childConversationId,
+    childConversationId,
     spawn,
-    /** Ends a child's invocation and sends its result to the parent. */
-    finish: async (end: Parameters<typeof completeAgentInvocation>[0]) => {
-      const invocation = await completeAgentInvocation(end);
-      if (!invocation || !isTerminalAgentInvocation(invocation)) {
-        throw new Error(`${end.invocationId} did not end`);
-      }
-      await enqueueAgentInvocationResult(invocation, {
-        queue: work.queue,
-        state: work.state,
-      });
-      return invocation;
-    },
-    /** Sends a result again, as heartbeat recovery does after a crash. */
-    resend: async (
-      invocation: Parameters<typeof enqueueAgentInvocationResult>[0],
-    ): Promise<void> =>
-      await enqueueAgentInvocationResult(invocation, {
-        queue: work.queue,
-        state: work.state,
-      }),
-    /** Sends the `reply` of a child's agent invocation to the parent. */
-    reply: async (
-      invocation: Awaited<ReturnType<typeof spawn>>,
-      text: string,
-    ): Promise<void> =>
-      await enqueueChildResultToParent({
-        result: { kind: "reply", reply: { text, toolCallId: "reply-1" } },
-        messageKey: "reply-1",
-        queue: work.queue,
-        sender: invocation,
-        state: work.state,
-        turnId: getAgentInvocationTurnId(invocation.invocationId),
+    /** Sends one child Turn's result to the parent, as its loop does. */
+    send: async (conversationId: string, result: ParentResult) =>
+      await deliverToParent({
+        actor: invocationInput.actor,
+        conversationId,
+        result,
+        turnId: "turn_child",
       }),
     close: async () => await fixture.close(),
     updateTodos: async (input: unknown) =>
@@ -349,10 +324,14 @@ describe("updateTodos", () => {
     const harness = await createHarness();
     try {
       const children = {
-        completed: harness.child,
+        completed: harness.childConversationId,
         stopped: await harness.spawn("Foxtrot"),
         failed: await harness.spawn("Golf"),
         blocked: await harness.spawn("Hotel"),
+      };
+      const reply: ParentResult = {
+        kind: "reply",
+        reply: { text: "Reviewed.", toolCallId: "call-reply" },
       };
       tick();
       await harness.updateTodos({
@@ -366,38 +345,38 @@ describe("updateTodos", () => {
           { title: "Parent open" },
         ],
       });
-      const readTodos = async () =>
-        (await listTodos(getSqlExecutor(), parentConversationId)).map(
-          (todo) => [todo.title, todo.status, todo.changedByAgent?.name],
-        );
 
-      // A `reply` that answers the parent closes them as it arrives.
       tick();
-      await harness.reply(children.completed, "Reviewed.");
-      await expect(readTodos()).resolves.toContainEqual([
-        "Echo open",
-        "done",
-        "Echo",
-      ]);
-      await harness.finish({
-        invocationId: children.completed.invocationId,
-        result: "Done.",
-        status: "completed",
-      });
-      for (const status of ["stopped", "failed", "blocked"] as const) {
-        await harness.finish({
-          errorMessage: `Child ${status}.`,
-          invocationId: children[status].invocationId,
-          status,
-        });
+      await harness.send(children.completed, reply);
+      for (const kind of ["stopped", "failed", "blocked"] as const) {
+        await harness.send(children[kind], { kind, text: `Child ${kind}.` });
       }
-      // A To-do given to a child after its work ended waits for its next work.
+      // A retry of the same result leaves To-dos assigned after it open.
       tick();
       await harness.updateTodos({
-        add: [{ title: "Echo next", assignee: "Echo" }],
+        add: [
+          { title: "Echo next", assignee: "Echo" },
+          { title: "Foxtrot next", assignee: "Foxtrot" },
+        ],
+      });
+      tick();
+      await harness.send(children.completed, reply);
+      await harness.send(children.stopped, {
+        kind: "stopped",
+        text: "Child stopped.",
       });
 
-      const expected = [
+      const parentTodos = await listTodos(
+        getSqlExecutor(),
+        parentConversationId,
+      );
+      expect(
+        parentTodos.map((todo) => [
+          todo.title,
+          todo.status,
+          todo.changedByAgent?.name,
+        ]),
+      ).toEqual([
         ["Echo open", "done", "Echo"],
         ["Echo started", "done", "Echo"],
         ["Echo dropped", "dropped", undefined],
@@ -406,46 +385,7 @@ describe("updateTodos", () => {
         ["Hotel open", "open", undefined],
         ["Parent open", "open", undefined],
         ["Echo next", "open", undefined],
-      ];
-      await expect(readTodos()).resolves.toEqual(expected);
-      // The read wrote the change once; a second read changes nothing.
-      await expect(readTodos()).resolves.toEqual(expected);
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("leaves a To-do given after a child's work ended open when its result arrives late", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const tick = () => vi.setSystemTime(Date.now() + 1_000);
-    const harness = await createHarness();
-    try {
-      tick();
-      await harness.updateTodos({
-        add: [{ title: "Echo open", assignee: "Echo" }],
-      });
-      tick();
-      const ended = await completeAgentInvocation({
-        invocationId: harness.child.invocationId,
-        result: "Done.",
-        status: "completed",
-      });
-      if (!ended || !isTerminalAgentInvocation(ended)) {
-        throw new Error("Echo did not end");
-      }
-      tick();
-      await harness.updateTodos({
-        add: [{ title: "Echo next", assignee: "Echo" }],
-      });
-      // The result is as old as the end of the work, not as its append.
-      tick();
-      await harness.resend(ended);
-
-      await expect(
-        listTodos(getSqlExecutor(), parentConversationId),
-      ).resolves.toMatchObject([
-        { title: "Echo open", status: "done" },
-        { title: "Echo next", status: "open" },
+        ["Foxtrot next", "open", undefined],
       ]);
     } finally {
       await harness.close();
