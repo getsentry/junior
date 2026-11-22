@@ -1121,6 +1121,13 @@
       "when": 1795374840076,
       "tag": "0159_conversation_embeddings_fk_validate",
       "breakpoints": true
+    },
+    {
+      "idx": 160,
+      "version": "7",
+      "when": 1795380205852,
+      "tag": "0160_money_micro_usd_repair",
+      "breakpoints": true
     }
   ]
 }
