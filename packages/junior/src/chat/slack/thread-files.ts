@@ -1,3 +1,5 @@
+import { ATTACHMENT_TOO_LARGE_MESSAGE } from "@/chat/attachments/download";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import {
   storeAttachment,
   type StoredAttachment,
@@ -56,6 +58,10 @@ export async function storeSlackThreadFile(args: {
     throw new ToolInputError(
       `Slack file ${args.fileId} is not in this conversation's thread.`,
     );
+  }
+  // Refuse before the download, as ingest does.
+  if (file.size !== undefined && file.size > MAX_ATTACHMENT_BYTES) {
+    throw new ToolInputError(ATTACHMENT_TOO_LARGE_MESSAGE);
   }
   const data = await downloadSlackFile(file);
   return await storeAttachment({

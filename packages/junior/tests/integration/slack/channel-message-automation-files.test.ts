@@ -12,6 +12,8 @@ import {
   createTools,
   type ToolRuntimeContext,
 } from "@/chat/tool-support/create-tools";
+import { ATTACHMENT_TOO_LARGE_MESSAGE } from "@/chat/attachments/download";
+import { MAX_ATTACHMENT_BYTES } from "@/chat/attachments/input";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { Hono } from "hono";
 import { createConversationRoutes } from "@/api/conversations/routes";
@@ -146,6 +148,7 @@ describe("Slack channel-message automation files", () => {
       name,
       mimetype: "image/png",
       url_private: `https://files.slack.com/files-pri/${TEAM_ID}-${id}/${name}`,
+      url_private_download: `https://files.slack.com/files-pri/${TEAM_ID}-${id}/download/${name}`,
     });
     const rootFile = slackFile("F0ROOTPNG1", "chart.png");
     const forwardedFile = slackFile("F0FWDPNG1", "forwarded.png");
@@ -294,6 +297,11 @@ describe("Slack channel-message automation files", () => {
                     {
                       ...slackFile("F0APIURL1", "api.png"),
                       url_private: "https://slack.com/api/auth.test",
+                      url_private_download: "https://slack.com/api/auth.test",
+                    },
+                    {
+                      ...slackFile("F0HUGEMP41", "huge.mp4"),
+                      size: MAX_ATTACHMENT_BYTES + 1,
                     },
                   ],
                 },
@@ -333,7 +341,11 @@ describe("Slack channel-message automation files", () => {
         .map((call) => call.params),
     ).toEqual([expect.objectContaining({ channel: "C123", ts: rootTs })]);
     expect(getCapturedSlackFileDownloadCalls().map((call) => call.url)).toEqual(
-      [rootFile.url_private, forwardedFile.url_private, replyFile.url_private],
+      [
+        rootFile.url_private_download,
+        forwardedFile.url_private_download,
+        replyFile.url_private_download,
+      ],
     );
 
     // A file that is not in the run's thread, or whose URL is not on Slack's
@@ -344,6 +356,11 @@ describe("Slack channel-message automation files", () => {
         execute(loadAttachment!, { attachment_id: fileId }),
       ).rejects.toThrow("not in this conversation's thread");
     }
+    // A thread file over the size limit is refused before the download.
+    threadReplies();
+    await expect(
+      execute(loadAttachment!, { attachment_id: "F0HUGEMP41" }),
+    ).rejects.toThrow(ATTACHMENT_TOO_LARGE_MESSAGE);
     expect(
       getCapturedSlackFileDownloadCalls().map((call) => call.url),
     ).toHaveLength(3);

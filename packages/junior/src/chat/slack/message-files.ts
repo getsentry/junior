@@ -74,7 +74,10 @@ export function readSlackMessageFiles(message: unknown): SlackMessageFile[] {
 export function slackFileDownloadUrl(
   file: SlackMessageFile,
 ): string | undefined {
-  const value = file.url_private_download ?? file.url_private;
+  return onSlackFileHost(file.url_private_download ?? file.url_private);
+}
+
+function onSlackFileHost(value: string): string | undefined {
   try {
     const url = new URL(value);
     return url.protocol === "https:" && url.hostname === "files.slack.com"
@@ -107,12 +110,13 @@ function attachmentType(mimeType: string | undefined): Attachment["type"] {
  * Build the attachment of a Slack file that the Slack adapter did not map.
  *
  * Ingest can stream a file from `url` with the bot token, so the attachment
- * gets a URL only when it is on Slack's file host.
+ * gets a URL only when it is on Slack's file host. The URL is `url_private`,
+ * the key that `readSlackMessageAttachments` pairs attachments by.
  */
 export function slackFileAttachment(
   file: SlackMessageFile,
 ): SlackMessageAttachment {
-  const url = slackFileDownloadUrl(file);
+  const url = onSlackFileHost(file.url_private);
   return {
     type: attachmentType(file.mimetype),
     ...(url ? { url } : undefined),
