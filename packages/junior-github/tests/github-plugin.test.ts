@@ -409,6 +409,7 @@ function githubToolsContext(input?: {
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
   findLinkedHandle?: ToolRegistrationHookContext["users"]["findLinkedHandle"];
+  replaceSlackMentions?: ToolRegistrationHookContext["users"]["replaceSlackMentions"];
   /** Overrides the host's work owner. By default a person runs the Turn. */
   workOwner?: PluginWorkOwner | undefined;
   source?: ToolRegistrationHookContext["source"];
@@ -474,7 +475,8 @@ function githubToolsContext(input?: {
         })),
     },
     users: {
-      replaceSlackMentions: async (value) => value,
+      replaceSlackMentions:
+        input?.replaceSlackMentions ?? (async (value) => value),
       resolveActor: input?.resolveActor ?? (async () => undefined),
       findLinkedHandle:
         input?.findLinkedHandle ??
@@ -2270,6 +2272,36 @@ Conversation: \`local:test:old-conversation\`
       expect(ctx.egressRequests()).toEqual([]);
     },
   );
+
+  it("looks up a Slack mention before it rewrites Slack text", async () => {
+    const lookups: string[] = [];
+    const ctx = githubToolsContext({
+      findLinkedHandle: async (query) => {
+        lookups.push(query);
+        return { status: "unlinked" };
+      },
+      // An unlinked person's mention becomes their name, which is also a
+      // valid GitHub login.
+      replaceSlackMentions: async <T>(value: T) =>
+        JSON.parse(JSON.stringify(value).replaceAll("<@U2>", "jane")) as T,
+    });
+    const tool = githubPlugin().hooks?.tools?.()?.["createPullRequest"];
+
+    await expect(
+      bindPluginTool(tool, ctx as any)?.execute?.(
+        {
+          repo: "getsentry/junior",
+          title: "Typed PR",
+          head: "feature",
+          base: "main",
+          assignees: ["<@U2>"],
+        },
+        { toolCallId: "call-create-pull-request-mention" },
+      ),
+    ).rejects.toThrow("assignee <@U2> has no linked GitHub account.");
+    expect(lookups).toEqual(["<@U2>"]);
+    expect(ctx.egressRequests()).toEqual([]);
+  });
 
   it.each([
     {

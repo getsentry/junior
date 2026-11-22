@@ -394,14 +394,16 @@ async function assignPullRequest(
  */
 async function resolveNamedPeople(
   ctx: ToolRegistrationHookContext,
-  input: CreateGitHubPullRequestInput,
-): Promise<CreateGitHubPullRequestInput> {
+  people: {
+    assignees?: string[] | undefined;
+    reviewers?: string[] | undefined;
+  },
+): Promise<{ assignees?: string[]; reviewers?: string[] }> {
   const [assignees, reviewers] = await Promise.all([
-    resolveLogins(ctx, input.assignees, "assignee"),
-    resolveLogins(ctx, input.reviewers, "reviewer"),
+    resolveLogins(ctx, people.assignees, "assignee"),
+    resolveLogins(ctx, people.reviewers, "reviewer"),
   ]);
   return {
-    ...input,
     ...(assignees ? { assignees } : undefined),
     ...(reviewers ? { reviewers } : undefined),
   };
@@ -627,10 +629,18 @@ export function createGitHubPullRequestTool(
       options: PluginToolExecuteOptions,
       ctx: ToolRegistrationHookContext,
     ) {
-      const parsedInput = await resolveNamedPeople(
-        ctx,
-        parseCreatePullRequestInput(input),
-      );
+      // People fields skip the Slack mention rewrite that other text gets:
+      // an unlinked person's mention would become a name and lose the Slack
+      // user ID that the lookup needs.
+      const { assignees, reviewers, ...text } = input;
+      const [githubText, people] = await Promise.all([
+        ctx.users.replaceSlackMentions(text, "github"),
+        resolveNamedPeople(ctx, { assignees, reviewers }),
+      ]);
+      const parsedInput = parseCreatePullRequestInput({
+        ...githubText,
+        ...people,
+      });
       const conversationId = nonEmptyString(
         ctx.conversationId,
         "conversationId",
