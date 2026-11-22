@@ -5,20 +5,24 @@ import {
   type Identity,
   type User,
 } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import webPush from "web-push";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import { actOnInboxItem } from "@/chat/inbox-items/actions";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import {
   saveNotificationSchedule,
   savePushSubscription,
 } from "@/chat/notifications/store";
+import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { juniorInboxItemDeliveries } from "@/db/schema";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { mswServer } from "../msw/server";
@@ -99,6 +103,7 @@ async function turnTools(
   const conversationId =
     where === "slack" ? "slack:C1:1.000001" : `local:web:${randomUUID()}`;
   await getConversationStore().recordActivity({
+    actor: { email: "ana@example.com" },
     conversationId,
     destination:
       where === "slack"
@@ -207,10 +212,17 @@ describe("inbox item push", () => {
     // A change of the same ask does not push again.
     await execute(tools.add, { ...ASK, body: "The deploy still waits." });
     // Everyone items and notices show only in the Inbox.
-    await execute(tools.add, {
+    const everyone = await execute(tools.add, {
       ...ASK,
       assignees: ["everyone"],
       dedupe_key: "deploy:web",
+    });
+    // Ana takes it, so she is its assignee now, but needs no push for it.
+    await actOnInboxItem({
+      action: "take",
+      delivery: { queue, show: services.show },
+      id: everyone.item.id,
+      user: ana,
     });
     await execute(tools.add, {
       kind: "notice",
@@ -229,6 +241,13 @@ describe("inbox item push", () => {
       reason: "Deploy rolled back",
     });
     expect(pushes).toHaveLength(1);
+    // The close clears its deliveries in its own statement. If that failed,
+    // the retry of the close shows the item again, and that clears them.
+    await getDb()
+      .update(juniorInboxItemDeliveries)
+      .set({ status: "sent" })
+      .where(eq(juniorInboxItemDeliveries.itemId, added.item.id));
+    await syncInboxItemPush(added.item.id);
     const next = await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
     expect(pushes[1]).toMatchObject({
       close: [added.item.id],
