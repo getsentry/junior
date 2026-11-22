@@ -18,6 +18,7 @@ import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   appendAndEnqueueInboundMessage,
@@ -416,6 +417,9 @@ describe("child agent task work", () => {
       parentMessages: [
         expect.stringMatching(/status="failed">\n[\s\S]*\nmodel unavailable\n/),
       ],
+      // The model error leaves execution idle. The child still lists its
+      // failure.
+      lastResult: "failed" as const,
     },
     {
       // A blocked report is a result, not a model failure.
@@ -463,6 +467,7 @@ describe("child agent task work", () => {
           /status="failed">\n[\s\S]*\nNo reply was sent\.\n/,
         ),
       ],
+      lastResult: "failed" as const,
     },
     {
       // A Thread stays quiet.
@@ -475,7 +480,14 @@ describe("child agent task work", () => {
     },
   ])(
     "finishes a $name child Turn after saving its result",
-    async ({ kind, outputs, parentMessages, subagentOutcome, terminal }) => {
+    async ({
+      kind,
+      lastResult,
+      outputs,
+      parentMessages,
+      subagentOutcome,
+      terminal,
+    }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const modelStream = vi.fn(createModelStream(outputs));
       const { process, queue, state } = await createConversationWorkHarness(
@@ -530,6 +542,11 @@ describe("child agent task work", () => {
         expect(
           (parentWork?.messages ?? []).map((message) => message.input.text),
         ).toEqual(parentMessages);
+        const { agents } = await createListAgentsTool({
+          conversationId: parentConversationId,
+        }).execute!({}, {});
+        expect(agents).toEqual([expect.objectContaining({ status: "idle" })]);
+        expect(agents[0]!.last_result).toBe(lastResult);
       } finally {
         await fixture.close();
       }
