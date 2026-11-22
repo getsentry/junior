@@ -37,7 +37,8 @@ export function createPublishImageTool(args: {
     source: IMAGES_TOOL_SOURCE,
     annotations: {
       destructiveHint: false,
-      idempotentHint: true,
+      // An expiring publish makes a new URL each call.
+      idempotentHint: false,
       openWorldHint: true,
       readOnlyHint: false,
     },
