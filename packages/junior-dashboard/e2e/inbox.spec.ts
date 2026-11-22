@@ -240,8 +240,14 @@ test("each inbox item gets a fresh answer form", async ({
   const note = detail.getByLabel("Anything else?");
   await note.fill("Wait for the EU canary first.");
   await screenshot(page, "review-desk-other", { view: "desktop" });
+  const sent = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(`/api/inbox-items/${rollout.id}/actions`),
+  );
   await note.press("Enter");
-  await expect.poll(() => actions.length).toBe(3);
+  await sent;
+  expect(actions).toHaveLength(3);
   expect(actions[2]).toMatchObject({
     body: {
       action: "submit",
@@ -527,15 +533,19 @@ test("a failed-run alert sends Pause to the server", async ({
   await expect(detail.getByRole("button", { name: "Run again" })).toBeVisible();
   // Core takes the step and reads no words, so there is no Other….
   await expect(detail.getByRole("button", { name: "Other…" })).toHaveCount(0);
+  const sent = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      response.url().endsWith(`/api/inbox-items/${alert.id}/actions`),
+  );
   await detail.getByRole("button", { name: "Pause" }).click();
-  await expect
-    .poll(() => actions)
-    .toEqual([
-      {
-        body: { action: "submit", answer: { values: { step: ["Pause"] } } },
-        id: alert.id,
-      },
-    ]);
+  await sent;
+  expect(actions).toEqual([
+    {
+      body: { action: "submit", answer: { values: { step: ["Pause"] } } },
+      id: alert.id,
+    },
+  ]);
 });
 
 test("an Automation alert names its Automation as its source", async ({

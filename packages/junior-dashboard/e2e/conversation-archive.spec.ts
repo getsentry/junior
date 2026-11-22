@@ -205,18 +205,24 @@ test("confirms a child archive and archives its children too", async ({
     name: "Also archive its child conversations?",
   });
   await expect(confirm).toContainText("for everyone");
-  const archiveRequest = page.waitForRequest(
-    (request) =>
-      request.method() === "PATCH" && request.url().endsWith("/archive"),
+  const archived = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response.url().endsWith("/archive"),
+  );
+  // The Conversations page that the archive returns to reads the Lead.
+  const leadRead = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/lead",
   );
   await confirm.getByRole("button", { name: "Archive" }).click();
-  expect((await archiveRequest).postDataJSON()).toMatchObject({
+  expect((await archived).request().postDataJSON()).toMatchObject({
     applyToChildren: true,
     archived: true,
   });
   await expect(page).toHaveURL(
     new URL("/conversations", dashboard.baseURL).href,
   );
+  await leadRead;
 });
 
 test("shows why a child restore is refused", async ({ page, dashboard }) => {

@@ -4,6 +4,7 @@ import {
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../../src/service-worker";
+import { waitForOutlineRead, waitForSettingsReads } from "../harness";
 import { screenshot } from "../screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../../src/mock-reporting/fixtures";
 
@@ -144,9 +145,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     async function startConversation(message: string) {
       await page.goto(`${dashboard.baseURL}/conversations/new`);
+      const outlineRead = waitForOutlineRead(
+        page,
+        DASHBOARD_QA_CONVERSATION_ID,
+      );
       await page.locator('[aria-placeholder="Message Junior…"]').fill(message);
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
+      await outlineRead;
     }
 
     await startConversation("First question");
@@ -227,8 +233,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await saveTappedNotification("/settings", 0);
     await page.reload();
     await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
-    await page.reload();
+    // Wait from the commit of the new document, so a Settings read from the
+    // page before the reload does not count.
+    await page.reload({ waitUntil: "commit" });
+    const settingsRead = waitForSettingsReads(page);
     await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
+    await settingsRead;
   });
 
   test("shows a push notification that has no tag", async ({
@@ -239,7 +249,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     // renotify without a tag, so the worker must still show the notification.
     // The push opens "/", so stay on another page: there the worker alerts.
     await page.context().grantPermissions(["notifications"]);
+    const settingsRead = waitForSettingsReads(page);
     await page.goto(`${dashboard.baseURL}/settings`);
+    // A skip ends the test, so the page reads must be done first.
+    await settingsRead;
     test.skip(
       (await page.evaluate(() => Notification.permission)) !== "granted",
       "Chromium headless shell denies notifications. CI runs Chrome.",

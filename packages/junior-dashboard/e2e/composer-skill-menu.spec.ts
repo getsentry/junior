@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { waitForReadPosition } from "./harness";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { clickSkillReference, styledSkillReferences } from "./skill-references";
 
@@ -195,13 +196,19 @@ test("a skill reference in the draft is styled and stays plain text @classic", a
 
   // The message is the plain text.
   await composer.press("Escape");
-  const sent = page.waitForRequest(
-    (request) =>
-      request.method() === "POST" &&
-      /\/api\/conversations\/[^/]+\/messages$/.test(request.url()),
+  const sent = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      /\/api\/conversations\/[^/]+\/messages$/.test(response.url()),
   );
+  // The Conversation ends at seq 28 when it opens. The sent message comes
+  // after it.
+  const readSaved = waitForReadPosition(page, 28);
   await composer.press("Enter");
-  expect((await sent).postDataJSON()).toMatchObject({ message: text });
+  expect((await sent).request().postDataJSON()).toMatchObject({
+    message: text,
+  });
+  await readSaved;
 });
 
 test("a caret move before the skill list loads shows the card @classic", async ({
@@ -384,6 +391,9 @@ test("the reply composer with Details open stays split @classic", async ({
     name: "Continue this conversation",
   });
   await expect(composer).toHaveAttribute("contenteditable", "true");
+  // Typing in the composer counts as reading, so the page saves the read
+  // position.
+  const readSaved = waitForReadPosition(page, 0);
   await composer.pressSequentially("$");
   const skills = page.getByRole("grid", { name: "Skills" });
   await expect(skills).toBeVisible();
@@ -396,4 +406,5 @@ test("the reply composer with Details open stays split @classic", async ({
     0,
   );
   await screenshot(page, "composer-skill-split-reply", { view: "desktop" });
+  await readSaved;
 });
