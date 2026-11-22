@@ -22,6 +22,7 @@ import {
 } from "./DashboardChrome";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
+import { splitLeadNavItem } from "../../primaryNav";
 
 export type DashboardHeaderNavItem = {
   /** Shown beside the label when it is above zero. */
@@ -84,6 +85,8 @@ export function DashboardHeader(props: {
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);
   });
+  // Home, the Lead, comes before Conversations.
+  const { lead, rest } = splitLeadNavItem(props.navItems);
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -140,6 +143,11 @@ export function DashboardHeader(props: {
               aria-label="Primary"
               className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
             >
+              {lead ? (
+                <NavLink className={navLinkClass} end to={lead.to}>
+                  {lead.label}
+                </NavLink>
+              ) : null}
               <Link
                 aria-current={props.workspaceActive ? "page" : undefined}
                 className={navLinkClass({ isActive: props.workspaceActive })}
@@ -147,7 +155,7 @@ export function DashboardHeader(props: {
               >
                 Conversations
               </Link>
-              {props.navItems.map((item) => (
+              {rest.map((item) => (
                 <NavLink className={navLinkClass} key={item.key} to={item.to}>
                   {item.label}
                   <NavCount count={item.count} />
@@ -273,6 +281,11 @@ export function DashboardHeader(props: {
                   <Search aria-hidden="true" className="size-4" />
                   {COMMAND_PALETTE_LABEL}
                 </Button>
+                {lead ? (
+                  <NavLink className={sheetLinkClass} end to={lead.to}>
+                    {lead.label}
+                  </NavLink>
+                ) : null}
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
                   className={sheetLinkClass({
@@ -282,7 +295,7 @@ export function DashboardHeader(props: {
                 >
                   Conversations
                 </Link>
-                {props.navItems.map((item) => (
+                {rest.map((item) => (
                   <NavLink
                     className={sheetLinkClass}
                     key={item.key}

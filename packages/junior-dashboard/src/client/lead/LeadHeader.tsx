@@ -18,9 +18,10 @@ export function LeadHeader(props: {
       className={cn(
         "grid items-center border-b border-dashboard-border-subtle px-4 py-3 sm:px-6",
         // Equal side tracks keep the title on the transcript's center line
-        // when the list toggle is on the left.
+        // when the list toggle is on the left. Wider controls, such as a
+        // back link, widen the left track so they do not cover the title.
         props.sidebarToggle !== undefined &&
-          "grid-cols-[2.25rem_minmax(0,1fr)_2.25rem]",
+          "grid-cols-[minmax(2.25rem,max-content)_minmax(0,1fr)_2.25rem] gap-x-2",
         props.mobileHidden && "hidden md:grid",
       )}
     >

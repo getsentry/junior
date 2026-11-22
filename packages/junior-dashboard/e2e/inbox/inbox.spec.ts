@@ -79,6 +79,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // An entry counts what waits on the viewer, like the badge: the
     // "Pull request ready for review" notice does not.
     await expect(nav.getByRole("link")).toHaveText([
+      /^Lead$/,
       /^Inbox/,
       /^Snoozed/,
       /^Done$/,
