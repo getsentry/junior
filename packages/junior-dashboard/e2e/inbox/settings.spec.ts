@@ -4,6 +4,7 @@ import {
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../../src/service-worker";
+import { waitForOutlineRead } from "../harness";
 import { screenshot } from "../screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../../src/mock-reporting/fixtures";
 
@@ -144,9 +145,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     async function startConversation(message: string) {
       await page.goto(`${dashboard.baseURL}/conversations/new`);
+      const outlineRead = waitForOutlineRead(
+        page,
+        DASHBOARD_QA_CONVERSATION_ID,
+      );
       await page.locator('[aria-placeholder="Message Junior…"]').fill(message);
       await page.keyboard.press("Enter");
       await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
+      await outlineRead;
     }
 
     await startConversation("First question");
