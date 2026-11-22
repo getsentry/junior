@@ -14,7 +14,6 @@ import {
   type AutomationTask,
 } from "@/chat/automations/task";
 import type { SkillMetadata } from "@/chat/skills";
-import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import {
   requireToolCaller,
   requireToolCreator,
@@ -308,15 +307,15 @@ export function createAutomationTool(
       const creator = requireToolCreator(caller, destination, kind);
       const { createdBy } = creator;
       // prepareArguments removed the nulls.
-      const task = newAutomationTask({
-        instruction: input.instruction ?? undefined,
-        skill: input.skill ?? undefined,
-        context: input.context ?? undefined,
-      });
+      const task = newAutomationTask(
+        {
+          instruction: input.instruction ?? undefined,
+          skill: input.skill ?? undefined,
+          context: input.context ?? undefined,
+        },
+        { creator: createdBy },
+      );
       await requireAutomationSkill(task, undefined);
-      requireAutomationTaskText(task, {
-        creator: createdBy,
-      });
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(

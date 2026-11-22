@@ -1,6 +1,6 @@
 {
-  "id": "b6cd0015-f88c-4e5b-ab85-a7bb51cb2c53",
-  "prevId": "ac7484e0-5c35-445d-a3d9-b2fdc310dea3",
+  "id": "8c5944d5-b348-4020-970b-1b7c7510b10b",
+  "prevId": "1f6a8c35-45f3-42c7-9705-1d5a66fd0c94",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -517,6 +517,28 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_artifacts_public_sha_uidx": {
+          "name": "junior_artifacts_public_sha_uidx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "sha256",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"junior_artifacts\".\"visibility\" = 'public'",
           "concurrently": false,
           "method": "btree",
           "with": {}

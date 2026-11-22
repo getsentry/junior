@@ -1069,22 +1069,29 @@
     {
       "idx": 152,
       "version": "7",
-      "when": 1795314489350,
-      "tag": "0152_artifact_expiry",
+      "when": 1795314540484,
+      "tag": "0152_inbox_item_legacy_automation_keys",
       "breakpoints": true
     },
     {
       "idx": 153,
       "version": "7",
-      "when": 1795314490967,
-      "tag": "0153_artifact_permanent_sha_index",
+      "when": 1795315494234,
+      "tag": "0153_artifact_expiry",
       "breakpoints": true
     },
     {
       "idx": 154,
       "version": "7",
-      "when": 1795314492509,
-      "tag": "0154_artifact_drop_public_sha_index",
+      "when": 1795315495798,
+      "tag": "0154_artifact_permanent_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1795315497375,
+      "tag": "0155_artifact_drop_public_sha_index",
       "breakpoints": true
     }
   ]
