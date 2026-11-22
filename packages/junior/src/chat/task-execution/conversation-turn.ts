@@ -20,6 +20,7 @@ import {
   commitParentMessageFork,
   isParentMessageAuthor,
 } from "@/chat/agent-invocations/parent-message";
+import { recordChildAgentEnded } from "@/chat/agent-invocations/markers";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import {
   hydrateConversationMessages,
@@ -975,6 +976,10 @@ export function createConversationTurnWorker(
               text:
                 failure instanceof Error ? failure.message : String(failure),
             });
+          } else {
+            // A child that sends no notice, such as a Thread, ends its
+            // dashboard markers with the failure here.
+            await recordChildAgentEnded(context.conversationId, "error");
           }
           await acknowledge();
           return { status: "completed" };

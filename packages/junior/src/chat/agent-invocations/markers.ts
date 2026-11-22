@@ -183,10 +183,15 @@ export async function recordChildAgentEnded(
     conversationId: childConversationId,
     state: options.state,
   });
+  // The running attempt's input stays in the mailbox until its Turn acks
+  // it, but the child already took it.
+  const running = new Set(work?.execution.lease?.attemptInboundMessageIds);
   const waiting = new Set(
     options.includeWaiting
       ? []
-      : (work?.messages.map((message) => message.inboundMessageId) ?? []),
+      : (work?.messages ?? [])
+          .map((message) => message.inboundMessageId)
+          .filter((id) => !running.has(id)),
   );
   // `inboundMessageIds` holds every id the mailbox got, waiting ones too,
   // and a drop keeps them.

@@ -573,14 +573,16 @@ async function isStoppedInTurn(
   turnId: string,
   state: StateAdapter | undefined,
 ): Promise<boolean> {
-  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
-  if (stoppedAtMs === undefined) {
-    return false;
-  }
+  // A stop request on the current run stops it even after a person resumed
+  // the Conversation.
   const runId = (await getConversationWorkState({ conversationId, state }))
     ?.execution.runId;
   if (runId && (await hasConversationStop({ conversationId, runId, state }))) {
     return true;
+  }
+  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
+  if (stoppedAtMs === undefined) {
+    return false;
   }
   const start = await loadTurnStart(conversationId, turnId);
   return start === undefined || stoppedAtMs >= start.startedAtMs;
