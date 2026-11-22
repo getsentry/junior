@@ -76,6 +76,10 @@ also wake a Conversation or run an Event automation.
   after a change request, ask for a review before the required checks pass
   (`github#review-request`, `github#rereview`). This breaks "asks for a
   review only when the required checks pass".
+- When a draft becomes ready, Junior asks the named reviewers or the
+  requester for a review even when they already reviewed it, and the
+  requester can get a new `Review requested` (`github#review-request`).
+  This breaks "It asks for each step once".
 - Junior fixes merge conflicts on a timer after a person's activity, not
   when the PR next needs a person, and a draft gets no fix, so it never
   reaches review (`github#conflict-fix`). This breaks "upkeep follows
