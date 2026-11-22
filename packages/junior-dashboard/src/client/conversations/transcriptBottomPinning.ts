@@ -520,12 +520,12 @@ export function usePinnedTranscriptBottom(input: {
         }
         if (suppressSettleNoise) programmaticScrollGenerationRef.current = 0;
         const settled = scrollSnapshot(root);
+        // Away from the bottom, the reader moved after the pin. Its scroll
+        // event can come after this callback, so keep the place that the
+        // event compares with, or the move does not pause follow.
+        if (!isNearScrollBottom(settled)) return;
         previousScrollTopRef.current = settled.scrollTop;
-        if (
-          enabledRef.current &&
-          followingRef.current &&
-          isNearScrollBottom(settled)
-        ) {
+        if (enabledRef.current && followingRef.current) {
           setFollowingIntent(true);
           setHasPendingUpdate(false);
         }

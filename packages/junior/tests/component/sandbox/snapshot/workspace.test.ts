@@ -370,6 +370,7 @@ describe("Workspace snapshot completion", () => {
           return {
             currentSession: () => ({
               sessionId: "timed-out-session",
+              createdAt: new Date(),
               runCommand: vi.fn(
                 async ({ signal }: { signal?: AbortSignal }) => {
                   commandStarted();
