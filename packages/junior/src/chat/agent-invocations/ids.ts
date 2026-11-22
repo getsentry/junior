@@ -31,7 +31,28 @@ export function getUnnamedAgentConversationId(invocationId: string): string {
   return stableId("agent", invocationId);
 }
 
-/** Return the stable child identity for one named binding. */
+/**
+ * Return the stable child identity for one spawn that writes no Agent
+ * invocation, with a name or without. The spawn's idempotency key names it,
+ * so a replay finds the same child. It equals the id of an unnamed child
+ * with an Agent invocation for the same key.
+ */
+export function getSpawnedChildConversationId(
+  parentConversationId: string,
+  idempotencyKey: string,
+): string {
+  return getUnnamedAgentConversationId(
+    getAgentInvocationId(parentConversationId, idempotencyKey),
+  );
+}
+
+/**
+ * Return the stable child identity for one named binding.
+ *
+ * TODO(dcramer): Delete with Agent bindings. A spawn with no Agent
+ * invocation names its child with `getSpawnedChildConversationId`
+ * (#3060 step 7).
+ */
 export function getNamedAgentConversationId(
   parentConversationId: string,
   name: string,
@@ -96,6 +117,20 @@ export function getAgentReplyMessageId(
  */
 export function getTurnReplyKey(turnId: string, toolCallId: string): string {
   return `${turnId}:${toolCallId}`;
+}
+
+// The Turn id of the `stopped` result that a person's stop of a child agent
+// sends. No Turn has it, so readers can tell this result from a Turn's reply.
+const PERSON_STOP_TURN_PREFIX = "stopped:";
+
+/** Return the Turn id that keys the `stopped` result of one person's stop. */
+export function getPersonStopTurnId(stoppedAtMs: number): string {
+  return `${PERSON_STOP_TURN_PREFIX}${stoppedAtMs}`;
+}
+
+/** Return whether a sender Turn id names a person's stop, not a Turn. */
+export function isPersonStopTurnId(turnId: string): boolean {
+  return turnId.startsWith(PERSON_STOP_TURN_PREFIX);
 }
 
 /** Return the stable parent mailbox identity for one terminal result. */

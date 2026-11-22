@@ -126,7 +126,10 @@ export async function stopConversationTree(
     return [];
   }
   const stoppedAt = new Date(options.stoppedAtMs);
-  const reported = await getDb().transaction(async (tx) => {
+  const reported = await getSqlExecutor().transaction(async () => {
+    // The executor's transaction nests as a savepoint inside a caller's
+    // lock. A Drizzle transaction would commit the caller's.
+    const tx = getDb();
     // Lock in id order, as `resumeConversationTree` does, so a stop and a
     // resume of overlapping trees cannot deadlock.
     const locked = await tx
@@ -205,7 +208,10 @@ export async function resumeConversationTree(
   sentAtMs: number,
 ): Promise<void> {
   const subtree = sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`;
-  await getDb().transaction(async (tx) => {
+  await getSqlExecutor().transaction(async () => {
+    // The executor's transaction nests as a savepoint inside a caller's
+    // lock. A Drizzle transaction would commit the caller's.
+    const tx = getDb();
     const rows = await tx
       .select({
         conversationId: juniorConversations.conversationId,

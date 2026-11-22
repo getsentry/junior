@@ -48,6 +48,8 @@ child chooses to report reaches the parent.
   New work from the parent, or a person's input, ends the stop. While
   stopped, a Conversation keeps its Watches and saves automated input as
   skipped Messages that start no Turn. Only a stop holds input.
+- A stopped parent gives no new work. Its message to a child becomes a note
+  that the child sees when it next runs, and it cannot start a child.
 - A parent never waits forever, and never sees a running child as done.
   Each result names the siblings that did not report yet. A Task that fails,
   or still has no answer after one reminder, tells its parent `failed`. A
@@ -67,6 +69,9 @@ child chooses to report reaches the parent.
 - Some behavior of a child agent branches on `kind` outside the one switch.
   This breaks "its `kind` is the only switch". getsentry/junior#3435,
   getsentry/junior#3060, and getsentry/junior#2567 track it.
+- A stopped parent's message to a child that has an Agent invocation still
+  starts work and ends the child's stop. This breaks "a stopped parent gives
+  no new work". getsentry/junior#3060 tracks it.
 - Some input to a child agent runs in a separate child worker, not in
   the path that runs every Conversation. This breaks "one execution path
   runs every Conversation". getsentry/junior#3060 tracks it.
@@ -80,4 +85,5 @@ child chooses to report reaches the parent.
 - A parent cannot archive a Task. Only a Thread can be archived. This
   breaks "a parent manages the lifecycle of its child agents".
 - For some child messages, Junior reads the sender from the message id.
-  This breaks "a message id is an opaque key".
+  This breaks "a message id is an opaque key". Step 7 of
+  getsentry/junior#3060 removes it.

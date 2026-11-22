@@ -123,7 +123,6 @@ async function writeConversationEmbedding(
         conversationId: item.conversationId,
         dimensions: batch.dimensions,
         embedding: vector,
-        legacyBriefVersion: null,
         model: batch.model,
         provider: batch.provider,
         throughSeq: item.throughSeq,
@@ -133,7 +132,6 @@ async function writeConversationEmbedding(
         set: {
           dimensions: sql`excluded.dimensions`,
           embedding: sql`excluded.embedding`,
-          legacyBriefVersion: null,
           model: sql`excluded.model`,
           provider: sql`excluded.provider`,
           throughSeq: sql`excluded.through_seq`,

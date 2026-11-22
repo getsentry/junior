@@ -216,25 +216,22 @@ test("the answer line names the person who answered", async ({
   await expect(personCard(page, "Dashboard User")).toBeVisible();
 });
 
-test("a tap on a touch screen opens the person card", async ({
-  browser,
-  dashboard,
-}) => {
-  const context = await browser.newContext({
-    colorScheme: "dark",
+test.describe("on a touch screen", () => {
+  test.use({
     hasTouch: true,
     isMobile: true,
     viewport: { height: mobile.height, width: mobile.width },
   });
-  const page = await context.newPage();
-  await openConversation(page, dashboard.baseURL);
-  const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
-  await mention.tap();
-  const card = personCard(page, "Avery Chen");
-  await expect(card).toBeVisible();
-  // The first tap shows the card and stays on the page.
-  await expect(page).toHaveURL(/\/conversations\//);
-  await context.close();
+
+  test("a tap opens the person card", async ({ dashboard, page }) => {
+    await openConversation(page, dashboard.baseURL);
+    const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
+    await mention.tap();
+    const card = personCard(page, "Avery Chen");
+    await expect(card).toBeVisible();
+    // The first tap shows the card and stays on the page.
+    await expect(page).toHaveURL(/\/conversations\//);
+  });
 });
 
 // The screenshots show the new UI, where the request came from.
