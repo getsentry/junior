@@ -22,6 +22,7 @@ import type { TaskCandidate } from "./read";
 import { automationSkillNameSchema, type AutomationTask } from "./task";
 import type { SkillMetadata } from "@/chat/skills";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { automationTaskTextProblems } from "./instruction-references";
 
 const automationResultSchema = z.discriminatedUnion("type", [
   compactTaskResultSchema,
@@ -89,7 +90,7 @@ export function automationSkillToolSchema(skills: readonly SkillMetadata[]) {
     skill.disableModelInvocation ? `${skill.name} (manual only)` : skill.name,
   );
   return automationSkillNameSchema.describe(
-    `Skill that each run invokes instead of a written instruction. Any installed skill works, including manual-only ones. Installed skills: ${names.length > 0 ? names.join(", ") : "none"}.`,
+    `Skill each run invokes instead of an instruction. Use it when an installed skill does the work; never name a skill in an instruction. To write one for automations, load design-automation-skill. Manual-only skills work too. Installed skills: ${names.length > 0 ? names.join(", ") : "none"}.`,
   );
 }
 
@@ -101,9 +102,38 @@ type TaskToolFields = {
   context?: string | null | undefined;
 };
 
+/** People that the task text checks need. */
+type TaskTextPeople = Omit<
+  Parameters<typeof automationTaskTextProblems>[1],
+  "current"
+>;
+
+/** Return why the task fields do not form one task mode, or undefined. */
+function taskModeProblem(
+  current: AutomationTask | undefined,
+  { instruction, skill, context }: TaskToolFields,
+): string | undefined {
+  if (instruction !== undefined && skill !== undefined) {
+    return context === undefined
+      ? "Set instruction or skill, not both."
+      : "Set instruction or skill, not both. Context goes only with a skill: for an instruction, drop skill and context and put everything in the instruction.";
+  }
+  if (context === undefined) return undefined;
+  if (instruction !== undefined) {
+    return "Context goes only with a skill. Put everything in the instruction.";
+  }
+  if (skill === undefined && current?.kind !== "skill") {
+    return "Context goes only with a skill. Set skill, or change the instruction instead.";
+  }
+  return undefined;
+}
+
 /** Map the task fields of a new Automation to its task. */
-export function newAutomationTask(input: TaskToolFields): AutomationTask {
-  const task = editedAutomationTask(undefined, input);
+export function newAutomationTask(
+  input: TaskToolFields,
+  people: TaskTextPeople,
+): AutomationTask {
+  const task = editedAutomationTask(undefined, input, people);
   if (!task) throw new ToolInputError("Set instruction or skill.");
   return task;
 }
@@ -112,29 +142,26 @@ export function newAutomationTask(input: TaskToolFields): AutomationTask {
  * Map the task fields of an update to the saved task, or undefined when they
  * change nothing. `instruction` switches to an instruction. `skill` switches
  * to a skill and keeps the current context. `context` needs skill mode.
+ *
+ * One rejection names every problem of the fields. Each rejection costs the
+ * model another call, so naming one at a time can take several calls.
  */
 export function editedAutomationTask(
   current: AutomationTask | undefined,
   input: TaskToolFields,
+  people: TaskTextPeople,
 ): AutomationTask | undefined {
+  const modeProblem = taskModeProblem(current, input);
+  const problems = [
+    ...(modeProblem ? [modeProblem] : []),
+    ...automationTaskTextProblems(input, { ...people, current }),
+  ];
+  if (problems.length > 0) throw new ToolInputError(problems.join(" "));
   const { instruction, skill, context } = input;
-  if (instruction !== undefined && skill !== undefined)
-    throw new ToolInputError("Set instruction or skill, not both.");
-  if (instruction !== undefined) {
-    if (context !== undefined)
-      throw new ToolInputError(
-        "Context goes only with a skill. Put everything in the instruction.",
-      );
-    return { kind: "instruction", instruction };
-  }
+  if (instruction !== undefined) return { kind: "instruction", instruction };
   const kept = current?.kind === "skill" ? current : undefined;
   const nextSkill = skill ?? kept?.skill;
-  if (nextSkill === undefined) {
-    if (context === undefined) return undefined;
-    throw new ToolInputError(
-      "Context goes only with a skill. Set skill, or change the instruction instead.",
-    );
-  }
+  if (nextSkill === undefined) return undefined;
   if (skill === undefined && context === undefined) return undefined;
   const nextContext = context === undefined ? kept?.context : context;
   return {

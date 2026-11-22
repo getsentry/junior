@@ -31,6 +31,7 @@ import {
   prepareParentConversation,
 } from "../fixtures/agent-invocations";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
+import { recordTurnStart } from "../fixtures/turn-start";
 
 describe("agent invocation left over from earlier work", () => {
   afterEach(async () => {
@@ -98,6 +99,7 @@ describe("agent invocation left over from earlier work", () => {
             state,
           });
         }
+        await recordTurnStart(childConversationId, orphanTurnId);
         await upsertTurnRecord({
           actor: invocationInput.actor,
           conversationId: childConversationId,
@@ -144,7 +146,6 @@ describe("agent invocation left over from earlier work", () => {
           state: orphanState,
           surface: "internal",
           turnId: orphanTurnId,
-          turnStartMessageIndex: 0,
           ...(orphanState === "paused"
             ? { resumeReason: "yield" as const }
             : undefined),

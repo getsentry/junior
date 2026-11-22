@@ -127,8 +127,10 @@ export interface PromptTurnContext {
 }
 
 interface PromptReplayArgs {
-  existingSessionPiMessages?: PiMessage[] | undefined;
-  existingTurnStartMessageIndex?: number | undefined;
+  /** Saved messages of this Turn, from `savedTurnMessages`. */
+  existingTurnMessages: PiMessage[];
+  /** From `TurnRecord.promptSaved`. */
+  promptSaved: boolean;
   resumedFromSessionRecord: boolean;
   userContentParts: UserContentPart[];
 }
@@ -495,8 +497,7 @@ function userCustomizationTurnContext(text: string): PluginTurnContext {
 // A failed input acknowledgement redelivers the same running checkpoint.
 // Reuse its exact prompt so plugin context cannot diverge from its durable event.
 function checkpointedPrompt(args: {
-  messages: PiMessage[] | undefined;
-  turnStartMessageIndex: number | undefined;
+  turnMessages: PiMessage[];
   userContentParts: UserContentPart[];
 }):
   | {
@@ -504,14 +505,7 @@ function checkpointedPrompt(args: {
       userContentParts: UserContentPart[];
     }
   | undefined {
-  if (
-    !args.messages ||
-    args.turnStartMessageIndex === undefined ||
-    args.turnStartMessageIndex >= args.messages.length
-  ) {
-    return undefined;
-  }
-  const turnMessages = args.messages.slice(args.turnStartMessageIndex);
+  const { turnMessages } = args;
   const durableTurnMessages = stripRuntimeTurnContext(turnMessages);
   if (durableTurnMessages.length !== 1) {
     return undefined;
@@ -545,16 +539,13 @@ function checkpointedPrompt(args: {
 // A resumed slice continues its checkpointed prompt. A redelivered prompt
 // reuses its checkpointed copy. Only a new prompt gets new Turn context.
 function planPromptReplay(args: PromptReplayArgs) {
-  const hasPromptCheckpoint =
-    args.resumedFromSessionRecord &&
-    args.existingTurnStartMessageIndex !== undefined;
+  const hasPromptCheckpoint = args.resumedFromSessionRecord && args.promptSaved;
   const shouldPromptAgent =
     !args.resumedFromSessionRecord || !hasPromptCheckpoint;
   const replayedPrompt =
     shouldPromptAgent && !args.resumedFromSessionRecord
       ? checkpointedPrompt({
-          messages: args.existingSessionPiMessages,
-          turnStartMessageIndex: args.existingTurnStartMessageIndex,
+          turnMessages: args.existingTurnMessages,
           userContentParts: args.userContentParts,
         })
       : undefined;
@@ -648,8 +639,9 @@ export async function assemblePrompt(args: {
   contextContentParts: UserContentPart[];
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
-  existingTurnStartMessageIndex?: number | undefined;
+  existingTurnMessages: PiMessage[];
   priorPiMessages?: PiMessage[] | undefined;
+  promptSaved: boolean;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
   /** From `turnBehavior`. */

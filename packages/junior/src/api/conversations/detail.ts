@@ -38,7 +38,6 @@ import { CONVERSATION_EVENT_PAGE_LIMIT } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
@@ -55,7 +54,7 @@ function projectConversationDetail(args: {
   pinnedAtMs?: number;
   automationTitle?: string | undefined;
   auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"] | undefined;
-  brief?: ConversationDetailReport["brief"];
+  summaryMentions?: ConversationDetailReport["summaryMentions"];
   childAgentTotals?: ConversationDetailReport["childAgentTotals"];
   conversation: Conversation;
   durationMs: number;
@@ -106,7 +105,9 @@ function projectConversationDetail(args: {
     }),
     annotations: canExposePayload ? args.annotations : [],
     sidebarAnnotations: canExposePayload ? args.sidebarAnnotations : undefined,
-    ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
+    ...(canExposePayload && args.summaryMentions
+      ? { summaryMentions: args.summaryMentions }
+      : undefined),
     events: args.events,
     ...(args.appended ? { appended: true as const } : undefined),
     ...(args.appendCursor ? { appendCursor: args.appendCursor } : undefined),
@@ -211,7 +212,6 @@ async function readConversationDetailFromSql(
     annotations,
     automationTitleByConversation,
     auxiliaryCostsByConversation,
-    briefVersion,
     firstHumanMessageTextByConversation,
     modelUsage,
     metricsByConversation,
@@ -238,7 +238,6 @@ async function readConversationDetailFromSql(
     ),
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
-    readLatestConversationBrief(getDb(), conversationId),
     readFirstHumanMessageTexts(getDb(), [record.conversation]),
     isPurged
       ? Promise.resolve([])
@@ -267,14 +266,14 @@ async function readConversationDetailFromSql(
     readPosition.lastReadSeq + 1 < firstSeq
       ? readPosition.lastReadSeq
       : undefined;
-  // The Brief is shown only to viewers who can see private content.
-  const brief = canExposePayload ? briefVersion?.content : undefined;
-  const [{ briefMentions, events }, unreadPage, sidebarAnnotations] =
+  // The summary is shown only to viewers who can see private content.
+  const summary = canExposePayload ? record.conversation.summary : undefined;
+  const [{ events, summaryMentions }, unreadPage, sidebarAnnotations] =
     await Promise.all([
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
-          ...(brief ? { brief } : undefined),
           events: page.events.map(formatConversationEventText),
+          ...(summary ? { summary } : undefined),
         }),
       ),
       // Only the first read of a visit asks for this page, not each poll. The
@@ -328,18 +327,7 @@ async function readConversationDetailFromSql(
     sidebarAnnotations,
     auxiliaryCosts: auxiliaryCosts?.total,
     ...(childAgentTotals ? { childAgentTotals } : undefined),
-    ...(briefVersion
-      ? {
-          brief: {
-            content: briefVersion.content,
-            ...(briefMentions.length > 0
-              ? { mentions: briefMentions }
-              : undefined),
-            updatedAt: briefVersion.createdAt.toISOString(),
-            version: briefVersion.version,
-          },
-        }
-      : undefined),
+    ...(summaryMentions.length > 0 ? { summaryMentions } : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
     events,
     firstHumanMessageText:

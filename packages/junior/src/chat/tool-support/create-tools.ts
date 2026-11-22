@@ -1,6 +1,6 @@
 import { createSearchInboxItemsTool } from "@/chat/inbox-items/tools/search";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
-import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -184,6 +184,15 @@ function withDisabledReason(
 function slackOf(run: ToolRun): SlackToolContext {
   if (!run.slack) throw new Error("Slack tool bound without a Slack context");
   return run.slack;
+}
+
+// A deployment without MCP providers has nothing for the MCP tools to find or
+// call, so the Turn does not list them.
+function configuredMcpToolManager(run: ToolRun) {
+  const manager = run.context.mcpToolManager;
+  return manager && manager.getAvailableProviderCatalog().length > 0
+    ? manager
+    : undefined;
 }
 
 function isPublic(run: ToolRun): boolean {
@@ -556,14 +565,14 @@ const RUN_BUILT_TOOL_BUILDERS = {
         })
       : undefined;
   },
-  searchMcpTools: (run) =>
-    run.context.mcpToolManager
-      ? createSearchMcpToolsTool(run.context.mcpToolManager)
-      : undefined,
-  callMcpTool: (run) =>
-    run.context.mcpToolManager
-      ? createCallMcpToolTool(run.context.mcpToolManager)
-      : undefined,
+  searchMcpTools: (run) => {
+    const manager = configuredMcpToolManager(run);
+    return manager ? createSearchMcpToolsTool(manager) : undefined;
+  },
+  callMcpTool: (run) => {
+    const manager = configuredMcpToolManager(run);
+    return manager ? createCallMcpToolTool(manager) : undefined;
+  },
   slackCanvasCreate: (run) => {
     if (!run.slack?.destinationChannelId) return undefined;
     return resolveChannelCapabilities(run.slack.destinationChannelId)

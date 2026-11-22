@@ -192,12 +192,12 @@ describe("Slack Turn Steering", () => {
 });
 
 describe("Dashboard Turn Steering", () => {
-  test("when the author steers a queued dashboard message, the running turn takes it", async ({
+  test("when the author sends a dashboard message during a turn, the running turn takes it", async ({
     run,
   }) => {
     const conversation = await run(webMessage(INCIDENT_REQUEST), {
       onProgress: sendDuringFirstModelRequest([
-        webMessage("include the rollback owner: Dana", { steer: true }),
+        webMessage("include the rollback owner: Dana"),
       ]),
     });
     await expect(conversation).toSatisfyJudge(
@@ -207,7 +207,6 @@ describe("Dashboard Turn Steering", () => {
       }),
     );
 
-    // Without the steer, the queued message would wait for its own turn.
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
     ]);
@@ -223,10 +222,10 @@ describe("Dashboard Turn Steering", () => {
     ]);
   });
 
-  test("when the author sends dashboard messages during a turn, one follow-up turn takes them and the transcript keeps each", async ({
+  test("when the author sends dashboard messages during a turn, the running turn takes them and the transcript keeps each", async ({
     run,
   }) => {
-    // Only batching is asserted, so the inputs are short.
+    // Only routing is asserted, so the inputs are short.
     const conversation = await run(
       webMessage("Reply with only the word ready."),
       {
@@ -237,12 +236,11 @@ describe("Dashboard Turn Steering", () => {
       },
     );
 
-    // Both queued messages wait for the same follow-up turn.
+    // Neither message waits for a turn of its own.
     expect(conversation.turns.map((turn) => turn.status)).toEqual([
       "succeeded",
-      "succeeded",
     ]);
-    // That turn gets both messages, but each stays its own user message.
+    // The turn gets both messages, but each stays its own user message.
     expect(
       conversation.session.events.filter(
         (event) => event.type === "message" && event.role === "user",

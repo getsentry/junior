@@ -1,10 +1,7 @@
-import {
-  isBriefsEnabled,
-  isEventEmbeddingsEnabled,
-} from "@/chat/briefs/registration";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
 import { syncAutomationAlerts } from "@/chat/automations/alert-items";
@@ -336,21 +333,18 @@ export async function runHeartbeat(args: {
   } catch (error) {
     logException(error, "cache_warming.savings_refill.failed");
   }
-  // The Brief task writes these vectors, so the backfill runs only with it.
-  if (isBriefsEnabled()) {
-    try {
-      await runConversationEmbeddingBackfill(
-        createConversationEmbedder({
-          // One batch embeds the Briefs of many Conversations, so no one
-          // Conversation pays. The cost stays on the span.
-          cost: { owner: "none" },
-          operation: "conversation_embedding",
-        }),
-      );
-    } catch (error) {
-      // The claim expires, and a later heartbeat tries again.
-      logException(error, "conversation_embeddings.backfill.failed");
-    }
+  try {
+    await runConversationEmbeddingBackfill(
+      createConversationEmbedder({
+        // One batch embeds the metadata of many Conversations, so no one
+        // Conversation pays. The cost stays on the span.
+        cost: { owner: "none" },
+        operation: "conversation_embedding",
+      }),
+    );
+  } catch (error) {
+    // The claim expires, and a later heartbeat tries again.
+    logException(error, "conversation_embeddings.backfill.failed");
   }
   try {
     await runEventSearchBackfill({
