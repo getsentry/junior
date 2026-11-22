@@ -8,18 +8,17 @@ import {
 import { COMPACTION_SUMMARY_PREFIX } from "@/chat/services/context-compaction-marker";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
-const { startInactiveSpan, withActiveSpan } = vi.hoisted(() => {
-  const span = {
+// Each call gets a new span, so a span mock changed by one test does not
+// leak into the next test.
+const { startInactiveSpan, withActiveSpan } = vi.hoisted(() => ({
+  startInactiveSpan: vi.fn((_options: unknown) => ({
     setAttribute: vi.fn(),
     setAttributes: vi.fn(),
     setStatus: vi.fn(),
     end: vi.fn(),
-  };
-  return {
-    startInactiveSpan: vi.fn((_options: unknown) => span),
-    withActiveSpan: vi.fn(<T>(_s: unknown, cb: () => T) => cb()),
-  };
-});
+  })),
+  withActiveSpan: vi.fn(<T>(_s: unknown, cb: () => T) => cb()),
+}));
 
 vi.mock("@/chat/sentry", () => ({
   startInactiveSpan,

@@ -16,7 +16,7 @@ import {
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
-import { getStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
 import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";
 import { runCacheWarmup } from "@/chat/cache-warming/warmup";
@@ -26,7 +26,6 @@ import {
   workConversationId,
   childConversationId,
   openWorkConversationId,
-  timerConversationId,
   parentConversationId,
   automationConversationId,
   model,
@@ -55,17 +54,9 @@ describe("cache warming gap segments", () => {
   afterEach(async () => {
     vi.useRealTimers();
     vi.restoreAllMocks();
-    for (const id of [
-      conversationId,
-      workConversationId,
-      childConversationId,
-      openWorkConversationId,
-      timerConversationId,
-      parentConversationId,
-      automationConversationId,
-    ]) {
-      await getStateAdapter().delete(`junior:cache_warming:conversation:${id}`);
-    }
+    // Start the next test with empty state, so gaps that a test records do
+    // not reach the segments of the next test.
+    await disconnectStateAdapter();
   });
 
   it("records each gap in the segment of the Turn that started the idle period", async () => {
@@ -97,31 +88,18 @@ describe("cache warming gap segments", () => {
     async (toolName) => {
       vi.useFakeTimers();
       mocks.sendCacheWarmup.mockClear();
-      const clearGaps = async () => {
-        await getStateAdapter().delete(
-          "junior:cache_warming:gaps:system:1:none",
-        );
-        await getStateAdapter().delete(
-          `junior:cache_warming:gaps:conversation:${conversationId}:system:1:none`,
-        );
-      };
-      await clearGaps();
-      try {
-        await endTurnWithAnswerTool(toolName, "automation");
-        // A final response of an Automation run starts none either.
-        await endTurn(false, conversationId, context, "automation");
-        expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
+      await endTurnWithAnswerTool(toolName, "automation");
+      // A final response of an Automation run starts none either.
+      await endTurn(false, conversationId, context, "automation");
+      expect(mocks.sendCacheWarmup).not.toHaveBeenCalled();
 
-        await endTurnWithAnswerTool(toolName, "child_agent");
-        scheduledWarmup();
-        // The parent returns 4 minutes after the answer tool call.
-        vi.advanceTimersByTime(4 * MINUTE);
-        await endTurn(false);
+      await endTurnWithAnswerTool(toolName, "child_agent");
+      scheduledWarmup();
+      // The parent returns 4 minutes after the answer tool call.
+      vi.advanceTimersByTime(4 * MINUTE);
+      await endTurn(false);
 
-        expect(await segmentGaps("system:1:none")).toEqual([4 * MINUTE]);
-      } finally {
-        await clearGaps();
-      }
+      expect(await segmentGaps("system:1:none")).toEqual([4 * MINUTE]);
     },
   );
 

@@ -26,7 +26,10 @@ const mocks = vi.hoisted(() => ({
   noObjectGeneratedErrorIsInstance: vi.fn(),
   registerApiProvider: vi.fn(),
   rerank: vi.fn(),
-  resolveGatewayCredential: vi.fn(),
+  resolveGatewayCredential: vi.fn(async () => ({
+    mode: "api_key",
+    token: "gateway-key",
+  })),
   setSpanAttributes: vi.fn(),
   streamAnthropic: vi.fn(),
   streamSimpleAnthropic: vi.fn(),
@@ -85,7 +88,7 @@ vi.mock("@/chat/logging", async (importOriginal) => ({
 
 describe("resolveGatewayModel", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.resetModules();
   });
 
@@ -112,7 +115,7 @@ describe("resolveGatewayModel", () => {
 
 describe("completeText", () => {
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
     vi.resetModules();
   });
 
@@ -665,7 +668,7 @@ describe("transcribeFromUrl", () => {
   const SIGNED_URL = "https://blob.example.test/a.m4a?signature=secret";
 
   afterEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   /** Every span attribute and log that the call recorded. */
@@ -678,10 +681,6 @@ describe("transcribeFromUrl", () => {
   }
 
   it("records model, audio length, cost, and generation id on the span", async () => {
-    mocks.resolveGatewayCredential.mockResolvedValue({
-      mode: "api_key",
-      token: "gateway-key",
-    });
     mocks.transcribe.mockResolvedValue({
       durationInSeconds: 30,
       language: "eng",
@@ -724,10 +723,6 @@ describe("transcribeFromUrl", () => {
   });
 
   it("marks a file with no audio on the span without capturing it", async () => {
-    mocks.resolveGatewayCredential.mockResolvedValue({
-      mode: "api_key",
-      token: "gateway-key",
-    });
     mocks.transcribe.mockRejectedValue(
       new Error(
         "File is corrupted. Please ensure it is playable audio. (invalid_audio)",

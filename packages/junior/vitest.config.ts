@@ -38,6 +38,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Replay a failing order with `vitest run --sequence.seed=<seed from the banner>`.
+    sequence: { shuffle: true },
     environment: "node",
     // Inject the `pg` tracing channels that SQL budget tests count.
     execArgv: [

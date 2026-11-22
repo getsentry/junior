@@ -55,6 +55,8 @@ export default defineConfig({
     ],
   },
   test: {
+    // Replay a failing order with `vitest run --sequence.seed=<seed from the banner>`.
+    sequence: { shuffle: true },
     exclude: [...configDefaults.exclude, "e2e/**"],
     include: ["tests/**/*.{test,spec}.{ts,tsx}", "visual/**/*.test.ts"],
     coverage: {

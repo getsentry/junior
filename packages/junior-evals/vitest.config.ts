@@ -38,6 +38,8 @@ export default defineConfig({
     tsconfigPaths: true,
   },
   test: {
+    // Replay a failing order with `vitest run --sequence.seed=<seed from the banner>`.
+    sequence: { shuffle: true },
     environment: "node",
     globalSetup: [path.resolve(__dirname, "postgres-global-setup.ts")],
     include: ["tests/**/*.test.ts"],

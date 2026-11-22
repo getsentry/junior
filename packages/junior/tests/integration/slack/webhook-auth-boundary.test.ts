@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { http, HttpResponse } from "msw";
 import { createApp } from "@/app";
 import { closeDb, getConversationEventStore } from "@/chat/db";
+import { setTrustConfig } from "@/chat/identities/trust";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { handleSlackWebhook } from "@/chat/ingress/slack-webhook";
@@ -33,6 +34,9 @@ describe("Slack webhook auth boundary", () => {
   afterEach(async () => {
     vi.unstubAllEnvs();
     vi.useRealTimers();
+    // `createApp` keeps its allowed domains after its test ends. Without a
+    // reset, later tests look up each author for the domain check.
+    setTrustConfig({ allowedBotUserIds: [], allowedDomains: [] });
     await disconnectStateAdapter();
     await closeDb();
   });

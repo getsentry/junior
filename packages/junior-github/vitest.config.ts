@@ -11,6 +11,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Replay a failing order with `vitest run --sequence.seed=<seed from the banner>`.
+    sequence: { shuffle: true },
     environment: "node",
     include: ["tests/**/*.test.ts"],
     globalSetup: ["@sentry/junior-testing/postgres/global-setup"],
