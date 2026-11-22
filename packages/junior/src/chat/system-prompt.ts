@@ -4,15 +4,11 @@ import {
   buildPluginSystemPromptContributions,
   buildSystemPrompt,
 } from "@/chat/prompt";
-import {
-  buildReplyLengthReminder,
-  type PromptMode,
-} from "@/chat/system-prompt-rules";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 
 /**
  * Build the system prompt of every Turn on this deployment for one platform
- * and Prompt mode: the core blocks, the plugin `systemPrompt` guidance, then
- * the reply length reminder.
+ * and Prompt mode: the core blocks, then the plugin `systemPrompt` guidance.
  */
 export async function buildDeploymentSystemPrompt(
   platform: Platform,
@@ -21,11 +17,7 @@ export async function buildDeploymentSystemPrompt(
   const pluginSystemPrompt = buildPluginSystemPromptContributions(
     await getPluginSystemPromptContributions(platform),
   );
-  return [
-    buildSystemPrompt(platform, mode),
-    pluginSystemPrompt,
-    buildReplyLengthReminder(mode),
-  ]
+  return [buildSystemPrompt(platform, mode), pluginSystemPrompt]
     .filter((section): section is string => Boolean(section))
     .join("\n\n");
 }
