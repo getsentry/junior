@@ -29,11 +29,27 @@ how the dashboard groups and acts on its rows.
 - Slack: the item card in each linked thread, and a thread reply.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
   the question card in the Conversation transcript, and the questions pill.
+- Dashboard filters: All, PRs, Decisions, and Other in the Inbox; All,
+  Needs you, Working, Watching, and Done in Conversations and a
+  repository's Conversations tab; and Pinned in the same control in all three.
 - Settings: "Show the Inbox count in the tab".
 - MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
 ## Rules
 
+- The Inbox filters its asks by type: PRs (asks about a code
+  change), Decisions (other asks with a form), and Other (the rest, such
+  as To-dos and Resume). Each count holds the asks that wait on the viewer,
+  one per ask. The type counts add up to All, and All is the Inbox count.
+  A type with nothing waiting hides, but All always shows.
+- The Conversation filters use the state that the row shows: Needs you
+  when an ask or the tree waits on the viewer, then Working, then
+  Watching. Done is the rest.
+- Pinned, a tab of the same control, shows only the rows of the viewer's pinned Conversations.
+  Pins have no section of their own: a pin stays in its place, with a pin
+  marker.
+- The filters stay in the URL, so a reload or a link keeps them. They fit
+  one row, also on a phone.
 - A question never blocks its Conversation. It shows as a card in the
   transcript where Junior asked it. Nothing docks over the message box, and
   nothing takes the focus. A typed message still answers it.
@@ -48,9 +64,9 @@ how the dashboard groups and acts on its rows.
   action that takes no words, such as a plugin's Resume, is one click.
 - The first answer or dismiss closes the item for everyone. A dismiss is
   not a decision, so it does not continue the work.
-- Dismiss closes the item for everyone. A person who wants someone else to
-  answer snoozes it until it closes. It then waits in their Snoozed view,
-  where they can still answer it, dismiss it, or wake it.
+- A person who wants someone else to answer snoozes it until it closes.
+  It then waits in their Snoozed view, where they can still answer it,
+  dismiss it, or wake it.
 - A card's actions read Dismiss, Snooze, then the main action, such as
   Send, last. Every card that shows an item uses this order.
 - Every item has at least one assignee: a User, or Everyone. When no

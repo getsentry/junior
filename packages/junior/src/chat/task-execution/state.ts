@@ -156,6 +156,8 @@ type StoredInboundMessage = z.output<typeof storedInboundMessageSchema>;
 
 export interface Lease {
   acquiredAtMs: number;
+  /** Input of the attempt that the lease holder runs. A stop leaves it. */
+  attemptInboundMessageIds?: string[] | undefined;
   expiresAtMs: number;
   lastCheckInAtMs: number;
   token: string;
@@ -176,6 +178,11 @@ export interface ConversationExecution {
   lastProgressAtMs?: number | undefined;
   retryCount?: number | undefined;
   lease?: Lease | undefined;
+  /**
+   * Input of a running attempt that a stop held. Its Turn saves it, or the
+   * next claim holds it when the attempt ended without saving it.
+   */
+  heldInboundMessageIds?: string[] | undefined;
   pendingCount: number;
   pendingMessages: InboundMessage[];
   runId?: string | undefined;
@@ -210,6 +217,11 @@ export interface ConversationWorkState extends ConversationExecutionState {
   lease?: ConversationWorkLease;
   messages: InboundMessage[];
   needsRun: boolean;
+  /**
+   * Ids in `messages` that the active attempt took. They stay in the
+   * mailbox until its Turn acks them.
+   */
+  runningInboundMessageIds: string[];
 }
 
 export interface StartConversationWorkAcquired {
@@ -451,6 +463,7 @@ const storedIdListSchema = z.array(z.unknown()).catch([]);
 const storedLeaseSchema = z.object({
   token: storedNonEmptyStringSchema,
   acquiredAtMs: z.number(),
+  attemptInboundMessageIds: z.array(z.string()).optional().catch(undefined),
   lastCheckInAtMs: z.number(),
   expiresAtMs: z.number(),
 });
@@ -486,6 +499,7 @@ const storedExecutionSchema = z.object({
   inboundMessageIds: storedIdListSchema,
   messageSenders: z.unknown().optional(),
   lease: z.unknown().optional(),
+  heldInboundMessageIds: z.array(z.string()).optional().catch(undefined),
   lastCheckpointAtMs: storedOptionalNumberSchema,
   lastEnqueuedAtMs: storedOptionalNumberSchema,
   lastProgressAtMs: storedOptionalNumberSchema,
@@ -526,6 +540,10 @@ function normalizeExecution(
     normalizeMessageSenders(stored.messageSenders),
     pendingMessages,
   );
+  // Held input that is no longer pending was saved by its Turn.
+  const heldInboundMessageIds = stored.heldInboundMessageIds?.filter((id) =>
+    pendingMessages.some((message) => message.inboundMessageId === id),
+  );
 
   return {
     status,
@@ -537,6 +555,7 @@ function normalizeExecution(
     pendingCount: pendingMessages.length,
     pendingMessages,
     lease: normalizeLease(stored.lease),
+    ...(heldInboundMessageIds?.length ? { heldInboundMessageIds } : undefined),
     lastCheckpointAtMs: stored.lastCheckpointAtMs,
     lastEnqueuedAtMs: stored.lastEnqueuedAtMs,
     lastProgressAtMs: stored.lastProgressAtMs,
@@ -1193,6 +1212,9 @@ function conversationWorkState(
       : undefined),
     messages: pendingMessages(conversation),
     needsRun: hasRunnableWork(conversation),
+    runningInboundMessageIds: isLeaseActive(lease, now())
+      ? [...(lease?.attemptInboundMessageIds ?? [])]
+      : [],
   };
 }
 
@@ -2235,6 +2257,151 @@ export async function dropPendingMessages(args: {
     ids.has(message.inboundMessageId),
   );
   return dropped.map((message) => message.inboundMessageId);
+}
+
+/** Outcome of claiming the input of the attempt that a lease holder starts. */
+export type ClaimConversationAttemptResult =
+  | { status: "claimed" }
+  | { status: "reselect" }
+  | { status: "held"; messages: InboundMessage[]; pendingCount: number };
+
+/**
+ * Record the input of the attempt that the lease holder starts. Returns
+ * `reselect` when the lease is lost or a stop already took some of the input.
+ * Returns `held` with the input that a stop held from an attempt that ended
+ * without saving it, so the worker saves it as held before it selects again.
+ */
+export async function claimConversationAttempt(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<ClaimConversationAttemptResult> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    const lease = current?.execution.lease;
+    if (!current || !lease || lease.token !== args.leaseToken) {
+      return { status: "reselect" };
+    }
+    const heldIds = new Set(current.execution.heldInboundMessageIds);
+    if (heldIds.size > 0) {
+      const messages = current.execution.pendingMessages.filter((message) =>
+        heldIds.has(message.inboundMessageId),
+      );
+      const pendingMessages = current.execution.pendingMessages.filter(
+        (message) => !heldIds.has(message.inboundMessageId),
+      );
+      await writeConversation(
+        state,
+        lock,
+        withExecutionUpdate(
+          current,
+          {
+            ...current.execution,
+            heldInboundMessageIds: undefined,
+            pendingMessages,
+          },
+          nowMs,
+        ),
+      );
+      return {
+        status: "held",
+        messages,
+        pendingCount: pendingMessages.length,
+      };
+    }
+    const pendingIds = new Set(
+      current.execution.pendingMessages.map(
+        (message) => message.inboundMessageId,
+      ),
+    );
+    if (!args.inboundMessageIds.every((id) => pendingIds.has(id))) {
+      return { status: "reselect" };
+    }
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          lease: {
+            ...lease,
+            attemptInboundMessageIds: [...args.inboundMessageIds],
+          },
+        },
+        nowMs,
+      ),
+    );
+    return { status: "claimed" };
+  });
+}
+
+/**
+ * Remove the pending Event input of a Conversation and return it, so a stop
+ * can hold input that reached the mailbox before it. The input of a running
+ * attempt stays and is marked held: that Turn saves it, or the next claim
+ * holds it.
+ */
+export async function takePendingEventMessages(args: {
+  conversationId: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<InboundMessage[]> {
+  const nowMs = args.nowMs ?? now();
+  return await withConversationMutation(args, async (state, lock) => {
+    const current = await readConversation(state, args.conversationId);
+    if (!current) {
+      return [];
+    }
+    const lease = current.execution.lease;
+    const runningIds = new Set(
+      isLeaseActive(lease, nowMs) ? lease?.attemptInboundMessageIds : [],
+    );
+    const events = current.execution.pendingMessages.filter(
+      (message) => message.source === "event",
+    );
+    const removed = events.filter(
+      (message) => !runningIds.has(message.inboundMessageId),
+    );
+    const held = events
+      .filter((message) => runningIds.has(message.inboundMessageId))
+      .map((message) => message.inboundMessageId);
+    if (removed.length === 0 && held.length === 0) {
+      return [];
+    }
+    const pendingMessages = current.execution.pendingMessages.filter(
+      (message) => !removed.includes(message),
+    );
+    const becomesIdle =
+      current.execution.status === "pending" && pendingMessages.length === 0;
+    await writeConversation(
+      state,
+      lock,
+      withExecutionUpdate(
+        current,
+        {
+          ...current.execution,
+          heldInboundMessageIds: uniqueStrings([
+            ...(current.execution.heldInboundMessageIds ?? []),
+            ...held,
+          ]),
+          lastEnqueuedAtMs:
+            pendingMessages.length === 0
+              ? undefined
+              : current.execution.lastEnqueuedAtMs,
+          pendingMessages,
+          retryCount: becomesIdle ? 0 : current.execution.retryCount,
+          runId: becomesIdle ? undefined : current.execution.runId,
+          status: becomesIdle ? "idle" : current.execution.status,
+        },
+        nowMs,
+      ),
+    );
+    return removed;
+  });
 }
 
 async function removePendingMessages(

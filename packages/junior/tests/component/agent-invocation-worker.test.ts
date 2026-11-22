@@ -499,7 +499,7 @@ describe("agent invocation worker", () => {
       const requests: string[] = [];
       const worker = createAgentInvocationWorker({
         run: async (run) => {
-          histories.push(run.history ?? []);
+          histories.push(run.history?.messages ?? []);
           requests.push(turnRequestText(run));
           return {
             status: "completed" as const,

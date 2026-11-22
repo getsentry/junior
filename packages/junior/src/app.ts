@@ -28,10 +28,7 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import {
-  setBriefsConfig,
-  setEventEmbeddingsConfig,
-} from "@/chat/briefs/registration";
+import { setEventEmbeddingsConfig } from "@/chat/conversations/event-embedding-config";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -202,11 +199,6 @@ export interface JuniorAppOptions extends BotModelConfig {
    * `JUNIOR_BOT_NAME`, then `junior`.
    */
   botName?: string;
-  /**
-   * Generate a durable Brief after each completed Turn. This costs one
-   * default-model call per completed Turn. Disabled by default.
-   */
-  briefs?: { enabled?: boolean };
   /**
    * Embed the searchable events of a Conversation after each completed Turn,
    * so `searchConversationEvents` also matches its history by meaning. This
@@ -551,7 +543,6 @@ export async function createApp(
   const previousConfigDefaults = getConfigDefaults();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousBriefsConfig = setBriefsConfig(options?.briefs);
   const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
     options?.eventEmbeddings,
   );
@@ -567,7 +558,6 @@ export async function createApp(
     restoreChatRuntimeConfig(previousRuntimeConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
-    setBriefsConfig(previousBriefsConfig);
     setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
     setMemoryConfig(previousMemoryConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);

@@ -102,7 +102,11 @@ export function PinnedConversationOrder(props: {
   );
   return (
     <DndContext
-      accessibility={{ announcements }}
+      // dnd-kit adds its screen reader text one render after mount. Inline,
+      // that text sits beside the list's sections, so the first section
+      // loses its `first:` padding a render late, and a scroll position
+      // that Back restored moves with it.
+      accessibility={{ announcements, container: document.body }}
       collisionDetection={closestCenter}
       onDragEnd={(event) => {
         if (!event.over) return;

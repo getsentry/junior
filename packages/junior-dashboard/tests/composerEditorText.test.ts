@@ -81,3 +81,10 @@ it("reads styled Markdown back exactly, with tokens in code as text", () => {
   ].join("\n");
   expect(roundTrip(text)).toEqual({ text, chips: ["<@U2>"] });
 });
+
+it("keeps skill references as the exact plain text", () => {
+  const text =
+    "Run $release-check now, then $Diff-Quality, $not-installed, `$diff-quality`, US$5 and $";
+  expect(roundTrip(text)).toEqual({ text, chips: [] });
+  expect(roundTrip(roundTrip(text).text)).toEqual(roundTrip(text));
+});

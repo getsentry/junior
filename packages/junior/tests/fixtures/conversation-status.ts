@@ -30,13 +30,20 @@ import {
   juniorConversations,
 } from "@/db/schema";
 import { neverRunAgentRunner } from "./agent-runner";
-import { conversationBriefFixture } from "./conversation-brief";
-import type { BriefOutcomeStatus } from "@/chat/briefs/schema";
 import { webTestActor } from "./conversation";
 import {
   createConversationWorkHarness,
   createConversationWorkQueueTestAdapter,
 } from "./conversation-work";
+
+/** The outcome status that a legacy Brief stores. */
+type BriefOutcomeStatus =
+  | "abandoned"
+  | "answered"
+  | "blocked"
+  | "done"
+  | "in_progress"
+  | "partial";
 
 export const SLACK_VIEWER = {
   email: webTestActor.email,
@@ -87,7 +94,7 @@ export async function lastSeq(conversationId: string): Promise<number> {
   return row?.seq ?? -1;
 }
 
-/** Store a Brief that covers every Event so far. */
+/** Store a legacy Brief that covers every Event so far. */
 export async function recordBrief(
   conversationId: string,
   version: number,
@@ -100,7 +107,7 @@ export async function recordBrief(
       version,
       turnId: `brief-turn-${version}`,
       throughSeq: await lastSeq(conversationId),
-      content: conversationBriefFixture({ status }),
+      content: { outcome: { status } },
       searchText: "stored brief",
       modelId: "test-model",
     });
@@ -209,13 +216,13 @@ export async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
         );
       return row && { treeState: row.treeState, watching: row.watching };
     },
-    feedStatus: async (conversationId: string) => {
+    feedRow: async (conversationId: string) => {
       const response = await request("/api/conversations");
       return conversationFeedSchema
         .parse(await response.json())
         .conversations.find(
           (conversation) => conversation.conversationId === conversationId,
-        )?.status;
+        );
     },
   };
 }

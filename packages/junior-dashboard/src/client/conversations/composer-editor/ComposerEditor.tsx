@@ -37,7 +37,7 @@ import { ComposerMentionMenu } from "../ComposerMentionMenu";
 import { ComposerSkillMenu } from "../ComposerSkillMenu";
 import { mentionTokenAt } from "../composerMentionToken";
 import { hashTokenAt } from "../composerReferences";
-import { skillTokenAt } from "../composerSkillToken";
+import { skillTokenAt } from "../skillReferences";
 import { ComposerMarkerNode } from "./ComposerMarkerNode";
 import { ComposerMentionNode } from "./ComposerMentionNode";
 import { ComposerReferenceNode } from "./ComposerReferenceNode";
@@ -52,6 +52,7 @@ import {
   syncComposerMarkers,
 } from "./composerLiveMarkdown";
 import { useLexicalTypeahead } from "./useLexicalTypeahead";
+import { useSkillReferenceHighlights } from "./useSkillReferenceHighlights";
 
 /** Imperative actions on the draft editor. */
 export type ComposerEditorHandle = {
@@ -99,10 +100,10 @@ type ComposerEditorProps = {
 };
 
 /**
- * The composer's draft editor: plain text with inline mentions and
- * reference chips, built on Lexical. The `$`, `@`, and `#` menus run inside
- * it. The composer lazy-loads
- * this module, because Lexical is large.
+ * The composer's draft editor: plain text with inline mentions, reference
+ * chips, and styled skill references, built on Lexical. The `$`, `@`, and
+ * `#` menus run inside it. The composer lazy-loads this module, because
+ * Lexical is large.
  */
 export default function ComposerEditor(props: ComposerEditorProps) {
   const initialText = useRef(props.readText());
@@ -183,6 +184,7 @@ function ComposerBehavior(
   };
   const mention = useLexicalTypeahead(editor, mentionTokenAt, onChip);
   const hash = useLexicalTypeahead(editor, hashTokenAt, onChip);
+  useSkillReferenceHighlights(editor);
 
   // A selection in a content editable focuses it, so set one only to
   // focus. The composer scrolls itself, like a textarea with

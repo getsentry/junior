@@ -11,7 +11,7 @@ import { findChildAgentConversationId } from "./bindings";
 import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
-import { createAgentInvocationForMessage } from "./create";
+import { createAgentInvocationForMessage, messageChildAgent } from "./create";
 import {
   getActiveAgentInvocationForConversation,
   getLatestAgentInvocationForConversation,
@@ -88,17 +88,30 @@ export function bindMessageAgent(
       });
       return { conversationId: input.to, delivery: "queued" };
     }
-    const { invocation, queued } = await createAgentInvocationForMessage({
+    const message = {
       actor,
       childConversationId,
       ...(run.credentialContext
         ? { credentialContext: run.credentialContext }
         : undefined),
-      destination: toolInvocationDestination(run),
       idempotencyKey: `${run.turnId}:${call.toolCallId}`,
       input: input.text,
       parentConversationId: run.conversationId,
       parentToolCallId: call.toolCallId,
+    };
+    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7). A child
+    // that has an Agent invocation keeps getting its work as Agent
+    // invocations, so one child's work never runs on both paths.
+    if (!(await getLatestAgentInvocationForConversation(childConversationId))) {
+      const { delivery } = await messageChildAgent(
+        { ...message, parentTurnId: run.turnId },
+        { ...options, queue },
+      );
+      return { conversationId: childConversationId, delivery };
+    }
+    const { invocation, queued } = await createAgentInvocationForMessage({
+      ...message,
+      destination: toolInvocationDestination(run),
     });
     await enqueueAgentInvocation(invocation, { ...options, queue });
     return {

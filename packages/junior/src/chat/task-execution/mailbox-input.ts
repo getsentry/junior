@@ -8,7 +8,16 @@ import type {
 } from "@/chat/state/conversation";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
-import { loadInboxItemInput } from "@/chat/inbox-items/prompt-input";
+import {
+  eventInboxItemInputs,
+  loadInboxItemInput,
+} from "@/chat/inbox-items/prompt-input";
+import {
+  eventBatchMessageMeta,
+  isEventMailboxMetadata,
+  renderEventBatchInputs,
+} from "@/chat/events/notification";
+import type { MailboxTurnInput } from "@/chat/task-execution/mailbox-turn";
 import type { InboundMessage } from "@/chat/task-execution/store";
 
 /**
@@ -86,4 +95,49 @@ export function savedTurnInputMessages(
   return saved.some((message) => message.id === turnMessage.id)
     ? saved
     : [turnMessage];
+}
+
+/**
+ * Render the Turn inputs of one new mailbox batch. A parent batch is the
+ * parent's task, as on an Agent invocation. An Event batch also returns the
+ * meta of its one saved Message. A web batch returns one transcript Message
+ * per input.
+ */
+export async function mailboxTurnInputs(
+  batch: readonly MailboxTurnInput[],
+  fromParent: boolean,
+): Promise<{
+  eventMeta: ReturnType<typeof eventBatchMessageMeta>;
+  inputs: AgentInstructionInput[];
+  webInputMessages: ConversationMessage[];
+}> {
+  const messages = batch.map((entry) => entry.message);
+  if (fromParent) {
+    return {
+      eventMeta: {},
+      inputs: batch.map(({ message, requestText }) => ({
+        kind: "runtime",
+        text: message.input.text.trim(),
+        ...(requestText ? { requestText } : undefined),
+      })),
+      webInputMessages: [],
+    };
+  }
+  if (isEventMailboxMetadata(messages[0]?.input.metadata)) {
+    return {
+      eventMeta: eventBatchMessageMeta(messages),
+      inputs: renderEventBatchInputs(
+        messages,
+        await eventInboxItemInputs(messages),
+      ),
+      webInputMessages: [],
+    };
+  }
+  return {
+    eventMeta: {},
+    inputs: await webTurnInputs(messages.map((message) => message.input)),
+    webInputMessages: batch.map((entry) =>
+      webConversationMessage(entry.message, entry.author),
+    ),
+  };
 }

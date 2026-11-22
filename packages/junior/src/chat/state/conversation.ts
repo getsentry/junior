@@ -35,6 +35,8 @@ export interface ConversationMessageMeta {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
+  /** Resource identifier of the first Event, such as a Conversation id. */
+  eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
   /**
    * The Watch Events when several arrived together. A Message that also
@@ -52,8 +54,8 @@ export interface ConversationMessageMeta {
   quiet?: true;
   replied?: boolean;
   /**
-   * The request words of an Event Message's inputs, such as a parent
-   * agent's task, so a resumed Turn recalls from them as the first did.
+   * The request words of an Event or parent agent Message's inputs, such
+   * as a parent agent's task, so a resumed Turn recalls from them as the first did.
    */
   requestText?: string;
   /** Person changes to Inbox items that this Message records. */

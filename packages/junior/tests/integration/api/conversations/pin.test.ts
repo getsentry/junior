@@ -247,6 +247,17 @@ describe("conversation pin API", () => {
         await readConversationDetail(newer, { viewer }),
       ),
     ).toMatchObject({ kind: "automation", pinnedAt: expect.any(String) });
+    // So does a lead.
+    await getDb()
+      .update(juniorConversations)
+      .set({ kind: "lead" })
+      .where(eq(juniorConversations.conversationId, older));
+    expect((await setPin(app, older, false)).status).toBe(200);
+    expect(
+      conversationDetailReportSchema.parse(
+        await readConversationDetail(older, { viewer }),
+      ),
+    ).toMatchObject({ kind: "lead", pinnedAt: null });
   });
 
   it("keeps the viewer's Pinned order until a pin changes", async () => {

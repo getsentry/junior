@@ -30,10 +30,9 @@ test("Markdown markers show only while the caret is at their span", async ({
   });
   const composer = await openComposer(page, dashboard.baseURL);
   await composer.pressSequentially("Ship **this** now");
-  const markers = composer.locator("[data-composer-marker]");
-  await expect(
-    composer.locator("strong:not([data-composer-marker])"),
-  ).toHaveText("this");
+  const markers = composer.getByText("**", { exact: true });
+  const bold = composer.getByRole("strong").filter({ hasText: /^this$/ });
+  await expect(bold).toHaveCount(1);
   await expect(markers).toHaveCount(2);
   await expect(markers.first()).toBeHidden();
 
@@ -41,9 +40,7 @@ test("Markdown markers show only while the caret is at their span", async ({
   for (let step = 0; step < 4; step++) await page.keyboard.press("ArrowLeft");
   await expect(markers.first()).toBeVisible();
   await expect(markers.last()).toBeVisible();
-  await expect(
-    composer.locator("strong:not([data-composer-marker])"),
-  ).toHaveText("this");
+  await expect(bold).toHaveCount(1);
 
   await page.keyboard.press("Home");
   await expect(markers.first()).toBeHidden();
@@ -59,11 +56,11 @@ test("deleting a marker turns its span back into text", async ({
 }) => {
   const composer = await openComposer(page, dashboard.baseURL);
   await composer.pressSequentially("run `make test`");
-  await expect(composer.locator("code")).toHaveText("make test");
+  await expect(composer.getByRole("code")).toHaveText("make test");
   await page.keyboard.press("Backspace");
   await expect(composer).toHaveText("run `make test");
-  await expect(composer.locator("code")).toHaveCount(0);
-  await expect(composer.locator("[data-composer-marker]")).toHaveCount(0);
+  await expect(composer.getByRole("code")).toHaveCount(0);
+  await expect(composer.getByText("`", { exact: true })).toHaveCount(0);
 });
 
 test("arrow keys reach a span's edge from either side, then move one character", async ({

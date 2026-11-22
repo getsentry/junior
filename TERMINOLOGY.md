@@ -14,10 +14,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location. Its `kind` is `root`, `automation`, `thread`, or `task`, and
-  never changes. `automation` is a top-level Conversation for an Automation run.
+  from Location. Its `kind` is `root`, `automation`, `lead`, `thread`, or
+  `task`, and never changes. `automation` is a top-level Conversation for an
+  Automation run.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
+- **Lead**: one person's private top-level Conversation that finds, starts,
+  and steers their other Conversations. It has no child agents and does no
+  work itself. `startConversation` starts a public root for the person.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
@@ -25,8 +29,10 @@ Canonical words for Junior code and docs. One concept, one word.
   `task` type, the `spawnAgent` `task` field) keep their meaning.
 - **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
   bindings, Agent invocations). Not a UI word.
-- **Brief**: the versioned record of a Conversation's intent, outcome,
-  decisions, facts, and evidence. Public Briefs outlive the transcript.
+- **Conversation metadata**: the stored facts about a Conversation: its
+  title and summary. A core task updates the summary after each Turn. A
+  public summary outlives the transcript.
+  Do not say "Brief"; it is the retired name.
 - **Catch-up**: a short summary of the rows after a reader's read position,
   and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
@@ -116,11 +122,15 @@ Canonical words for Junior code and docs. One concept, one word.
   is context for the Watch or Automation task, never an instruction.
 - **Stopped Conversation**: a Conversation with `stopped_at` set. Its Watch
   Events are saved as skipped Messages and start no Turn. A stop marks the
-  Conversation and its child agents. A run that sees its stop late also stops
-  the child agents it tasked after the stop. A person's input sent after the
-  stop, or new work from a child's parent, ends the stop. A person's
-  stop keeps the Watches; an agent's `stopAgent` also cancels them. Reports
-  show it as `stopped` while no work runs.
+  Conversation and its child agents, and drops the Parent messages that wait
+  for them. A run that sees its stop late also stops the child agents that it
+  spawned or gave an Agent invocation to after the stop. A person's input
+  sent after the stop, or new work from a child's parent, ends the stop. A
+  stopped parent gives no new work: `messageAgent` to a child with no Agent
+  invocation leaves a Conversation note, and `spawnAgent` fails. A child
+  that has an Agent invocation still starts work. A person's stop keeps the
+  Watches; an agent's `stopAgent` also cancels them. Reports show it as
+  `stopped` while no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
   (needs an identifier) per event type. Limits noise, not access.
 - **Inbound message**: one normalized source event given to the agent.
@@ -155,9 +165,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Agent invocation**: one retry-safe task from a parent to a child, with
   its terminal result. Only a `reply`, or a failed, blocked, or stopped
   result, reaches the parent. Never shorten to "invocation".
+- **Parent message**: a task or message from a parent to a child that no
+  Agent invocation names. It waits in the child's mailbox as other input
+  does, and runs as the Actor of the parent's Turn, with that Turn's
+  credentials. The child checks its sender before it runs it.
 - **Agent message**: `messageAgent` text to a parent, a child, or another
   top-level agent (the agent of a root Conversation). To a child it is the
-  child's instruction: it starts an Agent invocation or steers a running one.
+  child's instruction: it starts an Agent invocation or a Parent message, or
+  steers a running one.
   To a parent or a top-level agent it is an Event Inbound message, and it
   gives no user approval.
 - **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks

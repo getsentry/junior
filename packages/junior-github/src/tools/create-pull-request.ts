@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
@@ -67,7 +68,9 @@ class GitHubPullRequestCreateRejectedError extends Error {
 
 const BODY_DESCRIPTION = `Pull request body. ${PULL_REQUEST_BODY_RULES}`;
 const REVIEWERS_DESCRIPTION =
-  "GitHub logins to ask for a review. Set this only when the person names who should review. Without it, the tool asks the requester's linked GitHub account. A draft gets the request when it becomes ready for review.";
+  "People to ask for a review: GitHub logins, emails, Slack mentions, or names. A person maps to their linked GitHub login. Set it only when the person names a reviewer. Without it, the tool asks the requester. A draft is asked once ready.";
+const ASSIGNEES_DESCRIPTION =
+  "People to assign: GitHub logins, emails, Slack mentions, or names. A person maps to their linked GitHub login. Set this only when the person or instruction names who to assign. Without it, the tool assigns the requester's linked GitHub account.";
 
 const createPullRequestInputSchema = Type.Object(
   {
@@ -99,6 +102,12 @@ const createPullRequestInputSchema = Type.Object(
         minItems: 1,
       }),
     ),
+    assignees: Type.Optional(
+      Type.Array(Type.String(), {
+        description: ASSIGNEES_DESCRIPTION,
+        minItems: 1,
+      }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -119,6 +128,11 @@ const createPullRequestToolInputSchema = z
       .array(z.string())
       .min(1)
       .describe(REVIEWERS_DESCRIPTION)
+      .optional(),
+    assignees: z
+      .array(z.string())
+      .min(1)
+      .describe(ASSIGNEES_DESCRIPTION)
       .optional(),
   })
   .strict();
@@ -332,22 +346,28 @@ async function recordOpener(
   });
 }
 
-/** Assignment is optional: provider failures must not fail PR creation. */
-async function assignPullRequestRequester(
+/**
+ * Assign the named assignees, or else the requester. Assignment is optional:
+ * provider failures must not fail PR creation.
+ */
+async function assignPullRequest(
   ctx: ToolRegistrationHookContext,
   input: CreateGitHubPullRequestInput,
   result: GitHubPullRequestResult,
   requester: PluginWorkOwner | undefined,
 ): Promise<void> {
-  const assignee = linkedGitHubLogin(requesterPerson(requester)?.user);
-  if (!assignee) return;
+  const requesterLogin = linkedGitHubLogin(requesterPerson(requester)?.user);
+  const assignees =
+    namedLogins(input.assignees, "assignee") ??
+    (requesterLogin ? [requesterLogin] : []);
+  if (assignees.length === 0) return;
   try {
     const repo = parseRepo(input.repo);
     const response = await githubApi(ctx.egress, {
       operation: "github.pull.assign",
       method: "POST",
       path: `${repoPath(repo)}/issues/${result.number}/assignees`,
-      body: { assignees: [assignee] },
+      body: { assignees },
     });
     if (!response.ok) {
       ctx.log.warn("github.pull_request.assign_after_create.rejected", {
@@ -366,14 +386,64 @@ async function assignPullRequestRequester(
   }
 }
 
-/** Return the logins of the named reviewers. */
-function namedReviewers(
-  input: CreateGitHubPullRequestInput,
+/**
+ * Replace each named assignee or reviewer that is not a GitHub login, such as
+ * an email, a Slack mention, or a name, with the linked GitHub login of the
+ * person it names. Reject a value that no linked account verifies, before
+ * GitHub opens the pull request.
+ */
+async function resolveNamedPeople(
+  ctx: ToolRegistrationHookContext,
+  people: {
+    assignees?: string[] | undefined;
+    reviewers?: string[] | undefined;
+  },
+): Promise<{ assignees?: string[]; reviewers?: string[] }> {
+  const [assignees, reviewers] = await Promise.all([
+    resolveLogins(ctx, people.assignees, "assignee"),
+    resolveLogins(ctx, people.reviewers, "reviewer"),
+  ]);
+  return {
+    ...(assignees ? { assignees } : undefined),
+    ...(reviewers ? { reviewers } : undefined),
+  };
+}
+
+// Each lookup can search Slack, so a long list does not fan out at once.
+const PERSON_LOOKUP_CONCURRENCY = 4;
+
+async function resolveLogins(
+  ctx: ToolRegistrationHookContext,
+  values: string[] | undefined,
+  role: "assignee" | "reviewer",
+): Promise<string[] | undefined> {
+  if (!values) return undefined;
+  return await pLimit(PERSON_LOOKUP_CONCURRENCY).map(values, async (value) => {
+    const login = parseGitHubLogin(value);
+    if (login) return login;
+    const lookup = await ctx.users.findLinkedHandle(value, "github");
+    const linked =
+      lookup.status === "found" ? parseGitHubLogin(lookup.handle) : undefined;
+    if (linked) return linked;
+    throw new PluginToolInputError(
+      lookup.status === "ambiguous"
+        ? `More than one person matches ${role} ${value}. Name one person.`
+        : lookup.status === "unlinked"
+          ? `${role} ${value} has no linked GitHub account. Pass their GitHub login.`
+          : `No person matches ${role} ${value}. Pass a GitHub login.`,
+    );
+  });
+}
+
+/** Return the logins of named reviewers or assignees. */
+function namedLogins(
+  values: string[] | undefined,
+  role: "assignee" | "reviewer",
 ): string[] | undefined {
-  return input.reviewers?.map((value) => {
+  return values?.map((value) => {
     const login = parseGitHubLogin(value);
     if (!login) {
-      throw new PluginToolInputError(`Invalid GitHub reviewer login: ${value}`);
+      throw new PluginToolInputError(`Invalid GitHub ${role} login: ${value}`);
     }
     return login;
   });
@@ -388,7 +458,7 @@ async function saveNamedDraftReviewers(
   input: CreateGitHubPullRequestInput,
   number: number,
 ): Promise<void> {
-  const named = namedReviewers(input);
+  const named = namedLogins(input.reviewers, "reviewer");
   if (!input.draft || !named) return;
   await saveGitHubDraftReviewers(
     ctx.state,
@@ -408,7 +478,7 @@ async function requestPullRequestReviewers(
   result: GitHubPullRequestResult,
   requester: PluginWorkOwner | undefined,
 ): Promise<void> {
-  const named = namedReviewers(input);
+  const named = namedLogins(input.reviewers, "reviewer");
   const repo = parseRepo(input.repo);
   try {
     if (input.draft) {
@@ -550,7 +620,7 @@ export function createGitHubPullRequestTool(
       readOnlyHint: false,
     },
     description:
-      "Create a GitHub pull request with a runtime-owned conversation footer. It assigns the pull request to the requester's linked GitHub account and asks for a review when available. Use this instead of shelling out to gh pr create when creating pull requests.",
+      "Create a GitHub pull request with a runtime-owned conversation footer. By default it assigns the pull request to the requester's linked GitHub account and asks for a review when available. Use this instead of shelling out to gh pr create when creating pull requests.",
     exposure: "direct",
     inputSchema: createPullRequestToolInputSchema,
     outputSchema: gitHubPullRequestOutputSchema,
@@ -559,9 +629,18 @@ export function createGitHubPullRequestTool(
       options: PluginToolExecuteOptions,
       ctx: ToolRegistrationHookContext,
     ) {
-      const parsedInput = parseCreatePullRequestInput(input);
-      // Reject a bad login before GitHub opens the pull request.
-      namedReviewers(parsedInput);
+      // People fields skip the Slack mention rewrite that other text gets:
+      // an unlinked person's mention would become a name and lose the Slack
+      // user ID that the lookup needs.
+      const { assignees, reviewers, ...text } = input;
+      const [githubText, people] = await Promise.all([
+        ctx.users.replaceSlackMentions(text, "github"),
+        resolveNamedPeople(ctx, { assignees, reviewers }),
+      ]);
+      const parsedInput = parseCreatePullRequestInput({
+        ...githubText,
+        ...people,
+      });
       const conversationId = nonEmptyString(
         ctx.conversationId,
         "conversationId",
@@ -679,7 +758,7 @@ export function createGitHubPullRequestTool(
             conversationId,
             identityId,
           });
-          await assignPullRequestRequester(ctx, parsedInput, result, requester);
+          await assignPullRequest(ctx, parsedInput, result, requester);
           await requestPullRequestReviewers(
             ctx,
             parsedInput,

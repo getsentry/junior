@@ -103,6 +103,7 @@ function pipelineFor(
 
 function turnCount() {
   return createResumeState({
+    historySeqs: [],
     checkpoint: { resumed: false, sliceId: 1 },
     conversationId: CONVERSATION_ID,
     destination: DESTINATION,

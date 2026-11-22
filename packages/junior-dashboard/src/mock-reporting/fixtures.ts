@@ -363,107 +363,18 @@ function detail(
   };
 }
 
-function mockBrief(
-  nowMs: number,
+function mockSummary(
   kind: "live" | "expired",
-): NonNullable<ConversationDetailReport["brief"]> {
-  const live = kind === "live";
-  const startedAt = iso(nowMs, live ? -6 * 60_000 : -44 * 60_000);
-  const updatedAt = iso(nowMs, live ? -60_000 : -41 * 60_000);
-  return {
-    content: {
-      schemaVersion: 1,
-      record: {
-        startedAt,
-        lastActivityAt: updatedAt,
-        durationMs: live ? 5 * 60_000 : 3 * 60_000,
-        participants: [{ name: "Morgan Lee", messages: live ? 2 : 1 }],
-        userMessages: live ? 2 : 1,
-        assistantMessages: 1,
-        toolResults: live ? 2 : 1,
-        events: 0,
-        turns: live ? 2 : 1,
-        location: { provider: "slack", channelName: "proj-checkout" },
-        codeChanges: [
-          {
-            repository: "getsentry/payments",
-            number: live ? 42 : 77,
-            title: live
-              ? "Reduce checkout latency"
-              : "Roll back the checkout regression",
-            url: live
-              ? "https://github.com/getsentry/payments/pull/42"
-              : "https://github.com/getsentry/payments/pull/77",
-            state: live ? "open" : "merged",
-            openedAt: startedAt,
-            mergedAt: live ? undefined : updatedAt,
-          },
-        ],
-      },
-      summary: live
-        ? "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision."
-        : "The checkout regression was traced to payments-v42. The team chose to roll it back and merged the change that restored normal latency.",
-      intent: live
-        ? "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans."
-        : "Draft the rollback note with the exact evidence for the checkout latency regression.",
-      outcome: live
-        ? {
-            status: "in_progress",
-            text: "The deployment correlation is confirmed. The span comparison is still running.",
-          }
-        : {
-            status: "done",
-            text: "The rollback note was completed and the rollback change was merged.",
-          },
-      decisions: live
-        ? [
-            {
-              text: "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
-              by: "Morgan Lee",
-              kind: "stated",
-            },
-            {
-              text: "Use checkout.complete p95 as the primary comparison signal.",
-              kind: "assumed",
-            },
-          ]
-        : [
-            {
-              text: "Roll back payments-v42 instead of patching the serializer in place.",
-              by: "Morgan Lee",
-              kind: "confirmed",
-            },
-          ],
-      facts: live
-        ? [
-            "Checkout p95 increased from 210ms to 890ms.",
-            "Error volume stayed flat during the latency increase.",
-          ]
-        : [
-            "PAYMENTS-42 contained 418 events.",
-            "The regression started with payments-v42.",
-          ],
-      links: [
-        {
-          kind: "code_change",
-          label: `getsentry/payments#${live ? 42 : 77}`,
-          url: live
-            ? "https://github.com/getsentry/payments/pull/42"
-            : "https://github.com/getsentry/payments/pull/77",
-          status: live ? "open" : "merged",
-        },
-        {
-          kind: "resource",
-          label: "Checkout latency dashboard",
-          url: "https://sentry.example.com/organizations/acme/explore/traces/",
-          status: live ? "open" : "resolved",
-        },
-      ],
-      keywords: ["checkout", "latency", "payments-v42", "rollback"],
-    },
-    updatedAt,
-    version: live ? 2 : 3,
-  };
+): Pick<ConversationDetailReport, "summary"> {
+  return kind === "live"
+    ? {
+        summary:
+          "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
+      }
+    : {
+        summary:
+          "The checkout regression was traced to payments-v42. PAYMENTS-42 contained 418 events. The team chose to roll it back and merged the change that restored normal latency.",
+      };
 }
 
 function activeConversation(nowMs: number): ConversationDetailReport {
@@ -471,7 +382,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: ACTIVE_CONVERSATION_ID,
     displayTitle: "Investigate checkout latency",
-    brief: mockBrief(nowMs, "live"),
+    ...mockSummary("live"),
     // Visual QA needs the composer + pending mailbox stack attached above it.
     isParticipant: true,
     startedAt,
@@ -1729,7 +1640,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: INCIDENT_CONVERSATION_ID,
     displayTitle: "Checkout latency triage",
-    brief: mockBrief(nowMs, "expired"),
+    ...mockSummary("expired"),
     startedAt,
     lastSeenAt: iso(nowMs, -41 * 60_000),
     lastProgressAt: iso(nowMs, -42 * 60_000),
@@ -1746,11 +1657,13 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         icon: "git-merge",
         key: "getsentry/payments#77",
         label: "payments",
+        url: "https://github.com/getsentry/payments/pull/77",
       },
       {
         icon: "circle-x",
         key: "getsentry/payments#61",
         label: "payments",
+        url: "https://github.com/getsentry/payments/issues/61",
       },
     ],
     annotations: [
@@ -2128,13 +2041,12 @@ const SENTAUR_ISSUE_TITLES = [
 
 /**
  * A Conversation shaped like a live triage row: a long title, a long
- * Brief summary, pull requests from two repos, Linear issues with and
+ * summary, pull requests from two repos, Linear issues with and
  * without titles, a running outcome and Threads. Its Inbox row shows one
  * cap across every kind of linked work.
  */
 function sentaurConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -26 * 60 * 60_000);
-  const brief = mockBrief(nowMs, "live");
   return detail(nowMs, {
     conversationId: SENTAUR_CONVERSATION_ID,
     displayTitle: "Triage Sentaur GoCD deployment failures",
@@ -2147,21 +2059,8 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
     // The viewer takes part, so the row has its pin and archive actions.
     isParticipant: true,
     actorIdentity: actor("michael@sentry.io", "Michael Hart", "michael"),
-    brief: {
-      ...brief,
-      content: {
-        ...brief.content,
-        record: { ...brief.content.record, codeChanges: [] },
-        summary:
-          "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
-        intent:
-          "Find why the Sentaur GoCD deploys fail and land the fixes for each stage.",
-        outcome: {
-          status: "in_progress",
-          text: "The canary retry and the soak gate are in review.",
-        },
-      },
-    },
+    summary:
+      "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
     // Newest first, like saved Annotations. Not a mock repository, so the
     // Code pages keep their rows.
     sidebarAnnotations: [
@@ -2538,8 +2437,8 @@ function summaryFromConversation(
         }
       : undefined;
   const {
+    annotations: _annotations,
     authors: _authors,
-    brief: _brief,
     eventHistory: _eventHistory,
     events: _events,
     forkedFromConversationId: _forkedFromConversationId,
@@ -2552,9 +2451,17 @@ function summaryFromConversation(
     sourceTask: _sourceTask,
     ...summary
   } = conversation;
+  // Like the API: the newest Turn lifecycle Event failed.
+  const latestTurn = [...conversation.events]
+    .reverse()
+    .find((event) => event.data.type === "turn_lifecycle");
+  const latestTurnFailed =
+    latestTurn?.data.type === "turn_lifecycle" &&
+    latestTurn.data.state === "failed";
   const summaryWithActivity = {
     ...summary,
     ...(activityPreview ? { activityPreview } : undefined),
+    ...(latestTurnFailed ? { latestTurnFailed: true } : undefined),
   };
   const withViewerState = withMockViewerState(summaryWithActivity);
   return withViewerState.channel &&
@@ -2585,24 +2492,14 @@ function mockThreadPlacement(
 }
 
 /** Group shown mock Threads by where they nest. */
-/** A feed row: the summary plus the short form of its latest Brief. */
+/** A feed row: the summary with its newest files and links. */
 function feedItemFromConversation(
   conversation: MockConversation,
 ): ConversationFeedItem {
-  const summary = {
+  return {
     ...summaryFromConversation(conversation),
     media: mockFeedMedia(conversation),
     links: mockFeedLinks(conversation),
-  };
-  const brief = conversation.brief?.content;
-  if (!brief) return summary;
-  return {
-    ...summary,
-    brief: {
-      intent: brief.intent,
-      status: brief.outcome.status,
-      summary: brief.summary,
-    },
   };
 }
 
@@ -2754,17 +2651,6 @@ function windowBounds(nowMs: number) {
   };
 }
 
-/** Count a completed mock conversation as an answered or done outcome. */
-function addMockOutcome(
-  bucket: ConversationStatsReport["metricDays"][number],
-  summary: ConversationSummaryReport,
-) {
-  if (summary.status !== "done") return;
-  bucket.outcomes = (bucket.outcomes ?? 0) + 1;
-  bucket.outcomeCostUsd =
-    (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
-}
-
 /** Add two mock merged code changes, with split conversation cost. */
 function addMockMergedCodeChanges(
   buckets: Map<string, ConversationStatsReport["metricDays"][number]>,
@@ -2780,8 +2666,6 @@ function addMockMergedCodeChanges(
     bucket.mergedCodeChanges = (bucket.mergedCodeChanges ?? 0) + 1;
     bucket.mergedCodeChangeCostUsd =
       (bucket.mergedCodeChangeCostUsd ?? 0) + change.costUsd;
-    bucket.outcomes = (bucket.outcomes ?? 0) + 1;
-    bucket.outcomeCostUsd = (bucket.outcomeCostUsd ?? 0) + change.costUsd;
   }
 }
 
@@ -2802,7 +2686,6 @@ function conversationMetricDays(
     if (!day) continue;
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    addMockOutcome(day, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -2843,7 +2726,6 @@ function conversationMetricHours(
     if (!hour) continue;
     hour.conversations += 1;
     hour.durationMs += summary.cumulativeDurationMs;
-    addMockOutcome(hour, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) hour.tokens = (hour.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -4089,11 +3971,11 @@ export function readMockPeopleProfile(
 /** Build mock System operational reports for local dashboard QA. */
 export function readMockPluginReports(): PluginOperationalReportFeed {
   const categories = activityDates(NOW_MS, 90).map((date, index) => {
-    const briefs = index < 60 ? 0 : index % 6 === 0 ? 4 : (index % 3) + 1;
+    const memories = index < 60 ? 0 : index % 6 === 0 ? 4 : (index % 3) + 1;
     return {
       id: date,
       label: date,
-      values: { briefs, costUsd: briefs * 0.0037 },
+      values: { costUsd: memories * 0.0037, memories },
     };
   });
   return {
@@ -4101,28 +3983,25 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
     reports: [
       {
         generatedAt: NOW,
-        pluginName: "briefs",
-        title: "Briefs",
+        pluginName: "memory",
+        title: "Memory",
         metrics: [
-          { label: "briefs · 30d", tone: "good", value: "61" },
-          { label: "conversations with a brief · 30d", value: "38" },
+          { label: "memories stored", tone: "good", value: "148" },
+          { label: "conversations with a memory", value: "93" },
+          { label: "memories · 30d", value: "61" },
           { label: "cost · 30d · retained", value: "$0.23" },
-          {
-            label: "average cost per brief · 30d · retained",
-            value: "$0.0037",
-          },
         ],
         widgets: [
           {
             categories,
-            description: "Stored Brief versions and estimated model cost",
-            id: "briefs-created",
+            description: "Stored memories and estimated model cost",
+            id: "memories-created",
             series: [
-              { key: "briefs", label: "Briefs" },
+              { key: "memories", label: "Memories" },
               { format: "usd", key: "costUsd", label: "Cost" },
             ],
             timeRangeDays: [7, 30, 90],
-            title: "Briefs created",
+            title: "Memories created",
             type: "bar_chart",
           },
         ],

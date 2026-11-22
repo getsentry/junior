@@ -6,15 +6,16 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
   attachmentUploadSchema,
+  leadSchema,
 } from "@/api/schema";
-import type { FileInput } from "./inputs";
+import type { FileInput, WebMessageInput } from "./inputs";
 import { VIEWER_HEADER } from "./results";
 
 /**
  * Upload files as the dashboard does before a send, and return the upload
  * ids for the message.
  */
-export async function uploadWebFiles(
+async function uploadWebFiles(
   api: Hono<JuniorApiEnv>,
   message: {
     conversationId?: string;
@@ -81,13 +82,66 @@ export function jsonRequest(viewerEmail: string, body: unknown): RequestInit {
 }
 
 /** Read the accepted message of a web message post, or fail the test. */
-export async function expectAccepted(response: Response) {
+async function expectAccepted(response: Response) {
   if (response.status !== 200) {
     throw new Error(
       `Web message returned ${response.status}: ${await response.text()}`,
     );
   }
   return acceptedConversationMessageSchema.parse(await response.json());
+}
+
+/**
+/**
+ * Send one message as the dashboard composer does: upload its files and
+ * post it. With no `conversationId`, the post creates the Conversation.
+ */
+export async function postWebMessage(
+  api: Hono<JuniorApiEnv>,
+  message: {
+    conversationId?: string | undefined;
+    idempotencyKey: string;
+    input: WebMessageInput;
+    viewerEmail: string;
+  },
+): Promise<void> {
+  const { conversationId, idempotencyKey, input, viewerEmail } = message;
+  const uploadIds = input.files?.length
+    ? await uploadWebFiles(api, {
+        ...(conversationId ? { conversationId } : undefined),
+        files: input.files,
+        idempotencyKey,
+        viewerEmail,
+      })
+    : undefined;
+  await expectAccepted(
+    await api.request(
+      conversationId
+        ? `/api/conversations/${encodeURIComponent(conversationId)}/messages`
+        : "/api/conversations",
+      jsonRequest(viewerEmail, {
+        idempotencyKey,
+        message: input.text,
+        ...(uploadIds ? { uploadIds } : undefined),
+      }),
+    ),
+  );
+}
+
+/** Find or make the Lead of `viewerEmail`, as the dashboard home does. */
+export async function readLeadConversationId(
+  api: Hono<JuniorApiEnv>,
+  viewerEmail: string,
+): Promise<string> {
+  const response = await api.request("/api/lead", {
+    headers: { [VIEWER_HEADER]: viewerEmail },
+  });
+  if (response.status !== 200) {
+    throw new Error(
+      `Lead returned ${response.status}: ${await response.text()}`,
+    );
+  }
+  return leadSchema.parse(await response.json()).conversationId;
 }
 
 /**

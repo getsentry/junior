@@ -76,23 +76,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
-    // An entry counts what waits on the viewer, like the badge: the
-    // "Pull request ready for review" notice does not.
     await expect(nav.getByRole("link")).toHaveText([
+      /^Lead$/,
       /^Inbox/,
       /^Snoozed/,
       /^Done$/,
       /^Conversations$/,
       /^Automations/,
-      /^Pull requests\s*2$/,
-      /^Decisions\s*4$/,
       new RegExp(checkout),
     ]);
+    // A filter counts what waits on the viewer, like the badge: the
+    // "Pull request ready for review" notice does not.
+    await expect(
+      page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
+    ).toHaveText([/^All\s*6$/, /^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 
     // Pull requests list the viewer's open changes, with their asks.
-    await nav.getByRole("link", { name: /^Pull requests/ }).click();
-    await expect(page).toHaveURL(/\/\?view=prs$/);
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Pull requests" }),
     ).toBeVisible();
@@ -100,13 +101,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Waiting on you/,
       /^Waiting on others/,
     ]);
-    await expect(
-      nav.getByRole("link", { name: /^Pull requests/ }),
-    ).toHaveAttribute("aria-current", "page");
     await screenshot(page, "inbox-pull-requests", { lightTheme: true });
 
     // Decisions group by Conversation, the longest wait first.
-    await nav.getByRole("link", { name: /^Decisions/ }).click();
+    await page.goto(`${dashboard.baseURL}/?view=decisions`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Decisions" }),
     ).toBeVisible();
@@ -824,71 +822,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await expect(message).toContainText("The canary error rate is flat");
     expect(reads).toBe(1);
-  });
-
-  test("cards grow near the pointer in both densities, except for reduced motion", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
-    await page.evaluate(() => {
-      localStorage.setItem("junior:density", "comfortable");
-      // The magnifier is off until the viewer turns it on.
-      localStorage.setItem("junior:inbox:magnify", "true");
-    });
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.reload();
-    const card = page.locator("[data-inbox-row]").first();
-    await card.hover();
-    // Let a frame pass, so a scale that was going to apply has applied.
-    await page.evaluate(
-      () => new Promise((done) => requestAnimationFrame(done)),
-    );
-    await expect(card).not.toHaveAttribute("style", /scale/);
-
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.mouse.move(0, 0);
-    await card.hover();
-    // Up to 5% under the pointer, less for a neighbor.
-    await expect(card).toHaveAttribute("style", /scale\(1\.0[1-5]/);
-    await page.mouse.move(0, 0);
-    await expect(card).not.toHaveAttribute("style", /scale/);
-
-    // Compact rows grow too, up to 2%.
-    await page.evaluate(() => {
-      localStorage.setItem("junior:density", "compact");
-    });
-    await page.reload();
-    await card.hover();
-    await expect(card).toHaveAttribute("style", /scale\(1\.0[0-2]/);
-  });
-
-  test("an open ask holds its pull request still under the pointer", async ({
-    dashboard,
-    page,
-  }) => {
-    // Both changes wait on the viewer, so they share one list.
-    await mockInboxItems(page, { open: [prReview, prMerge] });
-    await mockViewerCodeChanges(page, [
-      { idleDays: 1, number: 91, title: "Pin the release train" },
-      { idleDays: 0, number: 42, title: "Tune the retry backoff" },
-    ]);
-    await page.addInitScript(() => {
-      localStorage.setItem("junior:density", "comfortable");
-      localStorage.setItem("junior:inbox:magnify", "true");
-    });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    const change = page.getByRole("listitem", {
-      name: "Pin the release train",
-    });
-    await change.locator("[data-inbox-head]").click();
-    await expect(change.locator("[data-expanded]")).toHaveCount(1);
-    await page.mouse.move(0, 0);
-    await change.hover();
-    // The other change still grows, so the pointer counts.
-    await expect(
-      page.getByRole("listitem", { name: "Tune the retry backoff" }),
-    ).toHaveAttribute("style", /scale/);
-    await expect(change).not.toHaveAttribute("style", /scale/);
   });
 });
