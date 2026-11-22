@@ -58,9 +58,11 @@ import {
   conversationDisplayTitle,
 } from "../format";
 import {
+  conversationPath,
   isNewConversationPath,
   COMPOSER_PATH,
 } from "../conversations/conversationRoutes";
+import { useLead } from "../lead/Lead";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
@@ -299,8 +301,11 @@ function Shell() {
   // To do's own count, so the header and the tab match its cards.
   const inboxCount = useInboxData().todoCount;
   useInboxTabCount(inboxCount);
+  const lead = useLead(loggedIn);
+  const leadId = lead.data?.conversationId;
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
+    leadPath: leadId ? conversationPath(leadId) : undefined,
     loading,
     loggedIn,
     pathname: location.pathname,
@@ -360,6 +365,9 @@ function Shell() {
   return (
     <DashboardChromeProvider>
       <PaneNavProvider
+        // Without embedded bootstrap data, the viewer is unknown at first, so
+        // the Lead may still be coming.
+        leadPending={loading || (loggedIn && lead.isPending)}
         navItems={primaryNavItems}
         onOpenChange={setPaneOpen}
         onSearch={openCommandPalette}

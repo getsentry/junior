@@ -62,9 +62,10 @@ import {
   conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
 import { nestFeedThreads, readFeedThreadRecords } from "./threads";
-import type {
-  ConversationFeed,
-  ConversationFeedInclude,
+import {
+  CONVERSATION_FEED_WAITING_LIMIT,
+  type ConversationFeed,
+  type ConversationFeedInclude,
 } from "../schema/conversation-feed";
 import {
   childAgentTotalsReport,
@@ -581,6 +582,10 @@ export async function readConversationFeedFromSql(
           filter,
           include,
           includePrivateMatches: true,
+          // Pins already show. The waiting rows inside the page sort first,
+          // so this reads past them to one more row than the cap.
+          limit: limit + CONVERSATION_FEED_WAITING_LIMIT + 1,
+          pinnedForUserId: { pinned: false, userId: filter.userId },
           status: "active",
           waitingForUserId: filter.userId,
         })
@@ -589,13 +594,16 @@ export async function readConversationFeedFromSql(
   const page = pageRows.slice(0, limit);
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
+  let waitingRowsTruncated = false;
   if (firstPage) {
     const loaded = new Set(rows.map((row) => row.conversation.conversationId));
     const outsidePage = waitingRows.filter(
       (row) => !loaded.has(row.conversation.conversationId),
     );
-    options.onWaitingRows?.(outsidePage.length);
-    rows.push(...outsidePage);
+    waitingRowsTruncated = outsidePage.length > CONVERSATION_FEED_WAITING_LIMIT;
+    const waiting = outsidePage.slice(0, CONVERSATION_FEED_WAITING_LIMIT);
+    options.onWaitingRows?.(waiting.length);
+    rows.push(...waiting);
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
@@ -762,9 +770,6 @@ export async function readConversationFeedFromSql(
           ? { unfinishedWork: true as const }
           : undefined),
       };
-      const annotations = access?.canViewPrivateContent
-        ? (annotationsByConversation.get(conversation.conversationId) ?? [])
-        : [];
       const activityPreview = visibleActivityPreviews.get(
         conversation.conversationId,
       );
@@ -779,7 +784,11 @@ export async function readConversationFeedFromSql(
           ? pickFeedLinks(
               conversation.conversationId,
               row.links,
-              annotationUrls(annotations),
+              annotationUrls(
+                visibleAnnotationsByConversation.get(
+                  conversation.conversationId,
+                ),
+              ),
             )
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
@@ -800,7 +809,10 @@ export async function readConversationFeedFromSql(
           ? { latestTurnFailed: true as const }
           : undefined),
         ...(lastMessageAt ? { lastMessageAt } : undefined),
-        ...(threads ? { threads } : undefined),
+        ...(threads ? { threads: threads.threads } : undefined),
+        ...(threads?.omittedThreadCount
+          ? { omittedThreadCount: threads.omittedThreadCount }
+          : undefined),
         ...(participants && participants.length > 0
           ? { participants }
           : undefined),
@@ -808,7 +820,6 @@ export async function readConversationFeedFromSql(
         ...(viewerAnswer ? { viewerAnswer } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),
-        ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
               sidebarAnnotations:
@@ -837,6 +848,9 @@ export async function readConversationFeedFromSql(
         }
       : undefined),
     source: "conversation_index",
+    ...(waitingRowsTruncated
+      ? { waitingRowsTruncated: true as const }
+      : undefined),
   };
 }
 

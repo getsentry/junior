@@ -100,7 +100,11 @@ import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useLeadPageKind } from "../lead/Lead";
-import { LeadFirstRun, useFocusOnLeadFirstRun } from "../lead/LeadFirstRun";
+import {
+  LEAD_REPLY_PLACEHOLDER,
+  LeadFirstRun,
+  useLeadFirstRun,
+} from "../lead/LeadFirstRun";
 import { LeadHeader } from "../lead/LeadHeader";
 import { LeadPageScope } from "../lead/LeadPageProvider";
 import {
@@ -429,17 +433,14 @@ export function ConversationPage(props: {
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
-  const leadFirstRun =
+  const leadFirstRun = useLeadFirstRun(
     lead &&
-    transcriptShown &&
-    !history.hasPreviousPage &&
-    transcript?.events.length === 0 &&
-    detail.inlineMessages.length === 0;
-  const prefillReply = useCallback(
-    (text: string) => replyRef.current?.appendText(text),
-    [],
+      transcriptShown &&
+      !history.hasPreviousPage &&
+      transcript?.events.length === 0 &&
+      detail.inlineMessages.length === 0,
+    replyRef,
   );
-  useFocusOnLeadFirstRun(leadFirstRun, replyRef);
   useEffect(() => {
     if (transcriptShown) recordTranscriptShown();
   }, [conversationId, transcriptShown]);
@@ -697,7 +698,7 @@ export function ConversationPage(props: {
         <LeadPageScope
           lastSeq={detail.data?.events.at(-1)?.seq}
           lead={lead}
-          prefill={prefillReply}
+          prefill={leadFirstRun.prefill}
         >
           <ChatLayout
             header={
@@ -714,7 +715,10 @@ export function ConversationPage(props: {
               ) : (
                 <ConversationHeader
                   agentTree={conversationDetail?.agentTree}
-                  contextTags={conversationContextTags(conversation)}
+                  contextTags={conversationContextTags(
+                    conversation,
+                    conversationDetail?.annotations,
+                  )}
                   cost={conversationCost(
                     conversation,
                     conversationDetail,
@@ -845,8 +849,8 @@ export function ConversationPage(props: {
             }
             scroll={
               <TranscriptColumn full={view === "raw"}>
-                {leadFirstRun ? (
-                  <LeadFirstRun onTry={prefillReply} />
+                {leadFirstRun.shown ? (
+                  <LeadFirstRun onTry={leadFirstRun.prefill} />
                 ) : transcriptPending ? (
                   view === "raw" ? (
                     <ConversationEventLogLoading />
@@ -932,11 +936,7 @@ export function ConversationPage(props: {
                     live={live}
                     onFocusRequestDone={setReplyFocusDoneKey}
                     onPinRequest={requestPin}
-                    placeholder={
-                      lead
-                        ? "Ask your Lead to start, find, or check on work…"
-                        : undefined
-                    }
+                    placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
                     ref={replyRef}
                   />
                 </div>

@@ -9,11 +9,8 @@ import {
   getChildAgentInputSender,
   routeChildInput,
 } from "./child-input";
-import {
-  logDroppedParentMessage,
-  parentMessageText,
-  readParentMessage,
-} from "./parent-message";
+import { logDroppedParentMessage, parentMessageText } from "./parent-message";
+import { readParentMessage } from "./parent-message-input";
 import { getLatestAgentInvocationForConversation } from "./store";
 
 const senderActorMetadataSchema = z.object({ actor: actorSchema });

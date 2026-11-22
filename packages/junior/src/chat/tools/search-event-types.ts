@@ -124,7 +124,7 @@ export function searchEventTypesToolDefinition(catalog: EventCatalog) {
       readOnlyHint: true,
     },
     description:
-      'Search the event types currently enabled without creating anything. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. namespaces gives the reach of each event. An event automation selects its events with match filters from the match_fields of its namespace. With reach "all", match can be left out to run for every resource. With { any_of }, match must set at least one of those filters. With reach "resource", only watchEvents can use the event. Use watchEvents for temporary updates in the current conversation; use createAutomation with an event trigger for durable automation. This tool does not watch a resource, create an automation, or list concrete resources.',
+      'Search the event types currently enabled without creating anything: the events watches and event automations can use. Use only when the user asks what events are supported or the required resource type or event name is unclear. Includes plugin resources and core Workspace snapshot events. namespaces gives the reach of each event. An event automation selects its events with match filters from the match_fields of its namespace. With reach "all", match can be left out to run for every resource. With { any_of }, match must set at least one of those filters. With reach "resource", only watchEvents can use the event. Use watchEvents for temporary updates in the current conversation; use createAutomation with an event trigger for durable automation. It does not list concrete resources.',
     inputSchema: z
       .object({
         query: z

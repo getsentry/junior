@@ -469,7 +469,6 @@ test("opens and closes a conversation on mobile", async ({
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
-  await page.emulateMedia({ reducedMotion: "reduce" });
   await menu.click();
   await page
     .getByRole("menuitem", { name: "Conversation details", exact: true })
@@ -486,7 +485,6 @@ test("opens and closes a conversation on mobile", async ({
   await page.mouse.click(8, 8);
   await expect(details).toBeHidden();
   await expect(menu).toBeFocused();
-  await page.emulateMedia({ reducedMotion: "no-preference" });
   const transcript = page.getByLabel("Conversation transcript");
   await expect(transcript.getByText("1.9k tokens")).toBeHidden();
   await expect(page.getByRole("note")).toBeHidden();

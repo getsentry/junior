@@ -39,9 +39,9 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 
 ## Rules
 
-- Compaction on idle starts at the background compaction mark,
-  0.85 × the compaction threshold (`getAgentBackgroundCompactionMarkTokens`).
-  The background summary uses the same mark, so the two cannot diverge.
+- Compaction on idle starts at the background compaction mark, 0.85 × the
+  compaction threshold. The background summary uses the same mark, so the
+  two cannot diverge.
 - Compaction on idle uses only a background summary that is ready. It
   makes no summary call. When no summary is ready, Junior warms as it does
   below the mark, and the next warmup checks again.
@@ -56,15 +56,12 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   - Compact: a return writes C, and P gets no more warmups.
   - Stop: a return before the cache expires reads P. A later return
     writes P.
-- For P = 360K and C = 120K tokens, a compacted return costs
-  5 × 0.12 = $0.60, a warmup 0.22 × 0.36 ≈ $0.08, a warm return
-  0.2 × 0.36 = $0.072, and a cold return of P $1.80. So warming wins only
-  while a return is likely before the warmups cost more than the write of
-  C. A Conversation with a
-  likely quick return, such as one that waits for a child agent, warms
-  first and compacts at a later slot. Stop wins only when the return
-  likely comes before the current cache expires. On a tie, compaction
-  wins, because a return after the horizon also writes less.
+- Warming wins only while a return is likely before the warmups cost more
+  than the write of C. A Conversation with a likely quick return, such as
+  one that waits for a child agent, warms first and compacts at a later
+  slot. Stop wins only when the return likely comes before the current
+  cache expires. On a tie, compaction wins, because a return after the
+  horizon also writes less.
 - A slot that the timer floor covers warms, so the timer's Turn reads the
   cache. With too few gaps, the warmup rule does not warm, so a return
   writes P either way, and compaction wins.

@@ -1114,6 +1114,13 @@
       "when": 1795331749525,
       "tag": "0158_keep_legacy_archive_columns",
       "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1795374840076,
+      "tag": "0159_conversation_embeddings_fk_validate",
+      "breakpoints": true
     }
   ]
 }

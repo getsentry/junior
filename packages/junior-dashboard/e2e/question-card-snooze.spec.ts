@@ -45,7 +45,6 @@ for (const view of [desktop, mobile]) {
     page,
   }) => {
     await page.setViewportSize(view);
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const snoozes = recordBodies(page, "/api/inbox/snoozes");
     await openConversation(page, dashboard.baseURL);
     await expect(
@@ -104,7 +103,6 @@ for (const view of [desktop, mobile]) {
     page,
   }) => {
     await page.setViewportSize(view);
-    await page.emulateMedia({ reducedMotion: "reduce" });
     const snoozes = recordBodies(page, "/api/inbox/snoozes");
     await openConversation(page, dashboard.baseURL);
 

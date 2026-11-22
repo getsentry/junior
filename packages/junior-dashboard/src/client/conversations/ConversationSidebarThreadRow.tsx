@@ -215,3 +215,22 @@ export function ConversationSidebarThreadToggle(props: {
     </button>
   );
 }
+
+/**
+ * Say how many of a root's Threads the feed left out. The root's own page
+ * lists them all.
+ */
+export function ConversationSidebarThreadsOmitted(props: { count: number }) {
+  const inbox = useInboxUi();
+  return (
+    <p
+      className={cn(
+        "grid min-w-0 py-1 font-sans text-xs text-dashboard-text-faint",
+        inbox ? INBOX_TOGGLE_GRID : TOGGLE_GRID,
+        (inbox ? INBOX_DEPTH_INDENT : DEPTH_INDENT)[0],
+      )}
+    >
+      <span className="col-start-2">+{props.count} more</span>
+    </p>
+  );
+}

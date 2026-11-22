@@ -1,5 +1,5 @@
 import { ArrowUpRight } from "lucide-react";
-import { type RefObject, useEffect } from "react";
+import { type RefObject, useCallback, useEffect } from "react";
 
 import { LeadMark } from "./LeadMark";
 
@@ -24,8 +24,28 @@ const PROMPTS = [
   "Tell the billing migration conversation to skip the dry run",
 ];
 
+/** The Lead's reply box placeholder. */
+export const LEAD_REPLY_PLACEHOLDER =
+  "Ask your Lead to start, find, or check on work…";
+
+/**
+ * Show the first-run intro on an empty Lead and focus its reply box. The
+ * intro's prompts and the transcript's rows fill the box with `prefill`.
+ */
+export function useLeadFirstRun(
+  shown: boolean,
+  replyRef: RefObject<{ appendText(text: string): void; focus(): void } | null>,
+) {
+  const prefill = useCallback(
+    (text: string) => replyRef.current?.appendText(text),
+    [replyRef],
+  );
+  useFocusOnLeadFirstRun(shown, replyRef);
+  return { prefill, shown };
+}
+
 /** Focus the Lead's reply box while the first-run intro shows. */
-export function useFocusOnLeadFirstRun(
+function useFocusOnLeadFirstRun(
   shown: boolean,
   replyRef: RefObject<{ focus(): void } | null>,
 ) {

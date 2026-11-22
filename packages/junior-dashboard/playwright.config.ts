@@ -26,6 +26,9 @@ export default defineConfig<{ ui: DashboardShell }>({
   },
   fullyParallel: true,
   forbidOnly: Boolean(process.env["CI"]),
+  // A retry that passes hides a flaky test, so a flaky test fails the run.
+  // The retry stays so that the failed attempt records a trace.
+  failOnFlakyTests: Boolean(process.env["CI"]),
   retries: process.env["CI"] ? 1 : 0,
   // A broken build fails every journey. Stop early instead of waiting for
   // each timeout and retry until the CI job limit.
@@ -34,6 +37,10 @@ export default defineConfig<{ ui: DashboardShell }>({
   use: {
     // Dark is the default dashboard theme. Light theme journeys opt in.
     colorScheme: "dark",
+    // Reduced motion stops the dashboard's transitions, animations, and
+    // smooth scrolls, so journeys act on UI that has stopped moving. Specs
+    // do not test motion; visual QA covers it.
+    contextOptions: { reducedMotion: "reduce" },
     launchOptions: {
       // Partial raster repaints only the changed part of a tile, so pixels
       // depend on paint history. Full tile raster keeps screenshots stable.
