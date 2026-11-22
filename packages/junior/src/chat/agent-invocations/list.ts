@@ -16,6 +16,7 @@ import type {
   ConversationKind,
   ConversationStatus,
 } from "@/chat/conversations/store";
+import { conversationTurnFailedSql } from "@/chat/conversations/sql/status";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import {
@@ -42,7 +43,9 @@ const CHILD_AGENT_LIST_LIMIT = 200;
  * from model output. Each child agent stores its agent config, so older
  * children of a parent, such as ones that a removed feature created, are not
  * listed. A child is `running` while a Turn or mailbox input that answers its
- * parent is open, and is `failed` when its last Turn failed.
+ * parent is open, and is `failed` when its last Turn failed, also when the
+ * Turn ended with a model error and execution went back to idle. Turns do
+ * not store a blocked result, so only a failure sets `lastResult`.
  */
 export async function listChildAgents(
   parentConversationId: string,
@@ -53,11 +56,11 @@ export async function listChildAgents(
       agentName: juniorAgentBindings.name,
       archivedAt: juniorConversations.archivedAt,
       conversationId: juniorConversations.conversationId,
-      executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       kind: juniorConversations.kind,
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
+      turnFailed: conversationTurnFailedSql(juniorConversations),
       updatedAt: juniorConversations.updatedAt,
     })
     .from(juniorConversations)
@@ -109,12 +112,13 @@ export async function listChildAgents(
           : undefined),
         childConversationId: row.conversationId,
         kind,
+        ...(row.turnFailed && !running ? { lastResult: "failed" } : undefined),
         status:
           stoppedAtMs !== undefined
             ? "stopped"
             : running
               ? "running"
-              : row.executionStatus === "failed"
+              : row.turnFailed
                 ? "failed"
                 : "completed",
         // The task text stays in the child's transcript. The spawn title

@@ -8,7 +8,7 @@ import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { isPersonStopTurnId } from "./ids";
-import { isFromStoredParent } from "./parent-message";
+import { readChildOfStoredParent } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
@@ -65,12 +65,12 @@ export async function isDroppedChildInput(
   }
   const parentMessage = readParentMessage(message);
   if (parentMessage) {
-    if (!(await isFromStoredParent(message, parentMessage))) {
+    // One read checks the sender and gives the stop.
+    const child = await readChildOfStoredParent(message, parentMessage);
+    if (!child) {
       return true;
     }
-    const stoppedAtMs = await getConversationStoppedAtMs(
-      message.conversationId,
-    );
+    const stoppedAtMs = child.stoppedAt?.getTime();
     return stoppedAtMs !== undefined && message.receivedAtMs <= stoppedAtMs;
   }
   const input = childAgentInput(message);
