@@ -75,6 +75,7 @@ import type {
 } from "@/chat/tool-support/definition";
 import {
   coreToolSlots,
+  withScopeExposure,
   enabledMode,
   type RunBuiltToolSlot,
   type StaticToolName,
@@ -665,13 +666,15 @@ export function createTools(
         ? STATIC_TOOL_BINDERS[slot.name](run)
         : RUN_BUILT_TOOL_BUILDERS[slot.slot](run);
     if (!tool) continue;
-    tools[slot.name] =
+    tools[slot.name] = withScopeExposure(
+      { listedTools },
       slot.kind === "static"
         ? withDisabledReason(
             tool,
             TURN_TOOL_LIMITS[slot.name]?.(context.turnTools),
           )
-        : tool;
+        : tool,
+    );
   }
 
   // A Turn with an `only` list gets no plugin tools.

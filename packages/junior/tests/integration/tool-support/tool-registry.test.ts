@@ -410,6 +410,11 @@ describe("static tool registry", () => {
       ].sort(),
     );
     expect(person.disabled).toEqual([]);
+    // The list is short, so the model sees every tool on it without
+    // `searchTools`.
+    expect(person.piTools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining(Object.keys(person.tools)),
+    );
   });
 
   // A stale run-built name would hide a static tool from the check above.
