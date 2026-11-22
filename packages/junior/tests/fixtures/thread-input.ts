@@ -12,6 +12,7 @@ import {
   type AgentRunOutcome,
 } from "@/chat/runtime/agent-run-outcome";
 import { buildTurnResult } from "@/chat/services/turn-result";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { TurnAnswer } from "@/chat/turn-answer";
 import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
@@ -154,9 +155,11 @@ function runInputCheckpoint(run: AgentRun) {
  * as the Turn's first checkpoint, then commit it. The Turn then has a stored
  * record, as a real run's Turn does.
  */
-export async function commitRunInput(run: AgentRun): Promise<void> {
-  await saveTurnCheckpoint({ ...runInputCheckpoint(run), mode: "running" });
+export async function commitRunInput(run: AgentRun): Promise<PiMessage[]> {
+  const checkpoint = runInputCheckpoint(run);
+  await saveTurnCheckpoint({ ...checkpoint, mode: "running" });
   await run.durability?.onInputCommitted?.();
+  return checkpoint.messages;
 }
 
 /** Pause a run's Turn at a yield, as the agent does between slices. */
@@ -178,19 +181,34 @@ export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
 
 /**
  * End a run's Turn with `answer`, as the agent does when it calls `reply` or
- * `noReply`.
+ * `noReply`. With `assistantText`, the Turn ends on that model message after
+ * its input, so it saves a completed checkpoint as a model Turn does.
  */
 export async function finishRun(
   run: AgentRun,
   answer: TurnAnswer = { noReply: {} },
+  assistantText?: string,
 ): Promise<AgentRunOutcome> {
-  await commitRunInput(run);
+  const input = await commitRunInput(run);
+  const piMessages =
+    assistantText === undefined
+      ? undefined
+      : [
+          ...input,
+          {
+            role: "assistant",
+            content: [{ type: "text", text: assistantText }],
+            stopReason: "stop",
+            timestamp: Date.now(),
+          } as PiMessage,
+        ];
   return completedAgentRun(
     buildTurnResult({
       answer,
       generatedFileCount: 0,
       modelId: "test-model",
       newMessages: [],
+      piMessages,
       reasoningLevel: "medium",
       shouldTrace: false,
       toolCalls: [],
