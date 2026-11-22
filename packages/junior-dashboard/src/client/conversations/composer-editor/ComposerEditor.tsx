@@ -37,7 +37,6 @@ import { hashTokenAt } from "../composerReferences";
 import { skillTokenAt } from "../skillReferences";
 import { ComposerMentionNode } from "./ComposerMentionNode";
 import { ComposerReferenceNode } from "./ComposerReferenceNode";
-import { ComposerSkillReferences } from "./ComposerSkillReferences";
 import {
   $readComposerText,
   $replaceComposerTokens,
@@ -45,6 +44,7 @@ import {
   type ComposerLookup,
 } from "./composerEditorText";
 import { useLexicalTypeahead } from "./useLexicalTypeahead";
+import { useSkillReferenceHighlights } from "./useSkillReferenceHighlights";
 
 /** Imperative actions on the draft editor. */
 export type ComposerEditorHandle = {
@@ -128,12 +128,7 @@ export default function ComposerEditor(props: ComposerEditorProps) {
               autoCapitalize={props.autocorrect ? "sentences" : "off"}
               autoComplete={props.autocorrect ? undefined : "off"}
               autoCorrect={props.autocorrect ? "on" : "off"}
-              className={cn(
-                props.className,
-                props.placeholderClassName,
-                // The pointer is on a skill reference, which opens on click.
-                "data-skill-hover:cursor-pointer",
-              )}
+              className={cn(props.className, props.placeholderClassName)}
               enterKeyHint={props.enterKeyHint}
               inputMode="text"
               onFocus={props.onFocus}
@@ -178,6 +173,7 @@ function ComposerBehavior(
   };
   const mention = useLexicalTypeahead(editor, mentionTokenAt, onChip);
   const hash = useLexicalTypeahead(editor, hashTokenAt, onChip);
+  useSkillReferenceHighlights(editor);
 
   // A selection in a content editable focuses it, so set one only to
   // focus. The composer scrolls itself, like a textarea with
@@ -297,7 +293,6 @@ function ComposerBehavior(
   return (
     <>
       <ComposerSkillMenu typeahead={skill} />
-      <ComposerSkillReferences editor={editor} />
       <ComposerMentionMenu typeahead={mention} />
       <ComposerHashMenu typeahead={hash} />
     </>

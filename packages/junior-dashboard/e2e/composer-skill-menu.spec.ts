@@ -152,7 +152,7 @@ test("describes the skill reference at the caret @classic", async ({
   await expect(card).toHaveCount(0);
 });
 
-test("a skill reference in the draft is a link and stays plain text @classic", async ({
+test("a skill reference in the draft is styled and stays plain text @classic", async ({
   page,
   dashboard,
 }) => {
@@ -168,17 +168,13 @@ test("a skill reference in the draft is a link and stays plain text @classic", a
     .poll(() => styledSkillReferences(page))
     .toEqual(["$release-check"]);
 
-  // A click puts the caret and opens the SKILL.md. Closing it gives the
-  // caret back, in the reference, so its card shows.
+  // A click only moves the caret into the reference, so its card shows.
+  // The card and the menu open the SKILL.md, not the text.
   await clickSkillReference(page, "release-check");
-  const drawer = page.getByRole("dialog", { name: "$release-check" });
-  await expect(drawer).toContainText("Compare the release branch");
-  await drawer
-    .getByRole("button", { name: "Close $release-check", exact: true })
-    .click();
-  await expect(composer).toBeFocused();
   const card = page.getByRole("group", { name: "$release-check" });
   await expect(card).toBeVisible();
+  await expect(composer).toBeFocused();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await composer.press("Home");
   for (let step = 0; step < "Run $release-check".length; step++) {
     await composer.press("ArrowRight");

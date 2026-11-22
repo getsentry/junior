@@ -4,8 +4,8 @@ import type { Page } from "@playwright/test";
 const LINK_HIGHLIGHT = "skill-reference";
 
 /**
- * The text of each skill reference that the composer styles as a link. A
- * CSS highlight paints them, so they have no element to find by role.
+ * The text of each skill reference that the composer styles. A CSS
+ * highlight paints them, so they have no element to find by role.
  */
 export async function styledSkillReferences(page: Page): Promise<string[]> {
   return page.evaluate((name) => {
