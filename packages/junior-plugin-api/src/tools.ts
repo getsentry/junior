@@ -802,6 +802,14 @@ export type PluginWorkOwner =
       url?: string;
     };
 
+/**
+ * Result of `users.findLinkedHandle`. `unlinked` means one person matched
+ * but has no linked account at the provider.
+ */
+export type PluginLinkedHandleLookup =
+  | { status: "found"; handle: string }
+  | { status: "ambiguous" | "not_found" | "unlinked" };
+
 interface BaseToolRegistrationHookContext extends PluginContext {
   /**
    * Opaque Junior conversation/session identity for this turn.
@@ -846,6 +854,16 @@ interface BaseToolRegistrationHookContext extends PluginContext {
      * written. Call it before you send model text out.
      */
     replaceSlackMentions<T>(value: T, provider: string): Promise<T>;
+    /**
+     * Find the one person that `query` names, such as an email, a Slack
+     * mention, or a name, and return the handle of their linked `provider`
+     * account. Only accounts that people linked count, so the handle is
+     * verified.
+     */
+    findLinkedHandle(
+      query: string,
+      provider: string,
+    ): Promise<PluginLinkedHandleLookup>;
   };
   userText?: string;
   workspaces: PluginWorkspaceToolContext;

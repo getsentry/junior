@@ -1,3 +1,4 @@
+import pLimit from "p-limit";
 import { githubObjectFacts } from "../object-facts.js";
 import { githubObjectAnnotation } from "../annotations.js";
 import {
@@ -67,9 +68,9 @@ class GitHubPullRequestCreateRejectedError extends Error {
 
 const BODY_DESCRIPTION = `Pull request body. ${PULL_REQUEST_BODY_RULES}`;
 const REVIEWERS_DESCRIPTION =
-  "GitHub logins to ask for a review. For an email, mention, or name, pass the `github` handle in userLookup's `linked_identities`. Set it only when the person names a reviewer. Without it, the tool asks the requester. A draft is asked once ready.";
+  "People to ask for a review: GitHub logins, emails, Slack mentions, or names. A person maps to their linked GitHub login. Set it only when the person names a reviewer. Without it, the tool asks the requester. A draft is asked once ready.";
 const ASSIGNEES_DESCRIPTION =
-  "GitHub logins to assign. For an email, mention, or name, pass the `github` handle in userLookup's `linked_identities`. Set this only when the person or instruction names who to assign. Without it, the tool assigns the requester's linked GitHub account.";
+  "People to assign: GitHub logins, emails, Slack mentions, or names. A person maps to their linked GitHub login. Set this only when the person or instruction names who to assign. Without it, the tool assigns the requester's linked GitHub account.";
 
 const createPullRequestInputSchema = Type.Object(
   {
@@ -385,6 +386,53 @@ async function assignPullRequest(
   }
 }
 
+/**
+ * Replace each named assignee or reviewer that is not a GitHub login, such as
+ * an email, a Slack mention, or a name, with the linked GitHub login of the
+ * person it names. Reject a value that no linked account verifies, before
+ * GitHub opens the pull request.
+ */
+async function resolveNamedPeople(
+  ctx: ToolRegistrationHookContext,
+  input: CreateGitHubPullRequestInput,
+): Promise<CreateGitHubPullRequestInput> {
+  const [assignees, reviewers] = await Promise.all([
+    resolveLogins(ctx, input.assignees, "assignee"),
+    resolveLogins(ctx, input.reviewers, "reviewer"),
+  ]);
+  return {
+    ...input,
+    ...(assignees ? { assignees } : undefined),
+    ...(reviewers ? { reviewers } : undefined),
+  };
+}
+
+// Each lookup can search Slack, so a long list does not fan out at once.
+const PERSON_LOOKUP_CONCURRENCY = 4;
+
+async function resolveLogins(
+  ctx: ToolRegistrationHookContext,
+  values: string[] | undefined,
+  role: "assignee" | "reviewer",
+): Promise<string[] | undefined> {
+  if (!values) return undefined;
+  return await pLimit(PERSON_LOOKUP_CONCURRENCY).map(values, async (value) => {
+    const login = parseGitHubLogin(value);
+    if (login) return login;
+    const lookup = await ctx.users.findLinkedHandle(value, "github");
+    const linked =
+      lookup.status === "found" ? parseGitHubLogin(lookup.handle) : undefined;
+    if (linked) return linked;
+    throw new PluginToolInputError(
+      lookup.status === "ambiguous"
+        ? `More than one person matches ${role} ${value}. Name one person.`
+        : lookup.status === "unlinked"
+          ? `${role} ${value} has no linked GitHub account. Pass their GitHub login.`
+          : `No person matches ${role} ${value}. Pass a GitHub login.`,
+    );
+  });
+}
+
 /** Return the logins of named reviewers or assignees. */
 function namedLogins(
   values: string[] | undefined,
@@ -579,10 +627,10 @@ export function createGitHubPullRequestTool(
       options: PluginToolExecuteOptions,
       ctx: ToolRegistrationHookContext,
     ) {
-      const parsedInput = parseCreatePullRequestInput(input);
-      // Reject a bad login before GitHub opens the pull request.
-      namedLogins(parsedInput.reviewers, "reviewer");
-      namedLogins(parsedInput.assignees, "assignee");
+      const parsedInput = await resolveNamedPeople(
+        ctx,
+        parseCreatePullRequestInput(input),
+      );
       const conversationId = nonEmptyString(
         ctx.conversationId,
         "conversationId",

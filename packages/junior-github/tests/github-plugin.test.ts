@@ -408,6 +408,7 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
+  findLinkedHandle?: ToolRegistrationHookContext["users"]["findLinkedHandle"];
   /** Overrides the host's work owner. By default a person runs the Turn. */
   workOwner?: PluginWorkOwner | undefined;
   source?: ToolRegistrationHookContext["source"];
@@ -475,6 +476,9 @@ function githubToolsContext(input?: {
     users: {
       replaceSlackMentions: async (value) => value,
       resolveActor: input?.resolveActor ?? (async () => undefined),
+      findLinkedHandle:
+        input?.findLinkedHandle ??
+        (async () => ({ status: "not_found" }) as const),
     },
     state: {
       async delete(key: string) {
@@ -2162,9 +2166,19 @@ Conversation: \`local:test:old-conversation\`
       assignees: ["octocat", "jane"],
       reviewers: ["dcramer"],
     },
+    {
+      name: "assigns the linked GitHub login of a person named by email",
+      named: { assignees: ["jane@example.com"] },
+      assignees: ["jane-gh"],
+      reviewers: ["dcramer"],
+    },
   ])("$name", async ({ named, assignees, reviewers }) => {
     const ctx = githubToolsContext({
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      findLinkedHandle: async (query, provider) =>
+        query === "jane@example.com" && provider === "github"
+          ? { status: "found", handle: "jane-gh" }
+          : { status: "not_found" },
       resolveActor: async () => ({
         identity: {
           id: "slack-id",
@@ -2250,7 +2264,47 @@ Conversation: \`local:test:old-conversation\`
           },
           { toolCallId: `call-create-pull-request-bad-${role}` },
         ),
-      ).rejects.toThrow(`Invalid GitHub ${role} login: not a login`);
+      ).rejects.toThrow(
+        `No person matches ${role} not a login. Pass a GitHub login.`,
+      );
+      expect(ctx.egressRequests()).toEqual([]);
+    },
+  );
+
+  it.each([
+    {
+      status: "unlinked" as const,
+      error:
+        "reviewer jane@example.com has no linked GitHub account. Pass their GitHub login.",
+    },
+    {
+      status: "ambiguous" as const,
+      error:
+        "More than one person matches reviewer jane@example.com. Name one person.",
+    },
+  ])(
+    "rejects a $status person before it opens the pull request",
+    async ({ status, error }) => {
+      const ctx = githubToolsContext({
+        findLinkedHandle: async () => ({ status }),
+      });
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+        ctx as any,
+      );
+
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Typed PR",
+            head: "feature",
+            base: "main",
+            reviewers: ["jane@example.com"],
+          },
+          { toolCallId: `call-create-pull-request-${status}-reviewer` },
+        ),
+      ).rejects.toThrow(error);
       expect(ctx.egressRequests()).toEqual([]);
     },
   );
