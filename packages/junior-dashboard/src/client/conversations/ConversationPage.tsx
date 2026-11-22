@@ -100,7 +100,6 @@ import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
 import { useLeadPageKind } from "../lead/Lead";
-import { useInboxItemsData } from "../inbox/queries";
 import { LeadFirstRun, useFocusOnLeadFirstRun } from "../lead/LeadFirstRun";
 import { LeadHeader } from "../lead/LeadHeader";
 import { LeadPageScope } from "../lead/LeadPageProvider";
@@ -228,9 +227,6 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
-  // Question cards wait for this list. Read it now, not with the details,
-  // so they do not grow the transcript after it paints.
-  useInboxItemsData({ conversationId: props.conversationId });
   // A Lead has no details: it is private and never archives.
   const { known: kindKnown, lead } = useLeadPageKind(
     props.conversationId,
