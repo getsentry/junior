@@ -6,7 +6,11 @@ import {
   type GuardianFault,
 } from "@junior-evals/fixture/guardian";
 import { slackMention } from "@junior-evals/fixture/inputs";
-import { completedToolCalls, toolCallsOf } from "@junior-evals/fixture/results";
+import {
+  completedToolCalls,
+  toolCallsOf,
+  toolOutput,
+} from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
 
 const SPAWN_REQUEST =
@@ -104,7 +108,12 @@ describe("Action Review", () => {
       expect(guardianReviews().map((review) => review.tool)).toContain(
         "spawnAgent",
       );
-      expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(0);
+      // Required review fails closed and ends the turn, so the call reports
+      // that it was preempted instead of a spawn result. No child agent
+      // started, so no result Turn follows.
+      const [spawn] = toolCallsOf("spawnAgent", conversation);
+      expect(spawn && toolOutput(spawn)).toMatchObject({ aborted: true });
+      expect(conversation.turns).toHaveLength(1);
       const failure = conversation.replies.at(-1)?.text ?? "";
       expect(failure).toMatch(reply);
       expect(failure).toMatch(/Reference: `event_id=[0-9a-f]{32}`\.$/);
