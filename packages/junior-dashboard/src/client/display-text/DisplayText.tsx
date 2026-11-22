@@ -10,6 +10,7 @@ import { PreviewLinksProvider } from "./links";
 import { MarkdownText } from "./markdown";
 import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider, ResolveWhenVisible } from "./resolvedObjects";
+import { SkillReferencesProvider } from "./skills";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
 export { MentionText } from "./mentions";
@@ -54,10 +55,15 @@ export const DisplayText = memo(function DisplayText(props: {
    * lists, for a preview with room for more than one line.
    */
   paragraphs?: boolean;
+  /**
+   * Show each `$skill-name` of an installed skill as a link to its SKILL.md,
+   * as the runtime reads it in a person's message. Not in code.
+   */
+  skills?: boolean;
   text: string;
 }) {
   const chips = Boolean(props.inline && props.chips);
-  return (
+  const content = (
     <MessageObjectsProvider>
       <MentionPeopleProvider
         links={props.links ?? true}
@@ -90,6 +96,13 @@ export const DisplayText = memo(function DisplayText(props: {
         </PreviewLinksProvider>
       </MentionPeopleProvider>
     </MessageObjectsProvider>
+  );
+  return props.skills ? (
+    <SkillReferencesProvider text={props.text}>
+      {content}
+    </SkillReferencesProvider>
+  ) : (
+    content
   );
 });
 

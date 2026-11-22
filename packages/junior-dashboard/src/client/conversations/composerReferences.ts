@@ -1,7 +1,7 @@
 import { codeChangeStateSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
-import type { ComposerToken } from "./composerSkillToken";
+import type { ComposerToken } from "./skillReferences";
 import { CONVERSATION_PATH } from "./conversationRoutes";
 
 /**

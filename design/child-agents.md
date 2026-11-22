@@ -10,9 +10,8 @@ child chooses to report reaches the parent.
 - One execution path runs every Conversation. A child agent has no path of
   its own, so a fix to that path applies to every kind.
 - A parent wakes only when a child messages it. A `reply`, a
-  `messageAgent` message, a blocked report, a failure, and a notice that a
-  paused child dropped Watch Events are all messages. A child owns its Watch
-  work, so the parent does not steer each Event.
+  `messageAgent` message, a blocked report, and a failure are all messages.
+  A child owns its Watch work, so the parent does not steer each Event.
 - Work never runs with the access of another party. A child, its parent,
   and a grandchild never borrow the authority of a different Actor.
 - A parent can plan around its child agents. It knows which ones still

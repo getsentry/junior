@@ -93,6 +93,8 @@ Prefer high-fidelity behavior coverage when it is stable.
 - Do not assert CSS classes, DOM tag counts, markup, pixel geometry, size, or
   computed style.
 - No fixed sleeps. Wait for the visible state, URL, request, or response.
+- In a spec, use real input and role, label, or text locators. Do not run
+  page script. Control time with `page.clock`, not timeout overrides.
 - Dashboard E2E runs with reduced motion, so journeys act on UI that has
   stopped moving. E2E does not test motion. Visual QA covers it.
 
