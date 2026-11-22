@@ -25,6 +25,9 @@ import {
   type TurnRecord,
 } from "@/chat/task-execution/turn-cursor";
 import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
+import { getChatConfig } from "@/chat/config";
+import { FUNCTION_TIMEOUT_BUFFER_SECONDS } from "@/config/function-duration";
+import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
 import {
   destination,
@@ -314,7 +317,7 @@ describe("child agent worker crash", () => {
     }
   });
 
-  it("resumes a killed child from its last save", async () => {
+  it("resumes a killed child from its last save within the host request deadline", async () => {
     vi.useFakeTimers({
       now: 1_800_000_000_000,
       toFake: ["Date", "setInterval", "clearInterval"],
@@ -337,12 +340,24 @@ describe("child agent worker crash", () => {
         (turn) => turn.turnId,
       );
       await runHeartbeatAfterLeasesExpire(queue);
-      await process(queue.takeMessageFor(childId));
+      const requestStartedAtMs = Date.now();
+      await runWithTurnRequestDeadline(
+        async () => await process(queue.takeMessageFor(childId)),
+        requestStartedAtMs,
+      );
 
-      // The next run continues the same Turn from the saved input.
+      // The next run continues the same Turn from the saved input. It pauses
+      // at the deadline of its host request, so the host does not kill it.
       expect(runner.runs).toEqual([
         {
-          run: expect.objectContaining({ turnId: killedTurnId }),
+          run: expect.objectContaining({
+            deadlineAtMs:
+              requestStartedAtMs +
+              (getChatConfig().functionMaxDurationSeconds -
+                FUNCTION_TIMEOUT_BUFFER_SECONDS) *
+                1000,
+            turnId: killedTurnId,
+          }),
           turn: expect.objectContaining({
             piMessages: [
               expect.objectContaining({
