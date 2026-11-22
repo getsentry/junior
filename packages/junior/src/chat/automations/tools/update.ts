@@ -12,7 +12,6 @@ import {
 } from "@/chat/automations/edit-schema";
 import type { AutomationTask } from "@/chat/automations/task";
 import type { TaskCandidate } from "@/chat/automations/read";
-import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
@@ -360,14 +359,10 @@ export function createUpdateAutomationTool(
         );
       }
       const editor = automationEditor(caller.viewer, current);
-      const editedTask = editedAutomationTask(current.task.task, input);
-      if (editedTask) {
-        requireAutomationTaskText(editedTask, {
-          creator: current.task.createdBy,
-          requester: editor,
-          current: current.task.task,
-        });
-      }
+      const editedTask = editedAutomationTask(current.task.task, input, {
+        creator: current.task.createdBy,
+        requester: editor,
+      });
       let saved = current;
       if (Object.keys(input).length > 0) {
         saved =
