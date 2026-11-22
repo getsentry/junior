@@ -215,7 +215,7 @@ export function NavRail(props: {
                 active={props.workspaceActive}
                 icon={MessagesSquare}
                 label="Conversations"
-                to="/"
+                to="/conversations"
               />
               {props.navItems.map((item) => (
                 <RailNavItem item={item} key={item.key} />

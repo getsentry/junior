@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 import * as z from "zod";
-import { logWarn } from "@/chat/logging";
+import { logWarn, setSpanAttributes } from "@/chat/logging";
 import type { completeObject } from "@/chat/core-model";
 import {
   GUARDIAN_BLOCK_RULES,
@@ -96,6 +96,8 @@ function rootConversationSection(root: RootConversation, key: string): string {
 export function guardianPrompt(proposal: ToolActionProposal): string {
   const { rootConversation, ...action } = proposal;
   const proposalJson = JSON.stringify(z.json().parse(action), null, 2);
+  // Before the size check, so a proposal over the limit also records it.
+  setSpanAttributes({ "app.guardian.proposal.chars": proposalJson.length });
   if (proposalJson.length > MAX_PROPOSAL_CHARS) {
     throw new Error(
       `Guardian action proposal exceeds ${MAX_PROPOSAL_CHARS} characters.`,
@@ -179,22 +181,36 @@ export function createGuardianActionReviewer(options: {
       const signal = reviewOptions?.signal
         ? AbortSignal.any([reviewOptions.signal, timeoutSignal])
         : timeoutSignal;
-      const completeReview = () =>
-        options.completeObject({
-          modelId: options.modelId,
-          schema: guardianAssessmentSchema,
-          system,
-          prompt: guardianPrompt(proposal),
-          maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
-          operation: "guardian_action_review",
-          // `guardian_action_reviewed` stores the cost.
-          cost: { owner: "caller" },
-          signal,
-          metadata: {
-            conversationId: proposal.context.conversationId,
-            guardianRole: "tool_action_review",
-          },
-        });
+      const completeReview = async () => {
+        try {
+          return await options.completeObject({
+            modelId: options.modelId,
+            schema: guardianAssessmentSchema,
+            system,
+            prompt: guardianPrompt(proposal),
+            maxTokens: GUARDIAN_REVIEW_MAX_TOKENS,
+            operation: "guardian_action_review",
+            // `guardian_action_reviewed` stores the cost.
+            cost: { owner: "caller" },
+            signal,
+            metadata: {
+              conversationId: proposal.context.conversationId,
+              guardianRole: "tool_action_review",
+            },
+          });
+        } catch (error) {
+          if (signal.aborted) {
+            // The gate treats an abort of the caller's signal as a stop,
+            // and a timeout as unavailable review.
+            setSpanAttributes({
+              "app.guardian.review.aborted_by": reviewOptions?.signal?.aborted
+                ? "run"
+                : "timeout",
+            });
+          }
+          throw error;
+        }
+      };
       let result;
       try {
         result = await completeReview();

@@ -82,7 +82,8 @@ test("saves notification working hours and the Slack schedule choice", async ({
   await expect(saturday).toHaveAttribute("aria-pressed", "true");
 });
 
-test("turns on push notifications from a one-time tip", async ({
+// The tip follows a home create, which only the inbox shell has.
+test("turns on push notifications from a one-time tip @new", async ({
   page,
   dashboard,
 }) => {
@@ -142,7 +143,7 @@ test("turns on push notifications from a one-time tip", async ({
   });
   async function startConversation(message: string) {
     await page.goto(dashboard.baseURL);
-    await page.getByPlaceholder("Message Junior…").fill(message);
+    await page.locator('[aria-placeholder="Message Junior…"]').fill(message);
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
   }
@@ -312,7 +313,7 @@ test("turns on composer autocorrect for this browser", async ({
   dashboard,
 }) => {
   await page.goto(dashboard.baseURL);
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
   await expect(composer).toHaveAttribute("spellcheck", "false");

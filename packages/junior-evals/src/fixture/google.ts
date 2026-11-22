@@ -162,7 +162,6 @@ export function mockGoogleCalendars(calendars: MockCalendar[]): void {
         const query = new URL(request.url).searchParams;
         const timeMin = query.get("timeMin");
         const timeMax = query.get("timeMax");
-        // `findMeetingTimes` reads only the calendar time zone, with no window.
         const events =
           timeMin && timeMax ? occurrences(calendar, timeMin, timeMax) : [];
         return HttpResponse.json({

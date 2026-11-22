@@ -28,25 +28,60 @@ test("sums the gzip size of each shell's entry and static imports", () => {
   });
 });
 
-test("passes growth within the limit and any shrink", () => {
-  const { lines, errors } = compareBundleSizes({
-    baseline: { classic: 100_000, inbox: 100_000 },
-    sizes: { classic: 102_000, inbox: 90_000 },
+const MAIN = { classic: 100_000 };
+
+function compare(baseline, measured, base = MAIN) {
+  return compareBundleSizes({
+    base,
+    baseline: { classic: baseline },
+    sizes: { classic: measured },
   });
+}
+
+test("passes a build within the noise tolerance of the baseline", () => {
+  const { lines, hints, errors } = compare(100_000, 100_500);
   assert.deepEqual(errors, []);
+  assert.deepEqual(hints, []);
   assert.deepEqual(lines, [
-    "classic: 97.7 KB -> 99.6 KB gzip (+2.0 KB, +2.00%)",
-    "inbox: 97.7 KB -> 87.9 KB gzip (-9.8 KB, -10.00%)",
+    "classic: main 97.7 KB -> baseline 97.7 KB (+0.0 KB, +0.00%), measured 98.1 KB gzip (+0.5 KB, +0.50% vs baseline)",
   ]);
 });
 
-test("rejects growth over the limit and a shell with no baseline", () => {
-  const { errors } = compareBundleSizes({
-    baseline: { classic: 100_000 },
-    sizes: { classic: 102_001, inbox: 1_000 },
-  });
-  assert.equal(errors.length, 2);
-  assert.match(errors[0], /^classic: grew 2\.00%, over the 2% limit\./);
+test("rejects growth that the baseline does not commit", () => {
+  const { errors } = compare(100_000, 101_500);
+  assert.equal(errors.length, 1);
+  assert.match(errors[0], /^classic: 1500 B over the committed baseline\./);
   assert.match(errors[0], /--update/);
-  assert.match(errors[1], /^inbox: no baseline entry\./);
+});
+
+test("passes growth that the baseline commits within 2% of main", () => {
+  assert.deepEqual(compare(102_000, 102_000).errors, []);
+});
+
+test("rejects a baseline that grows more than 2% over main", () => {
+  const { errors } = compare(102_001, 102_001);
+  assert.equal(errors.length, 1);
+  assert.match(
+    errors[0],
+    /^classic: the baseline grew 2\.00% over origin\/main, over the 2% limit/,
+  );
+});
+
+test("passes a shrink and hints to tighten the baseline", () => {
+  const { hints, errors } = compare(100_000, 90_000);
+  assert.deepEqual(errors, []);
+  assert.equal(hints.length, 1);
+  assert.match(hints[0], /^classic: 10000 B under the committed baseline\./);
+});
+
+test("rejects a shell with no baseline, and skips main when it has none", () => {
+  const { lines, errors } = compareBundleSizes({
+    base: {},
+    baseline: { classic: 100_000 },
+    sizes: { classic: 100_000, inbox: 1_000 },
+  });
+  assert.deepEqual(errors, [
+    "inbox: no baseline entry. Run `pnpm dashboard-bundle-size:check --update`.",
+  ]);
+  assert.match(lines[0], /^classic: measured 97\.7 KB gzip/);
 });

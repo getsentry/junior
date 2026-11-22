@@ -21,7 +21,6 @@
     "@sentry/junior-google": "workspace:*",
     "@sentry/junior-hex": "workspace:*",
     "@sentry/junior-linear": "workspace:*",
-    "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-vercel": "workspace:*",

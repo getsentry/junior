@@ -5,16 +5,16 @@ import {
   FETCH_TIMEOUT_MS,
   MAX_FETCH_BYTES,
   MAX_REDIRECTS,
-} from "@/chat/tools/web/constants";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/web/constants";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   assertPublicUrl,
   fetchTextWithRedirects,
   readResponseBytes,
   withTimeout,
-} from "@/chat/tools/web/network";
-import type { ToolHooks } from "@/chat/tools/types";
-import { extractWebFetchResponse } from "@/chat/tools/web/fetch-content";
+} from "@/chat/tool-support/web/network";
+import type { ToolHooks } from "@/chat/tool-support/types";
+import { extractWebFetchResponse } from "@/chat/tool-support/web/fetch-content";
 
 function extensionForMediaType(mediaType: string): string {
   if (mediaType === "image/png") return "png";

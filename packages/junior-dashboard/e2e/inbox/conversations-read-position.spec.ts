@@ -433,7 +433,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       transcript.getByRole("button", { name: "Load newer events" }),
     ).toHaveCount(0);
-    expect(pageRequests).toEqual(["?around=20", "?after=40"]);
+    expect(pageRequests).toEqual([
+      "?around=20&limit=300",
+      "?after=40&limit=119",
+    ]);
 
     // Earlier pages load above the latest page as the reader scrolls up.
     await transcript.evaluate((element) => {
@@ -463,7 +466,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       lastSeenAt: generatedAt,
       startedAt: generatedAt,
       // Active Conversations poll every 2s, so new events reach the page.
-      status: "active",
+      status: "working",
+      turnActive: true,
       surface: "internal",
     };
     let latestSeq = 139;

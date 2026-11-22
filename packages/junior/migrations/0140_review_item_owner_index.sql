@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_review_items_owner_idx" ON "junior_review_items" USING btree ("owner_kind","owner_id");

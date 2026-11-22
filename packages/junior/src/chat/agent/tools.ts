@@ -42,10 +42,10 @@ import {
   getMcpProviderErrorAttributes,
   McpServiceAccountRequiredError,
 } from "@/chat/mcp/errors";
-import { createTools } from "@/chat/tools";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type { DisabledToolPromptContext } from "@/chat/prompt";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import {
   toActiveMcpCatalogSummaries,
@@ -53,12 +53,13 @@ import {
 } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { planToolExposure } from "@/chat/tool-exposure";
-import { renderScriptTools } from "@/chat/codemode/tool";
+import { renderScriptTools } from "@/chat/codemode/script-tools";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { getWorkspace } from "@/chat/workspaces/store";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { createArtifactSync } from "@/chat/artifacts/sync";
 import type { RepositoryInstructions } from "@/chat/repository-instructions";
-import type { PromptHookContext } from "@/chat/agent/prompt";
+import { turnRequestText, type PromptHookContext } from "@/chat/agent/prompt";
 import { createMcpAuthOrchestration } from "@/chat/services/mcp-auth-orchestration";
 import { createPluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
 import { createPluginEgress } from "@/chat/egress/plugin";
@@ -112,6 +113,8 @@ interface RunSandboxArgs {
   run: AgentRun;
   skillSandbox: SkillSandbox;
   spanContext: LogContext;
+  /** Replace a session near the provider's cap before any work. */
+  rotateOldSession: boolean;
   state: Pick<AgentRunState, "sandboxRef">;
 }
 
@@ -141,8 +144,10 @@ export async function createRunSandbox(
   const workspace = args.state.sandboxRef?.workspaceId
     ? await getWorkspace(getDb(), args.state.sandboxRef.workspaceId)
     : undefined;
+  const attachmentStorage = args.run.environment?.attachmentStorage;
   const agentSandbox = createAgentSandbox({
     sandboxRef: args.state.sandboxRef,
+    rotateOldSession: args.rotateOldSession,
     workspace,
     skills: args.availableSkills,
     traceContext: args.spanContext,
@@ -152,6 +157,13 @@ export async function createRunSandbox(
     credentialEgress: args.run.credentialContext,
     credentialAuditSource: credentialAuditSource(args.run.source),
     actor: args.currentActor,
+    artifacts: attachmentStorage
+      ? createArtifactSync({
+          conversationId: args.run.conversationId,
+          db: getSqlExecutor(),
+          storage: attachmentStorage,
+        })
+      : undefined,
     locationConfiguration: args.run.environment?.locationConfiguration,
     configurationValues: args.configurationValues,
     getActiveSkill: () => args.skillSandbox.getActiveSkill(),
@@ -177,7 +189,6 @@ export async function createRunSandbox(
 export function createPromptHookContext(args: {
   actor?: Actor | undefined;
   run: AgentRun;
-  userInput: string;
 }): PromptHookContext {
   const actor = args.actor;
   return {
@@ -187,7 +198,7 @@ export function createPromptHookContext(args: {
     ...(actor
       ? { resolveActorIdentity: async () => await readActorIdentity(actor) }
       : undefined),
-    userText: args.userInput,
+    userText: turnRequestText(args.run),
   };
 }
 
@@ -613,8 +624,8 @@ export async function wireAgentTools(
   // current turn. Restore only providers this credential subject connected.
   // Shared Pi history mixes people and must not grant provider authority.
   // Intentional use still connects on demand through searchMcpTools under the
-  // current credential subject.
-  if (credentialUserId) {
+  // current credential subject. A Turn with an `only` list has no MCP tools.
+  if (credentialUserId && !toolRuntimeContext.listedTools?.only) {
     for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
@@ -773,6 +784,11 @@ export function bindAgentTools(
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (agents === "none" || !bindSpawnAgent) return {};
+  // A Lead steers other top-level agents and starts no child agents.
+  if (agents === "lead") {
+    const messageAgent = bindMessageAgent?.(run, agents);
+    return messageAgent ? { messageAgent } : {};
+  }
   // The rule reads only the Turn behavior and the deployment, so a child gets
   // the same tools on every path. Every child has depth 1 or more, so with
   // maxAgentDepth 0 no child can spawn. With more, a child past the limit

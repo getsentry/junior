@@ -4,6 +4,9 @@
  * Sentry serves each org at `sentry.io/organizations/<org>/` and at its
  * customer domain `<org>.sentry.io`. These are the forms that Sentry's own
  * Slack unfurl matches (`integrations/slack/unfurl/issues.py`).
+ *
+ * A user feedback is an issue too. Its page is `feedback/` or
+ * `issues/feedback/`, and `?feedbackSlug=<project>:<issue id>` names it.
  */
 import type { ObjectLinkFilter } from "@sentry/junior-plugin-api";
 
@@ -15,13 +18,17 @@ const NUMERIC_ISSUE_ID_PATTERN = /^[1-9]\d{0,18}$/;
 const SHORT_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,99}-[0-9A-Za-z]{1,13}$/;
 const SHORT_ID_SUFFIX_PATTERN = /^[0-9A-HJ-NP-TV-Z]+$/i;
 const EVENT_ID_PATTERN = /^([0-9a-f]{32}|latest|recommended|oldest)$/i;
+const FEEDBACK_SLUG_PATTERN = /^[a-z0-9][a-z0-9_-]{0,99}:([1-9]\d{0,18})$/;
 
-/** Filters for issue pages and the event pages of an issue. */
+/** Filters for issue pages, the event pages of an issue, and feedback pages. */
 export const SENTRY_ISSUE_LINK_FILTERS: ObjectLinkFilter[] = [
   { host: "sentry.io", pathPattern: "/organizations/*/issues/*" },
   { host: "sentry.io", pathPattern: "/organizations/*/issues/*/events/*" },
   { host: "*.sentry.io", pathPattern: "/issues/*" },
   { host: "*.sentry.io", pathPattern: "/issues/*/events/*" },
+  // `issues/feedback/` matches the `issues/*` filters.
+  { host: "sentry.io", pathPattern: "/organizations/*/feedback" },
+  { host: "*.sentry.io", path: "/feedback" },
 ];
 
 /** An issue that a Sentry URL names. `issueId` is numeric or a short id. */
@@ -61,6 +68,12 @@ export function sentryOrgPath(
   return { org, segments: rest };
 }
 
+// The issue id of the feedback that `feedbackSlug` names.
+function feedbackIssueId(url: URL): string | undefined {
+  const slug = url.searchParams.get("feedbackSlug")?.toLowerCase();
+  return slug?.match(FEEDBACK_SLUG_PATTERN)?.[1];
+}
+
 /**
  * Return the issue that a Sentry URL names, or nothing for another page.
  * Run it after a filter matched, so the path has the filter's shape.
@@ -68,8 +81,13 @@ export function sentryOrgPath(
 export function parseSentryIssueLink(url: URL): SentryIssueLink | undefined {
   const orgPath = sentryOrgPath(url);
   if (!orgPath) return undefined;
-  const { org } = orgPath;
-  const [issues, issueId, events, eventId, ...extra] = orgPath.segments;
+  const { org, segments } = orgPath;
+  const path = segments.join("/");
+  if (path === "feedback" || path === "issues/feedback") {
+    const issueId = feedbackIssueId(url);
+    return issueId ? { issueId, org } : undefined;
+  }
+  const [issues, issueId, events, eventId, ...extra] = segments;
   if (issues !== "issues" || !issueId || !isIssueId(issueId)) return undefined;
   if (extra.length > 0) return undefined;
   if (events !== undefined) {

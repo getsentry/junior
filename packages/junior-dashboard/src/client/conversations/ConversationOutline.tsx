@@ -6,6 +6,7 @@ import {
   useMemo,
   useRef,
   useState,
+  startTransition,
   type RefObject,
 } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -36,18 +37,20 @@ import {
   type ConversationOutlineItem,
 } from "./conversationOutlineItems";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
+import { OutlineStandIn } from "./OutlineStandIn";
 import {
+  holdsHistoryStart,
   prefetchHistoryAround,
   unheldLinkStart,
+  type HistoryStart,
 } from "./transcriptAroundHistory";
 import { useScrollsWithOutline } from "./transcriptScroller";
+import { markTranscriptRow } from "./useMessageLinkJump";
 
 const NO_EVENTS: ConversationReportEvent[] = [];
 
 /** Room above a selected message, so it does not touch the viewport edge. */
 const JUMP_MARGIN_PX = 12;
-/** A preview that stays this long reads the page of its message. */
-const PREFETCH_DELAY_MS = 100;
 
 /**
  * Show the person messages of a Conversation in an outline beside the
@@ -90,37 +93,29 @@ export function ConversationOutline(props: {
   );
   const scrollsWithOutline = useScrollsWithOutline();
   const seqsInView = useOutlineSeqsInView(items, scrollRef, scrollsWithOutline);
-  const activeIndex = items.findIndex((item) => item.seq === seqsInView.top);
-  const [jumpSeq, setJumpSeq] = useState<number>();
-  // A drag past messages that are not loaded would start a page read at
-  // each item, and each read would replace the last before it lands. So
-  // while a jump waits for its page, the drag keeps only its latest item,
-  // and goes there when the page lands or the press ends.
-  const scrubSeqRef = useRef<number>(undefined);
-  const select = (seq: number) => {
-    scrubSeqRef.current = undefined;
-    props.onSelect(seq);
-    setJumpSeq(seq);
-  };
-  const scrub = (seq: number) => {
-    if (jumpSeq === undefined) select(seq);
-    else scrubSeqRef.current = seq;
-  };
-  const endScrub = () => {
-    const seq = scrubSeqRef.current;
-    if (seq !== undefined) select(seq);
-  };
-  const selectScrubbed = useEffectEvent((landedSeq: number) => {
-    const seq = scrubSeqRef.current;
-    scrubSeqRef.current = undefined;
-    if (seq !== undefined && seq !== landedSeq) select(seq);
-  });
   const navRef = useRef<HTMLElement>(null);
   const replacesScrollbar = useDisplayed(
     navRef,
     scrollsWithOutline && items.length >= 2,
   );
-  const lastIndex = items.findIndex((item) => item.seq === seqsInView.bottom);
+  const [jumpSeq, setJumpSeq] = useState<number>();
+  // In place of the scrollbar, a jump shows its message at once: the item
+  // stands in for its rows until they land, so no page read sits between
+  // the input and the first frame.
+  const [standInSeq, setStandInSeq] = useState<number>();
+  const standInIndex =
+    replacesScrollbar && props.conversation && standInSeq !== undefined
+      ? items.findIndex((item) => item.seq === standInSeq)
+      : -1;
+  const standIn = items[standInIndex];
+  const activeIndex =
+    standInIndex >= 0
+      ? standInIndex
+      : items.findIndex((item) => item.seq === seqsInView.top);
+  const lastIndex =
+    standInIndex >= 0
+      ? standInIndex
+      : items.findIndex((item) => item.seq === seqsInView.bottom);
   const inView = useMemo(
     () =>
       replacesScrollbar && activeIndex >= 0
@@ -129,95 +124,212 @@ export function ConversationOutline(props: {
     [activeIndex, lastIndex, replacesScrollbar],
   );
 
+  // The latest jump. A row that lands for an older jump does not move the
+  // transcript.
+  const jumpedSeqRef = useRef<number>(undefined);
+  // A click or release marks the row it lands on, like a message link. A
+  // drag marks no row on the way.
+  const jumpToMountedRow = (seq: number, mark: boolean): boolean => {
+    const scroll = scrollRef.current;
+    const row = scroll?.querySelector(`[data-transcript-seq="${seq}"]`);
+    if (!scroll || !row) return false;
+    jumpedSeqRef.current = seq;
+    alignRow(scroll, row);
+    if (mark) markTranscriptRow(row);
+    setJumpSeq(undefined);
+    setStandInSeq(undefined);
+    return true;
+  };
+  const select = (seq: number) => {
+    if (!replacesScrollbar) {
+      props.onSelect(seq);
+      setJumpSeq(seq);
+      return;
+    }
+    if (jumpToMountedRow(seq, true)) return;
+    setStandInSeq(seq);
+    // The transcript renders the rows after the stand-in paints.
+    startTransition(() => {
+      props.onSelect(seq);
+      setJumpSeq(seq);
+    });
+  };
+  // A drag moves the transcript to mounted rows and shows other items as
+  // stand-ins, so no transcript render or page read waits in it. The
+  // release goes to the last item.
+  const scrubSeqRef = useRef<number>(undefined);
+  const scrub = (seq: number) => {
+    scrubSeqRef.current = seq;
+    if (jumpToMountedRow(seq, false)) return;
+    jumpedSeqRef.current = undefined;
+    setJumpSeq(undefined);
+    setStandInSeq(seq);
+  };
+  const endScrub = () => {
+    const seq = scrubSeqRef.current;
+    scrubSeqRef.current = undefined;
+    if (seq !== undefined) select(seq);
+  };
+
   // A message outside the loaded rows renders after its page loads, so the
   // jump waits for new events.
-  const jumpedSeqRef = useRef<number>(undefined);
   useEffect(() => {
     if (jumpSeq === undefined) return;
     const scroll = scrollRef.current;
     const rowAt = () =>
       scroll?.querySelector(`[data-transcript-seq="${jumpSeq}"]`);
-    if (!scroll || !rowAt()) return;
+    const landed = rowAt();
+    if (!scroll || !landed) return;
     setJumpSeq(undefined);
     jumpedSeqRef.current = jumpSeq;
     const align = () => {
       const row = rowAt();
-      if (!row || jumpedSeqRef.current !== jumpSeq) return;
-      scroll.scrollTop +=
-        row.getBoundingClientRect().top -
-        scroll.getBoundingClientRect().top -
-        JUMP_MARGIN_PX;
+      if (!row || jumpedSeqRef.current !== jumpSeq) return false;
+      alignRow(scroll, row);
+      return true;
     };
     align();
+    markTranscriptRow(landed);
     // In the next frame, the rows of a page that rendered with the jump
     // measure, and the transcript moves back to the place it held. So the
-    // jump aligns again after that frame, unless a newer jump started.
-    requestAnimationFrame(() => requestAnimationFrame(align));
-    selectScrubbed(jumpSeq);
+    // jump aligns again after that frame, unless a newer jump started. Then
+    // the rows hold still, and the stand-in goes.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        if (!align()) return;
+        // The measure can mount the row again, without its mark.
+        const settled = rowAt();
+        if (settled && settled !== landed) markTranscriptRow(settled);
+        setStandInSeq((seq) => (seq === jumpSeq ? undefined : seq));
+      }),
+    );
   }, [events, jumpSeq, scrollRef]);
 
-  // The page of a previewed message loads before a click, so the click
-  // jumps at once.
+  // A person who scrolls takes over from the jump: the stand-in goes, and
+  // the rows that land later do not move the transcript.
+  const dismissStandIn = () => {
+    jumpedSeqRef.current = undefined;
+    setJumpSeq(undefined);
+    setStandInSeq(undefined);
+  };
+  const dismissOnKey = useEffectEvent(dismissStandIn);
+  useEffect(() => {
+    const scroll = scrollRef.current;
+    if (!scroll || standInSeq === undefined) return;
+    const dismiss = () => dismissOnKey();
+    scroll.addEventListener("keydown", dismiss);
+    return () => scroll.removeEventListener("keydown", dismiss);
+  }, [scrollRef, standInSeq]);
+
+  // The pages of the pointed item and its neighbours load before a click,
+  // so the click finds them. One read runs at a time, and a newly pointed
+  // item replaces the reads that have not started.
   const queryClient = useQueryClient();
-  const prefetch = (seq: number) => {
-    const start = unheldLinkStart(props.events, { event: seq });
-    if (start) prefetchHistoryAround(queryClient, props.conversationId, start);
+  const prefetchRef = useRef<{ reading: boolean; seqs: number[] }>({
+    reading: false,
+    seqs: [],
+  });
+  const readNextPage = () => {
+    const queue = prefetchRef.current;
+    if (queue.reading) return;
+    let start: HistoryStart | undefined;
+    while (!start && queue.seqs.length) {
+      start = unheldLinkStart(props.events, { event: queue.seqs.shift()! });
+      if (
+        start &&
+        holdsHistoryStart(queryClient, props.conversationId, start)
+      ) {
+        start = undefined;
+      }
+    }
+    if (!start) return;
+    queue.reading = true;
+    void prefetchHistoryAround(
+      queryClient,
+      props.conversationId,
+      start,
+    ).finally(() => {
+      queue.reading = false;
+      readNextPageRef.current();
+    });
+  };
+  // A read that lands goes on with the events of the latest render.
+  const readNextPageRef = useRef(readNextPage);
+  useEffect(() => {
+    readNextPageRef.current = readNextPage;
+  });
+  const prefetch = (index: number) => {
+    prefetchRef.current.seqs = [index, index - 1, index + 1].flatMap(
+      (near) => items[near]?.seq ?? [],
+    );
+    readNextPage();
   };
 
   if (items.length < 2) return null;
   // In place of the scrollbar, the rail sits where the scrollbar would.
   const side = scrollsWithOutline ? "right" : "left";
   return (
-    <MessageOutline
-      // `ChatLayout` hides the scrollbar beside this attribute.
-      data-replaces-scrollbar={replacesScrollbar ? "" : undefined}
-      activeIndex={activeIndex}
-      aria-label="Conversation outline"
-      // From `md`, the transcript has side padding that holds the rail, so
-      // it shows beside narrow transcripts too.
-      className={cn(
-        "absolute inset-y-8 z-20 hidden md:flex",
-        side === "left"
-          ? "left-1 @min-[62rem]/chat:left-3"
-          : "right-1 @min-[62rem]/chat:right-3",
-      )}
-      itemCount={items.length}
-      inView={inView}
-      onScrub={
-        replacesScrollbar
-          ? (index) => {
-              const item = items[index];
-              if (item) scrub(item.seq);
-            }
-          : undefined
-      }
-      // A release bubbles up from the list.
-      onPointerUp={endScrub}
-      ref={navRef}
-      side={side}
-    >
-      {/* The list's inner padding would cover text in a narrow transcript. */}
-      <MessageOutlineList
-        className={
-          side === "left" ? "@max-[62rem]/chat:pr-0" : "@max-[62rem]/chat:pl-0"
+    <>
+      {standIn && props.conversation ? (
+        <OutlineStandIn
+          conversation={props.conversation}
+          item={standIn}
+          onDismiss={dismissStandIn}
+          topPx={JUMP_MARGIN_PX}
+        />
+      ) : null}
+      <MessageOutline
+        // `ChatLayout` hides the scrollbar beside this attribute.
+        data-replaces-scrollbar={replacesScrollbar ? "" : undefined}
+        activeIndex={activeIndex}
+        aria-label="Conversation outline"
+        // From `md`, the transcript has side padding that holds the rail, so
+        // it shows beside narrow transcripts too.
+        className={cn(
+          "absolute inset-y-8 z-20 hidden md:flex",
+          side === "left"
+            ? "left-1 @min-[62rem]/chat:left-3"
+            : "right-1 @min-[62rem]/chat:right-3",
+        )}
+        itemCount={items.length}
+        inView={inView}
+        onScrub={
+          replacesScrollbar
+            ? (index) => {
+                const item = items[index];
+                if (item) scrub(item.seq);
+              }
+            : undefined
         }
+        // A release bubbles up from the list.
+        onPointerUp={endScrub}
+        ref={navRef}
+        side={side}
       >
-        {items.map((item, index) => (
-          <MessageOutlineItem
-            aria-label={item.title}
-            index={index}
-            key={item.seq}
-            onClick={() => select(item.seq)}
-          />
-        ))}
-      </MessageOutlineList>
-      <ConversationOutlinePreview
-        conversation={props.conversation}
-        items={items}
-        // A drag reads its own pages, one at a time.
-        prefetch={jumpSeq === undefined ? prefetch : undefined}
-      />
-    </MessageOutline>
+        {/* The list's inner padding would cover text in a narrow transcript. */}
+        <MessageOutlineList
+          className={
+            side === "left"
+              ? "@max-[62rem]/chat:pr-0"
+              : "@max-[62rem]/chat:pl-0"
+          }
+        >
+          {items.map((item, index) => (
+            <MessageOutlineItem
+              aria-label={item.title}
+              index={index}
+              key={item.seq}
+              onClick={() => select(item.seq)}
+            />
+          ))}
+        </MessageOutlineList>
+        <ConversationOutlinePreview
+          conversation={props.conversation}
+          items={items}
+          prefetch={prefetch}
+        />
+      </MessageOutline>
+    </>
   );
 }
 
@@ -249,20 +361,15 @@ function useConversationOutline(conversationId: string) {
 function ConversationOutlinePreview(props: {
   conversation: ConversationTranscript | undefined;
   items: readonly ConversationOutlineItem[];
-  prefetch: ((seq: number) => void) | undefined;
+  prefetch(index: number): void;
 }) {
   const { previewIndex } = useMessageOutline();
   const item =
     previewIndex === undefined ? undefined : props.items[previewIndex];
-  // A pointer that sweeps past items reads no pages.
-  const prefetch = useEffectEvent((seq: number) => props.prefetch?.(seq));
-  const seq = item?.seq;
-  const prefetches = props.prefetch !== undefined;
+  const prefetch = useEffectEvent(props.prefetch);
   useEffect(() => {
-    if (seq === undefined || !prefetches) return;
-    const timer = setTimeout(() => prefetch(seq), PREFETCH_DELAY_MS);
-    return () => clearTimeout(timer);
-  }, [prefetches, seq]);
+    if (previewIndex !== undefined) prefetch(previewIndex);
+  }, [previewIndex]);
   if (!item) return null;
   const meta = [
     props.conversation &&
@@ -384,4 +491,12 @@ function useDisplayed(
     };
   }, [enabled, ref]);
   return enabled && displayed;
+}
+
+/** Put a row at the top of the transcript viewport, below a small margin. */
+function alignRow(scroll: HTMLElement, row: Element) {
+  scroll.scrollTop +=
+    row.getBoundingClientRect().top -
+    scroll.getBoundingClientRect().top -
+    JUMP_MARGIN_PX;
 }

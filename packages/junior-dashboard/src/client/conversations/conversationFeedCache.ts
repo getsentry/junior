@@ -3,6 +3,10 @@ import type {
   ConversationFeed,
   ConversationFeedItem,
 } from "@sentry/junior/api/schema";
+import { withoutVersion } from "../revalidation";
+
+/** One loaded page of the viewer's feed, with the version of its body. */
+export type ConversationFeedPage = ConversationFeed & { pageVersion?: string };
 
 /**
  * One cached conversation feed. The viewer's feed keeps its loaded pages; a
@@ -10,11 +14,11 @@ import type {
  */
 export type ConversationFeedCache =
   | ConversationFeed
-  | InfiniteData<ConversationFeed, string | undefined>;
+  | InfiniteData<ConversationFeedPage, string | undefined>;
 
 function isPagedFeed(
   cache: ConversationFeedCache,
-): cache is InfiniteData<ConversationFeed, string | undefined> {
+): cache is InfiniteData<ConversationFeedPage, string | undefined> {
   return "pages" in cache;
 }
 
@@ -66,10 +70,12 @@ export function mapConversationFeedCache(
   }
   return {
     ...cache,
-    pages: cache.pages.map((page, index) => ({
-      ...page,
-      conversations: map(page.conversations, index === 0),
-    })),
+    pages: cache.pages.map((page, index) =>
+      withoutVersion(
+        { ...page, conversations: map(page.conversations, index === 0) },
+        "pageVersion",
+      ),
+    ),
   };
 }
 

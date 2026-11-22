@@ -14,9 +14,10 @@ import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import {
   childAgentTurnOptions,
+  commitParentMessageFork,
   isParentMessageMeta,
   readParentMessage,
 } from "@/chat/agent-invocations/parent-message";
@@ -29,11 +30,11 @@ import {
   type DeliverMessage,
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getConversationStore } from "@/chat/db";
 import { logException, setTags } from "@/chat/logging";
 import {
   getTurnInputSpanAttributes,
@@ -67,7 +68,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import {
   coerceThreadConversationState,
@@ -102,7 +103,11 @@ import {
   webConversationMessage,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
-import { instructionActorFor, instructionForInputs } from "@/chat/agent/prompt";
+import {
+  instructionActorFor,
+  instructionForInputs,
+  turnRequestText,
+} from "@/chat/agent/prompt";
 import type { AgentInstructionInput } from "@/chat/agent/types";
 import { createWebSteeringDrain } from "@/chat/task-execution/web-steering";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -113,7 +118,7 @@ import {
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import type { Actor } from "@sentry/junior-plugin-api";
@@ -209,9 +214,7 @@ export function createConversationTurnWorker(
       if (delayMs > 0) return { status: "deferred", delayMs };
     }
 
-    const lifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
+    const lifecycle = getTurnLifecycle();
 
     const isResume = resolved.kind === "resume";
     let turnInputFacts: TurnInputFacts | undefined;
@@ -250,10 +253,17 @@ export function createConversationTurnWorker(
       const messages = resolved.batch.map((entry) => entry.message);
       const firstMetadata = first.message.input.metadata;
       if (isEventMailboxMetadata(firstMetadata)) {
-        inputs = renderEventBatchInputs(
-          messages,
-          await eventReviewItemInputs(messages),
-        ).map((text) => ({ kind: "runtime", text }));
+        const rendered = await eventInboxItemInputs(messages);
+        for (const { message, requestText } of resolved.batch) {
+          if (requestText) {
+            rendered.set(message.inboundMessageId, {
+              kind: "runtime",
+              text: message.input.text.trim(),
+              requestText,
+            });
+          }
+        }
+        inputs = renderEventBatchInputs(messages, rendered);
         eventMeta = eventBatchMessageMeta(messages);
       } else {
         inputs = await webTurnInputs(messages.map((message) => message.input));
@@ -317,7 +327,15 @@ export function createConversationTurnWorker(
       );
       userMessageId = userMessage.id;
       inputs = savedMessageIsEvent
-        ? [{ kind: "runtime", text: userMessage.text }]
+        ? [
+            {
+              kind: "runtime",
+              text: userMessage.text,
+              ...(userMessage.meta?.requestText
+                ? { requestText: userMessage.meta.requestText }
+                : undefined),
+            },
+          ]
         : await webTurnInputs(
             turnInputs.map((message) => ({
               reviewItemChange: message.meta?.reviewItemChanges?.[0],
@@ -490,6 +508,9 @@ export function createConversationTurnWorker(
           }
           // An Event batch saves one Message with the rendered Events.
           if (webInputMessages.length === 0) {
+            const requestText = turnRequestText({
+              instruction: instructionInputs,
+            });
             upsertConversationMessage(conversation, {
               id: userMessageId,
               role: "user",
@@ -501,6 +522,7 @@ export function createConversationTurnWorker(
                 ...(attachments.length ? { attachments } : undefined),
                 explicitMention: true,
                 replied: false,
+                ...(requestText ? { requestText } : undefined),
                 ...eventMeta,
               },
             });
@@ -508,6 +530,10 @@ export function createConversationTurnWorker(
           await persistConversationMessages({
             conversation,
             conversationId: context.conversationId,
+          });
+          await commitParentMessageFork({
+            conversationId: context.conversationId,
+            inputs: resolved.batch.map((entry) => entry.message),
           });
           await lifecycle.start({
             conversationId: context.conversationId,
@@ -608,16 +634,15 @@ export function createConversationTurnWorker(
           }
           const childTurn = await childAgentTurnOptions({
             conversationId: context.conversationId,
-            history: await loadProjection({
-              conversationId: context.conversationId,
-            }),
             inputs:
               resolved.kind === "mailbox"
                 ? resolved.batch.map((entry) => entry.message)
                 : [],
             savedParentMessage,
           });
-          const piMessages = childTurn.history;
+          const history = await loadConversationProjection({
+            conversationId: context.conversationId,
+          });
           failureCode = "agent_run_failed";
           currentRunId = `conversation-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
@@ -643,11 +668,11 @@ export function createConversationTurnWorker(
                   conversation,
                   conversationId: context.conversationId,
                   excludeMessageIds: inputMessageIds,
-                  hasHistory: piMessages.length > 0,
+                  hasHistory: history.messages.length > 0,
                   turnId,
                 }),
               },
-              history: piMessages,
+              history,
               ...childTurn.run,
               actor,
               credentialContext: credentialContextForActor(
@@ -794,7 +819,7 @@ export function createConversationTurnWorker(
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
                 });
-              await maybePostAutomatedTurnLimitNotice({
+              await stopAtAutomatedTurnLimit({
                 conversationId: context.conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                 source,

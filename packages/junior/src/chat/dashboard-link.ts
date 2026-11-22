@@ -174,9 +174,21 @@ export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
 }
 
-/** Build the review desk URL that selects one Review item. */
-export function getDashboardReviewItemLink(itemId: string): string | undefined {
-  return resolveDashboardPath(`/review?item=${encodeURIComponent(itemId)}`);
+/** Build the Inbox URL that selects one Inbox item. */
+export function getDashboardInboxItemLink(itemId: string): string | undefined {
+  return resolveDashboardPath(`/inbox?item=${encodeURIComponent(itemId)}`);
+}
+
+/**
+ * Build the dashboard URL that opens the snooze form of one Inbox item. A
+ * chat card links it, since a message there looks the same to everyone.
+ */
+export function getDashboardInboxItemSnoozeLink(
+  itemId: string,
+): string | undefined {
+  return resolveDashboardPath(
+    `/inbox?item=${encodeURIComponent(itemId)}&snooze=1`,
+  );
 }
 
 /** Public icon asset URL. Headless and local installs keep text-only identity. */

@@ -115,7 +115,7 @@ describe("context compaction retained messages", () => {
 
   it("estimates Claude requests at the measured characters per token", async () => {
     const { estimateHistoryTokens, estimateReplacementTokens } =
-      await import("@/chat/services/context-compaction");
+      await import("@/chat/services/context-compaction-tokens");
     const toolResult = {
       role: "toolResult",
       toolCallId: "call-1",
@@ -182,7 +182,7 @@ describe("context compaction retained messages", () => {
 
   it("estimates Claude images from their pixel size", async () => {
     const { estimateReplacementTokens } =
-      await import("@/chat/services/context-compaction");
+      await import("@/chat/services/context-compaction-tokens");
     const tokens = (message: PiMessage, modelId: string) =>
       estimateReplacementTokens([message], modelId);
     const fhd = imageMessage("image/png", png(1920, 1080));

@@ -387,7 +387,11 @@ class SqlConversationEventStore implements ConversationEventStore {
               parsed,
             ),
           );
-        return { status: "replaced" as const, historyVersion };
+        return {
+          status: "replaced" as const,
+          historyVersion,
+          seq: cursor.nextSeq,
+        };
       },
     );
   }
@@ -585,6 +589,33 @@ class SqlConversationEventStore implements ConversationEventStore {
       .where(
         and(
           eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.type, type),
+        ),
+      )
+      .orderBy(asc(juniorConversationEvents.seq));
+    return rows.map(eventFromRow);
+  }
+
+  async loadCurrentEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]> {
+    const db = this.executor.db();
+    // One statement, as in `loadCurrentHistory`. Older versions stay out of
+    // the read, so its cost does not grow with every compaction.
+    const currentHistoryVersion = db
+      .select({
+        historyVersion: sql<number>`max(${juniorConversationEvents.historyVersion})`,
+      })
+      .from(juniorConversationEvents)
+      .where(eq(juniorConversationEvents.conversationId, conversationId));
+    const rows = await db
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          eq(juniorConversationEvents.historyVersion, currentHistoryVersion),
           eq(juniorConversationEvents.type, type),
         ),
       )

@@ -133,9 +133,10 @@ describe("background compaction events", () => {
     await events.append(CONVERSATION_ID, [
       { createdAtMs: 1, data: userMessage("First question.", 1) },
     ]);
-    await expect(
-      events.replaceHistory(CONVERSATION_ID, compaction("Foreground summary.")),
-    ).resolves.toEqual({ status: "replaced", historyVersion: 1 });
+    const replaced = await events.replaceHistory(
+      CONVERSATION_ID,
+      compaction("Foreground summary."),
+    );
 
     // A summary prepared for version 0 must not replace version 1.
     await expect(
@@ -145,12 +146,22 @@ describe("background compaction events", () => {
     ).resolves.toEqual({ status: "conflict", historyVersion: 1 });
     const afterConflict = await events.loadHistory(CONVERSATION_ID);
     expect(afterConflict).toHaveLength(2);
+    // The result names the seq of the replacement event.
+    expect(replaced).toEqual({
+      status: "replaced",
+      historyVersion: 1,
+      seq: afterConflict[1]!.seq,
+    });
 
     await expect(
       events.replaceHistory(CONVERSATION_ID, compaction("Fresh summary."), {
         expectedHistoryVersion: 1,
       }),
-    ).resolves.toEqual({ status: "replaced", historyVersion: 2 });
+    ).resolves.toEqual({
+      status: "replaced",
+      historyVersion: 2,
+      seq: afterConflict[1]!.seq + 1,
+    });
     const projection = await openConversationProjection({
       conversationId: CONVERSATION_ID,
     });

@@ -24,25 +24,24 @@ import { readCapturedSlackApiCalls } from "@junior-tests/msw/captured-slack-api-
 import { runEvalWork } from "../eval-work";
 import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
-import { installGatewayObserver, type GatewayProgress } from "./gateway";
+import { installGatewayObserver } from "./gateway";
 import {
-  expectAccepted,
   jsonRequest,
-  steerQueuedWebMessage,
-  uploadWebFiles,
+  postWebMessage,
+  readLeadConversationId,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
-import { actOnWebReviewItem } from "./review-desk";
+import { actOnWebInboxItem } from "./inbox";
 import { automationRequest, isAutomationInput } from "./automation-request";
 import { installWebReplay } from "./web";
+import type { CallOptions, Conversation, RunAgent, TurnProgress } from "./call";
 import type {
   AutomationInput,
-  HistoryItem,
   HistoryReply,
   Input,
   MentionInput,
   MessageInput,
-  ReviewItemActionInput,
+  InboxItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
@@ -54,7 +53,6 @@ import {
 } from "./history";
 import type { VisibleMessage } from "./judge";
 import { createInProcessQueue } from "./queue";
-import type { RecordedConversation } from "./recorded";
 import {
   BEFORE_FIRST_EVENT,
   combinedRun,
@@ -71,8 +69,6 @@ import {
   VIEWER_HEADER,
   type FixtureUsage,
   type Reply,
-  type ToolCall,
-  type Turn,
 } from "./results";
 import {
   DEFAULT_SLACK_AUTHOR,
@@ -102,84 +98,6 @@ const IDLE_TIMEOUT_MS = 60_000;
  * so the recording run and the replay would take different paths.
  */
 const INPUT_SETTLE_MS = 1_500;
-
-export type TurnProgress =
-  | GatewayProgress
-  | { type: "reply"; text: string }
-  /**
-   * A turn stopped before it finished, for example at its deadline, and
-   * Junior queued the rest of it. The rest waits until the handler finishes,
-   * so a sent input arrives before the turn continues.
-   */
-  | { type: "paused" };
-
-export interface CallOptions {
-  /** Earlier turns as items, or a recorded conversation. */
-  history?: HistoryItem[] | RecordedConversation;
-  onProgress?:
-    | ((
-        progress: TurnProgress,
-        actions: { send(input: Input): Promise<void> },
-      ) => void | Promise<void>)
-    | undefined;
-}
-
-/**
- * Returned by every call. The fields describe that call only. It is also the
- * vitest-evals run of the call, so `expect(conversation).toSatisfyJudge()`
- * takes it.
- */
-export interface Conversation extends HarnessRun {
-  conversationId: string;
-  /** Assistant messages that people saw. */
-  replies: Reply[];
-  /** Tool calls of the agent, with their results. */
-  toolCalls: ToolCall[];
-  /** Slack reactions that Junior added. */
-  reactions: string[];
-  /** Names of the files that Junior uploaded to the Slack thread. */
-  files: string[];
-  /**
-   * Status lines that Junior set under the Slack thread, in order. An empty
-   * string clears the status.
-   */
-  statuses: string[];
-  /** Titles that Junior gave the Slack thread, in order. */
-  threadTitles: string[];
-  /** The title that the dashboard shows after the call. */
-  title: string;
-  /** Whether the dashboard shows the Conversation as archived after the call. */
-  archived: boolean;
-  /** Slack user ids of the participants that the dashboard lists after the call. */
-  participantSlackUserIds: string[];
-  /**
-   * The label of the connect prompt that the dashboard shows to the person
-   * after the call, when a turn waits for their authorization.
-   */
-  authorizationPrompt?: string;
-  /** Times Junior replaced agent history with a summary, as the dashboard shows. */
-  compactions: number;
-  /** Text of each summary that the dashboard shows for those compactions. */
-  compactionSummaries: string[];
-  /** Ids of the active Watches that the dashboard lists after the call. */
-  watchIds: string[];
-  turns: Turn[];
-  continue(
-    input: Input | Input[],
-    options?: CallOptions,
-  ): Promise<Conversation>;
-  fork(reply: Reply | HistoryReply): Promise<Conversation>;
-  /**
-   * Open a child Conversation of this one, such as a Thread that a spawnAgent
-   * call started. Its `continue()` posts as the person who reads this one.
-   */
-  child(conversationId: string): Promise<Conversation>;
-}
-
-export type RunAgent = (
-  input: Input | Input[],
-  options?: CallOptions,
-) => Promise<Conversation>;
 
 /** Test hooks the fixture needs from Vitest. */
 export interface FixtureTestContext {
@@ -439,49 +357,26 @@ export async function createFixtureAgent(
       });
       return;
     }
-    if (input.kind === "review_item_action") {
+    if (input.kind === "inbox_item_action") {
       if (record.surface !== "web" || !record.started) {
-        throw new Error("A review item action continues a web Conversation");
+        throw new Error("An inbox item action continues a web Conversation");
       }
-      await actOnWebReviewItem(api, input, record);
+      await actOnWebInboxItem(api, input, record);
       return;
     }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
-      const path = started
-        ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
-        : "/api/conversations";
-      const idempotencyKey = started
-        ? fixtureId("web-message", 32)
-        : record.idempotencyKey;
-      const uploadIds = input.files?.length
-        ? await uploadWebFiles(api, {
-            ...(started
-              ? { conversationId: record.conversationId }
-              : undefined),
-            files: input.files,
-            idempotencyKey,
-            viewerEmail: record.viewerEmail,
-          })
-        : undefined;
-      const accepted = await expectAccepted(
-        await api.request(
-          path,
-          jsonRequest(record.viewerEmail, {
-            idempotencyKey,
-            message: input.text,
-            ...(uploadIds ? { uploadIds } : undefined),
-          }),
-        ),
-      );
-      if (input.steer) {
-        await steerQueuedWebMessage(api, {
-          conversationId: record.conversationId,
-          inboundMessageId: accepted.messageId,
-          viewerEmail: record.viewerEmail,
-        });
-      }
+      await postWebMessage(api, {
+        // The Lead exists before its first message.
+        conversationId:
+          started || input.lead ? record.conversationId : undefined,
+        idempotencyKey: started
+          ? fixtureId("web-message", 32)
+          : record.idempotencyKey,
+        input,
+        viewerEmail: record.viewerEmail,
+      });
       return;
     }
     if (record.surface !== "slack") {
@@ -540,12 +435,19 @@ export async function createFixtureAgent(
   };
 
   /** Create the record for a new Conversation. It starts with its first input. */
-  const newConversation = (
-    first: MessageInput | ReviewItemActionInput,
+  const newConversation = async (
+    first: MessageInput | InboxItemActionInput,
     history: CallOptions["history"],
-  ): ConversationRecord => {
-    // A review desk action comes from the dashboard.
-    if (first.kind === "web_message" || first.kind === "review_item_action") {
+  ): Promise<ConversationRecord> => {
+    if (first.kind === "web_message" && first.lead) {
+      return newRecord({
+        conversationId: await readLeadConversationId(api, WEB_VIEWER_EMAIL),
+        idempotencyKey: fixtureId("web-conversation", 32),
+        surface: "web",
+      });
+    }
+    // An Inbox action comes from the dashboard.
+    if (first.kind === "web_message" || first.kind === "inbox_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);
@@ -636,6 +538,19 @@ export async function createFixtureAgent(
         sentInputs += 1;
       },
     };
+    // MSW logs an error that a request handler throws and answers with a
+    // failed response, which the product retries. Keep the first error of a
+    // hook that runs in a handler, and fail the call with it.
+    let handlerError: { error: unknown } | undefined;
+    const failCallOnError =
+      <A extends unknown[]>(hook: (...args: A) => Promise<void>) =>
+      async (...args: A) => {
+        try {
+          await hook(...args);
+        } catch (error) {
+          handlerError ??= { error };
+        }
+      };
     if (options.onProgress) {
       const onProgress = options.onProgress;
       const report = async (progress: TurnProgress) => {
@@ -645,7 +560,7 @@ export async function createFixtureAgent(
           await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
         }
       };
-      gateway.setProgressHook(report);
+      gateway.setProgressHook(failCallOnError(report));
       queue.setRequeueHook(async (conversationId) => {
         if (
           typeof target === "function" ||
@@ -669,13 +584,16 @@ export async function createFixtureAgent(
           await report({ type: "paused" });
         }
       });
-      slack.setReplyHook(async (post) => {
-        await onProgress({ type: "reply", text: post.text }, progressActions);
-      });
+      slack.setReplyHook(
+        failCallOnError(async (post) => {
+          await onProgress({ type: "reply", text: post.text }, progressActions);
+        }),
+      );
     }
     try {
       await send();
       await waitForIdle();
+      if (handlerError) throw handlerError.error;
     } catch (error) {
       // Keep the partial transcript before cleanup removes the test identities.
       // A timeout must show the work that was still running, not an empty run.
@@ -784,6 +702,7 @@ export async function createFixtureAgent(
       threadTitles,
       title: detail.displayTitle,
       archived: Boolean(detail.archivedAt),
+      status: detail.status,
       toolCalls: events.toolCalls,
       turns: events.turns,
       watchIds: await readWatchIds(
@@ -912,6 +831,7 @@ export async function createFixtureAgent(
       threadTitles: [],
       title: detail.displayTitle,
       archived: Boolean(detail.archivedAt),
+      status: detail.status,
       toolCalls: [],
       turns: [],
       watchIds: await readWatchIds(api, conversationId, viewerEmail),
@@ -981,7 +901,7 @@ export async function createFixtureAgent(
       throw new Error("appHomeUnlink() continues a Slack Conversation");
     }
     return await converse(
-      newConversation(first, options.history),
+      await newConversation(first, options.history),
       input,
       options,
     );

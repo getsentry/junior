@@ -18,9 +18,9 @@ import {
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
 import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
+import { SameTabLink } from "../components/SameTabLink";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
-import { OutboundLink } from "../components/OutboundLink";
 import { ObjectRow } from "../conversations/ObjectRow";
 import {
   mediaThumbnail,
@@ -627,28 +627,15 @@ function PlainAnchor(props: {
   onPointerEnter?: () => void;
 }) {
   const className = useAnchorClass();
-  const scheme = props.href.slice(0, 6).toLowerCase();
-  if (!scheme.startsWith("https:") && !scheme.startsWith("http:")) {
-    return (
-      <a
-        className={className}
-        href={props.href}
-        onPointerEnter={props.onPointerEnter}
-        ref={props.observe}
-      >
-        {props.children}
-      </a>
-    );
-  }
   return (
-    <OutboundLink
+    <SameTabLink
       className={className}
       href={props.href}
       onPointerEnter={props.onPointerEnter}
       ref={props.observe}
     >
       {props.children}
-    </OutboundLink>
+    </SameTabLink>
   );
 }
 

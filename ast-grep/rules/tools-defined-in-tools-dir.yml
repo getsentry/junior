@@ -1,0 +1,18 @@
+# A model-facing tool is defined in a `tools` directory:
+# `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Code outside `tools`
+# may import and bind tools, but does not define them.
+# `policies/tool-design.md` owns the layout.
+id: tools-defined-in-tools-dir
+language: TypeScript
+severity: error
+message: Define a tool in a tools directory, as tools/<tool>.ts or tools/<collection>/<tool>.ts. Keep its helpers outside tools.
+files:
+  - packages/*/src/**/*.ts
+ignores:
+  - packages/*/src/**/tools/**/*.ts
+rule:
+  any:
+    - pattern: definePluginTool($$$)
+    - pattern: zodTool($$$)
+    - pattern: $_SERVER.registerTool($$$)
+    - pattern: zodToolDefinition($$$)

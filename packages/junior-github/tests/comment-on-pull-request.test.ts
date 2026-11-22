@@ -39,7 +39,7 @@ describe("commentOnPullRequest", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           body: "Yes, see the new test.",
           in_reply_to: 42,
         },
@@ -77,7 +77,7 @@ describe("commentOnPullRequest", () => {
     await tool.execute?.(
       {
         repo: "getsentry/junior",
-        number: 691,
+        pull_request: 691,
         body: "Answered.",
         in_reply_to: 42,
       },
@@ -93,7 +93,7 @@ describe("commentOnPullRequest", () => {
     const { fetch, tool } = toolContext();
 
     await tool.execute?.(
-      { repo: "getsentry/junior", number: 691, body: "Answered." },
+      { repo: "getsentry/junior", pull_request: 691, body: "Answered." },
       { toolCallId: "comment" },
     );
 
@@ -111,7 +111,7 @@ describe("commentOnPullRequest", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           body: "Answered.",
           in_reply_to: 42,
         },

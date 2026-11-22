@@ -1,15 +1,18 @@
-import { and, eq, gte, isNull, lte, sql } from "drizzle-orm";
-import { alias } from "drizzle-orm/pg-core";
 import { getDb } from "@/chat/db";
-import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { getStateAdapter } from "@/chat/state/adapter";
 import { microUsdToUsd } from "@/db/micro-usd";
-import { conversationAggregateColumns } from "./aggregate";
+import { readGuardianHours } from "./guardian-hours";
 import {
   readConversationMetricBuckets,
   type ConversationMetricBucket,
 } from "./metric-buckets";
-import { readOutcomeBuckets, type OutcomeBucket } from "./outcome-buckets";
+import {
+  outcomeBuckets,
+  readWindowMerges,
+  readWindowRoots,
+  type OutcomeBucket,
+  type WindowRoot,
+} from "./outcome-buckets";
 import type {
   ConversationMetricDay,
   ConversationStatsReport,
@@ -24,23 +27,10 @@ import {
 } from "../reporting-window";
 
 const WINDOW_DAYS = 90;
-const treeConversation = alias(juniorConversations, "stats_tree_conversation");
-const treeAggregateColumns = conversationAggregateColumns({
-  metrics: treeConversation,
-  roots: juniorConversations,
-});
 
 // Usage and event JSON keep provider USD floats, so their sums need rounding.
 function addUsd(current: number | undefined, next: number): number {
   return Math.round(((current ?? 0) + next) * 1e12) / 1e12;
-}
-
-function statsWhere(start: Date, end: Date) {
-  return and(
-    isNull(juniorConversations.parentConversationId),
-    gte(juniorConversations.lastActivityAt, start),
-    lte(juniorConversations.lastActivityAt, end),
-  );
 }
 
 function statsWindow(nowMs: number) {
@@ -65,8 +55,6 @@ type MetricRow = {
   inputTokens: number | null;
   mergedCodeChangeCostUsd: number | null;
   mergedCodeChanges: number | null;
-  outcomeCostUsd: number | null;
-  outcomes: number | null;
   tokens: number | null;
 };
 
@@ -81,8 +69,6 @@ function emptyMetricRow(date: string): MetricRow {
     inputTokens: null,
     mergedCodeChangeCostUsd: null,
     mergedCodeChanges: null,
-    outcomeCostUsd: null,
-    outcomes: null,
     tokens: null,
   };
 }
@@ -102,8 +88,6 @@ function applyMetricBuckets(
     const row = byDate.get(bucket.date) ?? emptyMetricRow(bucket.date);
     row.mergedCodeChanges = bucket.mergedCodeChanges;
     row.mergedCodeChangeCostUsd = bucket.mergedCodeChangeCostUsd;
-    row.outcomes = bucket.outcomes;
-    row.outcomeCostUsd = bucket.outcomeCostUsd;
     byDate.set(bucket.date, row);
   }
   for (const metric of metrics) {
@@ -147,8 +131,6 @@ function metricPoint(
         inputTokens?: number | null;
         mergedCodeChangeCostUsd?: number | null;
         mergedCodeChanges?: number | null;
-        outcomeCostUsd?: number | null;
-        outcomes?: number | null;
         tokens?: number | null;
       }
     | undefined,
@@ -170,15 +152,13 @@ function metricPoint(
     ...(row?.inputTokens !== null && row?.inputTokens !== undefined
       ? { inputTokens: row.inputTokens }
       : undefined),
-    ...(row?.outcomes !== null && row?.outcomes !== undefined
+    ...(row?.mergedCodeChanges !== null && row?.mergedCodeChanges !== undefined
       ? {
           mergedCodeChangeCostUsd: addUsd(
             undefined,
             row.mergedCodeChangeCostUsd ?? 0,
           ),
-          mergedCodeChanges: row.mergedCodeChanges ?? 0,
-          outcomeCostUsd: addUsd(undefined, row.outcomeCostUsd ?? 0),
-          outcomes: row.outcomes,
+          mergedCodeChanges: row.mergedCodeChanges,
         }
       : undefined),
     ...(row?.tokens !== null && row?.tokens !== undefined
@@ -346,61 +326,17 @@ function sumHoursIntoDays<T extends { date: string }>(
   return [...days.values()];
 }
 
-async function readActivityHours(db: JuniorDatabase, start: Date, end: Date) {
-  const activityHour = sql<string>`TO_CHAR(
-    ${juniorConversations.lastActivityAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
-  return await db
-    .select({
-      conversations: treeAggregateColumns.conversations,
-      date: activityHour,
-    })
-    .from(juniorConversations)
-    .innerJoin(
-      treeConversation,
-      eq(
-        treeConversation.rootConversationId,
-        juniorConversations.conversationId,
-      ),
-    )
-    .where(statsWhere(start, end))
-    .groupBy(activityHour);
-}
-
-async function readGuardianHours(
-  db: JuniorDatabase,
-  start: Date,
-  end: Date,
-): Promise<GuardianRow[]> {
-  const hour = sql<string>`TO_CHAR(
-    ${juniorConversationEvents.createdAt} AT TIME ZONE 'UTC',
-    'YYYY-MM-DD"T"HH24'
-  )`;
-  const decision = sql`${juniorConversationEvents.payload}->>'decision'`;
-  const cost = sql<number | null>`CASE
-    WHEN jsonb_typeof(${juniorConversationEvents.payload}->'costUsd') = 'number'
-      THEN (${juniorConversationEvents.payload}->>'costUsd')::double precision
-    ELSE NULL
-  END`;
-  return await db
-    .select({
-      allow: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'allow')::integer`,
-      ask: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'ask')::integer`,
-      costUsd: sql<number | null>`SUM(${cost})::double precision`,
-      date: hour,
-      deny: sql<number>`COUNT(*) FILTER (WHERE ${decision} = 'deny')::integer`,
-      requests: sql<number>`COUNT(*)::integer`,
-    })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.type, "guardian_action_reviewed"),
-        gte(juniorConversationEvents.createdAt, start),
-        lte(juniorConversationEvents.createdAt, end),
-      ),
-    )
-    .groupBy(hour);
+/** Count the window roots that have a tree, per UTC hour of last activity. */
+function activityHours(roots: readonly WindowRoot[]) {
+  const hours = new Map<string, { conversations: number; date: string }>();
+  for (const root of roots) {
+    if (root.treeConversations === 0) continue;
+    const date = root.lastActivityAt.toISOString().slice(0, 13);
+    const hour = hours.get(date);
+    if (hour) hour.conversations += 1;
+    else hours.set(date, { conversations: 1, date });
+  }
+  return [...hours.values()];
 }
 
 /** Build complete 90-day dashboard stats from normalized durable SQL records. */
@@ -410,12 +346,14 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
   const db = getDb();
   // One hour-grained read per aggregate. Days and six-hour buckets are sums
   // of these hours.
-  const [activity, metrics, outcomes, guardian] = await Promise.all([
-    readActivityHours(db, start, end),
+  const [windowRoots, metrics, merges, guardian] = await Promise.all([
+    readWindowRoots(db, { start, end }),
     readConversationMetricBuckets(db, { start, end }),
-    readOutcomeBuckets(db, { start, end }),
-    readGuardianHours(db, start, end),
+    readWindowMerges(db, { start, end }),
+    readGuardianHours(db, getStateAdapter(), { start, end }),
   ]);
+  const activity = activityHours(windowRoots);
+  const outcomes = outcomeBuckets({ merges });
   const hours = metricHours(
     applyMetricBuckets(activity, metrics, outcomes),
     nowMs,
@@ -450,8 +388,6 @@ export async function readConversationStatsFromSql(): Promise<ConversationStatsR
         sumHoursIntoDays(outcomes, (day, hour) => {
           day.mergedCodeChangeCostUsd += hour.mergedCodeChangeCostUsd;
           day.mergedCodeChanges += hour.mergedCodeChanges;
-          day.outcomeCostUsd += hour.outcomeCostUsd;
-          day.outcomes += hour.outcomes;
         }),
       ),
       nowMs,

@@ -1,13 +1,17 @@
-import { sql, type SQL } from "drizzle-orm";
+import { and, eq, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversations,
+  juniorIdentities,
+} from "@/db/schema";
 
 /**
  * How long a person can finish an authorization. The MCP auth session and the
  * dashboard connect prompt expire after this time, so the parked Turn cannot
  * resume after it.
  */
-const AUTHORIZATION_WAIT = sql.raw(`interval '24 hours'`);
+const AUTHORIZATION_WAIT_MS = 24 * 60 * 60 * 1000;
 
 /**
  * The request and the events that end its wait: the person connected, or a
@@ -24,17 +28,58 @@ const AUTHORIZATION_WAIT_EVENT_TYPES = [
   "turn_failed",
 ];
 
+/** The oldest request that still waits, on the app clock. */
+function authorizationWaitStart(): string {
+  return new Date(Date.now() - AUTHORIZATION_WAIT_MS).toISOString();
+}
+
 /**
  * SQL: the Conversation waits on a person to finish an authorization. A Turn
  * that needs a connection parks with execution `idle`, so only the durable
  * `authorization_requested` event shows the wait: it is the newest of these
- * events and has not expired.
+ * events and has not expired. Build it for each query: it binds the app
+ * clock, which also dated the request.
  */
 export function awaitsAuthorization(conversationId: AnyPgColumn): SQL<boolean> {
+  return authorizationWait(conversationId, sql`true`);
+}
+
+/**
+ * SQL: the Conversation waits on this User to finish an authorization. The
+ * request names the person by their User id, or by the Slack user id of
+ * one of their Identities. Build it for each query, as `awaitsAuthorization`.
+ */
+export function awaitsAuthorizationFrom(
+  conversationId: AnyPgColumn,
+  userId: string,
+): SQL<boolean> {
+  const actorId = sql`${juniorConversationEvents.payload}->>'actorId'`;
+  return authorizationWait(
+    conversationId,
+    sql`(${actorId} = ${userId} or ${actorId} in (select ${juniorIdentities.providerSubjectId} from ${juniorIdentities} where ${and(
+      eq(juniorIdentities.userId, userId),
+      eq(juniorIdentities.provider, "slack"),
+    )}))`,
+  );
+}
+
+/** SQL: the newest wait event is a live request that `requester` matches. */
+function authorizationWait(
+  conversationId: AnyPgColumn,
+  requester: SQL,
+): SQL<boolean> {
   const events = juniorConversationEvents;
-  return sql<boolean>`coalesce((
+  const start = authorizationWaitStart();
+  // Most Conversations have no request that can still wait. The first
+  // check finds that in `junior_conversation_events_authorization_request_idx`
+  // without a read of the Conversation's newest events. It is a scalar
+  // subquery, not `exists`, so Postgres looks up each Conversation and does
+  // not hash every recent request for each Conversation that it checks.
+  const recentRequest = sql`(select true from ${events} where ${events.conversationId} = ${conversationId} and ${events.type} = 'authorization_requested' and ${events.createdAt} > ${start}::timestamptz limit 1)`;
+  return sql<boolean>`(coalesce(${recentRequest}, false) and coalesce((
     select ${events.type} = 'authorization_requested'
-      and ${events.createdAt} > now() - ${AUTHORIZATION_WAIT}
+      and ${events.createdAt} > ${start}::timestamptz
+      and ${requester}
     from ${events}
     where ${events.conversationId} = ${conversationId}
       and ${events.type} in (${sql.join(
@@ -43,7 +88,7 @@ export function awaitsAuthorization(conversationId: AnyPgColumn): SQL<boolean> {
       )})
     order by ${events.seq} desc
     limit 1
-  ), false)`;
+  ), false))`;
 }
 
 /**

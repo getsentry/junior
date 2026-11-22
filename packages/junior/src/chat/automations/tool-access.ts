@@ -9,8 +9,8 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { sanitizeScheduledAutomationPrincipal } from "@/chat/scheduled-automations/identity";
 import type { ScheduledAutomationPrincipal } from "@/chat/scheduled-automations/types";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   destinationFilterValue,
   type AutomationDestination,
@@ -156,7 +156,7 @@ export function requireToolDestination(
 ): AutomationDestination {
   if (!context.destination) {
     throw new ToolInputError(
-      "This Conversation has no channel or DM that an Automation can deliver to. Ask from the channel or DM where it should deliver.",
+      "This Conversation has no channel or DM that an Automation can deliver to. Set destination to a public Slack channel, or ask from the Slack channel or DM where it should deliver.",
     );
   }
   return context.destination;

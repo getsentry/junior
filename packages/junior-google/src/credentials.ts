@@ -206,6 +206,13 @@ export const GOOGLE_OPERATIONS = {
     method: "POST",
     path: /^\/v1\/presentations\/([A-Za-z0-9_-]+):batchUpdate$/,
   },
+  "google.slides.presentation.create": {
+    access: "write",
+    writeCheck: "creates",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/presentations$/,
+  },
   "google.slides.presentation.get": {
     access: "read",
     host: GOOGLE_SLIDES_API_DOMAIN,

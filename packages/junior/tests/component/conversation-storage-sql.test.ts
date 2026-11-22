@@ -1,3 +1,4 @@
+import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { fileURLToPath } from "node:url";
 import { eq } from "drizzle-orm";
 import { readMigrationFiles } from "drizzle-orm/migrator";
@@ -699,7 +700,9 @@ describe("SQL conversation storage", () => {
       await migrateSchema(fixture.sql);
       await seedConversation(fixture, CONVERSATION_ID);
       const store = createSqlConversationEventStore(fixture.sql);
-      const lifecycle = new ConversationTurnLifecycleService(store);
+      const lifecycle = new ConversationTurnLifecycleService(store, {
+        watchQueue: createConversationWorkQueueTestAdapter,
+      });
       await lifecycle.start({
         conversationId: CONVERSATION_ID,
         createdAtMs: 1_000,

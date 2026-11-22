@@ -1,15 +1,14 @@
 import * as z from "zod";
 import {
   AgentInvocationLimitError,
-  AgentMessagePausedError,
   AgentMessageQueueFullError,
   AgentMessageTargetError,
 } from "@/chat/agent-invocations/errors";
 import { PARENT_AGENT_TARGET } from "@/chat/agent-invocations/types";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 /** Bound the text of one message so a loop cannot fill a mailbox quickly. */
 const MESSAGE_AGENT_TEXT_MAX_LENGTH = 8_000;
@@ -84,12 +83,6 @@ export function createMessageAgentTool(
         if (error instanceof AgentMessageTargetError) {
           throw new ToolInputError(
             `${error.message}. Use listAgents to find an agent.`,
-            { cause: error },
-          );
-        }
-        if (error instanceof AgentMessagePausedError) {
-          throw new ToolInputError(
-            `${error.message}. Do not send it more messages. Tell the user instead.`,
             { cause: error },
           );
         }

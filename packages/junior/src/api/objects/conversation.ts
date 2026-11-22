@@ -1,15 +1,15 @@
 import type { ObjectAnnotation, User } from "@sentry/junior-plugin-api";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import {
   getDashboardConversationLink,
   parseDashboardConversationLink,
 } from "@/chat/dashboard-link";
-import { getConversationStore, getDb } from "@/chat/db";
+import { getDb } from "@/chat/db";
 import { readConversationAccessFromSql } from "../conversations/access";
 import { readFirstHumanMessageTexts } from "../conversations/first-message";
 import { readConversationParticipants } from "../conversations/participants";
 import { conversationSummaryFromStoredConversation } from "../conversations/projection";
+import { readConversationRecordFromSql } from "../conversations/record";
 import { conversationObjectCard } from "./cards";
 
 async function readViewerAccess(viewer: User, conversationId: string) {
@@ -49,23 +49,21 @@ export async function resolveConversationLink(
     ? getDashboardConversationLink(conversationId)
     : undefined;
   if (!conversationId || !canonicalUrl) return undefined;
-  const conversation = await getConversationStore().get({ conversationId });
-  if (!conversation) return undefined;
+  const record = await readConversationRecordFromSql(conversationId);
+  if (!record) return undefined;
+  const { conversation } = record;
   const db = getDb();
   // The card shows what this access allows, so it is read again here.
   const access = await readViewerAccess(viewer, conversationId);
   if (!access?.canViewPrivateContent) return undefined;
 
-  const [firstTexts, automationTitles, brief, participants] = await Promise.all(
-    [
-      readFirstHumanMessageTexts(db, [conversation]),
-      readAutomationTitlesByConversationId([conversation]),
-      readLatestConversationBrief(db, conversationId),
-      readConversationParticipants(db, [conversationId]),
-    ],
-  );
+  const [firstTexts, automationTitles, participants] = await Promise.all([
+    readFirstHumanMessageTexts(db, [conversation]),
+    readAutomationTitlesByConversationId([conversation]),
+    readConversationParticipants(db, [conversationId]),
+  ]);
   return conversationObjectCard({
-    brief: brief?.content.summary,
+    description: conversation.summary,
     participants: participants.get(conversationId) ?? [],
     summary: conversationSummaryFromStoredConversation({
       access,
@@ -73,6 +71,7 @@ export async function resolveConversationLink(
       conversation,
       durationMs: 0,
       firstHumanMessageText: firstTexts.get(conversationId),
+      status: record.status,
     }),
     url: canonicalUrl,
   });

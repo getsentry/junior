@@ -122,9 +122,9 @@ describe("event automation match data", () => {
       await expect(publisher.hasMatch([event("admin")])).resolves.toBe(true);
       await expect(publisher.hasMatch([event("write")])).resolves.toBe(false);
 
-      // All copies of a webhook Event share one automations read. The
-      // automation for #8 does not match the #7 copy, and does not select
-      // the merged copy.
+      // All copies of a webhook Event share one automations read and one
+      // snooze trigger read. The automation for #8 does not match the #7
+      // copy, and does not select the merged copy.
       const db = getDb();
       const select = vi.spyOn(db, "select");
       vi.spyOn(dbModule, "getDb").mockReturnValue(db);
@@ -138,7 +138,7 @@ describe("event automation match data", () => {
           { ...pullRequest8, eventType: "pull_request.merged" },
         ]),
       ).resolves.toBe(false);
-      expect(select).toHaveBeenCalledTimes(1);
+      expect(select).toHaveBeenCalledTimes(2);
       await expect(
         publisher.hasMatch([event("write"), pullRequest8]),
       ).resolves.toBe(true);

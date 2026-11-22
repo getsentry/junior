@@ -1,7 +1,10 @@
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { StateAdapter } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
+import { getDb } from "@/chat/db";
+import { juniorConversations } from "@/db/schema";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import {
   conversationDetailReportSchema,
@@ -272,6 +275,20 @@ export async function createConversationWebHarness(
         .filter(Boolean);
     },
   };
+}
+
+/**
+ * Store only the stop time of a Conversation, with no stop request and no
+ * hold, as a stop looks to a run that reads it at its next step.
+ */
+export async function storeConversationStop(
+  conversationId: string,
+  stoppedAtMs = Date.now(),
+): Promise<void> {
+  await getDb()
+    .update(juniorConversations)
+    .set({ stoppedAt: new Date(stoppedAtMs) })
+    .where(eq(juniorConversations.conversationId, conversationId));
 }
 
 /** Return the texts of Messages that saved Events for a stopped Conversation. */

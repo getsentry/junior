@@ -21,11 +21,11 @@ import {
   createChildConversationWorker,
   createDeliverToParent,
   enqueueAgentInvocationResult,
-  withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
+import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import { logException } from "@/chat/logging";
-import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
+import { logException, withLogContext } from "@/chat/logging";
+import { resumeForPersonInput } from "@/chat/conversations/session-stop";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
@@ -175,21 +175,13 @@ export function createConversationWork(
     }
     return await destinationWorker(context);
   };
-  const run = async (
-    attemptContext: ConversationWorkerContext,
+  const runByKind = async (
+    context: ConversationWorkerContext,
+    topLevel: boolean,
   ): Promise<ConversationWorkerResult> => {
-    // Apply a session stop to automated input, on a root or a child.
-    const stopped = await skipInputAfterConversationStop(attemptContext);
-    if ("skipped" in stopped) {
-      return stopped.skipped;
-    }
-    const { context } = stopped;
     // The stored kind decides the worker, so child work never reaches a root
     // worker. A child Turn can have any Source.
-    const conversation = await options.conversationStore.get({
-      conversationId: context.conversationId,
-    });
-    if (!isTopLevelKind(conversation?.kind ?? "root")) {
+    if (!topLevel) {
       return await childWorker(context);
     }
     // A root's run can see its stop late. Then it stops the child agents that
@@ -222,6 +214,28 @@ export function createConversationWork(
     }
     await stopLateChildAgents();
     return result;
+  };
+  const run = async (
+    context: ConversationWorkerContext,
+  ): Promise<ConversationWorkerResult> => {
+    // A person's input ends a stop, on a root or a child.
+    await resumeForPersonInput(
+      context.conversationId,
+      context.attempt.messages,
+    );
+    const conversation = await options.conversationStore.get({
+      conversationId: context.conversationId,
+    });
+    const topLevel = isTopLevelKind(conversation?.kind ?? "root");
+    // Bind the tree root once, so spans of child agents count by root.
+    return await withLogContext(
+      {
+        rootConversationId:
+          conversation?.rootConversationId ??
+          (topLevel ? context.conversationId : undefined),
+      },
+      () => runByKind(context, topLevel),
+    );
   };
   return {
     beforeWorkStops: failStoppedDispatch,

@@ -1,13 +1,16 @@
 import { findUserByEmail } from "@/chat/plugins/viewer";
 import { readPersonCodeOverview } from "../code/overview";
-import { codePersonReportSchema } from "../schema/code";
+import type { CodePersonReport } from "../schema/code";
 
 /** Read person-scoped native code activity for one People profile. */
-export async function readPeopleCode(email: string, cursor?: string) {
+export async function readPeopleCode(
+  email: string,
+  cursor?: string,
+): Promise<CodePersonReport> {
   const subject = await findUserByEmail(email);
   if (!subject) {
     const now = new Date();
-    return codePersonReportSchema.parse({
+    return {
       activityDays: [],
       changes: [],
       generatedAt: now.toISOString(),
@@ -22,7 +25,7 @@ export async function readPeopleCode(email: string, cursor?: string) {
       windowStart: new Date(
         now.getTime() - 30 * 24 * 60 * 60 * 1_000,
       ).toISOString(),
-    });
+    };
   }
   return await readPersonCodeOverview({ cursor, userId: subject.id });
 }

@@ -22,7 +22,7 @@ import {
 } from "@/chat/runtime/thread-state";
 import {
   commitMessages,
-  loadProjection,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
@@ -232,6 +232,7 @@ describe("local agent runner", () => {
             arguments: {
               provider: EVAL_MCP_AUTH_PROVIDER,
               query: "budget echo",
+              intent: "look up the budget",
             },
           },
           { type: "text", text: "Eval Auth is connected." },
@@ -405,7 +406,7 @@ describe("local agent runner", () => {
     );
 
     expect(delivered).toHaveLength(1);
-    expect(delivered[0]?.text).toContain("temporary connection problem");
+    expect(delivered[0]?.text).toContain("is returning errors right now");
     expect(delivered[0]?.text).not.toContain("raw-error-sentinel");
     const lifecycle = await loadLifecycleEvents(conversationId!);
     expect(lifecycle.at(-1)?.data).toMatchObject({
@@ -652,7 +653,7 @@ describe("local agent runner", () => {
     );
 
     // Agent history carries the first exchange, so thread context omits it.
-    const secondHistory = JSON.stringify(agentRuns[1]?.history ?? []);
+    const secondHistory = JSON.stringify(agentRuns[1]?.history?.messages ?? []);
     expect(secondHistory).toContain("first question");
     expect(secondHistory).toContain("reply to first question");
     expect(agentRuns[1]?.instruction.context).toBeUndefined();
@@ -710,9 +711,11 @@ describe("local agent runner", () => {
       },
     );
 
-    const generatedMessages = await loadProjection({
-      conversationId: conversationId!,
-    });
+    const generatedMessages = (
+      await loadConversationProjection({
+        conversationId: conversationId!,
+      })
+    ).messages;
     expect(generatedMessages).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -747,7 +750,7 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[0]?.history).toEqual(generatedMessages);
+    expect(agentRuns[0]?.history?.messages).toEqual(generatedMessages);
   });
 
   it("keeps the delivered local reply successful when a background task fails", async () => {
@@ -838,7 +841,7 @@ describe("local agent runner", () => {
       },
     );
 
-    expect(agentRuns[0]?.history).toEqual(projectedMessages);
+    expect(agentRuns[0]?.history?.messages).toEqual(projectedMessages);
   });
 
   it("does not commit generated Pi output when local delivery fails", async () => {
@@ -877,9 +880,11 @@ describe("local agent runner", () => {
       ),
     ).rejects.toThrow(rawDeliveryError);
 
-    const projection = await loadProjection({
-      conversationId: conversationId!,
-    });
+    const projection = (
+      await loadConversationProjection({
+        conversationId: conversationId!,
+      })
+    ).messages;
     expect(projection).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

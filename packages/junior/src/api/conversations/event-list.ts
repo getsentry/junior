@@ -17,7 +17,6 @@ import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorConversationEvents } from "@/db/schema";
 import {
   CONVERSATION_EVENT_PAGE_LIMIT,
-  conversationEventPageSchema,
   type ConversationEventPage,
   type ConversationReportEvent,
 } from "../schema/conversation";
@@ -78,18 +77,16 @@ export async function readConversationEvents(
               ...pageArgs,
               beforeSeq: position.seq,
             });
-  return conversationEventPageSchema.parse(
-    await conversationEventPageReport(getSqlExecutor(), {
-      conversationId,
-      eventHistory: conversationEventHistory({
-        canExposePayload,
-        ...(transcriptPurgedAtMs === undefined
-          ? undefined
-          : { transcriptPurgedAtMs }),
-      }),
-      page,
+  return await conversationEventPageReport(getSqlExecutor(), {
+    conversationId,
+    eventHistory: conversationEventHistory({
+      canExposePayload,
+      ...(transcriptPurgedAtMs === undefined
+        ? undefined
+        : { transcriptPurgedAtMs }),
     }),
-  );
+    page,
+  });
 }
 
 /** Resolve a page boundary to a direction and an event seq. */

@@ -9,6 +9,10 @@
  * provider's prompt cache. A summary that no longer matches the history is
  * discarded, and the Turn carries on as if none existed.
  *
+ * An idle Conversation can swap a summary in below the threshold too
+ * (`swapPreparedCompactionOnIdle`), when its cache is about to expire. Then
+ * the swap rewrites no warm cache.
+ *
  * A summary that is still running replaces the blocking summary too, for a
  * limited time from its request. Below the input limit, the Turn defers: the
  * next model call gets the full history, and a later check swaps the summary
@@ -26,7 +30,10 @@ import {
 } from "@/chat/conversations/provenance";
 import { setSpanAttributes } from "@/chat/logging";
 import { loadLatestBackgroundCompaction } from "@/chat/services/background-compaction";
-import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import {
+  historyItemFromPiMessage,
+  type PiConversationEventProjection,
+} from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { systemSectionsChange } from "@/chat/pi/agent-history";
 import type { ContextSummary } from "@/chat/agent/context-summary";
@@ -36,12 +43,11 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
-import { appendPlanSnapshot } from "@/chat/plan/snapshot";
+import { appendTodosSnapshot } from "@/chat/todos/snapshot";
 import {
   compactActiveContextIfNeeded,
-  estimateHistoryTokens,
-  estimateReplacementTokens,
   renderCompactionSummary,
+  replacementSeqs,
   selectRetainedUserMessageEntries,
   summarizedRuntimeContextMessage,
   userMessage,
@@ -49,6 +55,10 @@ import {
   type CompactContextResult,
 } from "@/chat/services/context-compaction";
 import { withCompactionSpan } from "@/chat/services/context-compaction-telemetry";
+import {
+  estimateHistoryTokens,
+  estimateReplacementTokens,
+} from "@/chat/services/context-compaction-tokens";
 import { trimToolResults } from "@/chat/services/tool-result-trimming";
 
 /** How long after its request a running summary replaces a blocking one. */
@@ -253,8 +263,74 @@ async function swapPreparedCompaction(
     return await applyPreparedSummary(args, prepared, {
       estimatedTokens,
       historyVersion,
+      projection: await loadConversationProjection({
+        conversationId: args.conversationId,
+      }),
       triggerTokens,
     });
+  });
+}
+
+/**
+ * Swap a ready prepared summary into the committed history of an idle
+ * Conversation. The caller decides that the history is large enough, and
+ * keeps a Run from starting until this returns. `shouldReplace` gets the
+ * estimated size of the replacement and decides whether it commits.
+ * `beforeReplace` runs right before the replacement commits, and throws when
+ * the caller can no longer keep a Run out. A summary that is still running
+ * is not awaited: the caller warms the cache instead.
+ */
+export async function swapPreparedCompactionOnIdle(args: {
+  beforeReplace: () => Promise<void>;
+  conversationId: string;
+  modelId: string;
+  requestOverheadTokens: number;
+  shouldReplace: (replacementTokens: number) => boolean;
+}): Promise<CompactContextResult> {
+  const latest = await loadLatestBackgroundCompaction(args.conversationId);
+  const prepared = latest?.event.data;
+  if (
+    !latest ||
+    prepared?.type !== "compaction_prepared" ||
+    prepared.outcome !== "ready"
+  ) {
+    return { compacted: false };
+  }
+  return await withCompactionSpan("idle", "swap", async () => {
+    setSpanAttributes({
+      "app.compaction.prepared.age_ms": Math.max(
+        0,
+        Date.now() - latest.event.createdAtMs,
+      ),
+    });
+    if (prepared.historyVersion !== latest.historyVersion) {
+      return discard("history_version_changed");
+    }
+    const projection = await loadConversationProjection({
+      conversationId: args.conversationId,
+    });
+    return await applyPreparedSummary(
+      {
+        conversationId: args.conversationId,
+        mode: "idle",
+        modelId: args.modelId,
+        piMessages: projection.messages,
+        requestOverheadTokens: args.requestOverheadTokens,
+      },
+      prepared,
+      {
+        beforeReplace: args.beforeReplace,
+        shouldReplace: args.shouldReplace,
+        estimatedTokens: estimateHistoryTokens(
+          projection.messages,
+          args.modelId,
+          args.requestOverheadTokens,
+        ),
+        historyVersion: latest.historyVersion,
+        projection,
+        triggerTokens: getAgentContextCompactionTriggerTokens(args.modelId),
+      },
+    );
   });
 }
 
@@ -262,15 +338,16 @@ async function applyPreparedSummary(
   args: ActiveContextCompactionArgs,
   prepared: PreparedCompaction,
   budget: {
+    beforeReplace?: () => Promise<void>;
     estimatedTokens: number;
     historyVersion: number;
+    projection: PiConversationEventProjection;
+    shouldReplace?: (replacementTokens: number) => boolean;
     triggerTokens: number;
   },
 ): Promise<CompactContextResult> {
   const pendingMessages = args.pendingMessages ?? [];
-  const projection = await loadConversationProjection({
-    conversationId: args.conversationId,
-  });
+  const { projection } = budget;
   // The committed history is a prefix of the active messages. Only that
   // prefix has source events, so the mark is found there.
   const committedLength = committedPrefixLength(
@@ -323,7 +400,7 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        await appendPlanSnapshot(
+        await appendTodosSnapshot(
           renderCompactionSummary(prepared.summary),
           args.conversationId,
         ),
@@ -360,8 +437,13 @@ async function applyPreparedSummary(
   if (replacementTokens > targetTokens) {
     return discard("over_target");
   }
+  if (budget.shouldReplace && !budget.shouldReplace(replacementTokens)) {
+    setSpanAttributes({ "app.compaction.outcome": "declined" });
+    return { compacted: false };
+  }
 
   args.signal?.throwIfAborted();
+  await budget.beforeReplace?.();
   const result = await getConversationEventStore().replaceHistory(
     args.conversationId,
     {
@@ -398,5 +480,9 @@ async function applyPreparedSummary(
     "app.compaction.outcome": "applied",
     "app.compaction.summary_chars": prepared.summary.length,
   });
-  return { compacted: true, piMessages: messages };
+  return {
+    compacted: true,
+    piMessages: messages,
+    piMessageSeqs: replacementSeqs(replacement, result),
+  };
 }

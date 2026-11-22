@@ -1,6 +1,5 @@
 import { useMemo, useRef, type Ref } from "react";
 import { Lock } from "lucide-react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
@@ -22,8 +21,9 @@ export function ConversationPageDock(props: {
   live: boolean;
   onFocusRequestDone(key: string): void;
   onPinRequest(): void;
-  onShowQuestion(item: ReviewItemPayload, arrived: boolean): void;
-  ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
+  /** The message box's hint when it is empty. */
+  placeholder?: string | undefined;
+  ref: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
 }) {
   const { detail } = props;
   // Key on the event array, not the whole detail object. Metadata-only polls
@@ -36,6 +36,20 @@ export function ConversationPageDock(props: {
   // polls refresh generatedAt every 2s even when the queue is unchanged.
   const pendingGeneratedAtRef = useRef(detail.pendingGeneratedAt);
   pendingGeneratedAtRef.current = detail.pendingGeneratedAt;
+  // Invite subscribes a person to a public Conversation and grants no
+  // access, so a private one has none. An archived one is in no feed. The
+  // API checks again.
+  const data = detail.data;
+  const composerConversation = useMemo(
+    () => ({
+      conversationId: props.conversationId,
+      invite:
+        data?.visibility === "public" &&
+        data.kind !== "task" &&
+        !data.archivedAt,
+    }),
+    [props.conversationId, data?.visibility, data?.kind, data?.archivedAt],
+  );
 
   if (!detail.data) return null;
   return (
@@ -46,14 +60,15 @@ export function ConversationPageDock(props: {
       // too large to re-enter the footer on every live poll while typing.
       committedMessageIds={mailboxCommittedIds}
       focusRequest={props.focusRequest}
+      conversation={composerConversation}
       onFocusRequestDone={props.onFocusRequestDone}
       onPinRequest={props.onPinRequest}
-      onShowQuestion={props.onShowQuestion}
       pendingAuthorization={detail.pendingAuthorization}
       // Keep the cancel watermark off props. Live polls refresh generatedAt
       // every 2s; a prop would bust footer memo while the reader types.
       pendingGeneratedAtRef={pendingGeneratedAtRef}
       pendingMessages={detail.pendingMessages}
+      placeholder={props.placeholder}
       ref={props.ref}
       // Without live history, an inline send would never leave the
       // transcript tail. A started Turn reads a new send only later.

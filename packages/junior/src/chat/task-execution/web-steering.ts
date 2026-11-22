@@ -16,7 +16,7 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import { getTurnRecord } from "@/chat/task-execution/checkpoint";
-import { loadReviewItemInput } from "@/chat/review-items/prompt-input";
+import { loadInboxItemInput } from "@/chat/inbox-items/prompt-input";
 import { webConversationMessage } from "@/chat/task-execution/mailbox-input";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
@@ -26,15 +26,15 @@ async function steeringMessageFromWeb(
   actor: WebActor,
 ): Promise<AgentSteeringMessage> {
   const storedAttachments = readMessageAttachments(message.input.attachments);
-  // An answer steers in as its Review item tag.
-  const reviewItemInput = await loadReviewItemInput(
+  // An answer steers in as its Inbox item tag.
+  const inboxItemInput = await loadInboxItemInput(
     message.input.reviewItemChange,
   );
   return {
     actor: instructionActorFor(actor),
-    ...(reviewItemInput ? { kind: "runtime" as const } : undefined),
+    ...(inboxItemInput ? { kind: "runtime" as const } : undefined),
     provenance: instructionProvenanceFor(actor),
-    text: reviewItemInput ?? message.input.text.trim(),
+    text: inboxItemInput?.text ?? message.input.text.trim(),
     timestampMs: message.createdAtMs,
     ...(storedAttachments.length ? { storedAttachments } : undefined),
   };

@@ -6,6 +6,7 @@ import {
 } from "@/chat/agent-invocations/create";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import { FORK_INSTRUCTIONS } from "@/chat/agent-invocations/fork-history";
+import { turnRequestText } from "@/chat/agent/prompt";
 import { getAgentInvocationIdForMessage } from "@/chat/agent-invocations/ids";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
@@ -21,7 +22,7 @@ import {
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import {
   getConversationStoppedAtMs,
-  markConversationsStopped,
+  stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore } from "@/chat/db";
@@ -445,6 +446,9 @@ describe("child agents that no Agent invocation names", () => {
       const run = harness.runs.at(-1)!;
       expect(JSON.stringify(run.history)).toContain("Parent context.");
       expect(run.instruction.text).toContain(FORK_INSTRUCTIONS);
+      // Context such as memory recall follows the parent's task, without
+      // the tag and the fork instructions around it.
+      expect(turnRequestText(run)).toBe("Check the deploy.");
     } finally {
       await harness.close();
     }
@@ -657,9 +661,9 @@ describe("child agents that no Agent invocation names", () => {
         ...slackInvocationInput,
         idempotencyKey: "open-row",
       });
-      await markConversationsStopped([open.childConversationId], {
-        cancelWatches: false,
+      await stopConversationTree([open.childConversationId], {
         state: harness.state,
+        stoppedAtMs: Date.now(),
       });
       // The child's run sees its stop late, after it spawned a helper.
       vi.setSystemTime(1_800_000_001_000);
@@ -699,6 +703,8 @@ describe("child agents that no Agent invocation names", () => {
         instruction: { provenance: { authority: "instruction" } },
         turnId: first!.turnId,
       });
+      // The resumed Turn recalls from the same task words as the first.
+      expect(turnRequestText(resumed!)).toBe("Check the deploy.");
       await expect(
         readRootConversation({ actor: undefined, conversationId: childId }),
       ).resolves.toMatchObject({
@@ -821,9 +827,9 @@ describe("child agents that no Agent invocation names", () => {
     const harness = await createHarness();
     try {
       const childId = await spawnChild(harness, "parent-turn:call-1");
-      await markConversationsStopped([childId], {
-        cancelWatches: false,
+      await stopConversationTree([childId], {
         state: harness.state,
+        stoppedAtMs: Date.now(),
       });
 
       await expect(

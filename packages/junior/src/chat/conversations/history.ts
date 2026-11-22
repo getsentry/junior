@@ -134,7 +134,7 @@ export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
  * replaced, or the current version that did not match when in conflict.
  */
 export type HistoryReplacementResult =
-  | { status: "replaced"; historyVersion: number }
+  | { status: "replaced"; historyVersion: number; seq: number }
   | { status: "conflict"; historyVersion: number };
 
 const mcpProviderConnectedEventDataSchema = z
@@ -764,6 +764,11 @@ export interface ConversationEventStore {
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
   /** Events of one type across every history version in `seq` order. */
   loadEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]>;
+  /** Events of one type in the current history version in `seq` order. */
+  loadCurrentEventsOfType(
     conversationId: string,
     type: KnownConversationEventType,
   ): Promise<ConversationEvent[]>;

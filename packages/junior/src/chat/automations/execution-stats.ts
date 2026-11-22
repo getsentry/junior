@@ -11,6 +11,7 @@ import {
   sql,
   type SQL,
 } from "drizzle-orm";
+import { syncAutomationAlert } from "@/chat/automations/alert-items";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
 import { logWarn } from "@/chat/logging";
@@ -141,9 +142,9 @@ export function existingConversationId(conversationId: string): SQL {
 
 /**
  * Copy when an Automation's latest execution ended, and its outcome, to the
- * Automation row. Call it after each write that adds, settles, or removes an
- * execution. It reads the runs again, so a late or out-of-order write cannot
- * leave an older run.
+ * Automation row, and sync its alert. Call it after each write that adds,
+ * settles, or removes an execution. It reads the runs again, so a late or
+ * out-of-order write cannot leave an older run.
  */
 export async function refreshAutomationLastRun(
   db: JuniorDatabase,
@@ -157,6 +158,7 @@ export async function refreshAutomationLastRun(
       lastRunId: latest(sql`${juniorAutomationRuns.id}`),
     })
     .where(eq(juniorAutomations.id, automationId));
+  await syncAutomationAlert(db, automationId);
 }
 
 /**

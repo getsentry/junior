@@ -31,6 +31,9 @@ runtime and the provider-neutral contracts that plugins use.
 
 - Core may own provider-neutral dispatch, plugin registration, credential
   transport, and egress transport.
+- Core may read its own telemetry back from the Sentry project of
+  `SENTRY_DSN`, for System page reports (`chat/sentry-telemetry.ts`). It reads
+  only that project. Agent access to Sentry stays in the Sentry plugin.
 - App setup code may connect a plugin implementation to a Junior contract. It
   must not perform the provider action itself.
 - Slack runtime and delivery code remains in core until Slack is a plugin. Keep

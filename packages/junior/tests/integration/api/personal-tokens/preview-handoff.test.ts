@@ -6,8 +6,8 @@ import { apiErrorSchema, createdPersonalTokenSchema } from "@/api/schema";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { closeDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { createTools } from "@/chat/tools/index";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 
 const CONVERSATION_ID = "local:preview-handoff:current";

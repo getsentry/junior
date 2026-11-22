@@ -26,7 +26,15 @@
  * - `app.event_search.meaning.top_distance`: cosine distance of the nearest
  *   event, to tune a similarity floor.
  * - `app.event_search.result.count`: events returned.
- * Without an embedder, the meaning attributes are not set.
+ * - `app.event_search.result.<kind>.count`, `app.event_search.top5.<kind>.count`:
+ *   returned events, and the first 5, by kind: `tool_call`, `tool_result`,
+ *   `user_message`, `assistant_message`, or `message` (a Conversation
+ *   Message).
+ * - `app.event_search.result.current_turn.count`,
+ *   `app.event_search.top5.current_turn.count`: of those, events from the
+ *   running Turn. Set only when the search knows the running Turn.
+ * Without an embedder, the meaning attributes are not set. Without results,
+ * the kind attributes are not set.
  * Policy: policies/observability.md.
  */
 import {
@@ -48,8 +56,8 @@ import {
   bm25InverseDocumentFrequency,
   bm25NormalizedFrequency,
   bm25Saturation,
-  fuseRankedLists,
-} from "@sentry/junior-search";
+} from "@/search/bm25";
+import { fuseRankedLists } from "@/search/rank-fusion";
 import type { JuniorDatabase } from "@/db/db";
 import { setSpanAttributes } from "@/chat/logging";
 import {
@@ -58,7 +66,7 @@ import {
   juniorConversationEvents,
 } from "@/db/schema";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
-import { guardedCosineDistance } from "@sentry/junior-plugin-api/embeddings";
+import { guardedCosineDistance } from "@/db/embeddings";
 import { embedConversationQuery } from "./embedding";
 import { lexemesSql, searchedEventTextSql, seqIn } from "./event-lexemes";
 import {
@@ -81,6 +89,9 @@ const BM25_B = 0.75;
 // so in each leg a tool call counts half as much as other events. With RRF
 // k = 60, a tool call at rank 1 then scores below an event at rank 61.
 const TOOL_CALL_WEIGHT = 0.5;
+
+/** Events that a search returns when the call sets no limit. */
+export const DEFAULT_EVENT_SEARCH_LIMIT = 25;
 
 /** One event search. The bounds and types only make the result smaller. */
 export interface ConversationEventTextSearch {
@@ -184,19 +195,26 @@ async function searchBounds(
   db: JuniorDatabase,
   search: ConversationEventTextSearch,
   types: readonly string[],
-): Promise<SQL | undefined> {
+): Promise<{ bounds: SQL | undefined; turnStartedSeq?: number }> {
   const events = juniorConversationEvents;
-  return and(
-    eq(events.conversationId, search.conversationId),
-    inArray(events.type, [...types]),
-    search.afterSeq === undefined ? undefined : gt(events.seq, search.afterSeq),
-    search.beforeSeq === undefined
-      ? undefined
-      : lt(events.seq, search.beforeSeq),
+  const turn =
     search.currentTurnId === undefined
       ? undefined
-      : await notTurnInput(db, search.conversationId, search.currentTurnId),
-  );
+      : await notTurnInput(db, search.conversationId, search.currentTurnId);
+  return {
+    bounds: and(
+      eq(events.conversationId, search.conversationId),
+      inArray(events.type, [...types]),
+      search.afterSeq === undefined
+        ? undefined
+        : gt(events.seq, search.afterSeq),
+      search.beforeSeq === undefined
+        ? undefined
+        : lt(events.seq, search.beforeSeq),
+      turn?.filter,
+    ),
+    ...(turn ? { turnStartedSeq: turn.startedSeq } : undefined),
+  };
 }
 
 // The input of a Turn: its input Messages, and the agent history messages
@@ -205,7 +223,7 @@ async function notTurnInput(
   db: JuniorDatabase,
   conversationId: string,
   turnId: string,
-): Promise<SQL | undefined> {
+): Promise<{ filter: SQL; startedSeq: number } | undefined> {
   const events = juniorConversationEvents;
   const [started] = await db
     .select({
@@ -222,15 +240,68 @@ async function notTurnInput(
     )
     .limit(1);
   if (!started) return undefined;
-  return not(
-    or(
-      and(eq(events.type, "user_message"), gt(events.seq, started.seq)),
-      and(
-        inArray(events.type, ["message", "message_updated"]),
-        inArray(sql`${events.payload}->>'messageId'`, started.inputMessageIds),
-      ),
-    )!,
+  return {
+    filter: not(
+      or(
+        and(eq(events.type, "user_message"), gt(events.seq, started.seq)),
+        and(
+          inArray(events.type, ["message", "message_updated"]),
+          inArray(
+            sql`${events.payload}->>'messageId'`,
+            started.inputMessageIds,
+          ),
+        ),
+      )!,
+    ),
+    startedSeq: started.seq,
+  };
+}
+
+const RESULT_KINDS = [
+  "assistant_message",
+  "message",
+  "tool_call",
+  "tool_result",
+  "user_message",
+] as const;
+
+function resultKind(
+  type: string,
+  callsTool: boolean,
+): (typeof RESULT_KINDS)[number] {
+  if (callsTool) return "tool_call";
+  switch (type) {
+    case "assistant_message":
+    case "tool_result":
+    case "user_message":
+      return type;
+    default:
+      return "message";
+  }
+}
+
+// Counts of returned events by kind and from the running Turn, to see what
+// fills the results. No content.
+function resultMixAttributes(
+  prefix: "result" | "top5",
+  results: readonly { seq: number; type: string }[],
+  toolCalls: ReadonlySet<number>,
+  turnStartedSeq: number | undefined,
+): Record<string, number> {
+  const counts = Object.fromEntries(
+    RESULT_KINDS.map((kind) => [`app.event_search.${prefix}.${kind}.count`, 0]),
   );
+  for (const result of results) {
+    counts[
+      `app.event_search.${prefix}.${resultKind(result.type, toolCalls.has(result.seq))}.count`
+    ]! += 1;
+  }
+  if (turnStartedSeq !== undefined) {
+    counts[`app.event_search.${prefix}.current_turn.count`] = results.filter(
+      (result) => result.seq > turnStartedSeq,
+    ).length;
+  }
+  return counts;
 }
 
 async function toolCallSeqs(
@@ -403,7 +474,7 @@ export async function searchConversationEventText(
     (type) => !search.types || search.types.includes(type),
   );
   if (types.length === 0) return [];
-  const bounds = await searchBounds(db, search, types);
+  const { bounds, turnStartedSeq } = await searchBounds(db, search, types);
   const timed = async <T>(work: Promise<T>) => {
     const startedAt = Date.now();
     const result = await work;
@@ -448,16 +519,22 @@ export async function searchConversationEventText(
       ),
     );
   const bySeq = new Map(rows.map((row) => [row.row.seq, row]));
-  const terms = excerptTerms(search.query);
-  return seqs.flatMap((seq) => {
-    const match = bySeq.get(seq);
-    return match
-      ? [
-          {
-            event: eventFromRow(match.row),
-            excerpt: eventExcerpt(match.text ?? "", terms),
-          },
-        ]
-      : [];
+  const results = seqs.flatMap((seq) => {
+    const row = bySeq.get(seq)?.row;
+    return row ? [row] : [];
   });
+  setSpanAttributes({
+    ...resultMixAttributes("result", results, toolCalls, turnStartedSeq),
+    ...resultMixAttributes(
+      "top5",
+      results.slice(0, 5),
+      toolCalls,
+      turnStartedSeq,
+    ),
+  });
+  const terms = excerptTerms(search.query);
+  return results.map((row) => ({
+    event: eventFromRow(row),
+    excerpt: eventExcerpt(bySeq.get(row.seq)?.text ?? "", terms),
+  }));
 }

@@ -91,28 +91,7 @@ afterEach(async () => {
 });
 
 describe("plugin conversation events", () => {
-  it("renders core Brief events outside the installed plugin catalog", async () => {
-    const { renderPluginConversationEvent } =
-      await import("@/chat/plugins/conversation-events");
-
-    expect(
-      renderPluginConversationEvent({
-        namespace: "briefs",
-        name: "brief_updated",
-        version: 1,
-        content: {
-          version: 3,
-          modelId: "test-model",
-          costUsd: 0.0042,
-          decisions: 2,
-          openDecisions: 1,
-          links: 4,
-        },
-      }),
-    ).toEqual({ icon: "activity", title: "Brief updated (v3)" });
-  });
-
-  it("binds user prompt events to the current turn and deduplicates retries", async () => {
+  it("binds user prompt hooks to the current turn and model history, and deduplicates retries", async () => {
     const runId = randomUUID();
     const conversationId = `local:test:prompt-event-${runId}`;
     const sessionId = `prompt-event-session:${runId}`;
@@ -129,6 +108,7 @@ describe("plugin conversation events", () => {
         return undefined;
       },
     });
+    let taskEvents: unknown;
     const plugin = defineJuniorPlugin({
       manifest: {
         name: "prompt-event-demo",
@@ -136,14 +116,36 @@ describe("plugin conversation events", () => {
         description: "Prompt event demo",
       },
       conversationEvents: [recallEvent],
+      tasks: {
+        processSession: {
+          async run(ctx) {
+            taskEvents = await ctx.turnEvents.list({
+              eventName: "memories_recalled",
+            });
+          },
+        },
+      },
       hooks: {
         async userPrompt(ctx) {
           if (!ctx.events) {
             throw new Error("User prompt event writer is missing");
           }
+          histories.push(await ctx.loadHistory?.());
           await ctx.events.emit(recallEvent({ costUsd: 0.0042, memories: [] }));
           return undefined;
         },
+      },
+    });
+    const histories: unknown[] = [];
+    const turnContext = (pluginName: string, createdAtMs = 1_000) => ({
+      createdAtMs,
+      data: {
+        type: "turn_context" as const,
+        turnId: `turn-${createdAtMs}`,
+        pluginName,
+        kind: "recall",
+        version: 1,
+        content: { memories: [`${pluginName} memory ${createdAtMs}`] },
       },
     });
     const { getPluginUserPromptContributions, setPlugins } =
@@ -151,6 +153,11 @@ describe("plugin conversation events", () => {
     const { getConversationEventStore } = await import("@/chat/db");
     setPlugins([plugin]);
     await recordCompletedSession({ conversationId, sessionId });
+    const eventStore = getConversationEventStore();
+    await eventStore.append(conversationId, [
+      turnContext("prompt-event-demo"),
+      turnContext("other-plugin"),
+    ]);
     const request = {
       context: {
         conversationId,
@@ -162,12 +169,58 @@ describe("plugin conversation events", () => {
     };
 
     await getPluginUserPromptContributions(request);
+    await eventStore.replaceHistory(conversationId, {
+      createdAtMs: 2_000,
+      data: {
+        type: "compaction",
+        modelId: "test-model",
+        replacementHistory: [],
+      },
+    });
     await getPluginUserPromptContributions(request);
+    await eventStore.append(conversationId, [
+      turnContext("prompt-event-demo", 3_000),
+    ]);
+    // Another Turn of the same Conversation emits its own event.
+    await getPluginUserPromptContributions({
+      ...request,
+      turnId: `${sessionId}:next`,
+    });
 
-    const events =
-      await getConversationEventStore().loadHistory(conversationId);
+    // A hook reads only its own plugin's contexts, and a History replacement
+    // drops the earlier ones.
+    expect(histories).toEqual([
+      {
+        contexts: [
+          {
+            kind: "recall",
+            version: 1,
+            content: { memories: ["prompt-event-demo memory 1000"] },
+            loadedAtMs: 1_000,
+          },
+        ],
+      },
+      { startedAtMs: 2_000, contexts: [] },
+      // Only the context of the current History version comes back.
+      {
+        startedAtMs: 2_000,
+        contexts: [
+          {
+            kind: "recall",
+            version: 1,
+            content: { memories: ["prompt-event-demo memory 3000"] },
+            loadedAtMs: 3_000,
+          },
+        ],
+      },
+    ]);
+    const events = await eventStore.loadHistory(conversationId);
     expect(
-      events.filter((event) => event.data.type === "structured_event"),
+      events.filter(
+        (event) =>
+          event.data.type === "structured_event" &&
+          event.data.namespace === "prompt-event-demo",
+      ),
     ).toEqual([
       expect.objectContaining({
         data: {
@@ -178,6 +231,24 @@ describe("plugin conversation events", () => {
           turnId: sessionId,
           content: { costUsd: 0.0042, memories: [] },
         },
+      }),
+      expect.objectContaining({
+        data: expect.objectContaining({ turnId: `${sessionId}:next` }),
+      }),
+    ]);
+
+    // A task reads only the events of the Turn that it processes.
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    await processPluginTask({
+      name: "processSession",
+      params: { conversationId, sessionId },
+      plugin: "prompt-event-demo",
+    });
+    expect(taskEvents).toEqual([
+      expect.objectContaining({
+        content: { costUsd: 0.0042, memories: [] },
+        turnId: sessionId,
+        version: 1,
       }),
     ]);
   });

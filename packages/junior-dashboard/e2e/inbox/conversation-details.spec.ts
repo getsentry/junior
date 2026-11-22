@@ -41,10 +41,10 @@ test.describe("new UI", { tag: "@new" }, () => {
             name: "Investigate checkout latency",
           }),
         })
-        .getByRole("status", { name: "Running" }),
+        .getByRole("status", { name: "Working" }),
     ).toBeVisible();
     await expect(
-      publicRow.getByRole("status", { name: "Running" }),
+      publicRow.getByRole("status", { name: "Working" }),
     ).toHaveCount(0);
     await openRow(publicConversation);
     await expect(page).toHaveURL(
@@ -197,10 +197,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Close conversation menu" }).click();
     await page.setViewportSize({ width: 1600, height: 900 });
 
-    // The full durable Brief stays available after the transcript expires.
-    await page.getByText("Facts, links & keywords", { exact: true }).click();
+    // The summary stays available after the transcript expires.
     await expect(
-      page.getByText("PAYMENTS-42 contained 418 events."),
+      page.getByText(/PAYMENTS-42 contained 418 events\./).first(),
     ).toBeVisible();
 
     // The view that opened the Conversation stays marked in the pane.
@@ -285,7 +284,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(watched).toHaveCount(1);
     await expect(details.getByText("Also waiting on")).toBeVisible();
     await expect(
-      details.getByRole("link", { name: /getsentry\/junior#2351/ }),
+      details.getByRole("link", {
+        name: /^Reply to new review comments on the PR\. expires/,
+      }),
     ).toBeVisible();
 
     await details

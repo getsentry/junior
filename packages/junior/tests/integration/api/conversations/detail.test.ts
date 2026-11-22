@@ -20,8 +20,7 @@ import {
 } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { readConversationDetail } from "@/api/conversations/detail";
-import { appendConversationBrief } from "@/chat/briefs/store";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { usersInfoOk } from "../../../fixtures/slack/factories/api";
 import { juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
@@ -50,32 +49,23 @@ describe("conversation detail API", () => {
       title: "Refreshed conversation",
       visibility: "public",
     });
-    await appendConversationBrief(getDb(), {
+    await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      turnId: "brief-turn",
-      throughSeq: 0,
-      content: conversationBriefFixture({
-        summary: "The public Brief is visible without transcript access.",
-      }),
-      searchText: "public Brief visible",
-      modelId: "test-model",
+      summary: "The public summary is visible without transcript access.",
     });
 
     const app = createJuniorApi();
     const detailResponse = await expectSqlBudget(
       () => app.request(`http://localhost/api/conversations/${conversationId}`),
-      { statements: 14, serialRounds: 3 },
+      { statements: 15, serialRounds: 3 },
     );
     const detail = conversationDetailReportSchema.parse(
       await detailResponse.json(),
     );
     expect(detail.events).toEqual([]);
-    expect(detail.brief).toMatchObject({
-      content: {
-        summary: "The public Brief is visible without transcript access.",
-      },
-      version: 1,
-    });
+    expect(detail.summary).toBe(
+      "The public summary is visible without transcript access.",
+    );
 
     await getConversationEventStore().append(conversationId, [
       {
@@ -419,15 +409,9 @@ describe("conversation detail API", () => {
       status: "open",
       url: "https://github.com/getsentry/junior/pull/1081",
     });
-    await appendConversationBrief(getDb(), {
+    await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      turnId: "private-brief-turn",
-      throughSeq: 0,
-      content: conversationBriefFixture({
-        summary: "The private Brief is participant-only.",
-      }),
-      searchText: "private Brief participant only",
-      modelId: "test-model",
+      summary: "The private summary is participant-only.",
     });
 
     const hidden = await readConversationDetail(conversationId);
@@ -435,16 +419,13 @@ describe("conversation detail API", () => {
       annotations: [],
       eventHistory: { status: "redacted" },
     });
-    expect(hidden).not.toHaveProperty("brief");
+    expect(hidden).not.toHaveProperty("summary");
     await expect(
       readConversationDetail(conversationId, {
         viewer: await signedInViewer("participant@example.com"),
       }),
     ).resolves.toMatchObject({
-      brief: {
-        content: { summary: "The private Brief is participant-only." },
-        version: 1,
-      },
+      summary: "The private summary is participant-only.",
       annotations: [
         {
           key: "getsentry/junior#1081",
@@ -498,7 +479,7 @@ describe("conversation detail API", () => {
     });
   });
 
-  it("resolves mentioned Slack users with current names", async () => {
+  it("resolves mentioned Slack users with current names and photos", async () => {
     const conversationId = "slack:C123:mentions-detail";
     await getConversationStore().recordActivity({
       actor: {
@@ -515,6 +496,17 @@ describe("conversation detail API", () => {
       title: "Mentions",
       visibility: "public",
     });
+    // The owner's User photo is their Slack photo.
+    const [owner] = await getDb()
+      .update(juniorIdentities)
+      .set({ avatarUrl: "https://avatars.slack-edge.com/owner_512.png" })
+      .where(
+        and(
+          eq(juniorIdentities.provider, "slack"),
+          eq(juniorIdentities.providerSubjectId, "UOWNER1"),
+        ),
+      )
+      .returning({ id: juniorIdentities.id });
     queueSlackApiResponse("users.info", {
       body: usersInfoOk({
         userId: "UNEW1234",
@@ -550,15 +542,10 @@ describe("conversation detail API", () => {
       { fullName: "Shared Person" },
       60_000,
     );
-    await appendConversationBrief(getDb(), {
+    await storeConversationMetadataFixture(getDb(), {
       conversationId,
-      turnId: "mentions-brief-turn",
+      summary: "<@UOWNER1> merged the fix.",
       throughSeq: 1,
-      content: conversationBriefFixture({
-        summary: "<@UOWNER1> merged the fix.",
-      }),
-      searchText: "owner merged the fix",
-      modelId: "test-model",
     });
 
     const detail = await readConversationDetail(conversationId, {
@@ -570,8 +557,10 @@ describe("conversation detail API", () => {
     );
     expect(message).toMatchObject({
       mentions: [
-        // Known Junior users link to their People profile.
+        // Known Junior users link to their People profile and show their
+        // photo.
         {
+          avatarUrl: avatarPath(owner!.id),
           email: "owner@example.com",
           fullName: "Owner Person",
           slackUserId: "UOWNER1",
@@ -592,9 +581,10 @@ describe("conversation detail API", () => {
     expect(
       await getStateAdapter().get("slack-user-names:T123:UNEW1234"),
     ).toEqual({ fullName: "New Person", userName: "new.person" });
-    // The Brief uses the same lookup as transcript events.
-    expect(detail?.brief?.mentions).toEqual([
+    // The summary uses the same lookup as transcript events.
+    expect(detail?.summaryMentions).toEqual([
       {
+        avatarUrl: avatarPath(owner!.id),
         email: "owner@example.com",
         fullName: "Owner Person",
         slackUserId: "UOWNER1",

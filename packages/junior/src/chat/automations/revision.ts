@@ -1,6 +1,6 @@
 /** Storage revisions prevent stale edits from replacing newer values. */
 import { createHash } from "node:crypto";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 

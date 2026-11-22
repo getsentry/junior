@@ -372,7 +372,7 @@ describe("sendSlackReply", () => {
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([
       expect.objectContaining({
         params: expect.objectContaining({
-          text: "<@U123> fixed [#12](https://github.com/getsentry/junior/issues/12). Thanks @octocat.",
+          text: "<@U123> fixed [getsentry/junior#12](https://github.com/getsentry/junior/issues/12). Thanks @octocat.",
         }),
       }),
     ]);
