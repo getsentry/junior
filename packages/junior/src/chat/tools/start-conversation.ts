@@ -19,6 +19,10 @@ export const startConversationToolDefinition = zodToolDefinition({
     "Use messageAgent instead for work that a conversation already does.",
   ].join(" "),
   exposure: "modelOnly",
+  // Action review read "public" as publishing the work. Say what the start
+  // itself does.
+  describeProposal: ({ title }) =>
+    `Start the person's conversation "${title}" to do the task. Starting it posts nothing to Slack or any other outside place: other people in this install can find and read the conversation on the dashboard, and its own tool calls get action review like any conversation's.`,
   // The task becomes the person's request in the new conversation, so action
   // review judges every start.
   approvalMode: "review",
