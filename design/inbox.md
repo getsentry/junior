@@ -31,7 +31,7 @@ how the dashboard groups and acts on its rows.
   the question card in the Conversation transcript, and the questions pill.
 - Dashboard filters: All, PRs, Decisions, and Other in the Inbox; All,
   Needs you, Working, Watching, and Done in Conversations and a
-  repository's Conversations tab; and an All / Pinned switch in all three.
+  repository's Conversations tab; and Pinned in the same control in all three.
 - Settings: "Show the Inbox count in the tab".
 - MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
@@ -45,7 +45,7 @@ how the dashboard groups and acts on its rows.
 - The Conversation filters use the state that the row shows: Needs you
   when an ask or the tree waits on the viewer, then Working, then
   Watching. Done is the rest.
-- Pinned, in the All / Pinned switch, shows only the rows of the viewer's pinned Conversations.
+- Pinned, a tab of the same control, shows only the rows of the viewer's pinned Conversations.
   Pins have no section of their own: a pin stays in its place, with a pin
   marker.
 - The filters stay in the URL, so a reload or a link keeps them. They fit
