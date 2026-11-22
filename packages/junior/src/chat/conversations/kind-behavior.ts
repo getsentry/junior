@@ -219,7 +219,8 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
 // A Lead finds, starts, and steers its person's other Conversations, and
 // never does their work. So it gets only the tools for that, and no sandbox,
 // skills, MCP, provider, or child-agent tools. Automation tools stay out
-// until a Lead can pick a Slack Destination for one.
+// until a Lead can pick a Slack Destination for one. `updateInboxItem` stays
+// out: a Lead is private and adds no items, so it can change none.
 const LEAD_TOOLS = [
   "startConversation",
   "messageAgent",
@@ -227,7 +228,6 @@ const LEAD_TOOLS = [
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
-  "updateInboxItem",
   "searchEventTypes",
   "watchEvents",
   "watchTimer",

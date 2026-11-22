@@ -404,7 +404,6 @@ describe("static tool registry", () => {
         "startConversation",
         "stopWatchingResources",
         "systemTime",
-        "updateInboxItem",
         // `updateUserCustomization` is listed only with its experiment on.
         "watchEvents",
         "watchTimer",
