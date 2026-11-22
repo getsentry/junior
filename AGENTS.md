@@ -107,6 +107,7 @@ One simulator can use about 10 GB of memory, so:
 - `policies/agent-steering.md`: steering agent behavior.
 - `policies/agentic-semantics.md`: choices that depend on meaning or intent.
 - `policies/tool-design.md`: model-facing tool contracts.
+- `policies/tool-results.md`: tool results, size limits, and errors.
 - `policies/testing.md`: what to test and where.
 - `policies/test-adapters.md`: shared test adapters.
 - `policies/evals.md`: agent-facing evals.

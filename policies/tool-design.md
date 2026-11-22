@@ -82,6 +82,13 @@ contradictory or unsafe requests.
   prefer unless that contrast is the contract.
 - Put field meaning in `describe()` on the param. Do not repeat it in the tool
   description. Reuse shared param schemas for the same value kind.
+- A param description says, in this order: what the value is, what happens
+  when it is omitted, and its limits. Put the unit in the name (`ttl_ms`).
+- Use `z.enum` for a closed set of values. Do not list the values in prose.
+- State only what the executor enforces. If a description says a call fails,
+  the executor rejects that call.
+- When the runtime knows that a tool or field cannot work in this Turn, leave
+  it out. Do not describe the condition in prose.
 - Put a rule that ties fields together ("only with `status`", "required when
   `kind` is `action`") in `describe()` on the field that depends on the other.
 - Tool descriptions are at most 512 characters and do not name input fields.
@@ -90,17 +97,9 @@ contradictory or unsafe requests.
 - Shared params define the required shape. Add `.optional()` or
   `.nullable().optional()` at the use site. No `optional*` exports.
 
-### Errors
+### Errors and results
 
-- Model-repairable failures use the Pi tool-error channel: `ToolInputError`
-  (host) or `PluginToolInputError` (plugins). This covers invalid arguments,
-  missing active context, unsupported values, absent targets, ownership
-  denials, and provider lookup misses.
-- A plain `Error` is a system failure and goes to Sentry.
-- `tool-error-classification:check` keeps a baseline of plain `Error` throws in
-  tool sources. Extend it only for true system, config, or integrity failures.
-- Do not return `{ ok: false, error }` from a model-facing tool. Result unions
-  are fine in private helpers and non-agent HTTP handlers.
+`tool-results.md` owns errors, success results, and result size.
 
 ## Exceptions
 
