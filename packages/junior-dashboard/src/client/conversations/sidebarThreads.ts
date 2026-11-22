@@ -49,10 +49,11 @@ export function sidebarThreads(
     direct.filter((conversation) => shownIds.has(conversation.id)),
     0,
   );
+  const hiddenCount = all.length - shown.length;
   return {
     collapsible,
-    hiddenCount: all.length - shown.length,
-    omittedCount: 0,
+    hiddenCount,
+    omittedCount: hiddenCount === 0 ? (root.omittedThreadCount ?? 0) : 0,
     threads: shown,
   };
 }

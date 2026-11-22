@@ -75,6 +75,10 @@ describe("sidebarThreads", () => {
     const root = { omittedThreadCount: 7, threads };
     expect(sidebarThreads(root, { expanded: false }).omittedCount).toBe(0);
     expect(sidebarThreads(root, { expanded: true }).omittedCount).toBe(7);
+    // The open Thread past the sidebar cap leaves no loaded Thread hidden.
+    expect(
+      sidebarThreads(root, { expanded: false, selectedId: "d" }).omittedCount,
+    ).toBe(7);
   });
 
   it("shows every Thread when expanded", () => {
