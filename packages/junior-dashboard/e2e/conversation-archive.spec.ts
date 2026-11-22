@@ -74,10 +74,11 @@ test("archives and restores a conversation from the sidebar", async ({
     });
   });
   await page.goto(`${dashboard.baseURL}/conversations`);
-  const selectedConversation = page.getByRole("link", {
-    name: /Investigate checkout latency/,
-  });
-  await selectedConversation.click();
+  // The Lead beside the list has a card that links to the same Conversation.
+  await page
+    .getByRole("navigation", { name: "Your conversations" })
+    .getByRole("link", { name: /Investigate checkout latency/ })
+    .click();
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
