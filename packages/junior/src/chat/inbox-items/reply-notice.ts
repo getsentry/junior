@@ -137,18 +137,6 @@ export async function hasReadLatestReply(
 }
 
 /**
- * Close the User's open reply notice of a Conversation, such as when they
- * write in it: they saw the latest reply.
- */
-export async function closeReplyNotice(
-  db: JuniorDatabase,
-  input: { conversationId: string; nowMs: number; userId: string },
-): Promise<void> {
-  const notice = await openReplyNoticeId(db, input);
-  if (notice) await closeRead(db, notice, input);
-}
-
-/**
  * Close the User's open reply notice of a Conversation when they read the
  * latest reply. The notice holds that reply, so an earlier read leaves it
  * open.

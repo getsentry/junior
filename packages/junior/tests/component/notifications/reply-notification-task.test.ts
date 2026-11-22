@@ -109,6 +109,21 @@ async function viewerMessagesApp() {
   return app;
 }
 
+/** Post a message as the viewer, as the dashboard composer does. */
+async function postFollowUp(conversationId: string, idempotencyKey: string) {
+  const response = await (
+    await viewerMessagesApp()
+  ).request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ idempotencyKey, message: "Why?" }),
+      headers: { "content-type": "application/json" },
+    },
+  );
+  expect(response.status).toBe(200);
+}
+
 /** Report the viewer's read position, as the dashboard does. */
 async function readConversation(conversationId: string, lastReadSeq: number) {
   const app = await viewerApp();
@@ -434,20 +449,7 @@ describe("reply notification task", () => {
     });
 
     // A follow-up from the starter means they saw the reply.
-    const followUp = await (
-      await viewerMessagesApp()
-    ).request(
-      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/messages`,
-      {
-        method: "POST",
-        body: JSON.stringify({
-          idempotencyKey: "follow-up",
-          message: "Why did it roll back?",
-        }),
-        headers: { "content-type": "application/json" },
-      },
-    );
-    expect(followUp.status).toBe(200);
+    await postFollowUp(conversationId, "follow-up");
     expect((await replyNotices(conversationId))[1]?.status).toBe("done");
 
     // A starter who reads the reply before its task runs gets no notice and
@@ -461,6 +463,24 @@ describe("reply notification task", () => {
         "The deploy rolled back.",
       ],
       turnId: "turn-4",
+    });
+    expect(
+      (await replyNotices(conversationId)).map((item) => item?.status),
+    ).toEqual(["done", "done"]);
+    expect(decrypted).toHaveLength(3);
+
+    // A follow-up that waits as pending, with no event yet, still means the
+    // starter saw the reply.
+    await completeDashboardTurn("It ran twice.", undefined, {
+      beforeTasks: (id) => postFollowUp(id, "follow-up-2"),
+      conversationId,
+      earlierReplies: [
+        "The deploy started.",
+        "The deploy finished.",
+        "The deploy rolled back.",
+        "A bad migration.",
+      ],
+      turnId: "turn-5",
     });
     expect(
       (await replyNotices(conversationId)).map((item) => item?.status),
