@@ -67,7 +67,19 @@ function fullContext(
     },
     spawnAgent: unavailable,
     messageAgent: unavailable,
-    mcpToolManager: new McpToolManager([]),
+    mcpToolManager: new McpToolManager([
+      {
+        dir: "/plugins/docs",
+        skillsDir: "/plugins/docs/skills",
+        manifest: {
+          name: "docs",
+          displayName: "Docs",
+          description: "Docs MCP provider",
+          configKeys: [],
+          mcp: { transport: "http", url: "https://docs.example.test/mcp" },
+        },
+      },
+    ]),
     supportsImageInput: () => true,
     workspaces: { activeWorkspaceId: () => undefined, switch: unavailable },
   };
@@ -371,5 +383,19 @@ describe("static tool registry", () => {
     );
 
     expect(RUN_BUILT_TOOL_NAMES.filter((name) => !built.has(name))).toEqual([]);
+  });
+
+  it("leaves out the MCP tools when the deployment has no MCP provider", () => {
+    const tools = createTools(
+      [],
+      { writeGeneratedFiles: () => [] },
+      {
+        ...fullContext("local", "conversation"),
+        mcpToolManager: new McpToolManager([]),
+      },
+    );
+
+    expect(Object.keys(tools)).not.toContain("searchMcpTools");
+    expect(Object.keys(tools)).not.toContain("callMcpTool");
   });
 });

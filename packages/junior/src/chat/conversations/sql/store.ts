@@ -298,6 +298,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(source ? { source } : undefined),
     ...(sessionSource ? { sessionSource } : undefined),
     ...(row.title ? { title: row.title } : undefined),
+    ...(row.summary ? { summary: row.summary } : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : undefined),

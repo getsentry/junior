@@ -103,6 +103,19 @@ export function parseConversationEventSeq(
   return value && /^\d+$/.test(value) ? Number(value) : undefined;
 }
 
+/**
+ * The anchor of a transcript row: `#event-<seq>`, with the seq of the last
+ * event in the row. A link to any event seq shows the row that holds it.
+ */
+export function transcriptRowAnchor(seq: number): string {
+  return `event-${seq}`;
+}
+
+/** Read the event seq of a `#event-<seq>` transcript row link. */
+export function parseTranscriptRowHash(hash: string): number | undefined {
+  return parseConversationEventSeq(/^#event-(\d+)$/.exec(hash)?.[1]);
+}
+
 /** Query param that opens the Inbox items panel of a Conversation. */
 export const CONVERSATION_REVIEW_PARAM = "review";
 export const CONVERSATION_REVIEW_OPEN = "open";

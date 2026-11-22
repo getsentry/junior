@@ -685,6 +685,8 @@ async function executeAgentRunInPrivacyContext(
       run,
       skillSandbox,
       spanContext,
+      // A Run that resumes a Turn can depend on unpushed work in the session.
+      rotateOldSession: !resumedFromSessionRecord,
       state,
     });
     closeTools = async () => runSandbox.agentSandbox.close();

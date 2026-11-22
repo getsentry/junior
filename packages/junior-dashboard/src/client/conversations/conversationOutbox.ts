@@ -83,7 +83,7 @@ export function mailboxMessageFromOutbox(
     actorIdentity: message.actorIdentity,
     clientStatus: message.status,
     createdAt: message.createdAt,
-    delivery: "defer",
+    delivery: "interrupt",
     idempotencyKey: message.idempotencyKey,
     inboundMessageId: message.messageId,
     messageId: message.messageId,

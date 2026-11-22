@@ -65,6 +65,8 @@ test.describe("snooze times", { tag: "@new" }, () => {
       /^Tomorrow morning\s*Sat 09:00$/,
       /^Next week\s*Mon 09:00$/,
       "Custom…",
+      // No time, so no key: it lasts until the item closes.
+      "Someday",
     ]);
     // Focus moves to the first choice, so the keys reach the menu.
     await expect(

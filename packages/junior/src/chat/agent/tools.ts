@@ -113,6 +113,8 @@ interface RunSandboxArgs {
   run: AgentRun;
   skillSandbox: SkillSandbox;
   spanContext: LogContext;
+  /** Replace a session near the provider's cap before any work. */
+  rotateOldSession: boolean;
   state: Pick<AgentRunState, "sandboxRef">;
 }
 
@@ -145,6 +147,7 @@ export async function createRunSandbox(
   const attachmentStorage = args.run.environment?.attachmentStorage;
   const agentSandbox = createAgentSandbox({
     sandboxRef: args.state.sandboxRef,
+    rotateOldSession: args.rotateOldSession,
     workspace,
     skills: args.availableSkills,
     traceContext: args.spanContext,

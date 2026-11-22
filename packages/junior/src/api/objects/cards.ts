@@ -23,11 +23,11 @@ function personName(person: ActorIdentity): string | undefined {
 }
 
 /**
- * Build the card of one Conversation that the viewer may read. Give `brief`
- * only when the viewer may see the Brief.
+ * Build the card of one Conversation that the viewer may read. Give
+ * `description` only when the viewer may see private content.
  */
 export function conversationObjectCard(args: {
-  brief?: string | undefined;
+  description?: string | undefined;
   participants: readonly ActorIdentity[];
   summary: Pick<
     ConversationSummaryReport,
@@ -49,7 +49,9 @@ export function conversationObjectCard(args: {
     status: summary.archivedAt
       ? "archived"
       : conversationStates[summary.status],
-    ...(args.brief ? { description: args.brief.slice(0, 4000) } : undefined),
+    ...(args.description
+      ? { description: args.description.slice(0, 4000) }
+      : undefined),
     facts: {
       type: "conversation",
       ...(participants.length > 0 ? { participants } : undefined),

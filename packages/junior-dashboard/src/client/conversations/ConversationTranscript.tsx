@@ -25,7 +25,7 @@ import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ObjectAttachProvider } from "./ObjectAttach";
-import { ConversationBrief } from "./ConversationBrief";
+import { ConversationSummary } from "./ConversationSummary";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
   ConversationTranscript,
@@ -68,6 +68,7 @@ import {
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import { groupTranscriptMessages } from "./transcriptRenderModel";
+import { transcriptRowAnchor } from "./conversationRoutes";
 import { useTranscriptSearch } from "./transcriptSearch";
 import {
   TranscriptOpenRows,
@@ -241,7 +242,7 @@ function SegmentEvents(
       {props.conversation.eventHistory.status === "expired" ? (
         <>
           <ExpiredTranscriptView
-            brief={props.conversation.brief}
+            conversation={props.conversation}
             expiredAt={props.conversation.eventHistory.expiredAt}
           />
           {props.responding ? <TranscriptThinkingRow /> : null}
@@ -293,17 +294,22 @@ function TranscriptThinkingRow() {
 }
 
 function ExpiredTranscriptView(props: {
-  brief: ConversationTranscript["brief"];
+  conversation: ConversationTranscript;
   expiredAt: string;
 }) {
+  const { summary, summaryMentions } = props.conversation;
   return (
     <>
-      {props.brief ? (
+      {summary ? (
         <Card as="section" padding="md" variant="section">
           <h3 className="mt-0 mb-3 font-display text-lg font-medium text-dashboard-text">
-            Brief
+            Summary
           </h3>
-          <ConversationBrief brief={props.brief} />
+          <ConversationSummary
+            mentions={summaryMentions}
+            summary={summary}
+            variant="full"
+          />
         </Card>
       ) : null}
       <Empty className="flex items-start gap-3 border-dashed border-dashboard-border-emphasis bg-dashboard-fill-soft">
@@ -320,7 +326,7 @@ function ExpiredTranscriptView(props: {
                 timeStyle: "short",
               })}
             </time>
-            .{props.brief ? " The brief above is still available." : null}
+            .{summary ? " The summary above is still available." : null}
           </EmptyDescription>
         </div>
       </Empty>
@@ -712,6 +718,7 @@ function TranscriptEntryList(
                 renderEntry={renderEntry}
                 renderTasks={renderTasks}
                 row={rows[item.index]!}
+                rowAnchor={rowAnchorAt(rows, item.index)}
               />
             ))}
           </div>
@@ -748,6 +755,8 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   ) => ReactNode;
   renderTasks: TranscriptEntryRenderers["renderTasks"];
   row: TranscriptListRow;
+  /** The `#event-<seq>` anchor of the row. */
+  rowAnchor: string | undefined;
 }) {
   const { row } = props;
   return (
@@ -764,7 +773,12 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
       {row.kind === "unread_marker" ? (
         <TranscriptUnreadMarker />
       ) : row.kind === "activity" ? (
-        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+        <TranscriptRow
+          anchorKey={row.key}
+          id={props.rowAnchor}
+          indent
+          seq={row.seq}
+        >
           <TranscriptActivityGroup
             entries={row.entries}
             live={props.live}
@@ -773,17 +787,38 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
           />
         </TranscriptRow>
       ) : row.kind === "tasks" ? (
-        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+        <TranscriptRow
+          anchorKey={row.key}
+          id={props.rowAnchor}
+          indent
+          seq={row.seq}
+        >
           {props.renderTasks(row.entries)}
         </TranscriptRow>
       ) : (
-        <TranscriptRow anchorKey={row.key} seq={row.seq}>
+        <TranscriptRow anchorKey={row.key} id={props.rowAnchor} seq={row.seq}>
           {props.renderEntry(row.entry, row.tasks)}
         </TranscriptRow>
       )}
     </div>
   );
 });
+
+// A question moved after its reply keeps the reply seq. Only the first row
+// with a seq takes its anchor, so each anchor names one row.
+function rowAnchorAt(
+  rows: readonly TranscriptListRow[],
+  index: number,
+): string | undefined {
+  const seq = rowSeq(rows[index]);
+  return seq === undefined || seq === rowSeq(rows[index - 1])
+    ? undefined
+    : transcriptRowAnchor(seq);
+}
+
+function rowSeq(row: TranscriptListRow | undefined): number | undefined {
+  return row && row.kind !== "unread_marker" ? row.seq : undefined;
+}
 
 function RedactedTranscriptView(
   props: TranscriptListPlacement & {

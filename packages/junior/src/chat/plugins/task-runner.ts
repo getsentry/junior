@@ -52,6 +52,10 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
+import {
+  CONVERSATION_METADATA_TASK,
+  updateConversationMetadata,
+} from "@/chat/conversations/metadata/task";
 import { getRegistrations } from "./agent-hooks";
 import {
   pluginTaskId,
@@ -454,6 +458,15 @@ function taskPluginContext(
   };
 }
 
+function isConversationMetadataTask(message: PluginTaskQueueMessage): boolean {
+  return (
+    (message.plugin === CONVERSATION_METADATA_TASK.plugin &&
+      message.name === CONVERSATION_METADATA_TASK.name) ||
+    // TODO(dcramer): Remove after no queued Brief task remains.
+    (message.plugin === "briefs" && message.name === "updateBrief")
+  );
+}
+
 function findPluginTask(message: PluginTaskQueueMessage) {
   const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === message.plugin,
@@ -465,18 +478,24 @@ function findPluginTask(message: PluginTaskQueueMessage) {
   return { plugin, task };
 }
 
-/** Schedule all plugin tasks interested in a completed agent-run session. */
+/**
+ * Schedule the Conversation metadata task and all plugin tasks interested in
+ * a completed agent-run session.
+ */
 export async function scheduleSessionCompletedPluginTasks(
   params: PluginTaskParams,
   send: SendPluginTask,
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
-  const taskRegistrations = getRegistrations().flatMap((plugin) =>
-    Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
-  );
-  if (taskRegistrations.length === 0) {
-    return;
-  }
+  const tasks = [
+    ...getRegistrations().flatMap((plugin) =>
+      Object.keys(plugin.tasks ?? {}).map((name) => ({
+        name,
+        plugin: plugin.manifest.name,
+      })),
+    ),
+    CONVERSATION_METADATA_TASK,
+  ];
   const record = await getTurnRecord(
     coreParams.conversationId,
     coreParams.sessionId,
@@ -484,10 +503,10 @@ export async function scheduleSessionCompletedPluginTasks(
   if (!record || record.state !== "completed") {
     throw new Error("Completed plugin task session record is not ready");
   }
-  const messages = taskRegistrations.map(({ name, plugin }) => ({
+  const messages = tasks.map(({ name, plugin }) => ({
     name,
     params: coreParams,
-    plugin: plugin.manifest.name,
+    plugin,
   }));
   await mapBounded(
     messages,
@@ -513,6 +532,13 @@ export async function processPluginTask(
     { conversationId: params.conversationId },
     () =>
       withPluginTaskLock(pluginTaskId(message), async () => {
+        if (isConversationMetadataTask(message)) {
+          await updateConversationMetadata({
+            conversationId: params.conversationId,
+            turnId: params.sessionId,
+          });
+          return;
+        }
         const resolved = findPluginTask(message);
         if (!resolved?.task) {
           throw new Error(

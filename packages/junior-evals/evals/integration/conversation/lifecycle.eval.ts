@@ -253,12 +253,15 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
     // The fixed copy of a rejected request. It does not yet say that the
     // conversation is too large for the model.
+    // The reply names the agent model, which `AI_MODEL` can change.
     expect(
       conversation.replies.map((reply) =>
-        reply.text.replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
+        reply.text
+          .replace(/^\S+ \([^)]+\)/, "<model>")
+          .replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
       ),
     ).toEqual([
-      "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
+      "<model> rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
     ]);
   });
 

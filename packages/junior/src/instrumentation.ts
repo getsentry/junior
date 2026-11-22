@@ -143,7 +143,13 @@ export function initSentry(): void {
     beforeSendSpan: scrubPrivateSentrySpan,
     integrations: (defaultIntegrations) =>
       defaultIntegrations.filter(
-        (integration) => !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name),
+        (integration) =>
+          !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name) &&
+          // Dedupe drops an error event that matches the previous one, after
+          // `captureException` has returned its id. A failed Turn shows that
+          // id to the person as its reference, so each capture must send its
+          // event. Sentry still groups the events into one issue.
+          integration.name !== "Dedupe",
       ),
   });
 

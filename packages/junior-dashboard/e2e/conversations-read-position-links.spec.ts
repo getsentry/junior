@@ -35,7 +35,7 @@ test("opens links outside the loaded rows from the page around them", async ({
   await screenshot(page, "conversation-link-opens-around-event");
   expect(
     pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
-  ).toEqual(["?event=70"]);
+  ).toEqual(["?event=70&limit=300"]);
 
   // A Turn link opens at the event that started the Turn.
   pageRequests.length = 0;
@@ -48,7 +48,7 @@ test("opens links outside the loaded rows from the page around them", async ({
   ).toBeInViewport();
   expect(
     pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
-  ).toEqual(["?turn=turn-30"]);
+  ).toEqual(["?turn=turn-30&limit=300"]);
 
   // A Message link shows its row in the transcript.
   pageRequests.length = 0;
@@ -62,7 +62,7 @@ test("opens links outside the loaded rows from the page around them", async ({
   ).toBeInViewport();
   expect(
     pageRequests.filter((query) => !/^\?(after|before)=/.test(query)),
-  ).toEqual(["?message=message-51"]);
+  ).toEqual(["?message=message-51&limit=300"]);
 
   // A link that the server cannot find is dropped.
   await page.goto(
@@ -209,6 +209,6 @@ test("opens a memory outside the loaded rows from the page around it", async ({
     .click();
   // The capture has no row, so the message before it shows.
   await expect(transcript.getByText("Transcript message 12 ")).toBeInViewport();
-  expect(pageRequests).toEqual(["?event=13"]);
+  expect(pageRequests).toEqual(["?event=13&limit=300"]);
   await screenshot(page, "conversation-memory-opens-around-event");
 });

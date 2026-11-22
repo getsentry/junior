@@ -123,13 +123,17 @@ export function excerptMessage(
   return { ...event, data: { ...data, reviewItemChanges: undefined } };
 }
 
-/** True when an open item asks a question that the viewer can answer. */
+/**
+ * True when an open item asks a question that the viewer can answer, and
+ * they did not snooze it.
+ */
 export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
   return (
     item.status === "open" &&
     item.kind === "action" &&
     Boolean(item.request) &&
-    item.canAct
+    item.canAct &&
+    !item.snoozedByViewer
   );
 }
 
