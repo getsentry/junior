@@ -5,11 +5,13 @@
 // invocation checks its lease and aborts the step when the lease is lost.
 // When the invocation throws, it queues the Turn again for the queue's retry.
 // The queue retries without a limit, so a claim past `maxAttempts` fails the
-// Turn instead of running the step again. After each end commit, and for a
-// message whose claim finds the Turn ended, it runs the Turn's end work.
+// Turn instead of running the step again. After each step commit it sends
+// the Turn's delivery message, and after each end commit it runs the Turn's
+// end work. A message whose claim misses does both again.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import { stepCommitted } from "@/core/delivery/deliver";
 import type { ModelClient } from "@/core/model/client";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import {
@@ -90,8 +92,9 @@ export async function advanceTurn(
     leaseMs: options.leaseMs,
   });
   if (!claim) {
-    // The Turn may have ended without its end work, for example in a crash
-    // after the end commit. The end work is safe to repeat.
+    // The Turn may have ended without its end work or its delivery message,
+    // for example in a crash after the end commit. Both are safe to repeat.
+    await stepCommitted(executor, message.turnId);
     await turnEnded(executor, message.turnId);
     return;
   }
@@ -166,6 +169,9 @@ async function runClaimedStep(
     case "continue":
     case "completed": {
       const next = await commitStep(executor, claim, result, inputs);
+      if (next) {
+        await stepCommitted(executor, claim.turnId);
+      }
       if (next === "continue") {
         await publishTurnStep(claim.turnId);
       } else if (next === "completed") {

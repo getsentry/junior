@@ -18,6 +18,7 @@ export const JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE = "/api/internal/cache/warmups";
 export const JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE =
   "/api/internal/context/compactions";
 export const JUNIOR_TURN_STEP_CALLBACK_ROUTE = "/api/internal/turn/steps";
+export const JUNIOR_DELIVERY_CALLBACK_ROUTE = "/api/internal/turn/deliveries";
 export const LEGACY_JUNIOR_CONVERSATION_WORK_FUNCTION =
   "api/internal/agent/continue.ts";
 
