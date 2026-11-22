@@ -52,6 +52,7 @@ import { buildDeliveredTurnStatePatch } from "@/chat/runtime/delivered-turn-stat
 import {
   getTurnUserMessage,
   getTurnUserReplyAttachmentContext,
+  hasLaterUserMessage,
   getTurnUserSlackMessageTs,
 } from "@/chat/runtime/turn-user-message";
 import {
@@ -554,6 +555,9 @@ async function runPausedTurnInContext(
           await recordAuthorizationCompleted({
             conversationId: payload.conversationId,
             ...authorization,
+            ...(hasLaterUserMessage(conversation, userMessage)
+              ? { laterUserMessage: true }
+              : undefined),
           });
           conversation.processing.activeTurnId = turn.turnId;
           await persistThreadStateById(payload.conversationId, {

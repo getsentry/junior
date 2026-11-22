@@ -191,6 +191,9 @@ const authorizationCompletedEventDataSchema = z
     provider: z.string().min(1),
     actorId: z.string().min(1),
     authorizationId: z.string().min(1),
+    // A user Message came after the request that this authorization resumes.
+    // Only then can a later message have dropped that request.
+    laterUserMessage: z.literal(true).optional(),
   })
   .strict();
 

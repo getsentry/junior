@@ -33,17 +33,23 @@ export interface PiConversationEventProjection extends PiConversationProjection 
 // Only the newest auth-blocked Turn resumes: `pendingAuth` holds one Turn, and
 // a newer pause abandons the older one. The note names the newest request so
 // the agent does not continue an older request that the person replaced.
+// The drop exception is added only when a user Message came after that
+// request. Otherwise the request can itself drop an older one ("forget that
+// question"), and the agent takes the exception for it.
 function authorizationObservationMessage(
   data: AuthorizationCompletedEventData,
   createdAtMs: number,
 ): PiMessage {
   const label = data.kind === "mcp" ? "MCP authorization" : "Authorization";
+  const dropException = data.laterUserMessage
+    ? ` If a later message from the person dropped that request, do not continue it; say only that ${data.provider} is connected.`
+    : "";
   return piMessageSchema.parse({
     role: "user",
     content: [
       {
         type: "text",
-        text: `${label} completed for provider "${data.provider}". Continue the newest request that waited for it and retry the provider operation. If a later message from the person dropped that request, do not continue it; say only that ${data.provider} is connected.`,
+        text: `${label} completed for provider "${data.provider}". Continue the newest request that waited for it and retry the provider operation.${dropException}`,
       },
     ],
     timestamp: createdAtMs,

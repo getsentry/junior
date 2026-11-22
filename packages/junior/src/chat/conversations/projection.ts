@@ -646,6 +646,7 @@ export async function recordAuthorizationCompleted(args: {
   provider: string;
   actorId: string;
   authorizationId: string;
+  laterUserMessage?: true;
 }): Promise<void> {
   await appendHostFactOnce({
     conversationId: args.conversationId,
@@ -656,6 +657,7 @@ export async function recordAuthorizationCompleted(args: {
       provider: args.provider,
       actorId: args.actorId,
       authorizationId: args.authorizationId,
+      ...(args.laterUserMessage ? { laterUserMessage: true } : undefined),
     },
     isSameFact: (data) =>
       data.type === "authorization_completed" &&

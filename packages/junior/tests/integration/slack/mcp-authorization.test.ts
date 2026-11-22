@@ -49,7 +49,8 @@ afterEach(async () => {
 
 /**
  * The person asks in a thread. Each agent run connects Eval Auth, then
- * answers. `requests` gets the messages of each model request as JSON.
+ * answers. `requests` gets the messages of each model request as JSON. With
+ * `laterTurnReply`, a Turn other than the first one only replies with it.
  */
 async function askForBudget(
   thread: {
@@ -57,21 +58,28 @@ async function askForBudget(
     ts: string;
   },
   requests: string[] = [],
+  laterTurnReply?: string,
 ): Promise<ConversationWorkSlackHarness> {
+  let firstTurnId: string | undefined;
   const harness = await createConversationWorkSlackHarness({
-    agentRunner: createModelAgentRunnerForRun(() => {
-      const stream = createModelStream([
-        {
-          type: "toolCall",
-          name: "searchMcpTools",
-          arguments: {
-            provider: EVAL_MCP_AUTH_PROVIDER,
-            query: "budget",
-            intent: "look up the budget",
-          },
-        },
-        { type: "text", text: ANSWER },
-      ]);
+    agentRunner: createModelAgentRunnerForRun((run) => {
+      firstTurnId ??= run.turnId;
+      const stream = createModelStream(
+        laterTurnReply && run.turnId !== firstTurnId
+          ? [{ type: "text", text: laterTurnReply }]
+          : [
+              {
+                type: "toolCall",
+                name: "searchMcpTools",
+                arguments: {
+                  provider: EVAL_MCP_AUTH_PROVIDER,
+                  query: "budget",
+                  intent: "look up the budget",
+                },
+              },
+              { type: "text", text: ANSWER },
+            ],
+      );
       return (model, context, options) => {
         requests.push(JSON.stringify(context.messages));
         return stream(model, context, options);
@@ -214,6 +222,44 @@ describe("Slack MCP authorization", () => {
       ),
     }).toEqual({ pausedBeforePrompt: true, newRequest: true });
   });
+
+  it.each([
+    { laterMessage: false, dropException: false },
+    { laterMessage: true, dropException: true },
+  ])(
+    "lets the resumed request be dropped only by a later message (later message: $laterMessage)",
+    async ({ laterMessage, dropException }) => {
+      const user = "ULATER";
+      const threadTs = "1712345.6001";
+      const requests: string[] = [];
+      const harness = await askForBudget(
+        { user, ts: threadTs },
+        requests,
+        "No problem.",
+      );
+      if (laterMessage) {
+        await harness.send({
+          user,
+          threadTs,
+          ts: "1712345.6002",
+          text: `<@${SLACK_BOT_USER_ID}> thanks, one sec`,
+        });
+        await harness.drain();
+      }
+      const beforeResume = requests.length;
+      await approve(harness, slackApiOutbox.authorizationLinks(user)[0]!);
+      await harness.drain();
+
+      const resumed = requests[beforeResume] ?? "";
+      expect({
+        note: resumed.includes(
+          "Continue the newest request that waited for it",
+        ),
+        dropException: resumed.includes("dropped that request"),
+        answered: harness.replies().includes(ANSWER),
+      }).toEqual({ note: true, dropException, answered: true });
+    },
+  );
 
   it.each([
     {

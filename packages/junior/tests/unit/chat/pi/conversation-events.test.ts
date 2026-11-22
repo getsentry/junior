@@ -70,6 +70,7 @@ describe("projectConversationEvents", () => {
       provider: "linear",
       actorId: "U123",
       authorizationId: "auth-1",
+      laterUserMessage: true,
     }),
     event(4, {
       type: "tool_execution_started",

@@ -26,6 +26,17 @@ export function getTurnUserMessage(
   return undefined;
 }
 
+/** Whether a user Message came after the request Message of a turn. */
+export function hasLaterUserMessage(
+  conversation: ThreadConversationState,
+  message: ConversationMessage,
+): boolean {
+  const index = conversation.messages.indexOf(message);
+  return conversation.messages
+    .slice(index + 1)
+    .some((later) => later.role === "user");
+}
+
 /** Return the persisted user-message id for a turn/session, if one exists. */
 export function getTurnUserMessageId(
   conversation: ThreadConversationState,
