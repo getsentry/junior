@@ -114,14 +114,15 @@ export function CodeChangeSubtitle(props: {
   );
 }
 
-/** The open row's first action: the change's page, such as on GitHub. */
+/** The open row's main action: the change's page, such as on GitHub. */
 export function CodeChangeOpenButton(props: { head: CodeChangeHead }) {
   return (
     <a
       aria-label={props.head.openLabel}
       className={cn(
         buttonVariants({ variant: "default" }),
-        "pointer-coarse:h-11",
+        // Narrower on a phone, so the card's actions fit on one line.
+        "pointer-coarse:h-11 max-sm:px-2",
       )}
       data-code-change-open=""
       href={props.head.url}

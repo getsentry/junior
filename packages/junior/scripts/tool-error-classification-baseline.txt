@@ -41,6 +41,7 @@ packages/junior-github/src/tools/update-pull-request.ts	throw new Error( "GitHub
 packages/junior-github/src/tools/update-pull-request.ts	throw new Error( `GitHub pull request draft update failed with HTTP ${response.status}: ${githubErrorMessage(payload)}`, );
 packages/junior-google/src/tools/create-doc.ts	throw new Error( deleted ? `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc was deleted.` : `Could not hand ${doc} to ${requester}: ${reason(error)}. The Doc could not be deleted either. Your own Google account still owns it, so it is not private; delete it from that account's Drive.`, { cause: error }, );
 packages/junior-google/src/tools/create-doc.ts	throw new Error( `Made ${requester} the owner of ${doc}, but could not remove your own Google account's access: ${reason(error)}. That account can still read and edit the Doc, so it is not private. The requester can remove ${ctx.accountEmail} in the Doc's sharing settings.`, { cause: error }, );
+packages/junior-google/src/tools/create-slides.ts	throw new Error( deleted ? `${failed} The presentation was deleted.` : `${failed} The presentation could not be deleted either. Your own Google account still owns it; delete it from that account's Drive.`, { cause: error }, );
 packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Google returned a slide thumbnail outside ${THUMBNAIL_HOST_SUFFIX}.`, );
 packages/junior-google/src/tools/slide-thumbnail.ts	throw new Error( `Could not download the slide thumbnail: ${download.stderr.trim() || `curl exited with ${download.exitCode}`}`, );
 packages/junior-google/src/tools/update-slides.ts	throw new Error( `The edit applied${after ? ` at revision ${after}` : ""}, but reading the changed slides to check them failed: ${error instanceof Error ? error.message : String(error)}`, { cause: error }, );
@@ -64,7 +65,6 @@ packages/junior/src/chat/tools/sandbox/edit-file.ts	throw new Error( "editFile c
 packages/junior/src/chat/tools/sandbox/read-file.ts	throw new Error( "readFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/sandbox/write-file.ts	throw new Error( "writeFile can only run when sandbox execution is enabled.", );
 packages/junior/src/chat/tools/skill/load-skill.ts	throw new Error(`failed to load ${skill.name}`);
-packages/junior/src/chat/tools/user-lookup.ts	throw new Error( `Multiple Slack users share verified email ${emailNormalized} in workspace ${teamId}`, );
 packages/junior/src/chat/tools/watch-timer.ts	throw new Error("Timer creation requires a tool-call identity");
 packages/junior/src/chat/tool-support/web/fetch-content.ts	throw new Error(message);
 packages/junior/src/chat/tools/web/image-generate.ts	throw new Error( `image generation failed: configured model "${model}" is not an image generation model. Set AI_IMAGE_MODEL to an AI Gateway image model.`, { cause: error }, );

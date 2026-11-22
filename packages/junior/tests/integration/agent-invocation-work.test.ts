@@ -12,10 +12,8 @@ import {
   getActiveAgentInvocationForConversation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import {
-  enqueueChildResultToParent,
-  withAgentInvocationResultActors,
-} from "@/chat/agent-invocations/result";
+import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import {
   getCurrentSystemPrompt,

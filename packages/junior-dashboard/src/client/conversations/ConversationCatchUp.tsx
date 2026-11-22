@@ -15,7 +15,12 @@ const cardClass =
 /** Offer the catch-up inside the "New" marker, so it takes no extra row. */
 export function ConversationCatchUpButton() {
   const state = useConversationCatchUpState();
-  if (!state || state.data || state.pending) return null;
+  const offered = state && !state.data && !state.pending;
+  // The marker row is not always rendered, so count the offer here.
+  useEffect(() => {
+    if (offered) state.markOffered();
+  });
+  if (!offered) return null;
   const { count, more } = state.unreadMessages;
   // A large count reads as "99+", like an unread badge.
   const shown = count > 99 ? "99+" : `${count}${more ? "+" : ""}`;

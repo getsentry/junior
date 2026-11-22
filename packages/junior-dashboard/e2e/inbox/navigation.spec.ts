@@ -414,15 +414,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const root = page.locator("html");
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await expect(root).toHaveAttribute("data-density", "compact");
-    // A row with a Brief shows its status; Comfortable gives its summary
-    // more lines.
+    // Comfortable gives a row's summary more lines.
     const row = page
       .getByRole("region", { exact: true, name: "Conversations" })
       .getByRole("listitem")
       .filter({
         has: page.getByRole("link", { name: /Checkout latency triage/ }),
       });
-    await expect(row.getByRole("img", { name: "Brief: Done" })).toBeVisible();
     // The clamp holds the summary's display text.
     const summary = row
       .getByText(/traced to payments-v42/)

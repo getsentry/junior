@@ -1,6 +1,7 @@
 import { bodyLimit } from "hono/body-limit";
 import { Hono } from "hono";
 import { getDb } from "@/chat/db";
+import { setSentryUser } from "@/chat/logging";
 import { contentVersion, contentVersionHeaders } from "../content-version";
 import { emptyResponse, jsonResponse, throwApiError } from "../http";
 import { CONTENT_VERSION_HEADER } from "../schema/response";
@@ -271,11 +272,13 @@ export function createConversationRoutes(
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
+        // A dashboard message steers the running Turn, like a Slack mention.
         await appendConversationMessageForViewer(
           viewer,
           conversationId,
           body,
           options,
+          "interrupt",
         ),
       );
     },
@@ -538,6 +541,8 @@ export function createConversationRoutes(
     ),
     async (context) => {
       const viewer = context.get("viewer");
+      // Count catch-up readers in Sentry.
+      setSentryUser({ id: viewer.id });
       const { conversationId } = context.req.valid("param");
       const body = context.req.valid("json");
       return jsonResponse(

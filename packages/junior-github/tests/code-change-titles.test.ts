@@ -108,6 +108,10 @@ changelog:
     const categories = parseReleaseCategories(`
 changelog:
   categories:
+    - title: Empty
+      commit_patterns: [""]
+    - title: Anything
+      commit_patterns: ["x*"]
     - title: Backreference
       commit_patterns: ["^(a)\\\\1"]
     - title: Invalid

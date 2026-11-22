@@ -1,8 +1,7 @@
-import { Clock3, X } from "lucide-react";
+import { Clock3 } from "lucide-react";
 import {
   type KeyboardEvent,
   type ReactElement,
-  type ReactNode,
   lazy,
   Suspense,
   useState,
@@ -16,7 +15,8 @@ import {
 } from "../components/ui/popover";
 import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { formatTime } from "../time";
-import { snoozeChoicesAt, type EventSnooze } from "./snoozeChoices";
+import { ButtonLabel, LOOK_CLASSES, type ButtonLook } from "./RowDismissButton";
+import { SOMEDAY, snoozeChoicesAt, type EventSnooze } from "./snoozeChoices";
 
 // The custom snooze dialog and its pull request search load on first use,
 // so the Inbox's first paint skips their code.
@@ -43,9 +43,11 @@ function targetTime(untilMs: number, nowMs: number): string {
 
 /**
  * Snooze an Inbox row, or every row of a stack, from its action bar: a menu
- * of the snooze times, and Custom…, which opens a dialog to pick a date
+ * of the snooze times, Custom…, which opens a dialog to pick a date
  * and time, Events on the subject of the row's items or on a pull request
- * or issue that the viewer names, or both. Number keys pick the menu rows.
+ * or issue that the viewer names, or both, and Someday, which lasts until
+ * the items close, such as when someone else handles them. Number keys
+ * pick the time rows and Custom….
  */
 export function RowSnoozeButton(props: {
   /** Set when the row can snooze until an Event. */
@@ -136,6 +138,15 @@ export function RowSnoozeButton(props: {
           >
             Custom…
           </button>
+          {props.eventSnooze ? (
+            <button
+              className={MENU_ROW_CLASS}
+              onClick={() => props.eventSnooze?.onSnooze(SOMEDAY)}
+              type="button"
+            >
+              Someday
+            </button>
+          ) : null}
         </PopoverContent>
       </Popover>
       {dialog ? (
@@ -145,67 +156,13 @@ export function RowSnoozeButton(props: {
             nowMs={nowMs}
             onClose={() => setDialog(false)}
             onSnooze={(end) => {
-              if (end.triggers.length > 0) props.eventSnooze?.onSnooze(end);
-              else if (end.untilMs !== undefined) props.onSnooze(end.untilMs);
+              if (end.untilClosed || end.triggers.length > 0) {
+                props.eventSnooze?.onSnooze(end);
+              } else if (end.untilMs !== undefined) props.onSnooze(end.untilMs);
             }}
           />
         </Suspense>
       ) : null}
     </>
-  );
-}
-
-/**
- * Dismiss an Inbox row. It is quiet like the other actions of its bar, and
- * has no check mark, so it does not read as an answer or an approval.
- */
-export function RowDismissButton(props: {
-  /** The action bar's look by default (`ButtonLook`). */
-  look?: ButtonLook;
-  /** "Dismiss" by default. */
-  label?: string;
-  /** The accessible name, when the label alone does not say what it acts on. */
-  name?: string;
-  onClick(): void;
-}) {
-  const label = props.label ?? "Dismiss";
-  return (
-    <Button
-      aria-label={props.name}
-      className={props.look && LOOK_CLASSES[props.look]}
-      onClick={props.onClick}
-      title={props.look === "icon" ? label : undefined}
-      variant="ghost"
-    >
-      <X aria-hidden="true" size={15} />
-      <ButtonLabel look={props.look}>{label}</ButtonLabel>
-    </Button>
-  );
-}
-
-/**
- * How Snooze and Dismiss look outside the action bar. `quiet`, in a stack
- * header: smaller, and only the icon on a narrow screen. `narrow`, next to
- * a card's main action: as tall as it on a touch screen, and only the
- * icon on a narrow screen.
- * `icon`, as a row's quick action: only the icon, with its label as the
- * name and the tooltip.
- */
-export type ButtonLook = "icon" | "narrow" | "quiet";
-
-/** The box of a button with a `ButtonLook`. */
-export const LOOK_CLASSES: Record<ButtonLook, string> = {
-  icon: "size-7 p-0",
-  narrow: "pointer-coarse:h-11 max-sm:aspect-square max-sm:px-0",
-  quiet: "h-7 gap-1.5 px-2 max-sm:w-7 max-sm:px-0",
-};
-
-/** A button's label, hidden as its look says but still its name. */
-export function ButtonLabel(props: { children: ReactNode; look?: ButtonLook }) {
-  if (!props.look) return props.children;
-  return (
-    <span className={props.look === "icon" ? "sr-only" : "max-sm:sr-only"}>
-      {props.children}
-    </span>
   );
 }

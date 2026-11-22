@@ -460,7 +460,7 @@ async function stopLockedAgentInvocationTree(
         ),
         // With `includeRoot: false`, an `appended` result sent to the
         // Conversation can be one that it already read, so only `pending`
-        // results are skipped here. See `skipUnreadResults`.
+        // results are skipped here.
         and(
           eq(juniorAgentInvocations.parentConversationId, conversationId),
           eq(juniorAgentInvocations.parentMailboxStatus, "pending"),

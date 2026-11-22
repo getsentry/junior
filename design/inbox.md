@@ -48,6 +48,11 @@ how the dashboard groups and acts on its rows.
   action that takes no words, such as a plugin's Resume, is one click.
 - The first answer or dismiss closes the item for everyone. A dismiss is
   not a decision, so it does not continue the work.
+- Dismiss closes the item for everyone. A person who wants someone else to
+  answer snoozes it until it closes. It then waits in their Snoozed view,
+  where they can still answer it, dismiss it, or wake it.
+- A card's actions read Dismiss, Snooze, then the main action, such as
+  Send, last. Every card that shows an item uses this order.
 - Every item has at least one assignee: a User, or Everyone. When no
   assignee is left, the item dismisses itself.
 - With no assignees named, the item goes to the person in the Turn, else
@@ -70,6 +75,11 @@ how the dashboard groups and acts on its rows.
 - A dismissed Automation alert hides every alert of that Automation until
   the Automation recovers: it is active, its last run succeeded, and its
   trigger is available. A pause is no recovery.
+- When a time or an Event wakes a snooze, the item's Inbox row and card
+  say why in a muted line, such as "Woke: getsentry/junior#12 is merged".
+  Only the person whose snooze woke sees it. It goes when they open the
+  item from the Inbox, act on it, or snooze it again. A Wake that they
+  pick, and a trigger that resolves the item, show nothing.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open To-do
   for a person, or an answer that its starter has not read.

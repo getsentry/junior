@@ -80,4 +80,11 @@ the request does not name the chart's Sheet. `getGoogleSlideThumbnail` renders a
 can check its work. The sandbox downloads the rendered image, which needs no
 credential.
 
+`createGoogleSlides` makes the requester the owner of a presentation that
+Junior creates. Unlike a Doc, Junior's account stays an editor, so Junior can
+build the deck over many edits. The read and edit checks still apply, so
+Junior reads or changes the deck only for people who can open or edit it
+themselves. The requester can remove Junior's account in the sharing
+settings.
+
 Plugin setup: https://junior.sentry.dev/extend/

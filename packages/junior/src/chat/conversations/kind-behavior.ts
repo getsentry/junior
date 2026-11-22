@@ -220,6 +220,14 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
   return ROOT.tools;
 }
 
+/**
+ * Return whether Turns update the Conversation metadata of this kind. Only
+ * its parent reads a Task, so a Task has no summary.
+ */
+export function hasConversationMetadata(kind: ConversationKind): boolean {
+  return kind !== "task";
+}
+
 /** Return whether a Conversation of this kind has no parent. */
 export function isTopLevelKind(kind: ConversationKind): boolean {
   return kind === "root" || kind === "automation";
