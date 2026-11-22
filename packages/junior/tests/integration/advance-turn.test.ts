@@ -9,6 +9,11 @@ import { findUnreadInputs, type InputMessage } from "@/core/turn/inbox";
 import { cancelTurn, claimTurn } from "@/core/turn/state";
 import { juniorTurns } from "@/db/schema";
 import {
+  modelCalls,
+  modelOverloaded,
+  streamDisconnected,
+} from "../fixtures/ai-emulator";
+import {
   hasJuniorPostgresTestDatabase,
   type LocalJuniorSqlFixture,
 } from "../fixtures/sql";
@@ -26,6 +31,8 @@ import {
   sendCallReply,
   sendTool,
   startTurnEngine,
+  storedReply,
+  userText,
   type Prepare,
   type Step,
   type TurnEngine,
@@ -60,13 +67,6 @@ afterEach(async () => {
   vi.restoreAllMocks();
   await engine.close();
 });
-
-function userText(text: string) {
-  return expect.objectContaining({
-    role: "user",
-    content: [{ type: "text", text }],
-  });
-}
 
 /**
  * A step whose model request runs `interrupt`, then waits until the step's
@@ -120,6 +120,7 @@ async function blockedLeaseCheck(after?: string) {
 
 describe("advanceTurn", () => {
   it("commits a step that continues the Turn and sends the next step", async () => {
+    await engine.addTestInput("How many Turns?");
     const reply = sendCallReply();
     const step = prepareWith([reply]);
     const requests: ModelRequest[] = [];
@@ -141,7 +142,10 @@ describe("advanceTurn", () => {
       leaseOwner: null,
       leaseExpiresAt: null,
     });
-    await expect(engine.loadHistory()).resolves.toEqual([reply]);
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+    ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(1);
     expect(requests).toMatchObject([
       { model: MODEL, session: CONVERSATION_ID },
@@ -149,6 +153,7 @@ describe("advanceTurn", () => {
   });
 
   it("ends the Turn when the step completes it, and sends nothing", async () => {
+    await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "All done." });
     await engine.advance(prepareWith([reply]));
 
@@ -159,23 +164,43 @@ describe("advanceTurn", () => {
       leaseOwner: null,
     });
     expect(turn.endedAt).toBeInstanceOf(Date);
-    await expect(engine.loadHistory()).resolves.toEqual([reply]);
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+    ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(0);
   });
 
   it("fails the Turn with the model error and writes no history", async () => {
+    await engine.addTestInput("How many Turns?");
+    // Injected fault: the model provider is overloaded.
+    await engine.advance(prepareWith([modelOverloaded()]));
+
+    await expect(engine.readTurn()).resolves.toMatchObject({
+      state: "failed",
+      endReason: expect.stringContaining("overloaded_error"),
+      stepSeq: 0,
+      leaseOwner: null,
+    });
+    await expect(engine.loadHistory()).resolves.toEqual([]);
+    await expect(engine.deliveredStepMessages()).resolves.toBe(0);
+  });
+
+  it("fails the Turn and writes no history when the model stream closes mid-reply", async () => {
+    await engine.addTestInput("How many Turns?");
+    // Injected fault: the stream closes after the first chunk.
     await engine.advance(
-      prepareWith([
-        createAssistantMessage({ type: "error", errorMessage: "overloaded" }),
-      ]),
+      prepareWith([streamDisconnected("All done, and nothing is left.")]),
     );
 
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "failed",
-      endReason: "overloaded",
       stepSeq: 0,
       leaseOwner: null,
     });
+    await expect(modelCalls()).resolves.toEqual([
+      expect.objectContaining({ stream: true, fault: "disconnect" }),
+    ]);
     await expect(engine.loadHistory()).resolves.toEqual([]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(0);
   });
@@ -268,6 +293,7 @@ describe("advanceTurn", () => {
   });
 
   it("stops a tool that respects the signal when the Turn is cancelled", async () => {
+    await engine.addTestInput("How many Turns?");
     const reply = sendCallReply();
     await engine.advance(prepareWith([reply]));
     const send: ToolDefinition = {
@@ -290,7 +316,10 @@ describe("advanceTurn", () => {
       state: "cancelled",
       stepSeq: 1,
     });
-    await expect(engine.loadHistory()).resolves.toEqual([reply]);
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+    ]);
     // The step that the first advance committed, and cancelTurn's message.
     await expect(engine.deliveredStepMessages()).resolves.toBe(2);
   });
@@ -299,6 +328,7 @@ describe("advanceTurn", () => {
   it.skipIf(!hasJuniorPostgresTestDatabase())(
     "goes on with the step when a lease check fails",
     async () => {
+      await engine.addTestInput("How many Turns?");
       const reply = createAssistantMessage({ type: "text", text: "All done." });
       const step = prepareWith([reply]);
       let abortedAfterFailedCheck: boolean | undefined;
@@ -333,11 +363,15 @@ describe("advanceTurn", () => {
         state: "completed",
         stepSeq: 1,
       });
-      await expect(engine.loadHistory()).resolves.toEqual([reply]);
+      await expect(engine.loadHistory()).resolves.toEqual([
+        userText("How many Turns?"),
+        storedReply(reply),
+      ]);
     },
   );
 
   it("queues the Turn again when the invocation throws, so the retry runs the step at once", async () => {
+    await engine.addTestInput("How many Turns?");
     const executed: string[] = [];
     await engine.advance(prepareWith([sendCallReply()]));
     const failure = new Error("The system prompt could not be built");
@@ -390,6 +424,7 @@ describe("advanceTurn", () => {
   });
 
   it("commits a step that succeeds on its last try, and resets the attempts", async () => {
+    const inputId = await engine.addTestInput("How many Turns?");
     const failure = new Error("The system prompt could not be built");
     for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
       await expect(
@@ -404,14 +439,17 @@ describe("advanceTurn", () => {
 
     expect(last).toHaveBeenCalledWith(
       expect.objectContaining({ attempts: MAX_ATTEMPTS }),
-      [],
+      [expect.objectContaining({ inputId })],
     );
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "queued",
       stepSeq: 1,
       attempts: 0,
     });
-    await expect(engine.loadHistory()).resolves.toEqual([reply]);
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+    ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(1);
   });
 
@@ -449,12 +487,14 @@ describe("advanceTurn", () => {
 
   it("runs a tool that must not run twice on the first attempt of its step", async () => {
     const executed: string[] = [];
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([sendCallReply()]));
 
     await engine.advance(prepareWith([], [sendTool(executed)]));
 
     expect(executed).toEqual(["call-1"]);
     await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
       expect.objectContaining({ role: "assistant" }),
       expect.objectContaining({
         role: "toolResult",
@@ -466,6 +506,7 @@ describe("advanceTurn", () => {
 
   it("skips that tool when the step runs again after a lost attempt", async () => {
     const executed: string[] = [];
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([sendCallReply()]));
     // An invocation claims the tool step, then dies before it commits.
     await claimTurn(fixture.sql, {
@@ -483,12 +524,14 @@ describe("advanceTurn", () => {
       leaseEpoch: 3,
     });
     await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
       expect.objectContaining({ role: "assistant" }),
       expect.objectContaining({ role: "toolResult", isError: true }),
     ]);
   });
   it("runs the next step on a redelivery when the send after a continue commit fails", async () => {
     const executed: string[] = [];
+    await engine.addTestInput("How many Turns?");
     const reply = sendCallReply();
     const failure = new Error("The queue is unreachable");
     // Stands in for the process dying after the commit, before the send.
@@ -521,9 +564,10 @@ describe("advanceTurn", () => {
       stepSeq: 3,
     });
     await expect(engine.loadHistory()).resolves.toEqual([
-      reply,
+      userText("How many Turns?"),
+      storedReply(reply),
       expect.objectContaining({ role: "toolResult", isError: false }),
-      done,
+      storedReply(done),
     ]);
     // Only the tool step's send went out.
     await expect(engine.deliveredStepMessages()).resolves.toBe(1);
@@ -540,7 +584,7 @@ describe("advanceTurn", () => {
     });
     await expect(engine.loadHistory()).resolves.toEqual([
       userText("How many Turns?"),
-      reply,
+      storedReply(reply),
     ]);
     const events = await createSqlConversationEventStore(
       fixture.sql,
@@ -559,11 +603,8 @@ describe("advanceTurn", () => {
   it("leaves the input unread when the model step fails", async () => {
     const inputId = await engine.addTestInput("How many Turns?");
 
-    await engine.advance(
-      prepareWith([
-        createAssistantMessage({ type: "error", errorMessage: "overloaded" }),
-      ]),
-    );
+    // Injected fault: the model provider is overloaded.
+    await engine.advance(prepareWith([modelOverloaded()]));
 
     await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
     await expect(engine.loadHistory()).resolves.toEqual([]);
@@ -593,7 +634,7 @@ describe("advanceTurn", () => {
     expect(turn.endedAt).toBeNull();
     await expect(engine.loadHistory()).resolves.toEqual([
       userText("How many Turns?"),
-      reply,
+      storedReply(reply),
     ]);
     await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId: lateInputId }),
@@ -603,6 +644,7 @@ describe("advanceTurn", () => {
 
   it("reads no inputs in a tool step", async () => {
     const executed: string[] = [];
+    await engine.addTestInput("How many Turns?");
     const reply = sendCallReply();
     await engine.advance(prepareWith([reply]));
     const inputId = await engine.addTestInput("Also send it to Sam.");
@@ -614,7 +656,8 @@ describe("advanceTurn", () => {
     expect(prepare).toHaveBeenCalledWith(expect.anything(), []);
     expect(executed).toEqual(["call-1"]);
     await expect(engine.loadHistory()).resolves.toEqual([
-      reply,
+      userText("How many Turns?"),
+      storedReply(reply),
       expect.objectContaining({ role: "toolResult" }),
     ]);
     await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([

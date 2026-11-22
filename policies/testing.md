@@ -11,7 +11,8 @@ Prefer high-fidelity behavior coverage when it is stable.
 
 - Integration tests own product and runtime behavior. Use real Junior wiring.
   Fake only Slack and LLMs, through the shared harnesses (Slack MSW/outbox
-  fixtures and model-stream). Do not mock Junior-owned modules or other
+  fixtures, model-stream, and the AI emulator in
+  `tests/fixtures/ai-emulator.ts`). Do not mock Junior-owned modules or other
   external edges such as `@vercel/sandbox` or provider SDKs; put those fakes
   in component tests.
 - Evals own agent-facing behavior: model reading, continuity, routing, reply

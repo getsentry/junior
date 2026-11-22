@@ -6,10 +6,12 @@ import { getQueueProvider } from "@/chat/queue/provider";
 import { DELIVERY_TOPIC } from "@/core/delivery/queue";
 import {
   juniorConversations,
+  juniorTurnInbox,
   juniorTurnOutbox,
   juniorTurns,
 } from "@/db/schema";
 import { deliveryConsumer } from "@/turn-steps/delivery";
+import { modelOverloaded } from "../fixtures/ai-emulator";
 import { createAssistantMessage } from "../fixtures/model-stream";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { FakeSlackAdapter } from "../fixtures/slack-harness";
@@ -219,6 +221,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
   it("checks back when another delivery holds the Conversation, and posts the reply once", async () => {
     const release = await holdDeliveryLock();
 
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
     await handledDeliveries(1);
 
@@ -236,6 +239,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
   it("retries a reply after a retryable Slack failure, then posts it", async () => {
     queueSlackApiError("chat.postMessage", { error: "fatal_error" });
 
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
     await waitFor(allSent);
 
@@ -289,6 +293,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       queueSlackRateLimit("chat.postMessage", 2);
     }
 
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
 
     // The backoff after a first failure is 1 s, so 2 s is the Retry-After.
@@ -313,7 +318,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       .set({ location: null })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
 
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
+    await expect(engine.readTurn()).resolves.toMatchObject({
+      state: "completed",
+    });
     await handledDeliveries(1);
 
     await expect(readOutbox()).resolves.toEqual([]);
@@ -343,6 +352,19 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       priority: 0,
       source: "slack",
     });
+    const childInputId = randomUUID();
+    await fixture.sql
+      .db()
+      .insert(juniorTurnInbox)
+      .values({
+        id: childInputId,
+        conversationId: childId,
+        turnId: childTurnId,
+        actorIdentityId: "identity:actor",
+        payload: { text: "How many Turns?" },
+        idempotencyKey: `slack-event:${childInputId}`,
+        sentAt: new Date(),
+      });
 
     await engine.advance(
       prepareWith([reply("Three.")]),
@@ -361,6 +383,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     // delivery message is sent.
     vi.spyOn(getQueueProvider(), "send").mockRejectedValueOnce(failure);
 
+    await engine.addTestInput("How many Turns?");
     await expect(engine.advance(prepareWith([reply("Three.")]))).rejects.toBe(
       failure,
     );
@@ -385,11 +408,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
 
     // The queue delivers the same step message again. It claims the queued
     // Turn, and the next step fails.
-    await engine.advance(
-      prepareWith([
-        createAssistantMessage({ type: "error", errorMessage: "overloaded" }),
-      ]),
-    );
+    // Injected fault: the model provider is overloaded.
+    await engine.advance(prepareWith([modelOverloaded()]));
     await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
     await waitFor(allSent);
 
@@ -403,7 +423,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       .set({ deliveryPausedAt: new Date() })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
 
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
+    await expect(engine.readTurn()).resolves.toMatchObject({
+      state: "completed",
+    });
     await handledDeliveries(1);
 
     await expect(readOutbox()).resolves.toEqual([]);
@@ -412,6 +436,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
 
   it("still posts a reply recorded before the Conversation's Delivery was paused", async () => {
     const release = await holdDeliveryLock();
+    await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
     await handledDeliveries(1);
     await expect(readOutbox()).resolves.toEqual([

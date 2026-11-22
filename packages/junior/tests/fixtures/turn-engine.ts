@@ -1,7 +1,8 @@
 // The harness of the Turn engine integration tests: one Conversation with one
-// queued Turn, and a BullMQ worker that takes the step messages. Chat config
-// reads the queue provider when it loads, so a test file sets the queue env in
-// `vi.hoisted` before this module loads. CI runs Redis at REDIS_URL. Locally,
+// queued Turn, a BullMQ worker that takes the step messages, and the AI
+// emulator for the model requests. Chat config reads the queue provider when
+// it loads, so a test file sets the queue env in `vi.hoisted` before this
+// module loads. CI runs Redis at REDIS_URL. Locally,
 // compose.yaml runs it on port 6382. Each file that starts this worker uses its
 // own Redis database, because the topic is fixed. One job at a time keeps
 // deliveries in send order, so the marker of `deliveredStepMessages` comes
@@ -9,6 +10,7 @@
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { eq } from "drizzle-orm";
+import { expect } from "vitest";
 import * as z from "zod";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -30,7 +32,12 @@ import {
   createJuniorSqlFixture,
   type LocalJuniorSqlFixture,
 } from "./sql";
-import { createAssistantMessage, fakeModelClient } from "./model-stream";
+import {
+  emulatedModelClient,
+  setModelRules,
+  type ModelRule,
+} from "./ai-emulator";
+import { createAssistantMessage } from "./model-stream";
 
 export const CONVERSATION_ID = "slack:C123:1718123456.000000";
 export const ACTOR = {
@@ -41,7 +48,7 @@ export const ACTOR = {
 export const LEASE_MS = 60_000;
 export const MAX_ATTEMPTS = 3;
 export const MODEL: ModelSettings = {
-  id: "test-model",
+  id: "anthropic/claude-opus-5.5",
   reasoning: "none",
   privacy: "private",
 };
@@ -169,7 +176,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
       fixture.sql,
       { turnId: forTurnId },
       {
-        client: step.client ?? fakeModelClient([]),
+        client: step.client ?? replyingClient([]),
         prepare: step.prepare,
         owner: "worker-a",
         leaseMs,
@@ -213,9 +220,79 @@ function inputMessage(input: UnreadInput): InputMessage {
   };
 }
 
+/**
+ * The emulator rule that answers with the text and tool calls of a reply.
+ * Tool calls keep their ids.
+ */
+function replyRule(reply: AssistantMessage): ModelRule {
+  if (reply.stopReason !== "stop" && reply.stopReason !== "toolUse") {
+    throw new Error(`The emulator cannot end a reply with ${reply.stopReason}`);
+  }
+  return {
+    reply: reply.content.map((part) => {
+      if (part.type === "text") {
+        return { type: "text", text: part.text };
+      }
+      if (part.type === "toolCall") {
+        return {
+          type: "tool_call",
+          name: part.name,
+          arguments: part.arguments,
+          id: part.id,
+        };
+      }
+      throw new Error(`The emulator cannot reply with ${part.type}`);
+    }),
+  };
+}
+
+/**
+ * A model client whose requests the emulator answers with the replies in
+ * order, one per request. A reply is a model reply or an emulator rule, such
+ * as a fault.
+ */
+function replyingClient(
+  replies: Array<AssistantMessage | ModelRule>,
+): ModelClient {
+  const client = emulatedModelClient();
+  const rules = replies.map((reply) =>
+    "role" in reply ? replyRule(reply) : reply,
+  );
+  return {
+    complete: async (request, signal) => {
+      const rule = rules.shift();
+      if (!rule) {
+        throw new Error("No model reply is left for this request");
+      }
+      await setModelRules([{ ...rule, times: 1 }]);
+      return client.complete(request, signal);
+    },
+  };
+}
+
+/**
+ * Matches the stored form of a reply that the emulator gave. The stored
+ * reply also has the usage and ids of the emulator's response.
+ */
+export function storedReply(reply: AssistantMessage) {
+  return expect.objectContaining({
+    role: "assistant",
+    content: reply.content,
+    stopReason: reply.stopReason,
+  });
+}
+
+/** Matches the stored form of an input with its text. */
+export function userText(text: string) {
+  return expect.objectContaining({
+    role: "user",
+    content: [{ type: "text", text }],
+  });
+}
+
 /** A step whose model gives the replies in order. */
 export function prepareWith(
-  replies: AssistantMessage[],
+  replies: Array<AssistantMessage | ModelRule>,
   tools: ToolDefinition[] = [],
 ): Required<Step> {
   return {
@@ -226,9 +303,7 @@ export function prepareWith(
         model: MODEL,
         inputs: inputs.map(inputMessage),
       }),
-    client: fakeModelClient(
-      replies.map((message) => ({ type: "message", message })),
-    ),
+    client: replyingClient(replies),
   };
 }
 
