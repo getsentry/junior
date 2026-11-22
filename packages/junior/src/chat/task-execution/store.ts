@@ -532,6 +532,17 @@ export async function drainConversationMailbox(
   return result.messages;
 }
 
+/** Record the input of the attempt that the lease holder starts. */
+export async function claimConversationAttempt(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<boolean> {
+  return await workState.claimConversationAttempt(args);
+}
+
 /** Acknowledge leased mailbox entries after the handler accepts responsibility. */
 export async function ackMessages(args: {
   conversationId: string;

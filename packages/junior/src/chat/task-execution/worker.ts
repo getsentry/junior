@@ -24,6 +24,7 @@ import {
   ackMessages,
   beginConversationResume,
   checkInConversationWork,
+  claimConversationAttempt,
   clearConsumedConversationWake,
   completeConversationStop,
   completeConversationWork,
@@ -566,6 +567,20 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
+      // A stop can take Event input between this read and the claim. Then
+      // select again, so the Turn never runs input that the stop held.
+      if (
+        attemptMessageIds.length > 0 &&
+        !(await claimConversationAttempt({
+          conversationId,
+          inboundMessageIds: attemptMessageIds,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          state: options.state,
+        }))
+      ) {
+        continue;
+      }
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
