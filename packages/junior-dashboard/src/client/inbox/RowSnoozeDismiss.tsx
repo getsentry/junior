@@ -36,14 +36,14 @@ const DURATION_CLASS = `${PICK_CLASS} flex flex-col items-center px-1 py-1.5`;
 
 const TIME_CLASS = "text-xs text-dashboard-text-faint tabular-nums";
 
+const CLOCK = { hour: "2-digit", hourCycle: "h23", minute: "2-digit" } as const;
+
 /** "14:00" today, else "Tue 09:00", in the browser's timezone. */
 function targetTime(untilMs: number, nowMs: number): string {
   const sameDay =
     new Date(untilMs).toDateString() === new Date(nowMs).toDateString();
   return formatTime(untilMs, {
-    hour: "2-digit",
-    hourCycle: "h23",
-    minute: "2-digit",
+    ...CLOCK,
     ...(sameDay ? undefined : { weekday: "short" }),
   });
 }
@@ -83,6 +83,8 @@ export function RowSnoozeButton(props: {
       key: String(index + 1),
       label: choice.label,
       short: choice.short,
+      // A duration cell is too narrow for a weekday; its name keeps it.
+      clock: formatTime(untilMs, CLOCK),
       time: targetTime(untilMs, nowMs),
       untilMs,
     };
@@ -148,7 +150,7 @@ export function RowSnoozeButton(props: {
                   type="button"
                 >
                   {pick.short}
-                  <span className={TIME_CLASS}>{pick.time}</span>
+                  <span className={TIME_CLASS}>{pick.clock}</span>
                 </button>
               ))}
           </div>

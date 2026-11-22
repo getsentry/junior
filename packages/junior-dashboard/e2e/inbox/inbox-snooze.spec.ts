@@ -22,6 +22,13 @@ test.describe("snooze times", { tag: "@new" }, () => {
   const custom = (page: Page) =>
     page.getByRole("dialog", { name: "Custom snooze" });
 
+  // The open row's Snooze; the other row has its own quick one.
+  const openMenu = (page: Page) =>
+    todo(page)
+      .locator("li[data-expanded]")
+      .getByRole("button", { name: "Snooze" })
+      .click();
+
   /** Step the clock until the versions poll sees the wake and the row is back. */
   const wakes = (page: Page) =>
     expect
@@ -45,11 +52,7 @@ test.describe("snooze times", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await polled;
     await expandRow(rowHead(todo(page), checkout));
-    // The open row's Snooze; the other row has its own quick one.
-    await todo(page)
-      .locator("li[data-expanded]")
-      .getByRole("button", { name: "Snooze" })
-      .click();
+    await openMenu(page);
   });
 
   test("the menu shows each choice with its time, and number keys pick them", async ({
@@ -84,6 +87,18 @@ test.describe("snooze times", { tag: "@new" }, () => {
     await page.keyboard.press("Escape");
     await expect(custom(page)).toHaveCount(0);
     await expect(rowHead(todo(page), checkout)).toBeVisible();
+  });
+
+  test("a duration that wakes tomorrow shows only its time in the cell", async ({
+    page,
+  }) => {
+    // Friday 23:00: 3 hours wakes on Saturday.
+    await page.keyboard.press("Escape");
+    await page.clock.fastForward("15:00:00");
+    await openMenu(page);
+    const threeHours = menu(page).getByRole("button", { name: /^3 hours/ });
+    await expect(threeHours).toHaveText(/^3h\s*02:00$/);
+    await expect(threeHours).toHaveAccessibleName("3 hours Sat 02:00");
   });
 
   test("1 hour snoozes the row for an hour", async ({ page }) => {
