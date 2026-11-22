@@ -2,6 +2,7 @@ import type { Page, Request } from "@playwright/test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
+import { waitForOutlineRead } from "./harness";
 
 const ROOT_ID = "internal:dashboard-qa";
 const THREAD_ID = "junior:internal:dashboard-qa:thread";
@@ -56,11 +57,7 @@ test("shows Threads under their parent and in details", async ({
   );
   await expect(threadRow).toHaveAttribute("aria-current", "page");
   // Each visit reads the outline of its Conversation.
-  const outlineRead = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname ===
-      `/api/conversations/${encodeURIComponent(ROOT_ID)}/outline`,
-  );
+  const outlineRead = waitForOutlineRead(page, ROOT_ID);
   await details.getByRole("link", { name: "Dashboard QA edge cases" }).click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
@@ -369,11 +366,7 @@ test("links Threads and shows Tasks as chips in the parent transcript", async ({
   await screenshot(page, "conversation-thread-cards", { view: "mobile" });
   await page.setViewportSize({ height: 900, width: 1440 });
   // Each visit reads the outline of its Conversation.
-  const outlineRead = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname ===
-      `/api/conversations/${encodeURIComponent(THREAD_ID)}/outline`,
-  );
+  const outlineRead = waitForOutlineRead(page, THREAD_ID);
   await threadCard.click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,

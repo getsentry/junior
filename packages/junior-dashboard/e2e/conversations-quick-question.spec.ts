@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
+import { waitForOutlineRead } from "./harness";
 
 const conversationId = "slack:CQA123:1770003600.000200";
 
@@ -249,11 +250,7 @@ test("asks a quick question about selected reply text", async ({
     },
   );
   // The fork's page reads its outline.
-  const outlineRead = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname ===
-      `/api/conversations/${encodeURIComponent(forkId)}/outline`,
-  );
+  const outlineRead = waitForOutlineRead(page, forkId);
   await panel
     .getByRole("button", { name: "Keep as fork", exact: true })
     .click();

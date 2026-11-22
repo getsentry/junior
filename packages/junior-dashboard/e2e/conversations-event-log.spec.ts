@@ -7,6 +7,7 @@ import {
   mockDashboardApis,
   routeConversationVersion,
   withRequestedMailbox,
+  waitForOutlineRead,
 } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -521,10 +522,9 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(linkedEntry).toBeFocused();
   await linkedEntry.click();
   await expect(linked).toBeVisible();
-  const outlineRead = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname ===
-      `/api/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}/outline`,
+  const outlineRead = waitForOutlineRead(
+    page,
+    "slack:CQA123:1770003600.000200",
   );
   await page
     .getByRole("navigation", { name: "Your conversations" })

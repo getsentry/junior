@@ -95,6 +95,17 @@ const BACKGROUND_READS: readonly RegExp[] = [
   /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
 ];
 
+/**
+ * Wait for the next outline read of a Conversation. Each visit to its page
+ * reads the outline once, so a test that ends on the page waits for it.
+ */
+export function waitForOutlineRead(page: Page, conversationId: string) {
+  const path = `/api/conversations/${encodeURIComponent(conversationId)}/outline`;
+  return page.waitForResponse(
+    (response) => new URL(response.url()).pathname === path,
+  );
+}
+
 /** Whether a request is a background read that may outlive a test. */
 function isBackgroundRead(request: PageRequest): boolean {
   const { pathname } = new URL(request.url());

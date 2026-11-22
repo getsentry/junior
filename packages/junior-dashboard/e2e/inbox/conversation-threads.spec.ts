@@ -2,6 +2,7 @@ import type { Page, Request } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
+import { waitForOutlineRead } from "../harness";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -381,11 +382,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "conversation-thread-cards", { view: "mobile" });
     await page.setViewportSize({ height: 900, width: 1440 });
     // Each visit reads the outline of its Conversation.
-    const outlineRead = page.waitForResponse(
-      (response) =>
-        new URL(response.url()).pathname ===
-        `/api/conversations/${encodeURIComponent(THREAD_ID)}/outline`,
-    );
+    const outlineRead = waitForOutlineRead(page, THREAD_ID);
     await threadCard.click();
     await expect(page).toHaveURL(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,

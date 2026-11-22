@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
+import { waitForOutlineRead } from "./harness";
 
 // Three open questions. "Handle the negative invoices" is also for a
 // teammate; the other two are for the viewer alone.
@@ -16,11 +17,7 @@ async function openConversation(page: Page, baseURL: string) {
  * Reload the Conversation, and wait for the outline that each visit reads.
  */
 async function reloadConversation(page: Page) {
-  const outlineRead = page.waitForResponse(
-    (response) =>
-      new URL(response.url()).pathname ===
-      `/api/conversations/${encodeURIComponent(THREE_QUESTIONS_ID)}/outline`,
-  );
+  const outlineRead = waitForOutlineRead(page, THREE_QUESTIONS_ID);
   await page.reload();
   await outlineRead;
 }
