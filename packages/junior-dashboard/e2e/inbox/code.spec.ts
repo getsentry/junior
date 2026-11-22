@@ -1,4 +1,8 @@
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import {
+  openRepositoryConversations,
+  pinFirstRepositoryConversation,
+} from "../repositoryConversations";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
@@ -223,5 +227,122 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByText("Last activity 10d ago · opened 12d ago"),
     ).toBeVisible();
+  });
+
+  test("the repository Conversations tab keeps a pin in place, and Pinned lists only the pins", async ({
+    page,
+    dashboard,
+  }) => {
+    await pinFirstRepositoryConversation(page);
+    const list = await openRepositoryConversations(page, dashboard.baseURL);
+    const pinned = list.getByRole("link", { name: "Open Pinned conversation" });
+    const unpinned = list.getByRole("link", {
+      name: "Open Unpinned conversation",
+    });
+    await expect(pinned).toBeVisible();
+    await expect(unpinned).toBeVisible();
+    await expect(list.getByRole("region", { name: /^Pinned/ })).toHaveCount(0);
+    // Only the pin has the pin marker.
+    await expect(list.getByRole("img", { name: "Pinned" })).toHaveCount(1);
+
+    // Pinned is a tab of the state filters, which start on All.
+    const rows = list.getByRole("navigation", {
+      name: "Conversations to show",
+    });
+    const all = rows.getByRole("link", { exact: true, name: "All" });
+    const pinnedTab = rows.getByRole("link", { exact: true, name: "Pinned" });
+    await expect(all).toHaveAttribute("aria-current", "page");
+    await pinnedTab.click();
+    await expect(page).toHaveURL(/\/conversations\?pinned=1$/);
+    await expect(pinned).toBeVisible();
+    await expect(unpinned).toHaveCount(0);
+    await page.reload();
+    await expect(pinnedTab).toHaveAttribute("aria-current", "page");
+    await expect(pinned).toBeVisible();
+    await expect(unpinned).toHaveCount(0);
+
+    await all.click();
+    await expect(page).not.toHaveURL(/[?&]pinned=1/);
+    await expect(unpinned).toBeVisible();
+  });
+
+  test("the repository Conversations tab says how to pin when Pinned finds no pin", async ({
+    page,
+    dashboard,
+  }) => {
+    const list = await openRepositoryConversations(page, dashboard.baseURL);
+    await expect(
+      list.getByRole("link", { name: /^Open / }).first(),
+    ).toBeVisible();
+    await list
+      .getByRole("navigation", { name: "Conversations to show" })
+      .getByRole("link", { exact: true, name: "Pinned" })
+      .click();
+    await expect(list.getByText(/^Nothing pinned\./)).toBeVisible();
+    await expect(list.getByRole("link", { name: /^Open / })).toHaveCount(0);
+  });
+
+  test("the repository Conversations tab filters by state, also after a reload", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.route(
+      /\/api\/conversations\?.*codeRepositoryId=/,
+      async (route) => {
+        const response = await route.fetch();
+        const feed = await response.json();
+        const [first] = feed.conversations;
+        const listed = (name: string, treeState: string) => ({
+          ...first,
+          conversationId: `${first.conversationId}-${treeState}`,
+          displayTitle: name,
+          pinnedAt: null,
+          treeState,
+        });
+        return route.fulfill({
+          response,
+          json: {
+            ...feed,
+            conversations: [
+              listed("Working conversation", "working"),
+              listed("Done conversation", "done"),
+            ],
+          },
+        });
+      },
+    );
+    const list = await openRepositoryConversations(page, dashboard.baseURL);
+    const working = list.getByRole("link", {
+      name: "Open Working conversation",
+    });
+    const done = list.getByRole("link", { name: "Open Done conversation" });
+    await expect(working).toBeVisible();
+    await expect(done).toBeVisible();
+
+    const filters = list.getByRole("navigation", {
+      name: "Conversations to show",
+    });
+    await filters.getByRole("link", { name: "Working" }).click();
+    await expect(page).toHaveURL(/\/conversations\?state=working$/);
+    await expect(working).toBeVisible();
+    await expect(done).toHaveCount(0);
+    await page.reload();
+    await expect(
+      filters.getByRole("link", { name: "Working" }),
+    ).toHaveAttribute("aria-current", "page");
+    await expect(working).toBeVisible();
+    await expect(done).toHaveCount(0);
+
+    await filters.getByRole("link", { name: "Done" }).click();
+    await expect(done).toBeVisible();
+    await expect(working).toHaveCount(0);
+    await filters.getByRole("link", { name: "Watching" }).click();
+    await expect(
+      list.getByText("No conversations match these filters."),
+    ).toBeVisible();
+    await filters.getByRole("link", { name: "All" }).click();
+    await expect(page).not.toHaveURL(/[?&]state=/);
+    await expect(working).toBeVisible();
+    await expect(done).toBeVisible();
   });
 });
