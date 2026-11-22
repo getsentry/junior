@@ -20,6 +20,12 @@ import {
   getDb,
   getSqlExecutor,
 } from "@/chat/db";
+import {
+  saveHeldInput,
+  stopConversationTree,
+} from "@/chat/conversations/session-stop";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
@@ -67,6 +73,7 @@ async function addParticipant(args: {
 describe("conversation auto-archive API", () => {
   afterEach(async () => {
     delete process.env["JUNIOR_SCHEDULER_SECRET"];
+    await disconnectStateAdapter();
     await closeDb();
   });
 
@@ -573,6 +580,13 @@ describe("conversation auto-archive API", () => {
     const childAgentTodoId = "local:test:archive-needs-child-agent-todo";
     const unreadId = "local:test:archive-needs-unread";
     const readId = "local:test:archive-needs-read";
+    // Only an action item that the tree added needs a person. An item that
+    // another Conversation added and linked here does not keep the tree.
+    const linkedItemId = "local:test:archive-needs-linked-item";
+    // A stopped tree counts from its stop, even while held input keeps
+    // adding Messages. Its twin stopped inside the grace period.
+    const stoppedId = "local:test:archive-stopped";
+    const stoppedRecentlyId = "local:test:archive-stopped-recently";
     const ids = [
       childItemId,
       childItemClosedId,
@@ -582,6 +596,9 @@ describe("conversation auto-archive API", () => {
       childAgentTodoId,
       unreadId,
       readId,
+      linkedItemId,
+      stoppedId,
+      stoppedRecentlyId,
     ];
     for (const conversationId of ids) {
       await getConversationStore().recordActivity({
@@ -637,6 +654,49 @@ describe("conversation auto-archive API", () => {
         });
       }
     }
+    await insertInboxItem(getDb(), {
+      owner: { id: `${childItemId}:child`, kind: "conversation" },
+      assignedToEveryone: true,
+      assigneeUserIds: [],
+      body: "Ship the linked release now?",
+      conversationIds: [`${childItemId}:child`, linkedItemId],
+      dedupeKey: "archive-needs:linked",
+      kind: "action",
+      nowMs: quietMs,
+      request: REQUEST,
+      title: "Linked release",
+      visibility: "public",
+    });
+    await stopConversationTree([stoppedId], { stoppedAtMs: quietMs });
+    await stopConversationTree([stoppedRecentlyId], { stoppedAtMs: nowMs });
+    for (const conversationId of [stoppedId, stoppedRecentlyId]) {
+      const inboundMessageId = `${conversationId}:watch-event`;
+      await saveHeldInput(conversationId, [
+        {
+          conversationId,
+          createdAtMs: nowMs,
+          delivery: "defer",
+          inboundMessageId,
+          input: {
+            authorId: "github",
+            authorIdentityId: SYSTEM_IDENTITY_ID,
+            metadata: {
+              event: {
+                eventKey: inboundMessageId,
+                eventType: "pull_request.merged",
+                identifier: "getsentry/junior#1",
+                namespace: "github",
+                trustedSummary: "The pull request was merged.",
+              },
+              kind: "event",
+            },
+            text: "The pull request was merged.",
+          },
+          receivedAtMs: nowMs,
+          source: "event",
+        },
+      ]);
+    }
     const addTodo = async (
       conversationId: string,
       assignee: { conversationId: string } | { userId: string },
@@ -683,15 +743,22 @@ describe("conversation auto-archive API", () => {
     expect(response.status).toBe(200);
     // A tree that needs a person is not a candidate.
     await expect(response.json()).resolves.toEqual({
-      archived: 4,
-      scanned: 4,
+      archived: 6,
+      scanned: 6,
     });
     const archived = await getDb()
       .select({ conversationId: juniorConversations.conversationId })
       .from(juniorConversations)
       .where(isNotNull(juniorConversations.archivedAt));
     expect(archived.map((row) => row.conversationId).sort()).toEqual(
-      [childItemClosedId, todoDoneId, childAgentTodoId, readId].sort(),
+      [
+        childItemClosedId,
+        todoDoneId,
+        childAgentTodoId,
+        readId,
+        linkedItemId,
+        stoppedId,
+      ].sort(),
     );
   });
 });
