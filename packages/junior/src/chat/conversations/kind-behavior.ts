@@ -114,6 +114,13 @@ const ROOT: TurnBehavior = {
   },
 };
 
+// A Turn on a root that no person sent, such as an Event. It did not come
+// from a request, so it gets no related Conversations.
+const ROOT_RUNTIME_TURN: TurnBehavior = {
+  ...ROOT,
+  relatedConversations: false,
+};
+
 // A person's Turn in a Thread runs like a Turn on a root, but it does not
 // start or message child agents: their results would report to the parent as
 // the wrong Actor.
@@ -199,6 +206,7 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   ...ROOT,
   promptMode: "automation",
   sender: "person",
+  relatedConversations: false,
 };
 
 /** Return the behavior of one Turn. */
@@ -206,7 +214,7 @@ export function turnBehavior(args: {
   kind: ConversationKind;
   personInput: boolean;
 }): TurnBehavior {
-  if (args.kind === "root") return ROOT;
+  if (args.kind === "root") return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
   if (args.kind === "automation") {
     return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
   }

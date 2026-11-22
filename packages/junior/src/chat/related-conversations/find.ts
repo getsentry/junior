@@ -17,6 +17,7 @@ import {
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
+import { ProviderError } from "@/chat/services/provider-error";
 import {
   getConversationEventStore,
   getConversationStore,
@@ -75,23 +76,14 @@ function toRelatedConversation(result: SummarizedResult): RelatedConversation {
   };
 }
 
-/**
- * Return the related Conversations context for a person's first request in
- * a root Conversation, or nothing. The reranker decides relevance, so most
- * requests get none.
- */
-export async function findRelatedConversations(
+async function rankRelatedConversations(
   ctx: UserPromptContext,
-): Promise<UserPromptContribution[] | undefined> {
-  const query = ctx.text.trim().slice(0, MAX_QUERY_CHARS);
-  // The text holds only the request of the Turn. A Turn with none, such as
-  // an Event or a child agent result, gets no related work.
-  if (!query || !ctx.conversationId) return undefined;
-  if (!(await isFirstRequest(ctx, ctx.conversationId))) return undefined;
-
+  conversationId: string,
+  query: string,
+): Promise<RelatedConversation[]> {
   const results = await searchConversations(getDb(), {
     embedder: ctx.embedder,
-    requesterConversationId: ctx.conversationId,
+    requesterConversationId: conversationId,
     search: {
       afterMs: Date.now() - RECENT_ACTIVITY_MS,
       includeArchived: false,
@@ -109,7 +101,7 @@ export async function findRelatedConversations(
   ctx.setSpanAttributes({
     "app.related-conversations.candidate.count": candidates.length,
   });
-  if (candidates.length === 0) return undefined;
+  if (candidates.length === 0) return [];
 
   const { scores } = await ctx.reranker.rerank({
     documents: candidates.map((result) =>
@@ -128,6 +120,34 @@ export async function findRelatedConversations(
     "app.related-conversations.injected.count": related.length,
     "app.related-conversations.score.max": Math.max(...scores),
   });
+  return related;
+}
+
+/**
+ * Return the related Conversations context for a person's first request in
+ * a root Conversation, or nothing. The reranker decides relevance, so most
+ * requests get none.
+ */
+export async function findRelatedConversations(
+  ctx: UserPromptContext,
+): Promise<UserPromptContribution[] | undefined> {
+  const query = ctx.text.trim().slice(0, MAX_QUERY_CHARS);
+  // The text holds only the request of the Turn. A Turn with none, such as
+  // an Event or a child agent result, gets no related work.
+  if (!query || !ctx.conversationId) return undefined;
+  if (!(await isFirstRequest(ctx, ctx.conversationId))) return undefined;
+  let related: RelatedConversation[];
+  try {
+    related = await rankRelatedConversations(ctx, ctx.conversationId, query);
+  } catch (error) {
+    // A provider message can echo the request or other summaries, so log
+    // only its kind. Other failures reach the hook host, which logs them.
+    if (!(error instanceof ProviderError)) throw error;
+    ctx.log.warn("related_conversations_provider_failed", {
+      "error.type": error.kind,
+    });
+    return undefined;
+  }
   if (related.length === 0) return undefined;
   return [relatedConversationsContext({ conversations: related })];
 }

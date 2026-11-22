@@ -87,12 +87,21 @@ const automationTurn = {
 describe("turnBehavior", () => {
   it.each([
     { kind: "root", personInput: true, expected: rootTurn },
-    { kind: "root", personInput: false, expected: rootTurn },
+    {
+      kind: "root",
+      personInput: false,
+      expected: { ...rootTurn, relatedConversations: false },
+    },
     // A person's reply in the run's thread runs like a root Turn.
     {
       kind: "automation",
       personInput: true,
-      expected: { ...rootTurn, promptMode: "automation", sender: "person" },
+      expected: {
+        ...rootTurn,
+        promptMode: "automation",
+        sender: "person",
+        relatedConversations: false,
+      },
     },
     // The dispatch Turn and every Watch Event Turn.
     { kind: "automation", personInput: false, expected: automationTurn },
