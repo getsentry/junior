@@ -409,4 +409,23 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     await expect(readOutbox()).resolves.toEqual([]);
     expect(postedTexts()).toEqual([]);
   });
+
+  it("still posts a reply recorded before the Conversation's Delivery was paused", async () => {
+    const release = await holdDeliveryLock();
+    await engine.advance(prepareWith([reply("Three.")]));
+    await handledDeliveries(1);
+    await expect(readOutbox()).resolves.toEqual([
+      expect.objectContaining({ state: "pending" }),
+    ]);
+
+    await fixture.sql
+      .db()
+      .update(juniorConversations)
+      .set({ deliveryPausedAt: new Date() })
+      .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
+    await release();
+    await waitFor(allSent);
+
+    expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
+  });
 });
