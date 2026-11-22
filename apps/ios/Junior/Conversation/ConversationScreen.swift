@@ -8,6 +8,7 @@ struct ConversationScreen: View {
   @State private var model: ConversationModel
   @State private var showDetails = false
   @State private var shareURL: URL?
+  @State private var renaming: MCPConversation?
   @State private var atBottom = true
   @State private var width: CGFloat = 0
 
@@ -45,6 +46,10 @@ struct ConversationScreen: View {
         app.openDetails = false
         showDetails = true
       }
+      if loaded, app.openRename {
+        app.openRename = false
+        renaming = model.conversation
+      }
     }
     .sheet(isPresented: Binding(get: { showDetails && !detailsBeside }, set: { showDetails = $0 })) {
       details
@@ -54,6 +59,9 @@ struct ConversationScreen: View {
     }
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
+    }
+    .renameAlert($renaming) { _, title in
+      Task { await model.write("renameConversation", ["title": .string(title)], as: RenameResult.self, app: app) }
     }
   }
 
@@ -99,6 +107,7 @@ struct ConversationScreen: View {
             Task { await model.write("pinConversation", ["pinned": .bool(!pinned)], as: PinResult.self, app: app) }
           }
         }
+        Button("Rename", systemImage: "pencil") { renaming = conversation }
         Button("Unfollow", systemImage: "bell.slash") {
           Task {
             if await model.write(
@@ -200,6 +209,7 @@ struct ConversationScreen: View {
 }
 
 private struct PinResult: Decodable, Sendable { var pinnedAt: Timestamp? }
+private struct RenameResult: Decodable, Sendable { var title: String }
 private struct ArchiveResult: Decodable, Sendable { var archivedAt: Timestamp? }
 private struct SubscriptionResult: Decodable, Sendable { var subscribed: Bool }
 
