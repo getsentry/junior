@@ -392,7 +392,7 @@ function pluginRouteContext(
   } satisfies PluginApiRouteRequestContext;
 }
 
-// These paths redirect to the host image, so it cannot be one of them.
+// These routes redirect to the host image, so one of them here would loop.
 const FIXED_IMAGE_PATHS = [
   "/favicon.ico",
   DASHBOARD_AVATAR_HEADER_PATH,
@@ -404,13 +404,22 @@ const PATH_BASE = "https://dashboard.invalid";
 function hostImageUrl(option: string, value: string | undefined) {
   if (value === undefined) return undefined;
   const url = URL.parse(value, PATH_BASE);
-  if (url && !FIXED_IMAGE_PATHS.includes(url.pathname)) {
-    if (url.origin === PATH_BASE) return url.pathname + url.search + url.hash;
-    if (url.protocol === "https:") return url.href;
+  if (url?.origin === PATH_BASE) return url.pathname + url.search + url.hash;
+  if (url?.protocol === "https:") return url.href;
+  throw new Error(`dashboard.${option} must be an https URL or a path`);
+}
+
+/** Redirect to the host image unless it is one of this dashboard's image routes. */
+function redirectToHostImage(c: Context, href: string | undefined) {
+  if (!href) return undefined;
+  const target = new URL(href, c.req.url);
+  if (
+    target.origin === new URL(c.req.url).origin &&
+    FIXED_IMAGE_PATHS.includes(target.pathname)
+  ) {
+    return undefined;
   }
-  throw new Error(
-    `dashboard.${option} must be an https URL or a path, and not a dashboard image path`,
-  );
+  return c.redirect(href);
 }
 
 /** Create the authenticated dashboard Hono app mounted by Nitro. */
@@ -512,12 +521,14 @@ export function createDashboardApp(
       c.req.path.slice(DASHBOARD_ASSETS_PATH.length + 1),
     ),
   );
-  app.get("/favicon.ico", (c) =>
-    icons.faviconUrl ? c.redirect(icons.faviconUrl) : renderFavicon(),
+  app.get(
+    "/favicon.ico",
+    (c) => redirectToHostImage(c, icons.faviconUrl) ?? renderFavicon(),
   );
   app.get(DASHBOARD_MANIFEST_PATH, () => renderManifest(basePath, agentName));
-  app.get(DASHBOARD_INSTALL_ICON_PATH, (c) =>
-    icons.iconUrl ? c.redirect(icons.iconUrl) : renderInstallIcon(),
+  app.get(
+    DASHBOARD_INSTALL_ICON_PATH,
+    (c) => redirectToHostImage(c, icons.iconUrl) ?? renderInstallIcon(),
   );
   app.get(DASHBOARD_SERVICE_WORKER_PATH, () =>
     renderServiceWorker(basePath, agentName),
@@ -824,7 +835,8 @@ export function createDashboardApp(
     });
   });
   app.get(DASHBOARD_AVATAR_HEADER_PATH, (c) => {
-    if (icons.iconUrl) return c.redirect(icons.iconUrl);
+    const redirect = redirectToHostImage(c, icons.iconUrl);
+    if (redirect) return redirect;
     return new Response(readDashboardAvatarHeader(), {
       headers: {
         "cache-control": "public, max-age=0, must-revalidate",
