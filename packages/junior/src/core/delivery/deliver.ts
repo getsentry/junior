@@ -97,9 +97,7 @@ export async function deliverTurn(
   message: DeliveryMessage,
   senders: DeliverySenders,
 ): Promise<void> {
-  if (!(await recordReplies(executor, message))) {
-    return;
-  }
+  await recordReplies(executor, message);
   for (;;) {
     // oxlint-disable-next-line no-await-in-loop -- Rows go out one at a time, in event order.
     const next = await executor.transaction(() =>
@@ -117,13 +115,13 @@ export async function deliverTurn(
 }
 
 /**
- * Adds an outbox row for each reply of the Turn that has none. Returns false
- * when the Conversation does not deliver now.
+ * Adds an outbox row for each reply of the Turn that has none, but only while
+ * the Conversation delivers. Rows that already exist still send.
  */
 function recordReplies(
   executor: JuniorSqlDatabase,
   message: DeliveryMessage,
-): Promise<boolean> {
+): Promise<void> {
   return executor.transaction(async () => {
     const db = executor.db();
     const [conversation] = await db
@@ -136,7 +134,7 @@ function recordReplies(
       .where(eq(juniorConversations.conversationId, message.conversationId))
       .limit(1);
     if (!conversation) {
-      return false;
+      return;
     }
     const location = conversation.location
       ? locationSchema.parse(conversation.location)
@@ -149,7 +147,7 @@ function recordReplies(
       }) ||
       (await isConversationDeliveryPaused(message.conversationId))
     ) {
-      return false;
+      return;
     }
     const events = await db
       .select()
@@ -183,7 +181,6 @@ function recordReplies(
           target: [juniorTurnOutbox.conversationId, juniorTurnOutbox.eventSeq],
         });
     }
-    return true;
   });
 }
 
