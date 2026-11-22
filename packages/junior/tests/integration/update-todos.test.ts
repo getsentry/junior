@@ -343,7 +343,7 @@ describe("updateTodos", () => {
     }
   });
 
-  it("closes a child's open To-dos once its completed or stopped work ends after them", async () => {
+  it("closes a child's open To-dos once its completed or stopped result reaches the parent after them", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const tick = () => vi.setSystemTime(Date.now() + 1_000);
     const harness = await createHarness();
@@ -371,14 +371,14 @@ describe("updateTodos", () => {
           (todo) => [todo.title, todo.status, todo.changedByAgent?.name],
         );
 
-      // A `reply` alone ends no work, so nothing closes yet.
+      // A `reply` that answers the parent closes them as it arrives.
+      tick();
       await harness.reply(children.completed, "Reviewed.");
       await expect(readTodos()).resolves.toContainEqual([
         "Echo open",
-        "open",
-        undefined,
+        "done",
+        "Echo",
       ]);
-      tick();
       await harness.finish({
         invocationId: children.completed.invocationId,
         result: "Done.",
@@ -410,6 +410,43 @@ describe("updateTodos", () => {
       await expect(readTodos()).resolves.toEqual(expected);
       // The read wrote the change once; a second read changes nothing.
       await expect(readTodos()).resolves.toEqual(expected);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("leaves a To-do given after a child's work ended open when its result arrives late", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const tick = () => vi.setSystemTime(Date.now() + 1_000);
+    const harness = await createHarness();
+    try {
+      tick();
+      await harness.updateTodos({
+        add: [{ title: "Echo open", assignee: "Echo" }],
+      });
+      tick();
+      const ended = await completeAgentInvocation({
+        invocationId: harness.child.invocationId,
+        result: "Done.",
+        status: "completed",
+      });
+      if (!ended || !isTerminalAgentInvocation(ended)) {
+        throw new Error("Echo did not end");
+      }
+      tick();
+      await harness.updateTodos({
+        add: [{ title: "Echo next", assignee: "Echo" }],
+      });
+      // The result is as old as the end of the work, not as its append.
+      tick();
+      await harness.resend(ended);
+
+      await expect(
+        listTodos(getSqlExecutor(), parentConversationId),
+      ).resolves.toMatchObject([
+        { title: "Echo open", status: "done" },
+        { title: "Echo next", status: "open" },
+      ]);
     } finally {
       await harness.close();
     }

@@ -24,10 +24,9 @@ import {
 } from "@/chat/agent-invocations/store";
 import { stopConversationTree } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
-import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
-import { changeTodos, listTodos } from "@/chat/todos/store";
 import {
   countAutomatedTurn,
   getAutomatedTurnLimitState,
@@ -183,62 +182,6 @@ describe("child agents that no Agent invocation names", () => {
           state: harness.state,
         }),
       ).resolves.toMatchObject({ consecutiveAutomatedTurns: 0 });
-    } finally {
-      await harness.close();
-    }
-  });
-
-  it("closes the parent's To-dos of a child once its reply ends its work", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const childId = await spawnChild(harness, "parent-turn:call-1");
-      const assignTodo = async (title: string) => {
-        vi.setSystemTime(Date.now() + 1_000);
-        await changeTodos(getSqlExecutor(), {
-          change: {
-            add: [
-              { assignee: { conversationId: childId }, status: "open", title },
-            ],
-            remove: [],
-            update: [],
-          },
-          conversationId: slackParentConversationId,
-          nowMs: Date.now(),
-        });
-      };
-      const readTodos = async () =>
-        (await listTodos(getSqlExecutor(), slackParentConversationId)).map(
-          (todo) => [
-            todo.title,
-            todo.status,
-            todo.changedByAgent?.conversationId,
-          ],
-        );
-      await assignTodo("Check the deploy");
-      // The child still has its task, so the To-do stays open.
-      await expect(readTodos()).resolves.toEqual([
-        ["Check the deploy", "open", undefined],
-      ]);
-      vi.setSystemTime(Date.now() + 1_000);
-      harness.onPersonRun(
-        async (run) =>
-          await finishRun(
-            run,
-            { reply: { text: "Deploy is green.", toolCallId: "reply-1" } },
-            "Deploy is green.",
-          ),
-      );
-      await harness.drain(childId);
-      // A To-do given to the idle child after its work ends stays open.
-      await assignTodo("Watch the canary");
-
-      const expected = [
-        ["Check the deploy", "done", childId],
-        ["Watch the canary", "open", undefined],
-      ];
-      await expect(readTodos()).resolves.toEqual(expected);
-      await expect(readTodos()).resolves.toEqual(expected);
     } finally {
       await harness.close();
     }

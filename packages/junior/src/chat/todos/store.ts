@@ -2,7 +2,7 @@
  * Durable To-dos of a Conversation. The list's own agent changes them with
  * `updateTodos`; a person can change a status in the dashboard. A child
  * agent can close the To-dos assigned to it, and a read closes the rest
- * once the child has finished or stopped. Each
+ * once the child's result has reached this Conversation. Each
  * change takes a new version from one global sequence, so the next Turn can
  * show the model only the changes that it has not seen.
  */
@@ -15,8 +15,9 @@ import {
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
-import { listChildAgents } from "@/chat/agent-invocations/list";
-import type { ChildAgent } from "@/chat/agent-invocations/types";
+import { readChildResultStatus } from "@/chat/agent-invocations/child-message";
+import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { todoRef } from "./tool-output";
@@ -361,24 +362,49 @@ function rejectUnassigned(ids: readonly number[]): never {
   );
 }
 
-/** The status that a child agent's own state gives its open To-dos. */
-function childTodoStatus(
-  child: ChildAgent | undefined,
-  todo: Todo,
-): ClosedTodoStatus | undefined {
-  // Only work that ended after the To-do's last change closes it, so a
-  // To-do given to an idle child stays open until the child works on it.
-  if (!child || child.updatedAtMs <= todo.updatedAtMs) return undefined;
-  if (child.status === "completed") return "done";
-  if (child.status === "stopped") return "dropped";
-  return undefined;
+/** A child's result that reached a Conversation: who sent it, how it ended, and when. */
+type ReceivedChildResult = {
+  atMs: number;
+  childConversationId: string;
+  status: ClosedTodoStatus;
+};
+
+/**
+ * Read the child results that wait in a Conversation's mailbox. A completed
+ * result closes the child's To-dos as done, and a stopped one drops them.
+ * A Turn reads its To-dos when it builds its prompt, before it takes its
+ * input out of the mailbox, so a read sees every result there.
+ */
+async function readReceivedChildResults(
+  conversationId: string,
+): Promise<ReceivedChildResult[]> {
+  const work = await getConversationWorkState({ conversationId });
+  return (work?.execution.pendingMessages ?? []).flatMap((message) => {
+    const sender = readInboundMessageSender(message);
+    const result = readChildResultStatus(message);
+    const status =
+      result === "completed"
+        ? "done"
+        : result === "stopped"
+          ? "dropped"
+          : undefined;
+    return sender && status
+      ? [
+          {
+            atMs: message.createdAtMs,
+            childConversationId: sender.conversationId,
+            status,
+          },
+        ]
+      : [];
+  });
 }
 
 /**
- * Close the open To-dos of a Conversation whose child agent finished or
- * stopped after the To-do last changed: done when it completed, dropped
- * when it stopped. The child's own state decides it, so a repeat read
- * changes nothing.
+ * Close the open To-dos of a Conversation whose child's result reached it
+ * after the To-do last changed: done when the child completed, dropped when
+ * it was stopped. The received results decide it, so a repeat read changes
+ * nothing.
  */
 async function settleChildTodos(
   executor: JuniorSqlDatabase,
@@ -389,21 +415,29 @@ async function settleChildTodos(
     (todo) => todo.assignee.kind === "agent" && isOpenTodoStatus(todo.status),
   );
   if (assigned.length === 0) return false;
-  const children = new Map(
-    (await listChildAgents(conversationId)).map((child) => [
-      child.childConversationId,
-      child,
-    ]),
-  );
+  const results = await readReceivedChildResults(conversationId);
+  if (results.length === 0) return false;
   const byChild = new Map<string, Map<number, ClosedTodoStatus>>();
   for (const todo of assigned) {
     if (todo.assignee.kind !== "agent") continue;
     const childId = todo.assignee.conversationId;
-    const status = childTodoStatus(children.get(childId), todo);
-    if (!status) continue;
+    // The newest result after the To-do's last change decides it. A To-do
+    // given to a child after its result waits for the next one.
+    const latest = results
+      .filter(
+        (result) =>
+          result.childConversationId === childId &&
+          result.atMs > todo.updatedAtMs,
+      )
+      .reduce<ReceivedChildResult | undefined>(
+        (newest, result) =>
+          !newest || result.atMs >= newest.atMs ? result : newest,
+        undefined,
+      );
+    if (!latest) continue;
     const statuses =
       byChild.get(childId) ?? new Map<number, ClosedTodoStatus>();
-    statuses.set(todo.id, status);
+    statuses.set(todo.id, latest.status);
     byChild.set(childId, statuses);
   }
   if (byChild.size === 0) return false;

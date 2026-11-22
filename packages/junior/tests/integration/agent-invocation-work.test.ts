@@ -197,6 +197,8 @@ describe("agent invocation conversation work", () => {
                 conversationId: created.childConversationId,
                 turnId: getAgentInvocationTurnId(created.invocationId),
               },
+              // It is the child's result, and it stores how the work ended.
+              result: { status: "completed" },
             },
             text: expect.stringMatching(
               /^<agent-result [^>]*status="completed">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,

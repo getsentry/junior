@@ -65,6 +65,7 @@ import {
 } from "./ids";
 import {
   childMessageSenderMetadata,
+  childResultMetadata,
   hasAgentInvocationReply,
   listChildMessages,
   ownAgentInvocation,
@@ -222,6 +223,7 @@ function buildResultInboundMessage(
       conversationId: invocation.childConversationId,
       turnId: getAgentInvocationTurnId(invocation.invocationId),
     }),
+    ...childResultMetadata(invocation.status),
   };
   return {
     conversationId: invocation.parentConversationId,
@@ -449,8 +451,8 @@ export async function enqueueChildResultToParent(args: {
   };
   // A child may message its parent more than once. A `reply` while the
   // child still works is a message, not its result. Its sender names no
-  // agent invocation, so it closes no To-dos and does not count as the
-  // child's answer for `waiting_on`.
+  // agent invocation and it carries no result status, so it does not count
+  // as the child's answer for `waiting_on`.
   const stillWorks =
     args.result.kind === "reply" &&
     (await childAgentStillWorks(
@@ -472,6 +474,7 @@ export async function enqueueChildResultToParent(args: {
       trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[args.result.kind]}`,
     }),
     ...childMessageSenderMetadata(sender),
+    ...(stillWorks ? undefined : childResultMetadata(rendered.status)),
   };
   await enqueueAutomatedInput({
     message: {

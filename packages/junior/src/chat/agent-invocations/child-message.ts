@@ -1,4 +1,5 @@
 import { inArray } from "drizzle-orm";
+import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import {
   readInboundMessageSender,
@@ -27,6 +28,33 @@ export function childMessageSenderMetadata(sender: InboundMessageSender): {
   sender: InboundMessageSender;
 } {
   return { sender };
+}
+
+const childResultSchema = z.object({
+  status: z.enum(["blocked", "completed", "failed", "stopped"]),
+});
+
+/** How the child's work that a result reports ended. */
+export type ChildResultStatus = z.output<typeof childResultSchema>["status"];
+
+/**
+ * Mailbox metadata that marks a child message as its result and stores how
+ * the work ended. A message that a child sends while it still works has none.
+ */
+export function childResultMetadata(status: ChildResultStatus): {
+  result: { status: ChildResultStatus };
+} {
+  return { result: { status } };
+}
+
+/** Read how the child's work ended, when the message is its result. */
+export function readChildResultStatus(message: {
+  input: { metadata?: Record<string, unknown> | undefined };
+}): ChildResultStatus | undefined {
+  const parsed = childResultSchema.safeParse(
+    message.input.metadata?.["result"],
+  );
+  return parsed.success ? parsed.data.status : undefined;
 }
 
 /** Read who sent one child reply or result in a parent's mailbox. */
