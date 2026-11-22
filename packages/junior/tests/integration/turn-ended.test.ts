@@ -1,10 +1,10 @@
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { ModelRequest } from "@/core/model/client";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
+import { modelOverloaded } from "../fixtures/ai-emulator";
 import type { LocalJuniorSqlFixture } from "../fixtures/sql";
 import { createAssistantMessage } from "../fixtures/model-stream";
 import {
@@ -14,6 +14,8 @@ import {
   prepareWith,
   sendTool,
   startTurnEngine,
+  storedReply,
+  userText,
   type TurnEngine,
 } from "../fixtures/turn-engine";
 
@@ -68,10 +70,6 @@ async function readOtherTurn() {
   return turns.find((turn) => turn.id !== turnId);
 }
 
-function modelError(): AssistantMessage {
-  return createAssistantMessage({ type: "error", errorMessage: "overloaded" });
-}
-
 /** The error result that closes a tool call of an earlier Turn. */
 function danglingResult(toolCallId: string, text: string) {
   return expect.objectContaining({
@@ -85,7 +83,8 @@ function danglingResult(toolCallId: string, text: string) {
 describe("advanceTurn at the end of a Turn", () => {
   it("drops the inputs a failed attempt claimed, and moves an input that came after it only once", async () => {
     const claimedId = await engine.addTestInput("How many Turns?");
-    const step = prepareWith([modelError()]);
+    // Injected fault: the model provider is overloaded.
+    const step = prepareWith([modelOverloaded()]);
     let lateId: string | undefined;
 
     await engine.advance({
@@ -109,7 +108,8 @@ describe("advanceTurn at the end of a Turn", () => {
     await expect(engine.deliveredStepMessages(next!.id)).resolves.toBe(1);
 
     // The new Turn's attempt claims the moved input, so its failure drops it.
-    await engine.advance(prepareWith([modelError()]), LEASE_MS, next!.id);
+    // Injected fault: the model provider is overloaded.
+    await engine.advance(prepareWith([modelOverloaded()]), LEASE_MS, next!.id);
 
     await expect(readInputs()).resolves.toEqual(inputs);
     await expect(
@@ -144,6 +144,7 @@ describe("advanceTurn at the end of a Turn", () => {
       sendTool(executed),
       { ...sendTool(executed), name: "lookup", replay: "safe" as const },
     ];
+    await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({
       type: "toolCalls",
       calls: [
@@ -181,7 +182,11 @@ describe("advanceTurn at the end of a Turn", () => {
         "The previous Turn ended before this call returned, so there is no result. Call it again if you still need it.",
       ),
     ];
-    await expect(engine.loadHistory()).resolves.toEqual([reply, ...closed]);
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+      ...closed,
+    ]);
     const step = prepareWith(
       [createAssistantMessage({ type: "text", text: "Checked." })],
       tools,
@@ -202,7 +207,11 @@ describe("advanceTurn at the end of a Turn", () => {
       nextId,
     );
 
-    expect(requests[0]!.context.messages).toEqual([reply, ...closed]);
+    expect(requests[0]!.context.messages).toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+      ...closed,
+    ]);
   });
 
   it("finishes the end work of a failed Turn on a redelivered message", async () => {
