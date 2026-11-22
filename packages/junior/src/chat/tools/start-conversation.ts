@@ -13,7 +13,8 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 /** Static definition of `startConversation`, which only a Lead lists. */
 export const startConversationToolDefinition = zodToolDefinition({
   description: [
-    "Start a new conversation that does one piece of the person's work. It is a public conversation of the person, and it starts at once.",
+    "Do one piece of the person's work by starting a new conversation for it. You do no work yourself, so this is how you carry out what the person asks you to do.",
+    "It is a public conversation of the person, and it starts at once.",
     "Your task is its first message, and it runs as the person, so write the task as the person's request.",
     "Use messageAgent instead for work that a conversation already does.",
   ].join(" "),

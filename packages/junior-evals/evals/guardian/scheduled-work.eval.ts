@@ -7,18 +7,7 @@
  */
 import { describeEval } from "vitest-evals";
 import { guardianEvals } from "../../src/guardian-harness";
-import { evidence, localContext, proposal, slackContext } from "./helpers";
-
-/** A private dashboard Conversation with no Slack channel, like the lead. */
-function privateWebContext(userIntent: string) {
-  return localContext(userIntent, {
-    source: {
-      kind: "web",
-      visibility: "private",
-      conversationId: "local:guardian-eval",
-    },
-  });
-}
+import { evidence, privateWebContext, proposal, slackContext } from "./helpers";
 
 describeEval("Guardian Scheduled Work Snapshots", guardianEvals, (it) => {
   it("when the user asks for a routine scheduled reminder, allow it", async ({
