@@ -49,8 +49,6 @@ export type ConversationLink = {
   linkOnly?: boolean;
   objectType: ObjectType;
   plugin: string;
-  /** The plugin's compact row label, such as the repository name. */
-  shortLabel?: string;
   status?: string;
   url: string;
 };
@@ -78,9 +76,7 @@ export function linkStatusLabel(status: string | undefined): string {
  * annotation.
  */
 export function conversationLinks(
-  detail:
-    | Pick<ConversationDetailReport, "annotations" | "sidebarAnnotations">
-    | undefined,
+  detail: ConversationDetailReport | undefined,
 ): ConversationLink[] {
   return (detail?.annotations ?? []).flatMap(
     (annotation: ConversationAnnotation): ConversationLink[] => {
@@ -110,7 +106,6 @@ export function conversationLinks(
             : undefined),
           objectType,
           plugin: annotation.plugin,
-          ...(sidebar ? { shortLabel: sidebar.label } : undefined),
           ...(annotation.status ? { status: annotation.status } : undefined),
           url: annotation.url,
         },

@@ -770,9 +770,6 @@ export async function readConversationFeedFromSql(
           ? { unfinishedWork: true as const }
           : undefined),
       };
-      const annotations = access?.canViewPrivateContent
-        ? (annotationsByConversation.get(conversation.conversationId) ?? [])
-        : [];
       const activityPreview = visibleActivityPreviews.get(
         conversation.conversationId,
       );
@@ -787,7 +784,11 @@ export async function readConversationFeedFromSql(
           ? pickFeedLinks(
               conversation.conversationId,
               row.links,
-              annotationUrls(annotations),
+              annotationUrls(
+                visibleAnnotationsByConversation.get(
+                  conversation.conversationId,
+                ),
+              ),
             )
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
@@ -819,7 +820,6 @@ export async function readConversationFeedFromSql(
         ...(viewerAnswer ? { viewerAnswer } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),
-        ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
               sidebarAnnotations:

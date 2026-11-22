@@ -1,4 +1,3 @@
-import { createSlackSource } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   createAgentInvocation,
@@ -13,14 +12,12 @@ import {
   markAgentInvocationMailboxAppended,
 } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
-import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
 import {
-  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
@@ -32,25 +29,14 @@ import {
   createHarness,
   finishInvocation,
   sendPersonMessage,
+  slackParentRun,
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import { mockTitleModel } from "../fixtures/title-model";
 
-const parentRun: AgentRun = {
-  actor: slackInvocationInput.actor,
-  conversationId: slackParentConversationId,
-  destination: slackDestination,
-  instruction: { text: "Coordinate the work." },
-  source: createSlackSource({
-    channelId: "C123",
-    teamId: "T123",
-    threadTs: "1712345.0001",
-    visibility: "public",
-  }),
-  turnId: "parent-turn",
-};
+const parentRun = slackParentRun();
 
 /**
  * Create one child, then run `withOpenWork` while the child still has its
@@ -157,7 +143,9 @@ describe("Thread spawn and archive", () => {
         title: "Rollout plan",
       });
       await expect(
-        harness.conversationStore.get({ conversationId: task.conversation_id }),
+        harness.conversationStore.get({
+          conversationId: task.conversation_id,
+        }),
       ).resolves.toMatchObject({ kind: "task", title: "Failing test" });
       // A passed title skips title generation.
       expect(titleRequests).toBe(0);
@@ -182,13 +170,14 @@ describe("Thread spawn and archive", () => {
       // A child never changes kind: a replay of the same spawn as a Task
       // is refused.
       await expect(
-        createAgentInvocation({
-          ...slackInvocationInput,
-          idempotencyKey: "parent-turn:call-thread",
-          input: "Own the rollout plan.",
-          kind: "task",
-          title: "Rollout plan",
-        }),
+        tool.execute!(
+          tool.prepareArguments({
+            kind: null,
+            task: "Own the rollout plan.",
+            title: "Rollout plan",
+          }),
+          { toolCallId: "call-thread" },
+        ),
       ).rejects.toThrow("idempotency key was reused with different input");
     } finally {
       await harness.close();

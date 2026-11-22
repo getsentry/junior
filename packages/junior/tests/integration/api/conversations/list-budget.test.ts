@@ -174,7 +174,6 @@ describe("conversation list API response budget", () => {
         conversations: 1_959 + 469,
         // A row lists many of these. Each item has its own budget, and the
         // row leaves them out.
-        "conversations.annotations": 16_654,
         "conversations.participants": 52,
         "conversations.sidebarAnnotations": 674,
         "conversations.threads": 637,

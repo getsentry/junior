@@ -217,6 +217,11 @@ export interface ConversationWorkState extends ConversationExecutionState {
   lease?: ConversationWorkLease;
   messages: InboundMessage[];
   needsRun: boolean;
+  /**
+   * Ids in `messages` that the active attempt took. They stay in the
+   * mailbox until its Turn acks them.
+   */
+  runningInboundMessageIds: string[];
 }
 
 export interface StartConversationWorkAcquired {
@@ -1207,6 +1212,9 @@ function conversationWorkState(
       : undefined),
     messages: pendingMessages(conversation),
     needsRun: hasRunnableWork(conversation),
+    runningInboundMessageIds: isLeaseActive(lease, now())
+      ? [...(lease?.attemptInboundMessageIds ?? [])]
+      : [],
   };
 }
 

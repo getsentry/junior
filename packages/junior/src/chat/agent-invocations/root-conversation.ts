@@ -30,7 +30,7 @@ import {
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { isParentMessageMeta } from "./parent-message";
+import { isParentMessageAuthor } from "./parent-message";
 import { AGENT_INVOCATION_STATUSES } from "./statuses";
 import { listAgentInvocationsForConversation } from "./store";
 
@@ -131,9 +131,14 @@ function messageLabel(
   if (data.role !== "user") {
     return "system";
   }
-  // A parent message that no Agent invocation names is saved as an Event
-  // input, but it is the parent's task, as on an Agent invocation.
-  if (parentTaskIds && isParentMessageMeta(data.meta)) {
+  // A parent message that no Agent invocation names is the parent's task,
+  // as on an Agent invocation.
+  if (
+    parentTaskIds &&
+    isParentMessageAuthor(
+      messageAuthorSchema.safeParse(data.meta?.["author"]).data,
+    )
+  ) {
     return "user";
   }
   // An Event Turn input, such as a child agent result, is not a person.
