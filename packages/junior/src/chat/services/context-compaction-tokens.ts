@@ -8,18 +8,16 @@ import { estimateMessagesTokens } from "@/chat/services/token-estimate";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
 
 function timestampOf(message: PiMessage): number | undefined {
-  const { timestamp } = message as { timestamp?: unknown };
-  return typeof timestamp === "number" ? timestamp : undefined;
+  return "timestamp" in message && typeof message.timestamp === "number"
+    ? message.timestamp
+    : undefined;
 }
 
 /** Find the latest compaction summary in history. */
 function latestSummaryIndex(messages: PiMessage[]): number {
   for (let index = messages.length - 1; index >= 0; index -= 1) {
     const message = messages[index]!;
-    if (
-      (message as { role?: unknown }).role === "user" &&
-      hasCompactedConversationContext([message])
-    ) {
+    if (message.role === "user" && hasCompactedConversationContext([message])) {
       return index;
     }
   }
@@ -37,19 +35,15 @@ function latestSummaryTimestamp(messages: PiMessage[]): number | undefined {
  * is left out: it is not part of the request that the call measured.
  */
 function measuredInputTokens(message: PiMessage): number | undefined {
-  const { role, stopReason, usage } = message as {
-    role?: unknown;
-    stopReason?: unknown;
-    usage?: { input?: number; cacheRead?: number; cacheWrite?: number };
-  };
   if (
-    role !== "assistant" ||
-    !usage ||
-    stopReason === "aborted" ||
-    stopReason === "error"
+    message.role !== "assistant" ||
+    !message.usage ||
+    message.stopReason === "aborted" ||
+    message.stopReason === "error"
   ) {
     return undefined;
   }
+  const { usage } = message;
   const tokens =
     (usage.input ?? 0) + (usage.cacheRead ?? 0) + (usage.cacheWrite ?? 0);
   return tokens > 0 ? tokens : undefined;
@@ -126,8 +120,9 @@ export function measuredReplacementTokens(
     const timestamp = timestampOf(message);
     if (timestamp === undefined || timestamp <= summaryAt) {
       // A replacement adds only user messages and section changes.
-      const role = (message as { role?: unknown }).role;
-      if (role !== "user" && role !== "system") return undefined;
+      if (message.role !== "user" && message.role !== "system") {
+        return undefined;
+      }
       continue;
     }
     const tokens = measuredInputTokens(message);

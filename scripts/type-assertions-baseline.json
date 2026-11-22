@@ -164,7 +164,7 @@
   "packages/junior/src/chat/services/automated-turn-limit.ts": 1,
   "packages/junior/src/chat/services/context-compaction-marker.ts": 4,
   "packages/junior/src/chat/services/context-compaction-swap.ts": 2,
-  "packages/junior/src/chat/services/context-compaction.ts": 16,
+  "packages/junior/src/chat/services/context-compaction.ts": 12,
   "packages/junior/src/chat/services/plugin-auth-orchestration.ts": 1,
   "packages/junior/src/chat/services/provider-error.ts": 5,
   "packages/junior/src/chat/services/tool-result-trimming.ts": 6,
