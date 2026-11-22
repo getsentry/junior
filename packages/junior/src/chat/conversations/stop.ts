@@ -107,6 +107,7 @@ export async function stopConversation(args: {
     await reportPersonStopToParent(args.conversationId, {
       queue: args.queue,
       state: args.state,
+      stoppedAtMs,
     });
     await cancelWaitingParentMessages(args.conversationId, {
       nowMs: stoppedAtMs,

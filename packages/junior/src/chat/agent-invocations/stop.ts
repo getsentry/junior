@@ -311,11 +311,16 @@ export async function cancelWaitingParentMessages(
  * leaves the stop to be retried. The Agent invocation worker reports the
  * stop of a child that has one. A Thread, a Task with no open work, and a
  * run that an earlier stop already cut stay quiet. The result is keyed by
- * the cut work, so a retry adds nothing.
+ * the stop time, which a redelivery of the same stop keeps, so a retry adds
+ * nothing even when a worker took the waiting work in between.
  */
 export async function reportPersonStopToParent(
   conversationId: string,
-  options: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
+  options: {
+    queue: ConversationWorkQueue;
+    state?: StateAdapter | undefined;
+    stoppedAtMs: number;
+  },
 ): Promise<void> {
   if (!(await readAgentConfig(conversationId))) {
     return;
@@ -351,8 +356,7 @@ export async function reportPersonStopToParent(
     actor: turn?.actor ?? firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR,
     conversationId,
     result: { kind: "stopped", text: "A person stopped this task." },
-    turnId:
-      turn?.turnId ?? `stopped:${runId ?? firstWaiting?.parentToolCallId}`,
+    turnId: `stopped:${options.stoppedAtMs}`,
   });
 }
 

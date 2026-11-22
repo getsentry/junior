@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getSqlExecutor } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { startConversationWork } from "@/chat/task-execution/store";
 import { changeTodos, listTodos } from "@/chat/todos/store";
 import { slackParentConversationId } from "../fixtures/agent-invocations";
 import { mailboxTexts, message, spawn } from "../fixtures/parent-agent-tools";
@@ -162,6 +163,72 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
         "The parent mailbox is unavailable.",
       );
       vi.setSystemTime(1_800_000_002_000);
+      await stop(harness.state);
+
+      expect(
+        (await mailboxTexts(harness, slackParentConversationId)).filter(
+          (text) => text.includes('status="stopped"'),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("tells the parent once when a worker takes the task between a stop and its redelivery", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const taskId = await spawn(harness, "call-1");
+      // The first delivery reports the stop, then fails before it saves it.
+      let reported = false;
+      let failed = false;
+      const failingAfterReport = new Proxy(harness.state, {
+        get(target, prop) {
+          if (prop === "acquireLock") {
+            return async (key: string, ttlMs: number) => {
+              if (
+                key ===
+                `junior:conversation:v2:mutation:${slackParentConversationId}`
+              ) {
+                reported = true;
+              } else if (
+                reported &&
+                !failed &&
+                key === `junior:conversation:v2:mutation:${taskId}`
+              ) {
+                failed = true;
+                throw new Error("The child mailbox is unavailable.");
+              }
+              return await target.acquireLock(key, ttlMs);
+            };
+          }
+          const value = readProxyProperty(target, prop);
+          return typeof value === "function" ? value.bind(target) : value;
+        },
+      });
+      const stop = (state: StateAdapter) =>
+        stopConversation({
+          conversationId: taskId,
+          conversationStore: harness.conversationStore,
+          message: {
+            conversationId: taskId,
+            createdAtMs: 1_800_000_001_000,
+            inboundMessageId: "person-stop",
+            source: "web",
+          },
+          queue: harness.queue,
+          state,
+        });
+      await expect(stop(failingAfterReport)).rejects.toThrow(
+        "The child mailbox is unavailable.",
+      );
+      // A worker takes the waiting task before the stop is redelivered.
+      await startConversationWork({
+        conversationId: taskId,
+        conversationStore: harness.conversationStore,
+        state: harness.state,
+      });
       await stop(harness.state);
 
       expect(
