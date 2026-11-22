@@ -142,20 +142,25 @@ function reply(text: string) {
   return createAssistantMessage({ type: "text", text });
 }
 
-/** Runs a Turn whose two steps reply `first`, then `second`. */
-async function advanceTwoReplies(first: string, second: string) {
-  await engine.addTestInput("How many Turns?");
-  const firstStep = prepareWith([reply(first)]);
-  // An input during the step continues the Turn, so it gets a second step.
-  await engine.advance({
-    prepare: firstStep.prepare,
+/** Runs a step that replies `text` and commits "continue". */
+function advanceContinuingStep(text: string) {
+  const step = prepareWith([reply(text)]);
+  // An input during the step continues the Turn, so it gets a next step.
+  return engine.advance({
+    prepare: step.prepare,
     client: {
       complete: async (request, signal) => {
         await engine.addTestInput("And how many failed?");
-        return firstStep.client.complete(request, signal);
+        return step.client.complete(request, signal);
       },
     },
   });
+}
+
+/** Runs a Turn whose two steps reply `first`, then `second`. */
+async function advanceTwoReplies(first: string, second: string) {
+  await engine.addTestInput("How many Turns?");
+  await advanceContinuingStep(first);
   await engine.advance(prepareWith([reply(second)]));
 }
 
@@ -365,6 +370,27 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
 
     // The queue delivers the same step message again. Its claim misses.
     await engine.advance(prepareWith([]));
+    await waitFor(allSent);
+
+    expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
+  });
+
+  it("posts a Turn's earlier reply when its delivery message was lost and a later step fails", async () => {
+    const failure = new Error("The queue is unreachable");
+    // Stands in for the process dying after a "continue" commit, before the
+    // delivery message is sent.
+    vi.spyOn(getQueueProvider(), "send").mockRejectedValueOnce(failure);
+    await engine.addTestInput("How many Turns?");
+    await expect(advanceContinuingStep("Three.")).rejects.toBe(failure);
+
+    // The queue delivers the same step message again. It claims the queued
+    // Turn, and the next step fails.
+    await engine.advance(
+      prepareWith([
+        createAssistantMessage({ type: "error", errorMessage: "overloaded" }),
+      ]),
+    );
+    await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
     await waitFor(allSent);
 
     expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);

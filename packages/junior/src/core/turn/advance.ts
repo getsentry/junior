@@ -112,6 +112,8 @@ export async function advanceTurn(
     );
     if (claim.attempts > options.maxAttempts) {
       if (await failTurn(executor, claim, "attempts_exhausted")) {
+        // Rings delivery in case an earlier step's delivery message was lost.
+        await stepCommitted(executor, claim.turnId);
         await turnEnded(executor, claim.turnId);
       }
       return;
@@ -181,6 +183,9 @@ async function runClaimedStep(
     }
     case "failed":
       if (await failTurn(executor, claim, result.error)) {
+        // An earlier step's delivery message may have been lost, and the
+        // queue does not run this Turn again, so ring delivery here too.
+        await stepCommitted(executor, claim.turnId);
         await turnEnded(executor, claim.turnId);
       }
       return;
