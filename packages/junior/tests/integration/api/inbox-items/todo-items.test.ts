@@ -1,9 +1,13 @@
-import type { User } from "@sentry/junior-plugin-api";
+import type { Event, User } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inboxItemCountSchema, inboxItemListSchema } from "@/api/schema";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import { waitingConversationIdsQuery } from "@/chat/inbox-items/store";
+import {
+  getInboxItem,
+  waitingConversationIdsQuery,
+} from "@/chat/inbox-items/store";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { setTodoStatusByUser } from "@/chat/todos/store";
 import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
@@ -16,12 +20,17 @@ import {
   createConversationFixture,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
+import { useGitHubEvents } from "../../../fixtures/event-automations";
 import {
+  addPullRequestItem,
   api,
   conversation,
+  linkGitHub,
   NOW_MS,
+  OTHER_PULL_REQUEST,
   PRIVATE_ROOT,
   ROOT,
+  useGitHubRepository,
   user,
 } from "../../../fixtures/snoozes";
 
@@ -40,6 +49,7 @@ describe("To-dos for a person in the Inbox", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
+    vi.unstubAllEnvs();
     await closeConversationFixture();
   });
 
@@ -136,8 +146,7 @@ describe("To-dos for a person in the Inbox", () => {
       expect.objectContaining({ status: "done", treeState: "done" }),
     );
 
-    // Only Done closes it. Dismiss and answers are for other items.
-    expect((await asAna.act(item!.id, { action: "dismiss" })).status).toBe(400);
+    // Done or Dismiss closes it. Take and answers are for other items.
     expect((await asAna.act(item!.id, { action: "take" })).status).toBe(400);
 
     const done = await asAna.act(item!.id, { action: "done" });
@@ -169,6 +178,103 @@ describe("To-dos for a person in the Inbox", () => {
     const [reopened] = await asAna.items();
     expect(reopened).toEqual(expect.objectContaining({ todoId }));
     expect(reopened!.id).not.toBe(item!.id);
+  });
+
+  it("Dismiss drops the To-do", async () => {
+    const ana = await user("ana@example.com");
+    const updateTodos = agentTodos(ROOT);
+    const {
+      todos: [todo],
+    } = await updateTodos({
+      add: [{ title: "Pick a launch date", assignee: "ana@example.com" }],
+    });
+    const asAna = inbox(ana);
+    const [item] = await asAna.items();
+
+    const dismissed = await asAna.act(item!.id, { action: "dismiss" });
+    expect(dismissed.status).toBe(200);
+    expect(await dismissed.json()).toEqual(
+      expect.objectContaining({
+        closedBy: expect.objectContaining({ userId: ana.id }),
+        status: "dismissed",
+      }),
+    );
+    // A retry of the same Dismiss succeeds, but Done does not undo it.
+    expect((await asAna.act(item!.id, { action: "dismiss" })).status).toBe(200);
+    expect((await asAna.act(item!.id, { action: "done" })).status).toBe(409);
+    expect(await asAna.items()).toEqual([]);
+    expect(await todoState(todo!.id)).toEqual(
+      expect.objectContaining({
+        changedBy: "ana@example.com",
+        status: "dropped",
+      }),
+    );
+  });
+
+  it("a resolve trigger marks the To-do done, alone and in a stack", async () => {
+    await useGitHubEvents();
+    useGitHubRepository(["ana-gh"]);
+    const ana = await linkGitHub(await user("ana@example.com"), "ana-gh");
+    const asAna = inbox(ana);
+    const merged = async () =>
+      await publisher().publish(otherPullRequestMerged());
+    const resolveOnMerge = (subject: {
+      conversationId: string;
+      inboxItemId?: string;
+    }) =>
+      asAna.snoozeOn(subject, [
+        {
+          eventType: "pull_request.merged",
+          outcome: "resolve",
+          resourceUrl: OTHER_PULL_REQUEST.url,
+        },
+      ]);
+    const updateTodos = agentTodos(ROOT);
+
+    // One To-do row.
+    const {
+      todos: [alone],
+    } = await updateTodos({
+      add: [
+        { title: "Confirm the rollback window", assignee: "ana@example.com" },
+      ],
+    });
+    const [item] = await asAna.items();
+    const snoozed = await resolveOnMerge({
+      conversationId: ROOT,
+      inboxItemId: item!.id,
+    });
+    expect(snoozed.status).toBe(201);
+    expect(await snoozed.json()).toEqual({ inboxItemIds: [item!.id] });
+    await merged();
+    expect(await todoState(alone!.id)).toEqual(
+      expect.objectContaining({ changedBy: "ana@example.com", status: "done" }),
+    );
+    expect(await getInboxItem(getDb(), item!.id)).toEqual(
+      expect.objectContaining({ status: "done" }),
+    );
+    expect(await asAna.items()).toEqual([]);
+
+    // A stack with a To-do and another ask: the ask is dismissed, and the
+    // To-do is done.
+    const {
+      todos: [stacked],
+    } = await updateTodos({
+      add: [{ title: "Approve the copy", assignee: "ana@example.com" }],
+    });
+    const review = await addPullRequestItem(ROOT, [ana], "Review acme entry");
+    expect(await asAna.items()).toHaveLength(2);
+    expect((await resolveOnMerge({ conversationId: ROOT })).status).toBe(201);
+    expect(await asAna.items()).toEqual([]);
+    await merged();
+    expect(await todoState(stacked!.id)).toEqual(
+      expect.objectContaining({ changedBy: "ana@example.com", status: "done" }),
+    );
+    expect((await getInboxItem(getDb(), review))?.status).toBe("dismissed");
+    expect(await asAna.items()).toEqual([]);
+    expect(await asAna.count()).toEqual(
+      expect.objectContaining({ needsViewer: 0, snoozed: 0 }),
+    );
   });
 
   it("follows the To-do as the agent changes it", async () => {
@@ -314,6 +420,36 @@ describe("To-dos for a person in the Inbox", () => {
       404,
     );
   });
+
+  function publisher() {
+    return createEventAppPublisher({
+      conversationWork: () => ({ queue: fixture.queue }),
+    });
+  }
+
+  /** A GitHub Event: `OTHER_PULL_REQUEST` merged. */
+  function otherPullRequestMerged(): Event {
+    return {
+      eventKey: `pull_request.merged:${OTHER_PULL_REQUEST.identifier}`,
+      eventType: "pull_request.merged",
+      identifier: OTHER_PULL_REQUEST.identifier,
+      namespace: "github",
+      occurredAtMs: Date.now(),
+      trustedSummary: "Pull request merged.",
+    };
+  }
+
+  /** A To-do of `ROOT`, as the Conversation's To-do list shows it. */
+  async function todoState(ref: string) {
+    const { todos } = (await (
+      await api(fixture, await user("ana@example.com")).request(
+        `/conversations/${ROOT}/todos`,
+      )
+    ).json()) as {
+      todos: { id: number; status: string; changedBy?: string }[];
+    };
+    return todos.find((todo) => `TODO-${todo.id}` === ref);
+  }
 
   async function updateTodosFor(conversationId: string, title: string) {
     await agentTodos(conversationId)({

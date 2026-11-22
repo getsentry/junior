@@ -21,7 +21,7 @@ export const inboxSnoozeSubjectSchema = z.union([
 
 /**
  * An Event that ends a snooze: `wake` shows the item again, and `resolve`
- * dismisses it. The Event is on the page at `resourceUrl`, such as another
+ * dismisses it, or marks a To-do item's To-do done. The Event is on the page at `resourceUrl`, such as another
  * pull request, or on each item's subject when it is unset.
  */
 export const inboxSnoozeTriggerSchema = z

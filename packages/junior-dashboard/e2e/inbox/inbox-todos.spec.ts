@@ -8,7 +8,7 @@ import {
   rowHead,
   todoForYou,
 } from "./inbox-fixture";
-import { screenshot } from "../screenshot";
+import { desktop, screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -22,6 +22,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("listitem")
       .filter({ has: page.getByRole("link", { name: todoForYou.title }) })
       .last();
+  // Its own actions, in order: Dismiss, Snooze, then Done, the main one.
+  const ownActions = (scope: ReturnType<typeof rowOf>) =>
+    scope.getByRole("button", { name: /^(Dismiss|Snooze|Done)$/ });
   const inboxTab = (page: Page) =>
     page
       .getByRole("navigation", { name: "Primary" })
@@ -44,10 +47,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       card.getByText("Check the deploy calendar before the next release."),
     ).toBeVisible();
     await screenshot(page, "inbox-todo-for-you", { lightTheme: true });
-    // Only Done closes the viewer's own To-do.
-    await expect(
-      card.getByRole("button", { exact: true, name: "Dismiss" }),
-    ).toHaveCount(0);
+    await expect(ownActions(card)).toHaveText(["Dismiss", "Snooze", "Done"]);
     await card.getByRole("button", { exact: true, name: "Done" }).click();
 
     await expect(rowOf(page)).toHaveCount(0);
@@ -55,19 +55,43 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox");
   });
 
-  test("a To-do row's quick actions are Done and Snooze", async ({
+  test("Dismiss drops a To-do", async ({ dashboard, page }) => {
+    const actions = await mockInboxItems(page, {
+      automations: () => 0,
+      open: [todoForYou],
+    });
+    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    await expandRow(rowHead(todo(page), checkout));
+    await rowOf(page)
+      .getByRole("region", { name: todoForYou.title })
+      .getByRole("button", { exact: true, name: "Dismiss" })
+      .click();
+
+    await expect(rowOf(page)).toHaveCount(0);
+    expect(actions).toEqual([
+      { body: { action: "dismiss" }, id: todoForYou.id },
+    ]);
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox");
+  });
+
+  test("a To-do row's quick actions are Dismiss, Snooze, and Done", async ({
     dashboard,
     page,
   }) => {
     const actions = await mockInboxItems(page, { open: [todoForYou] });
+    // The shot keeps the pointer on the row, so it needs no resize.
+    await page.setViewportSize(desktop);
     await page.goto(`${dashboard.baseURL}/`);
     await rowHead(todo(page), checkout).hover();
-    await expect(
-      rowOf(page).getByRole("button", { exact: true, name: "Dismiss" }),
-    ).toHaveCount(0);
-    await expect(
-      rowOf(page).getByRole("button", { exact: true, name: "Snooze" }),
-    ).toBeVisible();
+    await expect(ownActions(rowOf(page))).toHaveText([
+      "Dismiss",
+      "Snooze",
+      "Done",
+    ]);
+    await screenshot(page, "inbox-todo-row-actions", {
+      lightTheme: true,
+      view: "desktop",
+    });
     await rowOf(page)
       .getByRole("button", { exact: true, name: "Done" })
       .click();

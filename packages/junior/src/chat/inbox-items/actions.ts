@@ -33,7 +33,7 @@ import {
 
 /**
  * What a person can do with an Inbox item. A To-do's item takes only
- * `done`, and only a To-do's item takes it.
+ * `done` and `dismiss`, and only a To-do's item takes `done`.
  */
 export type InboxItemAction = "take" | "submit" | "dismiss" | "done";
 
@@ -60,7 +60,7 @@ export async function readInboxItemForUser(
   return item;
 }
 
-function closedStatus(action: Exclude<InboxItemAction, "take" | "done">) {
+function closedStatus(action: Exclude<InboxItemAction, "take">) {
   return action === "dismiss" ? "dismissed" : "done";
 }
 
@@ -142,17 +142,20 @@ export async function actOnInboxItem(args: {
   const db = getDb();
   const item = await readInboxItemForUser(user, args.id);
   const todo = inboxItemTodo(item);
-  if ((action === "done") !== (todo !== undefined)) {
+  if (todo) {
+    if (action !== "done" && action !== "dismiss") {
+      throw new InboxItemActionError(
+        "invalid",
+        "A To-do item takes only Done or Dismiss.",
+      );
+    }
+    return await closeTodoItem(item, user, nowMs, action);
+  }
+  if (action === "done") {
     throw new InboxItemActionError(
       "invalid",
-      todo
-        ? "A To-do item takes only Done."
-        : "Only a To-do item can be marked done.",
+      "Only a To-do item can be marked done.",
     );
-  }
-
-  if (action === "done") {
-    return await markTodoItemDone(item, user, nowMs);
   }
 
   if (action === "take") {
@@ -242,15 +245,17 @@ export async function actOnInboxItem(args: {
 }
 
 /**
- * Mark the To-do of a To-do item done for its assignee. The To-do change
- * closes the item (`syncTodoInboxItems`), and the agent sees it in its
+ * Close a To-do item for its assignee through its To-do: Done marks the
+ * To-do done, and Dismiss drops it. The To-do change closes the item as
+ * done or dismissed (`syncTodoInboxItems`), and the agent sees it in its
  * next `<todo-delta>`, so it sends no message and starts no Turn. A retry
- * after the item closed as done by the same person succeeds.
+ * after the item closed the same way by the same person succeeds.
  */
-async function markTodoItemDone(
+async function closeTodoItem(
   item: InboxItem,
   user: User,
   nowMs: number,
+  action: "dismiss" | "done",
 ): Promise<InboxItem> {
   const todo = inboxItemTodo(item)!;
   if (item.status === "open") {
@@ -265,12 +270,15 @@ async function markTodoItemDone(
       conversationId: todo.conversationId,
       id: todo.id,
       nowMs,
-      status: "done",
+      status: action === "done" ? "done" : "dropped",
       userId: user.id,
     });
   }
   const closed = await readInboxItemForUser(user, item.id);
-  if (closed.status !== "done" || closed.closedBy?.userId !== user.id) {
+  if (
+    closed.status !== closedStatus(action) ||
+    closed.closedBy?.userId !== user.id
+  ) {
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
   }
   return closed;

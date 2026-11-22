@@ -32,9 +32,7 @@ export type StopConversationResult =
  * below it stops, then it and they are stopped Conversations until a person
  * sends input, and then its Turn stops. A Turn that waits for sign-in ends
  * too, so a later sign-in does not resume it. Their automated input is held.
- * Nothing above it changes: a stopped child agent's worker reports the stop
- * to its parent, and this reports it for a Task that no Agent invocation
- * names.
+ * Nothing above it changes: this reports the stop of a Task to its parent.
  *
  * A stop that comes from a message or a button press, such as the Slack
  * `stop` keyword or stop button, passes it. Its id is claimed in the mailbox

@@ -318,12 +318,6 @@ export interface AgentHistory {
 export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
-  /**
-   * Agent invocation that this Run advances. Only the Agent invocation worker
-   * sets it. It names the invocation and selects no behavior: `turnBehavior`
-   * does that from the Conversation kind and the Source.
-   */
-  agentInvocationId?: string;
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
@@ -500,7 +494,7 @@ export function assertRunConsistency(
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       // These Sources do not identify the Actor's platform.
       return;
   }

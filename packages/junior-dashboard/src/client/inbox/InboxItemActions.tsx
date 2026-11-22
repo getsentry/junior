@@ -77,8 +77,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * Show the actions that the viewer can take on one Inbox item, or how it
  * closed. The Inbox, the transcript, and the side panel use it, so a
  * question reads the same on each. A caller that shows
- * its own Dismiss turns this one off. A To-do for the viewer has Done in
- * place of Dismiss. `onAction` takes the actions in its
+ * its own Dismiss turns this one off. A To-do for the viewer adds Done,
+ * its main action, last. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
@@ -140,9 +140,9 @@ export function InboxItemActions(props: {
     }
   }
 
-  // A To-do for the viewer closes with Done, its main action, not Dismiss.
+  // A To-do for the viewer closes with Done, its main action.
   const todo = item.todoId !== undefined;
-  const dismiss = !todo && (props.dismiss ?? true);
+  const dismiss = props.dismiss ?? true;
   const take = item.canTake ? (props.take ?? "Take") : false;
   // A card on its own, as in a transcript, snoozes its item itself. The
   // Inbox brings its own Snooze, so its row leaves with motion.

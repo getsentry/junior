@@ -618,7 +618,7 @@ export function promptPlatform(
   // Every Turn of a Thread, an Automation Conversation, or a Lead has one
   // system prompt, so its Location picks the platform. A person's Turn in a
   // Slack-located one keeps the Slack rules that it had. The other Turns have
-  // no Delivery: an agent's Turn on its Agent invocation, and an Automation
+  // no Delivery: an agent's Turn on a parent message, and an Automation
   // run, whose `reply` text still goes to Slack. They get the same prompt.
   if (
     promptMode === "thread" ||

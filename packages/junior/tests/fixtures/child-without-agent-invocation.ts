@@ -1,4 +1,4 @@
-import type { Actor, Destination } from "@sentry/junior-plugin-api";
+import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import { buildParentMessage } from "@/chat/agent-invocations/parent-message";
@@ -7,11 +7,10 @@ import type { ConversationStore } from "@/chat/conversations/store";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
-import { slackDestination } from "./agent-invocations";
 
 /**
  * Put a parent message in a child's mailbox with no parent lock or capacity
- * check, as a parent that writes no Agent invocation sends it. `from`
+ * check. `from`
  * overrides the parent that the message names, and `authorId` its author id,
  * so a test can send one that the child must drop.
  */
@@ -57,11 +56,12 @@ export async function sendParentMessage(args: {
 export async function spawnChildWithoutAgentInvocation(args: {
   actor: Actor;
   agentConfig?: AgentConfig;
+  agentName?: string;
   conversationStore: ConversationStore;
   credentialContext?: CredentialContext;
-  destination?: Destination;
   idempotencyKey: string;
   kind?: "task" | "thread";
+  nowMs?: number;
   parentConversationId: string;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
@@ -72,10 +72,10 @@ export async function spawnChildWithoutAgentInvocation(args: {
     {
       actor: args.actor,
       ...args.agentConfig,
+      ...(args.agentName ? { agentName: args.agentName } : undefined),
       ...(args.credentialContext
         ? { credentialContext: args.credentialContext }
         : undefined),
-      destination: args.destination ?? slackDestination,
       idempotencyKey: args.idempotencyKey,
       input: args.task ?? "Check the deploy.",
       ...(args.kind ? { kind: args.kind } : undefined),
@@ -89,6 +89,7 @@ export async function spawnChildWithoutAgentInvocation(args: {
       queue: args.queue,
       state: args.state,
     },
+    args.nowMs,
   );
   return childConversationId;
 }

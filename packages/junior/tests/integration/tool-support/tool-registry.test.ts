@@ -259,7 +259,7 @@ describe("static tool registry", () => {
           sentTurn(
             turnBehavior({ kind: "thread", personInput }),
             turnRun("slack:T0:C0:1.0:thread", personInput, {
-              kind: "agent_invocation",
+              kind: "parent_message",
             }),
           ),
         ),
@@ -410,6 +410,19 @@ describe("static tool registry", () => {
       ].sort(),
     );
     expect(person.disabled).toEqual([]);
+    // The Lead's main tools are in the model tool list, not behind
+    // `searchTools`.
+    expect(person.piTools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        "listWatches",
+        "readConversationEvent",
+        "searchConversationEvents",
+        "searchConversations",
+        "searchEventTypes",
+        "searchInboxItems",
+        "stopWatchingResources",
+      ]),
+    );
   });
 
   // A stale run-built name would hide a static tool from the check above.

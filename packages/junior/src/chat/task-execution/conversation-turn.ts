@@ -800,7 +800,7 @@ export function createConversationTurnWorker(
               }
               if (fromParent) {
                 // A parent agent's task resets the limit, as a person's
-                // Message does and as on an Agent invocation.
+                // Message does.
                 await resetAutomatedTurnLimit({
                   conversationId: context.conversationId,
                 });

@@ -468,7 +468,7 @@ context, and rejects its calls before review or execution.
 
 ```ts
 disabledTools(ctx) {
-  return ctx.source.kind === "agent_invocation"
+  return ctx.source.kind === "parent_message"
     ? { ping: "Child agents cannot ping my-provider." }
     : {};
 },
