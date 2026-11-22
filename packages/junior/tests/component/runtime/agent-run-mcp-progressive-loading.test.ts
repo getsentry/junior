@@ -696,14 +696,6 @@ import {
 } from "@/chat/task-execution/turn-cursor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { createSlackSource } from "@sentry/junior-plugin-api";
-import { buildReplyLengthReminder } from "@/chat/system-prompt-rules";
-
-// The mocked core blocks, then the reply length reminder that
-// `buildDeploymentSystemPrompt` adds for a conversation.
-const CONVERSATION_SYSTEM_PROMPT = [
-  "System prompt",
-  buildReplyLengthReminder("conversation"),
-].join("\n\n");
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -920,8 +912,8 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[1]).toContain("executeTool");
     expect(agentInitialToolNames[1]).not.toContain("mcp__demo__ping");
     expect(agentInitialSystemPrompts).toEqual([
-      CONVERSATION_SYSTEM_PROMPT,
-      CONVERSATION_SYSTEM_PROMPT,
+      "System prompt",
+      "System prompt",
     ]);
     expect(resumeTurnContextCounts).toEqual([1]);
     expect(turnContextInputs[0]?.includeSessionContext).toBe(true);
@@ -969,7 +961,7 @@ describe("executeAgentRun progressive MCP loading", () => {
     expect(agentInitialToolNames[0]).toContain("searchTools");
     expect(agentInitialToolNames[0]).toContain("executeTool");
     expect(agentInitialToolNames[0]).not.toContain("mcp__demo__ping");
-    expect(agentInitialSystemPrompts).toEqual([CONVERSATION_SYSTEM_PROMPT]);
+    expect(agentInitialSystemPrompts).toEqual(["System prompt"]);
     expect(capabilitySectionInputs[0]?.activeMcpCatalogs).toEqual([]);
     expect(searchMcpToolNames).toEqual([["mcp__demo__ping"]]);
     expect(callToolMock).toHaveBeenCalledWith(
