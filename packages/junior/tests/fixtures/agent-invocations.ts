@@ -1,11 +1,20 @@
 /** Shared parent Conversation setup for agent invocation integration tests. */
 import type { StateAdapter } from "chat";
 import { expect } from "vitest";
-import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
+import {
+  createSlackSource,
+  defineJuniorPlugin,
+  definePluginTool,
+  pluginToolOutputSchema,
+  type Destination,
+} from "@sentry/junior-plugin-api";
+import * as z from "zod";
+import { defineJuniorPlugins } from "@/app";
 import { listChildAgents } from "@/chat/agent-invocations/list";
 import { getAgentInvocation } from "@/chat/agent-invocations/store";
 import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { commitMessages } from "@/chat/conversations/projection";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -16,6 +25,7 @@ import {
   startConversationWork,
 } from "@/chat/task-execution/store";
 import type { AgentRun } from "@/chat/agent/types";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import {
   deferred,
@@ -230,4 +240,176 @@ export function abortableAgentRunner() {
       started = deferred<void>();
     },
   };
+}
+
+/**
+ * Commit earlier Turns of a child, a ready summary up to the first one, and
+ * enough history that the next Turn swaps the summary in at its start.
+ */
+export async function prepareSummarizedHistory(conversationId: string) {
+  // The answers are as new as the next Turn, so only their seqs leave them
+  // out of it.
+  const answer = (id: string, text: string): PiMessage[] =>
+    [
+      {
+        role: "assistant",
+        content: [{ type: "toolCall", id, name: "reply", arguments: { text } }],
+        stopReason: "toolUse",
+        timestamp: Date.now(),
+      },
+      {
+        role: "toolResult",
+        toolCallId: id,
+        toolName: "reply",
+        content: [{ type: "text", text }],
+        details: { text },
+        isError: false,
+        timestamp: Date.now(),
+      },
+    ] as PiMessage[];
+  const summarized = [
+    {
+      role: "user",
+      content: [{ type: "text", text: "Read the build log." }],
+    },
+    {
+      role: "assistant",
+      content: [{ type: "toolCall", id: "log-1", name: "bash", arguments: {} }],
+      stopReason: "toolUse",
+    },
+    {
+      role: "toolResult",
+      toolCallId: "log-1",
+      toolName: "bash",
+      // Above the compaction threshold of the default context window.
+      content: [{ type: "text", text: "x".repeat(1_600_000) }],
+      isError: false,
+    },
+    ...answer("reply-1", "Read the log."),
+    // Folds into a system message that, like the summary, takes the seq of
+    // the swap. Kept messages keep their own seqs.
+    {
+      role: "system",
+      content: "",
+      sections: { plan: "<plan>a</plan>" },
+      timestamp: 1,
+    },
+  ] as PiMessage[];
+  const marked = await commitMessages({
+    conversationId,
+    messages: summarized,
+  });
+  await getConversationEventStore().append(conversationId, [
+    {
+      createdAtMs: Date.now(),
+      data: {
+        type: "compaction_prepared",
+        markSeq: marked.committedSeq,
+        historyVersion: marked.historyVersion,
+        modelId: "test-model",
+        outcome: "ready",
+        summary: "The parent asked for the build log.",
+      },
+    },
+  ]);
+  await commitMessages({
+    conversationId,
+    messages: [
+      ...summarized,
+      {
+        role: "user",
+        content: [{ type: "text", text: "Check the deploy." }],
+      } as PiMessage,
+      ...answer("reply-2", "Earlier child result"),
+    ],
+  });
+}
+
+/**
+ * Commit parent history with an earlier `reply` and the `spawnAgent` call of
+ * a fork. Returns the id of that call.
+ */
+export async function prepareForkParentHistory(): Promise<string> {
+  const toolCallId = "spawn-fork";
+  await commitMessages({
+    conversationId: parentConversationId,
+    messages: [
+      {
+        role: "user",
+        content: [{ type: "text", text: "Start the release." }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: "parent-reply",
+            name: "reply",
+            arguments: { text: "Release started." },
+          },
+        ],
+        stopReason: "toolUse",
+        timestamp: 2,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "parent-reply",
+        toolName: "reply",
+        content: [{ type: "text", text: "Release started." }],
+        details: { text: "Release started." },
+        isError: false,
+        timestamp: 3,
+      },
+      {
+        role: "assistant",
+        content: [
+          {
+            type: "toolCall",
+            id: toolCallId,
+            name: "spawnAgent",
+            arguments: { fork: true, task: invocationInput.input },
+          },
+        ],
+        stopReason: "toolUse",
+        timestamp: 4,
+      },
+    ] as PiMessage[],
+  });
+  return toolCallId;
+}
+
+/** Plugins with one approved tool, `upkeep_markDone`, for child agent tests. */
+export function upkeepPlugins(
+  markDone: (input: { itemId: string }) => Record<string, never>,
+) {
+  return defineJuniorPlugins([
+    defineJuniorPlugin({
+      manifest: {
+        name: "upkeep",
+        displayName: "Upkeep",
+        description: "Upkeep test tools",
+      },
+      hooks: {
+        tools: () => ({
+          markDone: definePluginTool({
+            // The tool checks in code that its effect is safe, so action
+            // review does not run, also in a child agent.
+            approvalMode: "approve",
+            exposure: "direct",
+            annotations: {
+              destructiveHint: true,
+              idempotentHint: true,
+              openWorldHint: true,
+              readOnlyHint: false,
+            },
+            description: "Mark one item done.",
+            inputSchema: z.object({ itemId: z.string() }),
+            outputSchema: pluginToolOutputSchema,
+            execute: markDone,
+          }),
+        }),
+      },
+    }),
+  ]);
 }
