@@ -35,6 +35,8 @@ export type TranscriptViewToolCallPart = {
   output?: unknown;
   resultTimestamp?: number | undefined;
   startedTimestamp?: number | undefined;
+  /** The Conversation that this `startConversation` call started. */
+  startedConversationId?: string;
   status: "completed" | "error" | "running";
   type: "tool_call";
 };
@@ -124,6 +126,8 @@ export type TranscriptViewMessage = {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
+  /** Resource identifier of the first Event, such as a Conversation id. */
+  eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
@@ -165,8 +169,7 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
-  /** The latest Brief's status, summary, and intent, when visible. */
-  brief?: ConversationFeedItem["brief"] | undefined;
+  summary?: ConversationSummaryReport["summary"] | undefined;
   /** The newest stored files, when private content is visible. */
   media?: ConversationFeedItem["media"] | undefined;
   links?: ConversationFeedItem["links"] | undefined;
@@ -214,6 +217,8 @@ export type Conversation = {
   threads?: Conversation[] | undefined;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean | undefined;
+  /** The latest Turn failed and no newer Turn started. Server-owned. */
+  latestTurnFailed?: boolean | undefined;
   visibility?: ConversationSummaryReport["visibility"] | undefined;
   /** The viewer's newest answer here. The viewer's own feed rows only. */
   viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;

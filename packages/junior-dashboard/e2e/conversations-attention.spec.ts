@@ -154,7 +154,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await mockWaitingConversation(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -249,7 +249,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -279,7 +279,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -415,7 +415,7 @@ test.describe("stable conversation list", () => {
     // list and let go of the order.
     await page.setViewportSize(desktop);
     const setWaiting = await mockChangingWaiting(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -500,7 +500,7 @@ test.describe("stable conversation list", () => {
         await route.fallback();
       },
     );
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -536,7 +536,7 @@ test.describe("stable conversation list", () => {
     const setWaiting = await mockChangingWaiting(page);
     // A narrow window with a mouse shows the home list, not the sidebar.
     await page.setViewportSize({ width: 700, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const card = page.getByRole("link", {
       name: "Open Checkout latency triage",
     });

@@ -13,6 +13,7 @@ const rootTurn = {
   gated: false,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
@@ -30,6 +31,7 @@ const personInThreadTurn = {
   promptMode: "thread",
   sender: "person",
   sessionTasks: false,
+  relatedConversations: false,
   tools: { ...rootTurn.tools, agents: "none" },
 };
 
@@ -42,6 +44,7 @@ const agentInThreadTurn = {
   gated: true,
   failureNotice: "none",
   sessionTasks: false,
+  relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
@@ -73,6 +76,7 @@ const automationTurn = {
   gated: true,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: false,
   tools: {
     ...rootTurn.tools,
     reply: "automation",
@@ -83,12 +87,21 @@ const automationTurn = {
 describe("turnBehavior", () => {
   it.each([
     { kind: "root", personInput: true, expected: rootTurn },
-    { kind: "root", personInput: false, expected: rootTurn },
+    {
+      kind: "root",
+      personInput: false,
+      expected: { ...rootTurn, relatedConversations: false },
+    },
     // A person's reply in the run's thread runs like a root Turn.
     {
       kind: "automation",
       personInput: true,
-      expected: { ...rootTurn, promptMode: "automation", sender: "person" },
+      expected: {
+        ...rootTurn,
+        promptMode: "automation",
+        sender: "person",
+        relatedConversations: false,
+      },
     },
     // The dispatch Turn and every Watch Event Turn.
     { kind: "automation", personInput: false, expected: automationTurn },
@@ -123,6 +136,16 @@ describe("turnBehavior", () => {
     expect(() => turnBehavior({ kind: "task", personInput: true })).toThrow(
       "A task Conversation cannot have a person's input",
     );
+  });
+
+  // A Lead keeps one system prompt and one tool list on every Turn.
+  it("gives every Turn of a Lead the same behavior", () => {
+    const personTurn = turnBehavior({ kind: "lead", personInput: true });
+    expect(turnBehavior({ kind: "lead", personInput: false })).toEqual(
+      personTurn,
+    );
+    expect(personTurn.promptMode).toBe("lead");
+    expect(promptModeTurnTools("lead")).toEqual(personTurn.tools);
   });
 
   it("counts only Slack and web input as a person's", () => {

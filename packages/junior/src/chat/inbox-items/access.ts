@@ -193,18 +193,6 @@ export function inboxItemNeedsUser(userId: string): SQL {
 }
 
 /**
- * SQL: the Inbox item needs some person: an open `action` item with an
- * assigned User. It is `inboxItemNeedsUser` for any User.
- */
-export function inboxItemNeedsSomeone(): SQL {
-  return and(
-    eq(juniorInboxItems.status, "open"),
-    eq(juniorInboxItems.kind, "action"),
-    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
-  )!;
-}
-
-/**
  * SQL: the Inbox item waits for a person's input: an open `action` item,
  * whoever it is assigned to. An item with no assignees still waits for
  * anyone who can answer it. The Conversation that added it shows

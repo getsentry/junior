@@ -50,7 +50,7 @@ import type { InboxItemDelivery } from "@/chat/inbox-items/changes";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   clearInboxWakeReasons,
-  readInboxWakeReasons,
+  readViewerInboxSnoozes,
 } from "@/chat/inbox-snoozes/store";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
@@ -261,27 +261,30 @@ async function inboxItemPayloads(
   reader: InboxItemReader,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const [roots, mentions, related, wakes] = await Promise.all([
+  const [roots, mentions, related, snoozes] = await Promise.all([
     readItemRoots(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
-    readInboxWakeReasons(db, {
+    readViewerInboxSnoozes(db, {
       inboxItemIds: items
         .filter((item) => item.status === "open")
         .map((item) => item.id),
       userId: viewer.id,
     }),
   ]);
-  return items.map((item, index) =>
-    inboxItemPayload(
+  return items.map((item, index) => {
+    const payload = inboxItemPayload(
       item,
       viewer,
       roots,
       mentions[index]!,
       related.get(item.id),
-      wakes.get(item.id),
-    ),
-  );
+      snoozes.wakeReasons.get(item.id),
+    );
+    return snoozes.snoozed.has(item.id)
+      ? { ...payload, snoozedByViewer: true }
+      : payload;
+  });
 }
 
 function actionErrorResponse(error: unknown): Response {

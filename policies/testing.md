@@ -93,6 +93,8 @@ Prefer high-fidelity behavior coverage when it is stable.
 - Do not assert CSS classes, DOM tag counts, markup, pixel geometry, size, or
   computed style.
 - No fixed sleeps. Wait for the visible state, URL, request, or response.
+- In a spec, use real input and role, label, or text locators. Do not run
+  page script. Control time with `page.clock`, not timeout overrides.
 
 ## Exceptions
 

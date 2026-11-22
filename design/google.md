@@ -43,6 +43,10 @@ Workspace account, so the user connects nothing.
   working hours that it learns from them.
 - A Doc that Junior creates goes to the requester as its owner. Junior keeps
   no access to it.
+- A presentation that Junior creates goes to the requester as its owner.
+  Junior's account stays an editor, so Junior can keep building it.
+- An image from the Sandbox that Junior puts in a presentation is public
+  only during the edit.
 - Junior reads a file or its comments only for a requester who can open it
   through their own email, their domain when that domain owns the file, or
   a link that anyone can open. For a read or an edit, access through a

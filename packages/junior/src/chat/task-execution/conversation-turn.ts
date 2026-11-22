@@ -14,9 +14,10 @@ import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
 import { createHash } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import {
   childAgentTurnOptions,
+  commitParentMessageFork,
   isParentMessageMeta,
   readParentMessage,
 } from "@/chat/agent-invocations/parent-message";
@@ -29,11 +30,11 @@ import {
   type DeliverMessage,
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getConversationStore } from "@/chat/db";
 import { logException, setTags } from "@/chat/logging";
 import {
   getTurnInputSpanAttributes,
@@ -67,7 +68,7 @@ import {
   upsertConversationMessage,
 } from "@/chat/services/conversation-memory";
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { finalizeFailedTurnReplyWithEvent } from "@/chat/services/turn-failure-response";
 import {
   coerceThreadConversationState,
@@ -213,9 +214,7 @@ export function createConversationTurnWorker(
       if (delayMs > 0) return { status: "deferred", delayMs };
     }
 
-    const lifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
+    const lifecycle = getTurnLifecycle();
 
     const isResume = resolved.kind === "resume";
     let turnInputFacts: TurnInputFacts | undefined;
@@ -532,6 +531,10 @@ export function createConversationTurnWorker(
             conversation,
             conversationId: context.conversationId,
           });
+          await commitParentMessageFork({
+            conversationId: context.conversationId,
+            inputs: resolved.batch.map((entry) => entry.message),
+          });
           await lifecycle.start({
             conversationId: context.conversationId,
             createdAtMs: Date.now(),
@@ -631,16 +634,15 @@ export function createConversationTurnWorker(
           }
           const childTurn = await childAgentTurnOptions({
             conversationId: context.conversationId,
-            history: await loadProjection({
-              conversationId: context.conversationId,
-            }),
             inputs:
               resolved.kind === "mailbox"
                 ? resolved.batch.map((entry) => entry.message)
                 : [],
             savedParentMessage,
           });
-          const piMessages = childTurn.history;
+          const history = await loadConversationProjection({
+            conversationId: context.conversationId,
+          });
           failureCode = "agent_run_failed";
           currentRunId = `conversation-run:${stableHex(turnId, String(startedAtMs))}`;
           setTags({ runId: currentRunId });
@@ -666,11 +668,11 @@ export function createConversationTurnWorker(
                   conversation,
                   conversationId: context.conversationId,
                   excludeMessageIds: inputMessageIds,
-                  hasHistory: piMessages.length > 0,
+                  hasHistory: history.messages.length > 0,
                   turnId,
                 }),
               },
-              history: piMessages,
+              history,
               ...childTurn.run,
               actor,
               credentialContext: credentialContextForActor(
@@ -817,7 +819,7 @@ export function createConversationTurnWorker(
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
                 });
-              await maybePostAutomatedTurnLimitNotice({
+              await stopAtAutomatedTurnLimit({
                 conversationId: context.conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                 source,

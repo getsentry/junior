@@ -11,6 +11,7 @@ import { resetSlackApiMockState } from "../msw/handlers/slack-api";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import type { AgentRun } from "@/chat/agent/types";
+import type { PiMessage } from "@/chat/pi/messages";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
@@ -411,6 +412,123 @@ describe("paused turn Slack integration", () => {
   it("restores explicit progress from the active turn", async () => {
     const conversationId = "slack:C123:1712345.0009";
     const sessionId = "turn_msg_9";
+    const piMessages: PiMessage[] = [
+      {
+        role: "user",
+        content: [{ type: "text", text: "prior turn" }],
+        timestamp: 1,
+      },
+      {
+        role: "assistant",
+        api: "test",
+        provider: "test",
+        model: "test/model",
+        usage: TEST_USAGE,
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: "prior-progress-call",
+            name: "reportProgress",
+            arguments: { message: "Searching old results" },
+          },
+        ],
+        timestamp: 2,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "prior-progress-call",
+        toolName: "reportProgress",
+        content: [{ type: "text", text: "ok" }],
+        isError: false,
+        timestamp: 3,
+      },
+      {
+        role: "user",
+        content: [{ type: "text", text: "review this" }],
+        timestamp: 4,
+      },
+      {
+        role: "assistant",
+        api: "test",
+        provider: "test",
+        model: "test/model",
+        usage: TEST_USAGE,
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: "progress-call-1",
+            name: "reportProgress",
+            arguments: { message: "Reading current results" },
+          },
+        ],
+        timestamp: 5,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "progress-call-1",
+        toolName: "reportProgress",
+        content: [{ type: "text", text: "ok" }],
+        isError: false,
+        timestamp: 6,
+      },
+      {
+        role: "assistant",
+        api: "test",
+        provider: "test",
+        model: "test/model",
+        usage: TEST_USAGE,
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: "progress-call-2",
+            name: "reportProgress",
+            arguments: { message: "Reviewing results" },
+          },
+        ],
+        timestamp: 7,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "progress-call-2",
+        toolName: "reportProgress",
+        content: [{ type: "text", text: "ok" }],
+        isError: false,
+        timestamp: 8,
+      },
+      {
+        role: "assistant",
+        api: "test",
+        provider: "test",
+        model: "test/model",
+        usage: TEST_USAGE,
+        stopReason: "toolUse",
+        content: [
+          {
+            type: "toolCall",
+            id: "invalid-progress-call",
+            name: "reportProgress",
+            arguments: { message: "   " },
+          },
+        ],
+        timestamp: 9,
+      },
+      {
+        role: "toolResult",
+        toolCallId: "invalid-progress-call",
+        toolName: "reportProgress",
+        content: [{ type: "text", text: "ok" }],
+        isError: false,
+        timestamp: 10,
+      },
+    ];
+    // The first three messages are an earlier Turn.
+    const { commitMessages } = await import("@/chat/conversations/projection");
+    await commitMessages({ conversationId, messages: piMessages.slice(0, 3) });
+    const { recordTurnStart } = await import("../fixtures/turn-start");
+    await recordTurnStart(conversationId, sessionId);
     const sessionRecord = await turnSessionStoreModule.upsertTurnRecord({
       conversationId,
       turnId: sessionId,
@@ -418,119 +536,7 @@ describe("paused turn Slack integration", () => {
       state: "paused",
       destination: SLACK_DESTINATION,
       source: slackSource("1712345.0009"),
-      turnStartMessageIndex: 3,
-      piMessages: [
-        {
-          role: "user",
-          content: [{ type: "text", text: "prior turn" }],
-          timestamp: 1,
-        },
-        {
-          role: "assistant",
-          api: "test",
-          provider: "test",
-          model: "test/model",
-          usage: TEST_USAGE,
-          stopReason: "toolUse",
-          content: [
-            {
-              type: "toolCall",
-              id: "prior-progress-call",
-              name: "reportProgress",
-              arguments: { message: "Searching old results" },
-            },
-          ],
-          timestamp: 2,
-        },
-        {
-          role: "toolResult",
-          toolCallId: "prior-progress-call",
-          toolName: "reportProgress",
-          content: [{ type: "text", text: "ok" }],
-          isError: false,
-          timestamp: 3,
-        },
-        {
-          role: "user",
-          content: [{ type: "text", text: "review this" }],
-          timestamp: 4,
-        },
-        {
-          role: "assistant",
-          api: "test",
-          provider: "test",
-          model: "test/model",
-          usage: TEST_USAGE,
-          stopReason: "toolUse",
-          content: [
-            {
-              type: "toolCall",
-              id: "progress-call-1",
-              name: "reportProgress",
-              arguments: { message: "Reading current results" },
-            },
-          ],
-          timestamp: 5,
-        },
-        {
-          role: "toolResult",
-          toolCallId: "progress-call-1",
-          toolName: "reportProgress",
-          content: [{ type: "text", text: "ok" }],
-          isError: false,
-          timestamp: 6,
-        },
-        {
-          role: "assistant",
-          api: "test",
-          provider: "test",
-          model: "test/model",
-          usage: TEST_USAGE,
-          stopReason: "toolUse",
-          content: [
-            {
-              type: "toolCall",
-              id: "progress-call-2",
-              name: "reportProgress",
-              arguments: { message: "Reviewing results" },
-            },
-          ],
-          timestamp: 7,
-        },
-        {
-          role: "toolResult",
-          toolCallId: "progress-call-2",
-          toolName: "reportProgress",
-          content: [{ type: "text", text: "ok" }],
-          isError: false,
-          timestamp: 8,
-        },
-        {
-          role: "assistant",
-          api: "test",
-          provider: "test",
-          model: "test/model",
-          usage: TEST_USAGE,
-          stopReason: "toolUse",
-          content: [
-            {
-              type: "toolCall",
-              id: "invalid-progress-call",
-              name: "reportProgress",
-              arguments: { message: "   " },
-            },
-          ],
-          timestamp: 9,
-        },
-        {
-          role: "toolResult",
-          toolCallId: "invalid-progress-call",
-          toolName: "reportProgress",
-          content: [{ type: "text", text: "ok" }],
-          isError: false,
-          timestamp: 10,
-        },
-      ],
+      piMessages,
       resumeReason: "timeout",
       resumedFromSliceId: 1,
       errorMessage: "Agent turn timed out",
