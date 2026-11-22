@@ -196,7 +196,7 @@ export function createImageGenerateTool(
       readOnlyHint: false,
     },
     description:
-      "Generate images from a prompt, or edit existing images. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation or image edit requests.",
+      "Edit sandbox images, such as changing text in a screenshot or restyling a photo, or generate new images from a prompt. Returns sandbox paths of the new images.",
     inputSchema: z.object({
       prompt: z
         .string()
