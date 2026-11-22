@@ -98,6 +98,11 @@ export type TurnBehavior = {
      * plugin, or MCP tools, and no skills.
      */
     only?: readonly string[];
+    /**
+     * Deferred tools that the Turn lists in the model tool list, because the
+     * model needs them on most Turns.
+     */
+    direct?: readonly string[];
   };
 };
 
@@ -238,6 +243,17 @@ const LEAD_TOOLS = [
   "noReply",
 ] as const satisfies readonly StaticToolName[];
 
+// The tools a Lead uses on most Turns to find and follow its person's work.
+const LEAD_DIRECT_TOOLS = [
+  "searchConversations",
+  "searchConversationEvents",
+  "readConversationEvent",
+  "searchInboxItems",
+  "searchEventTypes",
+  "listWatches",
+  "stopWatchingResources",
+] as const satisfies readonly (typeof LEAD_TOOLS)[number][];
+
 const LEAD: TurnBehavior = {
   ...ROOT,
   promptMode: "lead",
@@ -247,6 +263,7 @@ const LEAD: TurnBehavior = {
     agents: "lead",
     subscriptions: false,
     only: LEAD_TOOLS,
+    direct: LEAD_DIRECT_TOOLS,
   },
 };
 

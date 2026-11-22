@@ -72,27 +72,25 @@ describe("Child Agents", () => {
     const { run } = await agent();
     const conversation = await run(
       slackMention(
-        "Hand that typo fix plan off to a child agent and post the plan here. No repo changes.",
+        "Hand off writing a one-line commit message for that typo fix to a child agent. The message must cite the ticket. When its result arrives, post the message here. No repo changes.",
       ),
       {
+        // The child gets no thread history, so the ticket id reaches it only
+        // through the task.
         history: [
-          slackMention(
-            'I already checked that README.md has the typo "recieve" on line 12.',
-          ),
+          slackMention("I filed the README typo as ticket TYPO-4821."),
           reply("Got it."),
         ],
       },
     );
 
-    const tasks = completedToolCalls("spawnAgent", conversation).map(
-      (call) => (call.input as { task?: string } | undefined)?.task ?? "",
-    );
-    expect(tasks).toHaveLength(1);
-    // The child gets no thread history, so the task must carry the fact
-    // from the earlier message.
-    expect(tasks[0]).toContain("README.md");
-    expect(tasks[0]).toMatch(/recieve|receive/);
-    expect(tasks[0]).toContain("12");
+    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    expect(conversation.turns).toHaveLength(2);
+    const resultTurn = conversation.turns[1];
+    expect(resultTurn?.status).toBe("succeeded");
+    expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("TYPO-4821"),
+    ]);
   });
 
   test("when a child agent needs a person's confirmation, it reports the block in one result turn", async ({
