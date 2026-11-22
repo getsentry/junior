@@ -5,7 +5,6 @@ import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { getChatConfig } from "@/chat/config";
 import { getSqlExecutor } from "@/chat/db";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
-import type { QueueConsumer } from "@/chat/queue/provider";
 import { modelClient } from "@/core/model/client";
 import { advanceTurn } from "@/core/turn/advance";
 import { createTurnStepConsumer } from "@/core/turn/queue";
@@ -38,19 +37,5 @@ function runTurnStep(message: { turnId: string }): Promise<void> {
   });
 }
 
-/** Create the HTTP route for Turn step messages. */
-export function createVercelTurnStepCallback(): (
-  request: Request,
-) => Promise<Response> {
-  return createTurnStepConsumer(runTurnStep).create();
-}
-
-/** Return the queue consumer for Turn steps, for a pulling queue worker. */
-export function turnStepQueueConsumer(): QueueConsumer {
-  return createTurnStepConsumer(runTurnStep).consumer;
-}
-
-/** Receive Turn step messages during local development. */
-export function registerVercelTurnStepDevConsumer(): (() => void) | undefined {
-  return createTurnStepConsumer(runTurnStep).registerDev();
-}
+/** The queue consumer of Turn step messages. The queue provider picks which entry point is live. */
+export const turnStepConsumer = createTurnStepConsumer(runTurnStep);
