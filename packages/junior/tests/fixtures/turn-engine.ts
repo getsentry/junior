@@ -72,8 +72,6 @@ export type TurnEngine = {
   readTurn: () => Promise<typeof juniorTurns.$inferSelect>;
   /** The Conversation history as the model reads it. */
   loadHistory: () => ReturnType<typeof loadMessages>;
-  /** The data of the Turns' lifecycle events, in history order. */
-  loadLifecycleEvents: () => ReturnType<typeof loadLifecycleEvents>;
   /** Adds an inbox row for the test's Turn, and returns its id. */
   addTestInput: (text: string) => Promise<string>;
   /**
@@ -193,7 +191,6 @@ export async function startTurnEngine(): Promise<TurnEngine> {
     advance,
     readTurn,
     loadHistory: () => loadMessages(fixture),
-    loadLifecycleEvents: () => loadLifecycleEvents(fixture),
     addTestInput,
     deliveredStepMessages,
     close: async () => {
@@ -201,15 +198,6 @@ export async function startTurnEngine(): Promise<TurnEngine> {
       await fixture.close();
     },
   };
-}
-
-async function loadLifecycleEvents(fixture: LocalJuniorSqlFixture) {
-  const events = await createSqlConversationEventStore(
-    fixture.sql,
-  ).loadCurrentHistory(CONVERSATION_ID);
-  return events.flatMap((event) =>
-    event.data.type.startsWith("turn_") ? [event.data] : [],
-  );
 }
 
 async function loadMessages(fixture: LocalJuniorSqlFixture) {
