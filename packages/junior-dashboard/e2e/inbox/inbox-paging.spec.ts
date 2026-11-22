@@ -366,15 +366,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
+    const filters = page.getByRole("navigation", { name: "Asks to show" });
     await expect(
       page.getByRole("region", { name: "To do" }).locator("[data-inbox-row]"),
     ).toHaveCount(2);
     // The server counts every page, and leaves out the snoozed row.
-    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+    await expect(filters.getByRole("link", { name: /^Decisions/ })).toHaveText(
       /^Decisions\s*11$/,
     );
-    await expect(nav.getByRole("link", { name: /^Pull requests/ })).toHaveText(
-      /^Pull requests\s*2$/,
+    await expect(filters.getByRole("link", { name: /^PRs/ })).toHaveText(
+      /^PRs\s*2$/,
     );
     await expect(nav.getByRole("link", { name: /^Snoozed/ })).toHaveText(
       /^Snoozed\s*1$/,
@@ -397,7 +398,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     const todo = page.getByRole("region", { name: "To do" });
     await expect(rowHead(todo, linked.title)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+    const filters = page.getByRole("navigation", { name: "Asks to show" });
+    await expect(filters.getByRole("link", { name: /^Decisions/ })).toHaveText(
       /^Decisions\s*12$/,
     );
     await expect(
@@ -458,6 +460,54 @@ test.describe("new UI", { tag: "@new" }, () => {
         .locator("[data-inbox-row]")
         .first(),
     ).toBeVisible();
+  });
+
+  test("a Conversations state filter pages on before it says none match", async ({
+    dashboard,
+    page,
+  }) => {
+    // The first page holds no running Conversation; the next page does.
+    let releaseOlder = () => {};
+    const olderHeld = new Promise<void>((resolve) => {
+      releaseOlder = resolve;
+    });
+    await page.route(/\/api\/conversations(\?|$)/, async (route) => {
+      const url = new URL(route.request().url());
+      const older = url.searchParams.has("cursor");
+      // Both pages split the mock's first page.
+      url.searchParams.delete("cursor");
+      const body = await (await route.fetch({ url: url.toString() })).json();
+      const running = (conversation: {
+        treeState?: string;
+        turnActive?: boolean;
+      }) =>
+        conversation.treeState === "working" ||
+        Boolean(conversation.turnActive);
+      if (older) await olderHeld;
+      await route.fulfill({
+        json: {
+          ...body,
+          conversations: body.conversations.filter(
+            (conversation: { treeState?: string; turnActive?: boolean }) =>
+              older ? running(conversation) : !running(conversation),
+          ),
+          nextCursor: older ? undefined : "older",
+        },
+      });
+    });
+    const older = page.waitForRequest((request) =>
+      /\/api\/conversations\?.*cursor=/.test(request.url()),
+    );
+    await page.goto(`${dashboard.baseURL}/?view=conversations&state=working`);
+    const list = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
+    await older;
+    await expect(list.getByText("No conversations match")).toHaveCount(0);
+    releaseOlder();
+    await expect(rowHead(list, "Investigate checkout latency")).toBeVisible();
+    await expect(list.getByText("No conversations match")).toHaveCount(0);
   });
 
   /** Twelve questions, each in its own Conversation, two to a page. */

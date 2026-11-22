@@ -5,7 +5,10 @@ import {
   type ConversationTreeNode,
 } from "@/chat/conversations/sql/conversation-tree";
 import { juniorConversations } from "@/db/schema";
-import type { ConversationFeedItem } from "../schema/conversation-feed";
+import {
+  CONVERSATION_FEED_THREAD_LIMIT,
+  type ConversationFeedItem,
+} from "../schema/conversation-feed";
 import type { ConversationAccess } from "./access";
 import { readFirstHumanMessageTexts } from "./first-message";
 import { conversationSummaryFromStoredConversation } from "./projection";
@@ -70,20 +73,29 @@ export async function readFeedThreadRecords(
   return { firstHumanMessageTexts, rootIds: new Set(rootIds), threads };
 }
 
+/** The Threads that a feed row lists, and how many the cap left out. */
+type FeedRowThreads = {
+  omittedThreadCount: number;
+  threads: ConversationFeedItem[];
+};
+
 /**
  * Nest the shown Threads of `readFeedThreadRecords` under their nearest shown
  * ancestor. A Thread shows when it and every ancestor have no
  * `archived_at`. A Thread uses the access of its root. `tree` holds the
- * trees of at least the listed roots.
+ * trees of at least the listed roots. Each root lists at most
+ * `CONVERSATION_FEED_THREAD_LIMIT` Threads, depth first in activity order,
+ * so a kept Thread always has its parent.
  */
 export function nestFeedThreads(
   records: FeedThreadRecords,
   tree: ReadonlyMap<string, ConversationTreeNode>,
   accessByRoot: ReadonlyMap<string, ConversationAccess | undefined>,
-): Map<string, ConversationFeedItem[]> {
+): Map<string, FeedRowThreads> {
   if (!records) return new Map();
   const { firstHumanMessageTexts, rootIds, threads } = records;
   const childrenByParent = new Map<string, ConversationFeedItem[]>();
+  const placedByRoot = new Map<string, number>();
   for (const { conversation, row } of threads) {
     const parentId = findThreadPlacement(
       conversation.conversationId,
@@ -92,6 +104,7 @@ export function nestFeedThreads(
     );
     if (!parentId) continue;
     const rootId = row.conversation.rootConversationId;
+    if (rootId) placedByRoot.set(rootId, (placedByRoot.get(rootId) ?? 0) + 1);
     // Thread usage covers only the Thread. Roots show tree totals.
     const summary = conversationSummaryFromStoredConversation({
       access: rootId ? accessByRoot.get(rootId) : undefined,
@@ -110,15 +123,33 @@ export function nestFeedThreads(
     childrenByParent.set(parentId, siblings);
   }
   // Parent edges are set once at create, so placements form a forest.
-  const nest = (items: ConversationFeedItem[]): ConversationFeedItem[] =>
-    items.map((item) => {
+  const nest = (
+    items: ConversationFeedItem[],
+    budget: { left: number },
+  ): ConversationFeedItem[] =>
+    items.flatMap((item) => {
+      if (budget.left === 0) return [];
+      budget.left -= 1;
       const children = childrenByParent.get(item.conversationId);
-      return children ? { ...item, threads: nest(children) } : item;
+      const nested = children ? nest(children, budget) : [];
+      return [nested.length > 0 ? { ...item, threads: nested } : item];
     });
   return new Map(
     [...rootIds].flatMap((rootId) => {
       const children = childrenByParent.get(rootId);
-      return children ? [[rootId, nest(children)]] : [];
+      if (!children) return [];
+      const budget = { left: CONVERSATION_FEED_THREAD_LIMIT };
+      const nested = nest(children, budget);
+      const shown = CONVERSATION_FEED_THREAD_LIMIT - budget.left;
+      return [
+        [
+          rootId,
+          {
+            omittedThreadCount: (placedByRoot.get(rootId) ?? 0) - shown,
+            threads: nested,
+          },
+        ],
+      ];
     }),
   );
 }
