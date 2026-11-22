@@ -173,7 +173,6 @@ export type Conversation = {
   /** The newest stored files, when private content is visible. */
   media?: ConversationFeedItem["media"] | undefined;
   links?: ConversationFeedItem["links"] | undefined;
-  annotations?: ConversationSummaryReport["annotations"] | undefined;
   sidebarAnnotations?:
     | ConversationSummaryReport["sidebarAnnotations"]
     | undefined;

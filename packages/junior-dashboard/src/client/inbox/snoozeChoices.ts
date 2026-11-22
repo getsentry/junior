@@ -6,8 +6,15 @@ import type {
 const MINUTE_MS = 60 * 1000;
 const HOUR_MS = 60 * MINUTE_MS;
 
-/** A snooze choice, such as "Tomorrow morning". */
-export type SnoozeChoice = { label: string; untilMs(nowMs: number): number };
+/**
+ * A snooze choice, such as "Tomorrow morning". A choice with `short`, such
+ * as "15m", shows as a cell of the menu's duration grid.
+ */
+export type SnoozeChoice = {
+  label: string;
+  short?: string;
+  untilMs(nowMs: number): number;
+};
 
 /** `hour`:00 in the browser's timezone, `days` after the day of `nowMs`. */
 function atLocalHour(nowMs: number, days: number, hour: number) {
@@ -27,10 +34,18 @@ function daysToMonday(nowMs: number): number {
  * before that local hour, so it is not a few minutes away.
  */
 const snoozeChoices: readonly (SnoozeChoice & { beforeHour?: number })[] = [
-  { label: "15 minutes", untilMs: (nowMs) => nowMs + 15 * MINUTE_MS },
-  { label: "30 minutes", untilMs: (nowMs) => nowMs + 30 * MINUTE_MS },
-  { label: "1 hour", untilMs: (nowMs) => nowMs + HOUR_MS },
-  { label: "3 hours", untilMs: (nowMs) => nowMs + 3 * HOUR_MS },
+  {
+    label: "15 minutes",
+    short: "15m",
+    untilMs: (nowMs) => nowMs + 15 * MINUTE_MS,
+  },
+  {
+    label: "30 minutes",
+    short: "30m",
+    untilMs: (nowMs) => nowMs + 30 * MINUTE_MS,
+  },
+  { label: "1 hour", short: "1h", untilMs: (nowMs) => nowMs + HOUR_MS },
+  { label: "3 hours", short: "3h", untilMs: (nowMs) => nowMs + 3 * HOUR_MS },
   {
     beforeHour: 13,
     label: "This afternoon",

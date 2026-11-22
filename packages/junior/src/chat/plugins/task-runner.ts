@@ -460,10 +460,8 @@ function taskPluginContext(
 
 function isConversationMetadataTask(message: PluginTaskQueueMessage): boolean {
   return (
-    (message.plugin === CONVERSATION_METADATA_TASK.plugin &&
-      message.name === CONVERSATION_METADATA_TASK.name) ||
-    // TODO(dcramer): Remove after no queued Brief task remains.
-    (message.plugin === "briefs" && message.name === "updateBrief")
+    message.plugin === CONVERSATION_METADATA_TASK.plugin &&
+    message.name === CONVERSATION_METADATA_TASK.name
   );
 }
 

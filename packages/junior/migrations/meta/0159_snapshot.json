@@ -1,5 +1,5 @@
 {
-  "id": "01347e60-8ffb-4652-9a04-ef38bdb0e152",
+  "id": "048ff68b-61a7-4fb9-8824-170f292fd132",
   "prevId": "4d4164d5-577c-48e5-9f02-409588cb1354",
   "version": "7",
   "dialect": "postgresql",
@@ -39,37 +39,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_agent_bindings_parent_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_agent_bindings_parent_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_agent_bindings",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "parent_conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_agent_bindings_child_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_agent_bindings_child_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_agent_bindings",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "child_conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -81,6 +81,243 @@
           ]
         }
       },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.junior_agent_invocations": {
+      "name": "junior_agent_invocations",
+      "schema": "",
+      "columns": {
+        "invocation_id": {
+          "name": "invocation_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "parent_conversation_id": {
+          "name": "parent_conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "child_conversation_id": {
+          "name": "child_conversation_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "agent_name": {
+          "name": "agent_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "input": {
+          "name": "input",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "actor_json": {
+          "name": "actor_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "credential_context_json": {
+          "name": "credential_context_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "source_json": {
+          "name": "source_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_json": {
+          "name": "destination_json",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "destination_visibility": {
+          "name": "destination_visibility",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "agent_type": {
+          "name": "agent_type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "fork": {
+          "name": "fork",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "reasoning_level": {
+          "name": "reasoning_level",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "parent_tool_call_id": {
+          "name": "parent_tool_call_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "mailbox_status": {
+          "name": "mailbox_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "parent_mailbox_status": {
+          "name": "parent_mailbox_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "result": {
+          "name": "result",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "error_message": {
+          "name": "error_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "terminal_at": {
+          "name": "terminal_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        }
+      },
+      "indexes": {
+        "junior_agent_invocations_child_idx": {
+          "name": "junior_agent_invocations_child_idx",
+          "columns": [
+            {
+              "expression": "child_conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "junior_agent_invocations_mailbox_idx": {
+          "name": "junior_agent_invocations_mailbox_idx",
+          "columns": [
+            {
+              "expression": "mailbox_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        },
+        "junior_agent_invocations_parent_mailbox_idx": {
+          "name": "junior_agent_invocations_parent_mailbox_idx",
+          "columns": [
+            {
+              "expression": "parent_mailbox_status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "terminal_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "junior_agent_invocations_parent_conversation_id_junior_conversations_conversation_id_fk": {
+          "name": "junior_agent_invocations_parent_conversation_id_junior_conversations_conversation_id_fk",
+          "tableFrom": "junior_agent_invocations",
+          "columnsFrom": [
+            "parent_conversation_id"
+          ],
+          "tableTo": "junior_conversations",
+          "columnsTo": [
+            "conversation_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        },
+        "junior_agent_invocations_child_conversation_id_junior_conversations_conversation_id_fk": {
+          "name": "junior_agent_invocations_child_conversation_id_junior_conversations_conversation_id_fk",
+          "tableFrom": "junior_agent_invocations",
+          "columnsFrom": [
+            "child_conversation_id"
+          ],
+          "tableTo": "junior_conversations",
+          "columnsTo": [
+            "conversation_id"
+          ],
+          "onUpdate": "no action",
+          "onDelete": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -157,9 +394,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_api_tokens_owner_email_idx": {
           "name": "junior_api_tokens_owner_email_idx",
@@ -172,9 +409,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -280,9 +517,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_artifacts_permanent_sha_uidx": {
           "name": "junior_artifacts_permanent_sha_uidx",
@@ -301,10 +538,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_artifacts\".\"visibility\" = 'public' and \"junior_artifacts\".\"expires_at\" is null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_artifacts\".\"visibility\" = 'public' and \"junior_artifacts\".\"expires_at\" is null",
+          "concurrently": false
         },
         "junior_artifacts_gc_idx": {
           "name": "junior_artifacts_gc_idx",
@@ -323,9 +560,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_artifacts_conversation_idx": {
           "name": "junior_artifacts_conversation_idx",
@@ -338,9 +575,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -442,9 +679,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -562,9 +799,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_attachments_provider_idx": {
           "name": "junior_attachments_provider_idx",
@@ -589,9 +826,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_attachments_gc_idx": {
           "name": "junior_attachments_gc_idx",
@@ -616,9 +853,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_attachments_conversation_url_idx": {
           "name": "junior_attachments_conversation_url_idx",
@@ -637,25 +874,25 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_attachments\".\"url\" IS NOT NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_attachments\".\"url\" IS NOT NULL",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_attachments_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_attachments_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_attachments",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -771,9 +1008,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_automation_runs_completed_idx": {
           "name": "junior_automation_runs_completed_idx",
@@ -786,9 +1023,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_automation_runs_incomplete_idx": {
           "name": "junior_automation_runs_incomplete_idx",
@@ -807,63 +1044,63 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_automation_runs\".\"status\" in ('pending', 'running')",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_automation_runs\".\"status\" in ('pending', 'running')",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_automation_runs_automation_id_junior_automations_id_fk": {
           "name": "junior_automation_runs_automation_id_junior_automations_id_fk",
           "tableFrom": "junior_automation_runs",
-          "tableTo": "junior_automations",
           "columnsFrom": [
             "automation_id"
           ],
+          "tableTo": "junior_automations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "junior_automation_runs_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_automation_runs_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_automation_runs",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_automation_runs_automation_version_fk": {
           "name": "junior_automation_runs_automation_version_fk",
           "tableFrom": "junior_automation_runs",
-          "tableTo": "junior_automation_versions",
           "columnsFrom": [
             "automation_id",
             "automation_version"
           ],
+          "tableTo": "junior_automation_versions",
           "columnsTo": [
             "automation_id",
             "version"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {
         "junior_automation_runs_conversation_id_unique": {
           "name": "junior_automation_runs_conversation_id_unique",
-          "nullsNotDistinct": false,
           "columns": [
             "conversation_id"
-          ]
+          ],
+          "nullsNotDistinct": false
         }
       },
       "policies": {},
@@ -915,15 +1152,15 @@
         "junior_automation_versions_automation_id_fk": {
           "name": "junior_automation_versions_automation_id_fk",
           "tableFrom": "junior_automation_versions",
-          "tableTo": "junior_automations",
           "columnsFrom": [
             "automation_id"
           ],
+          "tableTo": "junior_automations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -1083,10 +1320,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_automations\".\"status\" <> 'deleted'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_automations\".\"status\" <> 'deleted'",
+          "concurrently": false
         },
         "junior_automations_creator_identity_idx": {
           "name": "junior_automations_creator_identity_idx",
@@ -1111,9 +1348,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_automations_creator_slack_idx": {
           "name": "junior_automations_creator_slack_idx",
@@ -1132,10 +1369,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_automations\".\"status\" <> 'deleted'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_automations\".\"status\" <> 'deleted'",
+          "concurrently": false
         },
         "junior_automations_last_run_idx": {
           "name": "junior_automations_last_run_idx",
@@ -1148,9 +1385,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_automations_run_now_due_idx": {
           "name": "junior_automations_run_now_due_idx",
@@ -1175,10 +1412,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"run_now_at_ms\" IS NOT NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"run_now_at_ms\" IS NOT NULL",
+          "concurrently": false
         },
         "junior_automations_next_run_due_idx": {
           "name": "junior_automations_next_run_due_idx",
@@ -1203,10 +1440,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"next_run_at_ms\" IS NOT NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_automations\".\"status\" = 'active' AND \"junior_automations\".\"next_run_at_ms\" IS NOT NULL",
+          "concurrently": false
         },
         "junior_automations_skill_idx": {
           "name": "junior_automations_skill_idx",
@@ -1231,10 +1468,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_automations\".\"status\" <> 'deleted' AND \"junior_automations\".\"skill\" IS NOT NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_automations\".\"status\" <> 'deleted' AND \"junior_automations\".\"skill\" IS NOT NULL",
+          "concurrently": false
         },
         "junior_automations_match_idx": {
           "name": "junior_automations_match_idx",
@@ -1265,38 +1502,38 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_automations\".\"status\" <> 'deleted'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_automations\".\"status\" <> 'deleted'",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_automations_creator_identity_id_junior_identities_id_fk": {
           "name": "junior_automations_creator_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_automations",
-          "tableTo": "junior_identities",
           "columnsFrom": [
             "creator_identity_id"
           ],
+          "tableTo": "junior_identities",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_automations_last_run_id_junior_automation_runs_id_fk": {
           "name": "junior_automations_last_run_id_junior_automation_runs_id_fk",
           "tableFrom": "junior_automations",
-          "tableTo": "junior_automation_runs",
           "columnsFrom": [
             "last_run_id"
           ],
+          "tableTo": "junior_automation_runs",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -1459,9 +1696,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_code_changes_opened_at_idx": {
           "name": "junior_code_changes_opened_at_idx",
@@ -1474,9 +1711,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_code_changes_merged_at_idx": {
           "name": "junior_code_changes_merged_at_idx",
@@ -1489,9 +1726,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_code_changes_closed_at_idx": {
           "name": "junior_code_changes_closed_at_idx",
@@ -1504,9 +1741,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_code_changes_repository_state_idx": {
           "name": "junior_code_changes_repository_state_idx",
@@ -1531,24 +1768,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_code_changes_search_idx": {
           "name": "junior_code_changes_search_idx",
           "columns": [
             {
               "expression": "to_tsvector('simple', \"number\"::text || ' ' || coalesce(\"title\", ''))",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "concurrently": false
         },
         "junior_code_changes_open_idx": {
           "name": "junior_code_changes_open_idx",
@@ -1561,25 +1798,25 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_code_changes\".\"state\" = 'open'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_code_changes\".\"state\" = 'open'",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_code_changes_repository_id_junior_code_repositories_id_fk": {
           "name": "junior_code_changes_repository_id_junior_code_repositories_id_fk",
           "tableFrom": "junior_code_changes",
-          "tableTo": "junior_code_repositories",
           "columnsFrom": [
             "repository_id"
           ],
+          "tableTo": "junior_code_repositories",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -1647,24 +1884,24 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_code_repositories_search_idx": {
           "name": "junior_code_repositories_search_idx",
           "columns": [
             {
               "expression": "to_tsvector('simple', translate(\"name\", '/', ' '))",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -1726,15 +1963,15 @@
         "junior_conversation_annotations_conversation_id_fk": {
           "name": "junior_conversation_annotations_conversation_id_fk",
           "tableFrom": "junior_conversation_annotations",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -1807,24 +2044,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_conversation_bindings_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversation_bindings_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_bindings",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -1933,9 +2170,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_briefs_conversation_version_idx": {
           "name": "junior_conversation_briefs_conversation_version_idx",
@@ -1954,9 +2191,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_briefs_created_at_idx": {
           "name": "junior_conversation_briefs_created_at_idx",
@@ -1975,39 +2212,39 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_briefs_search_idx": {
           "name": "junior_conversation_briefs_search_idx",
           "columns": [
             {
               "expression": "to_tsvector('english', \"search_text\")",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_conversation_briefs_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversation_briefs_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_briefs",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -2083,15 +2320,15 @@
         "junior_conversation_embeddings_conversation_fk": {
           "name": "junior_conversation_embeddings_conversation_fk",
           "tableFrom": "junior_conversation_embeddings",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -2158,17 +2395,17 @@
         "junior_conversation_event_embeddings_event_fk": {
           "name": "junior_conversation_event_embeddings_event_fk",
           "tableFrom": "junior_conversation_event_embeddings",
-          "tableTo": "junior_conversation_events",
           "columnsFrom": [
             "conversation_id",
             "seq"
           ],
+          "tableTo": "junior_conversation_events",
           "columnsTo": [
             "conversation_id",
             "seq"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -2232,26 +2469,26 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_conversation_event_lexemes_event_fk": {
           "name": "junior_conversation_event_lexemes_event_fk",
           "tableFrom": "junior_conversation_event_lexemes",
-          "tableTo": "junior_conversation_events",
           "columnsFrom": [
             "conversation_id",
             "seq"
           ],
+          "tableTo": "junior_conversation_events",
           "columnsTo": [
             "conversation_id",
             "seq"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -2352,9 +2589,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_events_type_idx": {
           "name": "junior_conversation_events_type_idx",
@@ -2379,23 +2616,23 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_events_plugin_report_idx": {
           "name": "junior_conversation_events_plugin_report_idx",
           "columns": [
             {
               "expression": "(\"payload\"->>'namespace')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
               "expression": "(\"payload\"->>'name')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
@@ -2406,10 +2643,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'structured_event'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"type\" = 'structured_event'",
+          "concurrently": false
         },
         "junior_conversation_events_guardian_review_time_idx": {
           "name": "junior_conversation_events_guardian_review_time_idx",
@@ -2422,10 +2659,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'guardian_action_reviewed'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"type\" = 'guardian_action_reviewed'",
+          "concurrently": false
         },
         "junior_conversation_events_authorization_request_idx": {
           "name": "junior_conversation_events_authorization_request_idx",
@@ -2444,10 +2681,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'authorization_requested'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"type\" = 'authorization_requested'",
+          "concurrently": false
         },
         "junior_conversation_events_plugin_conversation_idx": {
           "name": "junior_conversation_events_plugin_conversation_idx",
@@ -2460,14 +2697,14 @@
             },
             {
               "expression": "(\"payload\"->>'namespace')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
               "expression": "(\"payload\"->>'name')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
@@ -2478,10 +2715,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'structured_event'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"type\" = 'structured_event'",
+          "concurrently": false
         },
         "junior_conversation_events_actor_identity_idx": {
           "name": "junior_conversation_events_actor_identity_idx",
@@ -2506,9 +2743,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_events_author_idx": {
           "name": "junior_conversation_events_author_idx",
@@ -2533,10 +2770,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"actor_identity_id\" is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"actor_identity_id\" is not null",
+          "concurrently": false
         },
         "junior_conversation_events_message_role_idx": {
           "name": "junior_conversation_events_message_role_idx",
@@ -2549,8 +2786,8 @@
             },
             {
               "expression": "(\"payload\"->>'role')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
@@ -2567,10 +2804,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'message'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"type\" = 'message'",
+          "concurrently": false
         },
         "junior_conversation_events_user_message_time_idx": {
           "name": "junior_conversation_events_user_message_time_idx",
@@ -2595,26 +2832,26 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'user_message' and (\"junior_conversation_events\".\"payload\"->'provenance'->>'authority') = 'instruction' and (\"junior_conversation_events\".\"payload\"->'provenance'->'actor'->>'platform') in ('slack', 'local', 'web')",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"type\" = 'user_message' and (\"junior_conversation_events\".\"payload\"->'provenance'->>'authority') = 'instruction' and (\"junior_conversation_events\".\"payload\"->'provenance'->'actor'->>'platform') in ('slack', 'local', 'web')",
+          "concurrently": false
         },
         "junior_conversation_events_message_search_idx": {
           "name": "junior_conversation_events_message_search_idx",
           "columns": [
             {
               "expression": "to_tsvector('english', \"payload\"->>'text')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_events\".\"type\" = 'message'",
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "where": "\"junior_conversation_events\".\"type\" = 'message'",
+          "concurrently": false
         },
         "junior_conversation_events_idempotency_idx": {
           "name": "junior_conversation_events_idempotency_idx",
@@ -2633,37 +2870,37 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_conversation_events_actor_identity_id_junior_identities_id_fk": {
           "name": "junior_conversation_events_actor_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversation_events",
-          "tableTo": "junior_identities",
           "columnsFrom": [
             "actor_identity_id"
           ],
+          "tableTo": "junior_identities",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversation_events_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversation_events_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_events",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2745,9 +2982,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_metrics_occurred_at_metric_idx": {
           "name": "junior_conversation_metrics_occurred_at_metric_idx",
@@ -2766,9 +3003,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_metrics_turn_metric_occurred_at_idx": {
           "name": "junior_conversation_metrics_turn_metric_occurred_at_idx",
@@ -2805,38 +3042,38 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_metrics\".\"metric\" IN ('duration_ms', 'total_tokens', 'cost_micro_usd')",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_metrics\".\"metric\" IN ('duration_ms', 'total_tokens', 'cost_micro_usd')",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_conversation_metrics_actor_identity_id_junior_identities_id_fk": {
           "name": "junior_conversation_metrics_actor_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversation_metrics",
-          "tableTo": "junior_identities",
           "columnsFrom": [
             "actor_identity_id"
           ],
+          "tableTo": "junior_identities",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversation_metrics_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversation_metrics_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_metrics",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -2919,9 +3156,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_participants_root_idx": {
           "name": "junior_conversation_participants_root_idx",
@@ -2934,9 +3171,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversation_participants_auto_archive_idx": {
           "name": "junior_conversation_participants_auto_archive_idx",
@@ -2949,10 +3186,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_participants\".\"auto_archive\"",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_participants\".\"auto_archive\"",
+          "concurrently": false
         },
         "junior_conversation_participants_unsubscribed_idx": {
           "name": "junior_conversation_participants_unsubscribed_idx",
@@ -2971,38 +3208,38 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversation_participants\".\"unsubscribed_at\" is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversation_participants\".\"unsubscribed_at\" is not null",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_conversation_participants_user_id_junior_users_id_fk": {
           "name": "junior_conversation_participants_user_id_junior_users_id_fk",
           "tableFrom": "junior_conversation_participants",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversation_participants_root_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversation_participants_root_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_participants",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "root_conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -3053,28 +3290,28 @@
         "junior_conversation_read_positions_user_id_junior_users_id_fk": {
           "name": "junior_conversation_read_positions_user_id_junior_users_id_fk",
           "tableFrom": "junior_conversation_read_positions",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversation_read_positions_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversation_read_positions_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversation_read_positions",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {
@@ -3358,17 +3595,17 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversations_active_idx": {
           "name": "junior_conversations_active_idx",
           "columns": [
             {
               "expression": "coalesce(\"execution_updated_at\", \"updated_at\")",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
@@ -3379,10 +3616,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_conversations\".\"execution_status\" <> 'idle'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversations\".\"execution_status\" <> 'idle'",
+          "concurrently": false
         },
         "junior_conversations_destination_activity_idx": {
           "name": "junior_conversations_destination_activity_idx",
@@ -3401,9 +3638,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversations_actor_activity_idx": {
           "name": "junior_conversations_actor_activity_idx",
@@ -3422,9 +3659,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversations_parent_idx": {
           "name": "junior_conversations_parent_idx",
@@ -3437,9 +3674,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversations_forked_from_idx": {
           "name": "junior_conversations_forked_from_idx",
@@ -3452,9 +3689,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversations_root_idx": {
           "name": "junior_conversations_root_idx",
@@ -3467,9 +3704,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_conversations_lead_actor_idx": {
           "name": "junior_conversations_lead_actor_idx",
@@ -3482,118 +3719,118 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_conversations\".\"kind\" = 'lead'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_conversations\".\"kind\" = 'lead'",
+          "concurrently": false
         },
         "junior_conversations_search_idx": {
           "name": "junior_conversations_search_idx",
           "columns": [
             {
               "expression": "to_tsvector('english', coalesce(\"title\", '') || ' ' || coalesce(\"summary\", ''))",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_conversations_destination_id_junior_destinations_id_fk": {
           "name": "junior_conversations_destination_id_junior_destinations_id_fk",
           "tableFrom": "junior_conversations",
-          "tableTo": "junior_destinations",
           "columnsFrom": [
             "destination_id"
           ],
+          "tableTo": "junior_destinations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversations_actor_identity_id_junior_identities_id_fk": {
           "name": "junior_conversations_actor_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
-          "tableTo": "junior_identities",
           "columnsFrom": [
             "actor_identity_id"
           ],
+          "tableTo": "junior_identities",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversations_creator_identity_id_junior_identities_id_fk": {
           "name": "junior_conversations_creator_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
-          "tableTo": "junior_identities",
           "columnsFrom": [
             "creator_identity_id"
           ],
+          "tableTo": "junior_identities",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversations_credential_subject_identity_id_junior_identities_id_fk": {
           "name": "junior_conversations_credential_subject_identity_id_junior_identities_id_fk",
           "tableFrom": "junior_conversations",
-          "tableTo": "junior_identities",
           "columnsFrom": [
             "credential_subject_identity_id"
           ],
+          "tableTo": "junior_identities",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversations_parent_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversations_parent_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "parent_conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_conversations_forked_from_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversations_forked_from_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "forked_from_conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "junior_conversations_root_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_conversations_root_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_conversations",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "root_conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3708,9 +3945,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_destinations_provider_kind_idx": {
           "name": "junior_destinations_provider_kind_idx",
@@ -3729,9 +3966,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -3868,9 +4105,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_identities_user_idx": {
           "name": "junior_identities_user_idx",
@@ -3883,9 +4120,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_identities_verified_email_idx": {
           "name": "junior_identities_verified_email_idx",
@@ -3898,10 +4135,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_identities\".\"email_verified\" = true AND \"junior_identities\".\"email_normalized\" IS NOT NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_identities\".\"email_verified\" = true AND \"junior_identities\".\"email_normalized\" IS NOT NULL",
+          "concurrently": false
         },
         "junior_identities_kind_provider_idx": {
           "name": "junior_identities_kind_provider_idx",
@@ -3920,40 +4157,40 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_identities_slack_person_search_idx": {
           "name": "junior_identities_slack_person_search_idx",
           "columns": [
             {
               "expression": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_identities_user_id_junior_users_id_fk": {
           "name": "junior_identities_user_id_junior_users_id_fk",
           "tableFrom": "junior_identities",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         }
       },
       "compositePrimaryKeys": {},
@@ -3991,37 +4228,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk": {
           "name": "junior_inbox_item_assignees_item_id_junior_inbox_items_id_fk",
           "tableFrom": "junior_inbox_item_assignees",
-          "tableTo": "junior_inbox_items",
           "columnsFrom": [
             "item_id"
           ],
+          "tableTo": "junior_inbox_items",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "junior_inbox_item_assignees_user_id_junior_users_id_fk": {
           "name": "junior_inbox_item_assignees_user_id_junior_users_id_fk",
           "tableFrom": "junior_inbox_item_assignees",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -4067,37 +4304,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_inbox_item_conversations_item_id_junior_inbox_items_id_fk": {
           "name": "junior_inbox_item_conversations_item_id_junior_inbox_items_id_fk",
           "tableFrom": "junior_inbox_item_conversations",
-          "tableTo": "junior_inbox_items",
           "columnsFrom": [
             "item_id"
           ],
+          "tableTo": "junior_inbox_items",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "junior_inbox_item_conversations_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_inbox_item_conversations_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_inbox_item_conversations",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -4154,28 +4391,28 @@
         "junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk": {
           "name": "junior_inbox_item_slack_cards_item_id_junior_inbox_items_id_fk",
           "tableFrom": "junior_inbox_item_slack_cards",
-          "tableTo": "junior_inbox_items",
           "columnsFrom": [
             "item_id"
           ],
+          "tableTo": "junior_inbox_items",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "junior_inbox_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk": {
           "name": "junior_inbox_item_slack_cards_conversation_id_junior_conversations_conversation_id_fk",
           "tableFrom": "junior_inbox_item_slack_cards",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -4355,14 +4592,14 @@
           "columns": [
             {
               "expression": "coalesce(\"provider\", '')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
               "expression": "coalesce(\"provider_tenant_id\", '')",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             },
             {
@@ -4373,10 +4610,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_inbox_items\".\"status\" = 'open'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_inbox_items\".\"status\" = 'open'",
+          "concurrently": false
         },
         "junior_inbox_items_status_idx": {
           "name": "junior_inbox_items_status_idx",
@@ -4401,9 +4638,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_inbox_items_subject_idx": {
           "name": "junior_inbox_items_subject_idx",
@@ -4422,9 +4659,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_inbox_items_owner_idx": {
           "name": "junior_inbox_items_owner_idx",
@@ -4443,9 +4680,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_inbox_items_open_action_owner_idx": {
           "name": "junior_inbox_items_open_action_owner_idx",
@@ -4458,10 +4695,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"kind\" = 'action'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"kind\" = 'action'",
+          "concurrently": false
         },
         "junior_inbox_items_automation_idx": {
           "name": "junior_inbox_items_automation_idx",
@@ -4480,9 +4717,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_inbox_items_answered_idx": {
           "name": "junior_inbox_items_answered_idx",
@@ -4507,38 +4744,38 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_inbox_items\".\"answer\" is not null",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_inbox_items\".\"answer\" is not null",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_inbox_items_automation_id_junior_automations_id_fk": {
           "name": "junior_inbox_items_automation_id_junior_automations_id_fk",
           "tableFrom": "junior_inbox_items",
-          "tableTo": "junior_automations",
           "columnsFrom": [
             "automation_id"
           ],
+          "tableTo": "junior_automations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         },
         "junior_inbox_items_closed_by_user_id_junior_users_id_fk": {
           "name": "junior_inbox_items_closed_by_user_id_junior_users_id_fk",
           "tableFrom": "junior_inbox_items",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "closed_by_user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "set null"
         }
       },
       "compositePrimaryKeys": {},
@@ -4633,9 +4870,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_inbox_snooze_triggers_snooze_idx": {
           "name": "junior_inbox_snooze_triggers_snooze_idx",
@@ -4648,24 +4885,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_fk": {
           "name": "junior_inbox_snooze_triggers_snooze_id_junior_inbox_snoozes_id_fk",
           "tableFrom": "junior_inbox_snooze_triggers",
-          "tableTo": "junior_inbox_snoozes",
           "columnsFrom": [
             "snooze_id"
           ],
+          "tableTo": "junior_inbox_snoozes",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -4738,10 +4975,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_inbox_snoozes\".\"state\" = 'snoozed'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_inbox_snoozes\".\"state\" = 'snoozed'",
+          "concurrently": false
         },
         "junior_inbox_snoozes_settled_idx": {
           "name": "junior_inbox_snoozes_settled_idx",
@@ -4754,10 +4991,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_inbox_snoozes\".\"state\" <> 'snoozed'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_inbox_snoozes\".\"state\" <> 'snoozed'",
+          "concurrently": false
         },
         "junior_inbox_snoozes_inbox_item_idx": {
           "name": "junior_inbox_snoozes_inbox_item_idx",
@@ -4770,37 +5007,37 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_inbox_snoozes_user_id_junior_users_id_fk": {
           "name": "junior_inbox_snoozes_user_id_junior_users_id_fk",
           "tableFrom": "junior_inbox_snoozes",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         },
         "junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk": {
           "name": "junior_inbox_snoozes_inbox_item_id_junior_inbox_items_id_fk",
           "tableFrom": "junior_inbox_snoozes",
-          "tableTo": "junior_inbox_items",
           "columnsFrom": [
             "inbox_item_id"
           ],
+          "tableTo": "junior_inbox_items",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -4866,15 +5103,15 @@
         "junior_location_configurations_location_id_junior_destinations_id_fk": {
           "name": "junior_location_configurations_location_id_junior_destinations_id_fk",
           "tableFrom": "junior_location_configurations",
-          "tableTo": "junior_destinations",
           "columnsFrom": [
             "location_id"
           ],
+          "tableTo": "junior_destinations",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -4974,43 +5211,43 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_memory_embeddings_embedding_1024_hnsw_idx": {
           "name": "junior_memory_embeddings_embedding_1024_hnsw_idx",
           "columns": [
             {
               "expression": "(\"embedding\"::vector(1024)) vector_cosine_ops",
-              "asc": true,
               "isExpression": true,
+              "asc": true,
               "nulls": "last"
             }
           ],
           "isUnique": false,
-          "where": "\"junior_memory_embeddings\".\"dimensions\" = 1024",
-          "concurrently": false,
-          "method": "hnsw",
           "with": {
             "m": 16,
             "ef_construction": 64
-          }
+          },
+          "method": "hnsw",
+          "where": "\"junior_memory_embeddings\".\"dimensions\" = 1024",
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_memory_embeddings_memory_id_junior_memory_memories_id_fk": {
           "name": "junior_memory_embeddings_memory_id_junior_memory_memories_id_fk",
           "tableFrom": "junior_memory_embeddings",
-          "tableTo": "junior_memory_memories",
           "columnsFrom": [
             "memory_id"
           ],
+          "tableTo": "junior_memory_memories",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -5089,8 +5326,8 @@
           "primaryKey": false,
           "notNull": false,
           "generated": {
-            "as": "to_tsvector('english', \"content\")",
-            "type": "stored"
+            "type": "stored",
+            "as": "to_tsvector('english', \"content\")"
           }
         },
         "source_platform": {
@@ -5196,10 +5433,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+          "concurrently": false
         },
         "junior_memory_memories_expiration_idx": {
           "name": "junior_memory_memories_expiration_idx",
@@ -5212,10 +5449,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"expires_at_ms\" IS NOT NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"expires_at_ms\" IS NOT NULL",
+          "concurrently": false
         },
         "junior_memory_memories_search_idx": {
           "name": "junior_memory_memories_search_idx",
@@ -5240,10 +5477,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
-          "concurrently": false,
+          "with": {},
           "method": "gin",
-          "with": {}
+          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+          "concurrently": false
         },
         "junior_memory_memories_idempotency_idx": {
           "name": "junior_memory_memories_idempotency_idx",
@@ -5268,10 +5505,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+          "concurrently": false
         },
         "junior_memory_memories_archived_idempotency_idx": {
           "name": "junior_memory_memories_archived_idempotency_idx",
@@ -5296,10 +5533,10 @@
             }
           ],
           "isUnique": false,
-          "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NOT NULL AND \"junior_memory_memories\".\"archive_reason\" <> 'expired'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NOT NULL AND \"junior_memory_memories\".\"archive_reason\" <> 'expired'",
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -5389,24 +5626,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_memory_signals_memory_id_junior_memory_memories_id_fk": {
           "name": "junior_memory_signals_memory_id_junior_memory_memories_id_fk",
           "tableFrom": "junior_memory_signals",
-          "tableTo": "junior_memory_memories",
           "columnsFrom": [
             "memory_id"
           ],
+          "tableTo": "junior_memory_memories",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -5534,9 +5771,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_push_subscriptions_user_idx": {
           "name": "junior_push_subscriptions_user_idx",
@@ -5549,24 +5786,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_push_subscriptions_user_id_junior_users_id_fk": {
           "name": "junior_push_subscriptions_user_id_junior_users_id_fk",
           "tableFrom": "junior_push_subscriptions",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -5682,9 +5919,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_snapshots_workspace_idx": {
           "name": "junior_snapshots_workspace_idx",
@@ -5697,9 +5934,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_snapshots_workspace_profile_status_idx": {
           "name": "junior_snapshots_workspace_profile_status_idx",
@@ -5724,9 +5961,9 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         },
         "junior_snapshots_active_build_uidx": {
           "name": "junior_snapshots_active_build_uidx",
@@ -5745,10 +5982,10 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_snapshots\".\"status\" = 'building'",
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "where": "\"junior_snapshots\".\"status\" = 'building'",
+          "concurrently": false
         },
         "junior_snapshots_workspace_status_idx": {
           "name": "junior_snapshots_workspace_status_idx",
@@ -5767,24 +6004,24 @@
             }
           ],
           "isUnique": false,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {
         "junior_snapshots_workspace_id_junior_workspaces_id_fk": {
           "name": "junior_snapshots_workspace_id_junior_workspaces_id_fk",
           "tableFrom": "junior_snapshots",
-          "tableTo": "junior_workspaces",
           "columnsFrom": [
             "workspace_id"
           ],
+          "tableTo": "junior_workspaces",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {},
@@ -5961,41 +6198,41 @@
         "junior_todos_assignee_user_id_junior_users_id_fk": {
           "name": "junior_todos_assignee_user_id_junior_users_id_fk",
           "tableFrom": "junior_todos",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "assignee_user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_todos_changed_by_user_id_junior_users_id_fk": {
           "name": "junior_todos_changed_by_user_id_junior_users_id_fk",
           "tableFrom": "junior_todos",
-          "tableTo": "junior_users",
           "columnsFrom": [
             "changed_by_user_id"
           ],
+          "tableTo": "junior_users",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "no action",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "no action"
         },
         "junior_todos_conversation_id_fk": {
           "name": "junior_todos_conversation_id_fk",
           "tableFrom": "junior_todos",
-          "tableTo": "junior_conversations",
           "columnsFrom": [
             "conversation_id"
           ],
+          "tableTo": "junior_conversations",
           "columnsTo": [
             "conversation_id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -6120,9 +6357,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -6160,15 +6397,15 @@
         "junior_workspace_repos_workspace_id_junior_workspaces_id_fk": {
           "name": "junior_workspace_repos_workspace_id_junior_workspaces_id_fk",
           "tableFrom": "junior_workspace_repos",
-          "tableTo": "junior_workspaces",
           "columnsFrom": [
             "workspace_id"
           ],
+          "tableTo": "junior_workspaces",
           "columnsTo": [
             "id"
           ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
+          "onUpdate": "no action",
+          "onDelete": "cascade"
         }
       },
       "compositePrimaryKeys": {
@@ -6240,9 +6477,9 @@
             }
           ],
           "isUnique": true,
-          "concurrently": false,
+          "with": {},
           "method": "btree",
-          "with": {}
+          "concurrently": false
         }
       },
       "foreignKeys": {},
@@ -6255,21 +6492,21 @@
   },
   "enums": {},
   "schemas": {},
+  "views": {},
   "sequences": {
     "public.junior_todo_version_seq": {
       "name": "junior_todo_version_seq",
-      "schema": "public",
       "increment": "1",
-      "startWith": "1",
       "minValue": "1",
       "maxValue": "9223372036854775807",
+      "startWith": "1",
       "cache": "1",
-      "cycle": false
+      "cycle": false,
+      "schema": "public"
     }
   },
   "roles": {},
   "policies": {},
-  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

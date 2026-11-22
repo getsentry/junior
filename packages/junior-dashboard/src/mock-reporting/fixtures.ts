@@ -1657,11 +1657,13 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         icon: "git-merge",
         key: "getsentry/payments#77",
         label: "payments",
+        url: "https://github.com/getsentry/payments/pull/77",
       },
       {
         icon: "circle-x",
         key: "getsentry/payments#61",
         label: "payments",
+        url: "https://github.com/getsentry/payments/issues/61",
       },
     ],
     annotations: [
@@ -2435,6 +2437,7 @@ function summaryFromConversation(
         }
       : undefined;
   const {
+    annotations: _annotations,
     authors: _authors,
     eventHistory: _eventHistory,
     events: _events,

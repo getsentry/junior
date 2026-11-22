@@ -251,7 +251,7 @@ export async function runHeartbeat(args: {
       ...(isEventEmbeddingsEnabled()
         ? {
             embedder: createConversationEmbedder({
-              // The cost stays on the span, like the Brief backfill above.
+              // The cost stays on the span, like the embedding backfill above.
               cost: { owner: "none" },
               operation: "conversation_embedding",
             }),
