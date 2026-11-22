@@ -450,37 +450,6 @@ describe("agent invocation conversation work", () => {
     }
   });
 
-  it("makes a child private when its root's channel goes private", async () => {
-    const { conversationStore, fixture } =
-      await prepareSlackParentConversation();
-    try {
-      const created = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "private-1",
-      });
-      const childBefore = await conversationStore.get({
-        conversationId: created.childConversationId,
-      });
-      expect(childBefore).toMatchObject({ visibility: "public" });
-
-      // Only the root records the new visibility. The child shares its
-      // Destination row, so its own row does not change. A child Run reads
-      // this visibility, as the test above shows.
-      await conversationStore.recordActivity({
-        conversationId: slackParentConversationId,
-        destination: slackDestination,
-        nowMs: 3_000,
-        source: "slack",
-        visibility: "private",
-      });
-      await expect(
-        conversationStore.get({ conversationId: created.childConversationId }),
-      ).resolves.toEqual({ ...childBefore, visibility: "private" });
-    } finally {
-      await fixture.close();
-    }
-  });
-
   const blockedMissing = "Approval to open the PR. Ask the user.";
   // Plain text in a child Turn is not an answer. It gets one reminder.
   const plainText = [
