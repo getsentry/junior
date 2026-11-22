@@ -217,12 +217,27 @@ export async function holdsLease(
   return rows.length > 0;
 }
 
+/** The key prefix of the message events that a Turn's steps wrote. */
+export function turnEventKeyPrefix(turnId: string): string {
+  return `step:${turnId}:`;
+}
+
+/**
+ * The idempotency key of one message event of a step. It names the Turn and
+ * the step that wrote it, so Delivery finds a Turn's replies without reading
+ * the rest of the history.
+ */
+function stepEventKey(turnId: string, stepSeq: number, index: number): string {
+  return `${turnEventKeyPrefix(turnId)}${stepSeq}:${index}`;
+}
+
 /**
  * Commits a step in one transaction: it appends the inputs that the step
- * read, then the step's messages, to the Conversation history and releases
- * the lease. A Turn that continues goes back to queued for its next step,
- * which needs a new claim. A Turn that the step completed ends, unless it
- * still has unread inputs: then it continues, so the next step reads them.
+ * read, then the step's messages keyed by Turn and step, to the Conversation
+ * history and releases the lease. A Turn that continues goes back to queued
+ * for its next step, which needs a new claim. A Turn that the step completed
+ * ends, unless it still has unread inputs: then it continues, so the next
+ * step reads them.
  * Returns what the Turn does next. Undefined when the lease is lost or the
  * step is already committed, and then nothing is written.
  */
@@ -269,8 +284,9 @@ export async function commitStep(
             idempotencyKey: inputEventKey(inputId),
             createdAtMs: message.timestamp,
           })),
-          ...step.messages.map((message) => ({
+          ...step.messages.map((message, index) => ({
             data: historyItemFromPiMessage(message, contextProvenance),
+            idempotencyKey: stepEventKey(turn.turnId, turn.stepSeq, index),
             createdAtMs: message.timestamp,
           })),
         ],

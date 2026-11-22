@@ -81,6 +81,7 @@ import {
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_TURN_STEP_CALLBACK_ROUTE,
+  JUNIOR_DELIVERY_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
@@ -124,6 +125,7 @@ import {
 } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
 import { turnStepConsumer } from "@/turn-steps/consumer";
+import { deliveryConsumer } from "@/turn-steps/delivery";
 import {
   vercelBackgroundCompactionQueue,
   type BackgroundCompactionMessage,
@@ -881,6 +883,9 @@ export async function createApp(
   // Built after resetRuntimeConfig, so the queue visibility timeout uses this
   // app's functionMaxDurationSeconds.
   const turnSteps = turnStepConsumer();
+  const deliveries = deliveryConsumer({
+    getSlackAdapter: getProductionSlackAdapter,
+  });
   if (process.env["NODE_ENV"] === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
@@ -888,6 +893,7 @@ export async function createApp(
     registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
     turnSteps.registerDev();
+    deliveries.registerDev();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -924,6 +930,11 @@ export async function createApp(
   app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, (c) => {
     turnStepPOST ??= turnSteps.create();
     return turnStepPOST(c.req.raw);
+  });
+  let deliveryPOST: ReturnType<typeof deliveries.create> | undefined;
+  app.post(JUNIOR_DELIVERY_CALLBACK_ROUTE, (c) => {
+    deliveryPOST ??= deliveries.create();
+    return deliveryPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -963,6 +974,7 @@ export async function createApp(
           cacheWarmupQueueConsumer(),
           backgroundCompactionQueueConsumer(),
           turnSteps.consumer,
+          deliveries.consumer,
         ],
         backgroundWork,
       ),
