@@ -196,7 +196,7 @@ export function createImageGenerateTool(
       readOnlyHint: false,
     },
     description:
-      "Edit sandbox images, such as changing text in a screenshot or restyling a photo, or generate new images from a prompt. Returns sandbox paths of the new images.",
+      "Edit images, such as changing text in a screenshot or restyling a photo, or generate new images from a prompt. Returns the new images.",
     inputSchema: z.object({
       prompt: z
         .string()
