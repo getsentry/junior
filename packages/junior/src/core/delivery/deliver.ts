@@ -6,7 +6,6 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, like, sql } from "drizzle-orm";
 import * as z from "zod";
-import { RetryableDeliveryError } from "@/chat/agent/types";
 import {
   canPauseConversationDelivery,
   isConversationDeliveryPaused,
@@ -17,7 +16,6 @@ import { eventFromRow } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import type { DeliverMessage } from "@/chat/task-execution/assistant-message";
 import { publishDelivery, type DeliveryMessage } from "@/core/delivery/queue";
 import { findTurn, turnEventKeyPrefix } from "@/core/turn/state";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -27,14 +25,44 @@ import {
   juniorTurnOutbox,
 } from "@/db/schema";
 
+/**
+ * Sends one reply to a Location. It throws `DeliveryRetryableError` when a
+ * later try can work, and any other error when it cannot.
+ */
+export type DeliverySender = (input: {
+  conversationId: string;
+  location: Location;
+  text: string;
+}) => Promise<{ providerMessageId?: string }>;
+
 /** The sender of each Location provider that this app delivers to. */
 export type DeliverySenders = Partial<
-  Record<Location["provider"], DeliverMessage>
+  Record<Location["provider"], DeliverySender>
 >;
+
+/**
+ * A send that failed but can work on a later try. The sender sets
+ * `retryAfterMs` when the provider says when to try again.
+ */
+export class DeliveryRetryableError extends Error {
+  readonly retryAfterMs: number | undefined;
+
+  constructor(
+    message: string,
+    options: { cause?: unknown; retryAfterMs?: number | undefined } = {},
+  ) {
+    super(message, { cause: options.cause });
+    this.name = "DeliveryRetryableError";
+    this.retryAfterMs = options.retryAfterMs;
+  }
+}
 
 // Another delivery of the Conversation holds the lock. It sends the rows that
 // are pending when it looks again, so this one only checks back soon.
 const LOCK_MISS_DELAY_MS = 1_000;
+// A row fails after this many retryable failures, so the rows after it are
+// not stuck behind it.
+const MAX_DELIVERY_ATTEMPTS = 5;
 // A retryable send waits longer after each attempt, unless the sender's error
 // says when to retry.
 const RETRY_BASE_DELAY_MS = 1_000;
@@ -241,8 +269,11 @@ async function sendNextRow(
       .where(eq(juniorTurnOutbox.id, row.id));
     return { kind: "settled" };
   } catch (error) {
-    if (error instanceof RetryableDeliveryError) {
-      const attempts = row.attempts + 1;
+    const attempts = row.attempts + 1;
+    if (
+      error instanceof DeliveryRetryableError &&
+      attempts < MAX_DELIVERY_ATTEMPTS
+    ) {
       await db
         .update(juniorTurnOutbox)
         .set({ attempts, updatedAt: new Date() })
@@ -252,7 +283,16 @@ async function sendNextRow(
     logException(error, "turn.delivery.failed", {
       "gen_ai.conversation.id": conversationId,
     });
-    return markFailed(error instanceof Error ? error.message : String(error));
+    await db
+      .update(juniorTurnOutbox)
+      .set({
+        state: "failed",
+        attempts,
+        error: error instanceof Error ? error.message : String(error),
+        updatedAt: new Date(),
+      })
+      .where(eq(juniorTurnOutbox.id, row.id));
+    return { kind: "settled" };
   }
 }
 
@@ -270,22 +310,10 @@ function replyText(
     : undefined;
 }
 
-/**
- * The wait before the next try of a retryable send. A cause with
- * `retryAfterSeconds`, such as a rate limit, sets it.
- */
-function retryDelayMs(error: RetryableDeliveryError, attempts: number): number {
-  const { cause } = error;
-  if (
-    cause instanceof Error &&
-    "retryAfterSeconds" in cause &&
-    typeof cause.retryAfterSeconds === "number" &&
-    cause.retryAfterSeconds > 0
-  ) {
-    return cause.retryAfterSeconds * 1000;
-  }
-  return Math.min(
-    RETRY_BASE_DELAY_MS * 2 ** (attempts - 1),
-    RETRY_MAX_DELAY_MS,
+/** The wait before the next try of a retryable send. */
+function retryDelayMs(error: DeliveryRetryableError, attempts: number): number {
+  return (
+    error.retryAfterMs ??
+    Math.min(RETRY_BASE_DELAY_MS * 2 ** (attempts - 1), RETRY_MAX_DELAY_MS)
   );
 }

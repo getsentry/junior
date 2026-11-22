@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as z from "zod";
 import { getQueueProvider } from "@/chat/queue/provider";
+import { DELIVERY_TOPIC } from "@/core/delivery/queue";
 import {
   juniorConversations,
   juniorTurnOutbox,
@@ -23,7 +24,10 @@ import {
   startTurnEngine,
   type TurnEngine,
 } from "../fixtures/turn-engine";
-import { queueSlackApiError } from "../msw/handlers/slack-api";
+import {
+  queueSlackApiError,
+  queueSlackRateLimit,
+} from "../msw/handlers/slack-api";
 
 // Delivery of core Turn replies to Slack: a committed step sends a delivery
 // message, and the app's delivery consumer posts the Turn's replies. The
@@ -138,21 +142,53 @@ function reply(text: string) {
   return createAssistantMessage({ type: "text", text });
 }
 
+/** Runs a Turn whose two steps reply `first`, then `second`. */
+async function advanceTwoReplies(first: string, second: string) {
+  await engine.addTestInput("How many Turns?");
+  const firstStep = prepareWith([reply(first)]);
+  // An input during the step continues the Turn, so it gets a second step.
+  await engine.advance({
+    prepare: firstStep.prepare,
+    client: {
+      complete: async (request, signal) => {
+        await engine.addTestInput("And how many failed?");
+        return firstStep.client.complete(request, signal);
+      },
+    },
+  });
+  await engine.advance(prepareWith([reply(second)]));
+}
+
+/**
+ * Holds the Conversation's delivery lock, as a delivery that is still
+ * sending does, until the returned function is called.
+ */
+async function holdDeliveryLock(): Promise<() => Promise<void>> {
+  let release!: () => void;
+  const released = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let held!: () => void;
+  const lockHeld = new Promise<void>((resolve) => {
+    held = resolve;
+  });
+  const holder = fixture.sql.withLock(
+    `junior:delivery:${CONVERSATION_ID}`,
+    async () => {
+      held();
+      await released;
+    },
+  );
+  await lockHeld;
+  return async () => {
+    release();
+    await holder;
+  };
+}
+
 describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
   it("posts the replies of one Turn to its Slack thread in order", async () => {
-    await engine.addTestInput("How many Turns?");
-    const first = prepareWith([reply("Three.")]);
-    // An input during the step continues the Turn, so it gets a second step.
-    await engine.advance({
-      prepare: first.prepare,
-      client: {
-        complete: async (request, signal) => {
-          await engine.addTestInput("And how many failed?");
-          return first.client.complete(request, signal);
-        },
-      },
-    });
-    await engine.advance(prepareWith([reply("None.")]));
+    await advanceTwoReplies("Three.", "None.");
 
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "completed",
@@ -176,23 +212,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
   });
 
   it("checks back when another delivery holds the Conversation, and posts the reply once", async () => {
-    let release!: () => void;
-    const released = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    let held!: () => void;
-    const lockHeld = new Promise<void>((resolve) => {
-      held = resolve;
-    });
-    // Stands in for a delivery of the Conversation that is still sending.
-    const holder = fixture.sql.withLock(
-      `junior:delivery:${CONVERSATION_ID}`,
-      async () => {
-        held();
-        await released;
-      },
-    );
-    await lockHeld;
+    const release = await holdDeliveryLock();
 
     await engine.advance(prepareWith([reply("Three.")]));
     await handledDeliveries(1);
@@ -202,8 +222,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       expect.objectContaining({ state: "pending" }),
     ]);
 
-    release();
-    await holder;
+    await release();
     await waitFor(allSent);
     await handledDeliveries(2);
     expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
@@ -224,6 +243,63 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       { text: "Three.", thread: THREAD_TS },
     ]);
   });
+
+  it("fails a reply after its fifth retryable failure, then posts the next reply", async () => {
+    const release = await holdDeliveryLock();
+    await advanceTwoReplies("Three.", "None.");
+    await handledDeliveries(2);
+    const [head] = await readOutbox();
+    // Four retryable failures so far, so the next one is the fifth.
+    await fixture.sql
+      .db()
+      .update(juniorTurnOutbox)
+      .set({ attempts: 4 })
+      .where(eq(juniorTurnOutbox.id, head!.id));
+    queueSlackApiError("chat.postMessage", { error: "fatal_error" });
+
+    await release();
+    await waitFor(async () =>
+      (await readOutbox()).every((row) => row.state !== "pending"),
+    );
+
+    await expect(readOutbox()).resolves.toEqual([
+      expect.objectContaining({
+        state: "failed",
+        attempts: 5,
+        error: expect.any(String),
+        sentAt: null,
+      }),
+      expect.objectContaining({ state: "sent", attempts: 0 }),
+    ]);
+    expect(postedTexts()).toEqual([
+      { text: "Three.", thread: THREAD_TS },
+      { text: "None.", thread: THREAD_TS },
+    ]);
+  });
+
+  it("waits the Retry-After of a Slack rate limit before it tries a reply again", async () => {
+    const send = vi.spyOn(getQueueProvider(), "send");
+    // Every try of one post: the Slack client retries a rate limit itself.
+    for (let attempt = 0; attempt < 3; attempt++) {
+      queueSlackRateLimit("chat.postMessage", 2);
+    }
+
+    await engine.advance(prepareWith([reply("Three.")]));
+
+    // The backoff after a first failure is 1 s, so 2 s is the Retry-After.
+    await waitFor(() =>
+      send.mock.calls.some(
+        ([topic, , options]) =>
+          topic === DELIVERY_TOPIC && options?.delaySeconds === 2,
+      ),
+    );
+    await waitFor(allSent);
+    await expect(readOutbox()).resolves.toEqual([
+      expect.objectContaining({ state: "sent", attempts: 1 }),
+    ]);
+    // Three rate-limited posts, then the post that Slack took.
+    expect(postedTexts()).toHaveLength(4);
+  }, 20_000);
 
   it("records nothing for a Conversation without a Location", async () => {
     await fixture.sql
