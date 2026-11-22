@@ -391,6 +391,9 @@ test("the reply composer with Details open stays split @classic", async ({
     name: "Continue this conversation",
   });
   await expect(composer).toHaveAttribute("contenteditable", "true");
+  // Typing in the composer counts as reading, so the page saves the read
+  // position.
+  const readSaved = waitForReadPosition(page, 0);
   await composer.pressSequentially("$");
   const skills = page.getByRole("grid", { name: "Skills" });
   await expect(skills).toBeVisible();
@@ -403,4 +406,5 @@ test("the reply composer with Details open stays split @classic", async ({
     0,
   );
   await screenshot(page, "composer-skill-split-reply", { view: "desktop" });
+  await readSaved;
 });

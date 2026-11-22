@@ -129,11 +129,15 @@ export function waitForReadPosition(page: Page, afterSeq: number) {
  */
 export function waitForSettingsReads(page: Page) {
   return Promise.all(
-    ["/api/user-customization", "/api/personal-tokens", "/api/connections"].map(
-      (path) =>
-        page.waitForResponse(
-          (response) => new URL(response.url()).pathname === path,
-        ),
+    [
+      "/api/notifications",
+      "/api/user-customization",
+      "/api/personal-tokens",
+      "/api/connections",
+    ].map((path) =>
+      page.waitForResponse(
+        (response) => new URL(response.url()).pathname === path,
+      ),
     ),
   );
 }
