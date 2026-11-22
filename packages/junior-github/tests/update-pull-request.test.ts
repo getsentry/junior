@@ -573,7 +573,7 @@ via @lcian, automation \`evt_1\` · Run ID \`run_1\`.
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message:
-        "GitHub pull request update failed with HTTP 422: Validation Failed",
+        "GitHub pull request update failed with HTTP 422: Validation Failed. Check repo and pull_request, and fix any field that GitHub names.",
     });
   });
 

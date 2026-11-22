@@ -95,11 +95,13 @@ export async function publishImage(args: {
   url: string;
 }> {
   if (args.body.byteLength === 0) {
-    throw new ToolInputError("image is empty");
+    throw new ToolInputError(
+      "The image file is empty. Write the image first, then publish it.",
+    );
   }
   if (args.body.byteLength > MAX_IMAGE_BYTES) {
     throw new ToolInputError(
-      `image exceeds ${MAX_IMAGE_BYTES} bytes (${args.body.byteLength} bytes)`,
+      `image exceeds ${MAX_IMAGE_BYTES} bytes (${args.body.byteLength} bytes). Make the image smaller first.`,
     );
   }
   const contentType = detectImageMediaType(args.body);
@@ -238,7 +240,7 @@ export async function unpublishArtifact(args: {
 
   if (updated.length === 0) {
     throw new ToolInputError(
-      `artifact not found for this conversation: ${filename}`,
+      `artifact not found for this conversation: ${filename}. Pass the URL or filename that publishImage returned in this conversation.`,
     );
   }
 

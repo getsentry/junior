@@ -48,7 +48,9 @@ export async function resolveAssignee(
   if (text.includes("@")) {
     const user = await findUserByEmailFromSql(db, text);
     if (!user) {
-      throw new ToolInputError(`No User has the email ${text}.`);
+      throw new ToolInputError(
+        `No User has the email ${text}. Use their mention, such as <@U123>, or another email.`,
+      );
     }
     return { userId: user.id };
   }
@@ -65,7 +67,9 @@ export async function resolveAssignees(
   findMentionedUserId: FindMentionedUserId,
 ): Promise<ResolvedAssignees> {
   if (values.length === 0) {
-    throw new ToolInputError("An inbox item needs at least one assignee.");
+    throw new ToolInputError(
+      "An inbox item needs at least one assignee. Add an entry to `assignees`.",
+    );
   }
   const resolved = await mapBounded(values, (value) =>
     resolveAssignee(db, value, tenant, findMentionedUserId),

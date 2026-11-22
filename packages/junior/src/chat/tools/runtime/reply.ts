@@ -53,7 +53,9 @@ export function createReplyTool(target: "parent" | "automation") {
       }
       const text = replyTextSchema.safeParse(input.text);
       if (!text.success) {
-        throw new ToolInputError("The reply text must not be empty.");
+        throw new ToolInputError(
+          `The reply text must not be empty. Set text to the reply, or call \`${NO_REPLY_TOOL_NAME}\` to post nothing.`,
+        );
       }
       return { text: text.data };
     },

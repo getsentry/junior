@@ -282,7 +282,7 @@ export function createSearchConversationsTool(context: {
         : undefined;
       if (input.participating && !participantUserId) {
         throw new ToolInputError(
-          "`participating` needs a person: this Turn has none",
+          "`participating` needs a person: this Turn has none. Leave out `participating`.",
         );
       }
       const matches = await searchConversations(getDb(), {

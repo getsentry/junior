@@ -20,7 +20,7 @@ export async function assertCanReadConversationEvents(
   conversationId: string,
 ): Promise<void> {
   const notAccessible = new ToolInputError(
-    `Conversation events are not accessible: ${conversationId}`,
+    `Conversation events are not accessible: ${conversationId}. Check conversation_id, or use searchConversations to find a Conversation that you can read.`,
   );
   const [readable, target] = await Promise.all([
     canReadConversation(getDb(), context.conversationId, conversationId),
@@ -31,7 +31,7 @@ export async function assertCanReadConversationEvents(
   }
   if (target.transcriptPurgedAtMs !== undefined) {
     throw new ToolInputError(
-      `Conversation transcript was purged: ${conversationId}`,
+      `Conversation transcript was purged: ${conversationId}. No change to the call can fix this.`,
     );
   }
 }

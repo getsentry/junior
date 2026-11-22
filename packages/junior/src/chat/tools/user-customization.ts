@@ -49,7 +49,7 @@ export function createUpdateUserCustomizationTool(context: ToolRuntimeContext) {
       const user = (await context.resolveActorIdentity?.())?.user;
       if (!user) {
         throw new ToolInputError(
-          "This person has no linked User, so customization cannot be saved.",
+          "This person has no linked User, so customization cannot be saved. No change to the call can fix this.",
         );
       }
       if (!(await saveUserCustomization(user.id, input.customization))) {

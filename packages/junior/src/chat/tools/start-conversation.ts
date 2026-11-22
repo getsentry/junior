@@ -74,7 +74,7 @@ export function createStartConversationTool(
     execute: async (input, options) => {
       if (!options.toolCallId || !context.turnId) {
         throw new ToolInputError(
-          "startConversation requires an active Turn and tool call ID",
+          "startConversation requires an active Turn and tool call ID. No change to the call can fix this.",
         );
       }
       const { conversationId } = await startLeadConversation({

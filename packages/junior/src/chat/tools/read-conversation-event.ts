@@ -100,14 +100,14 @@ export function createReadConversationEventTool(context: ToolRuntimeContext) {
       const event = page.events[0];
       if (!event) {
         throw new ToolInputError(
-          `Conversation event not found: seq ${input.seq} in ${conversationId}`,
+          `Conversation event not found: seq ${input.seq} in ${conversationId}. Use searchConversationEvents to find a seq.`,
         );
       }
 
       const text = eventText(event.data);
       if (offset > 0 && offset >= text.length) {
         throw new ToolInputError(
-          `offset ${offset} is past the end of the event text (${text.length} chars)`,
+          `offset ${offset} is past the end of the event text (${text.length} chars). Set offset below ${text.length}.`,
         );
       }
       const slice = text.slice(
