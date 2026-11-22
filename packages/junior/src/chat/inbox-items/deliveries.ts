@@ -60,7 +60,9 @@ export async function claimInboxItemPush(
 
 /**
  * Record the web push of a reply notice to its starter. Each reply pushes
- * again, so the one record of the item holds the latest push.
+ * again, so the one record of the item holds the latest push. A skipped
+ * push keeps an earlier `sent` record: that notification still shows, and
+ * the close of the item must clear it.
  */
 export async function recordReplyNoticePush(
   db: JuniorDatabase,
@@ -77,25 +79,27 @@ export async function recordReplyNoticePush(
     status: input.skipReason ? ("skipped" as const) : ("sent" as const),
     updatedAt: now,
   };
-  await db
-    .insert(juniorInboxItemDeliveries)
-    .values({
-      ...result,
-      channel: "web_push",
-      createdAt: now,
-      event: "reply",
-      itemId: input.itemId,
-      userId: input.userId,
-    })
-    .onConflictDoUpdate({
-      target: [
-        juniorInboxItemDeliveries.itemId,
-        juniorInboxItemDeliveries.userId,
-        juniorInboxItemDeliveries.channel,
-        juniorInboxItemDeliveries.event,
-      ],
-      set: result,
-    });
+  const insert = db.insert(juniorInboxItemDeliveries).values({
+    ...result,
+    channel: "web_push",
+    createdAt: now,
+    event: "reply",
+    itemId: input.itemId,
+    userId: input.userId,
+  });
+  if (input.skipReason) {
+    await insert.onConflictDoNothing();
+    return;
+  }
+  await insert.onConflictDoUpdate({
+    target: [
+      juniorInboxItemDeliveries.itemId,
+      juniorInboxItemDeliveries.userId,
+      juniorInboxItemDeliveries.channel,
+      juniorInboxItemDeliveries.event,
+    ],
+    set: result,
+  });
 }
 
 /** Mark the sent deliveries of closed items as cleared. */
