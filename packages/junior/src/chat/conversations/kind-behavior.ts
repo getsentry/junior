@@ -214,16 +214,22 @@ export function turnBehavior(args: {
   kind: ConversationKind;
   personInput: boolean;
 }): TurnBehavior {
-  if (args.kind === "root") return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
-  if (args.kind === "automation") {
-    return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
+  switch (args.kind) {
+    case "root":
+      return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
+    case "automation":
+      return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
+    case "thread":
+      return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+    case "task":
+      if (!args.personInput) return AGENT_IN_TASK;
+      // Only an agent writes input to a task.
+      throw new Error("A task Conversation cannot have a person's input");
+    case "lead":
+      // Nothing creates a lead yet. Its own behavior comes with the writer
+      // (#3727), so a lead never runs with the tools of a root.
+      throw new Error("A lead Conversation has no Turn behavior yet");
   }
-  if (args.kind === "thread") {
-    return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
-  }
-  if (!args.personInput) return AGENT_IN_TASK;
-  // Only an agent writes input to a task.
-  throw new Error("A task Conversation cannot have a person's input");
 }
 
 /**
@@ -232,10 +238,16 @@ export function turnBehavior(args: {
  * cannot use are disabled.
  */
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
-  if (mode === "automation") return AUTOMATION_RUN.tools;
-  if (mode === "child_agent") return AGENT_IN_TASK.tools;
-  if (mode === "thread") return THREAD_TOOLS;
-  return ROOT.tools;
+  switch (mode) {
+    case "automation":
+      return AUTOMATION_RUN.tools;
+    case "child_agent":
+      return AGENT_IN_TASK.tools;
+    case "thread":
+      return THREAD_TOOLS;
+    case "conversation":
+      return ROOT.tools;
+  }
 }
 
 /**
@@ -248,7 +260,7 @@ export function hasConversationMetadata(kind: ConversationKind): boolean {
 
 /** Return whether a Conversation of this kind has no parent. */
 export function isTopLevelKind(kind: ConversationKind): boolean {
-  return kind === "root" || kind === "automation";
+  return kind === "root" || kind === "automation" || kind === "lead";
 }
 
 /** Return whether a person sent input from this Source. */
