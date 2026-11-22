@@ -52,7 +52,7 @@ export interface AutomationToolCaller {
 
 /**
  * Return the Actor when that person started this Turn from any surface.
- * Automation runs, Events, plugin dispatch, and Agent invocations act for no
+ * Automation runs, Events, plugin dispatch, and parent messages act for no
  * person, so they cannot manage Automations.
  */
 function personActor(context: ToolRuntimeContext): UserActor | undefined {

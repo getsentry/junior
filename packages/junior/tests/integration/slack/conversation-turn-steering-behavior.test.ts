@@ -3,7 +3,10 @@
 // packages/junior-evals/evals/integration/conversation/steering.eval.ts
 import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  resumeConversationTree,
+} from "@/chat/conversations/session-stop";
 import {
   SLACK_BOT_USER_ID,
   createConversationWorkQueueTestAdapter,
@@ -295,6 +298,9 @@ describe("Slack ingress: thread messages", () => {
     ).resolves.toMatchObject({ status: 200 });
     expect(statusClears()).toHaveLength(1);
     expect(stopAcks()).toHaveLength(0);
+    // A person's later message ends the idle stop, so the next Turn can give
+    // work to a child agent.
+    await resumeConversationTree(CONVERSATION_ID, 1_712_345_001);
 
     const child = await startThreadWork(harness);
     await expect(

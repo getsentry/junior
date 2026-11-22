@@ -47,11 +47,7 @@ import { getDb } from "@/chat/db";
 import { logInfo, withSpan } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { isPostgresErrorCode } from "@/db/postgres-error";
-import {
-  juniorAgentInvocations,
-  juniorConversationEvents,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { mapBounded } from "@/chat/fan-out";
 import {
   gapSegment,
@@ -362,21 +358,46 @@ interface ChildAgentRow {
   terminalAt: Date | null;
 }
 
-// The child agents of a batch. Live recording starts an Automation idle
+// The child agent work of a batch, from each parent's `subagent_started`
+// and `subagent_ended` markers. Live recording starts an Automation idle
 // period only while a child agent still runs.
 async function loadChildAgents(
   conversationIds: string[],
 ): Promise<ChildAgentRow[]> {
-  return await getDb()
+  const events = juniorConversationEvents;
+  const rows = await getDb()
     .select({
-      conversationId: juniorAgentInvocations.parentConversationId,
-      createdAt: juniorAgentInvocations.createdAt,
-      terminalAt: juniorAgentInvocations.terminalAt,
+      conversationId: events.conversationId,
+      createdAt: events.createdAt,
+      markerId: sql<string | null>`${events.payload}->>'subagentInvocationId'`,
+      type: events.type,
     })
-    .from(juniorAgentInvocations)
+    .from(events)
     .where(
-      inArray(juniorAgentInvocations.parentConversationId, conversationIds),
+      and(
+        inArray(events.conversationId, conversationIds),
+        inArray(events.type, ["subagent_started", "subagent_ended"]),
+      ),
     );
+  const endedAt = new Map(
+    rows.flatMap((row) =>
+      row.type === "subagent_ended" && row.markerId
+        ? [[`${row.conversationId}\0${row.markerId}`, row.createdAt] as const]
+        : [],
+    ),
+  );
+  return rows.flatMap((row) =>
+    row.type === "subagent_started"
+      ? [
+          {
+            conversationId: row.conversationId,
+            createdAt: row.createdAt,
+            terminalAt:
+              endedAt.get(`${row.conversationId}\0${row.markerId}`) ?? null,
+          },
+        ]
+      : [],
+  );
 }
 
 /**

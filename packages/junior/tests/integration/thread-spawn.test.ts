@@ -1,17 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import {
-  createAgentInvocation,
-  createAgentInvocationForMessage,
   MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
+  messageChildAgent,
 } from "@/chat/agent-invocations/create";
 import { AgentInvocationLimitError } from "@/chat/agent-invocations/errors";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import {
-  completeAgentInvocation,
-  getLatestAgentInvocationForConversation,
-  markAgentInvocationMailboxAppended,
-} from "@/chat/agent-invocations/store";
-import type { AgentInvocation } from "@/chat/agent-invocations/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
@@ -27,7 +20,7 @@ import {
 } from "../fixtures/child-without-agent-invocation";
 import {
   createHarness,
-  finishInvocation,
+  finishRun,
   sendPersonMessage,
   slackParentRun,
   startThread,
@@ -38,11 +31,37 @@ import { mockTitleModel } from "../fixtures/title-model";
 
 const parentRun = slackParentRun();
 
+/** Run a child's queued task until its Turn ends without a `reply`. */
+async function finishTask(harness: Harness, conversationId: string) {
+  harness.onRun(finishRun);
+  await harness.drain(conversationId);
+  harness.onRun(undefined);
+}
+
+/** Spawn one child of a parent, as `spawnAgent` does. */
+async function spawnChild(
+  harness: Harness,
+  idempotencyKey: string,
+  kind: "task" | "thread",
+  parentConversationId = slackParentConversationId,
+) {
+  return await spawnChildWithoutAgentInvocation({
+    actor: slackInvocationInput.actor,
+    conversationStore: harness.conversationStore,
+    idempotencyKey,
+    kind,
+    parentConversationId,
+    queue: harness.queue,
+    state: harness.state,
+  });
+}
+
 /**
  * Create one child, then run `withOpenWork` while the child still has its
  * first task, and finish that task, as a finished spawn leaves the child.
  */
 async function createIdleChild(
+  harness: Harness,
   idempotencyKey: string,
   kind: "task" | "thread",
   options: {
@@ -50,20 +69,35 @@ async function createIdleChild(
     withOpenWork?: (childConversationId: string) => Promise<unknown>;
   } = {},
 ) {
-  const invocation = await createAgentInvocation({
-    ...slackInvocationInput,
+  const childConversationId = await spawnChild(
+    harness,
     idempotencyKey,
     kind,
-    parentConversationId:
-      options.parentConversationId ?? slackParentConversationId,
-  });
-  await options.withOpenWork?.(invocation.childConversationId);
-  await completeAgentInvocation({
-    invocationId: invocation.invocationId,
-    result: "Done.",
-    status: "completed",
-  });
-  return invocation.childConversationId;
+    options.parentConversationId,
+  );
+  await options.withOpenWork?.(childConversationId);
+  await finishTask(harness, childConversationId);
+  return childConversationId;
+}
+
+/** Give a child more work, as `messageAgent` does. */
+async function messageChild(
+  harness: Harness,
+  childConversationId: string,
+  idempotencyKey: string,
+) {
+  return await messageChildAgent(
+    {
+      actor: slackInvocationInput.actor,
+      childConversationId,
+      idempotencyKey,
+      input: "Check it again.",
+      parentConversationId: slackParentConversationId,
+      parentToolCallId: idempotencyKey,
+      parentTurnId: idempotencyKey,
+    },
+    { queue: harness.queue, state: harness.state },
+  );
 }
 
 async function archiveAgent(
@@ -188,60 +222,38 @@ describe("Thread spawn and archive", () => {
     const harness = await createHarness();
     try {
       // Idle children do not count, Threads included.
-      await createIdleChild("idle-task", "task");
-      const idleThread = await createIdleChild("idle-thread", "thread");
-      const busy: AgentInvocation[] = [];
+      await createIdleChild(harness, "idle-task", "task");
+      const idleThread = await createIdleChild(
+        harness,
+        "idle-thread",
+        "thread",
+      );
+      const busy: string[] = [];
       for (
         let index = 0;
         index < MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT;
         index++
       ) {
-        busy.push(
-          await createAgentInvocation({
-            ...slackInvocationInput,
-            idempotencyKey: `busy-thread-${index}`,
-            kind: "thread",
-          }),
-        );
+        busy.push(await spawnChild(harness, `busy-thread-${index}`, "thread"));
       }
 
       // Threads with open work count.
       await expect(
-        createAgentInvocation({
-          ...slackInvocationInput,
-          idempotencyKey: "one-too-many",
-        }),
+        spawnChild(harness, "one-too-many", "task"),
       ).rejects.toBeInstanceOf(AgentInvocationLimitError);
       // New work makes an idle Thread active, so it needs a slot.
       await expect(
-        createAgentInvocationForMessage({
-          ...slackInvocationInput,
-          childConversationId: idleThread,
-          idempotencyKey: "more-for-idle-thread",
-          parentToolCallId: "call-idle",
-        }),
+        messageChild(harness, idleThread, "more-for-idle-thread"),
       ).rejects.toBeInstanceOf(AgentInvocationLimitError);
       // A busy Thread already counts, so more work for it needs no new slot.
       await expect(
-        createAgentInvocationForMessage({
-          ...slackInvocationInput,
-          childConversationId: busy[0]!.childConversationId,
-          idempotencyKey: "more-for-busy-thread",
-          parentToolCallId: "call-busy",
-        }),
-      ).resolves.toMatchObject({ queued: true });
+        messageChild(harness, busy[0]!, "more-for-busy-thread"),
+      ).resolves.toEqual({ delivery: "queued" });
 
-      await completeAgentInvocation({
-        invocationId: busy[1]!.invocationId,
-        result: "Done.",
-        status: "completed",
-      });
+      await finishTask(harness, busy[1]!);
       await expect(
-        createAgentInvocation({
-          ...slackInvocationInput,
-          idempotencyKey: "after-finish",
-        }),
-      ).resolves.toMatchObject({ status: "pending" });
+        spawnChild(harness, "after-finish", "task"),
+      ).resolves.toEqual(expect.any(String));
     } finally {
       await harness.close();
     }
@@ -250,7 +262,7 @@ describe("Thread spawn and archive", () => {
   it("archives only an idle Thread of this conversation", async () => {
     const harness = await createHarness();
     try {
-      const task = await createIdleChild("task", "task");
+      const task = await createIdleChild(harness, "task", "task");
       await expect(
         archiveAgent(slackParentConversationId, task),
       ).rejects.toMatchObject({
@@ -259,9 +271,12 @@ describe("Thread spawn and archive", () => {
       });
 
       const thread = await startThread(harness, "thread-spawn");
-      const nestedThread = await createIdleChild("nested-thread", "thread", {
-        parentConversationId: thread,
-      });
+      const nestedThread = await createIdleChild(
+        harness,
+        "nested-thread",
+        "thread",
+        { parentConversationId: thread },
+      );
       // Only the direct parent archives a Thread.
       await expect(
         archiveAgent(slackParentConversationId, nestedThread),
@@ -277,8 +292,7 @@ describe("Thread spawn and archive", () => {
         name: "ToolInputError",
         message: expect.stringContaining("is working"),
       });
-      await harness.process(thread);
-      await finishInvocation(harness, thread);
+      await finishTask(harness, thread);
 
       // So is a person's message that waits to run.
       await expect(
@@ -302,50 +316,18 @@ describe("Thread spawn and archive", () => {
           expect.objectContaining({ conversation_id: task, kind: "task" }),
         ]),
       );
-
-      // A person messaged the idle Thread after its last result. A later
-      // write to the parent's invocation, such as a replayed mailbox
-      // append, does not hand the Thread back.
-      const reported = await getLatestAgentInvocationForConversation(thread);
-      await markAgentInvocationMailboxAppended(
-        reported!.invocationId,
-        Date.now() + 60_000,
-      );
-      await expect(
-        archiveAgent(slackParentConversationId, thread),
-      ).rejects.toMatchObject({
-        name: "ToolInputError",
-        message: expect.stringContaining("a person still uses it"),
-      });
-      // New work from the parent gives the Thread back to the parent.
-      const { invocation } = await createAgentInvocationForMessage({
-        ...slackInvocationInput,
-        childConversationId: thread,
-        idempotencyKey: "after-person",
-        parentToolCallId: "call-after-person",
-      });
-      await completeAgentInvocation({
-        invocationId: invocation.invocationId,
-        result: "Done.",
-        status: "completed",
-      });
-      await expect(
-        archiveAgent(slackParentConversationId, thread, {
-          apply_to_children: true,
-        }),
-      ).resolves.toMatchObject({ conversation_id: thread });
     } finally {
       await harness.close();
     }
   });
 
-  it("archives a Thread that no Agent invocation names after new parent work", async () => {
+  it("gives a Thread that a person messaged back to its parent with new parent work", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
       const spawn = {
         actor: slackInvocationInput.actor,
-        idempotencyKey: "thread-without-agent-invocation",
+        idempotencyKey: "thread-person-then-parent",
         parentConversationId: slackParentConversationId,
         queue: harness.queue,
         state: harness.state,
@@ -370,7 +352,7 @@ describe("Thread spawn and archive", () => {
       await sendParentMessage({
         ...spawn,
         childConversationId: thread,
-        idempotencyKey: "thread-without-agent-invocation:again",
+        idempotencyKey: "thread-person-then-parent:again",
       });
       await failQueuedTurn(harness, thread);
       await expect(
@@ -386,9 +368,9 @@ describe("Thread spawn and archive", () => {
     const harness = await createHarness();
     try {
       let child = "";
-      const thread = await createIdleChild("thread", "thread", {
+      const thread = await createIdleChild(harness, "thread", "thread", {
         withOpenWork: async (parentConversationId) => {
-          child = await createIdleChild("thread-child", "task", {
+          child = await createIdleChild(harness, "thread-child", "task", {
             parentConversationId,
           });
         },
