@@ -202,12 +202,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByText(/PAYMENTS-42 contained 418 events\./).first(),
     ).toBeVisible();
 
-    // The view that opened the Conversation stays marked in the pane.
+    // The view that opened the Conversation stays marked in the pane, as
+    // the list the page is in.
     await expect(
       page
         .getByRole("navigation", { name: "Primary" })
         .getByRole("link", { name: "Conversations", exact: true }),
-    ).toHaveAttribute("aria-current", "page");
+    ).toHaveAttribute("aria-current", "true");
     await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 
     await detailsButton.click();

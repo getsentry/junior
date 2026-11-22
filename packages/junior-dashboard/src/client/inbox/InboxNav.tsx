@@ -36,7 +36,10 @@ function InFlightRow(props: {
       <Link
         aria-current={props.selected ? "page" : undefined}
         aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
-        className={paneEntryClass(props.selected, props.phone)}
+        className={paneEntryClass(
+          props.selected ? "page" : undefined,
+          props.phone,
+        )}
         draggable={drag ? false : undefined}
         to={conversationPath(conversation.id)}
       >

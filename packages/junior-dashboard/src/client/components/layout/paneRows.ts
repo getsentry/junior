@@ -13,6 +13,9 @@ import { LEAD_NAV_KEY } from "../../shell/primaryNav";
  */
 export type PaneRow = InboxView | "automations" | (string & {});
 
+/** A row shows the page, or the list that opened it. */
+export type PaneRowMark = "page" | "origin";
+
 const under = (pathname: string, root: string) =>
   pathname === root || pathname.startsWith(`${root}/`);
 
@@ -84,6 +87,17 @@ export function paneRowForPath(
   return navItems.find(
     (item) => item.to.startsWith("/plugins/") && under(pathname, item.to),
   )?.key;
+}
+
+/**
+ * How the row that owns a path marks it. On a Conversation page, a row
+ * other than the Lead's is the list that opened it, not the page: the
+ * Conversation's own row, such as its In flight row, marks the page.
+ */
+export function paneRowMark(pathname: string, row: PaneRow): PaneRowMark {
+  return row !== LEAD_NAV_KEY && under(pathname, "/conversations")
+    ? "origin"
+    : "page";
 }
 
 /** Where a row opens when it has no place yet, or when it shows now. */
