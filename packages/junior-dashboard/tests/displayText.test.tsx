@@ -18,6 +18,7 @@ import { displayPlainText } from "../src/client/display-text/plainText";
 import type { DashboardCoreData } from "../src/client/types";
 
 // Links can ask the API for cards, so display text needs a query client.
+// A link to a Conversation routes in the app, so it needs a router too.
 // A viewer email seeds the signed-in person that mentions compare against.
 function markup(children: ReactNode, viewerEmail?: string) {
   const client = new QueryClient();
@@ -27,7 +28,9 @@ function markup(children: ReactNode, viewerEmail?: string) {
     } as DashboardCoreData);
   }
   return renderToStaticMarkup(
-    <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter>{children}</MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
@@ -287,6 +290,7 @@ describe("display text object links", () => {
     return annotations.find((annotation) => annotation.url === url)!;
   }
 
+  // A person link opens their People page in the dashboard.
   function render(text: string, viewerEmail?: string) {
     return markup(
       <KnownObjectsProvider annotations={annotations}>
@@ -354,11 +358,11 @@ describe("display text object links", () => {
       `Next, ${PERSON} picks up ${CONVERSATION}. Track it in ${DOC}, hold: ${MESSAGE}, and read ${PAGE}`,
     );
     const [person, ...rest] = anchors(html);
-    // The person is a round photo, then `@Name` as plain link text.
-    expect(person).toMatchObject({ href: PERSON, label: "@Morgan Lee" });
-    expect(html).toMatch(
+    // The person is a round photo, then `@Name`, both in one plain link.
+    expect(person).toMatchObject({ href: "/people/dev%40example.com" });
+    expect(person!.label).toMatch(
       new RegExp(
-        `<img alt="" class="[^"]*rounded-full[^"]*"[^>]* src="${PHOTO}"/><a `,
+        `^<img alt="" class="[^"]*rounded-full[^"]*"[^>]* src="${PHOTO}"/>@Morgan Lee$`,
       ),
     );
     // Each label is only the title text: no icon and no status.
@@ -384,33 +388,36 @@ describe("display text object links", () => {
     );
     expect(html.match(/data-self-mention=""/g)).toHaveLength(1);
     expect(html).toMatch(
-      /data-self-mention=""[^>]*><img [^>]*><a [^>]*>@Morgan Lee</,
+      /data-self-mention=""[^>]*><a [^>]*><img [^>]*>@Morgan Lee</,
     );
 
     const slack = markup(
-      <MemoryRouter>
-        <DisplayText
-          mentions={[
-            {
-              avatarUrl: PHOTO,
-              email: "dev@example.com",
-              fullName: "Morgan Lee",
-              slackUserId: "U123",
-            },
-          ]}
-          text="Ping <@U123>."
-        />
-      </MemoryRouter>,
+      <DisplayText
+        mentions={[
+          {
+            avatarUrl: PHOTO,
+            email: "dev@example.com",
+            fullName: "Morgan Lee",
+            slackUserId: "U123",
+          },
+        ]}
+        text="Ping <@U123>."
+      />,
       "dev@example.com",
     );
     expect(slack).toMatch(
-      /data-self-mention=""[^>]*><img [^>]*><a [^>]*>@Morgan Lee</,
+      /data-self-mention=""[^>]*><a [^>]*><img [^>]*>@Morgan Lee</,
     );
   });
 
   it("shows only the name for a person with no photo", () => {
     const html = render(`Ask ${NO_PHOTO_PERSON} first.`);
-    expect(anchors(html).map(({ label }) => label)).toEqual(["@Ada Park"]);
+    // The mark is the initial, hidden from screen readers.
+    expect(anchors(html).map(({ label }) => label)).toEqual([
+      expect.stringMatching(
+        /^<span aria-hidden="true".*>A<\/span><\/span>@Ada Park$/,
+      ),
+    ]);
     expect(html).not.toMatch(/<img|<svg/);
   });
 
@@ -425,7 +432,7 @@ describe("display text object links", () => {
   // The faint reference under the row title.
   function rowReference(html: string) {
     return html.match(
-      /<span class="min-w-0 truncate text-xs [^"]*">([^<]*)<\/span>/,
+      /<span class="flex min-w-0 items-baseline gap-1.5 text-xs [^"]*"><span class="min-w-0 truncate">([^<]*)<\/span>/,
     )?.[1];
   }
 

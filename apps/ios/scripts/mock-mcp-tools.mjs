@@ -8,7 +8,7 @@ export const MCP_SCOPES = [
   "conversations:read",
   "conversations:manage",
   "conversations:write",
-  "review_items:read",
+  "inbox_items:read",
   "automations:read",
 ];
 
@@ -166,7 +166,10 @@ export function createMockMcpTools({ app, origin }) {
     return {
       conversationId: id,
       title: summary.displayTitle,
-      status: stopped.has(id) ? "stopped" : summary.status,
+      status: stopped.has(id) ? "done" : summary.status,
+      turnActive: summary.turnActive && !stopped.has(id),
+      treeState: summary.treeState,
+      watching: summary.watching,
       surface: summary.surface,
       channelName: summary.channelNameRedacted
         ? undefined
@@ -264,7 +267,7 @@ export function createMockMcpTools({ app, origin }) {
     };
   }
 
-  function mcpReviewItem(item) {
+  function mcpInboxItem(item) {
     return {
       id: item.id,
       kind: item.kind,
@@ -286,7 +289,7 @@ export function createMockMcpTools({ app, origin }) {
         : undefined,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
-      url: `${origin}/review?item=${enc(item.id)}`,
+      url: `${origin}/inbox?item=${enc(item.id)}`,
     };
   }
 
@@ -358,7 +361,7 @@ export function createMockMcpTools({ app, origin }) {
       scope: "conversations:read",
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `status` is not `active` and `hasMore` is not set. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
       annotations: READ_ONLY,
       input: {
         conversationId,
@@ -627,14 +630,18 @@ export function createMockMcpTools({ app, origin }) {
       input: { conversationId },
       async run({ conversationId: id }) {
         const detail = await requireDetail(id);
-        // The mock has no turns to stop. An active one stands for a running turn.
-        const running = detail.status === "active" && !stopped.has(id);
+        // The mock has no turns to stop. `turnActive` stands for a running turn.
+        const running = detail.turnActive && !stopped.has(id);
         const { pendingMessages } = await readPendingWork(id);
         stopped.add(id);
         if (running) droppedPending.add(id);
         return {
+          conversationId: id,
           status: running ? "requested" : "no_work",
-          droppedMessages: running ? pendingMessages.length : 0,
+          stoppedInboundMessageIds: running
+            ? pendingMessages.map((message) => message.messageId)
+            : [],
+          stoppedMessages: [],
         };
       },
     },
@@ -650,7 +657,13 @@ export function createMockMcpTools({ app, origin }) {
         await requireDetail(id);
         const { pendingMessages } = await readPendingWork(id);
         droppedPending.add(id);
-        return { cancelledMessages: pendingMessages.length };
+        return {
+          cancelledCount: pendingMessages.length,
+          cancelledInboundMessageIds: pendingMessages.map(
+            (message) => message.messageId,
+          ),
+          conversationId: id,
+        };
       },
     },
     {
@@ -750,11 +763,11 @@ export function createMockMcpTools({ app, origin }) {
       },
     },
     {
-      name: "searchReviewItems",
-      scope: "review_items:read",
-      title: "Search review items",
+      name: "searchInboxItems",
+      scope: "inbox_items:read",
+      title: "Search inbox items",
       description:
-        "Search the open review items that you can see, newest change first. A review item is a question or notice that waits for a person.",
+        "Search the open inbox items that you can see, newest change first. An inbox item is a question or notice that waits for a person.",
       annotations: READ_ONLY,
       input: {
         q: {
@@ -782,7 +795,7 @@ export function createMockMcpTools({ app, origin }) {
       async run({ conversationId: id, limit, q }) {
         const query = new URLSearchParams();
         if (id) query.set("conversationId", id);
-        const list = await apiJson("GET", `/review-items?${query}`);
+        const list = await apiJson("GET", `/inbox-items?${query}`);
         const words = q?.toLowerCase();
         const items = list.items
           .filter(
@@ -793,31 +806,31 @@ export function createMockMcpTools({ app, origin }) {
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         return {
-          items: items.slice(0, limit).map(mcpReviewItem),
+          items: items.slice(0, limit).map(mcpInboxItem),
           truncated: items.length > limit,
         };
       },
     },
     {
-      name: "getReviewItem",
-      scope: "review_items:read",
-      title: "Get review item",
-      description: "Get one review item, open or closed.",
+      name: "getInboxItem",
+      scope: "inbox_items:read",
+      title: "Get inbox item",
+      description: "Get one inbox item, open or closed.",
       annotations: READ_ONLY,
       input: {
         id: {
           type: "string",
           min: 1,
-          description: "Review item id from searchReviewItems.",
+          description: "Inbox item id from searchInboxItems.",
         },
       },
       async run({ id }) {
-        const result = await api("GET", `/review-items/${enc(id)}`);
+        const result = await api("GET", `/inbox-items/${enc(id)}`);
         if (result.status === 404) {
-          throw new ToolError("Review item not found.");
+          throw new ToolError("Inbox item not found.");
         }
         if (!result.ok) throw apiFailure(result);
-        return { item: mcpReviewItem(result.json) };
+        return { item: mcpInboxItem(result.json) };
       },
     },
     {
@@ -895,12 +908,18 @@ export function createMockMcpTools({ app, origin }) {
         },
       },
       async run({ id }) {
-        const result = await api("GET", `/automations/${enc(id)}/executions`);
-        if (result.status === 404) throw new ToolError("Automation not found.");
-        if (!result.ok) throw apiFailure(result);
+        const [automation, list] = await Promise.all([
+          api("GET", `/automations/${enc(id)}`),
+          api("GET", `/automations/${enc(id)}/executions`),
+        ]);
+        for (const result of [automation, list]) {
+          if (result.status === 404)
+            throw new ToolError("Automation not found.");
+          if (!result.ok) throw apiFailure(result);
+        }
         return {
-          automation: mcpAutomation(result.json.automation),
-          runs: result.json.executions
+          automation: mcpAutomation(automation.json),
+          runs: list.json.executions
             .slice(0, RECENT_RUN_LIMIT)
             .map(({ conversationId: runId, error, executedAt, status }) => ({
               executedAt,

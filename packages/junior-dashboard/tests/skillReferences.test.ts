@@ -34,4 +34,10 @@ it("finds each complete skill reference the runtime reads", () => {
   expect(findSkillReferences("$brief-")).toEqual([
     { start: 0, end: 6, name: "brief" },
   ]);
+  expect(findSkillReferences("_$brief_")).toEqual([
+    { start: 1, end: 7, name: "brief" },
+  ]);
+  expect(findSkillReferences("$beta_token $brief-v2x_")).toEqual([
+    { start: 12, end: 22, name: "brief-v2x" },
+  ]);
 });

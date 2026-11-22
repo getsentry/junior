@@ -2,18 +2,20 @@ import { LockKeyhole } from "lucide-react";
 
 import { Spinner } from "../components/ui/spinner";
 import { cn } from "../styles";
-import type { VisualStatus } from "../types";
+import type { ConversationStatus } from "../types";
 
 /**
  * Render the row marker: a spinner for a running Turn, else a dot when the
- * row waits on the viewer. Private, failed, and stopped go in
- * `ConversationStatusText`.
+ * row waits on the viewer. Private and needs input go in
+ * `ConversationStatusText`, so a `needs_input` row with a running Turn
+ * shows both.
  */
 export function ConversationListStatusIcon(props: {
-  status: VisualStatus;
+  /** `conversationTurnIsActive` of the row, not its `status`. */
+  turnActive: boolean;
   waitingOnViewer: boolean;
 }) {
-  if (props.status === "active") {
+  if (props.turnActive) {
     return <Spinner aria-label="Running" className="size-3 text-emerald-300" />;
   }
   if (props.waitingOnViewer) {
@@ -28,18 +30,13 @@ export function ConversationListStatusIcon(props: {
   return null;
 }
 
-/** Secondary row text for a private, failed, or stopped conversation. */
+/** Secondary row text for a private or needs input conversation. */
 export function ConversationStatusText(props: {
   className?: string;
   isPrivate: boolean;
-  status: VisualStatus;
+  status: ConversationStatus;
 }) {
-  if (
-    !props.isPrivate &&
-    props.status !== "failed" &&
-    props.status !== "stopped"
-  )
-    return null;
+  if (!props.isPrivate && props.status !== "needs_input") return null;
   return (
     <span
       className={cn(
@@ -54,10 +51,8 @@ export function ConversationStatusText(props: {
           role="img"
         />
       ) : null}
-      {props.status === "failed" ? (
-        <span className="text-rose-400">Failed</span>
-      ) : props.status === "stopped" ? (
-        <span className="text-dashboard-text-muted">Stopped</span>
+      {props.status === "needs_input" ? (
+        <span className="text-amber-400">Needs input</span>
       ) : null}
     </span>
   );

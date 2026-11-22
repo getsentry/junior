@@ -8,14 +8,16 @@ import { AutomationCard } from "../components/AutomationCard";
 import { CopyButton } from "../components/CopyButton";
 import { MessageActions } from "../components/ui/message";
 import { ReplyRatingActions } from "./ReplyRatingActions";
-import { ReviewItemChangeRow } from "../review-desk/ReviewItemChangeRow";
+import { InboxItemChangeRow } from "../inbox/InboxItemChangeRow";
 import { memo, type ReactNode } from "react";
 import { useHref } from "react-router";
 import { Link } from "lucide-react";
 
+import { PersonReference } from "../components/PersonReference";
 import {
   transcriptMessageActor,
   transcriptMessageActorLabel,
+  transcriptMessagePerson,
   transcriptRoleKind,
 } from "../format";
 import { cn } from "../styles";
@@ -28,7 +30,6 @@ import { RedactedMarker } from "./TranscriptRedacted";
 import { SourceMark } from "./SourceMark";
 import { DisplayText } from "../display-text/DisplayText";
 import { TranscriptTurnContextView } from "./TranscriptTurnContextView";
-import { TranscriptRecalledMemories } from "./TranscriptMemoryPopover";
 import { TranscriptTimestamp } from "./TranscriptTimestamp";
 import { transcriptMessageSource } from "./transcriptSource";
 import { formatMessageTimestamp } from "../time";
@@ -72,6 +73,7 @@ export const TranscriptMessageView = memo(
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
         fromAgent={Boolean(props.message.agentInvocationId)}
+        lead={props.conversation.kind === "lead"}
         avatarUrl={
           transcriptMessageActor(props.conversation, props.message)?.avatarUrl
         }
@@ -93,7 +95,7 @@ export const TranscriptMessageView = memo(
         />
         {props.message.reviewItemChanges?.length
           ? props.message.reviewItemChanges.map((record, index) => (
-              <ReviewItemChangeRow
+              <InboxItemChangeRow
                 conversationId={props.conversation.conversationId}
                 fallback={text}
                 key={index}
@@ -101,7 +103,6 @@ export const TranscriptMessageView = memo(
               />
             ))
           : text}
-        <TranscriptRecalledMemories message={props.message} />
         {props.message.attachments?.length ? (
           <TranscriptAttachments
             attachments={props.message.attachments}
@@ -193,6 +194,7 @@ export function RedactedMessageView(props: {
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
       fromAgent={Boolean(props.message.agentInvocationId)}
+      lead={props.conversation.kind === "lead"}
       avatarUrl={
         transcriptMessageActor(props.conversation, props.message)?.avatarUrl
       }
@@ -252,11 +254,21 @@ function TranscriptMessageHeader(props: {
     props.conversation,
     props.message,
   );
+  const person = transcriptMessagePerson(props.conversation, props.message);
 
   return (
     <TranscriptMessageHeading action={props.action}>
       <span className={transcriptRoleLabelClass(props.message.role)}>
-        {roleLabel}
+        {person ? (
+          // The large photo beside the message already shows who wrote it.
+          <PersonReference
+            avatar={false}
+            className="text-inherit no-underline hover:underline"
+            person={person}
+          />
+        ) : (
+          roleLabel
+        )}
       </span>
       {source || timestamp ? (
         <span className="inline-flex max-w-full flex-wrap items-baseline gap-x-1.5 text-xs leading-6 text-dashboard-text-muted">

@@ -21,7 +21,7 @@ import {
 import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import {
   getConversationStoppedAtMs,
-  resumeStoppedConversationTree,
+  resumeConversationTree,
 } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getConversationEventStore } from "@/chat/db";
@@ -35,6 +35,7 @@ import {
 import {
   closeConversationFixture,
   createConversationFixture,
+  stoppedConversationMessageTexts,
   type ConversationFixture,
 } from "../../../fixtures/conversation";
 import {
@@ -162,7 +163,7 @@ describe("conversation stop API", () => {
       created.conversationId,
       "stranger@example.com",
     );
-    expect(stranger.status).toBe(403);
+    expect(stranger.status).toBe(404);
 
     const response = await stopRequest(
       fixture,
@@ -380,10 +381,7 @@ describe("conversation stop API", () => {
     await expect(
       getConversationStoppedAtMs(created.conversationId),
     ).resolves.toBe(rootStopAtMs);
-    await resumeStoppedConversationTree(
-      created.conversationId,
-      rootStopAtMs + 1,
-    );
+    await resumeConversationTree(created.conversationId, rootStopAtMs + 1);
     for (const conversationId of [
       child.childConversationId,
       helper.childConversationId,
@@ -394,7 +392,7 @@ describe("conversation stop API", () => {
     }
   });
 
-  it("starts no parent Turn for a child result that waits when a person stops the parent", async () => {
+  it("holds a child result that waits when a person stops the parent", async () => {
     const work = await createConversationWorkHarness(neverRunAgentRunner());
     const fixture = {
       ...(await createConversationFixture()),
@@ -435,12 +433,17 @@ describe("conversation stop API", () => {
       actor.email,
     );
     expect(response.status).toBe(200);
-    await expect(
-      work.process(queue.takeMessageFor(created.conversationId)),
-    ).resolves.toMatchObject({ status: "completed" });
+    // The stop holds the waiting result: it is saved as a skipped Message,
+    // and nothing is left to run.
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
     ).resolves.toEqual([]);
+    await expect(
+      stoppedConversationMessageTexts(created.conversationId),
+    ).resolves.toEqual([expect.stringContaining("Child needs a token.")]);
+    await expect(
+      work.process(queue.takeMessageFor(created.conversationId)),
+    ).resolves.toMatchObject({ status: "no_work" });
     await expect(loadTurnEvents(created.conversationId)).resolves.toEqual([]);
   });
 
@@ -483,7 +486,7 @@ describe("conversation stop API", () => {
     // After a person's input to the root ends the stop of the tree, a late
     // cascade does not stop the grandchild again.
     clock.mockReturnValue(clock() + 1_000);
-    await resumeStoppedConversationTree(created.conversationId, clock());
+    await resumeConversationTree(created.conversationId, clock());
     clock.mockReturnValue(clock() + 1_000);
     await stopChildAgentsOf(child.invocation.childConversationId, state);
     await expect(
@@ -637,7 +640,7 @@ describe("conversation stop API", () => {
       }),
     );
     // A person's input to the root ends the stop of that child agent too.
-    await resumeStoppedConversationTree(created.conversationId, Date.now());
+    await resumeConversationTree(created.conversationId, Date.now());
     await expect(
       getConversationStoppedAtMs(missed.childConversationId),
     ).resolves.toBeUndefined();

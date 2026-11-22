@@ -321,6 +321,36 @@ describe("createTracedStreamFn", () => {
     ).toEqual([]);
   });
 
+  it("records AI Gateway routing from the provider stream", async () => {
+    const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
+    const onProviderStreamEvent = vi.fn();
+    const event = {
+      type: "message_delta",
+      delta: { stop_reason: "end_turn", stop_sequence: null },
+      provider_metadata: {
+        gateway: { routing: { finalProvider: "bedrock" } },
+      },
+    };
+    const base: AgentRequestStreamFn = async (model, _context, options) => {
+      await options?.onProviderStreamEvent?.(event, model);
+      return createAssistantMessageEventStream();
+    };
+    await createTracedStreamFn(base)(
+      fakeModel("anthropic/claude-opus-5.5"),
+      { messages: [{ role: "user", content: "hi", timestamp: 0 }] },
+      { onProviderStreamEvent },
+    );
+
+    expect(getSpan().setAttributes).toHaveBeenCalledWith({
+      "app.ai.gateway.provider": "bedrock",
+    });
+    // The caller's hook still sees the event.
+    expect(onProviderStreamEvent).toHaveBeenCalledWith(
+      event,
+      expect.objectContaining({ id: "anthropic/claude-opus-5.5" }),
+    );
+  });
+
   it("keeps private conversation content out of semantic attributes", async () => {
     const { createTracedStreamFn } = await import("@/chat/pi/traced-stream");
     const stream = createAssistantMessageEventStream();

@@ -8,7 +8,6 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { isMemoryCaptureEvent } from "./conversationMemory";
 import {
   isAgentInvocationResultMessage,
   type RenderedTranscriptEntry,
@@ -32,17 +31,15 @@ export function isCollapsibleActivityEntry(
   if (entry.kind === "failure") return false;
   // Delivered files are human-facing media, not collapsible tool chrome.
   if (entry.kind === "attachments_delivered") return false;
-  // Thread cards and Task lines stay in the main view.
+  // Thread cards, Task lines, and started Conversation cards stay in the
+  // main view.
   if (entry.kind === "subagent") return false;
+  if (entry.kind === "tool" && entry.part.startedConversationId) return false;
   // An agent invocation result left only for its recalled memories is
   // activity of the Turn it started. Its Thread card or Task line shows the
   // outcome.
   if (entry.kind === "message") {
     return isAgentInvocationResultMessage(entry.message);
-  }
-  // A Turn's captured memories stay visible, so the reader sees what it saved.
-  if (entry.kind === "structured_event" && isMemoryCaptureEvent(entry.part)) {
-    return false;
   }
   return true;
 }

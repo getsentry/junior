@@ -237,16 +237,6 @@ function storedProjection(events: ConversationEvent[]): StoredProjection {
   };
 }
 
-/** Load the current Pi agent history for a conversation. */
-export async function loadProjection(
-  args: ScopedConversation,
-): Promise<PiMessage[]> {
-  const events = await getConversationEventStore().loadCurrentHistory(
-    args.conversationId,
-  );
-  return projectConversationEvents(events).messages;
-}
-
 /** Load current Pi context with aligned provenance and source event sequences. */
 export async function loadConversationProjection(
   args: ScopedConversation,
@@ -542,6 +532,7 @@ async function appendHostFactOnce(args: {
   data: ConversationEventData & {
     type:
       | "mcp_provider_connected"
+      | "skill_loaded"
       | "authorization_requested"
       | "authorization_completed";
   };
@@ -589,6 +580,37 @@ export async function recordMcpProviderConnected(args: {
       data.provider === args.provider &&
       data.credentialSubjectId === args.credentialSubjectId,
   });
+}
+
+/** Record once that `loadSkill` loaded a manual-only skill in this Conversation. */
+export async function recordSkillLoaded(args: {
+  conversationId: string;
+  skillName: string;
+}): Promise<void> {
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `skill_loaded:${args.skillName}`,
+    data: { type: "skill_loaded", skillName: args.skillName },
+    isSameFact: (data) =>
+      data.type === "skill_loaded" && data.skillName === args.skillName,
+  });
+}
+
+/** Load the manual-only skills that `loadSkill` loaded in this Conversation. */
+export async function loadConversationSkillNames(
+  conversationId: string,
+): Promise<string[]> {
+  const events = await getConversationEventStore().loadEventsOfType(
+    conversationId,
+    "skill_loaded",
+  );
+  return [
+    ...new Set(
+      events.flatMap((event) =>
+        event.data.type === "skill_loaded" ? [event.data.skillName] : [],
+      ),
+    ),
+  ];
 }
 
 /** Record that an OAuth/MCP authorization link was delivered or reused. */

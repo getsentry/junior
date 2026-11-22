@@ -1,4 +1,5 @@
 import type { StoredSlackActor } from "@/chat/actor";
+import type { ConversationReportStatus } from "../schema/conversation";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { juniorConversations } from "@/db/schema";
 import type { ConversationAccess } from "./access";
@@ -25,7 +26,7 @@ export type ReportingConversationRow = {
   parentConversationId: string | null;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
-  stoppedAt: Date | null;
+  status: ConversationReportStatus;
   title: string | null;
   updatedAt: Date;
   usage: (typeof juniorConversations.$inferSelect)["usage"];
@@ -111,7 +112,6 @@ export function summaryFromRow(
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
     ...(row.source ? { source: row.source } : undefined),
-    ...(row.stoppedAt ? { stoppedAtMs: row.stoppedAt.getTime() } : undefined),
     ...(row.title ? { title: row.title } : undefined),
   };
   return conversationSummaryFromStoredConversation({
@@ -120,6 +120,7 @@ export function summaryFromRow(
     conversation,
     durationMs: options.metrics?.durationMs ?? row.durationMs,
     firstHumanMessageText: options.firstHumanMessageText,
+    status: row.status,
     ...(options.access?.visibility === "public" && row.destinationId
       ? { locationId: row.destinationId }
       : undefined),

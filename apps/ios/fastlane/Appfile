@@ -1,0 +1,3 @@
+itc_team_id("96157806") # App Store Connect team
+team_id("97JCY7859U") # Developer Portal team
+app_identifier("io.sentry.junior")

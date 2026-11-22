@@ -15,9 +15,13 @@ import type {
   AgentInvocation,
   TerminalAgentInvocation,
 } from "@/chat/agent-invocations/types";
-import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
+import { botConfig } from "@/chat/config";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { ingestEvent } from "@/chat/events/ingest";
+import { createWatch, listWatches } from "@/chat/events/store";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -32,7 +36,11 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
-import { webTestActor } from "../fixtures/conversation";
+import {
+  stoppedConversationMessageTexts,
+  storeConversationStop,
+  webTestActor,
+} from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
   createHarness,
@@ -384,9 +392,7 @@ describe("child Turns on the Conversation loop", () => {
       const childId = await startIdleChild(harness, "task");
       harness.onPersonRun(async (run) => {
         // Only the stored stop is set. No stop request reaches the worker.
-        await markConversationsStopped([run.conversationId], {
-          cancelWatches: false,
-        });
+        await storeConversationStop(run.conversationId);
         // The agent loop checks for a stop at each step boundary.
         await run.durability?.checkStop?.();
         run.signal?.throwIfAborted();
@@ -412,6 +418,67 @@ describe("child Turns on the Conversation loop", () => {
       );
       // A stop is not a result, so the parent hears nothing.
       await expect(parentMessageTexts()).resolves.toEqual(before);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("stops a child at the automated-turn limit and holds its Watch Events", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "task");
+      await createWatch(
+        {
+          conversationId: childId,
+          events: ["pull_request.merge_conflict"],
+          expiresAtMs: Date.now() + 60_000,
+          identifier: "getsentry/junior#3796",
+          intent: "Fix merge conflicts.",
+          label: "GitHub PR getsentry/junior#3796",
+          namespace: "github",
+          resourceType: "pull_request",
+        },
+        { state: harness.state },
+      );
+      const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
+      // The Turn that reached the limit stops the child's tree. A child has
+      // no Location, so no notice is posted.
+      await stopAtAutomatedTurnLimit({
+        conversationId: childId,
+        maxTurns,
+        update: { consecutiveAutomatedTurns: maxTurns, reached: true },
+      });
+      await expect(getConversationStoppedAtMs(childId)).resolves.toEqual(
+        Date.now(),
+      );
+
+      for (const headSha of ["abc123", "def456"]) {
+        await expect(
+          ingestEvent(
+            {
+              data: { pullRequest: 3796, repo: "getsentry/junior" },
+              eventKey: `github:merge-conflict:getsentry/junior#3796:${headSha}`,
+              eventType: "pull_request.merge_conflict",
+              identifier: "getsentry/junior#3796",
+              namespace: "github",
+              occurredAtMs: Date.now(),
+              trustedSummary: "getsentry/junior#3796 has merge conflicts.",
+            },
+            { queue: harness.queue, state: harness.state },
+          ),
+        ).resolves.toEqual({ enqueued: 0 });
+      }
+
+      // The stopped child keeps its Watch and holds its Events as skipped
+      // Messages.
+      await expect(
+        listWatches({ conversationId: childId, state: harness.state }),
+      ).resolves.toHaveLength(1);
+      await expect(stoppedConversationMessageTexts(childId)).resolves.toEqual([
+        expect.stringContaining("getsentry/junior#3796 has merge conflicts."),
+        expect.stringContaining("getsentry/junior#3796 has merge conflicts."),
+      ]);
     } finally {
       await harness.close();
     }

@@ -7,7 +7,7 @@ const CHECKOUT_TRIAGE_ID = "slack:CQA123:1770000000.000100";
 const CLOSED_ISSUE_ID = "agent-dispatch:event-1";
 
 const question = {
-  addedByConversationId: CLOSED_ISSUE_ID,
+  owner: { id: CLOSED_ISSUE_ID, kind: "conversation" },
   rootConversationId: CLOSED_ISSUE_ID,
   assignedToEveryone: false,
   assignees: [
@@ -43,12 +43,12 @@ const question = {
 
 /**
  * Make the viewer a participant, so the Conversation has a reply box. With
- * `reviewItemId`, Junior added that Review item last.
+ * `inboxItemId`, Junior added that Inbox item last.
  */
 async function routeAsParticipant(
   page: Page,
   conversationId: string,
-  reviewItemId?: string,
+  inboxItemId?: string,
 ) {
   await page.route(
     `**/api/conversations/${encodeURIComponent(conversationId)}*`,
@@ -61,7 +61,7 @@ async function routeAsParticipant(
       });
       const detail = await response.json();
       const last = detail.events.at(-1);
-      const events = reviewItemId
+      const events = inboxItemId
         ? [
             ...detail.events,
             {
@@ -69,10 +69,10 @@ async function routeAsParticipant(
               data: {
                 calls: [
                   {
-                    name: "addReviewItem",
-                    output: { item: { id: reviewItemId } },
+                    name: "addInboxItem",
+                    output: { item: { id: inboxItemId } },
                     status: "completed",
-                    toolCallId: "add-review-item",
+                    toolCallId: "add-inbox-item",
                   },
                 ],
                 type: "tool_calls",
@@ -138,25 +138,24 @@ test("switches conversations from the command palette without a server search", 
   await expect(palette).toHaveCount(0);
 });
 
-test("a palette switch focuses the question while Junior waits for an answer", async ({
+test("a palette switch focuses the message box, and a question that loads later leaves it there", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 800, width: 1280 });
   await routeAsParticipant(page, CLOSED_ISSUE_ID, question.id);
   // The question sits on a second page that loads after the reply box
-  // shows.
+  // shows, and a third page loads after the reader starts to type.
   let releaseQuestion = () => {};
   const questionHeld = new Promise<void>((resolve) => {
     releaseQuestion = resolve;
   });
-  // A third page loads after the reader starts to type.
   let lastPageSent = false;
   let releaseLastPage = () => {};
   const lastPageHeld = new Promise<void>((resolve) => {
     releaseLastPage = resolve;
   });
-  await page.route(`**/api/review-items?*`, async (route) => {
+  await page.route(`**/api/inbox-items?*`, async (route) => {
     const url = new URL(route.request().url());
     if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
       return route.fallback();
@@ -186,17 +185,11 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toBeVisible();
 
-  // The question takes focus, so a number key answers it at once.
-  releaseQuestion();
-  const docked = page.getByRole("region", {
-    name: `Question: ${question.title}`,
-  });
-  await expect(docked).toBeFocused();
-  await expect(composer).toBeVisible();
-
-  // The last page does not take the focus back from the message box.
-  await composer.click();
+  // The message box takes the focus at once. The question shows in the
+  // transcript when its page loads, and does not take the focus.
+  await expect(composer).toBeFocused();
   await composer.pressSequentially("Hold on");
+  releaseQuestion();
   releaseLastPage();
   await expect.poll(() => lastPageSent).toBe(true);
   // Let the app render the last page before the next keys.
@@ -208,7 +201,7 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   );
   await composer.pressSequentially(" 1");
   await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("Hold on 1");
+  await expect(composer).toHaveText("Hold on 1", { useInnerText: true });
 });
 
 test("jumps to a page from the command palette", async ({

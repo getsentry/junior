@@ -2,7 +2,7 @@ import * as z from "zod";
 import { isLegacyNoReplyMarker, NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { replyTextSchema } from "@/chat/turn-answer";
 
 const DESCRIPTIONS = {
@@ -11,7 +11,7 @@ const DESCRIPTIONS = {
     text: "The finished result for your parent agent, with everything it needs to continue.",
   },
   automation: {
-    tool: "Post the reply of this Turn when the Turn ends. When the run starts, the reply goes to its stored destinations. After the run posts, a reply goes to the run's Slack thread.",
+    tool: "Post the Automation's reply. The run's first reply goes to every place the Automation posts to, such as its channel or the creator's DMs. Later replies go in the Slack thread of the first reply in the Automation's channel.",
     text: "The finished message, such as a reminder, digest, or alert.",
   },
 } as const;

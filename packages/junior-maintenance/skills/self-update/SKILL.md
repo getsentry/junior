@@ -102,7 +102,7 @@ For `vercel.json`, do not normalize the whole file against the example. Use upst
 git -C <upstream> diff <old_ref>..<target_ref> -- apps/example/vercel.json
 ```
 
-Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual review item when needed.
+Only act on Junior-owned deployment requirements proven by that diff or by release notes/docs. If `old_ref` is unavailable, target-only example entries are context, not proof; mark the review approximate and leave a manual inbox item when needed.
 
 ### 8. Verify
 
@@ -128,7 +128,7 @@ Mention `minimumReleaseAgeExclude` sync if `pnpm-workspace.yaml` changed.
 
 ### 10. Push and open/update PR
 
-Open the PR ready for review, not as a draft. If an existing update PR is a draft, mark it ready for review. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Do not put `Checks`, `Verification`, `Test plan`, or similar validation sections in the PR body; put local check results in the final user report only. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
+Open the PR ready for review, not as a draft. If an existing update PR is a draft, mark it ready for review. Include version change, release summary with links to the GitHub releases, config comparison findings, optional workspace/plugin/vercel changes, and unexpected diffs. Put local check results in the final user report. Add **Manual review required** when breaking changes, unresolved config drift, approximate Vercel review, or failed checks exist.
 
 When PR creation returns a subscribable resource hint, watch the PR for suggested review and CI events. After merge, if deployment follow-up is needed, use `github_getDeployment` for the merged commit and watch the suggested deployment events.
 

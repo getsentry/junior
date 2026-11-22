@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import type { ComponentType } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
@@ -17,7 +18,6 @@ import {
 } from "lucide-react";
 
 import { useCopyText } from "../components/CopyButton";
-import { visualStatusForConversation } from "../format";
 import type { Conversation } from "../types";
 import type { PinnedRowMove } from "./PinnedConversationOrder";
 import { SlackMark } from "./SlackMark";
@@ -63,8 +63,8 @@ export type ConversationMenu = {
         | "deliveryPaused"
         | "isParticipant"
         | "sentryConversationUrl"
-        | "status"
         | "subscribed"
+        | "turnActive"
       >
     | undefined;
   /** The page shows its event log, so the row goes back to the conversation. */
@@ -101,9 +101,7 @@ export function useConversationMenuItems(
   const participant = Boolean(
     conversation && (detail?.isParticipant ?? conversation.isParticipant),
   );
-  const live = detail
-    ? detail.status === "active"
-    : conversation && visualStatusForConversation(conversation) === "active";
+  const live = conversationTurnIsActive(detail, conversation);
 
   const conversationItems: ConversationMenuItem[] = [
     {

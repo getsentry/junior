@@ -6,7 +6,11 @@ import {
   instructionForInputs,
   withoutSavedSteeringMessages,
 } from "@/chat/agent/prompt";
-import type { AgentRun, AgentSteeringMessage } from "@/chat/agent/types";
+import type {
+  AgentHistory,
+  AgentRun,
+  AgentSteeringMessage,
+} from "@/chat/agent/types";
 import type { Location } from "@/chat/conversations/location";
 import {
   agentInstructionProvenance,
@@ -14,9 +18,9 @@ import {
   sameActorIdentity,
 } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { openConversationProjection } from "@/chat/conversations/projection";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { loadConversationProjection } from "@/chat/conversations/projection";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import { getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderParentAgentTask } from "@/chat/input-tags";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
@@ -50,14 +54,13 @@ import {
   recordFinishedTurnForAutomatedLimit,
   resetAutomatedTurnLimit,
 } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
-import type { PiMessage } from "@/chat/pi/messages";
 import type { SandboxRef } from "@/chat/sandbox/ref";
 import { supersedeOpenMailboxTurn } from "./thread-turn";
 import { agentTypeInstructions } from "./agent-types";
-import { FORK_INSTRUCTIONS, loadForkHistory } from "./fork-history";
+import { commitForkHistory, FORK_INSTRUCTIONS } from "./fork-history";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 import {
   appendAndEnqueueInboundMessage,
@@ -97,7 +100,7 @@ import {
   type SendReply,
 } from "./turn-end";
 import { stopChildAgentsOf } from "./stop";
-import { resumeStoppedConversationTree } from "@/chat/conversations/session-stop";
+import { resumeConversationTree } from "@/chat/conversations/session-stop";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -168,7 +171,7 @@ export async function enqueueAgentInvocation(
   // New work from a parent tool call ends the stop of the child and of the
   // child agents below it. A child's own Events and results do not.
   if (invocation.parentToolCallId !== undefined) {
-    await resumeStoppedConversationTree(
+    await resumeConversationTree(
       invocation.childConversationId,
       invocation.createdAtMs,
     );
@@ -470,7 +473,7 @@ async function projectTerminalTurn(
       return undefined;
     }
   }
-  const end = savedTurnEnd(turn);
+  const end = await savedTurnEnd(turn);
   if (!end) {
     return undefined;
   }
@@ -630,8 +633,7 @@ async function saveAgentInvocationResult(args: {
     });
   } else if (args.invocation.source.kind !== "agent_invocation") {
     const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-    // A child posts no notice, so this clears its claim.
-    await maybePostAutomatedTurnLimitNotice({
+    await stopAtAutomatedTurnLimit({
       conversationId: args.invocation.childConversationId,
       maxTurns,
       update: await recordFinishedTurnForAutomatedLimit({
@@ -743,11 +745,9 @@ export function createAgentInvocationWorker(
     };
 
     const turnId = getAgentInvocationTurnId(invocation.invocationId);
-    const lifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
+    const lifecycle = getTurnLifecycle();
     let sandboxRef: SandboxRef | undefined;
-    let history: PiMessage[];
+    let history: AgentHistory;
     let location: Location | undefined;
     try {
       if (invocation.childConversationId !== context.conversationId) {
@@ -792,6 +792,12 @@ export function createAgentInvocationWorker(
         await acknowledge();
         return { status: "completed" };
       }
+      // A fork starts with the parent's history. Commit it before the Turn
+      // starts, so it is not part of the Turn. Later agent invocations read
+      // it from the child's own Conversation.
+      if (invocation.fork) {
+        await commitForkHistory(invocation);
+      }
       await lifecycle.start({
         conversationId: invocation.childConversationId,
         createdAtMs: invocation.createdAtMs,
@@ -801,7 +807,7 @@ export function createAgentInvocationWorker(
       });
       const [persisted, projection, child] = await Promise.all([
         getPersistedThreadState(invocation.childConversationId),
-        openConversationProjection({
+        loadConversationProjection({
           conversationId: invocation.childConversationId,
         }),
         getConversationStore().get({
@@ -809,12 +815,7 @@ export function createAgentInvocationWorker(
         }),
       ]);
       sandboxRef = getPersistedSandboxState(persisted);
-      // A fork starts with the parent's history. Later agent invocations
-      // read it from the child's own Conversation.
-      history =
-        invocation.fork && projection.messages.length === 0
-          ? await loadForkHistory(invocation)
-          : projection.messages;
+      history = projection;
       location = child?.location;
     } catch (error) {
       if (isInvocationInputCommitLost(error)) {
@@ -844,10 +845,17 @@ export function createAgentInvocationWorker(
           parentConversationId: invocation.parentConversationId,
           turnId,
           runId: invocation.invocationId,
-          // A child has no person input: every input is a runtime tag.
+          // A child has no person input: every input is a runtime tag. A
+          // parent agent's task or message is the request in it.
           instruction: {
             ...instructionForInputs([
-              { kind: "runtime", text: agentInvocationInputText(invocation) },
+              {
+                kind: "runtime",
+                text: agentInvocationInputText(invocation),
+                ...(invocation.parentToolCallId
+                  ? { requestText: invocation.input }
+                  : undefined),
+              },
             ]),
             provenance: agentInvocationProvenance(invocation),
           },

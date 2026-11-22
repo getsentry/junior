@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import {
   createToolActionReview,
   MAX_TOOL_ACTION_BATCH,
@@ -280,7 +280,7 @@ describe("tool action review", () => {
       "plugin-call",
       "github_getIssue",
       pluginTool,
-      { number: 1, repo: "getsentry/junior" },
+      { issue: 1, repo: "getsentry/junior" },
       reviewContext({ review }),
     );
     await reviewToolAction(

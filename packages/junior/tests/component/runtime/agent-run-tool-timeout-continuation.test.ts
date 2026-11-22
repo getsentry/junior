@@ -189,12 +189,13 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/skills")>()),
   discoverSkills: async () => [],
   findSkillByName: () => null,
-  parseSkillInvocation: () => null,
+  parseSkillInvocations: () => [],
 }));
 
 import { executeAgentRun } from "@/chat/agent";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 const ORIGINAL_STATE_ADAPTER = process.env["JUNIOR_STATE_ADAPTER"];
 
@@ -249,6 +250,7 @@ describe("tool timeout continuation composition", () => {
 
     // Pi prepares every call of a parallel batch before it starts them. The
     // deadline passes while it prepares the second call.
+    await recordTurnStart(conversationId, turnId);
     const firstSlicePromise = executeAgentRun({
       ...request,
       deadlineAtMs: Date.now() + 10_000,

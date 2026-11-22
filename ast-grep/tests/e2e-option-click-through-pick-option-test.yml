@@ -1,0 +1,10 @@
+id: e2e-option-click-through-pick-option
+valid:
+  - 'await pickOption(page.getByRole("option", { name: "Private" }));'
+  - 'await page.getByRole("button", { name: "Snooze" }).click();'
+  - 'await expect(page.getByRole("option")).toHaveCount(0);'
+invalid:
+  - 'await page.getByRole("option", { name: "Private" }).click();'
+  - 'await files.getByRole("option").click();'
+  - 'await palette.getByRole("option", { name: /Send/ }).first().click();'
+  - "await page\n  .getByRole(\"option\", { name: /Archived/ })\n  .click();"

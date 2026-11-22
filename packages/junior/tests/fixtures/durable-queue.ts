@@ -6,9 +6,9 @@
 import type { StateAdapter } from "chat";
 import { expect } from "vitest";
 import { readConversationAuthors } from "@/api/conversations/participants";
-import { getConversationEventStore, getDb } from "@/chat/db";
-import { loadProjection } from "@/chat/conversations/projection";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getDb } from "@/chat/db";
+import { loadConversationProjection } from "@/chat/conversations/projection";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
@@ -127,9 +127,10 @@ export async function expectNextTurn(
 
 /** Assert that SQL history keeps an assistant message with `text`. */
 export async function expectAssistantInSql(text: string): Promise<void> {
-  await expect(
-    loadProjection({ conversationId: CONVERSATION_ID }),
-  ).resolves.toEqual(
+  expect(
+    (await loadConversationProjection({ conversationId: CONVERSATION_ID }))
+      .messages,
+  ).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         role: "assistant",
@@ -171,9 +172,7 @@ export async function expectAnotherPersonsTurn(
     actor: expect.objectContaining({ userId: "U0OTHER" }),
   });
   await expect(
-    new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    ).loadInputMessageIds(CONVERSATION_ID, otherTurnId),
+    getTurnLifecycle().loadInputMessageIds(CONVERSATION_ID, otherTurnId),
   ).resolves.toEqual([expect.stringContaining("1712345.0002")]);
   const { participants } = await readConversationAuthors(
     getDb(),

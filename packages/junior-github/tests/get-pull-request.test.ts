@@ -103,7 +103,7 @@ describe("getPullRequest", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "get-pr" },
       ),
     ).resolves.toMatchObject({
@@ -163,7 +163,7 @@ describe("getPullRequest", () => {
     });
     const execute = async () =>
       (await tool.execute?.(
-        { repo: "GetSentry/Junior", number: 691 },
+        { repo: "GetSentry/Junior", pull_request: 691 },
         { toolCallId: "get-pr" },
       )) as { related_conversations?: unknown[] };
 
@@ -219,7 +219,7 @@ describe("getPullRequest", () => {
     ]);
 
     const result = await tool.execute?.(
-      { repo: "getsentry/junior", number: 691 },
+      { repo: "getsentry/junior", pull_request: 691 },
       { toolCallId: "get-pr-checks" },
     );
 
@@ -287,7 +287,7 @@ describe("getPullRequest", () => {
     ]);
 
     const result = await tool.execute?.(
-      { repo: "getsentry/junior", number: 691 },
+      { repo: "getsentry/junior", pull_request: 691 },
       { toolCallId: "get-draft-code-owners" },
     );
 
@@ -341,7 +341,7 @@ describe("getPullRequest", () => {
     // marked ready and ask them.
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "get-draft-without-files" },
       ),
     ).rejects.toThrow(
@@ -366,7 +366,7 @@ describe("getPullRequest", () => {
       ]);
 
       const result = await tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "get-pr-no-required-checks" },
       );
 
@@ -388,7 +388,7 @@ describe("getPullRequest", () => {
     const { tool } = toolContext(false);
 
     const result = await tool.execute?.(
-      { repo: "getsentry/junior", number: 691 },
+      { repo: "getsentry/junior", pull_request: 691 },
       { toolCallId: "get-pr-without-subscriptions" },
     );
 
@@ -403,7 +403,7 @@ describe("getPullRequest", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 999999 },
+        { repo: "getsentry/junior", pull_request: 999999 },
         { toolCallId: "missing-pr" },
       ),
     ).rejects.toMatchObject({
@@ -419,7 +419,7 @@ describe("getPullRequest", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "pr-lookup-500" },
       ),
     ).rejects.toMatchObject({

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   InboxLinkedWorkChips,
   WorkLine,
-} from "../src/client/review-desk/InboxLinkedWork";
+} from "../src/client/inbox/InboxLinkedWork";
 
 // The visible text of rendered markup: its text nodes, in order.
 function text(markup: string): string {
@@ -38,7 +38,8 @@ describe("linked work short names", () => {
         ]}
       />,
     );
-    expect(text(chips)).toBe("1#1");
+    // The chip shows the number; its title is its accessible name.
+    expect(text(chips)).toBe("1 #1");
   });
 
   it("names a web page once when its label repeats its title", () => {

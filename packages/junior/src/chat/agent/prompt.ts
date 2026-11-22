@@ -15,11 +15,6 @@ import type { Platform } from "@sentry/junior-plugin-api";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
-  sandboxSkillDir,
-  sandboxSkillFile,
-  sandboxSkillPathResolution,
-} from "@/chat/sandbox/paths";
-import {
   buildCapabilitySections,
   buildTurnContextPrompt,
   type DisabledToolPromptContext,
@@ -29,9 +24,13 @@ import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
-import { latestSeenPlanVersion, renderPlanDelta } from "@/chat/plan/prompt";
-import { listPlanItems } from "@/chat/plan/store";
-import type { PlanItem } from "@/chat/plan/types";
+import {
+  latestSeenTodosVersion,
+  renderTodoDelta,
+  renderTodosReview,
+} from "@/chat/todos/prompt";
+import { listTodos } from "@/chat/todos/store";
+import type { Todo } from "@/chat/todos/types";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import { systemSectionsUpdate } from "@/chat/pi/agent-history";
@@ -49,17 +48,14 @@ import {
   toCanonicalInputMessage,
   type ConversationPrivacy,
 } from "@/chat/conversation-privacy";
-import type { Skill, SkillMetadata } from "@/chat/skills";
+import type { SkillMetadata } from "@/chat/skills";
 import type { ActiveMcpCatalogSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import { isUserActor, type Actor } from "@/chat/actor";
 import { findActorTimezone } from "@/chat/identities/timezone";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
 import {
-  escapeClosingTag,
   escapeTagText,
-  escapeTagTextAndQuotes,
-  renderInlineTag,
   renderTag,
   startsWithTag,
 } from "@sentry/junior-plugin-api";
@@ -67,6 +63,8 @@ import { renderThreadContext, THREAD_CONTEXT_TAGS } from "@/chat/input-tags";
 import { listWorkspaces } from "@/chat/workspaces/store";
 import type { Workspace } from "@/chat/workspaces/types";
 import { isVisionImageMediaType } from "@/chat/attachments/media";
+import { dispatchInstructionsInvokeSkills } from "@/chat/conversations/kind-behavior";
+import { readTaskInstructions } from "@/chat/task-input";
 import type {
   AgentAttachment,
   AgentInstruction,
@@ -120,8 +118,8 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
-  /** Every item of the Conversation's plan, for the `<plan-delta>`. */
-  planItems?: PlanItem[];
+  /** Every To-do of the Conversation, for the `<todo-delta>`. */
+  todos?: Todo[];
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
   /** IANA timezone of the person who asked, from `findActorTimezone`. */
@@ -129,8 +127,10 @@ export interface PromptTurnContext {
 }
 
 interface PromptReplayArgs {
-  existingSessionPiMessages?: PiMessage[] | undefined;
-  existingTurnStartMessageIndex?: number | undefined;
+  /** Saved messages of this Turn, from `savedTurnMessages`. */
+  existingTurnMessages: PiMessage[];
+  /** From `TurnRecord.promptSaved`. */
+  promptSaved: boolean;
   resumedFromSessionRecord: boolean;
   userContentParts: UserContentPart[];
 }
@@ -192,6 +192,34 @@ export function instructionForInputs(
   };
 }
 
+/**
+ * Return the request of a Run, for context that must follow what was asked,
+ * such as memory recall: person input, the `requestText` of runtime inputs,
+ * or the instructions of an Automation run. Runtime tags, generic
+ * instructions, and Event text are not in it.
+ */
+export function turnRequestText(
+  run: Pick<AgentRun, "dispatch" | "instruction">,
+): string {
+  const { instruction } = run;
+  // An Automation run's task instructions are its creator's request. Another
+  // dispatch, such as a plugin dispatch, has no request.
+  if (run.dispatch) {
+    return dispatchInstructionsInvokeSkills(run.dispatch)
+      ? (readTaskInstructions(instruction.text) ?? "")
+      : "";
+  }
+  const inputs = instruction.inputs ?? [
+    { kind: "person" as const, text: instruction.text },
+  ];
+  return inputs
+    .map((input) =>
+      (input.kind === "person" ? input.text : (input.requestText ?? "")).trim(),
+    )
+    .filter(Boolean)
+    .join("\n\n");
+}
+
 // Render one prompt text part per input, in order. Inputs are never joined.
 // A batch has one Actor, so every person part has the same attributes.
 function renderInputParts(instruction: AgentInstruction): string[] {
@@ -203,26 +231,6 @@ function renderInputParts(instruction: AgentInstruction): string[] {
       ? buildUserTurnText(input.text, instruction.actor)
       : input.text.trim(),
   );
-}
-
-/** Render an explicitly selected skill as instructions for the current turn. */
-export function renderExplicitSkillInstructions(skill: Skill): string {
-  return renderTag("skill", {}, [
-    renderInlineTag("name", escapeTagTextAndQuotes(skill.name)),
-    renderInlineTag(
-      "path",
-      escapeTagTextAndQuotes(sandboxSkillFile(skill.name)),
-    ),
-    renderInlineTag(
-      "working_directory",
-      escapeTagTextAndQuotes(sandboxSkillDir(skill.name)),
-    ),
-    renderInlineTag(
-      "path_resolution",
-      escapeTagTextAndQuotes(sandboxSkillPathResolution(skill.name)),
-    ),
-    escapeClosingTag(skill.body, "skill"),
-  ]);
 }
 
 /** Redact image data from prompt content parts for observability. */
@@ -489,8 +497,7 @@ function userCustomizationTurnContext(text: string): PluginTurnContext {
 // A failed input acknowledgement redelivers the same running checkpoint.
 // Reuse its exact prompt so plugin context cannot diverge from its durable event.
 function checkpointedPrompt(args: {
-  messages: PiMessage[] | undefined;
-  turnStartMessageIndex: number | undefined;
+  turnMessages: PiMessage[];
   userContentParts: UserContentPart[];
 }):
   | {
@@ -498,14 +505,7 @@ function checkpointedPrompt(args: {
       userContentParts: UserContentPart[];
     }
   | undefined {
-  if (
-    !args.messages ||
-    args.turnStartMessageIndex === undefined ||
-    args.turnStartMessageIndex >= args.messages.length
-  ) {
-    return undefined;
-  }
-  const turnMessages = args.messages.slice(args.turnStartMessageIndex);
+  const { turnMessages } = args;
   const durableTurnMessages = stripRuntimeTurnContext(turnMessages);
   if (durableTurnMessages.length !== 1) {
     return undefined;
@@ -539,16 +539,13 @@ function checkpointedPrompt(args: {
 // A resumed slice continues its checkpointed prompt. A redelivered prompt
 // reuses its checkpointed copy. Only a new prompt gets new Turn context.
 function planPromptReplay(args: PromptReplayArgs) {
-  const hasPromptCheckpoint =
-    args.resumedFromSessionRecord &&
-    args.existingTurnStartMessageIndex !== undefined;
+  const hasPromptCheckpoint = args.resumedFromSessionRecord && args.promptSaved;
   const shouldPromptAgent =
     !args.resumedFromSessionRecord || !hasPromptCheckpoint;
   const replayedPrompt =
     shouldPromptAgent && !args.resumedFromSessionRecord
       ? checkpointedPrompt({
-          messages: args.existingSessionPiMessages,
-          turnStartMessageIndex: args.existingTurnStartMessageIndex,
+          turnMessages: args.existingTurnMessages,
           userContentParts: args.userContentParts,
         })
       : undefined;
@@ -581,7 +578,7 @@ export async function loadPromptTurnContext(
     conversationNotes,
     userCustomization,
     workspaces,
-    planItems,
+    todos,
     askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
@@ -596,13 +593,13 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
-    listPlanItems(getSqlExecutor(), args.context.conversationId),
+    listTodos(getSqlExecutor(), args.context.conversationId),
     loadAskerTimezone(args.currentActor, args.context),
   ]);
   return {
     askerTimezone,
     conversationNotes,
-    planItems,
+    todos,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -618,12 +615,16 @@ export function promptPlatform(
   // child Turn is local, also on a path that has a Delivery, and its system
   // prompt stays the same on every path.
   if (promptMode === "child_agent") return "local";
-  // Every Turn of a Thread or an Automation Conversation has one system
-  // prompt, so its Location picks the platform. A person's Turn in a
+  // Every Turn of a Thread, an Automation Conversation, or a Lead has one
+  // system prompt, so its Location picks the platform. A person's Turn in a
   // Slack-located one keeps the Slack rules that it had. The other Turns have
   // no Delivery: an agent's Turn on its Agent invocation, and an Automation
   // run, whose `reply` text still goes to Slack. They get the same prompt.
-  if (promptMode === "thread" || promptMode === "automation") {
+  if (
+    promptMode === "thread" ||
+    promptMode === "automation" ||
+    promptMode === "lead"
+  ) {
     return run.location?.provider === "slack" ? "slack" : "local";
   }
   return run.delivery && run.location?.provider === "slack" ? "slack" : "local";
@@ -638,9 +639,9 @@ export async function assemblePrompt(args: {
   contextContentParts: UserContentPart[];
   conversationPrivacy?: ConversationPrivacy | undefined;
   existingSessionPiMessages?: PiMessage[] | undefined;
-  existingTurnStartMessageIndex?: number | undefined;
-  explicitSkill: Skill | null;
+  existingTurnMessages: PiMessage[];
   priorPiMessages?: PiMessage[] | undefined;
+  promptSaved: boolean;
   /** From `turnBehavior`. */
   promptMode: PromptMode;
   /** From `turnBehavior`. */
@@ -699,7 +700,7 @@ export async function assemblePrompt(args: {
   const {
     askerTimezone,
     conversationNotes,
-    planItems,
+    todos,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -728,13 +729,15 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        // Only changes that others made after the plan version that history
-        // shows. The model's own changes are in its tool results.
-        planDelta: planItems
-          ? renderPlanDelta(
-              planItems,
-              latestSeenPlanVersion(promptHistoryMessages),
-            )
+        // Changes that others made after the To-do version that history
+        // shows, else every open To-do when history has not shown the
+        // To-dos for a while. The model's own changes are in its tool
+        // results.
+        todos: todos
+          ? (renderTodoDelta(
+              todos,
+              latestSeenTodosVersion(promptHistoryMessages),
+            ) ?? renderTodosReview(todos, promptHistoryMessages))
           : null,
         pluginPromptContributions: pluginUserPromptContributions,
         ...(args.sender ? { turnInput: args.sender } : undefined),
@@ -765,14 +768,6 @@ export async function assemblePrompt(args: {
     : undefined;
   const contextContentParts = replayedPrompt?.contextContentParts ?? [
     ...turnContextParts,
-    ...(args.explicitSkill
-      ? [
-          {
-            type: "text" as const,
-            text: renderExplicitSkillInstructions(args.explicitSkill),
-          },
-        ]
-      : []),
     ...(agentsInstructions
       ? [{ type: "text" as const, text: agentsInstructions }]
       : []),

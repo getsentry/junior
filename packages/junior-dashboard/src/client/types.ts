@@ -14,7 +14,7 @@ import type {
   ConversationSummaryReport,
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
-  ReviewItemChangeRecord,
+  InboxItemChangeRecord,
 } from "@sentry/junior/api/schema";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import type { ConversationEventPresentation } from "@sentry/junior-plugin-api";
@@ -35,6 +35,8 @@ export type TranscriptViewToolCallPart = {
   output?: unknown;
   resultTimestamp?: number | undefined;
   startedTimestamp?: number | undefined;
+  /** The Conversation that this `startConversation` call started. */
+  startedConversationId?: string;
   status: "completed" | "error" | "running";
   type: "tool_call";
 };
@@ -124,6 +126,8 @@ export type TranscriptViewMessage = {
   eventType?: string;
   /** Namespace of the first Event, such as `github`. */
   eventNamespace?: string;
+  /** Resource identifier of the first Event, such as a Conversation id. */
+  eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
@@ -135,8 +139,8 @@ export type TranscriptViewMessage = {
   quiet?: true;
   /** Event message whose Turn ended without a reply. */
   noReply?: true;
-  /** Person changes to Review items that this message records. */
-  reviewItemChanges?: ReviewItemChangeRecord[];
+  /** Person changes to Inbox items that this message records. */
+  reviewItemChanges?: InboxItemChangeRecord[];
   /** People mentioned in the event text, resolved by the API. */
   mentions?: ActorIdentity[];
   /** Whether a non-mention message was used as input to a turn. */
@@ -165,8 +169,7 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
-  /** The latest Brief's status, summary, and intent, when visible. */
-  brief?: ConversationFeedItem["brief"] | undefined;
+  summary?: ConversationSummaryReport["summary"] | undefined;
   /** The newest stored files, when private content is visible. */
   media?: ConversationFeedItem["media"] | undefined;
   links?: ConversationFeedItem["links"] | undefined;
@@ -198,7 +201,13 @@ export type Conversation = {
   participants?: ConversationSummaryReport["participants"] | undefined;
   sentryTraceUrl?: string | undefined;
   startedAt: string;
-  status: ConversationSummaryReport["status"];
+  status: ConversationStatus;
+  /** What the Conversation and its child Conversations wait on. */
+  treeState?: ConversationSummaryReport["treeState"] | undefined;
+  /** A Conversation in the tree watches for an Event or a Timer. */
+  watching?: boolean | undefined;
+  /** A Turn is queued or running. Read it with `conversationTurnIsActive`. */
+  turnActive: boolean;
   surface: ConversationSummaryReport["surface"];
   traceId?: string | undefined;
   isPriority?: boolean | undefined;
@@ -208,7 +217,11 @@ export type Conversation = {
   threads?: Conversation[] | undefined;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean | undefined;
+  /** The latest Turn failed and no newer Turn started. Server-owned. */
+  latestTurnFailed?: boolean | undefined;
   visibility?: ConversationSummaryReport["visibility"] | undefined;
+  /** The viewer's newest answer here. The viewer's own feed rows only. */
+  viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;
 };
 
 export type Identity = DashboardIdentity;
@@ -227,7 +240,8 @@ export type SystemPluginsData = {
   skills: SkillReport[];
 };
 
-export type VisualStatus = "active" | "failed" | "idle" | "stopped";
+/** The status of one Conversation's own work, as the API derives it. */
+export type ConversationStatus = ConversationSummaryReport["status"];
 
 export type CodeBlock = {
   code: string;

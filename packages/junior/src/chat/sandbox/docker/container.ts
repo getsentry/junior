@@ -68,12 +68,13 @@ export interface SandboxContainer {
   ip: string;
   /** Host side of the container's network. The egress proxy listens here. */
   gateway: string;
+  startedAtMs: number;
 }
 
 interface ContainerInspect {
   Id: string;
   Name: string;
-  State: { Running: boolean };
+  State: { Running: boolean; StartedAt: string };
   NetworkSettings: {
     Networks: Record<string, { IPAddress: string; Gateway: string }>;
   };
@@ -208,6 +209,7 @@ function toContainer(details: ContainerInspect): SandboxContainer {
     name,
     ip: network.IPAddress,
     gateway: network.Gateway,
+    startedAtMs: Date.parse(details.State.StartedAt),
   };
 }
 

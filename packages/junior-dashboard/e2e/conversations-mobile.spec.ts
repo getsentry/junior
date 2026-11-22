@@ -37,7 +37,7 @@ test("records focused mobile conversation composer", async ({
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
 
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.locator('[aria-placeholder="Message Junior…"]');
   await composer.focus();
   await page.evaluate(
     ({ height, offsetTop }) => {
@@ -129,12 +129,13 @@ async function expectFocusedComposerAtVisualViewportBottom(
     .toBe("composer-at-bottom");
 }
 
-test("starts a new conversation from a centered compose empty state", async ({
+// Classic home sends to the Lead. lead-home.spec.ts covers it.
+test("starts a new conversation from a centered compose empty state @new", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   const heading = page.getByRole("heading", { name: "What do you need?" });
   const composer = page.getByLabel("Start a conversation");
@@ -207,7 +208,7 @@ test("starts a new conversation from a centered compose empty state", async ({
   releaseCreate();
   await expect(page).toHaveURL(/\/conversations\/.+/);
   await expect(page.getByText("Mock reply. No agent ran.")).toBeVisible();
-  const reply = page.getByPlaceholder("Message Junior…");
+  const reply = page.locator('[aria-placeholder="Message Junior…"]');
   await reply.focus();
   await expectFocusedComposerAtVisualViewportBottom(reply, 844);
 });
@@ -215,19 +216,21 @@ test("starts a new conversation from a centered compose empty state", async ({
 test.describe("on a touch screen", () => {
   test.use({ hasTouch: true });
 
-  test("adds a line on Return instead of sending", async ({
+  test("adds a line on Return instead of sending @new", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const composer = page.getByLabel("Start a conversation");
     await expect(composer).toHaveAttribute("enterkeyhint", "enter");
     await composer.fill("First line");
     await composer.press("Enter");
     await composer.pressSequentially("Second line");
-    await expect(composer).toHaveValue("First line\nSecond line");
+    await expect(composer).toHaveText("First line\nSecond line", {
+      useInnerText: true,
+    });
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   });
 
@@ -237,7 +240,7 @@ test.describe("on a touch screen", () => {
   }) => {
     await viewAsParticipant(page);
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const card = page.getByRole("link", { name: "Open Closed issue summary" });
     await expect(card).toBeVisible();
@@ -263,7 +266,7 @@ test.describe("on a touch screen", () => {
         .locator("section:has(#conversation-section-pinned)")
         .getByRole("link", { name: "Open Closed issue summary" }),
     ).toBeVisible();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/conversations`);
   });
 
   test("moves a pinned home card from its row sheet", async ({
@@ -272,7 +275,7 @@ test.describe("on a touch screen", () => {
   }) => {
     await viewAsParticipant(page);
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const pinned = page.locator(
       'section[aria-labelledby="conversation-section-pinned"] a[aria-label]',
@@ -301,12 +304,12 @@ test.describe("on a touch screen", () => {
     await expect(pinned.first()).toHaveAttribute("aria-label", second!);
   });
 
-  test("opens the keyboard on home only when the dashboard opens there", async ({
+  test("opens the keyboard on home only when the dashboard opens there @new", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const composer = page.getByLabel("Start a conversation");
     await expect(composer).toBeFocused();
@@ -357,11 +360,7 @@ test("opens and closes a conversation on mobile", async ({
     });
   });
   await page.goto(`${dashboard.baseURL}/conversations`);
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  // Mobile home is the create landing (hero + list), same as desktop empty state.
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations`);
   await expect(
     page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
@@ -520,7 +519,7 @@ test("opens and closes a conversation on mobile", async ({
     )
     .toBeLessThanOrEqual(1);
 
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.locator('[aria-placeholder="Message Junior…"]');
   await expect(composer).toBeVisible();
   await expect(page.getByRole("button", { name: "Send" })).toBeVisible();
   await composer.focus();
@@ -781,7 +780,7 @@ test("opens and closes a conversation on mobile", async ({
   await composer.fill("Keep the mobile composer ready");
   await composer.press("Enter");
   await expect(composer).toBeFocused();
-  await expect(composer).toHaveValue("");
+  await expect(composer).toHaveText("", { useInnerText: true });
   await expect
     .poll(() =>
       transcript.evaluate(
@@ -812,10 +811,7 @@ test("opens and closes a conversation on mobile", async ({
   await expect(page.getByPlaceholder("Search events…")).toBeHidden();
   await expect(page).toHaveURL(/\/conversations\//);
   await page.getByRole("link", { name: "Back to conversations" }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(
-    page.getByRole("heading", { name: "What do you need?" }),
-  ).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations`);
   await expect(
     page.getByRole("list", { name: "Your conversations" }),
   ).toBeVisible();
@@ -839,7 +835,11 @@ test("opens and closes a conversation on mobile", async ({
   await openNavigationSheet.getByRole("button", { name: "Log out" }).click();
   await signOutRequest;
   await expect(openNavigationSheet).toBeHidden();
+  // Sign-out reloads the page. Wait for the reload, so the test does not end
+  // while the document request is in flight.
+  const reloaded = page.waitForEvent("load");
   finishSignOut?.();
+  await reloaded;
 });
 
 test("keeps the message in view while earlier history and late content load", async ({
@@ -857,7 +857,8 @@ test("keeps the message in view while earlier history and late content load", as
     lastProgressAt: generatedAt,
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   };
   const events = (from: number, to: number) =>

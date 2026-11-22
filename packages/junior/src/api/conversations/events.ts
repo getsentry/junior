@@ -4,9 +4,10 @@ import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
+import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import * as z from "zod";
 import {
@@ -269,6 +270,15 @@ function reportToolResult(args: {
   const output = modelVisibleToolOutput(message.data.content);
   const name = message.data.toolName ?? message.data.name ?? args.start?.name;
   if (!name) return undefined;
+  // The dashboard links a started Conversation from the typed result.
+  const started =
+    args.canExposePayload &&
+    name === "startConversation" &&
+    outcome === "completed"
+      ? startConversationToolDefinition.outputSchema.safeParse(
+          message.data.details,
+        )
+      : undefined;
   return {
     type: "tool_calls",
     calls: [
@@ -284,6 +294,9 @@ function reportToolResult(args: {
           : undefined),
         ...(args.canExposePayload && output !== undefined
           ? { output }
+          : undefined),
+        ...(started?.success
+          ? { startedConversationId: started.data.conversation_id }
           : undefined),
       },
     ],
@@ -314,17 +327,17 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
-const storedReviewItemChangesSchema = z
-  .array(reviewItemChangeRecordSchema)
+const storedInboxItemChangesSchema = z
+  .array(inboxItemChangeRecordSchema)
   .min(1);
 
-/** Read the Review item changes that a message records. */
-function reportReviewItemChanges(
+/** Read the Inbox item changes that a message records. */
+function reportInboxItemChanges(
   meta: Record<string, unknown> | undefined,
 ):
-  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | { reviewItemChanges: z.output<typeof storedInboxItemChangesSchema> }
   | undefined {
-  const parsed = storedReviewItemChangesSchema.safeParse(
+  const parsed = storedInboxItemChangesSchema.safeParse(
     meta?.["reviewItemChanges"],
   );
   return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
@@ -385,7 +398,7 @@ function reportEventData(args: {
           ? { agentInvocationId: data.meta["agentInvocationId"] }
           : undefined),
         ...(args.canExposePayload
-          ? reportReviewItemChanges(data.meta)
+          ? reportInboxItemChanges(data.meta)
           : undefined),
         eventObjectType: objectTypeSchema.safeParse(
           data.meta?.["eventObjectType"],
@@ -395,6 +408,10 @@ function reportEventData(args: {
           : undefined),
         ...(typeof data.meta?.["eventNamespace"] === "string"
           ? { eventNamespace: data.meta["eventNamespace"] }
+          : undefined),
+        ...(args.canExposePayload &&
+        typeof data.meta?.["eventIdentifier"] === "string"
+          ? { eventIdentifier: data.meta["eventIdentifier"] }
           : undefined),
         ...(typeof data.meta?.["explicitMention"] === "boolean"
           ? { explicitMention: data.meta["explicitMention"] }
@@ -551,8 +568,8 @@ export function projectConversationReportEventPage(args: {
   /** Child Conversations that subagent events name and that are Threads. */
   threadIds?: ReadonlySet<string>;
   events: ConversationEvent[];
-  /** `turn_started` of the Conversation's first Turn. */
-  firstTurnStart?: ConversationEvent;
+  /** The Conversation's first event. */
+  firstEvent?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -590,7 +607,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -600,7 +617,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);
@@ -699,6 +716,7 @@ export function projectConversationReportEventPage(args: {
     if (!data) continue;
 
     projected.push(
+      // oxlint-disable-next-line junior/no-response-schema-parse -- Stored read: each stored event payload is checked here, and MCP readers use the result with no other parse.
       conversationReportEventSchema.parse({
         seq: event.seq,
         createdAt: new Date(event.createdAtMs).toISOString(),

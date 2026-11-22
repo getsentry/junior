@@ -47,22 +47,36 @@ afterEach(async () => {
   else process.env["JUNIOR_BASE_URL"] = previousBaseUrl;
 });
 
-/** The person asks in a thread. Each agent run connects Eval Auth, then answers. */
-async function askForBudget(thread: {
-  user: string;
-  ts: string;
-}): Promise<ConversationWorkSlackHarness> {
+/**
+ * The person asks in a thread. Each agent run connects Eval Auth, then
+ * answers. `requests` gets the messages of each model request as JSON.
+ */
+async function askForBudget(
+  thread: {
+    user: string;
+    ts: string;
+  },
+  requests: string[] = [],
+): Promise<ConversationWorkSlackHarness> {
   const harness = await createConversationWorkSlackHarness({
-    agentRunner: createModelAgentRunnerForRun(() =>
-      createModelStream([
+    agentRunner: createModelAgentRunnerForRun(() => {
+      const stream = createModelStream([
         {
           type: "toolCall",
           name: "searchMcpTools",
-          arguments: { provider: EVAL_MCP_AUTH_PROVIDER, query: "budget" },
+          arguments: {
+            provider: EVAL_MCP_AUTH_PROVIDER,
+            query: "budget",
+            intent: "look up the budget",
+          },
         },
         { type: "text", text: ANSWER },
-      ]),
-    ),
+      ]);
+      return (model, context, options) => {
+        requests.push(JSON.stringify(context.messages));
+        return stream(model, context, options);
+      };
+    }),
   });
   await harness.send({
     ...thread,
@@ -167,6 +181,38 @@ describe("Slack MCP authorization", () => {
     expect(new URL(newLink).searchParams.get("scope")?.split(" ")).toContain(
       "mcp:write",
     );
+  });
+
+  it("adds the new request when sign-in comes before the prompt", async () => {
+    const user = "UREAUTH";
+    const threadTs = "1712345.5001";
+    const requests: string[] = [];
+    const harness = await askForBudget({ user, ts: threadTs }, requests);
+    await approve(harness, slackApiOutbox.authorizationLinks(user)[0]!);
+    await harness.drain();
+    const firstTurnRequests = requests.length;
+
+    // Injected fault: the provider revokes the grant. The next Turn connects
+    // the provider before its prompt, so it asks for sign-in first.
+    revokeEvalMcpGrant();
+    await harness.send({
+      user,
+      threadTs,
+      ts: "1712345.5002",
+      text: `<@${SLACK_BOT_USER_ID}> look up the budget again`,
+    });
+    await harness.drain();
+    const pausedBeforePrompt = requests.length === firstTurnRequests;
+    await approve(harness, slackApiOutbox.authorizationLinks(user)[1]!);
+    await harness.drain();
+
+    // The resumed Turn sends the new request, not only the earlier history.
+    expect({
+      pausedBeforePrompt,
+      newRequest: requests[firstTurnRequests]?.includes(
+        "look up the budget again",
+      ),
+    }).toEqual({ pausedBeforePrompt: true, newRequest: true });
   });
 
   it.each([

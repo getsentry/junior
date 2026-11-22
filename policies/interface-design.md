@@ -52,6 +52,25 @@ function names are part of the interface.
   arguments or hides parameter threading. Call the owner directly, unless the
   layer enforces a rule, translates an edge, or owns a lifecycle change.
 
+### Layout
+
+- People and models read a path before the code. A path names the feature,
+  then the role of the code in it: `chat/inbox-items/tools/search.ts`.
+- Group files by feature. Put code in the feature that owns the concern, not
+  next to the first caller.
+- A role directory or file holds only that role. `tools/` holds only tools,
+  and `tool-support/` holds code that only tools use.
+  `policies/tool-design.md` owns the tool layout.
+- Do not add catch-all modules such as `utils`, `helpers`, `common`, `misc`,
+  or `shared`. They name no feature and no role, so code collects there with
+  no owner. The `no-catch-all-module-paths` ast-grep rule enforces this.
+- Do not add a barrel `index.ts` to a feature directory. Import from the file
+  that owns the export. A package `exports` entry is the public API, not a
+  barrel.
+- When a file's role changes, move or rename it in the same change.
+- Enforce a layout rule with a path-scoped ast-grep rule, such as the
+  `tools-dir-*` rules.
+
 ### Names
 
 - Use short names that state product intent, not implementation mechanics.
@@ -79,6 +98,7 @@ function names are part of the interface.
 - Low-level infrastructure may expose mechanism APIs inside its own edge.
 - A Lease or lock may end when its TTL expires. The recovery path then makes
   the resulting transition through the owning function.
-- Generic names are fine in a tight module when the import path gives context.
+- Generic identifier names are fine in a tight module when the import path
+  gives context. Module paths still follow Layout.
 - Compatibility names may stay at external edges or legacy storage keys. New
   internal names use the current domain term.

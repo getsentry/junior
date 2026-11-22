@@ -3,6 +3,7 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import { conversationDeliveryResponseSchema } from "@sentry/junior/api/schema";
 
 import { patch } from "../http";
+import { withoutVersion } from "../revalidation";
 import { conversationDetailQueryKey } from "./queries";
 
 /**
@@ -24,13 +25,14 @@ export function useConversationDelivery(
         { paused },
       ),
     onSuccess: (result) => {
-      // Clear the etag so the next read gets a full body, not a 304 that
-      // keeps this local value.
       queryClient.setQueryData<
         ConversationDetailReport & { detailEtag?: string }
       >(detailQueryKey, (detail) =>
         detail
-          ? { ...detail, deliveryPaused: result.paused, detailEtag: undefined }
+          ? withoutVersion(
+              { ...detail, deliveryPaused: result.paused },
+              "detailEtag",
+            )
           : detail,
       );
     },

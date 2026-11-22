@@ -1,19 +1,16 @@
 import { expect, test } from "../test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
+import { expectRequestBudget } from "../request-budget";
 import { screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  /** Vary outcomes so the running cost lines move. */
+  /** Vary merged changes so the running cost line moves. */
   function unitCostDay(index: number) {
     const merged = index % 5 === 3 ? 1 : 0;
-    const mergedCost = merged * (3 + (index % 7) * 0.5);
-    const answered = 2 + (index % 3);
     return {
-      mergedCodeChangeCostUsd: mergedCost,
+      mergedCodeChangeCostUsd: merged * (3 + (index % 7) * 0.5),
       mergedCodeChanges: merged,
-      outcomeCostUsd: answered * 0.5 + (index % 4) * 0.4 + mergedCost,
-      outcomes: answered + merged,
     };
   }
 
@@ -57,10 +54,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByLabel("Conversations per day")).toBeVisible();
     await expect(page.getByText("Input cache")).toBeVisible();
     await expect(
-      page.getByText(/6 merged changes and 90 answered or done conversations/),
+      page.getByText(/6 merged changes\. The line is/),
     ).toBeVisible();
     await expect(
-      page.getByLabel("7-day rolling cost per outcome per day"),
+      page.getByLabel("7-day rolling cost per merged change per day"),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Model spend", exact: true }),
@@ -84,7 +81,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "system-cache-tokens", { view: "desktop" });
     await page.getByRole("button", { name: "24h", exact: true }).click();
     await expect(
-      page.getByLabel("6-hour rolling cost per outcome per hour"),
+      page.getByLabel("6-hour rolling cost per merged change per hour"),
     ).toBeVisible();
     await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
     await page.getByText("Largest cache writes", { exact: true }).click();
@@ -362,6 +359,39 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
   });
 
+  test("shows cache health and warmup outcomes from Sentry", async ({
+    page,
+    dashboard,
+  }) => {
+    const week = page.waitForResponse("**/api/cache-warming/health?window=7d");
+    await page.goto(`${dashboard.baseURL}/system`);
+    expect((await week).ok()).toBe(true);
+    const health = page.getByRole("region", { name: "Cache health" });
+    await expect(
+      health.getByText(/^Write share, [\d.]+% last week$/),
+    ).toBeVisible();
+    await expect(
+      health.getByText("Warming stopped early", { exact: true }),
+    ).toBeVisible();
+    await expect(
+      health.getByLabel(
+        "Prompt cache write share and full-rewrite rate over time",
+      ),
+    ).toBeVisible();
+
+    const hourly = page.waitForResponse(
+      "**/api/cache-warming/health?window=24h",
+    );
+    await page.getByRole("button", { name: "24h", exact: true }).click();
+    expect((await hourly).ok()).toBe(true);
+    // A phone shows the System entries at /system, so shoot the panel on
+    // desktop.
+    await screenshot(page, "system-cache-health-24h", {
+      target: health,
+      view: "desktop",
+    });
+  });
+
   test("lets an admin re-fill cache warming savings from history", async ({
     page,
     dashboard,
@@ -419,5 +449,43 @@ test.describe("new UI", { tag: "@new" }, () => {
       view: "desktop",
     });
     expect(starts).toEqual(["POST"]);
+  });
+
+  test.describe("keeps the people directory across window focus", () => {
+    test.use({ controlTimers: true });
+
+    test("loads System People within its request budget", async ({
+      page,
+      dashboard,
+    }) => {
+      let directoryReads = 0;
+      page.on("request", (request) => {
+        if (new URL(request.url()).pathname === "/api/people") {
+          directoryReads += 1;
+        }
+      });
+
+      await expectRequestBudget(
+        page,
+        async () => {
+          await page.goto(`${dashboard.baseURL}/system/people`);
+          await expect(
+            page.getByText("Highest spend", { exact: true }),
+          ).toBeVisible();
+        },
+        { requests: 8, serialRounds: 2 },
+      );
+      expect(directoryReads).toBe(1);
+
+      // React Query refetches stale queries on `visibilitychange`. Go past
+      // the default stale time so a focus refetch would read the directory
+      // again.
+      await page.clock.fastForward(60_000);
+      await page.evaluate(() => {
+        window.dispatchEvent(new Event("visibilitychange"));
+      });
+      await page.waitForLoadState("networkidle");
+      expect(directoryReads).toBe(1);
+    });
   });
 });

@@ -1,8 +1,18 @@
 import type { Locator, Page } from "@playwright/test";
+import { CONTENT_VERSION_HEADER } from "@sentry/junior/api/schema";
 
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
-import { expandRow, license, mockReviewItems } from "./inbox-fixture";
+import {
+  automationAlert,
+  expandRow,
+  failedRunAlert,
+  license,
+  mockInboxItems,
+  rollout,
+  rowHead,
+} from "./inbox-fixture";
+import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
 // The mock Conversation whose asks include a release review and notes.
@@ -91,10 +101,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-ask-kind",
       "Ready to merge",
     );
-    // The changes the pills name get no chip of their own.
-    await expect(row.locator("[data-linked-work-chip]")).toHaveText([
-      "Return 429 before parsing oversized envelopes#44",
-    ]);
+    // The changes the pills name get no chip of their own. A chip shows
+    // its number, and names its title, which shows on hover.
+    const chip = row.getByRole("link", {
+      name: "Return 429 before parsing oversized envelopes #44",
+    });
+    await expect(row.locator("[data-linked-work-chip]")).toHaveCount(1);
+    await expect(chip).toHaveAttribute("data-linked-work-chip", "");
+    await chip.hover();
+    await expect(page.getByRole("tooltip")).toHaveText(
+      "Return 429 before parsing oversized envelopes",
+    );
 
     // An FYI says so in words too. To do leaves it out, so Conversations
     // shows it.
@@ -111,7 +128,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page
         .getByRole("listitem")
-        .filter({ hasText: "Review requested · #91" })
+        .filter({ hasText: "Pin the release train" })
         .locator('[data-ask-kind="Review requested"]')
         .first(),
     ).toBeVisible();
@@ -124,15 +141,39 @@ test.describe("new UI", { tag: "@new" }, () => {
     await comfortable(page);
     // Inbox rows name one item each, so a Conversations row shows the
     // summary.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [
         {
           ...license,
-          addedByConversationId: RELEASE_CONVERSATION_ID,
+          owner: { id: RELEASE_CONVERSATION_ID, kind: "conversation" },
           rootConversationId: RELEASE_CONVERSATION_ID,
         },
       ],
     });
+    // The preview holds only the first 400 chars of the message, so give
+    // the row a short one with a mention and a pull request.
+    await page.route(
+      (url) => url.pathname === "/api/conversations",
+      async (route) => {
+        const response = await route.fetch();
+        const feed = (await response.json()) as {
+          conversations: Array<{
+            conversationId: string;
+            activityPreview?: { text: string };
+          }>;
+        };
+        for (const row of feed.conversations) {
+          if (
+            row.conversationId === RELEASE_CONVERSATION_ID &&
+            row.activityPreview
+          ) {
+            row.activityPreview.text =
+              "<@U123> asks for a review of https://github.com/getsentry/payments/pull/91";
+          }
+        }
+        await route.fulfill({ json: feed, response });
+      },
+    );
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const summary = page
       .getByRole("region", { name: "Conversations" })
@@ -205,13 +246,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-summary-lines",
       "2",
     );
-    // The Brief's running marker sits on the title, as the dot does.
-    await expect(
-      row
-        .locator('[data-inbox-slot="title"]')
-        .getByRole("img", { name: /^Brief: / }),
-    ).toBeVisible();
-    await expect(summary.getByRole("img", { name: /^Brief: / })).toHaveCount(0);
     // Compact rows clamp it to one line. A new page has no comfortable
     // density script.
     const compact = await page.context().newPage();
@@ -271,7 +305,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route(
       (url) => url.pathname === "/api/conversations",
       async (route) => {
-        const response = await route.fetch();
+        // Request the full page because this test changes it.
+        const response = await route.fetch({
+          headers: {
+            ...route.request().headers(),
+            [CONTENT_VERSION_HEADER]: "",
+          },
+        });
         const feed = (await response.json()) as {
           conversations: Array<{ displayTitle: string }>;
         };
@@ -412,9 +452,16 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
+    // The Automations page lists the Automations of the Inbox's alerts.
+    await mockInboxItems(page, {
+      open: [
+        automationAlert("scheduled-1", "Weekly project summary"),
+        automationAlert("event-1", "Closed issue summary"),
+      ],
+    });
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/`);
-    const todo = page.getByRole("region", { name: "To do" });
+    await page.goto(`${dashboard.baseURL}/automations`);
+    const todo = page.getByRole("region", { exact: true, name: "To do" });
     const failed = todo.getByRole("button", { name: /Weekly project summary/ });
     const blocked = todo.getByRole("button", { name: /Closed issue summary/ });
     await expect.poll(() => slots(failed)).toEqual(SLOTS);
@@ -521,58 +568,101 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
   });
 
-  test("Dismiss and Snooze put an Automation alert away until it changes or wakes", async ({
+  test("a question row with no main step ends its hover actions with Expand", async ({
     dashboard,
     page,
   }) => {
-    const report = structuredClone(automationReport);
-    const blocked = report.automations[1]!;
-    Object.assign(blocked, {
-      lastRunAt: "2026-01-01T10:00:00.000Z",
-      lastRunStatus: "blocked",
-      status: "blocked",
-      statusReason: "GitHub access expired.",
-    });
-    await page.route(/\/api\/automations(?:\?.*)?$/, (route) =>
-      route.fulfill({
-        json: mockAutomationCollection(
-          report,
-          new URL(route.request().url()).searchParams,
-        ),
-      }),
-    );
-    await page.clock.install();
+    await mockInboxItems(page, { open: [rollout, license] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    const head = todo.getByRole("button", { name: /Closed issue summary/ });
-    const attention = page.getByRole("region", {
-      name: `${blocked.title}: attention`,
-    });
+    const head = rowHead(todo, rollout.title);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await head.hover();
+    const names = await row
+      .locator('[data-inbox-slot="meta"] :is(a, button)')
+      .evaluateAll((nodes) =>
+        nodes.map(
+          (node) =>
+            node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
+        ),
+      );
+    expect(names[0]).toBe("Dismiss");
+    expect(names.at(-1)).toBe("Expand");
+    await row.getByRole("button", { exact: true, name: "Expand" }).click();
+    await expect(row).toHaveAttribute("data-expanded", "true");
+  });
 
-    await head.click();
-    await attention
-      .getByRole("button", { name: "Dismiss", exact: true })
+  test("Dismiss closes an Automation alert on the server", async ({
+    dashboard,
+    page,
+  }) => {
+    const alert = automationAlert("event-1", "Closed issue summary");
+    const actions = await mockInboxItems(page, { open: [alert, license] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const head = rowHead(todo, alert.title);
+    await head.hover();
+    await head
+      .locator("xpath=ancestor::*[@data-inbox-row][1]")
+      .getByRole("button", { exact: true, name: "Dismiss" })
       .click();
-    await expect(head).toHaveCount(0);
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    expect(actions).toEqual([{ body: { action: "dismiss" }, id: alert.id }]);
+    // The server closed it, so it stays closed in a new page.
     await page.reload();
-    await expect(todo).toBeVisible();
-    await expect(head).toHaveCount(0);
+    await expect(rowHead(todo, license.title)).toBeVisible();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+  });
 
-    // A newer failure on the same Automation is a new alert, so it shows.
-    Object.assign(blocked, {
-      lastRunAt: "2026-01-01T11:00:00.000Z",
-      statusReason: "GitHub access expired again.",
+  test("a failed-run alert sends Run again to the server", async ({
+    dashboard,
+    page,
+  }) => {
+    const alert = failedRunAlert("scheduled-1", "Weekly project summary");
+    const actions = await mockInboxItems(page, { open: [alert, license] });
+    const automation = {
+      ...automationReport.automations.find(({ id }) => id === "scheduled-1")!,
+      lastRunStatus: "failed" as const,
+    };
+    await page.route("**/api/automations/scheduled-1", (route) =>
+      route.fulfill({ json: automation }),
+    );
+    await page.route("**/api/automations/scheduled-1/executions", (route) =>
+      route.fulfill({
+        json: {
+          executionDays: [],
+          executions: [
+            {
+              error: "Slack rejected the result message: channel_not_found.",
+              executedAt: "2026-08-06T16:00:00.000Z",
+              executionId: "scheduled-1-run-1",
+              status: "failed",
+            },
+          ],
+          truncated: false,
+        },
+      }),
+    );
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    await expandRow(rowHead(todo, alert.title));
+    await expect(todo.getByRole("button", { name: "Pause" })).toBeVisible();
+    // Core takes the step and reads no words, so there is no Other….
+    await expect(todo.getByRole("button", { name: "Other…" })).toHaveCount(0);
+    await expect(
+      todo.getByText("Slack rejected the result message: channel_not_found."),
+    ).toBeVisible();
+    await screenshot(page, "inbox-automation-alert-failed-run", {
+      lightTheme: true,
     });
-    await page.reload();
-    await expect(head).toBeVisible();
-
-    // Snooze hides it until its time.
-    await head.click();
-    await attention.getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "3 hours" }).click();
-    await expect(head).toHaveCount(0);
-    await page.clock.runFor(3 * 60 * 60 * 1000 + 1000);
-    await expect(head).toBeVisible();
+    await todo.getByRole("button", { name: "Run again" }).click();
+    await expect(rowHead(todo, alert.title)).toHaveCount(0);
+    expect(actions).toEqual([
+      {
+        body: { action: "submit", answer: { values: { step: ["Run again"] } } },
+        id: alert.id,
+      },
+    ]);
   });
 
   test("an Automations card gives a failed run's error as its reason", async ({
@@ -592,6 +682,9 @@ test.describe("new UI", { tag: "@new" }, () => {
         ),
       }),
     );
+    await mockInboxItems(page, {
+      open: [automationAlert("scheduled-1", "Weekly project summary")],
+    });
     const error = "Slack rejected the result message: channel_not_found.";
     await page.route("**/api/automations/scheduled-1/executions", (route) =>
       route.fulfill({

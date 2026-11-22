@@ -13,7 +13,7 @@ import type {
   PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { emailDomain, readGoogleConfig } from "../config";
+import { readGoogleConfig } from "../config";
 import {
   FILE_ID_PATTERN,
   GOOGLE_FILE_TYPES,
@@ -23,9 +23,9 @@ import {
   resourceKeyHeaders,
   type FileReference,
   type GoogleFileType,
-} from "../tools/files";
-import { driveQueryString, namedQuery } from "../tools/search-files";
-import { googleApiError, googleApiRequest } from "../tools/shared";
+} from "../drive/files";
+import { personCanOpenFile } from "../drive/file-access";
+import { googleApiError, googleApiRequest } from "../google-api";
 import { docSummary } from "./summary";
 
 const DISPLAY_TYPES = {
@@ -58,10 +58,6 @@ type LinkedFile = z.infer<typeof linkedFileSchema>;
 
 /** What a card or an image read needs to check one viewer. */
 type ViewerReadContext = Pick<ObjectLinkContext, "egress" | "viewer">;
-
-const fileIdsSchema = z.object({
-  files: z.array(z.object({ id: z.string() })).default([]),
-});
 
 const FOLDER_MIME_TYPE = "application/vnd.google-apps.folder";
 // A shortcut points to another file that can have other shares.
@@ -145,76 +141,6 @@ function parseFileLink(url: URL): FileLink | undefined {
     : undefined;
 }
 
-/**
- * Return whether one Drive query, limited to files with this name, finds
- * the file. A rejected query or a file past the first page counts as no.
- */
-async function queryFindsFile(
-  ctx: ViewerReadContext,
-  file: LinkedFile,
-  terms: string,
-): Promise<boolean> {
-  const response = await googleApiRequest(ctx, {
-    operation: "google.drive.files.list",
-    path: "/drive/v3/files",
-    query: {
-      corpora: "allDrives",
-      fields: "files(id)",
-      includeItemsFromAllDrives: "true",
-      pageSize: "100",
-      q: `name = ${driveQueryString(file.name)} and trashed = false and ${terms}`,
-      supportsAllDrives: "true",
-    },
-  });
-  if (response.status === 400) return false;
-  if (response.status !== 200) {
-    throw googleApiError("google.drive.files.list", response);
-  }
-  return fileIdsSchema
-    .parse(response.body)
-    .files.some((item) => item.id === file.id);
-}
-
-/**
- * Return whether the viewer can open the file in Drive. The file names the
- * viewer, anyone can open it, or anyone in the viewer's allowed domain can
- * open it and that domain owns it. Group shares do not name the viewer.
- */
-async function viewerCanOpen(
-  ctx: ViewerReadContext,
-  file: LinkedFile,
-  allowedDomains: string[],
-): Promise<boolean> {
-  const viewer = ctx.viewer.email.toLowerCase();
-  const domain = emailDomain(viewer);
-  // A shared-drive file has no owner, so only a share that names the viewer
-  // counts.
-  const domainOwned =
-    !!domain &&
-    allowedDomains.includes(domain) &&
-    !file.driveId &&
-    (file.owners ?? []).some(
-      (owner) =>
-        !!owner.emailAddress && emailDomain(owner.emailAddress) === domain,
-    );
-  const checks = await Promise.all([
-    queryFindsFile(ctx, file, namedQuery(viewer)),
-    queryFindsFile(
-      ctx,
-      file,
-      "(visibility = 'anyoneWithLink' or visibility = 'anyoneCanFind')",
-    ),
-    domainOwned
-      ? queryFindsFile(
-          ctx,
-          file,
-          "(visibility = 'domainWithLink' or visibility = 'domainCanFind')",
-        )
-      : false,
-  ]);
-  return checks.some(Boolean);
-}
-
 // Long enough that the access check and the card share one Drive read. The
 // access queries check `trashed` again, so a trashed file never shows.
 const FILE_READ_TTL_MS = 10_000;
@@ -277,7 +203,14 @@ export async function readViewerFile(
 ): Promise<LinkedFile | undefined> {
   const file = await fetchFile(ctx, link.file);
   if (!fitsLink(file, link)) return undefined;
-  return (await viewerCanOpen(ctx, file, allowedDomains)) ? file : undefined;
+  return (await personCanOpenFile(
+    ctx,
+    ctx.viewer.email,
+    { ...file, resourceKey: link.file.resourceKey },
+    allowedDomains,
+  ))
+    ? file
+    : undefined;
 }
 
 /** Return the image ref of a file thumbnail, for `googleImages`. */
@@ -306,7 +239,15 @@ async function canViewGoogleFileLink(
   const config = readGoogleConfig();
   const link = parseFileLink(url);
   const file = config && link && (await readLinkedFile(ctx, link));
-  return !!file && (await viewerCanOpen(ctx, file, config.allowedDomains));
+  return (
+    !!file &&
+    (await personCanOpenFile(
+      ctx,
+      ctx.viewer.email,
+      { ...file, resourceKey: link.file.resourceKey },
+      config.allowedDomains,
+    ))
+  );
 }
 
 async function resolveGoogleFileLink(

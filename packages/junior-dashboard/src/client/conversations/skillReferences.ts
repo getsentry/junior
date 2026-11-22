@@ -1,6 +1,6 @@
-/** The `$skill-name` reference that the caret is in. */
-export type SkillToken = {
-  /** Index of the `$`. */
+/** The `$skill-name` or `@name` reference that the caret is in. */
+export type ComposerToken = {
+  /** Index of the `$` or `@`. */
   start: number;
   /** Index after the last name character, which can be after the caret. */
   end: number;
@@ -18,14 +18,15 @@ export type SkillReference = {
   name: string;
 };
 
-// The runtime reads `$name` only after a non-word character, so `US$5` is
-// not a reference. Keep this boundary and the name shape the same as
-// `skillReferences` in `packages/junior/src/chat/skill-references.ts`.
-const SKILL_SIGIL = String.raw`(?<![\w$])\$`;
+// The runtime reads `$name` only after a character that is not a letter,
+// digit, or `$`, so `US$5` is not a reference. Keep this boundary and the
+// name shape the same as `DOLLAR_REFERENCE` in
+// `packages/junior/src/chat/skill-references.ts`.
+const SKILL_SIGIL = String.raw`(?<![a-z0-9$])\$`;
 const TOKEN_BEFORE_CARET = new RegExp(`${SKILL_SIGIL}([a-z0-9-]*)$`, "i");
 const NAME_AFTER_CARET = /^[a-z0-9-]*/i;
 const SKILL_REFERENCE = new RegExp(
-  `${SKILL_SIGIL}([a-z0-9]+(?:-[a-z0-9]+)*)`,
+  `${SKILL_SIGIL}([a-z0-9]+(?:-[a-z0-9]+)*)(?![a-z0-9]|[-_][a-z0-9])`,
   "gi",
 );
 
@@ -33,7 +34,7 @@ const SKILL_REFERENCE = new RegExp(
 export function skillTokenAt(
   text: string,
   caret: number,
-): SkillToken | undefined {
+): ComposerToken | undefined {
   const match = TOKEN_BEFORE_CARET.exec(text.slice(0, caret));
   if (!match) return undefined;
   const rest = NAME_AFTER_CARET.exec(text.slice(caret))?.[0] ?? "";

@@ -133,7 +133,7 @@ export type HistoryReplacement = z.output<typeof historyReplacementSchema>;
  * replaced, or the current version that did not match when in conflict.
  */
 export type HistoryReplacementResult =
-  | { status: "replaced"; historyVersion: number }
+  | { status: "replaced"; historyVersion: number; seq: number }
   | { status: "conflict"; historyVersion: number };
 
 const mcpProviderConnectedEventDataSchema = z
@@ -141,6 +141,15 @@ const mcpProviderConnectedEventDataSchema = z
     type: z.literal("mcp_provider_connected"),
     provider: z.string().min(1),
     credentialSubjectId: z.string().min(1),
+  })
+  .strict();
+
+// A manual-only skill that `loadSkill` loaded. It stays loadable for the rest
+// of the Conversation, also after compaction drops the call.
+const skillLoadedEventDataSchema = z
+  .object({
+    type: z.literal("skill_loaded"),
+    skillName: z.string().min(1),
   })
   .strict();
 
@@ -477,6 +486,7 @@ const appendableConversationEventDataSchema = z.union([
   messageUpdatedEventDataSchema,
   agentHistoryItemSchema,
   mcpProviderConnectedEventDataSchema,
+  skillLoadedEventDataSchema,
   authorizationRequestedEventDataSchema,
   authorizationCompletedEventDataSchema,
   toolExecutionStartedEventDataSchema,
@@ -522,6 +532,7 @@ export const KNOWN_CONVERSATION_EVENT_TYPES = [
   "system_message",
   "mcp_provider_connected",
   "mcp_provider_connected_unowned",
+  "skill_loaded",
   "authorization_requested",
   "authorization_completed",
   "tool_execution_started",
@@ -735,6 +746,11 @@ export interface ConversationEventStore {
   loadHistory(conversationId: string): Promise<ConversationEvent[]>;
   /** Events of one type across every history version in `seq` order. */
   loadEventsOfType(
+    conversationId: string,
+    type: KnownConversationEventType,
+  ): Promise<ConversationEvent[]>;
+  /** Events of one type in the current history version in `seq` order. */
+  loadCurrentEventsOfType(
     conversationId: string,
     type: KnownConversationEventType,
   ): Promise<ConversationEvent[]>;

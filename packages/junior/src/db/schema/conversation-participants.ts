@@ -28,9 +28,6 @@ export const juniorConversationParticipants = pgTable(
       .notNull()
       .references(() => juniorConversations.conversationId),
     lastMessageAt: timestamptz("last_message_at").notNull(),
-    // Archive moved to `junior_conversations.archived_at`. Runtime code must
-    // not read or write this column. A later migration drops it.
-    legacyArchivedAt: timestamptz("archived_at"),
     pinnedAt: timestamptz("pinned_at"),
     /**
      * The viewer's place for this pin in the Pinned section, from a drag

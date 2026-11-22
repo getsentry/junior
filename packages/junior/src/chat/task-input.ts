@@ -9,9 +9,12 @@ import {
   agentEventKeys,
   escapeClosingTags,
   escapeTagText,
+  findTag,
   renderInlineTag,
   renderTag,
+  startsWithTag,
   tagJson,
+  unescapeClosingTags,
   type TaskOutcome,
 } from "@sentry/junior-plugin-api";
 import { authorAttrs } from "@/chat/input-tags";
@@ -211,6 +214,19 @@ function authorMessageLines(
 }
 
 /**
+ * Return the `<instructions>` text of a `renderTaskInput` task, without its
+ * tag. Event text comes after the instructions and has its `<` escaped, so
+ * it cannot add or end this tag.
+ */
+export function readTaskInstructions(text: string): string | undefined {
+  if (!startsWithTag(text, ["task"])) {
+    return undefined;
+  }
+  const block = findTag(text, "instructions");
+  return block ? unescapeClosingTags(block.body) : undefined;
+}
+
+/**
  * Render agent input for a task run.
  *
  * The job comes before Event data. Empty optional fields are omitted.
@@ -295,8 +311,8 @@ export function renderTaskInput(args: {
       ...(args.skill
         ? [
             instructions
-              ? `Run the ${args.skill} skill. The instructions below add context for this run.`
-              : `Run the ${args.skill} skill.`,
+              ? `Run the $${args.skill} skill. The instructions below add context for this run.`
+              : `Run the $${args.skill} skill.`,
           ]
         : []),
       ...(instructions

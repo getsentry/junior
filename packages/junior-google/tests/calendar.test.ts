@@ -4,10 +4,10 @@ import {
   PluginToolInputError,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
-import { recurrenceRule } from "../src/tools/create-event";
-import { findFreeSlots } from "../src/tools/find-meeting-times";
-import { accountChooserLink, parseEventId } from "../src/tools/shared";
+import { googlePlugin } from "../src/index";
+import { recurrenceRule } from "../src/calendar/recurrence";
+import { findFreeSlots, type SlotAttendee } from "../src/calendar/free-slots";
+import { accountChooserLink, parseEventId } from "../src/calendar/events";
 import { stubGoogleEnv } from "./fixture";
 
 const REQUESTER = "alice@example.com";
@@ -35,8 +35,6 @@ const SLOT_RULES = {
   lunchMinutes: 60,
   lunchStart: "11:30",
   maxBackToBackMinutes: 180,
-  workdayEnd: "17:00",
-  workdayStart: "09:00",
 };
 const LONDON = "Europe/London";
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -53,6 +51,24 @@ function busyAt(...ranges: Array<[string, string]>) {
   }));
 }
 
+/** `findFreeSlots` with the same working hours for every attendee. */
+function slotsFor(
+  input: Omit<Parameters<typeof findFreeSlots>[0], "attendees"> & {
+    attendees: Array<Omit<SlotAttendee, "workingHours">>;
+    workdayEnd?: string;
+    workdayStart?: string;
+  },
+) {
+  const { workdayEnd = "17:00", workdayStart = "09:00", ...rest } = input;
+  return findFreeSlots({
+    ...rest,
+    attendees: input.attendees.map((attendee) => ({
+      ...attendee,
+      workingHours: { workdayEnd, workdayStart },
+    })),
+  });
+}
+
 function starts(slots: Array<{ startMs: number }>): string[] {
   return slots.map((slot) => new Date(slot.startMs).toISOString());
 }
@@ -60,7 +76,7 @@ function starts(slots: Array<{ startMs: number }>): string[] {
 describe("findFreeSlots", () => {
   it("spreads non-overlapping weekday slots across days inside local working hours", () => {
     // Friday 2026-10-09 through Monday 2026-10-12, Los Angeles (UTC-7).
-    const slots = findFreeSlots({
+    const slots = slotsFor({
       ...SLOT_RULES,
       attendees: [
         {
@@ -98,7 +114,7 @@ describe("findFreeSlots", () => {
   });
 
   it("puts a slot next to existing meetings ahead of an isolated one or an empty day", () => {
-    const slots = findFreeSlots({
+    const slots = slotsFor({
       ...SLOT_RULES,
       // Meetings Tuesday 11:00-12:00 and 14:00-14:50. Monday is empty.
       attendees: [
@@ -127,7 +143,7 @@ describe("findFreeSlots", () => {
   });
 
   it("uses a day without meetings when no busy day has a slot", () => {
-    const slots = findFreeSlots({
+    const slots = slotsFor({
       ...SLOT_RULES,
       // Tuesday is full except 12:00-13:00, its only lunch break. Monday is
       // empty.
@@ -153,7 +169,7 @@ describe("findFreeSlots", () => {
   });
 
   it("puts a slot that keeps a 2-hour block ahead of one that splits it", () => {
-    const slots = findFreeSlots({
+    const slots = slotsFor({
       ...SLOT_RULES,
       attendees: [
         {
@@ -180,7 +196,7 @@ describe("findFreeSlots", () => {
   });
 
   it("moves lunch inside the lunch window", () => {
-    const slots = findFreeSlots({
+    const slots = slotsFor({
       ...SLOT_RULES,
       attendees: [
         {
@@ -219,8 +235,8 @@ describe("findFreeSlots", () => {
       timeZone: LONDON,
     };
 
-    expect(findFreeSlots(rules)).toEqual([]);
-    expect(starts(findFreeSlots({ ...rules, lunchMinutes: 0 }))).toEqual([
+    expect(slotsFor(rules)).toEqual([]);
+    expect(starts(slotsFor({ ...rules, lunchMinutes: 0 }))).toEqual([
       "2026-10-13T11:30:00.000Z",
       "2026-10-13T12:00:00.000Z",
     ]);
@@ -246,14 +262,15 @@ describe("findFreeSlots", () => {
     };
 
     // 12:00 would make a 3.5-hour run. 12:30 leaves a break.
-    expect(starts(findFreeSlots(rules))).toEqual(["2026-10-13T11:30:00.000Z"]);
-    expect(
-      starts(findFreeSlots({ ...rules, maxBackToBackMinutes: 240 })),
-    ).toEqual(["2026-10-13T11:00:00.000Z", "2026-10-13T11:30:00.000Z"]);
+    expect(starts(slotsFor(rules))).toEqual(["2026-10-13T11:30:00.000Z"]);
+    expect(starts(slotsFor({ ...rules, maxBackToBackMinutes: 240 }))).toEqual([
+      "2026-10-13T11:00:00.000Z",
+      "2026-10-13T11:30:00.000Z",
+    ]);
   });
 
   it("keeps lunch in each attendee's own time zone", () => {
-    const slots = findFreeSlots({
+    const slots = slotsFor({
       ...SLOT_RULES,
       attendees: [
         { busy: [], email: REQUESTER, required: true, timeZone: LONDON },
@@ -285,7 +302,7 @@ describe("findFreeSlots", () => {
   it("keeps slots inside each attendee's own working hours", () => {
     // Monday 2026-10-12. With 08:00-17:00 hours, Los Angeles (UTC-7) and
     // London (UTC+1) share only 08:00-09:00 in Los Angeles.
-    const slots = findFreeSlots({
+    const slots = slotsFor({
       ...SLOT_RULES,
       attendees: [
         { busy: [], email: REQUESTER, required: true, timeZone: LA },
@@ -442,6 +459,106 @@ describe("Google Calendar tools", () => {
       ],
       unavailable: [{ email: "carol@example.com", reason: "notFound" }],
     });
+  });
+
+  it("searches later hours for people who often meet others late", async () => {
+    // Now is Thursday 2026-10-08 12:00 UTC. London is UTC+1, Los Angeles
+    // UTC-7. Bob had calls with Alice until 22:00 London on three weekdays.
+    const event = (
+      date: string,
+      start: string,
+      end: string,
+      attendees: Array<{ email: string; responseStatus?: string }>,
+    ) => ({
+      attendees,
+      end: { dateTime: `${date}T${end}:00Z` },
+      start: { dateTime: `${date}T${start}:00Z` },
+    });
+    const call = (date: string) =>
+      event(date, "19:00", "21:00", [
+        { email: REQUESTER },
+        { email: "bob@example.com" },
+      ]);
+    const { fetch, tools } = calendarTools(
+      Response.json({
+        calendars: {
+          [REQUESTER]: { busy: [] },
+          "bob@example.com": { busy: [] },
+        },
+      }),
+      Response.json({ timeZone: LA }),
+      Response.json({
+        items: [
+          call("2026-09-29"),
+          call("2026-10-01"),
+          call("2026-10-06"),
+          // A call on a weekend does not count.
+          call("2026-10-03"),
+          // Google leaves out `start` and `end` of all-day events, such as a
+          // working location, because the field mask asks for `dateTime`.
+          {},
+          // Do-not-schedule blocks that Bob holds alone are not meetings.
+          ...["2026-09-30", "2026-10-02", "2026-10-05"].map((date) =>
+            event(date, "06:00", "08:00", []),
+          ),
+          // Neither are late calls that Bob declined.
+          ...["2026-09-30", "2026-10-02", "2026-10-05"].map((date) =>
+            event(date, "21:00", "22:00", [
+              { email: REQUESTER },
+              { email: "bob@example.com", responseStatus: "declined" },
+            ]),
+          ),
+        ],
+        timeZone: "Europe/London",
+      }),
+    );
+
+    const result = await tools["findMeetingTimes"].execute(
+      tools["findMeetingTimes"].prepareArguments!({
+        attendees: ["bob@example.com"],
+        max_results: 2,
+        time_max: "2026-10-13T00:00:00Z",
+        time_min: "2026-10-12T00:00:00Z",
+        time_zone: LA,
+      }),
+      { toolCallId: "call-late" },
+    );
+
+    // Junior reads the last 3 weeks of each person's events.
+    const history = new URL(fetch.mock.calls[2]![0].request.url).searchParams;
+    expect(history.get("timeMin")).toBe("2026-09-17T12:00:00.000Z");
+    expect(history.get("timeMax")).toBe("2026-10-08T12:00:00.000Z");
+    // With 09:00-17:00 for both, Los Angeles and London share no time.
+    // Bob's hours now run to 22:00 London, which is 14:00 in Los Angeles.
+    expect(result).toMatchObject({
+      checked: [
+        {
+          email: REQUESTER,
+          working_hours: {
+            from_meetings: false,
+            workday_end: "17:00",
+            workday_start: "09:00",
+          },
+        },
+        {
+          email: "bob@example.com",
+          working_hours: {
+            from_meetings: true,
+            workday_end: "22:00",
+            workday_start: "09:00",
+          },
+        },
+      ],
+    });
+    expect(result.slots.length).toBeGreaterThan(0);
+    for (const slot of result.slots) {
+      expect(Date.parse(slot.start)).toBeGreaterThanOrEqual(
+        Date.parse("2026-10-12T16:00:00Z"),
+      );
+      expect(Date.parse(slot.end)).toBeLessThanOrEqual(
+        Date.parse("2026-10-12T21:00:00Z"),
+      );
+    }
   });
 
   it("refuses people outside the allowed Workspace domains", async () => {

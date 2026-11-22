@@ -1,4 +1,4 @@
-import { mockReviewItems, rowHead } from "./inbox-fixture";
+import { mockInboxItems, rowHead } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -10,7 +10,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(
@@ -63,11 +63,13 @@ test.describe("new UI", { tag: "@new" }, () => {
           pinnedAt: string | null;
           pinPosition?: number;
           status: string;
+          turnActive?: boolean;
         },
       ) => ({
         ...feed.conversations[0],
         conversationId: `slack:CFLIGHT:${1770000000 + index}.000100`,
         displayTitle,
+        turnActive: fields.status === "working",
         ...fields,
       });
       return route.fulfill({
@@ -78,25 +80,29 @@ test.describe("new UI", { tag: "@new" }, () => {
             ...Array.from({ length: 6 }, (_, index) =>
               conversation(index, `Running conversation ${index + 1}`, {
                 pinnedAt: null,
-                status: "active",
+                // An open action item reads `needs_input` while a Turn
+                // runs. It still runs, so it is in flight.
+                ...(index === 0
+                  ? { status: "needs_input", turnActive: true }
+                  : { status: "working" }),
               }),
             ),
             conversation(6, "Running pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
               pinPosition: 0,
-              status: "active",
+              status: "working",
             }),
             conversation(7, "Idle pin", {
               pinnedAt: "2026-08-07T10:00:00.000Z",
               pinPosition: 1,
-              status: "completed",
+              status: "done",
             }),
           ],
           nextCursor: undefined,
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     // Pins always show. Running Conversations fill the rows left, up to five.
@@ -166,6 +172,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         pinnedAt: "2026-08-07T10:00:00.000Z",
         pinPosition: index,
         status,
+        turnActive: status === "working",
       });
       return route.fulfill({
         response,
@@ -174,15 +181,15 @@ test.describe("new UI", { tag: "@new" }, () => {
           // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
           // shows it first.
           conversations: [
-            pin(0, "Alpha pin", "completed"),
-            pin(1, "Bravo pin", "completed"),
-            pin(2, "Charlie pin", "active"),
+            pin(0, "Alpha pin", "done"),
+            pin(1, "Bravo pin", "done"),
+            pin(2, "Charlie pin", "working"),
           ],
           nextCursor: undefined,
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveText([
@@ -228,7 +235,8 @@ test.describe("new UI", { tag: "@new" }, () => {
           : "2026-08-07T10:00:00.000Z",
         pinnedAt: pinned ? "2026-07-01T10:00:00.000Z" : null,
         pinPosition: pinned ? index : undefined,
-        status: "completed",
+        status: "done",
+        turnActive: false,
       });
       const cursor = new URL(route.request().url()).searchParams.get("cursor");
       return route.fulfill({
@@ -247,7 +255,7 @@ test.describe("new UI", { tag: "@new" }, () => {
             },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
@@ -279,7 +287,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         isParticipant: true,
         pinnedAt: pinned ? "2026-08-07T10:00:00.000Z" : null,
         pinPosition: pinned ? index : undefined,
-        status: pinned ? "completed" : "active",
+        status: pinned ? "done" : "working",
+        turnActive: !pinned,
       });
       return route.fulfill({
         response,
@@ -294,7 +303,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     const saves: unknown[] = [];
     page.on("request", (request) => {
       if (

@@ -1,6 +1,6 @@
 /**
  * Split a search query into the terms that memory search matches. Keep this
- * in step with `searchTerms` in `@sentry/junior-memory` `src/viewer.ts`.
+ * in step with `searchTerms` in `packages/junior/src/chat/memory/viewer.ts`.
  */
 function memorySearchTerms(query: string): string[] {
   return [

@@ -6,12 +6,16 @@ import {
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { buildSlackLocationUrl } from "@/chat/slack/location-url";
 import type { StoredSlackActor } from "@/chat/actor";
+import { executionIsActive } from "@/chat/conversations/sql/status";
 import type {
   Conversation as StoredConversation,
   ConversationSource,
 } from "@/chat/conversations/store";
 import { fallbackShortTitle } from "@/chat/services/short-title";
-import { slackStatsLocationLabel, surfaceFallbackLabel } from "./shared";
+import {
+  slackStatsLocationLabel,
+  surfaceFallbackLabel,
+} from "./location-labels";
 import type {
   ActorIdentity,
   ConversationEventHistory,
@@ -30,16 +34,17 @@ type ConversationProjectionSource = Pick<
   | "channelName"
   | "conversationId"
   | "createdAtMs"
-  | "execution"
   | "kind"
   | "lastActivityAtMs"
   | "location"
   | "parentConversationId"
   | "source"
-  | "stoppedAtMs"
+  | "summary"
   | "title"
   | "updatedAtMs"
->;
+> & {
+  execution: Pick<StoredConversation["execution"], "status" | "updatedAtMs">;
+};
 
 function privateConversationLabel(
   slackConversation: ReturnType<
@@ -120,24 +125,6 @@ function actorIdentityReport(
       : undefined),
   };
   return Object.keys(identity).length > 0 ? identity : undefined;
-}
-
-/**
- * A stopped Conversation shows as `stopped` while no work runs. A Turn that
- * runs before the stop ends, such as one that its parent's new work starts,
- * shows as `active`.
- */
-function statusFromConversation(
-  conversation: ConversationProjectionSource,
-): ConversationReportStatus {
-  const status = conversation.execution.status;
-  if (status !== "idle" && status !== "failed") {
-    return "active";
-  }
-  if (conversation.stoppedAtMs !== undefined) {
-    return "stopped";
-  }
-  return status === "idle" ? "completed" : "failed";
 }
 
 function titleFromConversation(args: {
@@ -244,6 +231,8 @@ export function conversationSummaryFromStoredConversation(args: {
   locationId?: string;
   pinnedAtMs?: number | undefined;
   pinPosition?: number;
+  /** The status that `conversationStatusSql` read with the row. */
+  status: ConversationReportStatus;
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   usage?: ConversationUsage | undefined;
 }): ConversationSummaryReport {
@@ -277,7 +266,7 @@ export function conversationSummaryFromStoredConversation(args: {
     conversation,
     canViewPrivateContent,
   );
-  const status = statusFromConversation(conversation);
+  const { status } = args;
   return {
     conversationId: conversation.conversationId,
     cumulativeDurationMs: durationMs,
@@ -290,6 +279,10 @@ export function conversationSummaryFromStoredConversation(args: {
       visibility,
     }),
     kind: conversation.kind,
+    // The summary holds private content, like the title.
+    ...(canViewPrivateContent && conversation.summary
+      ? { summary: conversation.summary }
+      : undefined),
     ...(conversation.parentConversationId
       ? { parentConversationId: conversation.parentConversationId }
       : undefined),
@@ -301,6 +294,7 @@ export function conversationSummaryFromStoredConversation(args: {
     lastSeenAt: new Date(conversation.lastActivityAtMs).toISOString(),
     startedAt: new Date(conversation.createdAtMs).toISOString(),
     status,
+    turnActive: executionIsActive(conversation.execution.status),
     surface,
     ...(args.auxiliaryCosts
       ? { auxiliaryCosts: args.auxiliaryCosts }

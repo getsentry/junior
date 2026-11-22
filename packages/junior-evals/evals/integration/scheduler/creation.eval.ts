@@ -8,8 +8,10 @@ describe("Schedule Creation", () => {
   test("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
     run,
   }) => {
+    // Ask for a DM by name. In a thread, "a direct reminder" can also mean a
+    // ping in that thread, which a timer may set.
     const conversation = await run(
-      slackMention("send me a direct reminder in 1 minute to wash my hands"),
+      slackMention("DM me in 1 minute to wash my hands"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,
@@ -62,8 +64,15 @@ describe("Schedule Creation", () => {
       }),
     );
 
+    // This case checks that a clear one-off reminder is set at once, not
+    // which tool sets it. A timer that wakes this Conversation also works.
     const creates = completedToolCalls("createAutomation", conversation);
-    expect(creates).toHaveLength(1);
+    const timers = completedToolCalls("watchTimer", conversation);
+    expect(creates.length + timers.length).toBe(1);
+    if (timers.length === 1) {
+      expect(timers[0]!.input).toMatchObject({ after_ms: 60_000 });
+      return;
+    }
     expect(creates[0]!.input).toMatchObject({
       trigger: {
         type: "schedule",
@@ -155,7 +164,7 @@ describe("Schedule Creation", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        "schedule this every Monday at 9am Pacific: check open GitHub issues about the scheduler and post a short digest here.",
+        "schedule this every Monday at 9am Pacific: check open GitHub issues in getsentry/junior about the scheduler and post a short digest here.",
       ),
     );
     await expect(conversation).toSatisfyJudge(

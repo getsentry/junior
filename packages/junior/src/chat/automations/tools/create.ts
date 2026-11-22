@@ -14,14 +14,16 @@ import {
   type AutomationTask,
 } from "@/chat/automations/task";
 import type { SkillMetadata } from "@/chat/skills";
-import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import {
   requireToolCaller,
   requireToolCreator,
-  requireToolDestination,
   type AutomationToolCaller,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
+import {
+  automationDestinationParam,
+  resolveToolDestination,
+} from "@/chat/automations/tool-destination";
 import {
   automationIdForToolCall,
   automationSkillToolSchema,
@@ -68,13 +70,15 @@ import {
 } from "@/chat/services/short-title";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 type NewAutomation = {
   creator: ReturnType<typeof requireToolCreator>;
   credentialMode: "creator" | "system";
   destination: AutomationDestination;
+  /** Visibility of the Destination, not of this Conversation. */
+  visibility: "public" | "private" | undefined;
   id: string;
   nowMs: number;
   task: AutomationTask;
@@ -129,7 +133,7 @@ async function createScheduled(
     updatedAtMs: nowMs,
     createdBy: next.creator.createdBy,
     creatorIdentityId: next.creator.identity.id,
-    conversationAccess: getConversationAccess(destination, context.visibility),
+    conversationAccess: getConversationAccess(destination, next.visibility),
     credentialMode: next.credentialMode,
     destination,
     executionActor: SCHEDULED_AUTOMATION_SYSTEM_ACTOR,
@@ -149,7 +153,6 @@ async function createScheduled(
 }
 
 async function createEvent(
-  context: AutomationToolContext,
   next: NewAutomation,
   trigger: EventAutomation["trigger"],
 ): Promise<TaskCandidate> {
@@ -158,7 +161,7 @@ async function createEvent(
     requireSlackChannelMessageScope({
       id: next.id,
       destinationVisibility:
-        context.visibility === "public" ? "public" : "private",
+        next.visibility === "public" ? "public" : "private",
       createdAtMs: next.nowMs,
       createdBy: next.creator.createdBy,
       creatorIdentityId: next.creator.identity.id,
@@ -214,7 +217,7 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable automation. It belongs to the channel or DM of this conversation, never a thread. When an installed skill does the work, have the automation run that skill; do not write an instruction that names the skill. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
+      "Create a durable automation. It delivers to a Slack channel or DM, never a thread or a web conversation. A skill that automations run leaves schedules, destinations, and run endings to the automation. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema.nullable().optional(),
@@ -247,6 +250,17 @@ export function createAutomationTool(
             "Omit or use null for the system default: runs use your own credentials. Use creator only when the creator asks for their connected credentials to be available to the runs.",
           )
           .optional(),
+        destination: automationDestinationParam
+          .nullable()
+          .describe(
+            // A web Conversation has no Slack channel or DM to default to.
+            `${automationDestinationParam.description} ${
+              context.destination
+                ? "Omit or use null for current_conversation."
+                : "Required: current_conversation is unavailable here."
+            }`,
+          )
+          .optional(),
       })
       .strict(),
     prepareArguments(args) {
@@ -258,6 +272,7 @@ export function createAutomationTool(
         trigger: z.input<typeof trigger>;
         outcomes?: TaskOutcomeInput[];
         credential_mode?: "creator" | "system" | null;
+        destination?: string | null;
       };
       const prepared = { ...input };
       if (prepared.title == null) {
@@ -275,25 +290,32 @@ export function createAutomationTool(
       if (prepared.credential_mode === null) {
         delete prepared.credential_mode;
       }
+      if (prepared.destination == null) {
+        delete prepared.destination;
+      }
       return prepared;
     },
     outputSchema: automationToolResultSchema,
     async execute(input, options) {
       const kind = triggerKind(input.trigger);
-      const destination = requireToolDestination(context);
       const caller = await requireToolCaller(context);
+      const { destination, visibility } = await resolveToolDestination(
+        context,
+        caller,
+        input.destination ?? "current_conversation",
+      );
       const creator = requireToolCreator(caller, destination, kind);
       const { createdBy } = creator;
       // prepareArguments removed the nulls.
-      const task = newAutomationTask({
-        instruction: input.instruction ?? undefined,
-        skill: input.skill ?? undefined,
-        context: input.context ?? undefined,
-      });
+      const task = newAutomationTask(
+        {
+          instruction: input.instruction ?? undefined,
+          skill: input.skill ?? undefined,
+          context: input.context ?? undefined,
+        },
+        { creator: createdBy },
+      );
       await requireAutomationSkill(task, undefined);
-      requireAutomationTaskText(task, {
-        creator: createdBy,
-      });
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(
@@ -345,6 +367,7 @@ export function createAutomationTool(
       const next: NewAutomation = {
         creator,
         destination,
+        visibility,
         id,
         nowMs,
         task,
@@ -365,7 +388,7 @@ export function createAutomationTool(
       return requireOwnAutomation(
         compiled
           ? await createScheduled(context, next, compiled)
-          : await createEvent(context, next, eventTrigger!),
+          : await createEvent(next, eventTrigger!),
       );
     },
   });

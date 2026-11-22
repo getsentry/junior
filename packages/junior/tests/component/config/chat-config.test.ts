@@ -308,13 +308,19 @@ describe("chat config", () => {
     expect(getChatConfig().conversationWorkEnabled).toBe(false);
   });
 
-  it("enables cache warming unless its kill switch is off", async () => {
+  it("enables cache warming and compaction on idle unless their kill switches are off", async () => {
     delete process.env["JUNIOR_CACHE_WARMING_ENABLED"];
-    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(true);
+    delete process.env["JUNIOR_IDLE_COMPACTION_ENABLED"];
+    expect((await loadConfig()).getChatConfig()).toMatchObject({
+      cacheWarmingEnabled: true,
+      idleCompactionEnabled: true,
+    });
     process.env["JUNIOR_CACHE_WARMING_ENABLED"] = "false";
-    expect((await loadConfig()).getChatConfig().cacheWarmingEnabled).toBe(
-      false,
-    );
+    process.env["JUNIOR_IDLE_COMPACTION_ENABLED"] = "false";
+    expect((await loadConfig()).getChatConfig()).toMatchObject({
+      cacheWarmingEnabled: false,
+      idleCompactionEnabled: false,
+    });
   });
 
   it("rejects an invalid conversation work switch", async () => {

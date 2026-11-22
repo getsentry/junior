@@ -3,17 +3,22 @@
 #
 #   scripts/sim.sh shots <out-dir> <shot>…   install, open each shot, save PNGs
 #   scripts/sim.sh ui-test <Suite[/test]>…   build-for-testing, then run those UI tests
+#   scripts/sim.sh boot                      boot one and print its UDID; the caller deletes it
 #
 # A shot is `name|path|theme`, for example `home|/|dark` or
-# `inbox|/review|light`. The path is a dashboard route; the app opens it.
+# `inbox|/inbox|light`. The path is a dashboard route; the app opens it.
 #
 # Machine rules (one simulator can take ~10 GB): take a machine-wide lock,
 # wait for no other booted simulator and for idle CPU, build before booting,
 # and always shut down and delete the device this run created.
 #
 # JUNIOR_IOS_REUSE_UDID=<udid> uses a simulator that is already booted
-# instead of booting a second one. The run installs the app there and
-# uninstalls it at the end; it never shuts that simulator down.
+# instead of booting a second one, such as one from `boot`. The run installs
+# the app there and uninstalls it at the end, and restores its appearance; it
+# never shuts that simulator down.
+#
+# JUNIOR_IOS_SERVER=http://127.0.0.1:<port> points the app and the UI tests
+# at a mock server that you started with PORT=<port>.
 set -euo pipefail
 
 ios_dir="$(cd "$(dirname "$0")/.." && pwd)"
@@ -24,6 +29,7 @@ server="${JUNIOR_IOS_SERVER:-http://127.0.0.1:4317}"
 fixed_now="${JUNIOR_IOS_NOW:-2026-08-07T12:00:00Z}"
 udid=""
 reused="${JUNIOR_IOS_REUSE_UDID:-}"
+reused_appearance=""
 
 log() { echo "sim: $*" >&2; }
 
@@ -64,6 +70,7 @@ release() {
     for bundle in io.sentry.junior io.sentry.junior.uitests.xctrunner; do
       xcrun simctl uninstall "$reused" "$bundle" >/dev/null 2>&1 || true
     done
+    [[ -z "$reused_appearance" ]] || xcrun simctl ui "$reused" appearance "$reused_appearance" || true
     log "uninstalled the app and its test runner from $reused (left it booted)"
   elif [[ -n "$udid" ]]; then
     xcrun simctl shutdown "$udid" >/dev/null 2>&1 || true
@@ -79,7 +86,8 @@ trap 'exit 130' INT TERM
 
 delete_leftovers() {
   xcrun simctl list devices -j |
-    jq -r --arg p "$device_prefix" '.devices[][] | select(.name | startswith($p)) | .udid' |
+    jq -r --arg p "$device_prefix" --arg r "$reused" \
+      '.devices[][] | select((.name | startswith($p)) and .udid != $r) | .udid' |
     while read -r stale; do
       log "deleting leftover $stale"
       xcrun simctl shutdown "$stale" >/dev/null 2>&1 || true
@@ -122,6 +130,7 @@ boot_device() {
     xcrun simctl list devices booted -j | jq -e --arg u "$reused" '[.devices[][] | .udid] | index($u)' >/dev/null ||
       { log "$reused is not booted"; exit 1; }
     udid="$reused"
+    reused_appearance="$(xcrun simctl ui "$udid" appearance)"
     return
   fi
   udid="$(xcrun simctl create "$device_prefix-$$" "$device_type" "$(latest_runtime)")"
@@ -153,7 +162,7 @@ cmd_shots() {
   for shot in "$@"; do
     IFS='|' read -r name path theme <<<"$shot"
     xcrun simctl terminate "$udid" io.sentry.junior >/dev/null 2>&1 || true
-    [[ -n "$reused" ]] || xcrun simctl ui "$udid" appearance "${theme:-dark}"
+    xcrun simctl ui "$udid" appearance "${theme:-dark}"
     xcrun simctl launch "$udid" io.sentry.junior \
       -JuniorServer "$server" -JuniorFixedNow "$fixed_now" \
       -JuniorOpen "$path" -JuniorTheme "${theme:-dark}" -JuniorAccessToken mock-access-token >/dev/null
@@ -177,11 +186,28 @@ cmd_ui_test() {
   boot_device
   local args=()
   for test in "${only[@]}"; do args+=("-only-testing:JuniorUITests/${test#JuniorUITests/}"); done
+  # On a newly booted simulator, the first accessibility snapshot can take
+  # 30 seconds and miss a test's wait. Run a failed test one more time.
+  # xcodebuild passes TEST_RUNNER_<name> to the tests as <name>.
+  TEST_RUNNER_JUNIOR_IOS_SERVER="$server" \
   "$ios_dir/scripts/xcbuild.sh" test-without-building -scheme JuniorUITests \
-    -destination "platform=iOS Simulator,id=$udid" "${args[@]}"
+    -destination "platform=iOS Simulator,id=$udid" \
+    -retry-tests-on-failure -test-iterations 2 "${args[@]}"
+}
+
+cmd_boot() {
+  acquire_lock
+  delete_leftovers
+  wait_for_no_booted
+  wait_for_idle_cpu
+  boot_device
+  echo "$udid"
+  # The caller owns it now, so release leaves it booted.
+  udid=""
 }
 
 case "${1:-}" in
+  boot) cmd_boot ;;
   shots) shift; cmd_shots "$@" ;;
   ui-test) shift; cmd_ui_test "$@" ;;
   *) sed -n '2,13p' "$0"; exit 2 ;;
