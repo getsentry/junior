@@ -55,8 +55,8 @@ async function connectAlice(run: RunAgent) {
   expect(turnStates(paused)).toEqual(["started"]);
 
   // The agent says why it connects the provider, and the notice shows it.
-  // A call that the schema rejects for a missing intent connects nothing, so
-  // only a completed call can be the one that asked for authorization.
+  // Only a completed call connects: a call without intent fails input
+  // validation, and the agent repeats it with an intent.
   const connect = completedToolCalls("searchMcpTools", paused).find(
     (call) =>
       (call.input as { provider?: unknown } | undefined)?.provider ===

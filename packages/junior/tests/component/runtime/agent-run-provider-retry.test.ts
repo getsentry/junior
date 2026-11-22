@@ -621,7 +621,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandbox: () => ({
+  createSandbox: vi.fn(() => ({
     captureRepositoryInstructions: async () => {
       if (repositoryState.available && repositoryState.readFailure) {
         throw repositoryState.readFailure;
@@ -660,7 +660,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         ? { id: "sandbox-test", profileHash: "hash-test" }
         : undefined,
     close: vi.fn(),
-  }),
+  })),
 }));
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
@@ -679,6 +679,7 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { SandboxCallTimeoutError } from "@/chat/sandbox/errors";
+import { createSandbox } from "@/chat/sandbox/sandbox";
 import { getConversationStore } from "@/chat/db";
 import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
@@ -732,6 +733,7 @@ describe("agent run continuation", () => {
     repositoryState.availableAtBoundary = false;
     repositoryState.available = false;
     repositoryState.readFailure = undefined;
+    vi.mocked(createSandbox).mockClear();
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
     process.env["JUNIOR_STATE_ADAPTER"] = "memory";
@@ -865,6 +867,10 @@ describe("agent run continuation", () => {
 
     expect(reply.text).toBe("Recovered.");
     expect(reply.diagnostics.outcome).toBe("success");
+    // A new Turn may replace a sandbox session near the provider's cap.
+    expect(createSandbox).toHaveBeenCalledWith(
+      expect.objectContaining({ rotateOldSession: true }),
+    );
     expect(reply.diagnostics.toolResultCount).toBe(1);
     expect(reply.diagnostics.usage).toMatchObject({
       inputTokens: 16,
@@ -1372,6 +1378,10 @@ describe("agent run continuation", () => {
     expect(result.text).toBe(confirmation);
     expect(delivered).toEqual([{ text: confirmation }]);
     expect(counters.continueCalls).toBe(2);
+    // A resumed Turn keeps its session and its unpushed work.
+    expect(createSandbox).toHaveBeenCalledWith(
+      expect.objectContaining({ rotateOldSession: false }),
+    );
   });
 
   it("keeps steered messages when yielding after steering drain", async () => {

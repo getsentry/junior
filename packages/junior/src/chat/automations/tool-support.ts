@@ -89,7 +89,7 @@ export function automationSkillToolSchema(skills: readonly SkillMetadata[]) {
     skill.disableModelInvocation ? `${skill.name} (manual only)` : skill.name,
   );
   return automationSkillNameSchema.describe(
-    `Skill that each run invokes instead of a written instruction. Any installed skill works, including manual-only ones. Installed skills: ${names.length > 0 ? names.join(", ") : "none"}.`,
+    `Skill each run invokes instead of an instruction. Use it when an installed skill does the work; never name a skill in an instruction. To write one for automations, load design-automation-skill. Manual-only skills work too. Installed skills: ${names.length > 0 ? names.join(", ") : "none"}.`,
   );
 }
 

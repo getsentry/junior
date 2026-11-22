@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { mapBounded } from "./map-bounded.mjs";
+import pLimit from "p-limit";
 
 // Enough reads in flight to overlap file I/O, few enough to stay under the
 // open file limit.
@@ -25,7 +25,7 @@ export function listRepoFiles(root) {
 
 /** Read each listed file as `{ path, contents }`, keeping the order. */
 export function readRepoFiles(root, files) {
-  return mapBounded(files, READ_CONCURRENCY, async (file) => ({
+  return pLimit(READ_CONCURRENCY).map(files, async (file) => ({
     path: file,
     contents: await fs.promises.readFile(path.join(root, file), "utf8"),
   }));

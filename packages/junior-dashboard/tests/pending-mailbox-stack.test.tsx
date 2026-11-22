@@ -137,9 +137,8 @@ describe("PendingMailboxStack remove control", () => {
     expect(html.match(/aria-label="Edit queued message"/g)).toHaveLength(2);
     // A steered row is already an interrupt, so it cannot be steered again.
     expect(html.match(/aria-label="Steer queued message"/g)).toHaveLength(1);
-    // A Slack mention arrives as an interrupt. No one steered it.
-    expect(html.match(/aria-label="Steered"/g)).toHaveLength(1);
-    expect(html.match(/aria-label="Next step"/g)).toHaveLength(1);
+    // Web and Slack interrupts read the same.
+    expect(html.match(/aria-label="Next step"/g)).toHaveLength(2);
   });
 
   it("shows edit only on the viewer's own accepted web rows", () => {

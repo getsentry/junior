@@ -32,6 +32,8 @@ import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
 
 export interface AgentSandboxOptions {
   sandboxRef?: SandboxRef | undefined;
+  /** Replace a session near the provider's cap before any work. */
+  rotateOldSession?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   traceContext: LogContext;
@@ -165,6 +167,7 @@ function bashCommand(input: unknown): string | undefined {
 export function createAgentSandbox(options: AgentSandboxOptions): AgentSandbox {
   const sandbox = createSandbox({
     sandboxRef: options.sandboxRef,
+    rotateOldSession: options.rotateOldSession,
     workspace: options.workspace,
     skills: options.skills,
     referenceFiles: listReferenceFiles(),

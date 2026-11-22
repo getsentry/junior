@@ -83,7 +83,7 @@ function selectContiguousTurnBatch(
  */
 export function isAttemptInterrupt(
   message: InboundMessage,
-  work: ConversationWorkState,
+  work: Pick<ConversationWorkState, "execution">,
 ): boolean {
   return (
     message.delivery === "interrupt" &&

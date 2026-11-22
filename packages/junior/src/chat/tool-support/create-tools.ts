@@ -354,7 +354,11 @@ const STATIC_TOOL_BINDERS = {
         : "Slack gives a search token only for a new message or mention.",
     ),
   userLookup: (run) =>
-    createUserLookupTool(slackOf(run).teamId, userLookupIdentityProviders()),
+    createUserLookupTool(
+      slackOf(run).teamId,
+      userLookupIdentityProviders(),
+      run.context.egress,
+    ),
   slackListCreate: (run) => createSlackListCreateTool(run.state),
   slackListAddItems: (run) => createSlackListAddItemsTool(run.state),
   slackListGetItems: () => createSlackListGetItemsTool(),
