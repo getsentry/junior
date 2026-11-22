@@ -355,15 +355,17 @@ describe("Lead", () => {
       { type: "waiting", inboxItemId: "lead-watch-item" },
       { queue: harness.queue, state: harness.state },
     );
-    // An update that makes a notice an action reports a wait.
-    const addItem = createAddInboxItemTool(
-      {
-        conversationId: started.conversation_id,
-        resolveActorIdentity: async () => undefined,
-        source: { kind: "scheduled_automation" },
-      },
-      createSlackInboxItemToolServices(() => harness.queue),
-    ) as any;
+    // An update that makes a notice an action reports a wait on the item's
+    // owner, also when another Conversation makes the update.
+    const addItemFrom = (conversationId: string) =>
+      createAddInboxItemTool(
+        {
+          conversationId,
+          resolveActorIdentity: async () => undefined,
+          source: { kind: "scheduled_automation" },
+        },
+        createSlackInboxItemToolServices(() => harness.queue),
+      ) as any;
     const item = {
       assignees: ["everyone"],
       body: "Check the deploy.",
@@ -381,10 +383,11 @@ describe("Lead", () => {
         },
       ],
     };
-    for (const input of [
-      { ...item, kind: "notice" },
-      { ...item, kind: "action", request },
-    ]) {
+    for (const [conversationId, input] of [
+      [started.conversation_id, { ...item, kind: "notice" }],
+      [boWork.conversationId, { ...item, kind: "action", request }],
+    ] as const) {
+      const addItem = addItemFrom(conversationId);
       await addItem.execute(addItem.prepareArguments(input), {});
     }
     // A concurrent stop at another time does not report it twice.
