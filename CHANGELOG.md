@@ -1,5 +1,75 @@
 # Changelog
 
+## 0.313.0
+
+Junior removes legacy brief handling, improves inbox and dashboard use, clarifies guidance, and strengthens testing and feed efficiency, requiring coordinated deployment and rollback care.
+
+### Breaking Changes 🛠
+
+- (conversations) Remove legacy Brief embedding and queue compatibility by @dcramer with @sentry-junior in [#3999](https://github.com/getsentry/junior/pull/3999)
+
+### New Features ✨
+
+Inbox adds filters and navigation; new children use Conversations, existing invocation children retain theirs; before rollback past 0.302.0, drain parent messages.
+
+#### Dashboard
+
+- Filter the Inbox by ask type and pins by @BYK with @sentry-junior in [#3966](https://github.com/getsentry/junior/pull/3966)
+- Style skill references in the composer by @dcramer with @sentry-junior in [#4037](https://github.com/getsentry/junior/pull/4037)
+- Link skill references in user messages by @dcramer with @sentry-junior in [#3714](https://github.com/getsentry/junior/pull/3714)
+- Show the Lead in nav in both UIs and on mobile by @dcramer with @sentry-junior in [#4011](https://github.com/getsentry/junior/pull/4011)
+
+#### Other
+
+- (agents) Spawn and message child agents without Agent invocations by @dcramer with @sentry-junior in [#3435](https://github.com/getsentry/junior/pull/3435)
+- (api) Cap Threads and waiting rows in the conversation feed by @BYK with @sentry-junior in [#4038](https://github.com/getsentry/junior/pull/4038)
+- (conversations) Auto-archive stopped trees and keep one archive writer by @sentry-junior in [#4008](https://github.com/getsentry/junior/pull/4008)
+- (inbox) Compact Snooze menu with Custom… last by @BYK with @sentry-junior in [#4035](https://github.com/getsentry/junior/pull/4035)
+
+### Bug Fixes 🐛
+
+Dashboard accessibility and search improve; tool, child-run, event, GitHub, Slack, Todo, and Explore behaviors become more actionable.
+
+#### Dashboard
+
+- Stop CSS motion under reduced motion and run e2e with it by @dcramer with @sentry-junior in [#4026](https://github.com/getsentry/junior/pull/4026)
+- Highlight search matches in linked skill references by @sentry-junior in [#4034](https://github.com/getsentry/junior/pull/4034)
+
+#### Other
+
+- (agent) Name the next call when a direct call misses the tool list by @dcramer with @sentry-junior in [#4013](https://github.com/getsentry/junior/pull/4013)
+- (agents) Keep a child's stop and failure on its run and dashboard markers by @sentry-junior in [#4036](https://github.com/getsentry/junior/pull/4036)
+- (events) Say that searchEventTypes lists the events watches and event automations use by @sentry-junior in [#4003](https://github.com/getsentry/junior/pull/4003)
+- (github) Skip review requests for people who already reviewed a draft by @dcramer with @sentry-junior in [#4033](https://github.com/getsentry/junior/pull/4033)
+- (prompt) Keep Slack replies short by default by @dcramer with @sentry-junior in [#3730](https://github.com/getsentry/junior/pull/3730)
+- (slack) Use a text primary column when creating todo lists by @mjq with @sentry-junior in [#3692](https://github.com/getsentry/junior/pull/3692)
+- (subagents) Stop framing an explore child's job as a report by @dcramer with @sentry-junior in [#4024](https://github.com/getsentry/junior/pull/4024)
+
+### Documentation 📚
+
+- (design) Record gaps and cuts from the 2026-11-22 audit by @dcramer with @sentry-junior in [#4023](https://github.com/getsentry/junior/pull/4023)
+
+### Internal Changes 🔧
+
+Testing strengthens flaky-run checks and delegated-work coverage; conversation feeds shrink payloads while retaining details, and stale dashboard references are removed.
+
+#### Dashboard
+
+- Fail the e2e run on a flaky test by @dcramer with @sentry-junior in [#4031](https://github.com/getsentry/junior/pull/4031)
+- Keep E2E spec bodies to user actions and visible assertions by @dcramer with @sentry-junior in [#4025](https://github.com/getsentry/junior/pull/4025)
+- Fix the event log e2e flake and upload traces of flaky tests by @dcramer with @sentry-junior in [#4029](https://github.com/getsentry/junior/pull/4029)
+- Click the sidebar row in the archive e2e by @sentry-junior in [#4009](https://github.com/getsentry/junior/pull/4009)
+
+#### Evals
+
+- Check the delegated result for a fact from thread history by @dcramer with @sentry-junior in [#4030](https://github.com/getsentry/junior/pull/4030)
+- Force the child agent block with an injected Guardian ask by @dcramer with @sentry-junior in [#4032](https://github.com/getsentry/junior/pull/4032)
+
+#### Other
+
+- (api) Send only annotation chips in the conversation feed by @BYK with @sentry-junior in [#4039](https://github.com/getsentry/junior/pull/4039)
+- (cleanup) Drop stale ComposerQuestion and loadProjection references by @sentry-junior in [#4021](https://github.com/getsentry/junior/pull/4021)
+
 ## 0.312.0
 
 Junior expands everyday work across conversations, slides, inboxes, tasks, and automation, strengthens operations and testing, clarifies limits, and requires careful upgrade sequencing.
