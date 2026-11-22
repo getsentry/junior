@@ -168,7 +168,8 @@ jobs:
           VITEST_EVALS_REPORT_LEVEL: info
           # The write token of Roach. With it, the run records new requests.
           ROACH_TOKEN: ${{ secrets.ROACH_TOKEN }}
-        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:integration --shard=${{ matrix.shard }}/2
+          ROACH_MODE: record
+        run: packages/junior-evals/scripts/network-jail.sh pnpm --filter @sentry/junior-evals evals:integration evals/integration/scheduler/delivery-measure.eval.ts
       - name: Upload integration eval results
         if: always() && !cancelled()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
