@@ -67,9 +67,9 @@ class GitHubPullRequestCreateRejectedError extends Error {
 
 const BODY_DESCRIPTION = `Pull request body. ${PULL_REQUEST_BODY_RULES}`;
 const REVIEWERS_DESCRIPTION =
-  "GitHub logins to ask for a review. For an email or a name, pass the GitHub login that userLookup returns. Set this only when the person names who should review. Without it, the tool asks the requester. A draft gets the request when it is ready.";
+  "GitHub logins to ask for a review. For an email, mention, or name, pass the `github` handle in userLookup's `linked_identities`. Set it only when the person names a reviewer. Without it, the tool asks the requester. A draft is asked once ready.";
 const ASSIGNEES_DESCRIPTION =
-  "GitHub logins to assign. For an email or a name, pass the GitHub login that userLookup returns. Set this only when the person or instruction names who to assign. Without it, the tool assigns the requester's linked GitHub account.";
+  "GitHub logins to assign. For an email, mention, or name, pass the `github` handle in userLookup's `linked_identities`. Set this only when the person or instruction names who to assign. Without it, the tool assigns the requester's linked GitHub account.";
 
 const createPullRequestInputSchema = Type.Object(
   {
