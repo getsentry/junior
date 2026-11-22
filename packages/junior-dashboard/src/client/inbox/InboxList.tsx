@@ -6,6 +6,7 @@ import type { InboxItemPayload } from "@sentry/junior/api/schema";
 import { conversationPath } from "../conversations/conversationRoutes";
 import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
+import { MobileHeaderActionsPortal } from "../components/layout/DashboardChrome";
 import { HeaderBar } from "../components/layout/HeaderBar";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
 import { Skeleton } from "../components/ui/skeleton";
@@ -29,11 +30,10 @@ import { codeChangeHead } from "./codeChangeHead";
 import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import {
   askTypeOf,
-  InboxTypeFilters,
-  ConversationStateFilters,
+  hasListFilters,
   inConversationState,
+  ListFilters,
   listFiltersOf,
-  PinnedFilter,
   withoutFilters,
 } from "./inboxFilters";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
@@ -907,44 +907,33 @@ export function InboxList(props: {
   // The Inbox has no heading; a bundle shows only its name.
   const heading = view === "inbox" ? undefined : INBOX_VIEW_LABELS[view];
   const headerBar = Boolean(heading && !props.phone);
-  const pinFilter =
-    data.signedIn && (view === "inbox" || view === "conversations") ? (
-      <PinnedFilter on={pinnedOnly} search={params.toString()} />
-    ) : null;
-  const conversationFilters =
-    view === "conversations" ? (
-      <>
-        <ConversationStateFilters
-          search={params.toString()}
-          state={conversationState}
-        />
-        {pinFilter}
-      </>
-    ) : (
-      pinFilter
-    );
-  // Desktop Conversations shows its filters in its header. The Inbox, and
-  // every list on a phone, show the filters above the rows.
-  const filterBar =
-    view === "inbox" && data.signedIn ? (
-      <>
-        <InboxTypeFilters
-          counts={data.todoCounts}
-          search={params.toString()}
-          type={type}
-        />
-        {pinFilter}
-      </>
-    ) : headerBar ? null : (
-      conversationFilters
-    );
+  const filters = hasListFilters(view, data.signedIn) ? (
+    <ListFilters
+      conversationState={conversationState}
+      counts={data.todoCounts}
+      pinnedOnly={pinnedOnly}
+      search={params.toString()}
+      signedIn={data.signedIn}
+      type={type}
+      view={view}
+    />
+  ) : null;
+  // The filters sit in the top row: the phone header, or the desktop header
+  // of a list with a heading. The Inbox on a desktop has no heading, so its
+  // filters sit above the rows.
+  const filterBar = props.phone || headerBar ? null : filters;
   return (
     <section
       aria-label={INBOX_VIEW_LABELS[view]}
       className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg"
     >
+      {props.phone && filters ? (
+        <MobileHeaderActionsPortal>
+          <div className="flex items-center gap-1">{filters}</div>
+        </MobileHeaderActionsPortal>
+      ) : null}
       {headerBar ? (
-        <HeaderBar actions={conversationFilters} title={heading} />
+        <HeaderBar actions={filters} title={heading} />
       ) : (
         <div className="absolute top-2 left-3 z-10 max-md:hidden">
           <PaneCollapsedControls />
@@ -974,9 +963,8 @@ export function InboxList(props: {
           style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
         >
           {filterBar ? (
-            // One right-aligned row, also on a phone, clear of the pane
-            // controls that float at the top left while the pane is
-            // collapsed.
+            // One right-aligned row, clear of the pane controls that float
+            // at the top left while the pane is collapsed.
             <div className="flex items-center justify-end gap-2 pb-2">
               {filterBar}
             </div>

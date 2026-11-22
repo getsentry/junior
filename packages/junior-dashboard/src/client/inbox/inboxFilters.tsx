@@ -2,8 +2,11 @@ import type { InboxItemPayload } from "@sentry/junior/api/schema";
 import {
   Check,
   CircleHelp,
+  Ellipsis,
   Eye,
+  GitPullRequest,
   LoaderCircle,
+  MessageCircleQuestion,
   Pin,
   type LucideIcon,
 } from "lucide-react";
@@ -46,9 +49,9 @@ const PINNED_PARAM = "pinned";
 
 const TYPE_FILTERS: readonly Filter<InboxTypeFilter>[] = [
   { key: "all", label: "All" },
-  { key: "prs", label: "PRs" },
-  { key: "decisions", label: "Decisions" },
-  { key: "other", label: "Other" },
+  { icon: GitPullRequest, key: "prs", label: "PRs" },
+  { icon: MessageCircleQuestion, key: "decisions", label: "Decisions" },
+  { icon: Ellipsis, key: "other", label: "Other" },
 ];
 
 const STATE_FILTERS: readonly Filter<ConversationStateFilter>[] = [
@@ -127,7 +130,7 @@ export function pinnedOnlyOf(search: URLSearchParams): boolean {
  * asks that wait on the viewer. A type with nothing waiting hides, unless
  * it is on; All always shows.
  */
-export function InboxTypeFilters(props: {
+function InboxTypeFilters(props: {
   counts: Partial<Record<InboxTypeFilter, number>>;
   search: string;
   type: InboxTypeFilter;
@@ -138,7 +141,11 @@ export function InboxTypeFilters(props: {
       // type.
       (tab) => tab.key === "all" || tab.on || props.counts[tab.key] !== 0,
     )
-    .map((tab) => ({ ...tab, count: props.counts[tab.key] }));
+    .map((tab) => ({
+      ...tab,
+      count: props.counts[tab.key],
+      iconOnlyOnPhone: true,
+    }));
   return <ScopeTabs label="Asks to show" tabs={tabs} />;
 }
 
@@ -242,4 +249,45 @@ export function PinnedFilter(props: { on: boolean; search: string }) {
       ]}
     />
   );
+}
+
+/**
+ * The filters of an Inbox list view: the types in the Inbox, the states in
+ * Conversations, and the All / Pinned switch in both.
+ */
+export function ListFilters(props: {
+  conversationState: ConversationStateFilter;
+  counts: Partial<Record<InboxTypeFilter, number>>;
+  pinnedOnly: boolean;
+  search: string;
+  signedIn: boolean;
+  type: InboxTypeFilter;
+  view: InboxView;
+}) {
+  const inbox = props.view === "inbox" && props.signedIn;
+  return (
+    <>
+      {inbox ? (
+        <InboxTypeFilters
+          counts={props.counts}
+          search={props.search}
+          type={props.type}
+        />
+      ) : null}
+      {props.view === "conversations" ? (
+        <ConversationStateFilters
+          search={props.search}
+          state={props.conversationState}
+        />
+      ) : null}
+      {inbox || (props.view === "conversations" && props.signedIn) ? (
+        <PinnedFilter on={props.pinnedOnly} search={props.search} />
+      ) : null}
+    </>
+  );
+}
+
+/** Say whether an Inbox list view has filters. */
+export function hasListFilters(view: InboxView, signedIn: boolean): boolean {
+  return view === "conversations" || (view === "inbox" && signedIn);
 }
