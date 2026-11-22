@@ -8,6 +8,7 @@ import {
   canAgentChangeInboxItem,
   AUTOMATION_INBOX_ITEM_KEY_PREFIX,
   PLUGIN_INBOX_ITEM_KEY_PREFIX,
+  REPLY_NOTICE_KEY_PREFIX,
   canReadInboxItem,
   readInboxItemAgentScope,
   requireInboxItemAssignees,
@@ -271,6 +272,11 @@ export function createAddInboxItemTool(
       if (input.dedupe_key?.startsWith(AUTOMATION_INBOX_ITEM_KEY_PREFIX)) {
         throw new ToolInputError(
           `A \`dedupe_key\` that starts with \`${AUTOMATION_INBOX_ITEM_KEY_PREFIX}\` belongs to an Automation alert. Use a different key.`,
+        );
+      }
+      if (input.dedupe_key?.startsWith(REPLY_NOTICE_KEY_PREFIX)) {
+        throw new ToolInputError(
+          `A \`dedupe_key\` that starts with \`${REPLY_NOTICE_KEY_PREFIX}\` belongs to a reply notice. Use a different key.`,
         );
       }
       const db = getDb();

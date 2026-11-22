@@ -43,6 +43,10 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   that nobody works on, it tells nobody.
 - Junior asks a person only with an Inbox item
   ([Inbox](./inbox.md)).
+- A push goes to each User assigned to an open item, once per item: an
+  action, or a reply notice for its starter. Everyone items and other
+  notices do not push. When the item closes, its push goes away on every
+  device.
 
 ## Gaps
 

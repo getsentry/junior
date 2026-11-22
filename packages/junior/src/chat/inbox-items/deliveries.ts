@@ -58,6 +58,46 @@ export async function claimInboxItemPush(
   return inserted.length > 0;
 }
 
+/**
+ * Record the web push of a reply notice to its starter. Each reply pushes
+ * again, so the one record of the item holds the latest push.
+ */
+export async function recordReplyNoticePush(
+  db: JuniorDatabase,
+  input: {
+    itemId: string;
+    nowMs: number;
+    skipReason: InboxItemDeliverySkipReason | undefined;
+    userId: string;
+  },
+): Promise<void> {
+  const now = new Date(input.nowMs);
+  const result = {
+    skipReason: input.skipReason ?? null,
+    status: input.skipReason ? ("skipped" as const) : ("sent" as const),
+    updatedAt: now,
+  };
+  await db
+    .insert(juniorInboxItemDeliveries)
+    .values({
+      ...result,
+      channel: "web_push",
+      createdAt: now,
+      event: "reply",
+      itemId: input.itemId,
+      userId: input.userId,
+    })
+    .onConflictDoUpdate({
+      target: [
+        juniorInboxItemDeliveries.itemId,
+        juniorInboxItemDeliveries.userId,
+        juniorInboxItemDeliveries.channel,
+        juniorInboxItemDeliveries.event,
+      ],
+      set: result,
+    });
+}
+
 /** Mark the sent deliveries of closed items as cleared. */
 export async function clearInboxItemDeliveries(
   db: JuniorDatabase,
