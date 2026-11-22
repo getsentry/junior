@@ -56,18 +56,23 @@ test.describe("snooze times", { tag: "@new" }, () => {
     page,
   }) => {
     await expect(menu(page).getByRole("button")).toHaveText([
-      /^15 minutes\s*08:15$/,
-      /^30 minutes\s*08:30$/,
-      /^1 hour\s*09:00$/,
-      /^3 hours\s*11:00$/,
+      /^15m\s*08:15$/,
+      /^30m\s*08:30$/,
+      /^1h\s*09:00$/,
+      /^3h\s*11:00$/,
       /^This afternoon\s*14:00$/,
       /^This evening\s*18:00$/,
       /^Tomorrow morning\s*Sat 09:00$/,
       /^Next week\s*Mon 09:00$/,
-      "Custom…",
       // No time, so no key: it lasts until the item closes.
       "Someday",
+      // A dialog, so it stays last.
+      "Custom…",
     ]);
+    // A duration cell's name spells out its label and time.
+    await expect(menu(page).getByRole("button").first()).toHaveAccessibleName(
+      "15 minutes 08:15",
+    );
     // Focus moves to the first choice, so the keys reach the menu.
     await expect(
       menu(page).getByRole("button", { name: /^15 minutes/ }),

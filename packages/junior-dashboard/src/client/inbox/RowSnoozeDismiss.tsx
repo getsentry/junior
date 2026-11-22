@@ -26,8 +26,15 @@ const SnoozeDialog = lazy(() =>
   })),
 );
 
-const MENU_ROW_CLASS =
-  "flex cursor-pointer items-baseline justify-between gap-3 rounded-md border-0 bg-transparent px-2.5 py-1.5 text-left font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
+const PICK_CLASS =
+  "cursor-pointer rounded-md border-0 bg-transparent font-sans text-sm text-dashboard-text hover:bg-dashboard-fill-hover focus-visible:bg-dashboard-fill-hover focus-visible:outline-none";
+
+const MENU_ROW_CLASS = `${PICK_CLASS} flex items-baseline justify-between gap-3 px-2.5 py-1.5 text-left sm:py-1`;
+
+// A duration cell: its label over its wake time.
+const DURATION_CLASS = `${PICK_CLASS} flex flex-col items-center px-1 py-1.5`;
+
+const TIME_CLASS = "text-xs text-dashboard-text-faint tabular-nums";
 
 /** "14:00" today, else "Tue 09:00", in the browser's timezone. */
 function targetTime(untilMs: number, nowMs: number): string {
@@ -43,11 +50,11 @@ function targetTime(untilMs: number, nowMs: number): string {
 
 /**
  * Snooze an Inbox row, or every row of a stack, from its action bar: a menu
- * of the snooze times, Custom…, which opens a dialog to pick a date
- * and time, Events on the subject of the row's items or on a pull request
- * or issue that the viewer names, or both, and Someday, which lasts until
- * the items close, such as when someone else handles them. Number keys
- * pick the time rows and Custom….
+ * of the snooze times, Someday, which lasts until the items close, such as
+ * when someone else handles them, and last Custom…, which opens a dialog to
+ * pick a date and time, Events on the subject of the row's items or on a
+ * pull request or issue that the viewer names, or both. Number keys pick
+ * the times and Custom….
  */
 export function RowSnoozeButton(props: {
   /** Set when the row can snooze until an Event. */
@@ -69,6 +76,17 @@ export function RowSnoozeButton(props: {
   // The menu reads the clock when it opens: each open renders it again.
   const nowMs = Date.now();
   const choices = snoozeChoicesAt(nowMs);
+  // Each choice's number key follows menu order, across both groups.
+  const picks = choices.map((choice, index) => {
+    const untilMs = choice.untilMs(nowMs);
+    return {
+      key: String(index + 1),
+      label: choice.label,
+      short: choice.short,
+      time: targetTime(untilMs, nowMs),
+      untilMs,
+    };
+  });
   // The dialog outlives the menu, which closes as it opens.
   const openDialog = () => {
     props.onOpenChange(false);
@@ -113,40 +131,63 @@ export function RowSnoozeButton(props: {
         <PopoverContent
           align="start"
           aria-label="Snooze until"
-          className="grid w-56 gap-0.5 p-1"
+          className="grid w-56 gap-1 p-1"
           onKeyDown={onKeyDown}
         >
-          {choices.map((choice, index) => (
+          {/* Durations share one row; the rest are a row each. */}
+          <div className="grid grid-cols-4 gap-0.5">
+            {picks
+              .filter((pick) => pick.short)
+              .map((pick) => (
+                <button
+                  aria-keyshortcuts={pick.key}
+                  aria-label={`${pick.label} ${pick.time}`}
+                  className={DURATION_CLASS}
+                  key={pick.label}
+                  onClick={() => props.onSnooze(pick.untilMs)}
+                  type="button"
+                >
+                  {pick.short}
+                  <span className={TIME_CLASS}>{pick.time}</span>
+                </button>
+              ))}
+          </div>
+          <div className="grid gap-0.5">
+            {picks
+              .filter((pick) => !pick.short)
+              .map((pick) => (
+                <button
+                  aria-keyshortcuts={pick.key}
+                  className={MENU_ROW_CLASS}
+                  key={pick.label}
+                  onClick={() => props.onSnooze(pick.untilMs)}
+                  type="button"
+                >
+                  {pick.label}
+                  <span className={TIME_CLASS}>{pick.time}</span>
+                </button>
+              ))}
+          </div>
+          {/* Custom… opens a dialog, so it stays last. */}
+          <div className="flex gap-0.5 border-t border-dashboard-border-subtle pt-1">
+            {props.eventSnooze ? (
+              <button
+                className={`${MENU_ROW_CLASS} flex-1`}
+                onClick={() => props.eventSnooze?.onSnooze(SOMEDAY)}
+                type="button"
+              >
+                Someday
+              </button>
+            ) : null}
             <button
-              aria-keyshortcuts={String(index + 1)}
-              className={MENU_ROW_CLASS}
-              key={choice.label}
-              onClick={() => props.onSnooze(choice.untilMs(nowMs))}
+              aria-keyshortcuts={String(choices.length + 1)}
+              className={`${MENU_ROW_CLASS} flex-1`}
+              onClick={openDialog}
               type="button"
             >
-              {choice.label}
-              <span className="text-xs text-dashboard-text-faint tabular-nums">
-                {targetTime(choice.untilMs(nowMs), nowMs)}
-              </span>
+              Custom…
             </button>
-          ))}
-          <button
-            aria-keyshortcuts={String(choices.length + 1)}
-            className={MENU_ROW_CLASS}
-            onClick={openDialog}
-            type="button"
-          >
-            Custom…
-          </button>
-          {props.eventSnooze ? (
-            <button
-              className={MENU_ROW_CLASS}
-              onClick={() => props.eventSnooze?.onSnooze(SOMEDAY)}
-              type="button"
-            >
-              Someday
-            </button>
-          ) : null}
+          </div>
         </PopoverContent>
       </Popover>
       {dialog ? (
