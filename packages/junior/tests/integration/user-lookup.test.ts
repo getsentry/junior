@@ -4,8 +4,11 @@ import { describe, expect, it } from "vitest";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { upsertIdentity, upsertLinkedIdentity } from "@/chat/identities/sql";
-import { parseSlackTeamId } from "@/chat/slack/ids";
-import { createUserLookupTool } from "@/chat/tools/user-lookup";
+import {
+  executeTool,
+  lookupTool,
+  seedLinkedIdentities,
+} from "../fixtures/user-lookup";
 import { juniorIdentities } from "@/db/schema";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
@@ -18,20 +21,6 @@ const rootTurnTools = turnBehavior({
   kind: "root",
   personInput: true,
 }).tools;
-
-async function executeTool<TInput>(tool: any, input: TInput) {
-  if (typeof tool?.execute !== "function") {
-    throw new Error("tool execute function missing");
-  }
-  const prepared = tool.prepareArguments?.(input) ?? input;
-  return await tool.execute(prepared, {} as any);
-}
-
-function lookupTool() {
-  const teamId = parseSlackTeamId("T0TEST");
-  if (!teamId) throw new Error("invalid test team id");
-  return createUserLookupTool(teamId, ["slack", "github"]);
-}
 
 describe("userLookup", () => {
   describe("provider slack", () => {
@@ -586,31 +575,6 @@ describe("userLookup", () => {
   });
 
   describe("provider github", () => {
-    async function seedLinkedIdentities(input: {
-      githubId: string;
-      githubHandle: string;
-      slackUserId: string;
-      slackHandle: string;
-    }) {
-      const slackIdentity = await upsertIdentity(getSqlExecutor(), {
-        kind: "user",
-        provider: "slack",
-        providerTenantId: "T0TEST",
-        providerSubjectId: input.slackUserId,
-        email: `${input.slackHandle}@sentry.io`,
-        emailVerified: true,
-        displayName: input.slackHandle,
-        handle: input.slackHandle,
-      });
-      if (!slackIdentity.userId) throw new Error("missing linked user");
-      await upsertLinkedIdentity(getSqlExecutor(), slackIdentity.userId, {
-        kind: "user",
-        provider: "github",
-        providerSubjectId: input.githubId,
-        handle: input.githubHandle,
-      });
-    }
-
     it("returns the linked Slack mention for a provider handle", async () => {
       await seedLinkedIdentities({
         githubId: "12345",
@@ -798,21 +762,21 @@ describe("userLookup", () => {
   });
 
   describe("input validation", () => {
-    it("requires provider and query in the model-facing schema", async () => {
+    it("requires only query in the model-facing schema", async () => {
       const tool = lookupTool();
 
       expect(tool.annotations).toMatchObject({ readOnlyHint: true });
       expect(tool.inputSchema).toMatchObject({
         type: "object",
         additionalProperties: false,
-        required: ["provider", "query"],
+        required: ["query"],
         properties: {
           provider: { enum: ["slack", "github"] },
           query: { type: "string" },
         },
       });
       expect(
-        Object.keys(tool.inputSchema.properties as Record<string, unknown>),
+        Object.keys(tool.inputSchema["properties"] as Record<string, unknown>),
       ).toEqual(["provider", "query"]);
     });
 
@@ -825,7 +789,7 @@ describe("userLookup", () => {
 
   describe("registration", () => {
     it("is registered in createTools", async () => {
-      const { createTools } = await import("@/chat/tools/index");
+      const { createTools } = await import("@/chat/tool-support/create-tools");
       const tools = createTools(
         [],
         {},
@@ -853,7 +817,7 @@ describe("userLookup", () => {
       );
 
       expect(tools).toHaveProperty("userLookup");
-      expect(tools.userLookup?.description).toContain("provider");
+      expect(tools["userLookup"]?.description).toContain("provider");
     });
   });
 });

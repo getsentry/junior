@@ -1,0 +1,55 @@
+{
+  "automations": [
+    {
+      "id": "event-2",
+      "kind": "event",
+      "title": "Incident change alerts",
+      "task": {
+        "kind": "instruction",
+        "instruction": "Notify responders when the incident changes"
+      },
+      "status": "active",
+      "trigger": "incident updated on Incident · INC-17",
+      "destination": "#incident-response",
+      "createdBy": "Avery Chen",
+      "ownedByYou": false,
+      "url": "http://127.0.0.1:4317/automations/event-2"
+    },
+    {
+      "id": "event-1",
+      "kind": "event",
+      "title": "Closed issue summary",
+      "task": {
+        "kind": "instruction",
+        "instruction": "Summarize the closed issue"
+      },
+      "status": "active",
+      "trigger": "issue closed on Issue · ACME-42; labels includes bug; repository is api or web",
+      "destination": "#project-updates",
+      "createdBy": "Morgan",
+      "ownedByYou": true,
+      "lastRunAt": "2026-08-05T18:30:00.000Z",
+      "lastConversationId": "agent-dispatch:event-1",
+      "url": "http://127.0.0.1:4317/automations/event-1"
+    },
+    {
+      "id": "scheduled-1",
+      "kind": "scheduled",
+      "title": "Weekly project summary",
+      "task": {
+        "kind": "instruction",
+        "instruction": "Send the weekly project summary"
+      },
+      "status": "active",
+      "trigger": "Every Monday at 9:00 AM (America/Los_Angeles)",
+      "nextRunAt": "2026-08-10T16:00:00.000Z",
+      "destination": "#project-updates",
+      "createdBy": "Morgan",
+      "ownedByYou": true,
+      "lastRunAt": "2026-08-06T16:00:00.000Z",
+      "lastConversationId": "scheduler:daily-ops-digest",
+      "url": "http://127.0.0.1:4317/automations/scheduled-1"
+    }
+  ],
+  "total": 3
+}

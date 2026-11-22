@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import * as z from "zod";
-import { createApp, defineJuniorPlugins } from "@/app";
+import { createApp } from "@/app";
 import type { PiMessage } from "@/chat/pi/messages";
 import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import {
@@ -12,16 +11,26 @@ import {
   getActiveAgentInvocationForConversation,
   getAgentInvocation,
 } from "@/chat/agent-invocations/store";
-import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result";
+import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
+import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
+import { createEventInboundMessage } from "@/chat/events/notification";
+import {
+  getCurrentSystemPrompt,
+  getCurrentTools,
+  type Context,
+} from "@earendil-works/pi-ai";
 import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
+import { bindMessageAgent } from "@/chat/agent-invocations/message";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
+  appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -36,12 +45,7 @@ import {
   neverRunAgentRunner,
 } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-import {
-  createEventSource,
-  defineJuniorPlugin,
-  definePluginTool,
-  pluginToolOutputSchema,
-} from "@sentry/junior-plugin-api";
+import { createEventSource } from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
   destination,
@@ -55,7 +59,13 @@ import {
   loadMessageEvents,
   loadTurnEvents,
   loadSubagentEvents,
+  prepareForkParentHistory,
+  prepareSummarizedHistory,
+  upkeepPlugins,
 } from "../fixtures/agent-invocations";
+import { recordTurnStart } from "../fixtures/turn-start";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 
 describe("agent invocation conversation work", () => {
   afterEach(async () => {
@@ -63,24 +73,41 @@ describe("agent invocation conversation work", () => {
     vi.restoreAllMocks();
   });
 
-  it("reads the root Location and visibility and sends only the reply to the parent", async () => {
+  it("reads the root Location and visibility, sends only the reply to the parent, and keeps one prompt on every path", async () => {
     const { conversationStore, fixture } =
       await prepareSlackParentConversation();
     let observedVisibility: ReturnType<typeof getCurrentConversationPrivacy>;
+    const modelContexts: Context[] = [];
+    const laterReply = (text: string) => ({
+      type: "toolCall" as const,
+      name: "reply",
+      arguments: { text },
+      onRequest: (context: Context) => modelContexts.push(context),
+    });
     const agentRunner = createModelAgentRunner(
       createModelStream([
         {
           type: "toolCall",
           name: "reply",
           arguments: { text: "Durable child result" },
-          onRequest: () => {
+          onRequest: (context) => {
             observedVisibility = getCurrentConversationPrivacy();
+            modelContexts.push(context);
           },
         },
+        laterReply("Watch Event result"),
+        laterReply("Helper result"),
       ]),
+      {
+        bindMessageAgent: (childRun) =>
+          bindMessageAgent(childRun, { queue: () => queue }),
+        bindSpawnAgent: (childRun) =>
+          bindSpawnAgent(childRun, { queue: () => queue }),
+      },
     );
     const run = vi.spyOn(agentRunner, "run");
     const {
+      process,
       queue,
       run: route,
       state,
@@ -243,9 +270,13 @@ describe("agent invocation conversation work", () => {
       await expect(getAgentInvocation(created.invocationId)).resolves.toEqual(
         completed,
       );
-      await expect(
-        loadProjection({ conversationId: created.childConversationId }),
-      ).resolves.toEqual(
+      expect(
+        (
+          await loadConversationProjection({
+            conversationId: created.childConversationId,
+          })
+        ).messages,
+      ).toEqual(
         expect.arrayContaining([
           expect.objectContaining({
             role: "assistant",
@@ -310,7 +341,7 @@ describe("agent invocation conversation work", () => {
           provenance: contextProvenance,
           text: slackInvocationInput.input,
         },
-        disabledFeatures: ["interactive-auth", "subagents"],
+        disabledFeatures: ["interactive-auth"],
         reasoning: "medium",
         actor: slackInvocationInput.actor,
         destination: slackDestination,
@@ -327,6 +358,74 @@ describe("agent invocation conversation work", () => {
       });
       expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
       expect(observedVisibility).toBe("public");
+
+      // A child Conversation has one prompt cache. A Watch Event and its own
+      // child agent's reply run on its Conversation loop, not on an Agent
+      // invocation, and they must send the same system prompt and tools.
+      vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
+      const processChild = async () => {
+        // Event input waits for its burst window, as on a root.
+        vi.setSystemTime(Date.now() + 60_000);
+        await process(queue.takeMessageFor(created.childConversationId));
+      };
+      await appendAndEnqueueInboundMessage({
+        message: createEventInboundMessage({
+          event: {
+            eventKey: "deploy-1",
+            eventType: "deployment.failed",
+            identifier: "getsentry/junior",
+            namespace: "github",
+            occurredAtMs: Date.now(),
+            trustedSummary: "A deployment failed.",
+          },
+          subscription: {
+            conversationId: created.childConversationId,
+            id: "watch-1",
+          },
+          text: "Deploy failed.",
+        }),
+        queue,
+        state,
+      });
+      await processChild();
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "helper-1",
+        parentConversationId: created.childConversationId,
+      });
+      await enqueueChildResultToParent({
+        actor: helper.actor,
+        messageKey: "helper-reply",
+        queue,
+        result: {
+          kind: "reply",
+          reply: { text: "Helper fact.", toolCallId: "helper-reply" },
+        },
+        sender: helper,
+        state,
+        turnId: getAgentInvocationTurnId(helper.invocationId),
+      });
+      await processChild();
+      expect(
+        run.mock.calls.map(([childRun]) => [
+          childRun.source.kind,
+          childRun.agentInvocationId === undefined,
+          childRun.location?.provider,
+        ]),
+      ).toEqual([
+        ["agent_invocation", false, "slack"],
+        ["event", true, "slack"],
+        ["event", true, "slack"],
+      ]);
+      // The model stream reads each request as a transcript.
+      const definitions = modelContexts.map(({ messages }) => ({
+        systemPrompt: getCurrentSystemPrompt(messages),
+        tools: getCurrentTools(messages).map((tool) => tool.name),
+      }));
+      expect(definitions).toHaveLength(3);
+      expect(definitions[0]!.systemPrompt).not.toBe("");
+      expect(definitions[1]).toEqual(definitions[0]);
+      expect(definitions[2]).toEqual(definitions[0]);
       // A person's stop of the parent skips the unread reply, as it skips a
       // result, so it starts no parent Turn.
       await stopChildAgentsBelow(slackParentConversationId, {
@@ -341,6 +440,7 @@ describe("agent invocation conversation work", () => {
         }),
       ).resolves.toBeUndefined();
     } finally {
+      vi.useRealTimers();
       await fixture.close();
     }
   });
@@ -543,6 +643,30 @@ describe("agent invocation conversation work", () => {
       expected: resumed,
     },
     {
+      // The swap keeps the earlier Turn's answer after the mark. It belongs
+      // to that Turn, so the resumed slice still calls the model.
+      name: "a child that swapped in a summary at Turn start",
+      earlierAnswer: true,
+      runs: 2,
+      expected: resumed,
+    },
+    {
+      // The fork history holds the parent's answer, but not this Turn's.
+      name: "a fork child",
+      fork: true,
+      runs: 2,
+      expected: resumed,
+    },
+    {
+      // A worker that committed fork history after the Turn start stopped
+      // before it committed any. The history must not join the Turn.
+      name: "a fork child whose Turn started before its history",
+      fork: true,
+      turnStartedFirst: true,
+      runs: 2,
+      expected: resumed,
+    },
+    {
       name: "a stopped child",
       stopBeforeWake: true,
       runs: 1,
@@ -561,40 +685,18 @@ describe("agent invocation conversation work", () => {
     },
   ])(
     "gives the wake after a yielded child invocation for $name to that invocation",
-    async ({ expected, failedResumes = 0, runs, stopBeforeWake = false }) => {
+    async ({
+      earlierAnswer = false,
+      expected,
+      fork = false,
+      failedResumes = 0,
+      runs,
+      stopBeforeWake = false,
+      turnStartedFirst = false,
+    }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
       const markDone = vi.fn((_input: { itemId: string }) => ({}));
-      await createApp({
-        plugins: defineJuniorPlugins([
-          defineJuniorPlugin({
-            manifest: {
-              name: "upkeep",
-              displayName: "Upkeep",
-              description: "Upkeep test tools",
-            },
-            hooks: {
-              tools: () => ({
-                markDone: definePluginTool({
-                  // The tool checks in code that its effect is safe, so action
-                  // review does not run, also in a child agent.
-                  approvalMode: "approve",
-                  exposure: "direct",
-                  annotations: {
-                    destructiveHint: true,
-                    idempotentHint: true,
-                    openWorldHint: true,
-                    readOnlyHint: false,
-                  },
-                  description: "Mark one item done.",
-                  inputSchema: z.object({ itemId: z.string() }),
-                  outputSchema: pluginToolOutputSchema,
-                  execute: markDone,
-                }),
-              }),
-            },
-          }),
-        ]),
-      });
+      await createApp({ plugins: upkeepPlugins(markDone) });
       const { conversationStore, fixture } = await prepareParentConversation();
       const agentRunner = createModelAgentRunner(
         createModelStream([
@@ -621,10 +723,22 @@ describe("agent invocation conversation work", () => {
           {
             ...invocationInput,
             idempotencyKey: "resume-1",
+            ...(fork
+              ? { fork, parentToolCallId: await prepareForkParentHistory() }
+              : undefined),
           },
           { conversationStore, queue, state },
         );
         const { childConversationId } = created;
+        if (earlierAnswer) {
+          await prepareSummarizedHistory(childConversationId);
+        }
+        if (turnStartedFirst) {
+          await recordTurnStart(
+            childConversationId,
+            getAgentInvocationTurnId(created.invocationId),
+          );
+        }
         // Child results also wake the parent. This test runs only the child.
         const processChild = async (softYieldAfterMs?: number) =>
           await processConversationQueueMessage(
@@ -644,12 +758,9 @@ describe("agent invocation conversation work", () => {
         });
         const { invocationId } =
           (await getActiveAgentInvocationForConversation(childConversationId))!;
-        await expect(
-          getTurnRecord(
-            childConversationId,
-            getAgentInvocationTurnId(invocationId),
-          ),
-        ).resolves.toMatchObject({
+        const turnId = getAgentInvocationTurnId(invocationId);
+        const paused = (await getTurnRecord(childConversationId, turnId))!;
+        expect(paused).toMatchObject({
           state: "paused",
           resumeReason: "yield",
           source: { kind: "agent_invocation" },
@@ -660,6 +771,12 @@ describe("agent invocation conversation work", () => {
             }),
           ]),
         });
+        // The paused Turn has no answer yet. An earlier Turn's answer is
+        // below its start.
+        const turnStart = await loadTurnStart(childConversationId, turnId);
+        expect(
+          savedTurnMessages(paused, turnStart).map(({ message }) => message),
+        ).not.toContainEqual(expect.objectContaining({ toolName: "reply" }));
         if (stopBeforeWake) {
           // The stop request outlives the paused run. The stopped agent
           // invocation takes the resume wake and does not run again.
@@ -693,9 +810,11 @@ describe("agent invocation conversation work", () => {
             getAgentInvocationTurnId(invocationId),
           ),
         ).resolves.not.toMatchObject({ state: "paused" });
-        const projection = await loadProjection({
-          conversationId: childConversationId,
-        });
+        const projection = (
+          await loadConversationProjection({
+            conversationId: childConversationId,
+          })
+        ).messages;
         expect(
           projection.filter(
             (message) =>
@@ -804,6 +923,10 @@ describe("agent invocation conversation work", () => {
           },
           { conversationStore, queue, state },
         );
+        await recordTurnStart(
+          created.childConversationId,
+          getAgentInvocationTurnId(created.invocationId),
+        );
         await upsertTurnRecord({
           actor: invocationInput.actor,
           conversationId: created.childConversationId,
@@ -835,7 +958,6 @@ describe("agent invocation conversation work", () => {
             ...tail,
           ] as PiMessage[],
           turnId: getAgentInvocationTurnId(created.invocationId),
-          turnStartMessageIndex: 0,
           sliceId: 1,
           source: { kind: "agent_invocation" },
           state: "completed",
@@ -856,6 +978,9 @@ describe("agent invocation conversation work", () => {
         await expect(
           loadTurnEvents(created.childConversationId),
         ).resolves.toEqual([
+          expect.objectContaining({
+            data: expect.objectContaining({ type: "turn_started" }),
+          }),
           expect.objectContaining({
             data: expect.objectContaining({
               outcome: turnOutcome,

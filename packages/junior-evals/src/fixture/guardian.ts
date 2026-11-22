@@ -6,6 +6,8 @@
  * what Guardian was shown. `forceNextGuardianDecision()` is an injected
  * fault: the next review gets a fixed answer instead of the model's, so the
  * allow, ask, and deny paths run the same way each time.
+ * `failGuardianReviews()` is an injected fault too: every review gets the
+ * AI Gateway failure of an upstream provider outage.
  */
 import { HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
@@ -49,8 +51,26 @@ const FORCED_ASSESSMENTS = {
   },
 } as const;
 
+// AI Gateway responses of a Guardian model call in an upstream outage.
+const GUARDIAN_FAULTS = {
+  server_error: () =>
+    HttpResponse.json(
+      {
+        error: {
+          message: "Service temporarily unavailable. Please try again shortly.",
+          type: "internal_server_error",
+        },
+      },
+      { status: 503 },
+    ),
+  unreachable: () => HttpResponse.error(),
+};
+
+export type GuardianFault = keyof typeof GUARDIAN_FAULTS;
+
 let reviews: GuardianReview[] = [];
 const forcedDecisions: Array<keyof typeof FORCED_ASSESSMENTS> = [];
+let guardianFault: GuardianFault | undefined;
 
 /** The Guardian reviews of tool calls in this test, oldest first. */
 export function guardianReviews(): GuardianReview[] {
@@ -72,6 +92,18 @@ export function forceNextGuardianDecision(
   return FORCED_ASSESSMENTS[decision].reason;
 }
 
+/**
+ * Injected fault: every Guardian review in this test fails at the AI Gateway,
+ * as in an upstream outage of the Guardian model. Required review fails
+ * closed, so the reviewed tool call does not run.
+ */
+export function failGuardianReviews(fault: GuardianFault): void {
+  guardianFault = fault;
+  onTestFinished(() => {
+    guardianFault = undefined;
+  });
+}
+
 /** Forget the reviews of an earlier test. The observer calls it for each test. */
 export function resetGuardianReviews(): void {
   reviews = [];
@@ -91,7 +123,12 @@ export async function answerGuardianReview(
     prompt?: Array<{ content?: unknown; role?: string }>;
   };
   const [system, ...messages] = payload.prompt ?? [];
-  if (system?.content !== GUARDIAN_ACTION_POLICY) return undefined;
+  if (
+    typeof system?.content !== "string" ||
+    !system.content.startsWith(GUARDIAN_ACTION_POLICY)
+  ) {
+    return undefined;
+  }
   const text = messages
     .flatMap((message) =>
       Array.isArray(message.content) ? message.content : [],
@@ -115,6 +152,7 @@ export async function answerGuardianReview(
     input: proposal.input,
     tool: proposal.tool.name,
   });
+  if (guardianFault) return GUARDIAN_FAULTS[guardianFault]();
   const forced = forcedDecisions.shift();
   if (!forced) return undefined;
   return HttpResponse.json({

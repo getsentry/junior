@@ -1,4 +1,5 @@
-import type { StreamFn } from "@earendil-works/pi-agent-core";
+import { mapBounded } from "@/chat/fan-out";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 import type { MessageAttachment } from "@/chat/attachments/input";
 import type {
   AgentAttachment,
@@ -18,15 +19,18 @@ export interface AgentRunner {
 
 /** Compose the agent executor with stable host dependencies. */
 export function createAgentRunner(
-  execute: (run: AgentRun, streamFn?: StreamFn) => Promise<AgentRunOutcome>,
+  execute: (
+    run: AgentRun,
+    streamFn?: AgentRequestStreamFn,
+  ) => Promise<AgentRunOutcome>,
   options?: {
     attachmentStorage?: AttachmentStorage;
     backgroundCompactionQueue?: BackgroundCompactionQueue;
     bindMessageAgent?: AgentEnvironment["bindMessageAgent"];
     bindSpawnAgent?: AgentEnvironment["bindSpawnAgent"];
     conversationWorkQueue?: ConversationWorkQueue;
-    streamFn?: StreamFn;
-    tracePropagation?: SandboxEgressTracePropagationConfig;
+    streamFn?: AgentRequestStreamFn;
+    tracePropagation?: SandboxEgressTracePropagationConfig | undefined;
   },
 ): AgentRunner {
   const attachmentStorage = options?.attachmentStorage;
@@ -89,8 +93,9 @@ export function createAgentRunner(
           drainSteeringMessages: (accept) =>
             drainSteeringMessages(async (messages) =>
               accept(
-                await Promise.all(
-                  messages.map(async ({ storedAttachments, ...message }) =>
+                await mapBounded(
+                  messages,
+                  async ({ storedAttachments, ...message }) =>
                     storedAttachments?.length
                       ? {
                           ...message,
@@ -98,7 +103,6 @@ export function createAgentRunner(
                             await loadStoredAttachments(storedAttachments),
                         }
                       : message,
-                  ),
                 ),
               ),
             ),

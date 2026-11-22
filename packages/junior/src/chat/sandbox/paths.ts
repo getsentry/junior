@@ -9,13 +9,21 @@ function normalizeWorkspaceRoot(input: string | undefined): string {
 }
 
 export const SANDBOX_WORKSPACE_ROOT = normalizeWorkspaceRoot(
-  process.env.VERCEL_SANDBOX_WORKSPACE_DIR,
+  process.env["VERCEL_SANDBOX_WORKSPACE_DIR"],
 );
 export const SANDBOX_REPOS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/repos`;
 export const SANDBOX_SKILLS_ROOT = `${SANDBOX_WORKSPACE_ROOT}/skills`;
 export const SANDBOX_DATA_ROOT = `${SANDBOX_WORKSPACE_ROOT}/data`;
 /** Runtime-owned files inside the sandbox, outside every repository. */
 export const SANDBOX_JUNIOR_ROOT = `${SANDBOX_WORKSPACE_ROOT}/.junior`;
+/**
+ * Runtime-written files that live only as long as the Sandbox. Nothing here
+ * is ever copied out of the Sandbox. Tool notes name these paths, so keep the
+ * root short.
+ */
+export const SANDBOX_SCRATCH_ROOT = "/tmp/jr";
+/** Sandbox directory for attachment files that tools write. */
+export const ATTACHMENT_DIR = ".junior/attachments";
 const SANDBOX_RUNTIME_BIN_DIR = `${SANDBOX_JUNIOR_ROOT}/bin`;
 
 /**

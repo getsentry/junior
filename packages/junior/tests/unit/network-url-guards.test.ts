@@ -10,8 +10,8 @@ vi.mock("node:dns/promises", () => ({
   },
 }));
 
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { assertPublicUrl } from "@/chat/tools/web/network";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { assertPublicUrl } from "@/chat/tool-support/web/network";
 
 describe("network URL guards", () => {
   beforeEach(() => {
@@ -19,7 +19,9 @@ describe("network URL guards", () => {
   });
 
   it("blocks IPv4-mapped IPv6 loopback addresses", async () => {
-    await expect(assertPublicUrl("http://[::ffff:127.0.0.1]/")).rejects.toMatchObject({
+    await expect(
+      assertPublicUrl("http://[::ffff:127.0.0.1]/"),
+    ).rejects.toMatchObject({
       name: "ToolInputError",
       message: "Private IPv6 addresses are blocked",
     });
@@ -34,7 +36,9 @@ describe("network URL guards", () => {
   it("blocks hostnames that resolve to IPv4-mapped private IPv6", async () => {
     lookupMock.mockResolvedValue([{ address: "::ffff:127.0.0.1", family: 6 }]);
 
-    await expect(assertPublicUrl("https://example.com/path")).rejects.toMatchObject({
+    await expect(
+      assertPublicUrl("https://example.com/path"),
+    ).rejects.toMatchObject({
       name: "ToolInputError",
       message: "Resolved to a private IPv6 address",
     });

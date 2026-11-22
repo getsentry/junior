@@ -4,11 +4,25 @@ import { createMemoryAttachmentStorage } from "./memory";
 import { createS3AttachmentStorage } from "./s3";
 import { createVercelAttachmentStorage } from "./vercel";
 
-/** Bytes and metadata written to attachment object storage. */
+/**
+ * One object write. `body` streams, so a large file never sits in memory.
+ * `bytes` is the exact body length: S3 needs it before the body starts.
+ */
 export interface AttachmentWrite {
-  body: Buffer;
+  body: ReadableStream<Uint8Array>;
+  bytes: number;
   contentType: string;
   key: string;
+}
+
+/** Stream bytes that are already in memory to `AttachmentStorage.put`. */
+export function bufferBody(data: Uint8Array): ReadableStream<Uint8Array> {
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      controller.enqueue(data);
+      controller.close();
+    },
+  });
 }
 
 /** Inclusive byte offsets inside one stored object. */
@@ -37,6 +51,12 @@ export interface AttachmentUploadTarget {
   url: string;
 }
 
+/** One stored object that an outside service may read, and for how long. */
+export interface AttachmentDownloadRequest {
+  expiresAtMs: number;
+  key: string;
+}
+
 /** Small object-storage capability used by conversation attachments. */
 export interface AttachmentStorage {
   readonly provider: string;
@@ -50,6 +70,15 @@ export interface AttachmentStorage {
   createUploadTarget?(
     input: AttachmentUploadRequest,
   ): Promise<AttachmentUploadTarget>;
+  /**
+   * Sign a plain HTTPS GET of one key until `expiresAtMs`.
+   *
+   * An outside service, such as a transcription provider, fetches the bytes
+   * with this URL and no headers. The URL is a bearer credential: anyone who
+   * has it can read the object until it expires. Do not log it or put it in
+   * telemetry. A provider without signed reads omits this.
+   */
+  createDownloadUrl?(input: AttachmentDownloadRequest): Promise<string>;
   /**
    * Return live object bytes, or null when the key is missing.
    *

@@ -2,7 +2,7 @@ import { memo, useState } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
-  type AutomationSummary,
+  type AutomationListItem,
 } from "@sentry/junior/api/schema";
 import { ChevronRight } from "lucide-react";
 import { useAutomationsData } from "../../api";
@@ -28,8 +28,9 @@ import { cn } from "../../styles";
 import { AutomationRow } from "./AutomationRow";
 import { automationNeedsAttention } from "./AutomationStatus";
 import { SectionTitle } from "../../components/layout/SectionTitle";
+import { getDashboardAgentName } from "../../agentName";
 
-const EMPTY: AutomationSummary[] = [];
+const EMPTY: AutomationListItem[] = [];
 
 // Groups need every visible Automation at once. The server caps a page at 100.
 const LANDING_PAGE_SIZE = "100";
@@ -45,7 +46,7 @@ const LANDING_FILTERS = [
 ] as const;
 
 type AutomationGroup = {
-  automations: AutomationSummary[];
+  automations: AutomationListItem[];
   collapsed?: boolean;
   key: string;
   label: string;
@@ -145,7 +146,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
             <p className="m-0 text-sm text-dashboard-text-muted">
               {LANDING_FILTERS.some((key) => searchParams.has(key))
                 ? "No automations matched these filters."
-                : "No automations yet. Ask Junior in Slack to do something on a schedule or when something happens."}
+                : `No automations yet. Ask ${getDashboardAgentName()} in Slack to do something on a schedule or when something happens.`}
             </p>
           </Card>
         ) : null}
@@ -171,7 +172,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
  * tooltips. Rows re-render only when the results or the URL change.
  */
 const AutomationGroups = memo(function AutomationGroups(props: {
-  automations: AutomationSummary[];
+  automations: AutomationListItem[];
   search: string;
 }) {
   const navigate = useNavigate();
@@ -192,7 +193,9 @@ const AutomationGroups = memo(function AutomationGroups(props: {
  * Group by what needs a person, then by what still runs. Every group uses
  * one order, latest run first, so the "Ran" times read top to bottom.
  */
-function groupAutomations(automations: AutomationSummary[]): AutomationGroup[] {
+function groupAutomations(
+  automations: AutomationListItem[],
+): AutomationGroup[] {
   const sorted = [...automations].sort(byLatestRun);
   const attention = sorted.filter(
     (automation) =>
@@ -225,7 +228,7 @@ function groupAutomations(automations: AutomationSummary[]): AutomationGroup[] {
 }
 
 /** Latest run first. Automations that never ran follow, newest first. */
-function byLatestRun(a: AutomationSummary, b: AutomationSummary): number {
+function byLatestRun(a: AutomationListItem, b: AutomationListItem): number {
   return (
     (b.lastRunAt ?? "").localeCompare(a.lastRunAt ?? "") ||
     b.createdAt.localeCompare(a.createdAt) ||

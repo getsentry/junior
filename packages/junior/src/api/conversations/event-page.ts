@@ -32,8 +32,8 @@ const MIN_SCAN_SIZE = 64;
 async function readConversationEventRows(
   executor: JuniorSqlDatabase,
   args: {
-    afterSeq?: number | SQL;
-    beforeSeq?: number;
+    afterSeq?: number | SQL | undefined;
+    beforeSeq?: number | undefined;
     conversationId: string;
     direction: "backward" | "forward";
     limit: number;
@@ -161,17 +161,18 @@ async function readThreadIds(
   return new Set(rows.map((row) => row.conversationId));
 }
 
-/** Read the first Turn start, which marks history inherited from a fork. */
-async function readFirstTurnStart(
+/** Read the first event, which marks history inherited from a fork. */
+async function readFirstEvent(
   executor: JuniorSqlDatabase,
   conversationId: string,
 ): Promise<ConversationEvent | undefined> {
-  const [row] = await readConversationEventRows(executor, {
-    conversationId,
-    direction: "forward",
-    limit: 1,
-    types: ["turn_started"],
-  });
+  const [row] = await executor
+    .db()
+    .select(conversationEventColumns)
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId))
+    .orderBy(asc(juniorConversationEvents.seq))
+    .limit(1);
   return row ? eventFromRow(row) : undefined;
 }
 
@@ -197,7 +198,7 @@ async function projectConversationEvents(
     canExposePayload: boolean;
     conversationId: string;
     events: ConversationEvent[];
-    firstTurnStart?: ConversationEvent;
+    firstEvent?: ConversationEvent;
   },
 ): Promise<ConversationReportEvent[]> {
   const events = args.events.sort((left, right) => left.seq - right.seq);
@@ -268,9 +269,7 @@ async function projectConversationEvents(
   return projectEventPage({
     canExposePayload: args.canExposePayload,
     events,
-    ...(args.firstTurnStart
-      ? { firstTurnStart: args.firstTurnStart }
-      : undefined),
+    ...(args.firstEvent ? { firstEvent: args.firstEvent } : undefined),
     subagentStartEvents,
     threadIds,
     toolStartEvents: toolStartRows.map(eventFromRow),
@@ -291,7 +290,7 @@ async function scanConversationEventPage(
   executor: JuniorSqlDatabase,
   args: {
     afterSeq?: number | SQL;
-    beforeSeq?: number;
+    beforeSeq?: number | undefined;
     canExposePayload: boolean;
     conversationId: string;
     direction: "backward" | "forward";
@@ -299,14 +298,15 @@ async function scanConversationEventPage(
   },
 ): Promise<ConversationReportEvent[]> {
   const scanSize = Math.max(args.limit + 1, MIN_SCAN_SIZE);
-  const firstTurnStartRead = readFirstTurnStart(executor, args.conversationId);
+  const firstEventRead = readFirstEvent(executor, args.conversationId);
   const events: ConversationEvent[] = [];
   let { afterSeq, beforeSeq } = args;
-  let firstTurnStart: ConversationEvent | undefined;
+  let firstEvent: ConversationEvent | undefined;
   let counted = 0;
 
   while (counted <= args.limit) {
-    const [batch, turnStart] = await Promise.all([
+    // oxlint-disable-next-line no-await-in-loop -- Each scan starts after the last row of the scan before.
+    const [batch, first] = await Promise.all([
       readConversationEventRows(executor, {
         afterSeq,
         beforeSeq,
@@ -314,9 +314,9 @@ async function scanConversationEventPage(
         direction: args.direction,
         limit: scanSize,
       }),
-      firstTurnStartRead,
+      firstEventRead,
     ]);
-    firstTurnStart = turnStart;
+    firstEvent = first;
     if (batch.length === 0) break;
 
     const decoded = startSpan(
@@ -331,7 +331,7 @@ async function scanConversationEventPage(
     counted += projectEventPage({
       canExposePayload: args.canExposePayload,
       events: decoded,
-      ...(firstTurnStart ? { firstTurnStart } : undefined),
+      ...(firstEvent ? { firstEvent } : undefined),
     }).length;
     if (batch.length < scanSize) break;
     if (args.direction === "backward") beforeSeq = batch.at(-1)!.seq;
@@ -342,7 +342,7 @@ async function scanConversationEventPage(
     canExposePayload: args.canExposePayload,
     conversationId: args.conversationId,
     events,
-    ...(firstTurnStart ? { firstTurnStart } : undefined),
+    ...(firstEvent ? { firstEvent } : undefined),
   });
 }
 
@@ -357,10 +357,10 @@ async function scanConversationEventPage(
 export async function readConversationEventPage(
   executor: JuniorSqlDatabase,
   args: {
-    beforeSeq?: number;
+    beforeSeq?: number | undefined;
     canExposePayload: boolean;
     conversationId: string;
-    latestTurns?: number;
+    latestTurns?: number | undefined;
     limit: number;
   },
 ): Promise<{

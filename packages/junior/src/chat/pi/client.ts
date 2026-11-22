@@ -6,13 +6,17 @@ import {
   streamAnthropic,
   streamSimpleAnthropic,
   type CacheRetention,
+  type Api,
   type Message,
   type Model,
   type ThinkingLevel,
   type Tool,
 } from "@/chat/pi/sdk";
 import { createGatewayProvider } from "@ai-sdk/gateway";
-import { resolveGatewayCredential } from "@/chat/pi/gateway-auth";
+import {
+  getGatewayApiKey,
+  resolveGatewayCredential,
+} from "@/chat/pi/gateway-auth";
 
 export {
   getGatewayApiKey,
@@ -23,9 +27,13 @@ import {
   embedMany,
   experimental_decide,
   Experimental_DecisionRefusalError,
+  generateImage,
   generateObject,
+  generateText,
+  NoImageGeneratedError,
   NoObjectGeneratedError,
   rerank,
+  type GeneratedFile,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
@@ -39,11 +47,16 @@ import {
 // bundled chunk, not the original module).
 registerApiProvider({
   api: "anthropic-messages",
-  stream: streamAnthropic,
-  streamSimple: streamSimpleAnthropic,
+  stream: withEnabledGatewayProviders(streamAnthropic),
+  streamSimple: withEnabledGatewayProviders(streamSimpleAnthropic),
 });
 import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
+import {
+  objectCompletionAttributes,
+  structuredOutputErrorCause,
+  structuredOutputTokenLimit,
+} from "@/chat/pi/object-completion";
 import {
   extractGenAiUsageAttributes,
   normalizeGenAiFinishReason,
@@ -66,14 +79,16 @@ import {
   isProviderRetryError,
 } from "@/chat/services/provider-error";
 import { hasCompactedConversationContext } from "@/chat/services/context-compaction-marker";
+import { gatewayRoutingAttributes } from "@/chat/pi/gateway-routing-attributes";
 import { requestPrefixAttributes } from "@/chat/pi/request-prefix-attributes";
+import { withEnabledGatewayProviders } from "@/chat/gateway-providers/routing";
 
 const GATEWAY_PROVIDER = "vercel-ai-gateway" as const;
 const GATEWAY_BASE_URL = "https://ai-gateway.vercel.sh";
 // Pi's bundled catalog can lag behind the gateway. Keep missing models and
 // metadata corrections here until the catalog includes them. Remove these
 // overrides when Pi supplies the same metadata or Junior uses a live catalog.
-const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
+const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<Api>>> = {
   // Metadata from https://ai-gateway.vercel.sh/v1/models.
   "anthropic/claude-opus-5.5": {
     id: "anthropic/claude-opus-5.5",
@@ -97,6 +112,7 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
     },
     compat: {
       forceAdaptiveThinking: true,
+      supportsMidConvoSystemMessages: true,
       supportsTemperature: false,
     },
   },
@@ -146,6 +162,9 @@ const GATEWAY_MODEL_OVERRIDES: Readonly<Record<string, Model<any>>> = {
     thinkingLevelMap: {
       xhigh: "xhigh",
       max: "max",
+    },
+    compat: {
+      supportsMidConvoSystemMessages: true,
     },
   },
   "openai/gpt-6-astra": {
@@ -247,13 +266,18 @@ function extractText(message: {
     .trim();
 }
 
-/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
-export function resolveGatewayModel(modelId: string): Model<any> {
-  const matched =
+function findGatewayModel(modelId: string): Model<Api> | undefined {
+  return (
     GATEWAY_MODEL_OVERRIDES[modelId] ??
     getModels(GATEWAY_PROVIDER).find(
-      (model: Model<any>) => model.id === modelId,
-    );
+      (model: Model<Api>) => model.id === modelId,
+    )
+  );
+}
+
+/** Resolve gateway models through local overrides, then Pi's bundled catalog. */
+export function resolveGatewayModel(modelId: string): Model<Api> {
+  const matched = findGatewayModel(modelId);
   if (!matched) {
     throw new Error(`Unknown AI Gateway model id: ${modelId}`);
   }
@@ -268,7 +292,7 @@ export function resolveGatewayModel(modelId: string): Model<any> {
 /** Execute a direct chat completion inside a dedicated `gen_ai.chat` span. */
 export async function completeText(params: {
   modelId: string;
-  system?: string;
+  system?: string | undefined;
   messages: Message[];
   /** Tool definitions to send. They are part of the cached prompt prefix. */
   tools?: Tool[];
@@ -276,7 +300,7 @@ export async function completeText(params: {
   cacheRetention?: CacheRetention;
   thinkingLevel?: ThinkingLevel;
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
   /** AI Gateway session ID. Pass the Conversation ID to share its session. */
@@ -359,6 +383,20 @@ export async function completeText(params: {
               setSpanAttributes(requestPrefixAttributes(payload));
               return undefined;
             },
+            // The edge request id lets Vercel trace how the gateway routed
+            // the call, for example when a cache warmup misses.
+            onResponse: (response) => {
+              const vercelId = response.headers["x-vercel-id"];
+              if (vercelId) {
+                setSpanAttributes({ "app.ai.gateway.vercel_id": vercelId });
+              }
+            },
+            onProviderStreamEvent: (event) => {
+              const routing = gatewayRoutingAttributes(event);
+              if (routing) {
+                setSpanAttributes(routing);
+              }
+            },
           },
         );
       } catch (error) {
@@ -393,6 +431,9 @@ export async function completeText(params: {
         ...(message.model
           ? { "gen_ai.response.model": message.model }
           : undefined),
+        ...(message.responseId
+          ? { "gen_ai.response.id": message.responseId }
+          : undefined),
       };
       setSpanAttributes(endAttributes);
       if (message.stopReason === "error") {
@@ -419,17 +460,20 @@ function logContextFromMetadata(
   metadata: Record<string, unknown> | undefined,
 ): LogContext {
   const conversationId =
-    typeof metadata?.conversationId === "string"
-      ? metadata.conversationId
-      : typeof metadata?.threadId === "string"
-        ? metadata.threadId
-        : undefined;
+    typeof metadata?.["conversationId"] === "string" &&
+    metadata["conversationId"]
+      ? metadata["conversationId"]
+      : undefined;
   const messageConversationId =
-    typeof metadata?.threadId === "string" ? metadata.threadId : undefined;
+    typeof metadata?.["threadId"] === "string"
+      ? metadata["threadId"]
+      : undefined;
   const destinationName =
-    typeof metadata?.channelId === "string" ? metadata.channelId : undefined;
+    typeof metadata?.["channelId"] === "string"
+      ? metadata["channelId"]
+      : undefined;
   const runId =
-    typeof metadata?.runId === "string" ? metadata.runId : undefined;
+    typeof metadata?.["runId"] === "string" ? metadata["runId"] : undefined;
 
   return {
     modelId,
@@ -495,17 +539,6 @@ function bestEffortObjectCompletionCost(
   }
 }
 
-/**
- * Keep only the fixed message and stack of a failed structured output. The SDK
- * error's `text` and its parse or validation cause hold the raw model output.
- */
-function structuredOutputErrorCause(error: NoObjectGeneratedError): Error {
-  const cause = new Error(error.message);
-  cause.name = error.name;
-  cause.stack = error.stack;
-  return cause;
-}
-
 /** Execute a schema-constrained completion using the AI SDK structured output path. */
 export async function completeObject<TSchema extends ZodTypeAny>(params: {
   modelId: string;
@@ -513,11 +546,17 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   system?: string;
   prompt: string;
   thinkingLevel?: ThinkingLevel;
+  /** Tokens for the object itself. Reasoning gets its own room on top. */
   maxTokens?: number;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{ costUsd?: number; object: z.infer<TSchema> }> {
+  // Plugins can name a model outside the catalog, so a miss sends the sum.
+  const maxOutputTokens = structuredOutputTokenLimit(
+    params.maxTokens,
+    findGatewayModel(params.modelId)?.maxTokens,
+  );
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
   let result: GenerateObjectResult<unknown>;
@@ -534,17 +573,21 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           ...(params.system !== undefined
             ? { system: params.system }
             : undefined),
-          ...(params.maxTokens !== undefined
-            ? { maxOutputTokens: params.maxTokens }
-            : undefined),
+          ...(maxOutputTokens !== undefined ? { maxOutputTokens } : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
+        }).catch((error: unknown) => {
+          if (NoObjectGeneratedError.isInstance(error)) {
+            setSpanAttributes(
+              objectCompletionAttributes(error.finishReason, error.usage),
+            );
+          }
+          throw error;
         });
-        setSpanAttributes({
-          "gen_ai.response.finish_reasons": [result.finishReason],
-          ...extractGenAiUsageAttributes(result.usage),
-        });
+        setSpanAttributes(
+          objectCompletionAttributes(result.finishReason, result.usage),
+        );
         return result;
       },
       {
@@ -561,8 +604,8 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         ...(params.thinkingLevel
           ? { "gen_ai.request.reasoning.level": params.thinkingLevel }
           : undefined),
-        ...(params.maxTokens !== undefined
-          ? { "gen_ai.request.max_tokens": params.maxTokens }
+        ...(maxOutputTokens !== undefined
+          ? { "gen_ai.request.max_tokens": maxOutputTokens }
           : undefined),
       },
     );
@@ -589,7 +632,7 @@ export async function completeDecision<
   modelId: string;
   state: Experimental_DecisionState;
   questions: TQuestions;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
   promptName?: string;
 }): Promise<{
@@ -670,7 +713,7 @@ export async function embedTexts(params: {
   inputType?: "document" | "query";
   modelId: string;
   texts: string[];
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   metadata?: Record<string, unknown>;
 }): Promise<{
   costUsd?: number;
@@ -767,7 +810,7 @@ export async function embedTexts(params: {
 }
 
 /** Read the billed cost that AI Gateway reports in provider metadata. */
-function gatewayCostUsd(providerMetadata: unknown): number | undefined {
+export function gatewayCostUsd(providerMetadata: unknown): number | undefined {
   const cost = (
     providerMetadata as { gateway?: { cost?: unknown } } | undefined
   )?.gateway?.cost;
@@ -855,5 +898,94 @@ export async function rerankTexts(params: {
       "gen_ai.request.model": params.modelId,
     });
     throw providerError;
+  }
+}
+
+const WEB_SEARCH_TOOL_NAME = "parallelSearch";
+
+/** Run one AI Gateway parallel search inside a `gen_ai.chat` span. */
+export async function searchWeb(params: {
+  modelId: string;
+  query: string;
+  maxResults: number;
+  signal: AbortSignal;
+  promptName?: string;
+}) {
+  // Use Junior's shared resolver so OIDC wins over a leftover team API key.
+  // createGatewayProvider() alone prefers AI_GATEWAY_API_KEY and would keep
+  // project attribution as unknown while the key remains set.
+  const credential = await resolveGatewayCredential();
+  const provider = createGatewayProvider({ apiKey: credential.token });
+  return await withSpan(
+    `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
+    "gen_ai.chat",
+    {},
+    async (setSpanAttributes) => {
+      const response = await generateText({
+        model: provider.chat(params.modelId),
+        prompt: params.query,
+        tools: {
+          [WEB_SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+            mode: "agentic",
+            maxResults: params.maxResults,
+          }),
+        },
+        toolChoice: { type: "tool", toolName: WEB_SEARCH_TOOL_NAME },
+        abortSignal: params.signal,
+      });
+      const costUsd = gatewayCostUsd(response.providerMetadata);
+      setSpanAttributes({
+        "gen_ai.response.finish_reasons": [response.finishReason],
+        ...extractGenAiUsageAttributes(
+          response.usage,
+          costUsd !== undefined ? { cost: { total: costUsd } } : undefined,
+        ),
+      });
+      return {
+        ...(costUsd !== undefined ? { costUsd } : undefined),
+        outputs: response.toolResults
+          .filter((result) => result.toolName === WEB_SEARCH_TOOL_NAME)
+          .map((result): unknown => result.output),
+      };
+    },
+    {
+      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
+      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
+      "gen_ai.request.model": params.modelId,
+      ...(params.promptName
+        ? { "gen_ai.prompt.name": params.promptName }
+        : undefined),
+      "server.address": GEN_AI_SERVER_ADDRESS,
+      "server.port": GEN_AI_SERVER_PORT,
+      "gen_ai.provider.auth_mode": credential.mode,
+    },
+  );
+}
+
+/** Generate or edit images with an AI Gateway image model. */
+export async function generateImages(params: {
+  modelId: string;
+  /** Input images make this an edit of those images. */
+  prompt: string | { text: string; images: Buffer[] };
+  fetch?: typeof fetch | undefined;
+}): Promise<{ costUsd?: number; images: GeneratedFile[] }> {
+  const provider = createGatewayProvider({
+    apiKey: await getGatewayApiKey(),
+    ...(params.fetch ? { fetch: params.fetch } : undefined),
+  });
+  try {
+    const result = await generateImage({
+      model: provider.imageModel(params.modelId),
+      prompt: params.prompt,
+      n: 1,
+    });
+    const costUsd = gatewayCostUsd(result.providerMetadata);
+    return {
+      ...(costUsd !== undefined ? { costUsd } : undefined),
+      images: result.images,
+    };
+  } catch (error) {
+    if (NoImageGeneratedError.isInstance(error)) return { images: [] };
+    throw error;
   }
 }

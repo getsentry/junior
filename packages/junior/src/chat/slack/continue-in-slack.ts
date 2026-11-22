@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import type { ConversationAccess } from "@/api/conversations/access";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import type { Conversation } from "@/chat/conversations/store";
 import {
   claimProviderConversation,
@@ -19,6 +18,7 @@ import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 import {
   deleteSlackMessage,
   getSlackMessagePermalink,
+  // ast-grep-ignore: no-raw-slack-turn-post -- first message of a dashboard Conversation that moves to Slack
   postSlackMessage,
 } from "@/chat/slack/outbound";
 import {
@@ -34,8 +34,8 @@ import { moveIdleConversationDestination } from "@/chat/task-execution/store";
 import { juniorDestinations } from "@/db/schema";
 
 /** Refusal for a move that cannot wait for the active Run. */
-export const BUSY = "Wait for Junior to finish, then try again.";
-const THREAD_TAKEN = "This thread already has a Junior conversation.";
+export const BUSY = "Wait for the current reply to finish, then try again.";
+const THREAD_TAKEN = "This Slack thread already has a conversation.";
 // Thrown in the move transaction to roll back the thread claim.
 const MOVED_ELSEWHERE = new Error("Conversation already has a Location");
 
@@ -95,15 +95,13 @@ async function movedMessageText(
   conversation: Conversation,
   actorName: string,
 ): Promise<string> {
-  const title = conversation.title ?? "Junior conversation";
+  const title = conversation.title ?? "Untitled conversation";
   const url = getDashboardConversationLink(conversation.conversationId);
-  const brief = await readLatestConversationBrief(
-    getDb(),
-    conversation.conversationId,
-  );
   return [
     `*${url ? formatSlackLink(url, title) : escapeSlackMrkdwnText(title)}*`,
-    ...(brief ? [`> ${escapeSlackMrkdwnText(brief.content.summary)}`] : []),
+    ...(conversation.summary
+      ? [`> ${escapeSlackMrkdwnText(conversation.summary)}`]
+      : []),
     `${escapeSlackMrkdwnText(actorName)} moved this conversation here from the dashboard. Mention me in this thread to continue.`,
   ].join("\n");
 }
@@ -138,6 +136,7 @@ async function postMovedMessage(
     });
     if (!joined.ok) return { refused: joined.error };
   }
+  // ast-grep-ignore: no-raw-slack-turn-post -- first message of a dashboard Conversation that moves to Slack
   const posted = await postSlackMessage({
     channelId: channel.channelId,
     includePermalink: true,

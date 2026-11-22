@@ -1,0 +1,4 @@
+# The tools that the iOS CI jobs use. Brewfile has the tools for local work.
+brew "xcodegen"
+brew "xcbeautify"
+brew "jq"

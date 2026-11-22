@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import * as acp from "@agentclientprotocol/sdk";
 import { createHttpStream } from "@agentclientprotocol/sdk/experimental/http-client";
 import type { StateAdapter } from "chat";
@@ -73,7 +74,7 @@ export function appFetch(...apps: Hono[]): typeof globalThis.fetch {
     const app = apps[nextApp % apps.length];
     nextApp += 1;
     if (!app) throw new Error("ACP test fetch requires an app");
-    return await app.fetch(new Request(input, init as RequestInit));
+    return await app.fetch(new Request(input, init));
   };
 }
 
@@ -87,6 +88,7 @@ export function createIndependentConversationWork(
     conversationStore: harness.conversationStore,
     getSlackAdapter: () => createSlackAdapterFixture(),
     queue: harness.queue,
+    sendPluginTask: sendVercelPluginTask,
     services: { agentRunner: harness.agentRunner },
     state,
   });

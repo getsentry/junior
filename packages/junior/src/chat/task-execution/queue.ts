@@ -22,7 +22,7 @@ export type ConversationQueueMessageRejectReason =
   | "signature_mismatch";
 
 export class ConversationQueueMessageRejectedError extends Error {
-  conversationId?: string;
+  conversationId?: string | undefined;
   reason: ConversationQueueMessageRejectReason;
 
   constructor(
@@ -45,7 +45,7 @@ export function isConversationQueueMessageRejectedError(
 }
 
 export interface ConversationQueueSendOptions {
-  delayMs?: number;
+  delayMs?: number | undefined;
   idempotencyKey?: string;
 }
 

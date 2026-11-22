@@ -1,0 +1,17 @@
+id: no-hardcoded-bot-name
+valid:
+  - 'const tool = { description: "Find open slots in your own calendar." };'
+  - "const title = `Sign in to ${botConfig.userName}`;"
+  - 'const pkg = "@sentry/junior";'
+  - 'const key = "junior:acp:v1:authorization";'
+  - "// Junior reads this comment, not the model."
+  - "export function defineJuniorPlugin() {}"
+  - 'const ref = "Juniors";'
+invalid:
+  - 'const tool = { description: "Read events that Junior''s account can see." };'
+  - "const tool = { description: `Find slots on Junior calendar ${zone}.` };"
+  - 'const input = z.string().describe("A channel name Junior already knows.");'
+  - 'throw new Error("Junior plugin manifest.name is required.");'
+  - 'const title = conversation.title ?? "Junior conversation";'
+  - 'const labels = { "Junior": 1 };'
+  - "const prompt = `You write a Brief for a Junior Conversation.`;"

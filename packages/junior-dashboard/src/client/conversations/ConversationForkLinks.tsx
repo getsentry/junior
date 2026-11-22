@@ -7,9 +7,9 @@ const linkClassName =
 
 /** Link a conversation to its fork source and to its forks. */
 export function ConversationForkLinks(props: {
-  forkedFromConversationId?: string;
-  forkedFromTitle?: string;
-  forks?: string[];
+  forkedFromConversationId?: string | undefined;
+  forkedFromTitle?: string | undefined;
+  forks?: string[] | undefined;
 }) {
   return (
     <nav

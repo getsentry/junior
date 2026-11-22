@@ -29,7 +29,7 @@ export async function hydrateMessageAttachments(
     ]),
   );
   for (const message of messages) {
-    const stored = readMessageAttachments(message.meta?.attachments);
+    const stored = readMessageAttachments(message.meta?.["attachments"]);
     const matched = slackFileIds(message.meta).flatMap((id) => {
       const attachment = byFileId.get(id);
       return attachment ? [attachment] : [];
@@ -44,7 +44,7 @@ export async function hydrateMessageAttachments(
 // files both have that id, so it would show every old file on every old
 // message. Match only real Slack file ids.
 function slackFileIds(meta: Record<string, unknown> | undefined): string[] {
-  const ids = meta?.slackFileIds ?? meta?.imageFileIds;
+  const ids = meta?.["slackFileIds"] ?? meta?.["imageFileIds"];
   return Array.isArray(ids)
     ? ids.filter(
         (id): id is string => typeof id === "string" && isSlackFileId(id),

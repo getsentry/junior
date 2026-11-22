@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
+import { gitHubCommentOnPullRequestTool } from "../src/tools/comment-on-pull-request";
 
 function toolContext(
   response?: Response,
@@ -24,7 +25,10 @@ function toolContext(
       )
     );
   });
-  return { fetch, tool: createGitHubCommentOnPullRequestTool({ fetch }) };
+  return {
+    fetch,
+    tool: bindPluginTool(gitHubCommentOnPullRequestTool, { egress: { fetch } }),
+  };
 }
 
 describe("commentOnPullRequest", () => {
@@ -35,7 +39,7 @@ describe("commentOnPullRequest", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           body: "Yes, see the new test.",
           in_reply_to: 42,
         },
@@ -73,7 +77,7 @@ describe("commentOnPullRequest", () => {
     await tool.execute?.(
       {
         repo: "getsentry/junior",
-        number: 691,
+        pull_request: 691,
         body: "Answered.",
         in_reply_to: 42,
       },
@@ -89,7 +93,7 @@ describe("commentOnPullRequest", () => {
     const { fetch, tool } = toolContext();
 
     await tool.execute?.(
-      { repo: "getsentry/junior", number: 691, body: "Answered." },
+      { repo: "getsentry/junior", pull_request: 691, body: "Answered." },
       { toolCallId: "comment" },
     );
 
@@ -107,7 +111,7 @@ describe("commentOnPullRequest", () => {
       tool.execute?.(
         {
           repo: "getsentry/junior",
-          number: 691,
+          pull_request: 691,
           body: "Answered.",
           in_reply_to: 42,
         },

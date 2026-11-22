@@ -21,9 +21,10 @@ import {
   type ConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { mockTitleModel } from "../../fixtures/title-model";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 const emptyThreadReplies = async () => [];
-const ORIGINAL_AI_GATEWAY_API_KEY = process.env.AI_GATEWAY_API_KEY;
+const ORIGINAL_AI_GATEWAY_API_KEY = process.env["AI_GATEWAY_API_KEY"];
 
 function createRuntime(
   args: {
@@ -105,7 +106,7 @@ function turnPiMessages(text: string) {
 
 describe("bot handlers (integration)", () => {
   beforeEach(async () => {
-    process.env.AI_GATEWAY_API_KEY = "test-gateway-key";
+    process.env["AI_GATEWAY_API_KEY"] = "test-gateway-key";
     mockTitleModel("Test conversation");
     resetConversationTitleStateForTests();
     resetAssistantTitleProjectionForTests();
@@ -114,9 +115,9 @@ describe("bot handlers (integration)", () => {
 
   afterEach(async () => {
     if (ORIGINAL_AI_GATEWAY_API_KEY === undefined) {
-      delete process.env.AI_GATEWAY_API_KEY;
+      delete process.env["AI_GATEWAY_API_KEY"];
     } else {
-      process.env.AI_GATEWAY_API_KEY = ORIGINAL_AI_GATEWAY_API_KEY;
+      process.env["AI_GATEWAY_API_KEY"] = ORIGINAL_AI_GATEWAY_API_KEY;
     }
     resetSlackApiMockState();
     resetConversationTitleStateForTests();
@@ -129,6 +130,7 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEDUP:1700000000.000";
     const destination = slackDestination("C9TIMEDUP");
     const activeSessionId = "turn_msg-duplicate";
+    await recordTurnStart(conversationId, activeSessionId);
     await upsertTurnRecord({
       conversationId,
       destination,
@@ -138,7 +140,6 @@ describe("bot handlers (integration)", () => {
       resumeReason: "yield",
       source: createSlackSourceForTest("C9TIMEDUP"),
       piMessages: turnPiMessages("please keep working"),
-      turnStartMessageIndex: 0,
     });
     const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
@@ -164,7 +165,7 @@ describe("bot handlers (integration)", () => {
         text: "please keep working",
         isMention: true,
       }),
-      { destination },
+      { conversationId: thread.id, destination },
     );
 
     expect(queue.sentRecords()).toEqual([
@@ -181,6 +182,7 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEFAIL:1700000000.000";
     const destination = slackDestination("C9TIMEFAIL");
     const activeSessionId = "turn_msg-original";
+    await recordTurnStart(conversationId, activeSessionId);
     await upsertTurnRecord({
       conversationId,
       destination,
@@ -190,7 +192,6 @@ describe("bot handlers (integration)", () => {
       resumeReason: "yield",
       source: createSlackSourceForTest("C9TIMEFAIL"),
       piMessages: turnPiMessages("please keep working"),
-      turnStartMessageIndex: 0,
     });
     const queue = createConversationWorkQueueTestAdapter();
     queue.rejectSends();
@@ -212,7 +213,10 @@ describe("bot handlers (integration)", () => {
       text: "what happened?",
       isMention: true,
     });
-    await slackRuntime.handleNewMention(thread, followUp, { destination });
+    await slackRuntime.handleNewMention(thread, followUp, {
+      conversationId: thread.id,
+      destination,
+    });
 
     expect(queue.queuedMessages()).toEqual([]);
     await expect(

@@ -8,6 +8,7 @@ import { fallbackShortTitle } from "@/chat/services/short-title";
 import { escapeSlackMrkdwnText, formatSlackLink } from "@/chat/slack/mrkdwn";
 import {
   openSlackDirectMessage,
+  // ast-grep-ignore: no-raw-slack-turn-post -- DM to the Automation creator, not Turn output
   postSlackMessage,
 } from "@/chat/slack/outbound";
 
@@ -60,6 +61,7 @@ export async function notifyAutomationBlocked(
             ? "Scheduled automation"
             : "Event automation",
         );
+      // ast-grep-ignore: no-raw-slack-turn-post -- DM to the Automation creator, not Turn output
       await postSlackMessage({
         channelId: await openSlackDirectMessage(task.createdBy.slackUserId),
         text: buildBlockedNoticeText(ref.automationId, title, ref.reason),

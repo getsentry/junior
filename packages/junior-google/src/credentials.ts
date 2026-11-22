@@ -1,18 +1,19 @@
 /**
  * Credential issuing and egress policy for Google APIs.
  *
- * Only this plugin's own tools may use Junior's Google account. The tools
- * enforce disclosure and invite rules in code, so the sandbox and other
- * callers get no Google credential at all.
+ * Only this plugin's own tools and link cards may use Junior's Google
+ * account. They enforce disclosure and invite rules in code, so the sandbox
+ * and other callers get no Google credential at all.
  */
 import {
   EgressPolicyDenied,
   type EgressHookContext,
   type IssueCredentialHookContext,
+  type PluginContext,
   type PluginCredentialResult,
   type PluginGrant,
 } from "@sentry/junior-plugin-api";
-import { readGoogleConfig } from "./config";
+import { readGoogleConfig, type GoogleConfig } from "./config";
 import { refreshGoogleAccessToken } from "./oauth";
 import {
   deleteRejectedGoogleAccount,
@@ -36,16 +37,36 @@ const GRANT_NAME = "account";
 // Renew leases a little before Google's access token expires.
 const LEASE_SAFETY_MS = 60_000;
 
+/**
+ * How a write operation checks that the requester may make the change.
+ *
+ * - `file-editor`: changes an existing Drive file. Its path captures the
+ *   file id. `googleApiRequest` refuses it unless the tool passes the file
+ *   from `requireEditableFile`, for that same id. That function checks that
+ *   the requester could edit the file themselves.
+ * - `own-calendar`: changes Junior's own calendar. The event tools check that
+ *   Junior organizes the event and that the requester is invited.
+ * - `creates`: creates a file that Junior's account owns.
+ */
+type WriteCheck = "file-editor" | "own-calendar" | "creates";
+
+type GoogleOperationRule = { host: string; method: string; path: RegExp } & (
+  | { access: "read" }
+  | { access: "write"; writeCheck: WriteCheck }
+);
+
 /** Google API operations that plugin tools may perform. */
 export const GOOGLE_OPERATIONS = {
   "google.calendar.event.create": {
     access: "write",
+    writeCheck: "own-calendar",
     host: GOOGLE_API_DOMAIN,
     method: "POST",
     path: /^\/calendar\/v3\/calendars\/primary\/events$/,
   },
   "google.calendar.event.delete": {
     access: "write",
+    writeCheck: "own-calendar",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
@@ -58,6 +79,7 @@ export const GOOGLE_OPERATIONS = {
   },
   "google.calendar.event.update": {
     access: "write",
+    writeCheck: "own-calendar",
     host: GOOGLE_API_DOMAIN,
     method: "PATCH",
     path: /^\/calendar\/v3\/calendars\/primary\/events\/[A-Za-z0-9_]+$/,
@@ -76,12 +98,14 @@ export const GOOGLE_OPERATIONS = {
   },
   "google.docs.document.batchUpdate": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_DOCS_API_DOMAIN,
     method: "POST",
-    path: /^\/v1\/documents\/[A-Za-z0-9_-]+:batchUpdate$/,
+    path: /^\/v1\/documents\/([A-Za-z0-9_-]+):batchUpdate$/,
   },
   "google.docs.document.create": {
     access: "write",
+    writeCheck: "creates",
     host: GOOGLE_DOCS_API_DOMAIN,
     method: "POST",
     path: /^\/v1\/documents$/,
@@ -126,21 +150,24 @@ export const GOOGLE_OPERATIONS = {
   // OAuth client created.
   "google.drive.permission.create": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "POST",
-    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions$/,
+    path: /^\/drive\/v3\/files\/([A-Za-z0-9_-]+)\/permissions$/,
   },
   "google.drive.file.delete": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
-    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+$/,
+    path: /^\/drive\/v3\/files\/([A-Za-z0-9_-]+)$/,
   },
   "google.drive.permission.delete": {
     access: "write",
+    writeCheck: "file-editor",
     host: GOOGLE_API_DOMAIN,
     method: "DELETE",
-    path: /^\/drive\/v3\/files\/[A-Za-z0-9_-]+\/permissions\/[A-Za-z0-9_-]+$/,
+    path: /^\/drive\/v3\/files\/([A-Za-z0-9_-]+)\/permissions\/[A-Za-z0-9_-]+$/,
   },
   "google.drive.permissions.list": {
     access: "read",
@@ -160,16 +187,39 @@ export const GOOGLE_OPERATIONS = {
     method: "GET",
     path: /^\/v4\/spreadsheets\/[A-Za-z0-9_-]+\/values:batchGet$/,
   },
+  "google.slides.page.get": {
+    access: "read",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "GET",
+    path: /^\/v1\/presentations\/[A-Za-z0-9_-]+\/pages\/[A-Za-z0-9_:-]+$/,
+  },
+  "google.slides.page.thumbnail": {
+    access: "read",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "GET",
+    path: /^\/v1\/presentations\/[A-Za-z0-9_-]+\/pages\/[A-Za-z0-9_:-]+\/thumbnail$/,
+  },
+  "google.slides.presentation.batchUpdate": {
+    access: "write",
+    writeCheck: "file-editor",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/presentations\/([A-Za-z0-9_-]+):batchUpdate$/,
+  },
+  "google.slides.presentation.create": {
+    access: "write",
+    writeCheck: "creates",
+    host: GOOGLE_SLIDES_API_DOMAIN,
+    method: "POST",
+    path: /^\/v1\/presentations$/,
+  },
   "google.slides.presentation.get": {
     access: "read",
     host: GOOGLE_SLIDES_API_DOMAIN,
     method: "GET",
     path: /^\/v1\/presentations\/[A-Za-z0-9_-]+$/,
   },
-} as const satisfies Record<
-  string,
-  { access: "read" | "write"; host: string; method: string; path: RegExp }
->;
+} as const satisfies Record<string, GoogleOperationRule>;
 
 export type GoogleOperation = keyof typeof GOOGLE_OPERATIONS;
 
@@ -207,6 +257,46 @@ function unavailable(message: string): PluginCredentialResult {
 
 const NOT_CONNECTED_MESSAGE = `Your own Google account is not connected. It is not the requester's account, and the requester cannot connect it. An admin must connect it on the dashboard Admin page or with \`junior google connect\`.`;
 
+type AccountToken =
+  | { accessToken: string; expiresAtMs: number }
+  | { unavailable: string };
+
+// Refresh the access token of Junior's Google account. A token that Google
+// rejects disconnects the account.
+async function refreshAccountToken(
+  ctx: Pick<PluginContext, "db" | "log">,
+  config: GoogleConfig,
+): Promise<AccountToken> {
+  const db = ctx.db as GoogleDb;
+  const record = await getGoogleAccount(db, config.accountEmail);
+  if (!record) return { unavailable: NOT_CONNECTED_MESSAGE };
+  const token = await refreshGoogleAccessToken({
+    config,
+    refreshToken: record.refreshToken,
+  });
+  if (!token) {
+    await deleteRejectedGoogleAccount(db, record);
+    ctx.log.warn("google.account.token_rejected", {
+      "app.google.account": config.accountEmail,
+    });
+    return { unavailable: `Google revoked access. ${NOT_CONNECTED_MESSAGE}` };
+  }
+  return token;
+}
+
+/**
+ * Return a fresh access token for Junior's Google account, for a request
+ * that cannot go through egress, such as a Drive thumbnail that the image
+ * proxy fetches. Return nothing when the account is not connected.
+ */
+export async function readGoogleAccessToken(
+  ctx: Pick<PluginContext, "db" | "log">,
+  config: GoogleConfig,
+): Promise<string | undefined> {
+  const token = await refreshAccountToken(ctx, config);
+  return "accessToken" in token ? token.accessToken : undefined;
+}
+
 /** Mint a short-lived access token for Junior's Google account. */
 export async function issueGoogleCredential(
   ctx: IssueCredentialHookContext,
@@ -222,22 +312,8 @@ export async function issueGoogleCredential(
       "The Google plugin is not configured on this deployment.",
     );
   }
-  const db = ctx.db as GoogleDb;
-  const record = await getGoogleAccount(db, config.accountEmail);
-  if (!record) {
-    return unavailable(NOT_CONNECTED_MESSAGE);
-  }
-  const token = await refreshGoogleAccessToken({
-    config,
-    refreshToken: record.refreshToken,
-  });
-  if (!token) {
-    await deleteRejectedGoogleAccount(db, record);
-    ctx.log.warn("google.account.token_rejected", {
-      "app.google.account": config.accountEmail,
-    });
-    return unavailable(`Google revoked access. ${NOT_CONNECTED_MESSAGE}`);
-  }
+  const token = await refreshAccountToken(ctx, config);
+  if ("unavailable" in token) return unavailable(token.unavailable);
   return {
     type: "lease",
     lease: {

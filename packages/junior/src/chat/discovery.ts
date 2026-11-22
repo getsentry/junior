@@ -134,12 +134,12 @@ export function discoverNodeModulesDirs(
   ]);
 }
 
-export interface DiscoverProjectRootsOptions {
+interface DiscoverProjectRootsOptions {
   nodeModulesDirs?: string[];
 }
 
 /** Discover project root directories by walking up from cwd and checking node_modules parents. */
-export function discoverProjectRoots(
+function discoverProjectRoots(
   cwd: string = process.cwd(),
   options?: DiscoverProjectRootsOptions,
 ): string[] {

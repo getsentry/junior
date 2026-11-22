@@ -1,0 +1,1 @@
+ALTER TABLE "junior_github_pull_requests" ADD COLUMN "conflict_fixes" jsonb DEFAULT '[]'::jsonb NOT NULL;

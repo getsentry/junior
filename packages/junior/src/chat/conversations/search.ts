@@ -9,25 +9,27 @@ import {
   and,
   desc,
   eq,
-  gt,
   gte,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   lt,
   ne,
-  notExists,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import type * as z from "zod";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
-  parseStoredBrief,
-  type BriefLink,
-  type BriefOutcomeStatus,
-} from "@/chat/briefs/schema";
+  conversationSimilarity,
+  embedConversationQuery,
+} from "@/chat/conversations/embedding";
+import { conversationSearchVector } from "@/chat/conversations/metadata/store";
+import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import {
   hasAnnotationKey,
   treeHasAnnotationKey,
@@ -37,12 +39,25 @@ import type {
   ConversationStatus,
 } from "@/chat/conversations/store";
 import {
-  juniorConversationBriefs,
+  juniorConversationEmbeddings,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
 
 const MAX_LINKS = 5;
+// Lowest cosine similarity that admits a Conversation with no word match.
+// Not tuned yet. Memory recall admits short memories at 0.55 with the same
+// default model (`openai/text-embedding-3-small`). A summary is a longer
+// document, so a short query scores lower against it. Retune it when the
+// embedding model changes.
+const MIN_VECTOR_SIMILARITY = 0.4;
+
+/** One linked resource of a search result. */
+export interface ConversationSearchLink {
+  label: string;
+  status?: string;
+  url: string;
+}
 
 /** One Conversation that the requester may find. */
 export interface ConversationSearchResult {
@@ -51,23 +66,32 @@ export interface ConversationSearchResult {
   /** Provider display name of the Destination, such as a Slack channel name. */
   channelName?: string;
   conversationId: string;
-  /** Matching Brief text for a query. */
+  /** Matching title or summary text for a query. */
   excerpt?: string;
   kind?: ConversationKind;
-  /** Top links of the latest Brief. */
-  links: BriefLink[];
-  /** Outcome status of the latest Brief. */
-  outcomeStatus?: BriefOutcomeStatus;
+  /** Top linked resources, such as pull requests, of the Conversation tree. */
+  links: ConversationSearchLink[];
   /** Provider Destination id, such as a Slack channel id. */
   providerDestinationId?: string;
   rootConversationId: string;
   status: ConversationStatus;
-  /** Summary of the latest Brief. A new Conversation may have none yet. */
+  /** A new Conversation has none until its first Turn completes. */
   summary?: string;
   title?: string;
-  /** Its transcript is purged. Only the Brief and title remain. */
+  /** Its transcript is purged. Only the summary and title remain. */
   transcriptPurged: boolean;
   updatedAtMs: number;
+}
+
+/** Provider-owned channel filter and match details for Conversation search. */
+export interface ConversationSearchChannelPort {
+  channelFilterSchema: z.ZodString;
+  describeMatch(match: ConversationSearchResult): Promise<{
+    channel_id?: string;
+    channel_name?: string;
+    permalink?: string;
+  }>;
+  resolveChannel(input: string): Promise<string>;
 }
 
 /** Filters for one Conversation search. All are optional. */
@@ -76,6 +100,11 @@ export interface ConversationSearch {
   afterMs?: number;
   /** Annotation key, such as a pull request key. Nested keys continue with `#`. */
   annotation?: string;
+  /**
+   * Match `annotation` only on the Conversation itself. Without it, a root
+   * also matches when one of its child agents has the key.
+   */
+  annotationOnSelf?: boolean;
   /** Only Conversations with activity before this time. */
   beforeMs?: number;
   /** Provider Destination id of the root, such as a Slack channel id. */
@@ -84,35 +113,46 @@ export interface ConversationSearch {
   /** Include archived Conversations. */
   includeArchived: boolean;
   limit: number;
-  /** Outcome status of the latest Brief. */
-  outcomeStatus?: BriefOutcomeStatus;
-  /** Words to match in the latest Brief or the title. */
+  /** Words or meaning to match in the title or summary. */
   query?: string;
   /** Return only root Conversations, not their child agents. */
   rootsOnly: boolean;
+  /** Only Conversations whose agent has one of these statuses. */
+  statuses?: readonly ConversationStatus[];
+  /** Only Conversations with a summary: a completed first Turn. */
+  summarizedOnly?: boolean;
 }
 
 /**
  * Search the Conversations, outside the requester's own tree, that the
  * requester may find. Newest activity first, or best match for a query.
+ * With an embedder, a query also matches by the meaning of the Conversation
+ * metadata, and a match by meaning alone needs `MIN_VECTOR_SIMILARITY`.
  */
 export async function searchConversations(
   db: JuniorDatabase,
   args: {
+    embedder?: PluginEmbedder;
     requesterConversationId: string;
     search: ConversationSearch;
   },
 ): Promise<ConversationSearchResult[]> {
-  const { requesterConversationId, search } = args;
+  const { embedder, requesterConversationId, search } = args;
   const conversations = juniorConversations;
-  const briefs = juniorConversationBriefs;
-  const newer = alias(juniorConversationBriefs, "newer_briefs");
   const roots = alias(juniorConversations, "target_roots");
   const requesterRoot = alias(juniorConversations, "requester_roots");
+  const embeddings = juniorConversationEmbeddings;
   const query = search.query?.trim() || undefined;
+  const queryVector =
+    query && embedder
+      ? await embedConversationQuery(embedder, query)
+      : undefined;
+  // SQL null for a stale vector or a vector of another model.
+  const similarity = queryVector
+    ? conversationSimilarity(queryVector)
+    : undefined;
   const tsquery = sql`websearch_to_tsquery('english', ${query ?? ""})`;
-  const searchVector = sql`to_tsvector('english', ${briefs.searchText})`;
-  const outcomeStatus = sql<string>`${briefs.content}->'outcome'->>'status'`;
+  const searchVector = conversationSearchVector;
   // A child requester searches with the access of its root, and its own
   // tree is never a result.
   const [requester] = await db
@@ -144,10 +184,19 @@ export async function searchConversations(
     search.annotation
       ? or(
           // A root matches when any Conversation in its tree has the key.
-          treeHasAnnotationKey(conversations.conversationId, search.annotation),
+          search.annotationOnSelf
+            ? undefined
+            : treeHasAnnotationKey(
+                conversations.conversationId,
+                search.annotation,
+              ),
           hasAnnotationKey(conversations.conversationId, search.annotation),
         )
       : undefined,
+    search.statuses
+      ? inArray(conversations.executionStatus, [...search.statuses])
+      : undefined,
+    search.summarizedOnly ? isNotNull(conversations.summary) : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])
       : undefined,
@@ -157,9 +206,6 @@ export async function searchConversations(
       : and(isNull(conversations.archivedAt), isNull(roots.archivedAt)),
     search.channelId
       ? eq(juniorDestinations.providerDestinationId, search.channelId)
-      : undefined,
-    search.outcomeStatus
-      ? sql`${outcomeStatus} = ${search.outcomeStatus}`
       : undefined,
     search.afterMs !== undefined
       ? gte(conversations.lastActivityAt, new Date(search.afterMs))
@@ -171,27 +217,34 @@ export async function searchConversations(
       ? or(
           sql`${searchVector} @@ ${tsquery}`,
           ilike(conversations.title, `%${escapeLike(query)}%`),
+          similarity
+            ? sql`${similarity} >= ${MIN_VECTOR_SIMILARITY}`
+            : undefined,
         )
       : undefined,
   ];
 
   const newestFirst = desc(conversations.lastActivityAt);
+  // Normalization 32 maps the word rank to [0, 1), next to the similarity,
+  // so a Conversation that matches both ways ranks first.
+  const wordRank = sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}, 32), 0)`;
   const order = query
     ? [
-        desc(sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}), 0)`),
+        desc(
+          similarity ? sql`${wordRank} + coalesce(${similarity}, 0)` : wordRank,
+        ),
         newestFirst,
       ]
     : [newestFirst];
   const excerpt = query
     ? sql<
         string | null
-      >`ts_headline('english', ${briefs.searchText}, ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`
+      >`ts_headline('english', coalesce(${conversations.summary}, ''), ${tsquery}, 'MaxFragments=2, MinWords=8, MaxWords=40, FragmentDelimiter=" … ", StartSel=**, StopSel=**')`
     : sql<string | null>`null`;
   const rows = await db
     .select({
       archivedAt: conversations.archivedAt,
       rootArchivedAt: roots.archivedAt,
-      briefContent: briefs.content,
       channelName: juniorDestinations.displayName,
       conversationId: conversations.conversationId,
       excerpt: excerpt.as("excerpt"),
@@ -200,6 +253,7 @@ export async function searchConversations(
       providerDestinationId: juniorDestinations.providerDestinationId,
       rootConversationId: roots.conversationId,
       status: conversations.executionStatus,
+      summary: conversations.summary,
       title: conversations.title,
       transcriptPurgedAt: conversations.transcriptPurgedAt,
     })
@@ -212,45 +266,51 @@ export async function searchConversations(
       juniorDestinations,
       eq(juniorDestinations.id, roots.destinationId),
     )
+    // Only the vector of the current metadata counts.
     .leftJoin(
-      briefs,
+      embeddings,
       and(
-        eq(briefs.conversationId, conversations.conversationId),
-        notExists(
-          db
-            .select({ one: sql`1` })
-            .from(newer)
-            .where(
-              and(
-                eq(newer.conversationId, briefs.conversationId),
-                gt(newer.version, briefs.version),
-              ),
-            ),
-        ),
+        eq(embeddings.conversationId, conversations.conversationId),
+        eq(embeddings.throughSeq, conversations.metadataThroughSeq),
       ),
     )
     .where(and(...conditions))
     .orderBy(...order)
     .limit(search.limit);
 
+  const annotations = await listConversationAnnotationsById(
+    db,
+    rows.map((row) => row.conversationId),
+  );
   return rows.map((row) => {
-    const brief = row.briefContent
-      ? parseStoredBrief(row.briefContent)
-      : undefined;
+    const links = (annotations.get(row.conversationId) ?? [])
+      .flatMap((annotation) =>
+        annotation.url
+          ? [
+              {
+                label: annotation.label,
+                ...(annotation.status
+                  ? { status: annotation.status }
+                  : undefined),
+                url: annotation.url,
+              },
+            ]
+          : [],
+      )
+      .slice(0, MAX_LINKS);
     return {
       archived: row.archivedAt !== null || row.rootArchivedAt !== null,
       ...(row.channelName ? { channelName: row.channelName } : undefined),
       conversationId: row.conversationId,
       ...(row.excerpt ? { excerpt: row.excerpt } : undefined),
       ...(row.kind ? { kind: row.kind } : undefined),
-      links: brief?.links.slice(0, MAX_LINKS) ?? [],
-      ...(brief ? { outcomeStatus: brief.outcome.status } : undefined),
+      links,
       ...(row.providerDestinationId
         ? { providerDestinationId: row.providerDestinationId }
         : undefined),
       rootConversationId: row.rootConversationId,
       status: row.status,
-      ...(brief ? { summary: brief.summary } : undefined),
+      ...(row.summary ? { summary: row.summary } : undefined),
       ...(row.title ? { title: row.title } : undefined),
       transcriptPurged: row.transcriptPurgedAt !== null,
       updatedAtMs: row.lastActivityAt.getTime(),

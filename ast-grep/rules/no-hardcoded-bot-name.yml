@@ -1,0 +1,25 @@
+# Each install configures the bot name, so no string in package source may
+# name it. Comments, identifiers, and lowercase package names such as
+# `@sentry/junior` stay allowed.
+id: no-hardcoded-bot-name
+language: TypeScript
+severity: error
+message: Do not write "Junior" in a string. Each install configures the bot name. In model text, write "you" or "the runtime". In other text, use the configured name (botConfig.userName in core, getDashboardAgentName() in the dashboard client) or reword.
+files:
+  - packages/*/src/**/*.ts
+rule:
+  kind: string_fragment
+  regex: '\bJunior\b'
+---
+id: no-hardcoded-bot-name-tsx
+language: Tsx
+severity: error
+message: Do not write "Junior" in a string or JSX text. Each install configures the bot name. Use getDashboardAgentName() or reword.
+files:
+  - packages/*/src/**/*.tsx
+rule:
+  any:
+    - kind: string_fragment
+      regex: '\bJunior\b'
+    - kind: jsx_text
+      regex: '\bJunior\b'

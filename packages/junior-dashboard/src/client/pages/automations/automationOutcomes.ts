@@ -1,5 +1,5 @@
 import type {
-  AutomationSummary,
+  AutomationListItem,
   AutomationUpdate,
 } from "@sentry/junior/api/schema";
 
@@ -8,7 +8,7 @@ type Outcome = NonNullable<AutomationUpdate["outcomes"]>[number];
 /** Describe a retained Destination without guessing a recipient from a private id. */
 export function automationOutcomeLabel(
   outcome: Outcome,
-  destination: AutomationSummary["destination"],
+  destination: AutomationListItem["destination"],
 ): string {
   if (typeof outcome.destination === "string")
     return outcome.destination === "task_creator"

@@ -1,9 +1,16 @@
 import { http, HttpResponse } from "msw";
-import { interceptTestGitHubChecksHttp } from "@sentry/junior-testing/http";
+import {
+  interceptTestGitHubChecksHttp,
+  interceptTestGitHubDraftsHttp,
+  interceptTestGitHubIssuesHttp,
+  resetTestGitHubHttpFixtures,
+} from "@sentry/junior-testing/http";
 
 export const GITHUB_API_ORIGIN = "https://api.github.com";
 
-export function resetGitHubApiMockState(): void {}
+export function resetGitHubApiMockState(): void {
+  resetTestGitHubHttpFixtures();
+}
 
 export const githubApiHandlers = [
   http.get(`${GITHUB_API_ORIGIN}/repos/:owner/:repo/deployments`, () =>
@@ -31,11 +38,18 @@ export const githubApiHandlers = [
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
   ),
+  // A failed check event reads githubstatus.com for GitHub incidents.
+  http.get("https://www.githubstatus.com/api/v2/incidents.json", () =>
+    HttpResponse.json({ incidents: [] }),
+  ),
   http.all(/^https:\/\/(api\.)?github\.com\//, async ({ request }) => {
-    const response = await interceptTestGitHubChecksHttp(
-      request,
-      new URL(request.url),
-    );
+    const url = new URL(request.url);
+    // Plugin tools call GitHub in process, so they reach these fixtures here
+    // and not through sandbox egress.
+    const response =
+      (await interceptTestGitHubChecksHttp(request, url)) ??
+      (await interceptTestGitHubDraftsHttp(request, url)) ??
+      (await interceptTestGitHubIssuesHttp(request, url));
     if (response) return response;
     // A matched MSW handler that returns undefined bypasses the network guard.
     throw new Error(

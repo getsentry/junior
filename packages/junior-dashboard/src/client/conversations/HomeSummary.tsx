@@ -9,13 +9,9 @@ import { Link } from "react-router";
 import { useActorCodeData, useDashboardCoreData } from "../api";
 import { Card } from "../components/layout/Card";
 import { Skeleton } from "../components/ui/skeleton";
-import { useReviewItemCountData } from "../review-desk/queries";
+import { useInboxItemCountData } from "../inbox/queries";
 import { cn } from "../styles";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipTrigger,
-} from "../components/ui/tooltip";
+import { IdleText } from "./codeChangeIdle";
 import { SidebarAnnotationIcon } from "./ConversationMeta";
 import { HomeDayStrip } from "./HomeDayStrip";
 import { HomeMergeDelta } from "./HomeMergeDelta";
@@ -40,13 +36,13 @@ function rollingMerges(days: CodeActivityDay[]) {
 
 /**
  * Show the viewer's last 7 days under the home composer: merges, open code
- * changes, and Review items that wait on them. Counts only code changes that
+ * changes, and Inbox items that wait on them. Counts only code changes that
  * Junior opened in Conversations that the viewer started.
  */
 export function HomeSummary() {
   const email = useDashboardCoreData().data?.me.user.email;
   const code = useActorCodeData(email);
-  const reviewCount = useReviewItemCountData(Boolean(email));
+  const reviewCount = useInboxItemCountData(Boolean(email));
   if (!email) return null;
   // Wait for both: a missing count would read as "all clear".
   if (code.isPending || reviewCount.isPending) return <HomeSummaryLoading />;
@@ -115,9 +111,9 @@ export function HomeSummary() {
               <StatusText tone="bg-amber-300">
                 <Link
                   className="text-inherit underline-offset-2 hover:text-dashboard-text hover:underline"
-                  to="/review"
+                  to="/inbox"
                 >
-                  on your Review desk
+                  in your Inbox
                 </Link>
               </StatusText>
             ) : (
@@ -287,48 +283,6 @@ function lastActivity(change: CodeChangeSummaryReport): string {
 
 function idleDays(nowMs: number, change: CodeChangeSummaryReport): number {
   return Math.floor((nowMs - Date.parse(lastActivity(change))) / DAY_MS);
-}
-
-/** Time since the last push, review, or comment, colored by idle days. */
-function IdleText(props: { change: CodeChangeSummaryReport; nowMs: number }) {
-  const days = idleDays(props.nowMs, props.change);
-  const idle = formatSince(props.nowMs, lastActivity(props.change));
-  const opened = formatSince(props.nowMs, props.change.openedAt);
-  const touched =
-    props.change.lastActivityAt !== undefined &&
-    props.change.lastActivityAt > props.change.openedAt;
-  return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <span
-            className={cn(
-              days > IDLE_RED_DAYS && "font-medium text-rose-300",
-              days >= 4 &&
-                days <= IDLE_RED_DAYS &&
-                "font-medium text-amber-300",
-            )}
-          />
-        }
-      >
-        {idle}
-      </TooltipTrigger>
-      <TooltipContent size="compact">
-        {/* PRs opened before tracking started can have untracked activity. */}
-        {touched
-          ? `Last activity ${idle} ago · opened ${opened} ago`
-          : `Opened ${opened} ago`}
-      </TooltipContent>
-    </Tooltip>
-  );
-}
-
-function formatSince(nowMs: number, at: string): string {
-  const minutes = Math.max(1, Math.floor((nowMs - Date.parse(at)) / 60_000));
-  if (minutes < 60) return `${minutes}m`;
-  if (minutes < 24 * 60) return `${Math.floor(minutes / 60)}h`;
-  const days = Math.floor(minutes / (24 * 60));
-  return days < 365 ? `${days}d` : `${Math.floor(days / 365)}y`;
 }
 
 /** Same frame and row heights as the loaded summary with three open rows. */

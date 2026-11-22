@@ -1,11 +1,12 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type {
-  AssistantMessage,
-  ImageContent,
-  Message,
-  TextContent,
-  ThinkingContent,
-  ToolCall,
+import {
+  renderSystemMessageUpdate,
+  type AssistantMessage,
+  type ImageContent,
+  type Message,
+  type TextContent,
+  type ThinkingContent,
+  type ToolCall,
 } from "@earendil-works/pi-ai";
 import { logWarn } from "@/chat/logging";
 
@@ -24,7 +25,7 @@ const conversationPrivacyStorage = new AsyncLocalStorage<ConversationPrivacy>();
  */
 export function resolveConversationPrivacy(input: {
   /** Stored Conversation visibility, when known. */
-  visibility?: ConversationPrivacy | "direct" | "unknown";
+  visibility?: ConversationPrivacy | "direct" | "unknown" | undefined;
 }): ConversationPrivacy {
   if (input.visibility === undefined) {
     logWarn("conversation.visibility.defaulted");
@@ -35,7 +36,7 @@ export function resolveConversationPrivacy(input: {
 /** Return whether a public Conversation may expose transcript and tool data. */
 export function canExposeConversationPayload(input: {
   /** Conversation visibility, when known. */
-  visibility?: ConversationPrivacy | "direct" | "unknown";
+  visibility?: ConversationPrivacy | "direct" | "unknown" | undefined;
 }): boolean {
   return resolveConversationPrivacy(input) === "public";
 }
@@ -63,10 +64,7 @@ function payloadKeys(payload: unknown): string[] | undefined {
   if (!payload || typeof payload !== "object" || Array.isArray(payload)) {
     return undefined;
   }
-  const keys = Object.keys(payload as Record<string, unknown>).slice(
-    0,
-    SAFE_METADATA_KEY_LIMIT,
-  );
+  const keys = Object.keys(payload).slice(0, SAFE_METADATA_KEY_LIMIT);
   return keys.length > 0 ? keys : undefined;
 }
 
@@ -136,15 +134,15 @@ function summarizeContent(content: unknown): {
     }
     const record = part as Record<string, unknown>;
     const type = canonicalContentPartType(
-      typeof record.type === "string" ? record.type : "unknown",
+      typeof record["type"] === "string" ? record["type"] : "unknown",
     );
     partTypes.add(type);
-    if (typeof record.text === "string") {
-      chars += record.text.length;
-    } else if (typeof record.thinking === "string") {
-      chars += record.thinking.length;
-    } else if (typeof record.data === "string") {
-      chars += record.data.length;
+    if (typeof record["text"] === "string") {
+      chars += record["text"].length;
+    } else if (typeof record["thinking"] === "string") {
+      chars += record["thinking"].length;
+    } else if (typeof record["data"] === "string") {
+      chars += record["data"].length;
     } else {
       chars += serializedLength(part);
     }
@@ -192,9 +190,7 @@ function toCanonicalPart(
 function toCanonicalParts(
   parts: Array<TextContent | ThinkingContent | ImageContent | ToolCall>,
 ): Record<string, unknown>[] {
-  return parts
-    .map(toCanonicalPart)
-    .filter((part): part is Record<string, unknown> => part !== undefined);
+  return parts.map(toCanonicalPart).filter((part) => part !== undefined);
 }
 
 /**
@@ -212,12 +208,18 @@ export function toCanonicalOutputMessage(
 }
 
 /**
- * Map a pi-ai Message (user/assistant/toolResult) to the canonical
+ * Map a pi-ai Message (system/user/assistant/toolResult) to the canonical
  * gen_ai.input.messages shape: `{ role, parts: [...] }`.
  */
 export function toCanonicalInputMessage(
   message: Message,
 ): Record<string, unknown> {
+  if (message.role === "system") {
+    return {
+      role: "system",
+      parts: [{ type: "text", content: renderSystemMessageUpdate(message) }],
+    };
+  }
   if (message.role === "user") {
     const parts =
       typeof message.content === "string"
@@ -238,7 +240,7 @@ export function toCanonicalInputMessage(
     };
   }
   // AssistantMessage appearing as a prior turn in input context
-  return toCanonicalOutputMessage(message as AssistantMessage);
+  return toCanonicalOutputMessage(message);
 }
 
 /** Summarize a message list without exposing raw message content. */
@@ -255,10 +257,10 @@ export function toGenAiMessagesTraceAttributes(
       continue;
     }
     const record = message as Record<string, unknown>;
-    if (typeof record.role === "string") {
-      roles.add(record.role);
+    if (typeof record["role"] === "string") {
+      roles.add(record["role"]);
     }
-    const summary = summarizeContent(record.content);
+    const summary = summarizeContent(record["content"]);
     contentChars += summary.chars;
     for (const partType of summary.partTypes) {
       partTypes.add(partType);

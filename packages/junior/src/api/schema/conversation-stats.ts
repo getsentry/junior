@@ -31,15 +31,8 @@ export const conversationMetricDaySchema = z
     inputTokens: z.number().optional(),
     /** Conversation cost split to `mergedCodeChanges`. */
     mergedCodeChangeCostUsd: z.number().optional(),
-    /** Code changes merged in this bucket. They are also `outcomes`. */
+    /** Code changes merged in this bucket. */
     mergedCodeChanges: z.number().optional(),
-    /** Conversation cost of `outcomes`. */
-    outcomeCostUsd: z.number().optional(),
-    /**
-     * Merged code changes, plus root Conversations without code changes
-     * whose latest Brief is `done` or `answered`.
-     */
-    outcomes: z.number().optional(),
     tokens: z.number().optional(),
   })
   .strict();
@@ -70,23 +63,12 @@ export const guardianStatsSchema = z
 
 export const conversationStatsReportSchema = z
   .object({
-    active: z.number(),
-    cachedInputTokens: z.number().optional(),
-    cacheCreationTokens: z.number().optional(),
-    conversations: z.number(),
-    durationMs: z.number(),
-    failed: z.number(),
     generatedAt: z.string(),
     guardian: guardianStatsSchema,
     metricDays: z.array(conversationMetricDaySchema),
     metricHours: z.array(conversationMetricDaySchema).optional(),
     metricSixHours: z.array(conversationMetricDaySchema).optional(),
-    locations: z.array(conversationStatsItemSchema),
-    actors: z.array(conversationStatsItemSchema),
     source: z.literal("conversation_index"),
-    costUsd: z.number().optional(),
-    inputTokens: z.number().optional(),
-    tokens: z.number().optional(),
     windowEnd: z.string(),
     windowStart: z.string(),
   })

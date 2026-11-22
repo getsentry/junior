@@ -8,14 +8,14 @@ import { publishAppHomeView } from "@/chat/slack/app-home";
 import { getSlackClient } from "@/chat/slack/client";
 import { getWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import {
-  parseSlackReviewItemClick,
-  SLACK_REVIEW_ITEM_VIEW_ID,
-} from "@/chat/slack/review-item-card";
+  parseSlackInboxItemClick,
+  SLACK_INBOX_ITEM_VIEW_ID,
+} from "@/chat/slack/inbox-item-card";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  handleSlackReviewItemClick,
-  handleSlackReviewItemSubmission,
-} from "./slack-review-item";
+  handleSlackInboxItemClick,
+  handleSlackInboxItemSubmission,
+} from "./slack-inbox-item";
 import {
   handleSlackContinueHereClick,
   SLACK_CONTINUE_HERE_ACTION_ID,
@@ -73,7 +73,7 @@ async function handleAppHomeDisconnect(args: {
 }
 
 /**
- * Handle Slack interactions from App Home, Review item cards, and dashboard
+ * Handle Slack interactions from App Home, Inbox item cards, and dashboard
  * link previews: block actions and submitted forms.
  */
 export async function handleSlackInteractivePayload(args: {
@@ -91,14 +91,14 @@ export async function handleSlackInteractivePayload(args: {
   const spanAttributes = { userId: args.payload.user?.id?.trim() || undefined };
   if (
     args.payload.type === "view_submission" &&
-    args.payload.view?.callback_id === SLACK_REVIEW_ITEM_VIEW_ID
+    args.payload.view?.callback_id === SLACK_INBOX_ITEM_VIEW_ID
   ) {
     await withSpan(
-      "chat.slack_review_item_submit",
-      "chat.slack_review_item_submit",
+      "chat.slack_inbox_item_submit",
+      "chat.slack_inbox_item_submit",
       spanAttributes,
       () =>
-        handleSlackReviewItemSubmission({
+        handleSlackInboxItemSubmission({
           payload: args.payload,
           services: args,
         }),
@@ -109,15 +109,16 @@ export async function handleSlackInteractivePayload(args: {
     return;
   }
 
+  /* oxlint-disable no-await-in-loop -- Handle clicks in the order Slack sent them. */
   for (const action of args.payload.actions ?? []) {
-    const click = parseSlackReviewItemClick(action);
+    const click = parseSlackInboxItemClick(action);
     if (click) {
       await withSpan(
-        "chat.slack_review_item_click",
-        "chat.slack_review_item_click",
+        "chat.slack_inbox_item_click",
+        "chat.slack_inbox_item_click",
         spanAttributes,
         () =>
-          handleSlackReviewItemClick({
+          handleSlackInboxItemClick({
             action,
             click,
             payload: args.payload,
@@ -127,6 +128,7 @@ export async function handleSlackInteractivePayload(args: {
       return;
     }
   }
+  /* oxlint-enable no-await-in-loop */
 
   const continueHere = args.payload.actions?.find(
     (candidate) => candidate.action_id === SLACK_CONTINUE_HERE_ACTION_ID,

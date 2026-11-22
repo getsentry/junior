@@ -10,7 +10,7 @@ import {
   USER_INPUT_NOTE,
   type UserInputAnswer,
   type UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/inbox-items/user-input-request";
 
 const FIELD_BLOCK_ID_PREFIX = "field:";
 const OTHER_BLOCK_ID = "other";
@@ -34,7 +34,7 @@ const SUGGESTED_SUFFIX = " (suggested)";
 // recommended option says so in words. Buttons use the primary style.
 // `maxChars` shortens the label, so the suffix stays visible.
 function optionLabel(
-  option: { label: string; recommended?: boolean },
+  option: { label: string; recommended?: boolean | undefined },
   maxChars = Number.POSITIVE_INFINITY,
 ) {
   return option.recommended

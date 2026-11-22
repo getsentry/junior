@@ -4,9 +4,9 @@ import type { ConversationWorkState, InboundMessage } from "./store";
 
 /** Source and Actor that own Turn input. */
 interface TurnOwner {
-  authorId?: string;
-  identityId?: string;
-  source?: string;
+  authorId?: string | undefined;
+  identityId?: string | undefined;
+  source?: string | undefined;
 }
 
 function inputOwner(message: InboundMessage): TurnOwner {
@@ -17,7 +17,9 @@ function inputOwner(message: InboundMessage): TurnOwner {
   };
 }
 
-function turnOwner(turn: TurnRecord): TurnOwner {
+type TurnOwnerFacts = Pick<TurnRecord, "actor" | "actorIdentityId" | "source">;
+
+function turnOwner(turn: TurnOwnerFacts): TurnOwner {
   return {
     authorId: isUserActor(turn.actor) ? turn.actor.userId : undefined,
     identityId: turn.actorIdentityId,
@@ -51,7 +53,7 @@ export function canShareTurn(a: InboundMessage, b: InboundMessage): boolean {
 
 /** True when an Inbound message may join `turn`. */
 export function canJoinTurn(
-  turn: TurnRecord,
+  turn: TurnOwnerFacts,
   message: InboundMessage,
 ): boolean {
   return hasSameOwner(turnOwner(turn), inputOwner(message));
@@ -81,7 +83,7 @@ function selectContiguousTurnBatch(
  */
 export function isAttemptInterrupt(
   message: InboundMessage,
-  work: ConversationWorkState,
+  work: Pick<ConversationWorkState, "execution">,
 ): boolean {
   return (
     message.delivery === "interrupt" &&

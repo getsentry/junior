@@ -50,7 +50,7 @@ Default Sentry organization slug when a request does not name one.
 <details class="plugin-config">
 <summary><code>sentry.project</code></summary>
 
-Default Sentry project slug when a request does not name one.
+Default Sentry project slug when a request does not name one. With `sentry.org`, Junior also links the issue short ids of this project in its replies, such as `JUNIOR-3ZK` for the `junior` project.
 
 - **Define:** `jr-rpc config set sentry.project <project>`
 - **Install-wide default:** `configDefaults["sentry.project"]`
@@ -137,6 +137,15 @@ Junior uses the token for `GET`, `HEAD`, and `OPTIONS` requests to the Sentry AP
 
 Anyone who can talk to Junior can read every project the token can read. Sentry audit logs show the integration, not the Slack user.
 
+## Issue link cards
+
+The dashboard shows a card for a link to a Sentry issue or to one of its events, on `sentry.io/organizations/<org>/` or on `<org>.sentry.io`. The card shows the title, the culprit, the state, the assignee, the priority, the project, and a line of events per hour for the last day.
+
+A link to a user feedback, such as `<org>.sentry.io/feedback/?feedbackSlug=<project>:<id>`, gets a feedback card. It shows the title, the message, the state, the assignee, and the project. It never shows the name or email of the person who sent the feedback.
+
+- Each viewer must connect Sentry on the dashboard **Connections** page. Junior asks Sentry, with that viewer's own token, whether the viewer can open the issue. Without a connection, or without access, the viewer gets no card. Junior never asks the viewer to connect for a card.
+- Junior reads the card with the org read token, so set `SENTRY_READ_TOKEN`. It sends the issue calls to the org's region host, such as `us.sentry.io` or `de.sentry.io`, from the `links.regionUrl` of the org.
+
 ## Set up issue webhooks
 
 Create a **Sentry internal integration** in the organization that should send issue webhooks. A public Sentry app is not required.
@@ -169,6 +178,8 @@ Sentry sends metric alerts only to an integration that is an action on the alert
   "targetIdentifier": <integration-id>
 }
 ```
+
+For a metric monitor, add an alert that notifies the integration as a service. Sentry then sends each firing as an `event_alert` webhook for the monitor's metric issue. Junior publishes a firing at high priority as `metric_alert.critical` and one at medium priority as `metric_alert.warning`. The alert rule id is the monitor's legacy alert rule id, or the monitor id plus 10,000,000,000 when it has none. Junior does not publish resolved monitors or other issue alerts from this webhook.
 
 ## Watches
 

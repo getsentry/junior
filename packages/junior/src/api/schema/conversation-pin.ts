@@ -2,12 +2,23 @@ import * as z from "zod";
 
 /** Pin or unpin one Conversation for the signed-in viewer. */
 export const pinConversationBodySchema = z
-  .object({ pinned: z.boolean() })
+  .object({
+    pinned: z
+      .boolean()
+      .default(true)
+      .describe("False unpins the conversation."),
+  })
   .strict();
 
 /** The viewer's pin time after the change, or null when unpinned. */
 export const pinConversationResponseSchema = z
-  .object({ pinnedAt: z.string().datetime().nullable() })
+  .object({
+    pinnedAt: z
+      .string()
+      .datetime()
+      .nullable()
+      .describe("Null when the conversation is not pinned."),
+  })
   .strict();
 
 export type PinConversationBody = z.infer<typeof pinConversationBodySchema>;

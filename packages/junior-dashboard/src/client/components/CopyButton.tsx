@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, CircleAlert, Copy } from "lucide-react";
+import { Check, CircleAlert, Copy, type LucideIcon } from "lucide-react";
 
 import { Button } from "./ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
@@ -9,7 +9,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "./ui/tooltip";
  * the copy runs and after it ends.
  */
 export function useCopyText(props: {
-  getText?: () => Promise<string> | string;
+  getText?: (() => Promise<string> | string) | undefined;
+  /** Idle icon. Defaults to `Copy`. */
+  icon?: LucideIcon | undefined;
   label: string;
   copyingLabel?: string;
 }) {
@@ -24,11 +26,12 @@ export function useCopyText(props: {
         : status === "failed"
           ? "Copy failed"
           : props.label;
+  const idleIcon = props.icon ?? Copy;
   const icon = {
     copied: Check,
-    copying: Copy,
+    copying: idleIcon,
     failed: CircleAlert,
-    idle: Copy,
+    idle: idleIcon,
   }[status];
 
   async function copy() {
@@ -54,7 +57,8 @@ export function useCopyText(props: {
 
 /** Copy available text and show whether the clipboard write succeeded. */
 export function CopyButton(props: {
-  getText?: () => Promise<string> | string;
+  getText?: (() => Promise<string> | string) | undefined;
+  icon?: LucideIcon | undefined;
   label: string;
   copyingLabel?: string;
 }) {

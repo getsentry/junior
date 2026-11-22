@@ -146,7 +146,7 @@ export function conversationsHistoryPage(
 
 export function conversationsRepliesPage(
   input: {
-    messages?: Array<Record<string, unknown>>;
+    messages?: Array<Record<string, unknown>> | undefined;
     nextCursor?: string;
     threadTs?: string;
   } = {},
@@ -299,6 +299,7 @@ export function filesInfoOk(
     name?: string;
     filetype?: string;
     mimetype?: string;
+    size?: number;
   } = {},
 ): {
   ok: true;
@@ -311,6 +312,7 @@ export function filesInfoOk(
     name?: string;
     filetype?: string;
     mimetype?: string;
+    size?: number;
   };
 } {
   const fileId = input.fileId ?? TEST_FILE_ID;
@@ -328,6 +330,7 @@ export function filesInfoOk(
       ...(input.name ? { name: input.name } : undefined),
       filetype: input.filetype ?? "quip",
       mimetype: input.mimetype ?? "text/plain",
+      ...(input.size !== undefined ? { size: input.size } : undefined),
     },
   });
 }
@@ -474,7 +477,11 @@ export function dndInfoOk(window?: { startMs: number; endMs: number }) {
 
 /** Model the bot fields from https://docs.slack.dev/reference/methods/bots.info/. */
 export function botsInfoOk(
-  input: { botId?: string; deleted?: boolean; userId?: string } = {},
+  input: {
+    botId?: string | undefined;
+    deleted?: boolean;
+    userId?: string;
+  } = {},
 ): { ok: true; bot: Record<string, unknown> } {
   return slackOk({
     bot: {
@@ -491,12 +498,12 @@ export function botsInfoOk(
 /** Model the user fields from https://docs.slack.dev/reference/methods/users.info/. */
 export function usersInfoOk(
   input: {
-    userId?: string;
+    userId?: string | undefined;
     userName?: string;
     realName?: string;
     displayName?: string;
     title?: string;
-    email?: string;
+    email?: string | undefined;
     statusText?: string;
     statusEmoji?: string;
     isBot?: boolean;

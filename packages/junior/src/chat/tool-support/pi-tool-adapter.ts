@@ -17,41 +17,34 @@ import {
   AuthorizationPauseError,
 } from "@/chat/services/auth-pause";
 import type { PluginAuthOrchestration } from "@/chat/services/plugin-auth-orchestration";
-import {
-  buildPlanStatus,
-  buildReportedProgressStatus,
-} from "@/chat/runtime/report-progress";
+import { buildReportedProgressStatus } from "@/chat/runtime/report-progress";
 import type { AssistantStatusSpec } from "@/chat/slack/assistant-thread/status";
 import type { SandboxTools } from "@/chat/sandbox/sandbox";
 import type { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import {
   disabledToolMessage,
   type AnyToolDefinition,
-} from "@/chat/tools/definition";
+} from "@/chat/tool-support/definition";
 import type { ToolExecutionReport } from "@/chat/tool-support/tool-execution-report";
 import { privateTraceResultAttributes } from "@/chat/tool-support/private-trace-result";
 import {
+  EXECUTE_TOOL_NAME,
   prepareCatalogToolCall,
   resolveCatalogToolCall,
 } from "@/chat/tool-support/catalog-tool-call";
-import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
+import { buildSandboxInput } from "@/chat/tool-support/build-sandbox-input";
 import { normalizeToolResult } from "@/chat/tool-support/normalize-result";
-import { handleToolExecutionError } from "@/chat/tools/execution/tool-error-handler";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { handleToolExecutionError } from "@/chat/tool-support/tool-error-handler";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { PluginHookRunner } from "@/chat/plugins/agent-hooks";
 import {
   renderToolResultNudge,
   type ToolResultNudge,
 } from "@/chat/plugins/after-tool-hooks";
-import {
-  createExecuteToolTool,
-  EXECUTE_TOOL_NAME,
-} from "@/chat/tools/execute-tool";
+import { createExecuteToolTool } from "@/chat/tools/execute-tool";
 import { planToolExposure } from "@/chat/tool-exposure";
-import {
-  createSearchToolsTool,
-  SEARCH_TOOLS_NAME,
-} from "@/chat/tools/search-tools";
+import { createSearchToolsTool } from "@/chat/tools/search-tools";
+import { SEARCH_TOOLS_NAME } from "@/chat/tool-support/catalog-search";
 import {
   reviewToolActions,
   ToolActionRejectedError,
@@ -64,10 +57,8 @@ import {
   type ToolActionRejectionMarker,
 } from "@/chat/guardian/history";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
-import {
-  createCodeModeTool,
-  type CodeModeToolOptions,
-} from "@/chat/codemode/tool";
+import type { CodeModeToolOptions } from "@/chat/codemode/bridge";
+import { createCodeModeTool } from "@/chat/tools/codemode";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import { capToolResult } from "@/chat/tool-support/result-cap";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -141,20 +132,26 @@ export interface ToolPipelineOptions {
   catalogTools: Record<string, AnyToolDefinition>;
   sandbox: SkillSandbox;
   spanContext: LogContext;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
-  sandboxTools?: SandboxTools;
-  pluginAuthOrchestration?: PluginAuthOrchestration;
-  onToolCall?: (
-    toolCallId: string,
-    toolName: string,
-    params: Record<string, unknown>,
-  ) => void | Promise<void>;
-  agentHooks?: PluginHookRunner;
-  conversationPrivacy?: ConversationPrivacy;
-  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
-  actionReview?: ToolActionReview;
+  onStatus?:
+    | ((status: AssistantStatusSpec) => void | Promise<void>)
+    | undefined;
+  sandboxTools?: SandboxTools | undefined;
+  pluginAuthOrchestration?: PluginAuthOrchestration | undefined;
+  onToolCall?:
+    | ((
+        toolCallId: string,
+        toolName: string,
+        params: Record<string, unknown>,
+      ) => void | Promise<void>)
+    | undefined;
+  agentHooks?: PluginHookRunner | undefined;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  onToolResult?:
+    | ((report: ToolExecutionReport) => void | Promise<void>)
+    | undefined;
+  actionReview?: ToolActionReview | undefined;
   /** Keeps the full text of a model-facing result that was cut. */
-  workspace?: Pick<SandboxWorkspace, "writeFiles">;
+  workspace?: Pick<SandboxWorkspace, "writeFiles"> | undefined;
 }
 
 /** One tool call that a Code Mode script made. */
@@ -184,7 +181,7 @@ export type ScriptToolCallOutcome =
   | {
       status: "rejected";
       error: ToolActionRejectedError;
-      marker?: ToolActionRejectionMarker;
+      marker?: ToolActionRejectionMarker | undefined;
     }
   | { status: "error"; error: Error };
 
@@ -297,10 +294,10 @@ export function createToolPipeline(options: ToolPipelineOptions) {
       ...(Object.keys(beforeTool.env).length > 0
         ? {
             env: {
-              ...(toolInput.env &&
-              typeof toolInput.env === "object" &&
-              !Array.isArray(toolInput.env)
-                ? toolInput.env
+              ...(toolInput["env"] &&
+              typeof toolInput["env"] === "object" &&
+              !Array.isArray(toolInput["env"])
+                ? toolInput["env"]
                 : undefined),
               ...beforeTool.env,
             },
@@ -335,20 +332,24 @@ export function createToolPipeline(options: ToolPipelineOptions) {
           ...(error.riskLevel
             ? { "app.guardian.risk_level": error.riskLevel }
             : undefined),
+          ...(error.rule ? { "app.guardian.rule": error.rule } : undefined),
           ...(error.userAuthorization
-            ? {
-                "app.guardian.user_authorization": error.userAuthorization,
-              }
+            ? { "app.guardian.user_consent": error.userAuthorization }
             : undefined),
         });
       }
       throw error;
     }
     if (review.decision) {
+      // `user_consent`, not `user_authorization`: Sentry's data scrubber
+      // hides a key that contains `auth`.
       setSpanAttributes({
         "app.guardian.decision": review.decision.decision,
         "app.guardian.risk_level": review.decision.riskLevel,
-        "app.guardian.user_authorization": review.decision.userAuthorization,
+        ...(review.decision.rule
+          ? { "app.guardian.rule": review.decision.rule }
+          : undefined),
+        "app.guardian.user_consent": review.decision.userAuthorization,
       });
     }
     const sandboxInput = buildSandboxInput(toolName, executionInput);
@@ -479,11 +480,9 @@ export function createToolPipeline(options: ToolPipelineOptions) {
     params: Record<string, unknown>,
   ) => {
     const status =
-      executionToolName === "updatePlan"
-        ? buildPlanStatus(params)
-        : executionToolName === "reportProgress"
-          ? buildReportedProgressStatus(params)
-          : undefined;
+      executionToolName === "reportProgress"
+        ? buildReportedProgressStatus(params)
+        : undefined;
     if (status) {
       await onStatus?.(status);
     }
@@ -769,7 +768,9 @@ export interface PiAgentToolsOptions {
    * pass `{ owner: "none" }`.
    */
   searchToolsCost: ConversationModelCost;
-  onStatus?: (status: AssistantStatusSpec) => void | Promise<void>;
+  onStatus?:
+    | ((status: AssistantStatusSpec) => void | Promise<void>)
+    | undefined;
   sandboxTools?: SandboxTools;
   pluginAuthOrchestration?: PluginAuthOrchestration;
   onToolCall?: (
@@ -778,8 +779,10 @@ export interface PiAgentToolsOptions {
     params: Record<string, unknown>,
   ) => void | Promise<void>;
   agentHooks?: PluginHookRunner;
-  conversationPrivacy?: ConversationPrivacy;
-  onToolResult?: (report: ToolExecutionReport) => void | Promise<void>;
+  conversationPrivacy?: ConversationPrivacy | undefined;
+  onToolResult?:
+    | ((report: ToolExecutionReport) => void | Promise<void>)
+    | undefined;
   actionReview?: ToolActionReview;
   codeMode?: Pick<CodeModeToolOptions, "countToolCall"> & {
     /** Keeps the full text of a model-facing result that was cut. */

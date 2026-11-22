@@ -85,6 +85,48 @@
       "when": 1794493724681,
       "tag": "0011_pull_request_draft",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1794605938191,
+      "tag": "0012_pull_request_next_action",
+      "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1795081849425,
+      "tag": "0013_conflict_fixes_resumed_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1795129567974,
+      "tag": "0014_conflict_fixes",
+      "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1795217066096,
+      "tag": "0015_conflict_fix_asked_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 16,
+      "version": "7",
+      "when": 1795220506723,
+      "tag": "0016_pull_request_finished_at",
+      "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1795220519456,
+      "tag": "0017_pull_request_lifecycle_copies",
+      "breakpoints": true
     }
   ]
 }

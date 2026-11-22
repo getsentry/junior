@@ -2,10 +2,15 @@ import { createHash, randomUUID } from "node:crypto";
 import { and, asc, eq, gt, inArray, lte } from "drizzle-orm";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorAttachmentUploads, juniorAttachments } from "@/db/schema";
+import { mapBounded } from "@/chat/fan-out";
 import type { InputFile, MessageAttachment } from "./input";
 import { detectImageMediaType, isVisionImageMediaType } from "./media";
 import { readLiveAttachment, recordUploadedAttachment } from "./store";
-import type { AttachmentStorage, AttachmentUploadTarget } from "./storage";
+import {
+  bufferBody,
+  type AttachmentStorage,
+  type AttachmentUploadTarget,
+} from "./storage";
 
 const MINUTE_MS = 60 * 1000;
 /** Time that a browser has to write the bytes after it asks to upload. */
@@ -155,7 +160,8 @@ export async function writeAttachmentUpload(args: {
     throw new AttachmentUploadError("Upload size does not match the file.");
   }
   await args.storage.put({
-    body: args.body,
+    body: bufferBody(args.body),
+    bytes: row.bytes,
     contentType: row.contentType,
     key: row.storageKey,
   });
@@ -172,10 +178,12 @@ async function inspectObject(
   let bytes = 0;
   const reader = body.getReader();
   for (;;) {
+    // oxlint-disable-next-line no-await-in-loop -- A stream reader gives each chunk after the one before.
     const { done, value } = await reader.read();
     if (done) break;
     bytes += value.byteLength;
     if (bytes > maxBytes) {
+      // oxlint-disable-next-line no-await-in-loop -- This runs once, and then the loop stops.
       await reader.cancel();
       return undefined;
     }
@@ -228,6 +236,7 @@ export async function verifyAttachmentUploads(args: {
   });
   const byId = new Map(rows.map((row) => [row.id, row]));
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- The send schema allows at most MAX_INPUT_ATTACHMENTS uploads.
     args.uploadIds.map(async (uploadId) => {
       const row = byId.get(uploadId);
       if (!row) {
@@ -281,20 +290,21 @@ export async function recordAttachmentUploads(args: {
   storage: AttachmentStorage;
   uploads: readonly VerifiedAttachmentUpload[];
 }): Promise<MessageAttachment[]> {
-  for (const upload of args.uploads) {
-    if (upload.recorded) continue;
-    await recordUploadedAttachment({
-      attachment: {
-        ...upload.attachment,
-        conversationId: args.conversationId,
-        sha256: upload.sha256,
-        storageKey: upload.storageKey,
-      },
-      db: args.db,
-      nowMs: args.nowMs ?? Date.now(),
-      storage: args.storage,
-    });
-  }
+  await mapBounded(
+    args.uploads.filter((upload) => !upload.recorded),
+    (upload) =>
+      recordUploadedAttachment({
+        attachment: {
+          ...upload.attachment,
+          conversationId: args.conversationId,
+          sha256: upload.sha256,
+          storageKey: upload.storageKey,
+        },
+        db: args.db,
+        nowMs: args.nowMs ?? Date.now(),
+        storage: args.storage,
+      }),
+  );
   return args.uploads.map((upload) => upload.attachment);
 }
 

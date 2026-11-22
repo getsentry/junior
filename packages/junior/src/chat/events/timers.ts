@@ -8,6 +8,7 @@ export async function runTimerWatchHeartbeat(args: {
   queue: ConversationWorkQueue;
 }): Promise<void> {
   const errors: unknown[] = [];
+  /* oxlint-disable no-await-in-loop -- Ingest dispatches take an index lock that does not wait. */
   for (const watch of await takeDueTimerWatches(args.nowMs)) {
     try {
       await ingestEvent(
@@ -27,6 +28,7 @@ export async function runTimerWatchHeartbeat(args: {
       errors.push(error);
     }
   }
+  /* oxlint-enable no-await-in-loop */
   if (errors.length)
     throw new AggregateError(errors, "Timer Watch delivery failed");
 }

@@ -17,7 +17,7 @@ describe("memory permalink record", () => {
     ).toMatchObject({
       actions: [
         {
-          href: "/api/plugins/memory/memories/memory%2F1",
+          href: "/api/memory/memories/memory%2F1",
           tone: "danger",
         },
       ],
@@ -65,7 +65,7 @@ describe("memory permalink record", () => {
       actions: [
         {
           confirmation: "Forget this memory for everyone?",
-          href: "/api/plugins/memory/memories/memory%2Fpublic-1",
+          href: "/api/memory/memories/memory%2Fpublic-1",
           tone: "danger",
         },
       ],

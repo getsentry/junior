@@ -1,14 +1,18 @@
-import { test as base } from "@playwright/test";
+import { expect, test as base } from "@playwright/test";
 import {
   mockDashboardApis,
   resetDashboardMockState,
   startDashboardE2eServer,
   type DashboardE2eServer,
 } from "./harness";
+import type { DashboardShell } from "../src/public-assets";
 
-type DashboardFixtures = {
+/** Options that a Playwright project or a spec can set. */
+export type DashboardOptions = {
   /** When true, install controllable timers for tests that fast-forward time. */
   controlTimers: boolean;
+  /** UI shell the viewer sees. */
+  ui: DashboardShell;
 };
 
 type DashboardWorkerFixtures = {
@@ -20,22 +24,34 @@ type DashboardWorkerFixtures = {
  * Shared dashboard browser fixtures.
  * Every test gets the fixed current time and common API stubs.
  */
-export const test = base.extend<DashboardFixtures, DashboardWorkerFixtures>({
+export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
   controlTimers: [false, { option: true }],
+  ui: ["classic", { option: true }],
   dashboard: [
     async ({}, use) => {
       const server = await startDashboardE2eServer();
       await use(server);
       await server.close();
     },
-    { scope: "worker" },
+    // The server takes 4 to 6 seconds to boot. With the default, that time
+    // counts against the first test of each worker and against every retry,
+    // because a retry starts a new worker. Give the boot its own limit.
+    { scope: "worker", timeout: 60_000 },
   ],
-  page: async ({ page, controlTimers }, use) => {
+  page: async ({ page, controlTimers, dashboard, ui }, use) => {
     // The dashboard server is shared per worker; reset its mutable mock
     // state before every test so archive/restore and profile-update tests
     // cannot leak into unrelated specs.
     await resetDashboardMockState();
     await mockDashboardApis(page, { controlTimers });
+    // The page shell reads the viewer's setting on the server, so a page
+    // route cannot choose the shell.
+    if (ui === "inbox") {
+      const response = await page.request.patch(`${dashboard.baseURL}/api/me`, {
+        data: { experimentalUi: true },
+      });
+      expect(response.ok()).toBe(true);
+    }
     await use(page);
     // A background read can still be in a route handler when the test ends.
     // Closing the page then disposes its response, and the handler throws.
@@ -44,4 +60,4 @@ export const test = base.extend<DashboardFixtures, DashboardWorkerFixtures>({
   },
 });
 
-export { expect } from "@playwright/test";
+export { expect };

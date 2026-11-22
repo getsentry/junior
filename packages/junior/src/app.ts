@@ -28,7 +28,7 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import { setBriefsConfig } from "@/chat/briefs/registration";
+import { setEventEmbeddingsConfig } from "@/chat/conversations/event-embedding-config";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -44,6 +44,10 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import {
+  setMemoryConfig,
+  type MemoryOptions,
+} from "@/chat/memory/registration";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
@@ -96,9 +100,13 @@ import {
   createVercelPluginTaskCallback,
   pluginTaskQueueConsumer,
   registerVercelPluginTaskDevConsumer,
+  sendVercelPluginTask,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
-import { processPluginTask } from "@/chat/plugins/task-runner";
+import {
+  processPluginTask,
+  type SendPluginTask,
+} from "@/chat/plugins/task-runner";
 import {
   cacheWarmupQueueConsumer,
   createVercelCacheWarmupCallback,
@@ -132,13 +140,18 @@ import {
   createProductionSlackWebhookServices,
   getProductionSlackAdapter,
 } from "@/chat/app/production";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
 import { publicArtifactGET } from "@/handlers/artifacts";
 import type { WaitUntilFn } from "@/handlers/types";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
+import { setTrustConfig, type TrustConfig } from "@/chat/identities/trust";
+import {
+  createIdentityDispatcher,
+  type IdentityDispatcher,
+} from "@/chat/agent-dispatch/identity";
 import { receiveLocalOAuthCredential } from "@/chat/local/credential-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createAcpConversations } from "@/api/acp/conversations";
@@ -179,6 +192,7 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
+export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Name Junior uses for itself, such as its Slack bot username. Defaults to
@@ -186,10 +200,12 @@ export interface JuniorAppOptions extends BotModelConfig {
    */
   botName?: string;
   /**
-   * Generate a durable Brief after each completed Turn. This costs one
-   * default-model call per completed Turn. Disabled by default.
+   * Embed the searchable events of a Conversation after each completed Turn,
+   * so `searchConversationEvents` also matches its history by meaning. This
+   * costs one embedding call per 32 new events. Disabled by default. Word
+   * search works without it.
    */
-  briefs?: { enabled?: boolean };
+  eventEmbeddings?: { enabled?: boolean };
   /**
    * Domains that may use Junior. Slack checks the email domain of the
    * author's Slack profile. Dashboard Google sign-in checks the `hd` claim of
@@ -208,6 +224,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   experimental?: ExperimentalFeaturesConfig;
   /** Turn and conversation limits. Unset limits keep their defaults. */
   limits?: RuntimeLimits;
+  /** Long-term Memory settings. Memory is always on. */
+  memory?: MemoryOptions;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -267,7 +285,7 @@ export interface JuniorAppOptions extends BotModelConfig {
      * Entries may be exact domains or leading wildcard domains such as
      * `*.sentry.io`; wildcard entries match subdomains, not the apex domain.
      */
-    egressTracePropagationDomains?: string[];
+    egressTracePropagationDomains?: string[] | undefined;
   };
   waitUntil?: WaitUntilFn;
 }
@@ -277,24 +295,26 @@ function resolvePublicBaseURL(
   dashboard: JuniorDashboardOptions | undefined,
 ): string | undefined {
   const configured =
-    dashboard?.baseURL?.trim() || process.env.JUNIOR_BASE_URL?.trim();
+    dashboard?.baseURL?.trim() || process.env["JUNIOR_BASE_URL"]?.trim();
   if (configured) return configured;
 
   const vercelURL =
-    process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim() ||
-    process.env.VERCEL_URL?.trim();
+    process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim() ||
+    process.env["VERCEL_URL"]?.trim();
   if (!vercelURL) return undefined;
-  return /^https?:\/\//.test(vercelURL) ? vercelURL : `https://${vercelURL}`;
+  return vercelURL.startsWith("https://") || vercelURL.startsWith("http://")
+    ? vercelURL
+    : `https://${vercelURL}`;
 }
 
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
-  functionMaxDurationSeconds?: number;
-  createDashboardApp?: CreateDashboardApp;
-  dashboard?: JuniorVirtualDashboardOptions;
-  pluginSet?: JuniorPluginSet;
-  plugins?: PluginCatalogConfig;
+  functionMaxDurationSeconds?: number | undefined;
+  createDashboardApp?: CreateDashboardApp | undefined;
+  dashboard?: JuniorVirtualDashboardOptions | undefined;
+  pluginSet?: JuniorPluginSet | undefined;
+  plugins?: PluginCatalogConfig | undefined;
   pluginRuntimeRegistrations: string[];
 }
 
@@ -321,10 +341,10 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
-      createDashboardApp?: CreateDashboardApp;
+      createDashboardApp?: CreateDashboardApp | undefined;
       functionMaxDurationSeconds?: number;
-      dashboard?: JuniorVirtualDashboardOptions;
-      pluginSet?: JuniorPluginSet;
+      dashboard?: JuniorVirtualDashboardOptions | undefined;
+      pluginSet?: JuniorPluginSet | undefined;
       plugins?: PluginCatalogConfig;
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
@@ -482,6 +502,7 @@ async function startQueueWorker(
         // A job can end before the work it started with `waitUntil`, such
         // as title work. Let that work finish before its connections close.
         while (backgroundWork.size > 0) {
+          // oxlint-disable-next-line no-await-in-loop -- Work that finishes can start more work, so check again until none is left.
           await Promise.allSettled(backgroundWork);
         }
         try {
@@ -522,17 +543,23 @@ export async function createApp(
   const previousConfigDefaults = getConfigDefaults();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousBriefsConfig = setBriefsConfig(options?.briefs);
+  const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
+    options?.eventEmbeddings,
+  );
+  const previousMemoryConfig = setMemoryConfig(options?.memory);
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
+  let previousTrustConfig: TrustConfig | undefined;
   const restoreRuntimeConfig = (): void => {
+    if (previousTrustConfig) setTrustConfig(previousTrustConfig);
     pluginCatalogRuntime.setConfig(previousPluginCatalogConfig);
     setPlugins(previousPlugins);
     setConfigDefaults(previousConfigDefaults);
     restoreChatRuntimeConfig(previousRuntimeConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
-    setBriefsConfig(previousBriefsConfig);
+    setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
+    setMemoryConfig(previousMemoryConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
@@ -546,6 +573,7 @@ export async function createApp(
   let sandboxEgressTracePropagationDomains: string[] = [];
   let signInConfig: SignInAuthConfig | undefined;
   let allowedDomains: string[] = [];
+  let dispatchForIdentity: IdentityDispatcher;
   try {
     sandboxEgressTracePropagationDomains =
       normalizeSandboxEgressTracePropagationDomains(
@@ -565,12 +593,21 @@ export async function createApp(
     // One domain list for Slack authors and dashboard sign-ins.
     assertNoLegacyAllowedDomains(Object.keys(dashboard ?? {}));
     allowedDomains = resolveAllowedDomains(options?.allowedDomains);
+    previousTrustConfig = setTrustConfig({
+      allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
+      allowedDomains,
+    });
     if (allowedDomains.length === 0) {
       logWarn("app.allowed_domains.unset", {
         "app.reason":
-          "allowedDomains is empty, so any Slack workspace member can use Junior",
+          "allowedDomains is empty, so any Slack workspace member can use the bot",
       });
     }
+    // One entry point for plugin routes and heartbeats, so both use the
+    // same rules for who counts as a person.
+    dispatchForIdentity = createIdentityDispatcher({
+      conversationWorkQueue: () => conversationWorkQueue,
+    });
     if (dashboard && !dashboard.disabled) {
       signInConfig = resolveSignInAuthConfig(
         botConfig.userName,
@@ -586,8 +623,9 @@ export async function createApp(
       );
     }
     pluginRoutes = getPluginRoutes({
+      dispatchForIdentity,
       events,
-      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
+      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
@@ -611,6 +649,9 @@ export async function createApp(
     ) ??
     getVercelConversationWorkQueue();
   const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const sendPluginTask: SendPluginTask = pluginTaskQueue
+    ? (message) => pluginTaskQueue.send(message)
+    : sendVercelPluginTask;
   const backgroundCompactionQueue =
     options?.backgroundCompactionQueue?.((message) =>
       processBackgroundCompaction(message),
@@ -641,9 +682,7 @@ export async function createApp(
       createProductionConversationWorkOptions({
         agentRunner,
         queue: conversationWorkQueue,
-        ...(pluginTaskQueue
-          ? { sendPluginTask: (message) => pluginTaskQueue.send(message) }
-          : undefined),
+        sendPluginTask,
         services: runtimeServiceOverrides,
         waitUntil: (task) => {
           backgroundWork.add(task);
@@ -669,7 +708,12 @@ export async function createApp(
     acpRuntime = {
       handleRequest: createAcpHttpHandler({
         ...(dashboard && !dashboard.disabled
-          ? { browserAuth: { baseURL: resolvePublicBaseURL(dashboard) } }
+          ? {
+              browserAuth: {
+                agentName: botConfig.userName,
+                baseURL: resolvePublicBaseURL(dashboard),
+              },
+            }
           : undefined),
         conversations: createAcpConversations({
           conversationStore: work.conversationStore,
@@ -738,8 +782,6 @@ export async function createApp(
       queue: conversationWorkQueue,
       services: runtimeServiceOverrides,
     }),
-    allowedBotUserIds: options?.slack?.allowedBotUserIds ?? [],
-    allowedDomains,
     autoJoinNewChannels: options?.slack?.autoJoinNewChannels === true,
   };
 
@@ -833,7 +875,7 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env.NODE_ENV === "development") {
+  if (process.env["NODE_ENV"] === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
@@ -875,7 +917,9 @@ export async function createApp(
   app.get("/api/internal/heartbeat", (c) => {
     return heartbeatGET(c.req.raw, waitUntil, {
       conversationWorkQueue,
+      dispatchForIdentity,
       events,
+      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
     });
   });
 

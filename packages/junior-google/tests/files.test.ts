@@ -1,9 +1,12 @@
+import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
-import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
+import { googlePlugin } from "../src/index";
+import { ACCOUNT_EMAIL, stubGoogleEnv, withReadCheck } from "./fixture";
 
 const DOC_ID = "1AbCdEfGhIjKlMnOpQrStUvWxYz0123456789_-abcd";
+const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
+const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
 
 const REQUESTER = "alice@example.com";
 
@@ -23,8 +26,8 @@ const SEARCH_DOC = {
 function toolsFor(email: string | undefined, ...responses: Response[]) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
-  const tools = googlePlugin().hooks!.tools!({
-    egress: { fetch },
+  const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
+    egress: { fetch: withReadCheck(fetch, [DOC_ID, SHEET_ID, SLIDES_ID]) },
     users: {
       resolveActor: async () => (email ? { user: { email } } : undefined),
       resolveTimezone: async () => "America/Los_Angeles",
@@ -49,8 +52,8 @@ function run(
   name: string,
   input: Record<string, unknown>,
 ) {
-  const tool = tools[name]!;
-  return tool.execute!(tool.prepareArguments!(input), { toolCallId: name });
+  const tool = tools[name];
+  return tool.execute(tool.prepareArguments!(input), { toolCallId: name });
 }
 
 describe("Google Docs, Sheets, and Slides tools", () => {
@@ -102,15 +105,15 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       types: ["document"],
     });
     const [named, findable] = [0, 1].map(
-      (call) => new URL(fetch.mock.calls[call]![0].request.url),
+      (call) => new URL(fetch.mock.calls[call][0].request.url),
     );
-    expect(named!.pathname).toBe("/drive/v3/files");
+    expect(named.pathname).toBe("/drive/v3/files");
     const terms =
       "(mimeType = 'application/vnd.google-apps.document') and trashed = false and fullText contains 'Bob\\'s plan'";
-    expect(named!.searchParams.get("q")).toBe(
+    expect(named.searchParams.get("q")).toBe(
       `${terms} and ('alice@example.com' in readers or 'alice@example.com' in writers or 'alice@example.com' in owners)`,
     );
-    expect(findable!.searchParams.get("q")).toBe(
+    expect(findable.searchParams.get("q")).toBe(
       `${terms} and (visibility = 'domainCanFind' or visibility = 'anyoneCanFind')`,
     );
     expect(search).toMatchObject({
@@ -119,9 +122,9 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     });
 
     const link = `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`;
-    const doc = await run(tools, "readGoogleDoc", { document: link });
+    const doc = await run(tools, "readGoogleFile", { file: link });
     const [get, revision, exported] = [2, 3, 4].map(
-      (index) => fetch.mock.calls[index]![0],
+      (index) => fetch.mock.calls[index][0],
     );
     expect(get.operation).toBe("google.drive.file.get");
     // The edit tools check this revision before they change the Doc.
@@ -138,10 +141,11 @@ describe("Google Docs, Sheets, and Slides tools", () => {
     }
     expect(doc).toMatchObject({
       content: "# Q4 plan\n\nShip it.",
-      document_id: DOC_ID,
+      file_id: DOC_ID,
       revision_id: "rev-1",
       title: "Q4 plan",
       truncated: false,
+      type: "document",
     });
 
     const comments = await run(tools, "listGoogleFileComments", {
@@ -191,11 +195,116 @@ describe("Google Docs, Sheets, and Slides tools", () => {
         headers: { "content-type": "text/markdown" },
       }),
     );
-    const unrevised = await run(noDocsApi.tools, "readGoogleDoc", {
-      document: DOC_ID,
+    // A bare file id takes its type from Drive.
+    const unrevised = await run(noDocsApi.tools, "readGoogleFile", {
+      file: DOC_ID,
     });
-    expect(unrevised).toMatchObject({ content: "# Q4 plan" });
+    expect(unrevised).toMatchObject({ content: "# Q4 plan", type: "document" });
     expect(unrevised).not.toHaveProperty("revision_id");
+  });
+
+  it("reads a file only for a requester who can open it", async () => {
+    // Each requester opens the Doc through one kind of share, or none.
+    const shares: Record<string, string> = {
+      "alice@example.com": "'alice@example.com' in readers",
+      "carol@example.com": "visibility = 'domainWithLink'",
+      "eve@other.com": "visibility = 'domainWithLink'",
+      "link@other.com": "visibility = 'anyoneWithLink'",
+      "page@other.com": "visibility = 'anyoneWithLink'",
+    };
+    const readAs = (email: string | undefined, metadata = SEARCH_DOC) => {
+      const fetch = vi.fn(
+        async (call: { operation: string; request: Request }) => {
+          const url = new URL(call.request.url);
+          const query = url.searchParams.get("q");
+          if (query !== null) {
+            const share = email ? shares[email] : undefined;
+            const found = !!share && query.includes(share);
+            // Many files share a common name, so Drive can list this one
+            // on a later page.
+            if (found && email === "page@other.com") {
+              return url.searchParams.get("pageToken") === "p2"
+                ? Response.json({ files: [{ id: DOC_ID }] })
+                : Response.json({
+                    files: [{ id: "1OtHeRfIlEiDxyz" }],
+                    nextPageToken: "p2",
+                  });
+            }
+            return Response.json({ files: found ? [{ id: DOC_ID }] : [] });
+          }
+          if (call.operation === "google.drive.file.get") {
+            return Response.json(metadata);
+          }
+          if (call.operation === "google.docs.document.get") {
+            return Response.json({ revisionId: "rev-1" });
+          }
+          return new Response("# Q4 plan", {
+            headers: { "content-type": "text/markdown" },
+          });
+        },
+      );
+      const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
+        egress: { fetch },
+        users: {
+          resolveActor: async () => (email ? { user: { email } } : undefined),
+          resolveTimezone: async () => "America/Los_Angeles",
+        },
+      } as never);
+      return {
+        fetch,
+        read: (file: string = DOC_ID) => run(tools, "readGoogleFile", { file }),
+      };
+    };
+
+    for (const email of [
+      "alice@example.com",
+      "carol@example.com",
+      "link@other.com",
+      "page@other.com",
+    ]) {
+      await expect(readAs(email).read()).resolves.toMatchObject({
+        content: "# Q4 plan",
+      });
+    }
+    // Drive lists an older Doc shared by link only with its resource key.
+    const keyed = readAs("link@other.com");
+    await expect(
+      keyed.read(
+        `https://docs.google.com/document/d/${DOC_ID}/edit?resourcekey=0-key`,
+      ),
+    ).resolves.toMatchObject({ content: "# Q4 plan" });
+    const lists = keyed.fetch.mock.calls
+      .map(([call]) => call)
+      .filter((call) => call.operation === "google.drive.files.list");
+    expect(lists.length).toBeGreaterThan(0);
+    for (const call of lists) {
+      expect(call.request.headers.get("X-Goog-Drive-Resource-Keys")).toBe(
+        `${DOC_ID}/0-key`,
+      );
+    }
+    // A domain share opens the Doc only for the domain that owns it. A share
+    // with a group names nobody, so it does not count.
+    for (const email of ["eve@other.com", "eng-member@example.com"]) {
+      const { fetch, read } = readAs(email);
+      await expect(read()).rejects.toThrow(
+        `Only people who can open this file can ask you to read it, and ${email} cannot.`,
+      );
+      expect(fetch.mock.calls.map(([call]) => call.operation)).not.toContain(
+        "google.drive.file.export",
+      );
+    }
+    await expect(readAs(undefined).read()).rejects.toThrow(
+      "The requester's email is unknown",
+    );
+    // Errors before the requester check say nothing about the file, not
+    // even its type.
+    const pdf = { ...SEARCH_DOC, mimeType: "application/pdf" };
+    for (const email of ["eve@other.com", undefined]) {
+      const error: Error = await readAs(email, pdf)
+        .read()
+        .catch((caught: Error) => caught);
+      expect(error.message).not.toMatch(/Q4 plan|application\/pdf/);
+    }
   });
 
   it("searches only with the requester's terms", async () => {
@@ -253,12 +362,22 @@ describe("Google Docs, Sheets, and Slides tools", () => {
   });
 
   it("explains a file Junior cannot open, a file of the wrong type, and a grant without Drive access", async () => {
-    const { tools } = docsTools(
+    const { fetch, tools } = docsTools(
       Response.json({ error: { message: "File not found" } }, { status: 404 }),
       Response.json({
         id: DOC_ID,
         mimeType: "application/vnd.google-apps.spreadsheet",
         name: "Budget",
+      }),
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/pdf",
+        name: "Scan",
+      }),
+      Response.json({
+        id: DOC_ID,
+        mimeType: "application/vnd.google-apps.document",
+        name: "Q4 plan",
       }),
       Response.json(
         {
@@ -271,22 +390,33 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       ),
     );
 
-    const hidden = run(tools, "readGoogleDoc", { document: DOC_ID });
+    const hidden = run(tools, "readGoogleFile", { file: DOC_ID });
     await expect(hidden).rejects.toThrow(PluginToolInputError);
     await expect(hidden).rejects.toThrow(
       `Your Google account (${ACCOUNT_EMAIL}) cannot open this file`,
     );
+    // A Docs link must open a Doc, even when Drive has another type.
     await expect(
-      run(tools, "readGoogleDoc", { document: DOC_ID }),
-    ).rejects.toThrow('"Budget" is not a Google Doc');
+      run(tools, "readGoogleFile", {
+        file: `https://docs.google.com/document/d/${DOC_ID}/edit`,
+      }),
+    ).rejects.toThrow('"Budget" is not a Google Doc (');
     await expect(
-      run(tools, "readGoogleDoc", { document: DOC_ID }),
+      run(tools, "readGoogleFile", { file: DOC_ID }),
+    ).rejects.toThrow(
+      '"Scan" is not a Google Doc or Google Slides presentation or Google Sheet (application/pdf).',
+    );
+    // A range is only for a Sheet, so the Doc is not read.
+    await expect(
+      run(tools, "readGoogleFile", { file: DOC_ID, range: "A1:B2" }),
+    ).rejects.toThrow('"Q4 plan" is not a Google Sheet, so it has no range.');
+    expect(fetch).toHaveBeenCalledTimes(4);
+    await expect(
+      run(tools, "readGoogleFile", { file: DOC_ID }),
     ).rejects.toThrow("An admin must reconnect it");
   });
 
   it("reads every tab of a Sheet as CSV, and the text and notes of each slide", async () => {
-    const SHEET_ID = "1SheetIdAbCdEfGhIjKlMnOp";
-    const SLIDES_ID = "1SlidesIdAbCdEfGhIjKlMn";
     const { fetch, tools } = docsTools(
       Response.json({
         id: SHEET_ID,
@@ -357,10 +487,10 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       }),
     );
 
-    const sheet = await run(tools, "readGoogleSheet", {
-      spreadsheet: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=0`,
+    const sheet = await run(tools, "readGoogleFile", {
+      file: `https://docs.google.com/spreadsheets/d/${SHEET_ID}/edit#gid=0`,
     });
-    const batchGet = new URL(fetch.mock.calls[2]![0].request.url);
+    const batchGet = new URL(fetch.mock.calls[2][0].request.url);
     expect(batchGet.host).toBe("sheets.googleapis.com");
     expect(batchGet.searchParams.getAll("ranges")).toEqual([
       "'Q4'",
@@ -379,20 +509,21 @@ describe("Google Docs, Sheets, and Slides tools", () => {
           truncated: false,
         },
       ],
-      spreadsheet_id: SHEET_ID,
+      file_id: SHEET_ID,
       tabs: ["Q4", "Bob's tab"],
       title: "Budget",
       truncated: false,
+      type: "spreadsheet",
     });
 
-    const slides = await run(tools, "readGoogleSlides", {
-      presentation: `https://docs.google.com/presentation/d/${SLIDES_ID}/edit`,
+    const slides = await run(tools, "readGoogleFile", {
+      file: `https://docs.google.com/presentation/d/${SLIDES_ID}/edit`,
     });
-    expect(new URL(fetch.mock.calls[4]![0].request.url).host).toBe(
+    expect(new URL(fetch.mock.calls[4][0].request.url).host).toBe(
       "slides.googleapis.com",
     );
     expect(slides).toMatchObject({
-      presentation_id: SLIDES_ID,
+      file_id: SLIDES_ID,
       slide_count: 2,
       slides: [
         { notes: "Say hello.", slide_number: 1, text: "Kickoff\nQ4 | Ship" },
@@ -400,6 +531,49 @@ describe("Google Docs, Sheets, and Slides tools", () => {
       ],
       title: "Kickoff",
       truncated: false,
+      type: "presentation",
     });
+  });
+
+  it("reads a Sheet with one range and Slides from a bare file id", async () => {
+    const { fetch, tools } = docsTools(
+      Response.json({
+        id: SHEET_ID,
+        mimeType: "application/vnd.google-apps.spreadsheet",
+        name: "Budget",
+      }),
+      Response.json({ sheets: [{ properties: { title: "Q4" } }] }),
+      Response.json({
+        valueRanges: [{ range: "Q4!A1:A1", values: [["Item"]] }],
+      }),
+      Response.json({
+        id: SLIDES_ID,
+        mimeType: "application/vnd.google-apps.presentation",
+        name: "Kickoff",
+      }),
+      Response.json({ slides: [{ pageElements: [textBox("Hi")] }] }),
+    );
+
+    const sheet = await run(tools, "readGoogleFile", {
+      file: SHEET_ID,
+      range: "Q4!A1:A1",
+    });
+    expect(
+      new URL(fetch.mock.calls[2][0].request.url).searchParams.getAll("ranges"),
+    ).toEqual(["Q4!A1:A1"]);
+    expect(sheet).toMatchObject({
+      file_id: SHEET_ID,
+      ranges: [{ content: "Item", range: "Q4!A1:A1" }],
+      type: "spreadsheet",
+    });
+    expect(sheet).not.toHaveProperty("content");
+
+    const slides = await run(tools, "readGoogleFile", { file: SLIDES_ID });
+    expect(slides).toMatchObject({
+      file_id: SLIDES_ID,
+      slides: [{ slide_number: 1, text: "Hi" }],
+      type: "presentation",
+    });
+    expect(slides).not.toHaveProperty("ranges");
   });
 });

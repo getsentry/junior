@@ -3,12 +3,15 @@ import { automationToolContext } from "@/chat/automations/tool-access";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { eq } from "drizzle-orm";
 import { getDispatchRecord } from "@/chat/agent-dispatch/store";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { createTools, type ToolRuntimeContext } from "@/chat/tools";
+import {
+  createTools,
+  type ToolRuntimeContext,
+} from "@/chat/tool-support/create-tools";
 import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { Hono } from "hono";
 import { createConversationRoutes } from "@/api/conversations/routes";
@@ -42,7 +45,7 @@ import {
 import { conversationsRepliesPage } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
-  getCapturedSlackFileDownloadUrls,
+  getCapturedSlackFileDownloadCalls,
   queueSlackApiError,
   queueSlackApiResponse,
   queueSlackPrivateFileDownload,
@@ -50,8 +53,8 @@ import {
 } from "../../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "channel-message-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "channel-message-automation-test-secret";
 });
 
 // Slack webhook fixtures post from workspace T123 in channel C123.
@@ -78,7 +81,11 @@ async function startDispatchRun(dispatchId: string): Promise<Message> {
 function conversationApi(storage: AttachmentStorage): Hono<JuniorApiEnv> {
   return new Hono<JuniorApiEnv>().route(
     "/api/conversations",
-    createConversationRoutes({ attachmentStorage: storage, queue }),
+    createConversationRoutes({
+      attachmentStorage: storage,
+      queue,
+      waitUntil: () => undefined,
+    }),
   );
 }
 
@@ -253,7 +260,12 @@ describe("Slack channel-message automation files", () => {
     const written: string[] = [];
     const workspace: SandboxWorkspace = {
       readFileToBuffer: async () => null,
-      runCommand: async () => ({ exitCode: 0, stderr: "", stdout: "" }),
+      // Each file here is one part, so `stat` reports the last write.
+      runCommand: async (input) => ({
+        exitCode: 0,
+        stderr: "",
+        stdout: input.cmd === "stat" ? String(written.at(-1)?.length ?? 0) : "",
+      }),
       writeFiles: async (files) => {
         written.push(...files.map((file) => file.content.toString()));
       },
@@ -320,11 +332,9 @@ describe("Slack channel-message automation files", () => {
         .slice(repliesCalls)
         .map((call) => call.params),
     ).toEqual([expect.objectContaining({ channel: "C123", ts: rootTs })]);
-    expect(getCapturedSlackFileDownloadUrls()).toEqual([
-      rootFile.url_private,
-      forwardedFile.url_private,
-      replyFile.url_private,
-    ]);
+    expect(getCapturedSlackFileDownloadCalls().map((call) => call.url)).toEqual(
+      [rootFile.url_private, forwardedFile.url_private, replyFile.url_private],
+    );
 
     // A file that is not in the run's thread, or whose URL is not on Slack's
     // file host, is refused and not downloaded.
@@ -334,7 +344,9 @@ describe("Slack channel-message automation files", () => {
         execute(loadAttachment!, { attachment_id: fileId }),
       ).rejects.toThrow("not in this conversation's thread");
     }
-    expect(getCapturedSlackFileDownloadUrls()).toHaveLength(3);
+    expect(
+      getCapturedSlackFileDownloadCalls().map((call) => call.url),
+    ).toHaveLength(3);
     expect(getCapturedSlackApiCalls("auth.test")).toEqual([]);
 
     // Each tool call that read a file shows it once in the transcript, as
@@ -367,7 +379,7 @@ describe("Slack channel-message automation files", () => {
     // The model's history does not include them.
     expect(
       JSON.stringify(
-        await loadProjection({ conversationId: runConversationId }),
+        await loadConversationProjection({ conversationId: runConversationId }),
       ),
     ).not.toContain("reply.png");
 
@@ -425,6 +437,8 @@ describe("Slack channel-message automation files", () => {
     const input = await startDispatchRun(dispatchId);
     expect(input.text).toContain("Why did this chart drop?");
     expect(input.attachments).toEqual([]);
-    expect(getCapturedSlackFileDownloadUrls()).toEqual([]);
+    expect(getCapturedSlackFileDownloadCalls().map((call) => call.url)).toEqual(
+      [],
+    );
   });
 });

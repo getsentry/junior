@@ -1,11 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, gt, isNull, or } from "drizzle-orm";
 import {
   detectImageMediaType,
   type InputImageType,
 } from "@/chat/attachments/media";
-import type { AttachmentStorage } from "@/chat/attachments/storage";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { bufferBody, type AttachmentStorage } from "@/chat/attachments/storage";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorArtifacts } from "@/db/schema";
 
@@ -75,17 +75,23 @@ function resolvePublicBaseUrl(publicBaseUrl: string): string {
   return baseUrl;
 }
 
-/** Publish validated image bytes as a conversation-owned public artifact. */
+/**
+ * Publish validated image bytes as a conversation-owned public artifact.
+ * With `expiresAt`, the URL stops serving at that time.
+ */
 export async function publishImage(args: {
   body: Buffer;
   conversationId: string;
   db: JuniorSqlDatabase;
+  expiresAt?: Date;
   now?: Date;
   publicBaseUrl: string;
   storage: Pick<AttachmentStorage, "put">;
 }): Promise<{
   bytes: number;
   contentType: string;
+  /** Null when the URL serves until unpublished. */
+  expiresAt: Date | null;
   url: string;
 }> {
   if (args.body.byteLength === 0) {
@@ -108,62 +114,79 @@ export async function publishImage(args: {
   const sha256 = createHash("sha256").update(args.body).digest("hex");
   const now = args.now ?? new Date();
 
-  const [existing] = await args.db
-    .db()
-    .select({
-      id: juniorArtifacts.id,
-    })
-    .from(juniorArtifacts)
-    .where(
-      and(
-        eq(juniorArtifacts.conversationId, args.conversationId),
-        eq(juniorArtifacts.sha256, sha256),
-      ),
-    );
+  // One public id per conversation+bytes for artifacts that do not expire.
+  // An expiring artifact gets its own id, so no URL that serves longer ever
+  // shares its row. Other conversations get their own id.
+  const [existing] = args.expiresAt
+    ? []
+    : await args.db
+        .db()
+        .select({
+          id: juniorArtifacts.id,
+        })
+        .from(juniorArtifacts)
+        .where(
+          and(
+            eq(juniorArtifacts.conversationId, args.conversationId),
+            eq(juniorArtifacts.sha256, sha256),
+            eq(juniorArtifacts.visibility, "public"),
+            isNull(juniorArtifacts.expiresAt),
+          ),
+        );
 
-  // One public id per conversation+bytes. Other conversations get their own id.
   const id = existing?.id ?? randomUUID();
   const filename = `${id}.${extension}`;
   const storageKey = artifactKey(filename);
 
   await args.storage.put({
-    body: args.body,
+    body: bufferBody(args.body),
+    bytes: args.body.byteLength,
     contentType,
     key: storageKey,
   });
 
-  // Unique on (conversation_id, sha256). Conflict keeps the existing public id.
-  const [row] = await args.db
-    .db()
-    .insert(juniorArtifacts)
-    .values({
-      bytes: args.body.byteLength,
-      contentType,
-      conversationId: args.conversationId,
-      createdAt: now,
-      deleteRequestedAt: null,
-      ext: extension,
-      id,
-      public: true,
-      sha256,
-      storageKey,
-    })
-    .onConflictDoUpdate({
-      target: [juniorArtifacts.conversationId, juniorArtifacts.sha256],
-      set: {
-        bytes: args.body.byteLength,
-        contentType,
-        deleteRequestedAt: null,
-        ext: extension,
-        public: true,
-        // Keep the winning row's id/storage key. A raced put may leave an
-        // unused object; that is fine for mvp.
-      },
-    })
-    .returning({
-      ext: juniorArtifacts.ext,
-      id: juniorArtifacts.id,
-    });
+  const values = {
+    bytes: args.body.byteLength,
+    contentType,
+    conversationId: args.conversationId,
+    createdAt: now,
+    deleteRequestedAt: null,
+    expiresAt: args.expiresAt ?? null,
+    ext: extension,
+    id,
+    sha256,
+    storageKey,
+    visibility: "public" as const,
+  };
+  const returning = { ext: juniorArtifacts.ext, id: juniorArtifacts.id };
+  const [row] = args.expiresAt
+    ? await args.db
+        .db()
+        .insert(juniorArtifacts)
+        .values(values)
+        .returning(returning)
+    : // Unique on (conversation_id, sha256) among public rows that do not
+      // expire. Conflict keeps the existing public id.
+      await args.db
+        .db()
+        .insert(juniorArtifacts)
+        .values(values)
+        .onConflictDoUpdate({
+          target: [juniorArtifacts.conversationId, juniorArtifacts.sha256],
+          targetWhere: and(
+            eq(juniorArtifacts.visibility, "public"),
+            isNull(juniorArtifacts.expiresAt),
+          ),
+          set: {
+            bytes: args.body.byteLength,
+            contentType,
+            deleteRequestedAt: null,
+            ext: extension,
+            // Keep the winning row's id/storage key. A raced put may leave an
+            // unused object; that is fine for mvp.
+          },
+        })
+        .returning(returning);
 
   if (!row) {
     throw new Error("failed to publish artifact row");
@@ -172,6 +195,7 @@ export async function publishImage(args: {
   return {
     bytes: args.body.byteLength,
     contentType,
+    expiresAt: args.expiresAt ?? null,
     url: `${baseUrl}/public/artifacts/${row.id}.${row.ext}`,
   };
 }
@@ -229,6 +253,7 @@ export async function readPublicArtifact(args: {
 }): Promise<{
   body: ReadableStream<Uint8Array>;
   contentType: string;
+  expiresAt: Date | null;
 } | null> {
   const parsed = parseArtifactFilename(args.filename);
   if (!parsed) return null;
@@ -237,14 +262,19 @@ export async function readPublicArtifact(args: {
     .db()
     .select({
       contentType: juniorArtifacts.contentType,
+      expiresAt: juniorArtifacts.expiresAt,
       storageKey: juniorArtifacts.storageKey,
     })
     .from(juniorArtifacts)
     .where(
       and(
         eq(juniorArtifacts.id, parsed.id),
-        eq(juniorArtifacts.public, true),
+        eq(juniorArtifacts.visibility, "public"),
         isNull(juniorArtifacts.deleteRequestedAt),
+        or(
+          isNull(juniorArtifacts.expiresAt),
+          gt(juniorArtifacts.expiresAt, new Date()),
+        ),
       ),
     );
 
@@ -252,14 +282,25 @@ export async function readPublicArtifact(args: {
 
   const body = await args.storage.get(row.storageKey);
   if (!body) return null;
-  return { body, contentType: row.contentType };
+  return { body, contentType: row.contentType, expiresAt: row.expiresAt };
 }
 
 /** Build public response headers for one live public artifact. */
-export function publicArtifactHeaders(contentType: string): Headers {
+export function publicArtifactHeaders(
+  contentType: string,
+  expiresAt: Date | null = null,
+): Headers {
+  // Keep TTL short so unpublish can take effect, and no longer than the
+  // expiry so no cache serves the artifact after it. Do not mark immutable.
+  const maxAge =
+    expiresAt === null
+      ? 300
+      : Math.min(
+          300,
+          Math.max(0, Math.floor((expiresAt.getTime() - Date.now()) / 1000)),
+        );
   return new Headers({
-    // Keep TTL short so unpublish can take effect. Do not mark immutable.
-    "cache-control": "public, max-age=300, must-revalidate",
+    "cache-control": `public, max-age=${maxAge}, must-revalidate`,
     "content-type": contentType,
     "x-content-type-options": "nosniff",
   });

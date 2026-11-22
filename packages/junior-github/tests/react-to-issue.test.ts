@@ -1,9 +1,13 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
-import { createGitHubReactToIssueTool } from "../src/tools/react-to-issue";
+import { gitHubReactToIssueTool } from "../src/tools/react-to-issue";
 
 function toolContext(response: Response) {
   const fetch = vi.fn(async () => response);
-  return { fetch, tool: createGitHubReactToIssueTool({ fetch }) };
+  return {
+    fetch,
+    tool: bindPluginTool(gitHubReactToIssueTool, { egress: { fetch } }),
+  };
 }
 
 describe("reactToIssue", () => {
@@ -14,7 +18,7 @@ describe("reactToIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 3037, content: "eyes" },
+        { repo: "getsentry/junior", issue: 3037, content: "eyes" },
         { toolCallId: "react" },
       ),
     ).resolves.toEqual({
@@ -46,7 +50,7 @@ describe("reactToIssue", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 3037, content: "eyes" },
+        { repo: "getsentry/junior", issue: 3037, content: "eyes" },
         { toolCallId: "missing" },
       ),
     ).rejects.toThrow("GitHub issue reaction failed with HTTP 404: Not Found");

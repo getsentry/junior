@@ -1,4 +1,5 @@
 import type { StoredSlackActor } from "@/chat/actor";
+import type { ConversationReportStatus } from "../schema/conversation";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type { juniorConversations } from "@/db/schema";
 import type { ConversationAccess } from "./access";
@@ -25,25 +26,11 @@ export type ReportingConversationRow = {
   parentConversationId: string | null;
   providerSubjectId: string | null;
   source: (typeof juniorConversations.$inferSelect)["source"];
-  stoppedAt: Date | null;
+  status: ConversationReportStatus;
   title: string | null;
   updatedAt: Date;
   usage: (typeof juniorConversations.$inferSelect)["usage"];
 };
-
-/** Parse report timestamps without throwing on malformed legacy values. */
-export function reportTime(value: string): number | undefined {
-  const time = Date.parse(value);
-  return Number.isFinite(time) ? time : undefined;
-}
-
-/** Convert a report timestamp into the UTC day used by activity projections. */
-export function reportDate(value: string): string | undefined {
-  const time = reportTime(value);
-  return time === undefined
-    ? undefined
-    : new Date(time).toISOString().slice(0, 10);
-}
 
 /** Return the dashboard label for a conversation surface. */
 export function surfaceLabel(surface: ConversationSurface): string {
@@ -55,8 +42,8 @@ export function surfaceLabel(surface: ConversationSurface): string {
 
 /** Return the dashboard-safe Slack location label for a conversation. */
 export function slackLocationLabel(args: {
-  channel?: string;
-  channelName?: string;
+  channel?: string | undefined;
+  channelName?: string | undefined;
   channelNameRedacted?: boolean;
 }): string | undefined {
   const channelId = args.channel;
@@ -92,13 +79,15 @@ function actorFromRow(
 export function summaryFromRow(
   row: ReportingConversationRow,
   options: {
-    access?: ConversationAccess;
-    automationTitle?: string;
-    firstHumanMessageText?: string;
-    metrics?: {
-      durationMs: number;
-      usage?: NonNullable<ReportingConversationRow["usage"]>;
-    };
+    access?: ConversationAccess | undefined;
+    automationTitle?: string | undefined;
+    firstHumanMessageText?: string | undefined;
+    metrics?:
+      | {
+          durationMs: number;
+          usage?: NonNullable<ReportingConversationRow["usage"]>;
+        }
+      | undefined;
   } = {},
 ): ConversationSummaryReport {
   const actor = actorFromRow(row);
@@ -123,7 +112,6 @@ export function summaryFromRow(
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
     ...(row.source ? { source: row.source } : undefined),
-    ...(row.stoppedAt ? { stoppedAtMs: row.stoppedAt.getTime() } : undefined),
     ...(row.title ? { title: row.title } : undefined),
   };
   return conversationSummaryFromStoredConversation({
@@ -132,35 +120,10 @@ export function summaryFromRow(
     conversation,
     durationMs: options.metrics?.durationMs ?? row.durationMs,
     firstHumanMessageText: options.firstHumanMessageText,
+    status: row.status,
     ...(options.access?.visibility === "public" && row.destinationId
       ? { locationId: row.destinationId }
       : undefined),
     usage: options.metrics?.usage ?? row.usage ?? undefined,
   });
-}
-
-/** Collapse persisted conversation usage into the dashboard token total. */
-export function usageTokens(
-  row: Pick<ReportingConversationRow, "usage">,
-): number | undefined {
-  const usage = row.usage;
-  if (!usage) return undefined;
-  if (usage.totalTokens !== undefined) return usage.totalTokens;
-  const values = [
-    usage.inputTokens,
-    usage.outputTokens,
-    usage.cachedInputTokens,
-    usage.cacheCreationTokens,
-  ].filter((value): value is number => value !== undefined);
-  return values.length
-    ? values.reduce((sum, value) => sum + value, 0)
-    : undefined;
-}
-
-/** Collapse a conversation summary status into aggregate counters. */
-export function conversationSignals(summary: ConversationSummaryReport) {
-  return {
-    active: summary.status === "active",
-    failed: summary.status === "failed",
-  };
 }

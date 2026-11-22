@@ -1,12 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
 import { listOwnedWatches } from "@/chat/events/owned-watches";
+import { cancelWatch } from "@/chat/events/store";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { throwApiError } from "../http";
-import {
-  conversationWatchesReportSchema,
-  type ConversationWatchesReport,
-} from "../schema/watch";
+import { type ConversationWatchesReport } from "../schema/watch";
 import { readConversationAccessFromSql } from "./access";
 
 /**
@@ -16,7 +14,7 @@ import { readConversationAccessFromSql } from "./access";
  */
 export async function requireConversationWatches(
   conversationId: string,
-  options: { viewer?: User } = {},
+  options: { viewer?: User | undefined } = {},
 ): Promise<ConversationWatchesReport> {
   const conversation = await getConversationStore().get({ conversationId });
   if (!conversation) throwApiError(404, "Conversation not found.");
@@ -67,5 +65,33 @@ export async function requireConversationWatches(
     };
   });
 
-  return conversationWatchesReportSchema.parse({ conversationId, watches });
+  return { conversationId, watches };
+}
+
+/**
+ * Cancel one active Watch of one Conversation for a Participant, the same
+ * people who can stop its Turn. Only the Conversation that created the Watch
+ * cancels it, so a child agent's Watch is cancelled through the child.
+ *
+ * The agent gets no notice. Its next `listWatches` no longer shows the Watch.
+ */
+export async function cancelConversationWatchForViewer(
+  viewer: User,
+  conversationId: string,
+  watchId: string,
+): Promise<void> {
+  const access = (
+    await readConversationAccessFromSql(getDb(), [conversationId], viewer)
+  ).get(conversationId);
+  if (!access?.canViewPrivateContent) {
+    throwApiError(404, "Conversation not found.");
+  }
+  if (!access.isParticipant) {
+    throwApiError(403, "Only conversation participants can cancel a Watch.");
+  }
+  const watch = await cancelWatch({ conversationId, id: watchId });
+  if (!watch) throwApiError(404, "Watch not found.");
+  if (watch.status === "completed") {
+    throwApiError(409, "Watch already completed.");
+  }
 }

@@ -50,12 +50,12 @@ export default {
       },
     },
     {
-      name: "no-review-items-to-slack",
+      name: "no-inbox-items-to-slack",
       comment:
-        "Review item code is provider-neutral. App setup injects Slack cards and mentions.",
+        "Inbox item code is provider-neutral. App setup injects Slack cards and mentions.",
       severity: "error",
       from: {
-        path: "^src/chat/(review-items/|tools/review-items\\.ts$)",
+        path: "^src/chat/(inbox-items/|tools/inbox-items\\.ts$)",
       },
       to: {
         path: "^src/chat/slack/",
@@ -108,12 +108,26 @@ export default {
         path: "^src/chat/services/",
       },
     },
+    {
+      name: "no-dynamic-model-imports",
+      comment:
+        "Import model calls statically from @/chat/core-model, so each call names its operation and records its cost. oxlint checks the imported names, which a dynamic import() hides.",
+      severity: "error",
+      from: {
+        path: "^src/",
+        pathNot: "^src/chat/(pi/|core-model\\.ts$|plugins/model\\.ts$)",
+      },
+      to: {
+        path: "^src/chat/pi/(client|sdk)\\.ts$",
+        dependencyTypes: ["dynamic-import"],
+      },
+    },
   ],
   options: {
     doNotFollow: {
       path: "^node_modules",
     },
-    includeOnly: "^src/chat",
+    includeOnly: "^src/",
     moduleSystems: ["es6"],
     tsConfig: {
       fileName: "./tsconfig.json",

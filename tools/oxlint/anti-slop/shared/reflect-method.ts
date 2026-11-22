@@ -13,8 +13,12 @@ function resolveVariable(
   return null;
 }
 
-function isGlobalReflect(sourceCode: SourceCode, expression: ESTree.Expression): boolean {
-  if (expression.type !== "Identifier" || expression.name !== "Reflect") return false;
+function isGlobalReflect(
+  sourceCode: SourceCode,
+  expression: ESTree.Expression,
+): boolean {
+  if (expression.type !== "Identifier" || expression.name !== "Reflect")
+    return false;
   if (sourceCode.isGlobalReference(expression)) return true;
   const variable = resolveVariable(sourceCode, expression);
   return variable === null || variable.defs.length === 0;
@@ -26,7 +30,12 @@ export function isGlobalReflectMethodCall(
   callee: ESTree.Expression,
   methodName: string,
 ): boolean {
-  if (!("property" in callee) || !("object" in callee) || !("computed" in callee)) return false;
+  if (
+    !("property" in callee) ||
+    !("object" in callee) ||
+    !("computed" in callee)
+  )
+    return false;
   if (!isGlobalReflect(sourceCode, callee.object)) return false;
   const property = callee.property;
   return callee.computed

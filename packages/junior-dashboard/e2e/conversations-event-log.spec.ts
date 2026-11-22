@@ -423,7 +423,7 @@ test("forks from the transcript and the event log with retry-safe requests", asy
           forkedFromTitle: report.displayTitle,
           events: [],
           isParticipant: true,
-          status: "completed",
+          status: "done",
           forks: [],
         }),
       }),
@@ -476,9 +476,15 @@ test("loads earlier events without merging tool starts and results", async ({
   ).toBeVisible();
   await expect(page.getByText("Released the package.")).toBeVisible();
 
+  // The rich transcript loads earlier events as the reader nears its top.
+  // Its link cards are taller than the viewport, so scroll up to load them
+  // and back down to the latest reply.
+  await page.getByText("Released the package.").hover();
+  await page.mouse.wheel(0, -20_000);
   await expect(
     page.getByRole("button", { name: "Load earlier events" }),
   ).toHaveCount(0);
+  await page.mouse.wheel(0, 20_000);
   await chooseTranscriptView(page, "Event log");
   const log = page.getByRole("region", { name: "Conversation event log" });
   await expect(
@@ -681,7 +687,7 @@ for (const width of [1440, 390]) {
     const scrollHeight = () =>
       scroll.evaluate((element) => element.scrollHeight);
     const heightBeforeIdle = await scrollHeight();
-    report.status = "completed";
+    report.status = "done";
     report.events.push({
       seq: 41,
       createdAt: report.lastSeenAt,
@@ -698,7 +704,8 @@ for (const width of [1440, 390]) {
     await scroll.hover();
     await page.mouse.wheel(0, -10_000);
     await expect(page.getByText("Message 0", { exact: true })).toBeInViewport();
-    report.status = "active";
+    report.status = "working";
+    report.turnActive = true;
     report.events.push({
       seq: 42,
       createdAt: report.lastSeenAt,
@@ -740,7 +747,7 @@ for (const width of [1440, 390]) {
 }
 
 for (const view of [desktop, mobile]) {
-  test(`docks a tall question above the message box (${view.name})`, async ({
+  test(`shows a tall question in the transcript, above the message box (${view.name})`, async ({
     page,
     dashboard,
   }) => {
@@ -753,7 +760,8 @@ for (const view of [desktop, mobile]) {
       await page.request.get(`${dashboard.baseURL}${api}/pending-messages`)
     ).json();
     const item = {
-      addedByConversationId: conversationId,
+      owner: { id: conversationId, kind: "conversation" },
+      rootConversationId: conversationId,
       assignedToEveryone: false,
       assignees: [
         {
@@ -791,15 +799,15 @@ for (const view of [desktop, mobile]) {
       dismissed
         ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
         : item;
-    await page.route(`**/api/review-items/${item.id}`, (route) =>
+    await page.route(`**/api/inbox-items/${item.id}`, (route) =>
       route.fulfill({ json: current() }),
     );
-    await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+    await page.route(`**/api/inbox-items/${item.id}/actions`, (route) => {
       dismissed = true;
       return route.fulfill({ json: current() });
     });
     // The Conversation also lists the open item above the message box.
-    await page.route(`**/api/review-items?*`, (route) =>
+    await page.route(`**/api/inbox-items?*`, (route) =>
       route.fulfill({ json: { items: dismissed ? [] : [item] } }),
     );
     report.events = [
@@ -821,7 +829,7 @@ for (const view of [desktop, mobile]) {
           calls: [
             {
               input: { kind: "action", title: item.title },
-              name: "addReviewItem",
+              name: "addInboxItem",
               output: JSON.stringify({ item: { id: item.id } }),
               status: "completed",
               toolCallId: "review-1",
@@ -831,7 +839,7 @@ for (const view of [desktop, mobile]) {
       },
     ];
     // Junior asked and ended its Turn, so it waits for the answer.
-    report.status = "completed";
+    report.status = "needs_input";
     await page.route(`**${api}*`, (route) =>
       route.fulfill({ json: withRequestedMailbox(route, report, mailbox) }),
     );
@@ -839,30 +847,28 @@ for (const view of [desktop, mobile]) {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
 
-    // The form scrolls inside the dock, so its title and question stay in
-    // view, and the message box and queued messages stay below it.
-    const question = page.getByRole("region", {
-      name: `Question: ${item.title}`,
-    });
+    // The question shows in its card in the transcript. Nothing docks, so
+    // the message box and the queued messages stay below the transcript.
+    const record = page.getByRole("region", { name: `Asked ${item.title}` });
+    await expect(record).toContainText("Waiting on you");
+    const question = record.getByRole("region", { name: "Question" });
+    await expect(question).toContainText(item.request.question);
     await expect(
-      question.getByRole("radiogroup", { name: "Owner" }),
+      record.getByRole("radiogroup", { name: "Owner" }),
     ).toBeAttached();
     await expect(
-      question.getByRole("heading", { name: item.title }),
-    ).toBeInViewport();
+      page.getByRole("region", { name: `Question: ${item.title}` }),
+    ).toHaveCount(0);
     const composer = page.getByLabel("Continue this conversation");
     const queue = page.getByRole("button", { name: /queued messages/ });
     await expect(composer).toBeInViewport();
     await expect(queue).toBeVisible();
-    const record = page.getByRole("region", { name: `Asked ${item.title}` });
-    await expect(record).toContainText("Waiting on you");
     await screenshot(page, "conversation-question-form", {
       view: view.name,
     });
 
-    // Esc dismisses the question, and its record says so.
-    await question.getByRole("heading", { name: item.title }).click();
-    await page.keyboard.press("Escape");
+    // Dismiss closes the question, and its record says so.
+    await record.getByRole("button", { name: "Dismiss", exact: true }).click();
     await expect(question).toHaveCount(0);
     await expect(record).toContainText("Dismissed");
     await screenshot(page, "conversation-question-dismissed", {

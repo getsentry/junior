@@ -19,13 +19,8 @@ import {
 import type { StatusChipTone } from "../components/StatusChip";
 import { Button } from "../components/ui/button";
 import { Spinner } from "../components/ui/spinner";
-import {
-  formatConversationCostTotal,
-  formatRuntime,
-  formatTime,
-  formatUsageTotal,
-} from "../format";
-import { fetchDashboardJson } from "../http";
+import { formatConversationCostTotal, formatUsageTotal } from "../format";
+import { revalidatedJsonQuery } from "../revalidation";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
 import { conversationPath } from "./conversationRoutes";
 import { FeedThreads } from "./feedThreads";
@@ -37,6 +32,7 @@ import {
   DetailsRowLine,
 } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
+import { formatRuntime, formatTime } from "../time";
 
 const statusTones: Partial<Record<string, StatusChipTone>> = {
   active: "info",
@@ -44,6 +40,7 @@ const statusTones: Partial<Record<string, StatusChipTone>> = {
   completed: "success",
   error: "danger",
   failed: "danger",
+  needs_input: "warning",
   paused: "info",
   running: "info",
 };
@@ -59,14 +56,16 @@ const errorToneClass: Partial<Record<StatusChipTone, string>> = {
 };
 
 /** Load the child agents of one Conversation with runtime status. */
-export function useConversationChildAgents(conversationId: string) {
+export function useConversationChildAgents(
+  conversationId: string,
+  enabled = true,
+) {
   return useQuery({
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        conversationChildAgentsReportSchema,
-        `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
-        signal,
-      ),
+    enabled,
+    queryFn: revalidatedJsonQuery(
+      conversationChildAgentsReportSchema,
+      `/api/conversations/${encodeURIComponent(conversationId)}/agents`,
+    ),
     queryKey: conversationSideReadQueryKey(conversationId, "agents"),
     retry: false,
   });
@@ -85,7 +84,6 @@ export function ConversationThreads(props: {
     <DetailsCard
       action={action}
       count={threads.length}
-      flat
       label="Threads"
       title="Threads"
     >
@@ -123,7 +121,6 @@ export function ConversationTasks(props: {
     <DetailsCard
       action={action}
       count={tasks.length}
-      flat
       label="Tasks"
       title="Tasks"
     >
@@ -231,7 +228,7 @@ function ChildAgentRow(props: {
   agent: ConversationChildAgent;
   onOpen?(): void;
   /** The Conversation's own title, when known. It wins over the report title. */
-  title?: string;
+  title?: string | undefined;
   to?: string;
 }) {
   const { agent } = props;

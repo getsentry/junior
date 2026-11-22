@@ -12,7 +12,7 @@ export const revalidateConversation: MiddlewareHandler = async (
 
   const report = (await context.res.clone().json()) as Record<string, unknown>;
   // The same route pattern also matches /conversations/stats.
-  if (typeof report.conversationId !== "string") return;
+  if (typeof report["conversationId"] !== "string") return;
   // generatedAt is the read time, not a change to the Conversation. The mailbox
   // has its own live watermark, so a poll that asks for it gets it alone.
   const { generatedAt: _generatedAt, mailbox, ...content } = report;

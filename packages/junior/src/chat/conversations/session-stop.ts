@@ -1,3 +1,4 @@
+import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
 import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
@@ -11,7 +12,7 @@ import {
 } from "@/chat/events/notification";
 import { cancelSubscriptions } from "@/chat/events/store";
 import { getEventBatchDelayMs } from "@/chat/task-execution/mailbox-turn";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type {
@@ -37,15 +38,19 @@ const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
  */
 export async function markConversationsStopped(
   conversationIds: readonly string[],
-  options: { cancelWatches: boolean; nowMs?: number; state?: StateAdapter },
+  options: {
+    cancelWatches: boolean;
+    nowMs?: number;
+    state?: StateAdapter | undefined;
+  },
 ): Promise<void> {
   if (conversationIds.length === 0) {
     return;
   }
   if (options.cancelWatches) {
-    for (const conversationId of conversationIds) {
-      await cancelSubscriptions({ conversationId, state: options.state });
-    }
+    await mapBounded(conversationIds, (conversationId) =>
+      cancelSubscriptions({ conversationId, state: options.state }),
+    );
   }
   const stoppedAt = new Date(options.nowMs ?? Date.now());
   await getSqlExecutor()
@@ -219,9 +224,7 @@ async function saveStoppedConversationEvents(
 ): Promise<void> {
   const first = messages[0]!;
   const { text } = instructionForInputs(
-    renderEventBatchInputs(messages, await eventReviewItemInputs(messages)).map(
-      (input) => ({ kind: "runtime" as const, text: input }),
-    ),
+    renderEventBatchInputs(messages, await eventInboxItemInputs(messages)),
   );
   const stored = toStoredConversationMessage({
     id: first.inboundMessageId,

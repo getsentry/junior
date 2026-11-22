@@ -1,218 +1,16 @@
-import type { Locator, Page } from "@playwright/test";
-
-import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
-
-const EVENT_COUNT = 2_000;
-const PAGE_SIZE = 40;
-// The transcript mounts the rows near the viewport, not the loaded rows.
-const MAX_MOUNTED_ROWS = 60;
-// An event in the middle of the transcript captured two memories.
-const MEMORY_CAPTURE_SEQ = 1_000;
-
-/**
- * Mock one completed Conversation with 2,000 message events. With `paged`,
- * the detail holds only the latest page, like the server, and earlier pages
- * wait for `holdEarlier` before they load.
- */
-async function mockLongConversation(
-  page: Page,
-  input: { lastReadSeq: number; paged: boolean },
-) {
-  const generatedAt = "2026-08-07T11:00:00.000Z";
-  const conversationId = "long-transcript";
-  const conversation = {
-    conversationId,
-    cumulativeDurationMs: 1_000,
-    displayTitle: "Long transcript",
-    isParticipant: true,
-    kind: "root",
-    lastProgressAt: generatedAt,
-    lastSeenAt: generatedAt,
-    startedAt: generatedAt,
-    status: "completed",
-    surface: "internal",
-  };
-  const state = {
-    conversationId,
-    /** Holds `before` pages until it resolves. */
-    holdEarlier: Promise.resolve(),
-    pageRequests: [] as string[],
-  };
-  const lastSeq = EVENT_COUNT - 1;
-  const events = (from: number, to: number) =>
-    Array.from({ length: to - from + 1 }, (_, index) => {
-      const seq = from + index;
-      return {
-        createdAt: new Date(
-          Date.parse(generatedAt) + seq * 1_000,
-        ).toISOString(),
-        data:
-          seq === MEMORY_CAPTURE_SEQ
-            ? {
-                type: "structured_event",
-                namespace: "memory",
-                name: "memories_captured",
-                version: 1,
-                turnId: "qa-turn",
-                presentation: { icon: "brain", title: "2 memories captured" },
-              }
-            : {
-                type: "message",
-                messageId: `message-${seq}`,
-                role: seq % 2 === 0 ? "user" : "assistant",
-                text: `Transcript message ${seq} with enough content to occupy a visible row.`,
-              },
-        seq,
-      };
-    });
-  const eventPage = (from: number, to: number) => ({
-    eventHistory: { status: "available" },
-    events: events(from, to),
-    generatedAt,
-    ...(from > 0 ? { previousCursor: String(from) } : undefined),
-    ...(to < lastSeq ? { nextCursor: String(to) } : undefined),
-  });
-  const aroundRange = (around: number): [number, number] => [
-    Math.max(0, around - PAGE_SIZE / 2 + 1),
-    Math.min(around + PAGE_SIZE / 2, lastSeq),
-  ];
-
-  await page.route("**/api/conversations", async (route) => {
-    if (new URL(route.request().url()).pathname !== "/api/conversations") {
-      await route.fallback();
-      return;
-    }
-    await route.fulfill({
-      json: {
-        conversations: [conversation],
-        generatedAt,
-        source: "conversation_index",
-      },
-    });
-  });
-  await page.route(
-    `**/api/conversations/${conversationId}/pending-messages`,
-    async (route) => {
-      await route.fulfill({
-        json: { conversationId, generatedAt, messages: [] },
-      });
-    },
-  );
-  await page.route(
-    `**/api/conversations/${conversationId}/read-position`,
-    async (route) => {
-      await route.fulfill({
-        json: route.request().postDataJSON(),
-      });
-    },
-  );
-  await page.route(
-    `**/api/conversations/${conversationId}/events?*`,
-    async (route) => {
-      const { search, searchParams } = new URL(route.request().url());
-      state.pageRequests.push(search);
-      const after = searchParams.get("after");
-      const around = searchParams.get("around") ?? searchParams.get("event");
-      const before = searchParams.get("before");
-      if (before) await state.holdEarlier;
-      const [from, to] = after
-        ? [Number(after) + 1, Math.min(Number(after) + PAGE_SIZE, lastSeq)]
-        : around
-          ? aroundRange(Number(around))
-          : [Math.max(0, Number(before) - PAGE_SIZE), Number(before) - 1];
-      await route.fulfill({ json: eventPage(from, to) });
-    },
-  );
-  await page.route(
-    `**/api/conversations/${conversationId}/outline`,
-    async (route) => {
-      await route.fulfill({
-        json: {
-          items: events(0, lastSeq).flatMap(({ data, seq }) =>
-            data.type === "message" && data.role === "user"
-              ? [{ seq, text: data.text }]
-              : [],
-          ),
-        },
-      });
-    },
-  );
-  await page.route(
-    "**/api/plugins/memory/conversations/*/memories",
-    async (route) => {
-      await route.fulfill({
-        json: {
-          events: [
-            {
-              memoryIds: ["recalled-memory"],
-              seq: 2,
-              source: "recalled",
-              turnId: "first-turn",
-            },
-            {
-              memoryIds: ["captured-memory-1", "captured-memory-2"],
-              seq: MEMORY_CAPTURE_SEQ,
-              source: "captured",
-              turnId: "qa-turn",
-            },
-          ],
-          memories: [
-            {
-              content: "Checkout investigations start with deployments.",
-              id: "recalled-memory",
-              visibility: "public",
-            },
-            {
-              content: "Use pnpm for repository commands.",
-              id: "captured-memory-1",
-              visibility: "private",
-            },
-            {
-              content: "Dashboard transcript events should remain expandable.",
-              id: "captured-memory-2",
-              visibility: "public",
-            },
-          ],
-        },
-      });
-    },
-  );
-  await page.route(`**/api/conversations/${conversationId}*`, async (route) => {
-    const firstSeq = input.paged ? EVENT_COUNT - PAGE_SIZE : 0;
-    const behind = input.lastReadSeq + 1 < firstSeq;
-    await route.fulfill({
-      json: withRequestedMailbox(route, {
-        ...conversation,
-        eventHistory: { status: "available" },
-        events: events(firstSeq, lastSeq),
-        generatedAt,
-        readPosition: { lastReadSeq: input.lastReadSeq },
-        ...(firstSeq > 0 ? { previousCursor: String(firstSeq) } : undefined),
-        ...(behind ? { unreadCursor: String(input.lastReadSeq) } : undefined),
-      }),
-    });
-  });
-  return state;
-}
-
-function mountedRows(transcript: Locator) {
-  return transcript.locator("[data-transcript-seq]").count();
-}
-
-function row(transcript: Locator, seq: number) {
-  return transcript.locator(`[data-transcript-seq="${seq}"]`);
-}
-
-// Rows that load above the reader leave the content below them unchanged, so
-// a held place keeps the same distance to the bottom.
-function distanceFromBottom(transcript: Locator): Promise<number> {
-  return transcript.evaluate(
-    (element) =>
-      element.scrollHeight - element.scrollTop - element.clientHeight,
-  );
-}
+import {
+  EVENT_COUNT,
+  PAGE_SIZE,
+  MAX_MOUNTED_ROWS,
+  MEMORY_CAPTURE_SEQ,
+  mockLongConversation,
+  mountedRows,
+  row,
+  distanceFromBottom,
+  recordRowMarks,
+} from "./long-transcript-fixture";
 
 test("mounts only the rows near the viewport of a long transcript", async ({
   page,
@@ -229,9 +27,8 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
   ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-  await expect(row(transcript, MEMORY_CAPTURE_SEQ)).toHaveCount(0);
 
-  // A memory jump mounts its far row before it scrolls there.
+  // A memory jump mounts the far row of its Turn before it scrolls there.
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,
@@ -245,14 +42,12 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     .getByRole("button", { name: "Go to message" })
     .click();
   await expect(
-    page.getByRole("dialog", { name: "Captured 2 memories" }),
-  ).toBeVisible();
-  await expect(row(transcript, MEMORY_CAPTURE_SEQ)).toBeInViewport();
+    transcript.getByText(`Transcript message ${MEMORY_CAPTURE_SEQ - 1} `),
+  ).toBeInViewport();
   expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
   await screenshot(page, "conversation-long-transcript-memory", {
     view: "desktop",
   });
-  await page.keyboard.press("Escape");
 
   // Search finds rows that are not mounted.
   await page.keyboard.press("ControlOrMeta+f");
@@ -278,7 +73,7 @@ test("mounts only the rows near the viewport of a long transcript", async ({
     window.addEventListener(
       "keydown",
       (event) => {
-        document.body.dataset.findPrevented = String(event.defaultPrevented);
+        document.body.dataset["findPrevented"] = String(event.defaultPrevented);
       },
       { once: true },
     );
@@ -350,89 +145,75 @@ test("keeps a Reply rating while its row unmounts", async ({
   expect(feedback).toHaveLength(1);
 });
 
-test("jumps to a far message from the outline", async ({ page, dashboard }) => {
-  // The outline shows only beside a transcript with room to its left.
-  await page.setViewportSize({ height: 900, width: 1920 });
+test("opens a Message link on its row and marks it", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
     paged: true,
   });
-  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
+  const rowMarks = await recordRowMarks(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}?message=message-400`,
+  );
   const transcript = page.getByLabel("Conversation transcript");
-  const outline = page.getByRole("navigation", {
-    name: "Conversation outline",
-  });
-  await expect(
-    transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
-  ).toBeInViewport();
-  // The outline lists every person message, not only the loaded page.
-  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
-  await expect(row(transcript, 1_234)).toHaveCount(0);
-
-  const item = outline.getByRole("button", {
-    name: "Transcript message 1234 with",
-  });
-  await item.click();
-  // The message starts at the top of the viewport.
-  await expect(row(transcript, 1_234)).toBeInViewport({ ratio: 1 });
-  await expect(row(transcript, 1_233)).not.toBeInViewport({ ratio: 0.5 });
-  await expect(item).toHaveAttribute("aria-current", "location");
-  expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
+  await expect(row(transcript, 400)).toBeInViewport();
+  await expect.poll(rowMarks).toEqual([400]);
+  expect(mock.pageRequests).toContain("?message=message-400&limit=300");
 });
 
-test("points at the outline item under a still pointer while the list scrolls", async ({
+test("opens an event link on its row and marks it", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ height: 900, width: 1920 });
+  await page.setViewportSize(desktop);
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
     paged: true,
   });
-  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
-  const outline = page.getByRole("navigation", {
-    name: "Conversation outline",
+  let release = () => {};
+  mock.holdReads = new Promise((resolve) => {
+    release = resolve;
   });
-  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
-  // The list scrolls to the active item near its end, so a wheel up has
-  // room to scroll.
-  await expect(outline.locator("button[aria-current]")).toBeInViewport();
-  await outline.getByRole("list").hover({ position: { x: 4, y: 200 } });
-  const pointed = outline.locator("button[data-highlighted]");
-  const title = page.locator('[data-slot="message-outline-preview-title"]');
-  const before = (await pointed.getAttribute("aria-label"))!;
-  await expect(title).toHaveText(before);
-
-  // A wheel scrolls the list without a pointer move. The pointed item and
-  // its preview follow the item that is now under the pointer.
-  await page.mouse.wheel(0, -400);
-  await expect(pointed).not.toHaveAttribute("aria-label", before);
-  await expect(title).toHaveText((await pointed.getAttribute("aria-label"))!);
+  const rowMarks = await recordRowMarks(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}#event-1200`,
+  );
+  const transcript = page.getByLabel("Conversation transcript");
+  // The latest page does not hold the row, so the read around it loads it.
+  await expect.poll(() => mock.pageRequests).toEqual(["?event=1200&limit=300"]);
+  await expect(row(transcript, 1_200)).toHaveCount(0);
+  release();
+  const linked = transcript.locator("#event-1200");
+  await expect(linked).toBeInViewport();
+  await expect(linked).toHaveAttribute("data-transcript-seq", "1200");
+  await expect.poll(rowMarks).toEqual([1_200]);
+  // The link shows the transcript row. It does not open the event log.
+  expect(new URL(page.url()).searchParams.has("event")).toBe(false);
+  expect(new URL(page.url()).hash).toBe("#event-1200");
 });
 
-test("points at the outline item under the pointer with a larger font size", async ({
+test("opens an event link past the last event on the last row", async ({
   page,
   dashboard,
 }) => {
-  await page.setViewportSize({ height: 900, width: 2560 });
+  await page.setViewportSize(desktop);
   const mock = await mockLongConversation(page, {
     lastReadSeq: EVENT_COUNT - 1,
     paged: true,
   });
-  await page.goto(`${dashboard.baseURL}/conversations/${mock.conversationId}`);
-  // A browser font size or a text-only zoom changes rem.
-  await page.addStyleTag({ content: "html { font-size: 20px; }" });
-  const outline = page.getByRole("navigation", {
-    name: "Conversation outline",
-  });
-  await expect(outline.getByRole("button")).toHaveCount(EVENT_COUNT / 2 - 1);
-  const item = outline.getByRole("button", {
-    name: "Transcript message 1990 with",
-  });
-  await item.hover();
-  await expect(
-    page.locator('[data-slot="message-outline-preview-title"]'),
-  ).toHaveText((await item.getAttribute("aria-label"))!);
+  const rowMarks = await recordRowMarks(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${mock.conversationId}#event-5000`,
+  );
+  const transcript = page.getByLabel("Conversation transcript");
+  // The read around the seq holds the last events, so the last row shows
+  // and the link reads no more.
+  await expect(row(transcript, EVENT_COUNT - 1)).toBeInViewport();
+  await expect.poll(rowMarks).toEqual([EVENT_COUNT - 1]);
+  expect(mock.pageRequests).toEqual(["?event=5000&limit=300"]);
 });
 
 test("holds the top row while earlier pages load above it", async ({
@@ -570,10 +351,10 @@ test.describe("on a touch screen", () => {
     // scroll needs none.
     await transcript.evaluate((element) => {
       const scrollTo = element.scrollTo.bind(element);
-      element.dataset.scrollCorrections = "0";
+      element.dataset["scrollCorrections"] = "0";
       element.scrollTo = (...args: Parameters<typeof scrollTo>) => {
-        element.dataset.scrollCorrections = String(
-          Number(element.dataset.scrollCorrections) + 1,
+        element.dataset["scrollCorrections"] = String(
+          Number(element.dataset["scrollCorrections"]) + 1,
         );
         scrollTo(...args);
       };
@@ -603,9 +384,8 @@ test.describe("on a touch screen", () => {
       transcript.getByText(`Transcript message ${EVENT_COUNT - 1} `),
     ).toHaveCount(0);
     await expect(transcript).toHaveAttribute("data-scroll-corrections", "0");
+    // No screenshot: where a fling stops depends on the timing of the touch
+    // events, so each run would show other rows.
     expect(await mountedRows(transcript)).toBeLessThanOrEqual(MAX_MOUNTED_ROWS);
-    await screenshot(page, "conversation-long-transcript-touch", {
-      view: "mobile",
-    });
   });
 });

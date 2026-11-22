@@ -12,7 +12,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { randomUUID } from "node:crypto";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { PiMessage } from "@/chat/pi/messages";
+import type { AgentHistory } from "@/chat/agent/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   createLocalSource,
@@ -45,7 +45,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   commitAcceptedReply,
-  loadProjection,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -68,12 +68,12 @@ import type { SandboxEgressSignalTransport } from "@/chat/sandbox/egress/signals
 
 const SENTRY_EVENT_ID_PATTERN = /^[a-f0-9]{32}$/i;
 
-const LOCAL_FAILURE_EVENT_NAMES: Record<ConversationTurnFailureCode, string> = {
+const LOCAL_FAILURE_EVENT_NAMES = {
   agent_run_failed: "local.agent_run.failed",
   delivery_failed: "local.reply.delivery.failed",
   model_execution_failed: "local.model.execution.failed",
   persistence_failed: "local.turn.persistence.failed",
-};
+} as const satisfies Record<ConversationTurnFailureCode, string>;
 
 export interface LocalAgentTurnInput {
   conversationId: string;
@@ -134,7 +134,7 @@ function captureLocalBoundaryFailure(args: {
   conversationId: string;
   error: unknown;
   failureCode: ConversationTurnFailureCode;
-  runId?: string;
+  runId?: string | undefined;
 }): string | undefined {
   setTags({
     conversationId: args.conversationId,
@@ -151,11 +151,11 @@ function captureLocalBoundaryFailure(args: {
 /** Load durable local Pi history from the conversation-event projection. */
 async function loadLocalPiMessages(args: {
   conversationId: string;
-}): Promise<PiMessage[] | undefined> {
-  const projection = await loadProjection({
+}): Promise<AgentHistory | undefined> {
+  const projection = await loadConversationProjection({
     conversationId: args.conversationId,
   });
-  if (projection.length === 0) {
+  if (projection.messages.length === 0) {
     return undefined;
   }
   return projection;
@@ -314,7 +314,7 @@ async function runLocalAgentTurnInContext(
       conversationId: input.conversationId,
     });
     failureCode = "agent_run_failed";
-    const runAgent = async (messages: PiMessage[] | undefined) => {
+    const runAgent = async (history: AgentHistory | undefined) => {
       currentRunId = localRunId();
       setTags({ runId: currentRunId });
       const authorization = deps.authorization
@@ -333,11 +333,11 @@ async function runLocalAgentTurnInContext(
             conversation,
             conversationId: input.conversationId,
             excludeMessageIds: [userMessageId],
-            hasHistory: Boolean(messages?.length),
+            hasHistory: Boolean(history?.messages.length),
             turnId,
           }),
         },
-        history: messages,
+        history,
         actor: localActor,
         credentialContext: credentialContextForActor(localActor),
         destination,
@@ -399,11 +399,14 @@ async function runLocalAgentTurnInContext(
         );
       }
       completeAuthPauseTurn({ conversation, sessionId: turnId });
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       await persistThreadStateById(input.conversationId, {
         conversation,
         sandboxRef,
       });
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       await deps.authorization.wait();
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       await recordAuthorizationCompleted({
         conversationId: input.conversationId,
         kind: pendingAuth.kind,
@@ -417,7 +420,9 @@ async function runLocalAgentTurnInContext(
       });
       // Resuming after authorization starts the next durable session slice.
       completionSliceId += 1;
+      // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
       outcome = await runAgent(
+        // oxlint-disable-next-line no-await-in-loop -- Each step of an authorization resume waits on the step before.
         await loadLocalPiMessages({
           conversationId: input.conversationId,
         }),
@@ -431,10 +436,7 @@ async function runLocalAgentTurnInContext(
     // Failed turns deliver the sanitized fallback (or genuine partial model
     // text), never raw exception strings and never silence.
     modelFailureCaptureAttempted = reply.diagnostics.outcome !== "success";
-    const finalized = finalizeFailedTurnReplyWithEvent({
-      reply,
-      logException,
-    });
+    const finalized = finalizeFailedTurnReplyWithEvent({ reply });
     reply = finalized.reply;
     modelFailureEventId = finalized.eventId;
     modelFailureReason = finalized.failureReason;
@@ -491,6 +493,7 @@ async function runLocalAgentTurnInContext(
       throw new AggregateError(
         [error, persistenceError],
         "Local turn failure state could not be persisted",
+        { cause: persistenceError },
       );
     }
     await lifecycle.fail({
@@ -571,23 +574,17 @@ async function runLocalAgentTurnInContext(
           conversationId: input.conversationId,
           sessionId: turnId,
         },
-        {
-          send: async (message) => {
-            try {
-              await processPluginTask(message);
-            } catch (error) {
-              logException(
-                error,
-                "local.plugin.session_completion_task.failed",
-                {
-                  conversationId: input.conversationId,
-                  pluginName: message.plugin,
-                  taskName: message.name,
-                  turnId,
-                },
-              );
-            }
-          },
+        async (message) => {
+          try {
+            await processPluginTask(message);
+          } catch (error) {
+            logException(error, "local.plugin.session_completion_task.failed", {
+              conversationId: input.conversationId,
+              pluginName: message.plugin,
+              taskName: message.name,
+              turnId,
+            });
+          }
         },
       );
     } catch (error) {

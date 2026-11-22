@@ -1,6 +1,5 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
@@ -10,6 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Sentry from "@/chat/sentry";
 import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
 import { createTracedStreamFn } from "@/chat/pi/traced-stream";
+import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
 const VERCEL_ID = "iad1::iad1::abcde-1-test";
 const RESPONSE_ID = "gen_01TESTRESPONSEID";
@@ -82,7 +82,7 @@ describe("gateway request timing", () => {
 
   // Stands in for Pi: sends `attempts` requests, then reports the last
   // response headers like Pi does before it reads the stream.
-  function gatewayStream(attempts: number): StreamFn {
+  function gatewayStream(attempts: number): AgentRequestStreamFn {
     return (model, _context, options) => {
       const stream = createAssistantMessageEventStream();
       // The test server is local, so the chat span names it as the gateway.

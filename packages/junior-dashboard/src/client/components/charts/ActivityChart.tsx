@@ -16,8 +16,8 @@ import {
   TooltipTrigger,
   tooltipContentVariants,
 } from "../ui/tooltip";
-import { getDashboardTimeZone } from "../../format";
 import { cn } from "../../styles";
+import { formatTime } from "../../time";
 
 /** True when the bucket key is a UTC hour (`YYYY-MM-DDTHH`). */
 export function isActivityHourBucket(date: string): boolean {
@@ -38,12 +38,9 @@ export function activityBucketStartMs(date: string): number {
  */
 export function formatActivityDate(date: string): string {
   if (isActivityHourBucket(date)) {
-    return new Date(`${date}:00:00.000Z`).toLocaleTimeString(undefined, {
-      hour: "numeric",
-      timeZone: getDashboardTimeZone(),
-    });
+    return formatTime(`${date}:00:00.000Z`, { hour: "numeric" });
   }
-  return new Date(`${date}T00:00:00.000Z`).toLocaleDateString(undefined, {
+  return formatTime(`${date}T00:00:00.000Z`, {
     day: "numeric",
     month: "short",
     timeZone: "UTC",
@@ -56,11 +53,10 @@ export function formatActivityDate(date: string): string {
  */
 export function formatActivityTooltipDate(date: string): string {
   if (isActivityHourBucket(date)) {
-    return new Date(`${date}:00:00.000Z`).toLocaleString(undefined, {
+    return formatTime(`${date}:00:00.000Z`, {
       day: "numeric",
       hour: "numeric",
       month: "short",
-      timeZone: getDashboardTimeZone(),
     });
   }
   return formatActivityDate(date);
@@ -159,7 +155,10 @@ export function ActivityChartXAxis(props: {
   );
 }
 
-/** Render minimum, middle, and maximum guide values on a Recharts chart. */
+/**
+ * Render minimum, middle, and maximum guide values on a Recharts chart. When
+ * the range crosses zero, the middle value is zero.
+ */
 export function ActivityChartYAxis(props: {
   format?(value: number): string;
   maximum: number;
@@ -175,7 +174,11 @@ export function ActivityChartYAxis(props: {
       tickFormatter={format}
       tickLine={false}
       tickMargin={8}
-      ticks={[minimum, (minimum + props.maximum) / 2, props.maximum]}
+      ticks={[
+        minimum,
+        minimum < 0 && props.maximum > 0 ? 0 : (minimum + props.maximum) / 2,
+        props.maximum,
+      ]}
       width="auto"
     />
   );

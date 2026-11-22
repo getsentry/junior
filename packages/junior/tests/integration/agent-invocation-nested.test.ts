@@ -14,6 +14,7 @@ import {
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -154,7 +155,7 @@ describe("nested agent invocations", () => {
         expect.objectContaining({
           actor: slackInvocationInput.actor,
           conversationId: helper.childConversationId,
-          disabledFeatures: ["interactive-auth", "subagents"],
+          disabledFeatures: ["interactive-auth"],
           location: expect.objectContaining({
             provider: "slack",
             channelId: "C123",
@@ -188,6 +189,115 @@ describe("nested agent invocations", () => {
           }),
         }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("sends a child's reply as a message while its own child agent works", async () => {
+    const { fixture } = await prepareSlackParentConversation();
+    const { queue, state } = await createConversationWorkHarness({
+      run: async () => {
+        throw new Error("The agent does not run in this test.");
+      },
+    });
+    const sendReply = async (
+      sender: Awaited<ReturnType<typeof createAgentInvocation>>,
+      text: string,
+    ) =>
+      await enqueueChildResultToParent({
+        result: { kind: "reply", reply: { text, toolCallId: text } },
+        messageKey: text,
+        queue,
+        sender,
+        turnId: getAgentInvocationTurnId(sender.invocationId),
+        state,
+      });
+    const lastMessage = async (conversationId: string) =>
+      (await getConversationWorkState({ conversationId, state }))?.messages.at(
+        -1,
+      );
+    const lastText = async (conversationId: string) =>
+      (await lastMessage(conversationId))?.input.text;
+    try {
+      const child = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "talking-child",
+      });
+      const helper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "talking-helper",
+        parentConversationId: child.childConversationId,
+      });
+
+      // A reply while the helper runs is a message: the parent can tell
+      // that the child still works.
+      await sendReply(child, "Started a helper.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-message [^>]*source="child_agent"/,
+      );
+      // It names no agent invocation, so it is not the child's answer.
+      const progress = await lastMessage(slackParentConversationId);
+      expect(progress && readInboundMessageSender(progress)).toEqual({
+        conversationId: child.childConversationId,
+        turnId: getAgentInvocationTurnId(child.invocationId),
+      });
+
+      // A helper reply that waits in the child's mailbox starts another
+      // child Turn, so the child still works.
+      await sendReply(helper, "CEDAR-9");
+      await completeAgentInvocation({
+        invocationId: helper.invocationId,
+        result: "CEDAR-9",
+        status: "completed",
+      });
+      await sendReply(child, "Still waiting.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-message /,
+      );
+
+      // A helper result that is saved but not yet in the child's mailbox
+      // also starts another child Turn.
+      const pending = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "pending-child",
+      });
+      const pendingHelper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "pending-helper",
+        parentConversationId: pending.childConversationId,
+      });
+      await expect(
+        completeAgentInvocation({
+          errorMessage: "Needs a region.",
+          invocationId: pendingHelper.invocationId,
+          status: "blocked",
+        }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "pending" });
+      await sendReply(pending, "Waiting on the helper.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-message /,
+      );
+
+      // With no open work left, the reply is the child's result.
+      const done = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "done-child",
+      });
+      const doneHelper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "done-helper",
+        parentConversationId: done.childConversationId,
+      });
+      await completeAgentInvocation({
+        invocationId: doneHelper.invocationId,
+        result: "",
+        status: "completed",
+      });
+      await sendReply(done, "Final answer.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-result [^>]*status="completed"/,
+      );
     } finally {
       await fixture.close();
     }

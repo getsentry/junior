@@ -1,0 +1,10 @@
+id: no-google-egress-outside-api-request
+language: TypeScript
+severity: error
+message: Only googleApiRequest in packages/junior-google/src/google-api.ts may call egress.fetch. It refuses a change to an existing file unless the tool passes the file that requireEditableFile checked. Call googleApiRequest or googleFileRequest instead.
+files:
+  - packages/junior-google/src/**/*.ts
+ignores:
+  - packages/junior-google/src/google-api.ts
+rule:
+  pattern: $CTX.egress.fetch($$$ARGS)

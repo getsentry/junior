@@ -26,7 +26,7 @@ export interface SandboxCommandInput {
   cmd: string;
   cwd?: string;
   env?: Record<string, string>;
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
   sudo?: boolean;
   timeoutMs?: number;
 }
@@ -87,10 +87,13 @@ export function bindSandboxFileSystem(
 export interface SandboxWorkspace {
   /**
    * Return a public HTTPS URL for a server that listens on `port` in the
-   * Sandbox. The URL stops working when the Sandbox stops. A sandbox provider
-   * that cannot route public traffic leaves it unset on its sessions.
+   * Sandbox. The URL stops working when the Sandbox stops, and works again
+   * when the Sandbox resumes. A sandbox provider that cannot route public
+   * traffic leaves it unset on its sessions.
    */
   createPreview?(port: number): Promise<string>;
+  /** Return the URLs of the Previews that this Sandbox already serves. */
+  previewUrls?(): string[];
   readFileToBuffer(input: {
     cwd?: string;
     path: string;
@@ -108,10 +111,16 @@ export interface SandboxWorkspace {
 export interface SandboxSession extends SandboxWorkspace {
   readonly sandboxId: string;
   readonly sessionId: string;
+  /** True when a later session of this Sandbox, with a new `sessionId`, starts with this session's files. */
+  readonly keepsFilesAcrossSessions: boolean;
+  /** When this session started, in epoch milliseconds. */
+  readonly startedAtMs: number;
   readonly fs: SandboxFileSystem;
   extendTimeout(duration: number): Promise<void>;
   mkDir(path: string): Promise<void>;
-  snapshot(options?: { signal?: AbortSignal }): Promise<{ snapshotId: string }>;
+  snapshot(options?: {
+    signal?: AbortSignal | undefined;
+  }): Promise<{ snapshotId: string }>;
   stop(): Promise<unknown>;
   update(params: { networkPolicy?: SandboxNetworkPolicy }): Promise<void>;
 }
@@ -121,7 +130,7 @@ export interface SandboxSessionOptions {
   /** Called when a session operation finds that the VM session is gone. */
   onUnavailable?: (sessionId: string) => void;
   /** Abort every provider request made through the returned session. */
-  scopeSignal?: AbortSignal;
+  scopeSignal?: AbortSignal | undefined;
 }
 
 /** Input for one new Sandbox. */
@@ -136,7 +145,7 @@ export interface CreateSandboxSessionInput extends SandboxSessionOptions {
   networkPolicy?: SandboxNetworkPolicy;
   resources?: { vcpus: number };
   /** Abort only the create request. */
-  signal?: AbortSignal;
+  signal?: AbortSignal | undefined;
 }
 
 /** Best-effort stop; ignore secondary stop failures during cleanup. */

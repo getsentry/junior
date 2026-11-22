@@ -121,6 +121,54 @@ export async function createHarness() {
 
 export type Harness = Awaited<ReturnType<typeof createHarness>>;
 
+// The checkpoint fields of a run's input: its history, then its instruction.
+function runInputCheckpoint(run: AgentRun) {
+  const history = run.history?.messages ?? [];
+  return {
+    actor: run.actor!,
+    conversationId: run.conversationId,
+    messages: [
+      ...history,
+      {
+        role: "user" as const,
+        content: [{ type: "text" as const, text: run.instruction.text }],
+        timestamp: Date.now(),
+      },
+    ],
+    sliceId: 1,
+    source: run.source!,
+    surface: run.surface,
+    turnId: run.turnId,
+  };
+}
+
+/**
+ * Take a run's input as the agent does before its first model call: save it
+ * as the Turn's first checkpoint, then commit it. The Turn then has a stored
+ * record, as a real run's Turn does.
+ */
+export async function commitRunInput(run: AgentRun): Promise<void> {
+  await saveTurnCheckpoint({ ...runInputCheckpoint(run), mode: "running" });
+  await run.durability?.onInputCommitted?.();
+}
+
+/** Pause a run's Turn at a yield, as the agent does between slices. */
+export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
+  const record = await saveTurnCheckpoint({
+    ...runInputCheckpoint(run),
+    mode: "paused",
+    reason: "yield",
+  });
+  if (!record) {
+    throw new Error(`Turn ${run.turnId} saved no yield checkpoint`);
+  }
+  return {
+    reason: "yield",
+    resumeVersion: record.version,
+    status: "suspended",
+  };
+}
+
 /** Finish the open Agent invocation of a child, then report its result. */
 export async function finishInvocation(
   harness: Harness,

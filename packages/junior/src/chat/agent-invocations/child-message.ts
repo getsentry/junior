@@ -42,6 +42,24 @@ export async function readChildMessageSender(
 }
 
 /**
+ * Read who sent each child reply or result, in message order. Messages
+ * without stored sender fields share one legacy read.
+ */
+export async function readChildMessageSenders(
+  messages: readonly Pick<InboundMessage, "inboundMessageId" | "input">[],
+): Promise<(InboundMessageSender | undefined)[]> {
+  const stored = messages.map((message) => readInboundMessageSender(message));
+  const legacy = await readLegacyChildMessageSenders(
+    messages.flatMap((message, index) =>
+      stored[index] ? [] : [message.inboundMessageId],
+    ),
+  );
+  return messages.map(
+    (message, index) => stored[index] ?? legacy.get(message.inboundMessageId),
+  );
+}
+
+/**
  * List the child replies and results among the ids that reached one
  * mailbox, oldest first, with the sender fields that the mailbox keeps.
  */
@@ -121,7 +139,7 @@ async function readLegacyChildMessageSenders(
   const senders = new Map<string, InboundMessageSender>();
   const byAgentInvocation = new Map<
     string,
-    { agentInvocationId: string; turnId?: string }
+    { agentInvocationId: string; turnId?: string | undefined }
   >();
   for (const id of inboundMessageIds) {
     const result = LEGACY_RESULT_ID.exec(id);

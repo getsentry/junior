@@ -1,19 +1,17 @@
-import { createHmac, generateKeyPairSync } from "node:crypto";
-import type {
-  CodeChangeInput,
-  ConversationAnnotationInput,
-  EventInput,
-  EventPublisher,
-  HeartbeatHookContext,
-  PluginState,
-} from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
+import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { juniorGitHubPullRequests } from "../src/db/schema";
-import { githubPlugin } from "../src/index";
+import {
+  juniorGitHubPullRequestRequesters,
+  juniorGitHubPullRequests,
+} from "../src/db/schema";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+import {
+  createPluginHarness,
+  signedRequest,
+  type PluginHarness,
+} from "./plugin-harness";
 
 function pullRequestResponse(input: {
   headSha: string;
@@ -22,32 +20,13 @@ function pullRequestResponse(input: {
 }) {
   return {
     base: { ref: "main" },
+    draft: false,
     head: { ref: "feat/idle", sha: input.headSha },
     html_url: "https://github.com/getsentry/junior/pull/946",
     mergeable: input.mergeable,
     mergeable_state: input.mergeableState,
     state: "open",
   };
-}
-
-/** A signed GitHub webhook delivery. */
-function signedRequest(input: {
-  body: unknown;
-  deliveryId: string;
-  eventName: string;
-}): Request {
-  const body = JSON.stringify(input.body);
-  return new Request("https://example.test/api/webhooks/github", {
-    method: "POST",
-    headers: {
-      "x-github-delivery": input.deliveryId,
-      "x-github-event": input.eventName,
-      "x-hub-signature-256": `sha256=${createHmac("sha256", "test-secret")
-        .update(body)
-        .digest("hex")}`,
-    },
-    body,
-  });
 }
 
 /** A signed conversation comment on pull request 946. */
@@ -72,170 +51,30 @@ function commentRequest(deliveryId: string): Request {
 
 describe("merge conflict check on webhook events", () => {
   let fixture: GitHubFixture;
-  let published: EventInput[];
+  let h: PluginHarness;
   let pullRequestReads: number;
   let pullRequest: ReturnType<typeof pullRequestResponse>;
-  let watchesComments: boolean;
-  let watchesConflicts: boolean;
   let reactions: number;
-  let annotations: Array<{
-    annotation: ConversationAnnotationInput;
-    conversationId: string;
-  }>;
-  let codeChanges: CodeChangeInput[];
-  let heartbeatLogs: Array<[level: string, message: string]>;
+  /** Runs once, in the next read of the pull request. */
+  let duringPullRequestRead: (() => Promise<void>) | undefined;
 
-  let stored: Map<string, { expiresAtMs: number; value: unknown }>;
-  const live = (key: string) => {
-    const entry = stored.get(key);
-    if (entry && entry.expiresAtMs <= Date.now()) stored.delete(key);
-    return stored.get(key);
-  };
-  const store = (key: string, value: unknown, ttlMs?: number) => {
-    stored.set(key, {
-      expiresAtMs: ttlMs ? Date.now() + ttlMs : Infinity,
-      value: structuredClone(value),
-    });
-  };
-  const state: PluginState = {
-    async delete(key) {
-      stored.delete(key);
-    },
-    async get<T>(key: string) {
-      return live(key)?.value as T | undefined;
-    },
-    async set(key, value, ttlMs) {
-      store(key, value, ttlMs);
-    },
-    async setIfNotExists(key, value, ttlMs) {
-      if (live(key)) return false;
-      store(key, value, ttlMs);
-      return true;
-    },
-    async withLock(_key, _ttlMs, callback) {
-      return await callback();
-    },
-  };
-
-  const events: EventPublisher = {
-    // The Watch made after Junior creates a pull request.
-    async hasMatch(candidates) {
-      return candidates.some(
-        (event) =>
-          event.identifier === "getsentry/junior#946" &&
-          (event.eventType === "pull_request.merge_conflict"
-            ? watchesConflicts
-            : watchesComments),
-      );
-    },
-    async publish(event) {
-      published.push(event);
-    },
-  };
-
-  async function deliver(
+  const deliver = async (
     deliveryId: string,
     request: Request = commentRequest(deliveryId),
-  ): Promise<void> {
-    const [route] = githubPlugin().hooks!.routes!({
-      annotations: {
-        forConversation() {
-          return {
-            async upsert() {},
-            async remove() {},
-            async list() {
-              return [];
-            },
-          };
-        },
-      },
-      cache: {
-        async getOrLoad(_key, load) {
-          return (await load()).value;
-        },
-      },
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record() {},
-      },
-      db: fixture.db(),
-      events,
-      log: { error() {}, info() {}, warn() {} },
-      plugin: { name: "github" },
-      state,
-      users: {
-        async readIdentity() {
-          return undefined;
-        },
-      },
-    });
-    const response = await route!.handler(request);
-    expect(response.status).toBe(202);
-  }
-
-  async function heartbeat(nowMs: number): Promise<void> {
-    const unused = () => {
-      throw new Error("The GitHub heartbeat does not use this");
-    };
-    const context: HeartbeatHookContext = {
-      agent: { dispatch: unused, get: unused },
-      annotations: {
-        forConversation(conversationId) {
-          return {
-            async upsert(annotation) {
-              annotations.push({ annotation, conversationId });
-            },
-            async remove() {},
-            async list() {
-              return [];
-            },
-          };
-        },
-      },
-      cache: {
-        async getOrLoad(_key, load) {
-          return (await load()).value;
-        },
-      },
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record(input) {
-          codeChanges.push(input);
-        },
-      },
-      db: fixture.db(),
-      embedder: { embedTexts: unused, model: "unused", provider: "unused" },
-      events,
-      log: {
-        error: (message) => heartbeatLogs.push(["error", message]),
-        info() {},
-        warn: (message) => heartbeatLogs.push(["warn", message]),
-      },
-      nowMs,
-      plugin: { name: "github" },
-      state,
-    };
-    await githubPlugin().hooks!.heartbeat!(context);
-  }
+  ) => await h.deliver(request);
+  const heartbeat = async (nowMs: number) => await h.heartbeat(nowMs);
 
   const conflicts = () =>
-    published.filter(
+    h.published.filter(
       (event) => event.eventType === "pull_request.merge_conflict",
     );
 
   beforeEach(async () => {
+    duringPullRequestRead = undefined;
     fixture = await createGitHubFixture();
-    stored = new Map();
-    published = [];
+    h = createPluginHarness(fixture);
     pullRequestReads = 0;
-    watchesComments = true;
-    watchesConflicts = true;
     reactions = 0;
-    annotations = [];
-    codeChanges = [];
-    heartbeatLogs = [];
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
       mergeable: false,
@@ -259,8 +98,11 @@ describe("merge conflict check on webhook events", () => {
       ),
       http.get(
         "https://api.github.com/repos/getsentry/junior/pulls/946",
-        () => {
+        async () => {
           pullRequestReads += 1;
+          const hook = duringPullRequestRead;
+          duringPullRequestRead = undefined;
+          await hook?.();
           return HttpResponse.json(pullRequest);
         },
       ),
@@ -286,7 +128,7 @@ describe("merge conflict check on webhook events", () => {
   it("publishes a conflict found when another event arrives for a watched pull request", async () => {
     await deliver("delivery-1");
 
-    expect(published.map((event) => event.eventType)).toEqual([
+    expect(h.published.map((event) => event.eventType)).toEqual([
       "pull_request.comment.created",
       "pull_request.comment.created",
       "pull_request.merge_conflict",
@@ -327,6 +169,33 @@ describe("merge conflict check on webhook events", () => {
     ]);
   });
 
+  it("reads an unchanged pull request again with its ETag", async () => {
+    const etag = 'W/"pull-946"';
+    const answers: number[] = [];
+    mswServer.use(
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946",
+        ({ request }) => {
+          if (request.headers.get("if-none-match") === etag) {
+            answers.push(304);
+            return new HttpResponse(null, { status: 304 });
+          }
+          answers.push(200);
+          return HttpResponse.json(pullRequest, { headers: { etag } });
+        },
+      ),
+    );
+    await deliver("delivery-1");
+    await deliver("delivery-2");
+    expect(answers).toEqual([200, 304]);
+    // The saved pull request still shows the conflict.
+    expect(conflicts().map((event) => event.eventKey)).toEqual(
+      Array.from({ length: 4 }, () =>
+        expect.stringContaining(":1111111111111111111111111111111111111111"),
+      ),
+    );
+  });
+
   it("publishes no conflict while GitHub calculates mergeability", async () => {
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
@@ -339,14 +208,14 @@ describe("merge conflict check on webhook events", () => {
   });
 
   it("does not read the pull request when nothing wants conflicts", async () => {
-    watchesConflicts = false;
+    h.watches.conflicts = false;
     await deliver("delivery-1");
     expect(pullRequestReads).toBe(0);
     expect(conflicts()).toEqual([]);
   });
 
   it("does not mark a comment when only conflicts are watched", async () => {
-    watchesComments = false;
+    h.watches.comments = false;
     await deliver("delivery-1");
     expect(reactions).toBe(0);
     expect(conflicts()).toHaveLength(2);
@@ -391,6 +260,20 @@ describe("merge conflict check on webhook events", () => {
     const minute = 60_000;
     let searches: string[];
     let mergeability: Record<number, string>;
+    let headSha: string;
+    let drafts: Set<number>;
+    let approvals: Set<number>;
+    /** The timeline of 946 on GitHub. */
+    let timeline: Array<{ __typename: string }>;
+    const pushes = () =>
+      timeline.filter((item) =>
+        ["HeadRefForcePushedEvent", "PullRequestCommit"].includes(
+          item.__typename,
+        ),
+      );
+    const discussion = () =>
+      timeline.filter((item) => !pushes().includes(item));
+    let historyReads: number;
     let duringRead: (() => Promise<void>) | undefined;
 
     function pushRequest(ref: string, repo = "getsentry/junior"): Request {
@@ -409,27 +292,57 @@ describe("merge conflict check on webhook events", () => {
       vi.useFakeTimers({ now: pushedAt, toFake: ["Date"] });
       searches = [];
       mergeability = { 946: "CONFLICTING", 947: "MERGEABLE" };
+      headSha = "1111111111111111111111111111111111111111";
+      drafts = new Set();
+      approvals = new Set();
+      timeline = [];
+      historyReads = 0;
       duringRead = undefined;
       vi.stubEnv(
         "GITHUB_APP_BOT_EMAIL",
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/contents/.github/release.yml",
+          () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+        ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { variables } = (await request.json()) as {
-            variables: { query: string };
+            variables: { number?: number; query?: string };
           };
-          searches.push(variables.query);
+          if (variables.number !== undefined) {
+            historyReads += 1;
+            return HttpResponse.json({
+              data: {
+                repository: {
+                  pullRequest: {
+                    // An hour before `pushedAt`.
+                    createdAt: new Date(pushedAt - 60 * minute).toISOString(),
+                    reviewDecision: approvals.has(variables.number)
+                      ? "APPROVED"
+                      : null,
+                    // GitHub's `last` windows of the query.
+                    discussion: { nodes: discussion().slice(-50) },
+                    pushes: { nodes: pushes().slice(-100) },
+                  },
+                },
+              },
+            });
+          }
+          searches.push(variables.query!);
           await duringRead?.();
           return HttpResponse.json({
             data: {
               search: {
                 nodes: [946, 947].map((number) => ({
                   baseRefName: "main",
-                  headRefOid: "1111111111111111111111111111111111111111",
+                  headRefOid: headSha,
+                  isDraft: drafts.has(number),
                   mergeable: mergeability[number],
                   number,
                   state: "OPEN",
+                  title: `fix(conflicts): Pull request ${number}`,
                   url: `https://github.com/getsentry/junior/pull/${number}`,
                 })),
                 pageInfo: { endCursor: null, hasNextPage: false },
@@ -486,6 +399,8 @@ describe("merge conflict check on webhook events", () => {
         expect.objectContaining({ identifier: "getsentry/junior" }),
       ]);
       expect(pullRequestReads).toBe(0);
+      // Only the conflicted pull request reads its history.
+      expect(historyReads).toBe(1);
 
       await heartbeat(pushedAt + 10 * minute);
       expect(searches).toHaveLength(1);
@@ -534,353 +449,366 @@ describe("merge conflict check on webhook events", () => {
     });
 
     it("publishes no conflict that nothing wants", async () => {
-      watchesConflicts = false;
+      h.watches.conflicts = false;
       await deliver("push-1", pushRequest("refs/heads/main"));
       await heartbeat(pushedAt + 2 * minute);
       expect(searches).toHaveLength(1);
       expect(conflicts()).toEqual([]);
     });
-  });
 
-  describe("daily reconcile of open pull requests", () => {
-    const now = Date.parse("2026-11-09T12:00:00.000Z");
-    const day = 24 * 60 * 60_000;
-    let queries: number[][];
-    let drafts: Set<number>;
+    const hour = 60 * minute;
+    const day = 24 * hour;
 
-    /** A pull request lifecycle as GitHub GraphQL returns it. */
-    function lifecycle(number: number) {
-      const closed = number === 946 || number === 949;
-      const merged = number === 946;
-      return {
-        assignees: { nodes: [{ login: "octocat" }] },
-        author: { __typename: "Bot", login: "sentry-junior" },
-        closedAt: closed ? new Date(now - day).toISOString() : null,
-        createdAt: new Date(now - 3 * day).toISOString(),
-        databaseId: number * 10,
-        headRefName: `feat/pr-${number}`,
-        isDraft: drafts.has(number),
-        merged,
-        mergedAt: merged ? new Date(now - day).toISOString() : null,
-        number,
-        state: merged ? "MERGED" : closed ? "CLOSED" : "OPEN",
-        title: `Pull request ${number}`,
-        updatedAt: new Date(now - day).toISOString(),
-      };
+    /** Fix events for 946. Core delivers each event key once. */
+    const fixedShas = () => [
+      ...new Set(
+        conflicts()
+          .filter((event) => event.identifier === "getsentry/junior#946")
+          .map((event) => String(event.data?.["headSha"]).slice(0, 1)),
+      ),
+    ];
+
+    /** Push to main with a head commit on 946, and run the check. */
+    async function checkAt(nowMs: number, sha: string): Promise<void> {
+      vi.setSystemTime(nowMs);
+      headSha = sha.repeat(40);
+      await deliver(`push-${nowMs}`, pushRequest("refs/heads/main"));
+      vi.setSystemTime(nowMs + 2 * minute);
+      await heartbeat(nowMs + 2 * minute);
     }
 
-    beforeEach(async () => {
-      vi.useFakeTimers({ now, toFake: ["Date"] });
-      queries = [];
-      drafts = new Set();
-      vi.stubEnv(
-        "GITHUB_APP_BOT_EMAIL",
-        "1234+sentry-junior[bot]@users.noreply.github.com",
-      );
-      mswServer.use(
-        // GitHub finds a token's repositories by their current name or id.
-        http.post(
-          "https://api.github.com/app/installations/456/access_tokens",
-          async ({ request }) => {
-            const body = (await request.json()) as {
-              repositories?: string[];
-              repository_ids?: number[];
-            };
-            const reachable =
-              (body.repositories ?? []).every((name) => name === "junior") &&
-              (body.repository_ids ?? []).every((id) => id === 1);
-            return reachable
-              ? HttpResponse.json({
-                  expires_at: "2027-01-01T00:00:00.000Z",
-                  token: "installation-token",
-                })
-              : HttpResponse.json(
-                  {
-                    message:
-                      "There is at least one repository that does not exist or is not accessible to the parent installation.",
-                  },
-                  { status: 422 },
-                );
-          },
-        ),
-        http.get("https://api.github.com/repositories/1", () =>
-          HttpResponse.json({ full_name: "getsentry/junior", id: 1 }),
-        ),
-        http.get(
-          "https://api.github.com/repos/getsentry/junior/pulls/946/commits",
-          () =>
-            HttpResponse.json([
-              {
-                author: { login: "jane" },
-                commit: {
-                  message:
-                    "Fix the close\n\nCo-authored-by: Sam <sam@example.com>",
-                },
-              },
-            ]),
-        ),
-        http.post("https://api.github.com/graphql", async ({ request }) => {
-          const { variables } = (await request.json()) as {
-            variables: Record<string, unknown>;
-          };
-          const numbers = Object.entries(variables)
-            .filter(([name]) => /^n\d+$/.test(name))
-            .map(([, number]) => number as number);
-          queries.push(numbers);
-          return HttpResponse.json({
-            data: {
-              repository: {
-                databaseId: 1,
-                nameWithOwner: "getsentry/junior",
-                ...Object.fromEntries(
-                  numbers.map((number, index) => [
-                    `pr${index}`,
-                    // GitHub deleted pull request 951.
-                    number === 951 ? null : lifecycle(number),
-                  ]),
-                ),
-              },
-            },
-          });
-        }),
-      );
-      const row = (number: number, updatedAt: number) => ({
-        conversationIds: ["slack:C1:1.0"],
-        number,
-        openedAt: new Date(now - 3 * day),
-        pullRequestId: `${number}0`,
-        repositoryFullName: "getsentry/junior",
-        repositoryId: "1",
-        state: "open" as const,
-        updatedAt: new Date(updatedAt),
+    /** A review or comment on 946 on GitHub. */
+    function reviewAt(nowMs: number, author: "Bot" | "User"): void {
+      timeline.push({
+        __typename: "PullRequestReview",
+        author: { __typename: author },
+        submittedAt: new Date(nowMs).toISOString(),
       });
+    }
+
+    async function askedInSlack(): Promise<void> {
       await fixture
         .db()
-        .insert(juniorGitHubPullRequests)
-        .values([
-          row(946, now - 2 * day),
-          row(947, now - 2 * day),
-          row(949, now - 2 * day),
-          row(951, now - 2 * day),
-          // Its close webhook can still arrive.
-          row(950, now - 60_000),
-        ]);
+        .insert(juniorGitHubPullRequestRequesters)
+        .values({
+          conversationId: "slack:C1:1.0",
+          createdAt: new Date(pushedAt),
+          identityId: "identity-jane",
+          number: 946,
+          repositoryFullName: "getsentry/junior",
+          updatedAt: new Date(pushedAt),
+        });
+    }
+
+    /** Fix 946 with head `1`, and check it a day later with the same head. */
+    async function fixThatDoesNotLand(): Promise<void> {
+      approvals.add(946);
+      await checkAt(pushedAt, "1");
+      await checkAt(pushedAt + day, "1");
+    }
+
+    const resume = {
+      choice: "Resume",
+      conversationId: "slack:C1:1.0",
+      dedupeKey: "merge-conflict:getsentry/junior#946",
+      itemId: "item-1",
+      nowMs: pushedAt + day + hour,
+    };
+
+    it("closes the merge conflict item when the conflict is gone", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+
+      mergeability[946] = "MERGEABLE";
+      await checkAt(pushedAt + day + hour, "2");
+      // Nothing is left to close.
+      await checkAt(pushedAt + day + 2 * hour, "2");
+      expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
+
+      // The closed item was not dismissed, so when the conflict comes back
+      // and the fix still did not land, Junior asks again.
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + day + 3 * hour, "1");
+      expect(h.notices).toHaveLength(2);
     });
 
-    afterEach(() => {
-      vi.useRealTimers();
-      vi.restoreAllMocks();
+    it("asks no more after a Dismiss, also after the conflict goes and comes back", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      h.dismiss("merge-conflict:getsentry/junior#946");
+
+      mergeability[946] = "MERGEABLE";
+      await checkAt(pushedAt + day + hour, "1");
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + day + 2 * hour, "1");
+      expect(h.closedNotices).toEqual([]);
+      expect(h.notices).toHaveLength(1);
     });
 
-    it("records closes that GitHub did not deliver, once a day", async () => {
-      await heartbeat(now);
-
-      expect(queries.map((numbers) => numbers.sort())).toEqual([
-        [946, 947, 949, 951],
-      ]);
-      const rows = await fixture
-        .db()
-        .select()
-        .from(juniorGitHubPullRequests)
-        .orderBy(juniorGitHubPullRequests.number);
-      expect(
-        rows.map((row) => [row.number, row.state, row.mergedAt, row.closedAt]),
-      ).toEqual([
-        [946, "merged", new Date(now - day), new Date(now - day)],
-        [947, "open", null, null],
-        [949, "closed_unmerged", null, new Date(now - day)],
-        [950, "open", null, null],
-        [951, "open", null, null],
-      ]);
-      // An open pull request keeps its state and gets its current title.
-      expect(
-        codeChanges.map((change) => [
-          change.number,
-          change.state,
-          change.title,
-          change.conversationIds,
-        ]),
-      ).toEqual([
-        [946, "merged", "Pull request 946", ["slack:C1:1.0"]],
-        [947, "open", "Pull request 947", []],
-        [949, "closed", "Pull request 949", ["slack:C1:1.0"]],
-      ]);
-      expect(
-        annotations.map(({ annotation, conversationId }) => [
-          conversationId,
-          annotation.key,
-          annotation.status,
-        ]),
-      ).toEqual([
-        ["slack:C1:1.0", "getsentry/junior#946", "merged"],
-        ["slack:C1:1.0", "getsentry/junior#949", "closed"],
-      ]);
-
-      vi.setSystemTime(now + 60_000);
-      await heartbeat(now + 60_000);
-      expect(queries).toHaveLength(1);
-      // The next day, the row that waited for its webhook is checked too.
-      vi.setSystemTime(now + day);
-      await heartbeat(now + day);
-      expect(queries[1]?.sort()).toEqual([947, 950, 951]);
+    it("publishes no conflict for a draft", async () => {
+      drafts.add(946);
+      await deliver("push-1", pushRequest("refs/heads/main"));
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toHaveLength(1);
+      expect(conflicts()).toEqual([]);
+      expect(h.notices).toEqual([]);
+      expect(historyReads).toBe(0);
     });
 
-    it("writes a draft state that changed on GitHub", async () => {
-      drafts = new Set([947]);
-      await heartbeat(now);
+    it("fixes once a day while people work on the pull request", async () => {
+      await askedInSlack();
+      await checkAt(pushedAt, "1");
+      // Main moved again, but the last fix was less than a day ago.
+      await checkAt(pushedAt + 6 * hour, "2");
+      expect(fixedShas()).toEqual(["1"]);
 
-      const [row] = await fixture
-        .db()
-        .select()
-        .from(juniorGitHubPullRequests)
-        .where(eq(juniorGitHubPullRequests.number, 947));
-      expect(row).toMatchObject({ draft: true, state: "open" });
-      expect(
-        codeChanges.map((change) => [
-          change.number,
-          change.state,
-          change.draft,
-        ]),
-      ).toEqual([
-        [946, "merged", undefined],
-        [947, "open", true],
-        [949, "closed", undefined],
-      ]);
+      // A review by a person keeps the pull request active.
+      reviewAt(pushedAt + 30 * hour, "User");
+      await checkAt(pushedAt + 31 * hour, "3");
+      await checkAt(pushedAt + 56 * hour, "4");
+      expect(fixedShas()).toEqual(["1", "3", "4"]);
+      expect(h.notices).toEqual([]);
+
+      // Many comments do not hide the last fix, so the daily wait holds.
+      for (let i = 0; i < 120; i += 1) {
+        timeline.push({
+          __typename: "IssueComment",
+          author: { __typename: "User" },
+          createdAt: new Date(pushedAt + 57 * hour).toISOString(),
+        });
+      }
+      await checkAt(pushedAt + 3 * day, "5");
+      expect(fixedShas()).toEqual(["1", "3", "4"]);
+      // People still work on it, so the fixes go on past 3 in total.
+      await checkAt(pushedAt + 3 * day + 9 * hour, "6");
+      expect(fixedShas()).toEqual(["1", "3", "4", "6"]);
+      expect(h.notices).toEqual([]);
     });
 
-    it("publishes a corrected close with the key of its webhook", async () => {
-      const closes = () =>
-        published.filter(
-          (event) =>
-            event.identifier === "getsentry/junior#946" &&
-            event.eventType === "pull_request.merged",
-        );
-      await heartbeat(now);
-      expect(closes()).toEqual([
-        expect.objectContaining({
-          data: {
-            headBranch: "feat/pr-946",
-            isDraft: false,
-            openerUsername: "sentry-junior[bot]",
-            pullRequest: 946,
-            repo: "getsentry/junior",
-          },
-          objectType: "code_change",
-          occurredAtMs: now - day,
-          people: [
-            { handle: "octocat", provider: "github" },
-            { handle: "jane", provider: "github" },
-            { email: "sam@example.com" },
-          ],
-          terminal: true,
-          trustedSummary: "GitHub PR getsentry/junior#946 was merged.",
-        }),
-      ]);
-      expect(
-        published.filter(
-          (event) => event.eventType === "pull_request.closed_unmerged",
-        ),
-      ).toHaveLength(2);
+    it("fixes nothing and asks nobody when nobody worked on it for 2 days, until it is approved", async () => {
+      await askedInSlack();
+      // The pull request opened an hour before `pushedAt`. A review by a bot
+      // is not activity by a person.
+      reviewAt(pushedAt + day, "Bot");
+      await checkAt(pushedAt + 2 * day, "1");
+      await checkAt(pushedAt + 3 * day, "2");
+      expect(fixedShas()).toEqual([]);
 
-      // The late webhook has the same key, so a Watch gets the merge once.
-      const merged = lifecycle(946);
-      await deliver(
-        "delivery-merge",
-        signedRequest({
-          deliveryId: "delivery-merge",
-          eventName: "pull_request",
-          body: {
-            action: "closed",
-            installation: { id: 456 },
-            pull_request: {
-              assignees: [{ login: "octocat" }],
-              closed_at: merged.closedAt,
-              created_at: merged.createdAt,
-              id: merged.databaseId,
-              merged: true,
-              merged_at: merged.mergedAt,
-              number: 946,
-              updated_at: merged.updatedAt,
-              user: { login: "sentry-junior[bot]" },
+      // An approved pull request waits only for the fix to merge, so it
+      // gets one at once, up to 3 in a row. A check of the same head commit
+      // does not count as another fix.
+      approvals.add(946);
+      await checkAt(pushedAt + 4 * day, "4");
+      await checkAt(pushedAt + 4 * day + 30 * minute, "4");
+      await checkAt(pushedAt + 4 * day + hour, "5");
+      await checkAt(pushedAt + 4 * day + 2 * hour, "6");
+      await checkAt(pushedAt + 4 * day + 3 * hour, "7");
+      expect(fixedShas()).toEqual(["4", "5", "6"]);
+      // Junior waits for a person after 3 fixes in a row, and tells nobody.
+      expect(h.notices).toEqual([]);
+
+      // Activity by a person starts the count again.
+      reviewAt(pushedAt + 4 * day + 4 * hour, "User");
+      await checkAt(pushedAt + 4 * day + 5 * hour, "8");
+      expect(fixedShas()).toEqual(["4", "5", "6", "8"]);
+    });
+
+    it("counts only the fixes it started, not merges and force pushes for requested work", async () => {
+      await askedInSlack();
+      // Junior merged main and force-pushed for work that a person asked for
+      // in Slack, with no activity by a person on GitHub.
+      for (let i = 1; i <= 3; i += 1) {
+        timeline.push(
+          {
+            __typename: "PullRequestCommit",
+            commit: {
+              author: { user: { login: "sentry-junior[bot]" } },
+              committedDate: new Date(pushedAt + i * hour).toISOString(),
             },
-            repository: { full_name: "getsentry/junior", id: 1 },
-            sender: { login: "jane" },
           },
+          {
+            __typename: "HeadRefForcePushedEvent",
+            actor: { __typename: "Bot" },
+            createdAt: new Date(pushedAt + i * hour + minute).toISOString(),
+          },
+        );
+      }
+      await checkAt(pushedAt + 4 * hour, "1");
+      expect(fixedShas()).toEqual(["1"]);
+      expect(h.notices).toEqual([]);
+    });
+
+    it("fixes a head commit once, and asks once to resume when that fix lands nothing in a day", async () => {
+      await askedInSlack();
+      approvals.add(946);
+      await checkAt(pushedAt, "1");
+      await checkAt(pushedAt + hour, "1");
+      expect(fixedShas()).toEqual(["1"]);
+      expect(h.notices).toEqual([]);
+      // The first ask fails, so the next check asks.
+      h.failures.upsert = 1;
+      await checkAt(pushedAt + day, "1");
+      expect(h.notices).toEqual([]);
+      await checkAt(pushedAt + day + hour, "1");
+      expect(h.notices).toEqual([
+        {
+          conversationId: "slack:C1:1.0",
+          notice: {
+            assigneeIdentityIds: ["identity-jane"],
+            body: "#946 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
+            choices: [{ label: "Resume" }],
+            dedupeKey: "merge-conflict:getsentry/junior#946",
+            subject: {
+              id: "https://github.com/getsentry/junior/pull/946",
+              title: "fix(conflicts): Pull request 946 (#946)",
+              titleParts: {
+                scope: "conflicts",
+                text: "Pull request 946",
+                type: "Fix",
+              },
+              url: "https://github.com/getsentry/junior/pull/946",
+            },
+            title: "Merge conflict · #946",
+          },
+        },
+      ]);
+
+      // A Dismiss tells the plugin nothing. Junior asked once, so it does
+      // not ask again, also after activity by a person.
+      h.dismiss("merge-conflict:getsentry/junior#946");
+      reviewAt(pushedAt + 2 * day, "User");
+      await checkAt(pushedAt + 2 * day + hour, "1");
+      expect(h.notices).toHaveLength(1);
+      expect(fixedShas()).toEqual(["1"]);
+    });
+
+    it("publishes a fix again when its publish failed", async () => {
+      await askedInSlack();
+      h.failures.publish = 1;
+      await checkAt(pushedAt, "1").catch(() => undefined);
+      expect(fixedShas()).toEqual([]);
+      // The next check of the same head commit publishes the same event key,
+      // which core delivers once.
+      await checkAt(pushedAt + 10 * minute, "1");
+      expect(fixedShas()).toEqual(["1"]);
+    });
+
+    it("asks again at once when the fix that Resume publishes fails", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      pullRequest.head.sha = "1".repeat(40);
+      h.failures.publish = 1;
+      await expect(h.answer(resume)).rejects.toThrow("The event queue is down");
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      expect(h.notices).toHaveLength(2);
+    });
+
+    it("Resume starts a fix and the count again", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+
+      // Resume reads the head commit from GitHub and starts a fix of it,
+      // even when a check already started one of the same commit.
+      pullRequest.head.sha = "1".repeat(40);
+      // The Conversation's Watch expired while fixes waited, though another
+      // Conversation still watches. Resume adds the Watch again before it
+      // starts the fix, so the fix reaches the Conversation.
+      h.watches.ownConflicts = false;
+      const publishedBefore = h.published.length;
+      await h.answer(resume);
+      expect(h.subscribed).toEqual([
+        {
+          events: expect.arrayContaining(["pull_request.merge_conflict"]),
+          identifier: "getsentry/junior#946",
+          publishedBefore,
+        },
+      ]);
+      const resumed = conflicts().filter((event) =>
+        event.eventKey.endsWith(":resume:item-1"),
+      );
+      expect(resumed).toEqual([
+        expect.objectContaining({
+          data: expect.objectContaining({ headSha: "1".repeat(40) }),
+          identifier: "getsentry/junior#946",
         }),
-      );
-      expect(closes()).toHaveLength(2);
-      const [reconciled, webhook] = closes();
-      expect(reconciled?.eventKey).toBe(webhook?.eventKey);
-      expect(reconciled?.people).toEqual(webhook?.people);
-    });
-
-    const rowStates = async () =>
-      (
-        await fixture
-          .db()
-          .select()
-          .from(juniorGitHubPullRequests)
-          .orderBy(juniorGitHubPullRequests.number)
-      ).map((row) => [row.number, row.state]);
-
-    it("finds a renamed repository by its id", async () => {
-      await fixture
-        .db()
-        .update(juniorGitHubPullRequests)
-        .set({ repositoryFullName: "getsentry/junior-old" });
-      await heartbeat(now);
-
-      expect(heartbeatLogs).toEqual([]);
-      expect(await rowStates()).toEqual([
-        [946, "merged"],
-        [947, "open"],
-        [949, "closed_unmerged"],
-        [950, "open"],
-        [951, "open"],
+        expect.objectContaining({ identifier: "getsentry/junior" }),
       ]);
+      // Until the fix that Resume started lands, a check starts no second
+      // fix, though an approved pull request skips the daily wait.
+      const published = conflicts().length;
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      expect(conflicts()).toHaveLength(published);
+
+      // The count starts again from the Resume, so the next conflicts get
+      // fixes, up to 3 in a row with the fix that Resume started.
+      await checkAt(pushedAt + day + 2 * hour, "5");
+      await checkAt(pushedAt + day + 3 * hour, "6");
+      await checkAt(pushedAt + day + 4 * hour, "7");
+      expect(fixedShas()).toEqual(["1", "5", "6"]);
+      expect(h.notices).toHaveLength(1);
     });
 
-    it("warns and keeps the rows when GitHub cannot reach the repository", async () => {
-      await fixture
-        .db()
-        .update(juniorGitHubPullRequests)
-        .set({ repositoryId: "2" });
-      await heartbeat(now);
-
-      expect(heartbeatLogs).toEqual([
-        ["warn", "GitHub pull request reconcile skipped a repository"],
-      ]);
-      expect(queries).toEqual([]);
-      expect(new Set((await rowStates()).map(([, state]) => state))).toEqual(
-        new Set(["open"]),
-      );
+    it("adds no item for a conflict check that runs while Resume reads the pull request", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      pullRequest.head.sha = "1".repeat(40);
+      duringPullRequestRead = () => checkAt(pushedAt + day + hour, "1");
+      await h.answer(resume);
+      expect(duringPullRequestRead).toBeUndefined();
+      expect(h.notices).toHaveLength(1);
     });
 
-    it("keeps a close open for the next reconcile when its event fails", async () => {
-      vi.spyOn(events, "publish").mockRejectedValueOnce(
-        new Error("The event queue is down"),
-      );
-      await heartbeat(now);
-      const states = async () =>
-        (
-          await fixture
-            .db()
-            .select()
-            .from(juniorGitHubPullRequests)
-            .orderBy(juniorGitHubPullRequests.number)
-        ).map((row) => [row.number, row.state]);
-      expect(await states()).toContainEqual([946, "open"]);
+    it("saves no Resume that starts no fix, so the next conflict asks again", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      // A draft gets no fix, so Resume saves nothing, and the next conflict
+      // asks again at once, with no wait for a fix.
+      pullRequest.draft = true;
+      const published = conflicts().length;
+      await h.answer(resume);
+      pullRequest.draft = false;
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      // The same holds when GitHub can merge it by the time of the Resume.
+      pullRequest.mergeable = true;
+      await h.answer({ ...resume, itemId: "item-2" });
+      await checkAt(pushedAt + day + hour + 20 * minute, "1");
+      expect(conflicts()).toHaveLength(published);
+      expect(h.notices).toHaveLength(3);
+    });
 
-      vi.setSystemTime(now + day);
-      await heartbeat(now + day);
-      expect(await states()).toContainEqual([946, "merged"]);
+    it("asks again once when the fix that Resume started lands nothing in a day", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      pullRequest.head.sha = "1".repeat(40);
+      await h.answer(resume);
+      // The Watch is still active, so Resume adds no second one.
+      expect(h.subscribed).toEqual([]);
+
+      // Core already delivered a fix of this head commit, and Resume closed
+      // the item. So when no fix lands, the next check a day later asks
+      // again, once, and Resume on the new item starts another fix.
+      await checkAt(pushedAt + day + hour + 10 * minute, "1");
+      expect(h.notices).toHaveLength(1);
+      await checkAt(pushedAt + 2 * day + hour, "1");
+      await checkAt(pushedAt + 2 * day + 2 * hour, "1");
+      expect(h.notices).toHaveLength(2);
+      await h.answer({
+        ...resume,
+        itemId: "item-2",
+        nowMs: pushedAt + 2 * day + 3 * hour,
+      });
       expect(
-        published.filter(
-          (event) =>
-            event.identifier === "getsentry/junior#946" &&
-            event.eventType === "pull_request.merged",
+        conflicts().filter((event) =>
+          event.eventKey.endsWith(":resume:item-2"),
         ),
-      ).toHaveLength(1);
+      ).not.toEqual([]);
     });
   });
 });

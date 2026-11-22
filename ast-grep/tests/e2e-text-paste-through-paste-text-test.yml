@@ -1,0 +1,7 @@
+id: e2e-text-paste-through-paste-text
+valid:
+  - 'await pasteText(page, " <@U456>");'
+  - 'data.items.add(new File(["hello"], "notes.txt", { type: "text/plain" }));'
+invalid:
+  - 'data.setData("text/plain", " <@U456>");'
+  - 'clipboardData.setData("text/plain", text);'

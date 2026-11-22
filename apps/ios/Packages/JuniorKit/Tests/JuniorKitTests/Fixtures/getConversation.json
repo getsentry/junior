@@ -1,0 +1,118 @@
+{
+  "conversation": {
+    "conversationId": "slack:CQA123:1770003600.000200",
+    "title": "Investigate checkout latency",
+    "status": "working",
+    "turnActive": true,
+    "surface": "slack",
+    "channelName": "proj-checkout",
+    "locationUrl": "https://sentry.slack.com/archives/CQA123/p1770003600000200?thread_ts=1770003600.000200&cid=CQA123",
+    "startedAt": "2026-08-07T11:54:00.000Z",
+    "lastSeenAt": "2026-08-07T11:59:50.000Z",
+    "url": "http://127.0.0.1:4317/conversations/slack%3ACQA123%3A1770003600.000200"
+  },
+  "brief": {
+    "summary": "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
+    "intent": "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans.",
+    "outcome": {
+      "status": "in_progress",
+      "text": "The deployment correlation is confirmed. The span comparison is still running."
+    },
+    "decisions": [
+      {
+        "text": "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
+        "by": "Morgan Lee",
+        "kind": "stated"
+      },
+      {
+        "text": "Use checkout.complete p95 as the primary comparison signal.",
+        "kind": "assumed"
+      }
+    ],
+    "facts": [
+      "Checkout p95 increased from 210ms to 890ms.",
+      "Error volume stayed flat during the latency increase."
+    ],
+    "links": [
+      {
+        "kind": "code_change",
+        "label": "getsentry/payments#42",
+        "url": "https://github.com/getsentry/payments/pull/42",
+        "status": "open"
+      },
+      {
+        "kind": "resource",
+        "label": "Checkout latency dashboard",
+        "url": "https://sentry.example.com/organizations/acme/explore/traces/",
+        "status": "open"
+      }
+    ],
+    "updatedAt": "2026-08-07T11:59:00.000Z"
+  },
+  "lastReply": {
+    "seq": 6,
+    "messageId": "active-assistant",
+    "createdAt": "2026-08-07T11:54:22.000Z",
+    "role": "assistant",
+    "text": "Checkout p95 jumped after **payments-v42** landed.\n\nWhat I checked:\n- deploy marker `payments-v42` correlates with the spike\n- canary hosts show the same `checkout.latency` shape\n- error volume is flat, so this looks like slow path not hard fail\n\n| Window | Region | Host class | p50 | p95 | p99 | Errors | Notes |\n| --- | --- | --- | ---: | ---: | ---: | ---: | --- |\n| pre-deploy | us-west1 | canary + stable | 120ms | 210ms | 340ms | 0.4% | baseline |\n| post-deploy | us-west1 | stable | 310ms | **890ms** | 1.4s | 0.5% | spike after payments-v42 |\n| canary only | us-west1 | canary | 280ms | 860ms | 1.3s | 0.5% | same shape as stable |\n\nUseful query:\n```sql\nSELECT percentile(duration, 0.95) AS p95\nFROM transactions\nWHERE transaction = 'checkout.complete'\n  AND timestamp > now() - interval '2 hours'\nGROUP BY 1\nORDER BY p95 DESC;\n```\n\nNext step: compare the pre/post deploy spans, then decide whether to\nroll back or patch the slow serializer path."
+  },
+  "pendingMessages": [
+    {
+      "messageId": "slack:CQA123:1770003600.000200:pending-interrupt",
+      "createdAt": "2026-08-07T11:59:52.000Z",
+      "author": "Morgan Lee",
+      "text": "Also check the canary traffic from the last deploy.",
+      "delivery": "interrupt"
+    },
+    {
+      "messageId": "slack:CQA123:1770003600.000200:pending-defer",
+      "createdAt": "2026-08-07T11:59:56.000Z",
+      "author": "Morgan Lee",
+      "text": "Keep the reply here. I will paste the dashboard link next.",
+      "attachments": [
+        {
+          "bytes": 18211,
+          "contentType": "image/png",
+          "filename": "queued-chart.png"
+        }
+      ],
+      "delivery": "defer"
+    },
+    {
+      "messageId": "slack:CQA123:1770003600.000200:pending-third",
+      "createdAt": "2026-08-07T11:59:57.000Z",
+      "author": "Morgan Lee",
+      "text": "Third queued message.",
+      "delivery": "defer"
+    },
+    {
+      "messageId": "slack:CQA123:1770003600.000200:pending-fourth",
+      "createdAt": "2026-08-07T11:59:58.000Z",
+      "author": "Morgan Lee",
+      "text": "Fourth queued message.",
+      "delivery": "defer"
+    },
+    {
+      "messageId": "slack:CQA123:1770003600.000200:pending-fifth",
+      "createdAt": "2026-08-07T11:59:59.000Z",
+      "author": "Morgan Lee",
+      "text": "Fifth queued message.",
+      "delivery": "defer"
+    },
+    {
+      "messageId": "slack:CQA123:1770003600.000200:pending-sixth",
+      "createdAt": "2026-08-07T11:59:59.200Z",
+      "author": "Morgan Lee",
+      "text": "Sixth queued message.",
+      "delivery": "defer"
+    },
+    {
+      "messageId": "slack:CQA123:1770003600.000200:pending-seventh",
+      "createdAt": "2026-08-07T11:59:59.400Z",
+      "author": "Morgan Lee",
+      "text": "Seventh queued message.",
+      "delivery": "defer"
+    }
+  ],
+  "cursor": "eyJjb252ZXJzYXRpb25JZCI6InNsYWNrOkNRQTEyMzoxNzcwMDAzNjAwLjAwMDIwMCIsInNlcSI6MTAsInZlcnNpb24iOjF9.mock"
+}

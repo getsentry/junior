@@ -3,6 +3,7 @@ import type {
   EventPublisher,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
@@ -10,6 +11,9 @@ import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.j
 import { definedValues } from "./event-targets.js";
 import { isBotLogin } from "./ownership.js";
 import type { GitHubPullRequestTarget } from "./pull-request-people.js";
+
+// GitHub logins that one delivery loads at once, under GitHub rate limits.
+const LOGIN_LOAD_CONCURRENCY = 5;
 
 /** A pull request value that needs a database or GitHub call to load. */
 type Lookup = "authors" | "opener" | "openerRole";
@@ -57,8 +61,10 @@ interface LookupContext {
   db: GitHubDb;
   deliveryId: string;
   loadAuthors?(target: GitHubPullRequestTarget): Promise<string[]>;
-  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  loadRole?(target: GitHubRoleTarget): Promise<string>;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  loadRole?: ((target: GitHubRoleTarget) => Promise<string>) | undefined;
   log?: Pick<PluginLogger, "error">;
   /** Pull request number of each Event key. */
   numbers: Map<string, number>;
@@ -74,7 +80,7 @@ interface LookupContext {
 function pullRequestNumbers(events: EventInput[]): Map<string, number> {
   const numbers = new Map<string, number>();
   for (const event of events) {
-    const number = event.data?.pullRequest;
+    const number = event.data?.["pullRequest"];
     if (typeof number === "number") numbers.set(event.eventKey, number);
   }
   return numbers;
@@ -109,7 +115,7 @@ async function withJuniorOpeners(
   const botNumber = (event: EventInput) => {
     const number = context.numbers.get(event.eventKey);
     return number !== undefined &&
-      isBotLogin(event.data?.openerUsername as string, context.botEmail)
+      isBotLogin(event.data?.["openerUsername"] as string, context.botEmail)
       ? number
       : undefined;
   };
@@ -120,15 +126,16 @@ async function withJuniorOpeners(
     repositoryFullName: context.repositoryFullName,
   });
   const logins = new Map<string, string | undefined>();
-  for (const identityId of new Set(
-    [...openers.values()].map((opener) => opener.identityId),
-  )) {
-    try {
-      logins.set(identityId, await context.loadGitHubLogin?.(identityId));
-    } catch (error) {
-      logFailure(context, "opener", error);
-    }
-  }
+  await pLimit(LOGIN_LOAD_CONCURRENCY).map(
+    [...new Set([...openers.values()].map((opener) => opener.identityId))],
+    async (identityId) => {
+      try {
+        logins.set(identityId, await context.loadGitHubLogin?.(identityId));
+      } catch (error) {
+        logFailure(context, "opener", error);
+      }
+    },
+  );
   return events.map((event) => {
     const number = botNumber(event);
     if (number === undefined) return event;
@@ -163,10 +170,11 @@ async function withRolesAndAuthors(
   const loadAuthors = lookups.has("authors") ? context.loadAuthors : undefined;
   if (!loadRole && !loadAuthors) return events;
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- One delivery's events. Lookups are shared per login and number.
     events.map(async (event) => {
       const number = context.numbers.get(event.eventKey);
       if (number === undefined) return event;
-      const login = event.data?.openerUsername;
+      const login = event.data?.["openerUsername"];
       if (loadRole && typeof login === "string" && !roles.has(login)) {
         roles.set(
           login,
@@ -233,9 +241,11 @@ export async function withGitHubPullRequestMatchData(args: {
   hasMatch: EventPublisher["hasMatch"];
   loadAuthors?(target: GitHubPullRequestTarget): Promise<string[]>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
-  loadGitHubLogin?(identityId: string): Promise<string | undefined>;
-  loadRole?(target: GitHubRoleTarget): Promise<string>;
-  log?: Pick<PluginLogger, "error">;
+  loadGitHubLogin?:
+    | ((identityId: string) => Promise<string | undefined>)
+    | undefined;
+  loadRole?: ((target: GitHubRoleTarget) => Promise<string>) | undefined;
+  log?: Pick<PluginLogger, "error"> | undefined;
   neededMatchKeys: EventPublisher["neededMatchKeys"];
 }): Promise<EventInput[]> {
   const parsed = webhookSchema.safeParse(args.body);

@@ -10,7 +10,7 @@
  * A message counts as the user only when its stored author Identity is one
  * of the Identities of the person behind the Run's Actor: every Identity of
  * their User, or only the Actor's own Identity when it has no User. So a
- * review desk answer from the person's web Identity counts in a Slack thread.
+ * Inbox answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
  * the one exception, because it has no per-person Identity. A Run that an
  * agent started follows its parent agent, so the tasks and messages that the
@@ -18,6 +18,7 @@
  * person's message does. Each other message keeps its real author as a label
  * and is only context. Nothing is copied into the Run.
  */
+import * as z from "zod";
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -50,9 +51,10 @@ type MessageData = Extract<
   { type: "message" | "message_updated" }
 >;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+const messageAuthorSchema = z.object({
+  isBot: z.unknown().optional(),
+  userId: z.string(),
+});
 
 /**
  * Build the Actor that wrote one root message, from the runtime-recorded
@@ -62,9 +64,8 @@ function messageAuthor(
   root: Conversation,
   data: MessageData,
 ): Actor | undefined {
-  const author = isRecord(data.meta?.author) ? data.meta.author : undefined;
-  const userId =
-    typeof author?.userId === "string" ? author.userId.trim() : undefined;
+  const author = messageAuthorSchema.safeParse(data.meta?.["author"]).data;
+  const userId = author?.userId.trim();
   if (!userId || author?.isBot === true) {
     return undefined;
   }
@@ -136,10 +137,10 @@ function messageLabel(
     return "user";
   }
   // An Event Turn input, such as a child agent result, is not a person.
-  if (data.meta?.eventType !== undefined) {
+  if (data.meta?.["eventType"] !== undefined) {
     return "event";
   }
-  const invocationId = data.meta?.agentInvocationId;
+  const invocationId = data.meta?.["agentInvocationId"];
   if (typeof invocationId === "string" && parentTaskIds?.has(invocationId)) {
     return "user";
   }

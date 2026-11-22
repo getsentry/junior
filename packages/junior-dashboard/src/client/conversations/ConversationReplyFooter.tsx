@@ -10,17 +10,10 @@ import {
 import type {
   ConversationDetailReport,
   ConversationPendingMessagesReport,
-  ReviewItemPayload,
 } from "@sentry/junior/api/schema";
 
 import { useDashboardCoreData } from "../api";
-import {
-  ComposerQuestion,
-  ComposerQuestionsLoadError,
-  useComposerQuestions,
-  type ComposerQuestionAnswers,
-} from "../review-desk/ComposerQuestion";
-import { useConfirmUnsentAnswers } from "../review-desk/UnsentAnswers";
+import { useConfirmUnsentAnswers } from "../inbox/UnsentAnswers";
 import { readStoredComposerFiles } from "./ComposerFiles";
 import { ComposerDock } from "./ComposerDock";
 import {
@@ -30,9 +23,11 @@ import {
   touchKeyboardMatches,
   type ConversationComposerHandle,
 } from "./ConversationComposer";
+import type { ComposerConversation } from "./ComposerMention";
 import type { ConversationMailboxMessage } from "./conversationOutbox";
 import { PendingAuthorization } from "./ConversationMeta";
 import { PendingMailboxStack } from "./PendingMailboxStack";
+import { queuedTextInDraft, setQueuedTextInDraft } from "./queuedEditText";
 import {
   useAppendConversationMessage,
   useCancelConversationPendingMessages,
@@ -40,6 +35,7 @@ import {
   useStopConversationTurn,
 } from "./queries";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { getDashboardAgentName } from "../agentName";
 
 /** Ask the reply box for focus once per navigation `key`. */
 export type ReplyFocusRequest = {
@@ -58,19 +54,18 @@ export type ReplyFocusRequest = {
 export const ConversationReplyFooter = memo(ReplyFooter);
 
 function ReplyFooter(props: {
-  authors?: ConversationDetailReport["authors"];
+  authors?: ConversationDetailReport["authors"] | undefined;
   committedMessageIds: readonly string[];
   conversationId: string;
   /** A request to focus the message box. */
-  focusRequest?: ReplyFocusRequest;
+  focusRequest?: ReplyFocusRequest | undefined;
+  /** The Conversation that the composer writes to. */
+  conversation?: ComposerConversation | undefined;
   onFocusRequestDone(key: string): void;
   onPinRequest: () => void;
-  /**
-   * Show the transcript row of a docked question. `arrived` means it docked
-   * by itself, not by a step or an answer of the reader.
-   */
-  onShowQuestion?(item: ReviewItemPayload, arrived: boolean): void;
-  pendingAuthorization?: ConversationPendingMessagesReport["authorization"];
+  pendingAuthorization?:
+    | ConversationPendingMessagesReport["authorization"]
+    | undefined;
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
   /** Lets the page add a quote of selected text to the draft. */
@@ -84,8 +79,8 @@ function ReplyFooter(props: {
   stoppable: boolean;
 }) {
   const appendMessage = useAppendConversationMessage(props.conversationId);
-  // A message closes the review items that it answers. Ask before it drops
-  // answers in the details panel that the reader did not send.
+  // A message closes the Inbox items that it answers. Ask before it drops
+  // answers on a question card that the reader did not send.
   const unsentAnswers = useConfirmUnsentAnswers();
   const stopTurn = useStopConversationTurn(props.conversationId);
   const stopTurnRef = useRef(stopTurn);
@@ -96,63 +91,22 @@ function ReplyFooter(props: {
   const [editTargetInboundMessageId, setEditTargetInboundMessageId] =
     useState<string>();
   const [queueActionError, setQueueActionError] = useState<string>();
-  // Open questions dock above the message box, and Send sends their picks
-  // before the typed message. The server then closes the open questions
-  // that the message answers.
-  const {
-    loadFailed: questionsLoadFailed,
-    pending: questionsPending,
-    questions,
-    retry: retryQuestions,
-  } = useComposerQuestions(props.conversationId);
-  // The questions that docked when the Conversation opened do not move the
-  // transcript. It opens at the latest message or the "New" marker.
-  const openedWithRef = useRef<{ conversationId: string; ids: Set<string> }>(
-    undefined,
-  );
-  if (
-    !questionsPending &&
-    openedWithRef.current?.conversationId !== props.conversationId
-  ) {
-    openedWithRef.current = {
-      conversationId: props.conversationId,
-      ids: new Set(questions.map((question) => question.id)),
-    };
-  }
-  const { conversationId, onShowQuestion } = props;
-  const showQuestion = useCallback(
-    (item: ReviewItemPayload, byReader: boolean) => {
-      if (byReader) {
-        onShowQuestion?.(item, false);
-        return;
-      }
-      // A question can dock from an early page before every page is in.
-      // It was open when the Conversation opened, so it did not arrive.
-      const openedWith = openedWithRef.current;
-      if (openedWith?.conversationId !== conversationId) return;
-      if (!openedWith.ids.has(item.id)) onShowQuestion?.(item, true);
-    },
-    [conversationId, onShowQuestion],
-  );
-  const questionRef = useRef<HTMLElement>(null);
-  const questionAnswersRef = useRef<ComposerQuestionAnswers>(null);
-  const [hasQuestionAnswers, setHasQuestionAnswers] = useState(false);
-  const hasQuestionAnswersRef = useRef(hasQuestionAnswers);
-  hasQuestionAnswersRef.current = hasQuestionAnswers;
   const { confirmSubmit } = unsentAnswers;
-  // A failed answer keeps the draft, so the reader can send both again.
-  // Only a message drops the details-panel picks, so only a message asks.
-  const beforeSubmit = useCallback(
-    ({ sendsMessage }: { sendsMessage: boolean }) => {
-      const confirmation = sendsMessage ? confirmSubmit() : undefined;
-      if (!confirmation && !hasQuestionAnswersRef.current) return undefined;
-      return (async () => {
-        if (confirmation && !(await confirmation)) return false;
-        return (await questionAnswersRef.current?.send()) ?? true;
-      })();
-    },
-    [confirmSubmit],
-  );
+  // Resolves to true when the queued message of the edit in flight left the
+  // queue. Its text is in the draft before the cancel lands.
+  const editCancelledRef = useRef<Promise<boolean>>(undefined);
+  const beforeSubmit = useCallback(() => {
+    const editCancelled = editCancelledRef.current;
+    // A send during an edit waits for its cancel, and stops when the queued
+    // message is still queued or Junior read it. Then the text does not go
+    // out twice, and the reader sees the edit error. The unsent answers
+    // dialog opens only after the wait, so a stopped send leaves none open.
+    if (!editCancelled) return confirmSubmit();
+    return (async () => {
+      if (!(await editCancelled)) return false;
+      return (await confirmSubmit()) ?? true;
+    })();
+  }, [confirmSubmit]);
   // Keep submit identity stable across mutation status flips so the memoized
   // composer does not re-render while the reader is still typing.
   const appendMessageRef = useRef(appendMessage);
@@ -249,34 +203,22 @@ function ReplyFooter(props: {
   useImperativeHandle(props.ref, () => ({
     appendText: (text) => composerRef.current?.appendText(text),
   }));
-  // Wait until the questions are known: an open question takes focus, so
-  // its number keys work at once. On a touch screen, focus would open the
-  // keyboard over the transcript.
+  // On a touch screen, focus would open the keyboard over the transcript.
   const { onFocusRequestDone } = props;
   const focusKey = props.focusRequest?.key;
   const draftFrom = props.focusRequest?.draftFrom;
-  const questionShown = questions.length > 0;
   useEffect(() => {
-    // A docked question takes the focus at once, before the reader types.
-    if (!focusKey || (questionsPending && !questionShown)) return;
+    if (!focusKey) return;
     onFocusRequestDone(focusKey);
     // A new Conversation opens here after its first send. The reader was
     // typing in its pending reply box, so the text and the cursor move here,
     // even on a touch screen where the keyboard is already open.
     const text = draftFrom ? takeStoredDraftText(draftFrom) : "";
     if (text) composerRef.current?.restoreMessage({ text });
-    else if (draftFrom) composerRef.current?.focus();
-    else if (!touchKeyboardMatches()) {
-      if (questionShown) questionRef.current?.focus();
-      else composerRef.current?.focus();
+    else if (draftFrom || !touchKeyboardMatches()) {
+      composerRef.current?.focus();
     }
-  }, [
-    draftFrom,
-    focusKey,
-    onFocusRequestDone,
-    questionShown,
-    questionsPending,
-  ]);
+  }, [draftFrom, focusKey, onFocusRequestDone]);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
@@ -285,13 +227,30 @@ function ReplyFooter(props: {
       // not stop a second click.
       if (!receivedBefore || editingRef.current) return;
       editingRef.current = true;
+      const conversationId = props.conversationId;
       const inboundMessageId = message.inboundMessageId;
+      const text = message.text ?? "";
       setEditTargetInboundMessageId(inboundMessageId);
       setQueueActionError(undefined);
+      // Text alone moves at once, before the cancel, and into the saved
+      // draft. When the edit fails, it stays with the error and the reader
+      // decides. Text with files moves with its files after the cancel, so
+      // the reader cannot send the text without them.
+      const textFirst = !message.attachments?.length;
+      let settleEdit = (_cancelled: boolean) => {};
+      if (textFirst) {
+        editCancelledRef.current = new Promise((resolve) => {
+          settleEdit = resolve;
+        });
+      }
+      if (textFirst && !queuedTextInDraft(conversationId, inboundMessageId)) {
+        setQueuedTextInDraft(conversationId, inboundMessageId, true);
+        composerRef.current?.restoreMessage({ text });
+      }
       try {
         // Read files first. A failed read must leave the message queued.
         const files = await readStoredComposerFiles(
-          props.conversationId,
+          conversationId,
           message.attachments,
         );
         // The reader left during the read. Keep the message in the queue.
@@ -305,23 +264,31 @@ function ReplyFooter(props: {
           inboundMessageIds: [inboundMessageId],
           receivedBefore,
         });
+        const cancelled =
+          result.cancelledInboundMessageIds.includes(inboundMessageId);
+        settleEdit(cancelled);
+        if (textFirst) {
+          setQueuedTextInDraft(conversationId, inboundMessageId, false);
+        }
         // Junior can read the message before the cancel lands, or someone
         // else can remove it. Then there is nothing to edit.
-        if (!result.cancelledInboundMessageIds.includes(inboundMessageId)) {
+        if (!cancelled) {
           setQueueActionError("That message was already read or removed.");
           return;
         }
-        const restored = { files, text: message.text ?? "" };
+        if (textFirst) return;
         if (composerRef.current) {
-          composerRef.current.restoreMessage(restored);
+          composerRef.current.restoreMessage({ files, text });
         } else {
           // The reader left during the cancel. Keep the text in the saved
           // draft so it is there when they come back.
-          restoreStoredDraftText(props.conversationId, restored.text);
+          restoreStoredDraftText(conversationId, text);
         }
       } catch {
         setQueueActionError("Could not edit the queued message. Try again.");
       } finally {
+        settleEdit(false);
+        editCancelledRef.current = undefined;
         editingRef.current = false;
         setEditTargetInboundMessageId(undefined);
       }
@@ -372,7 +339,6 @@ function ReplyFooter(props: {
     if (!window.matchMedia(MOBILE_LAYOUT_QUERY).matches) return;
     onPinRequestRef.current();
   }, []);
-  const focusMessageBox = useCallback(() => composerRef.current?.focus(), []);
   // Mobile keyboard open shrinks the transcript. Focus must re-pin the latest
   // message so the reader does not stay stuck above the docked composer.
   const onComposerFocus = useCallback(() => {
@@ -404,19 +370,6 @@ function ReplyFooter(props: {
             steerTargetInboundMessageId={steerTargetInboundMessageId}
             viewerEmail={viewerEmail}
           />
-          {/* The question sits right above the message box that also
-              answers it. */}
-          <ComposerQuestion
-            answersRef={questionAnswersRef}
-            focusMessageBox={focusMessageBox}
-            onAnswersChange={setHasQuestionAnswers}
-            onShow={showQuestion}
-            questions={questions}
-            ref={questionRef}
-          />
-          {questionsLoadFailed ? (
-            <ComposerQuestionsLoadError onRetry={retryQuestions} />
-          ) : null}
           {unsentAnswers.dialog}
         </>
       }
@@ -426,12 +379,14 @@ function ReplyFooter(props: {
         draftId={props.conversationId}
         error={
           queueActionError ??
-          (stopTurn.error ? "Could not stop Junior. Try again." : undefined)
+          (stopTurn.error
+            ? `Could not stop ${getDashboardAgentName()}. Try again.`
+            : undefined)
         }
+        conversation={props.conversation}
+        linksWork
         ref={composerRef}
         label="Continue this conversation"
-        placeholder={questionShown ? "Or type your answer…" : undefined}
-        sendsWithoutDraft={hasQuestionAnswers}
         submitLabel="Send"
         onFocus={onComposerFocus}
         onStop={props.stoppable ? onStop : undefined}

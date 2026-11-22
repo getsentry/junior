@@ -9,8 +9,12 @@ import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { createVercelDeploymentTool } from "./tools/deployment.js";
-import { createVercelActionTools } from "./tools/actions.js";
+import { vercelDeploymentTool } from "./tools/deployment.js";
+import { vercelAliasAssignTool } from "./tools/alias-assign.js";
+import { vercelAliasInspectTool } from "./tools/alias-inspect.js";
+import { vercelDeploymentCreateTool } from "./tools/deployment-create.js";
+import { vercelDeploymentDeleteTool } from "./tools/deployment-delete.js";
+import { vercelDeploymentInspectTool } from "./tools/deployment-inspect.js";
 import {
   VERCEL_DEPLOYMENT_EVENTS,
   VERCEL_DEPLOYMENT_MATCH_FIELDS,
@@ -77,10 +81,14 @@ export function vercelPlugin(): PluginRegistration {
           }),
         ];
       },
-      tools(ctx) {
+      tools() {
         return {
-          deployment: createVercelDeploymentTool(ctx),
-          ...createVercelActionTools(ctx),
+          deployment: vercelDeploymentTool,
+          deploymentCreate: vercelDeploymentCreateTool,
+          deploymentInspect: vercelDeploymentInspectTool,
+          aliasAssign: vercelAliasAssignTool,
+          aliasInspect: vercelAliasInspectTool,
+          deploymentDelete: vercelDeploymentDeleteTool,
         };
       },
     },

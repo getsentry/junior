@@ -5,6 +5,7 @@
  * bounded run projection rather than live runtime internals or queue
  * payloads.
  */
+import * as z from "zod";
 import { createPluginCache } from "@/chat/plugins/cache";
 import type {
   Actor,
@@ -21,6 +22,7 @@ import type { ConversationPrivacy } from "@/chat/conversation-privacy";
 import { withSpan } from "@/chat/logging";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginConversationEvents } from "@/chat/plugins/conversation-events";
+import { createPluginTurnEventReader } from "@/chat/plugins/conversation-event-reader";
 import { createPluginEmbedder, createPluginModel } from "@/chat/plugins/model";
 import { createPluginModelCostRecorder } from "@/chat/plugins/model-cost";
 import { createPluginState } from "@/chat/plugins/state";
@@ -50,41 +52,42 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
-import { coreTaskRegistrations } from "@/chat/briefs/registration";
-import { getPlugins } from "./agent-hooks";
+import {
+  CONVERSATION_METADATA_TASK,
+  updateConversationMetadata,
+} from "@/chat/conversations/metadata/task";
+import { getRegistrations } from "./agent-hooks";
 import {
   pluginTaskId,
   pluginTaskParamsSchema,
-  sendVercelPluginTask,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
 } from "./task-queue";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { Lock } from "chat";
+import { mapBounded } from "@/chat/fan-out";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
+
+// Plugin task messages that one run sends at once.
+const PLUGIN_MESSAGE_SEND_CONCURRENCY = 5;
 
 const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
 
-export interface ScheduleSessionCompletedPluginTasksOptions {
-  send?: (message: PluginTaskQueueMessage) => Promise<void>;
-}
+/**
+ * Send one plugin task to its queue. The app chooses the queue: Vercel Queue
+ * by default, or an in-process queue.
+ */
+export type SendPluginTask = (message: PluginTaskQueueMessage) => Promise<void>;
 
 interface ProcessPluginTaskOptions {
   signal?: AbortSignal;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const textPartSchema = z.object({ type: z.literal("text"), text: z.string() });
 
 function textPart(value: unknown): string | undefined {
-  if (
-    isRecord(value) &&
-    value.type === "text" &&
-    typeof value.text === "string"
-  ) {
-    return value.text;
-  }
-  return undefined;
+  return textPartSchema.safeParse(value).data?.text;
 }
 
 function messageText(message: PiMessage): string {
@@ -99,15 +102,14 @@ function messageText(message: PiMessage): string {
 }
 
 function toolResultText(message: PiMessage): string {
-  // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-  const record = message as Record<string, unknown>;
+  const record = message as PiMessage & Record<string, unknown>;
   const parts = [
     messageText(message),
-    record.output,
-    record.result,
-    record.stdout,
-    record.stderr,
-    record.toolResult,
+    record["output"],
+    record["result"],
+    record["stdout"],
+    record["stderr"],
+    record["toolResult"],
   ].filter(
     (value): value is string => typeof value === "string" && value.length > 0,
   );
@@ -115,17 +117,22 @@ function toolResultText(message: PiMessage): string {
 }
 
 function sanitizeText(text: string): string {
-  return text
-    .replace(
-      /<data_base64>[\s\S]*?<\/data_base64>/g,
-      "<data_base64>[omitted]</data_base64>",
-    )
-    .replace(
-      /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
-      "[image data omitted]",
-    )
-    .replaceAll("\u0000", " ")
-    .trim();
+  return (
+    text
+      // Provider tool output, not a Junior prompt tag: redact its payload.
+      .replace(
+        // oxlint-disable-next-line junior/no-prompt-tag-matching
+        /<data_base64>[\s\S]*?<\/data_base64>/g,
+        // oxlint-disable-next-line junior/no-hand-built-prompt-tags
+        "<data_base64>[omitted]</data_base64>",
+      )
+      .replace(
+        /data:image\/[a-z0-9.+-]+;base64,[a-z0-9+/=]+/gi,
+        "[image data omitted]",
+      )
+      .replaceAll("\u0000", " ")
+      .trim()
+  );
 }
 
 /** Build the transcript provenance for a user message from its Pi provenance. */
@@ -184,30 +191,23 @@ function runTranscriptEntry(
 }
 
 /**
- * Slice the current turn's Pi messages with their aligned provenance and strip
- * runtime turn context, keeping each surviving message paired with the exact
- * provenance recorded for it. Stripping can drop or rewrite messages, so the
- * pairing is applied per message rather than by post-strip index.
+ * The current turn's Pi messages with their aligned provenance, without
+ * runtime turn context. Stripping can drop or rewrite messages, so each
+ * surviving message keeps the exact provenance recorded for it.
  */
-function turnMessagesWithProvenance(
+async function turnMessagesWithProvenance(
   record: TurnRecord,
-): Array<{ message: PiMessage; provenance: ConversationMessageProvenance }> {
-  const startIndex = record.turnStartMessageIndex ?? 0;
-  const messages = record.piMessages.slice(startIndex);
-  const provenance = record.piMessageProvenance.slice(startIndex);
-  const paired: Array<{
-    message: PiMessage;
-    provenance: ConversationMessageProvenance;
-  }> = [];
-  for (const [index, message] of messages.entries()) {
-    for (const stripped of stripRuntimeTurnContext([message])) {
-      paired.push({
+): Promise<
+  Array<{ message: PiMessage; provenance: ConversationMessageProvenance }>
+> {
+  const turnStart = await loadTurnStart(record.conversationId, record.turnId);
+  return savedTurnMessages(record, turnStart).flatMap(
+    ({ message, provenance }) =>
+      stripRuntimeTurnContext([message]).map((stripped) => ({
         message: stripped,
-        provenance: provenance[index] ?? { authority: "context" },
-      });
-    }
-  }
-  return paired;
+        provenance,
+      })),
+  );
 }
 
 /** Recover the Slack context author identity from a persisted thread message. */
@@ -373,7 +373,7 @@ async function loadPluginRun(
   const actorUser = runActor
     ? (await readActorIdentity(runActor))?.user
     : undefined;
-  const runEntries = turnMessagesWithProvenance(record)
+  const runEntries = (await turnMessagesWithProvenance(record))
     .map(({ message, provenance }) =>
       runTranscriptEntry(message, provenance, runActor),
     )
@@ -450,11 +450,25 @@ function taskPluginContext(
       },
     },
     state: createPluginState(pluginName),
+    turnEvents: createPluginTurnEventReader({
+      conversationId: sessionParams.conversationId,
+      plugin,
+      turnId: sessionParams.sessionId,
+    }),
   };
 }
 
+function isConversationMetadataTask(message: PluginTaskQueueMessage): boolean {
+  return (
+    (message.plugin === CONVERSATION_METADATA_TASK.plugin &&
+      message.name === CONVERSATION_METADATA_TASK.name) ||
+    // TODO(dcramer): Remove after no queued Brief task remains.
+    (message.plugin === "briefs" && message.name === "updateBrief")
+  );
+}
+
 function findPluginTask(message: PluginTaskQueueMessage) {
-  const plugin = [...coreTaskRegistrations(), ...getPlugins()].find(
+  const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === message.plugin,
   );
   if (!plugin?.tasks || !Object.hasOwn(plugin.tasks, message.name)) {
@@ -464,21 +478,24 @@ function findPluginTask(message: PluginTaskQueueMessage) {
   return { plugin, task };
 }
 
-/** Schedule all plugin tasks interested in a completed agent-run session. */
+/**
+ * Schedule the Conversation metadata task and all plugin tasks interested in
+ * a completed agent-run session.
+ */
 export async function scheduleSessionCompletedPluginTasks(
   params: PluginTaskParams,
-  options: ScheduleSessionCompletedPluginTasksOptions = {},
+  send: SendPluginTask,
 ): Promise<void> {
   const coreParams = pluginTaskParamsSchema.parse(params);
-  const taskRegistrations = [
-    ...getPlugins(),
-    ...coreTaskRegistrations(),
-  ].flatMap((plugin) =>
-    Object.keys(plugin.tasks ?? {}).map((name) => ({ name, plugin })),
-  );
-  if (taskRegistrations.length === 0) {
-    return;
-  }
+  const tasks = [
+    ...getRegistrations().flatMap((plugin) =>
+      Object.keys(plugin.tasks ?? {}).map((name) => ({
+        name,
+        plugin: plugin.manifest.name,
+      })),
+    ),
+    CONVERSATION_METADATA_TASK,
+  ];
   const record = await getTurnRecord(
     coreParams.conversationId,
     coreParams.sessionId,
@@ -486,16 +503,17 @@ export async function scheduleSessionCompletedPluginTasks(
   if (!record || record.state !== "completed") {
     throw new Error("Completed plugin task session record is not ready");
   }
-  const send = options.send ?? sendVercelPluginTask;
-  const messages = taskRegistrations.map(({ name, plugin }) => ({
+  const messages = tasks.map(({ name, plugin }) => ({
     name,
     params: coreParams,
-    plugin: plugin.manifest.name,
+    plugin,
   }));
-  await Promise.all(
-    messages.map(async (message) => {
+  await mapBounded(
+    messages,
+    async (message) => {
       await send(message);
-    }),
+    },
+    PLUGIN_MESSAGE_SEND_CONCURRENCY,
   );
 }
 
@@ -514,6 +532,13 @@ export async function processPluginTask(
     { conversationId: params.conversationId },
     () =>
       withPluginTaskLock(pluginTaskId(message), async () => {
+        if (isConversationMetadataTask(message)) {
+          await updateConversationMetadata({
+            conversationId: params.conversationId,
+            turnId: params.sessionId,
+          });
+          return;
+        }
         const resolved = findPluginTask(message);
         if (!resolved?.task) {
           throw new Error(

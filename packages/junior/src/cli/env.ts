@@ -21,25 +21,30 @@ function hasValue(value: string | undefined): value is string {
 /** Apply global development defaults after env files have been loaded. */
 export function applyJuniorDevelopmentDefaults(
   env: NodeJS.ProcessEnv,
-  options: { baseUrl?: string } = {},
+  options: { baseUrl?: string; vercelDeployment?: boolean } = {},
 ): void {
-  const nodeEnv = env.NODE_ENV ?? "development";
+  const nodeEnv = env["NODE_ENV"] ?? "development";
   if (nodeEnv !== "development") {
     return;
   }
 
-  if (!hasValue(env.JUNIOR_SECRET)) {
-    env.JUNIOR_SECRET = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
+  if (!hasValue(env["JUNIOR_SECRET"])) {
+    env["JUNIOR_SECRET"] = JUNIOR_LOCAL_DEV_INTERNAL_SECRET;
   }
-  if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
-    env.JUNIOR_STATE_ADAPTER = "memory";
+  // Vercel builds leave NODE_ENV unset, but `junior snapshot create` runs
+  // there and must use the deployment's Redis.
+  if (!hasValue(env["JUNIOR_STATE_ADAPTER"]) && !options.vercelDeployment) {
+    env["JUNIOR_STATE_ADAPTER"] = "memory";
   }
-  if (!hasValue(env.JUNIOR_SCHEDULER_SECRET) && !hasValue(env.CRON_SECRET)) {
-    env.JUNIOR_SCHEDULER_SECRET = JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;
+  if (
+    !hasValue(env["JUNIOR_SCHEDULER_SECRET"]) &&
+    !hasValue(env["CRON_SECRET"])
+  ) {
+    env["JUNIOR_SCHEDULER_SECRET"] = JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET;
   }
   const baseUrl = options.baseUrl;
-  if (!hasValue(env.JUNIOR_BASE_URL) && hasValue(baseUrl)) {
-    env.JUNIOR_BASE_URL = baseUrl.trim();
+  if (!hasValue(env["JUNIOR_BASE_URL"]) && hasValue(baseUrl)) {
+    env["JUNIOR_BASE_URL"] = baseUrl.trim();
   }
 }
 
@@ -86,7 +91,14 @@ function resolveCliEnvRoots(cwd: string): string[] {
  * `pnpm exec junior ...` sees the same credentials as local repo scripts.
  */
 export function loadCliEnvFiles(cwd: string = process.cwd()): void {
-  const nodeEnv = process.env.NODE_ENV ?? "development";
+  const nodeEnv = process.env["NODE_ENV"] ?? "development";
+  // Read VERCEL_ENV and REDIS_URL before loading env files: `vercel env pull`
+  // can write both to .env.local, and local runs keep memory state. A Vercel
+  // build without REDIS_URL keeps memory state so it can still succeed.
+  const vercelDeployment =
+    (process.env["VERCEL_ENV"] === "production" ||
+      process.env["VERCEL_ENV"] === "preview") &&
+    hasValue(process.env["REDIS_URL"]);
 
   for (const root of resolveCliEnvRoots(cwd)) {
     for (const envFile of envFileNames(nodeEnv)) {
@@ -99,5 +111,5 @@ export function loadCliEnvFiles(cwd: string = process.cwd()): void {
     }
   }
 
-  applyJuniorDevelopmentDefaults(process.env);
+  applyJuniorDevelopmentDefaults(process.env, { vercelDeployment });
 }

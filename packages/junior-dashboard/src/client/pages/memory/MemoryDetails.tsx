@@ -1,4 +1,4 @@
-import { Trash2 } from "lucide-react";
+import { RotateCcw, Trash2 } from "lucide-react";
 import { useState, type ReactNode } from "react";
 
 import { DetailsPanel } from "../../components/DetailsPanel";
@@ -23,15 +23,18 @@ import type {
   PluginUserPageRecord,
   PluginUserPageRecordAction,
 } from "../user/pluginUserPageData";
+import { getDashboardAgentName } from "../../agentName";
 
 // The heading and origin rows already show these values.
 const SUMMARIZED_METADATA = new Set(["Learned", "Memory ID", "Source", "Type"]);
 
 /** Show one memory beside the library, or in a bottom sheet on small screens. */
 export function MemoryDetails(props: {
-  forgetPending: boolean;
+  actionPending: boolean;
+  onAction(action: PluginUserPageRecordAction): void;
   onClose(): void;
-  onForget(action: PluginUserPageRecordAction): void;
+  /** Set for an archived memory, which offers Restore instead of Forget. */
+  onRestore?: (() => void) | undefined;
   record: PluginUserPageRecord | undefined;
 }) {
   const { record } = props;
@@ -75,7 +78,22 @@ export function MemoryDetails(props: {
             <PageContentSkeleton label="Loading memory" variant="panel" />
           )}
         </div>
-        {record && forgetAction ? (
+        {record && props.onRestore ? (
+          <footer
+            aria-label="Memory actions"
+            className="flex items-center gap-2 border-t border-dashboard-border bg-dashboard-bg-elevated p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]"
+          >
+            <Button
+              className="min-h-11"
+              disabled={props.actionPending}
+              onClick={props.onRestore}
+              variant="outline"
+            >
+              <RotateCcw aria-hidden="true" size={16} />
+              Restore
+            </Button>
+          </footer>
+        ) : record && forgetAction ? (
           // Keep the destructive action away from the title and close control.
           <footer
             aria-label="Memory actions"
@@ -87,10 +105,10 @@ export function MemoryDetails(props: {
                   <Button
                     aria-label="Forget this memory"
                     className="min-h-11 min-w-11"
-                    disabled={props.forgetPending}
+                    disabled={props.actionPending}
                     onClick={() => {
                       if (forgetAction.confirmation) setConfirmOpen(true);
-                      else props.onForget(forgetAction);
+                      else props.onAction(forgetAction);
                     }}
                     size="icon"
                     variant="destructive"
@@ -114,7 +132,7 @@ export function MemoryDetails(props: {
               <AlertDialogAction
                 onClick={() => {
                   setConfirmOpen(false);
-                  props.onForget(forgetAction);
+                  props.onAction(forgetAction);
                 }}
                 variant="destructive"
               >
@@ -136,7 +154,7 @@ function MemoryFacts(props: { record: PluginUserPageRecord }) {
     learned === "Automatic"
       ? `From a ${source ?? "past"} conversation`
       : learned === "Explicit"
-        ? "Someone asked Junior"
+        ? `Someone asked ${getDashboardAgentName()}`
         : learned
           ? "Before origin tracking"
           : undefined;

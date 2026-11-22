@@ -13,7 +13,7 @@ import {
   slackFileDownloadUrl,
 } from "@/chat/slack/message-files";
 import type { SlackMessageTs } from "@/chat/slack/timestamp";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorSqlDatabase } from "@/db/db";
 
 /**
@@ -58,18 +58,15 @@ export async function storeSlackThreadFile(args: {
     );
   }
   const data = await downloadSlackFile(file);
-  const filename = file.name ?? "attachment";
   return await storeAttachment({
     conversationId: args.conversationId,
     db: args.db,
     file: {
-      bytes: data.byteLength,
       data,
-      filename,
+      filename: file.name ?? "attachment",
       mimeType: file.mimetype ?? "application/octet-stream",
-      path: filename,
+      source: { id: args.fileId, provider: "slack" },
     },
-    source: { id: args.fileId, provider: "slack" },
     storage: args.storage,
   });
 }

@@ -1,10 +1,9 @@
-import { and, eq, or, sql } from "drizzle-orm";
+import { and, eq, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { EventPerson } from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import { slackMention } from "@/chat/slack/mrkdwn";
-import type { EventDoneBy } from "@/chat/task-input";
 import { juniorIdentities } from "@/db/schema";
 
 const linkedSlackIdentity = alias(juniorIdentities, "event_people_slack");
@@ -31,30 +30,15 @@ function personCondition(person: EventPerson) {
   );
 }
 
-/** Slack mentions resolved from an Event. */
-export interface EventMentions {
-  /** Mentions of the Event people, in input order, with no duplicates. */
-  people: string[];
-  /** The person who did what the Event describes, when they resolve. */
-  doneBy?: EventDoneBy;
-}
-
 /**
- * Resolve the Event people and the Event doer to Slack mentions through
- * linked user identities in one Slack workspace, with one query.
- *
- * A person resolves only when exactly one linked Slack user in that workspace
- * matches. Core drops unlinked and ambiguous people, so a provider value never
- * guesses a mention.
+ * Read the Slack users in one workspace whose linked User has an identity that
+ * matches `condition`, by person key. A key with more than one Slack user is
+ * ambiguous, so callers must not mention it.
  */
-export async function resolveEventMentions(
-  event: { doneBy?: EventPerson; people?: readonly EventPerson[] },
+async function readLinkedSlackUsers(
+  condition: SQL | undefined,
   slackTeamId: string,
-): Promise<EventMentions> {
-  const people = event.people ?? [];
-  const lookup = event.doneBy ? [...people, event.doneBy] : people;
-  if (lookup.length === 0) return { people: [] };
-
+): Promise<Map<string, Set<string>>> {
   const rows = await getSqlExecutor()
     .db()
     .select({
@@ -74,12 +58,7 @@ export async function resolveEventMentions(
         eq(linkedSlackIdentity.providerTenantId, slackTeamId),
       ),
     )
-    .where(
-      and(
-        eq(juniorIdentities.kind, "user"),
-        or(...lookup.map(personCondition)),
-      ),
-    );
+    .where(and(eq(juniorIdentities.kind, "user"), condition));
 
   const slackUsersByKey = new Map<string, Set<string>>();
   const add = (key: string, slackUserId: string) => {
@@ -95,25 +74,72 @@ export async function resolveEventMentions(
       add(`email:${row.emailNormalized}`, row.slackUserId);
     }
   }
-  const mentionOf = (person: EventPerson): string | undefined => {
-    const users = slackUsersByKey.get(personKey(person));
-    return users?.size === 1 ? slackMention([...users][0]!) : undefined;
-  };
+  return slackUsersByKey;
+}
 
+function soleMention(users: Set<string> | undefined): string | undefined {
+  return users?.size === 1 ? slackMention([...users][0]!) : undefined;
+}
+
+// `@handle` words, as most providers write account mentions.
+const HANDLE_MENTION_PATTERN =
+  /(?<![\w.@/-])@([A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9]|[A-Za-z0-9])/g;
+const MAX_REPLY_HANDLES = 50;
+
+/**
+ * Resolve the `@handle` words in reply text to Slack mentions of known people
+ * in one Slack workspace, by `provider:handle` key in lowercase. A handle
+ * resolves only when exactly one linked Slack user has it for that provider.
+ * Plugins pick the provider when they format the reply.
+ */
+export async function resolveHandleMentions(
+  text: string,
+  slackTeamId: string,
+): Promise<Map<string, string>> {
+  const handles = [
+    ...new Set(
+      [...text.matchAll(HANDLE_MENTION_PATTERN)].map((match) =>
+        match[1]!.toLowerCase(),
+      ),
+    ),
+  ].slice(0, MAX_REPLY_HANDLES);
+  if (handles.length === 0) return new Map();
+  const slackUsersByKey = await readLinkedSlackUsers(
+    inArray(sql`lower(${juniorIdentities.handle})`, handles),
+    slackTeamId,
+  );
+  const mentions = new Map<string, string>();
+  for (const [key, users] of slackUsersByKey) {
+    const mention = soleMention(users);
+    if (mention && !key.startsWith("email:")) mentions.set(key, mention);
+  }
+  return mentions;
+}
+
+/**
+ * Resolve the Event people to Slack mentions through linked user identities
+ * in one Slack workspace, with one query. Returns them in input order, with
+ * no duplicates.
+ *
+ * A person resolves only when exactly one linked Slack user in that workspace
+ * matches. Core drops unlinked and ambiguous people, so a provider value never
+ * guesses a mention. The Event author is not resolved here: a handle can be
+ * renamed or reused, so only the trust decision names the author.
+ */
+export async function resolveEventMentions(
+  people: readonly EventPerson[],
+  slackTeamId: string,
+): Promise<string[]> {
+  if (people.length === 0) return [];
+
+  const slackUsersByKey = await readLinkedSlackUsers(
+    or(...people.map(personCondition)),
+    slackTeamId,
+  );
   const mentions: string[] = [];
   for (const person of people) {
-    const mention = mentionOf(person);
+    const mention = soleMention(slackUsersByKey.get(personKey(person)));
     if (mention && !mentions.includes(mention)) mentions.push(mention);
   }
-  const doneByMention = event.doneBy ? mentionOf(event.doneBy) : undefined;
-  if (!doneByMention || !event.doneBy) return { people: mentions };
-  return {
-    people: mentions,
-    doneBy: {
-      mention: doneByMention,
-      ...("handle" in event.doneBy
-        ? { handle: event.doneBy.handle }
-        : undefined),
-    },
-  };
+  return mentions;
 }

@@ -1,0 +1,115 @@
+name: iOS
+
+# Tests and builds apps/ios, and saves iPhone and iPad screenshots of its main
+# screens for pull request review.
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios.yml"
+  pull_request:
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    name: test / build
+    runs-on: macos-26
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Test JuniorKit
+        working-directory: apps/ios/Packages/JuniorKit
+        run: swift test
+      - name: Install the CI tools
+        run: brew bundle --file=apps/ios/Brewfile.ci
+      # The same configuration that the TestFlight lane signs and uploads.
+      - name: Build Release for device
+        run: >-
+          apps/ios/scripts/xcbuild.sh build -scheme Junior -configuration Release
+          -sdk iphoneos -destination 'generic/platform=iOS' -quiet
+          CODE_SIGNING_ALLOWED=NO
+
+  ui:
+    name: test / ui and screenshots
+    runs-on: macos-26
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install the CI tools
+        run: brew bundle --file=apps/ios/Brewfile.ci
+      - name: Start the mock MCP server
+        run: apps/ios/scripts/start-mock-server.sh "$RUNNER_TEMP/mock-server.log"
+      # Build before the boot, then boot one simulator for the UI tests and
+      # the screenshots. A new simulator takes about four minutes to boot.
+      - name: Build for the simulator
+        run: >-
+          apps/ios/scripts/xcbuild.sh build-for-testing -scheme JuniorUITests
+          -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' -quiet
+      - name: Boot a simulator
+        run: |
+          udid="$(apps/ios/scripts/sim.sh boot)"
+          echo "JUNIOR_IOS_REUSE_UDID=$udid" >> "$GITHUB_ENV"
+      - name: Run UI tests
+        run: apps/ios/scripts/sim.sh ui-test NavigationUITests
+      - name: Take screenshots
+        run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-screenshots"
+      - name: Delete the simulator
+        if: always() && env.JUNIOR_IOS_REUSE_UDID != ''
+        run: |
+          xcrun simctl shutdown "$JUNIOR_IOS_REUSE_UDID" || true
+          xcrun simctl delete "$JUNIOR_IOS_REUSE_UDID"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-screenshots
+          path: ${{ runner.temp }}/ios-screenshots
+          if-no-files-found: error
+      - name: Upload mock server log
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-mock-server-log
+          path: ${{ runner.temp }}/mock-server.log
+
+  ipad:
+    name: screenshots / ipad ${{ matrix.orientation }}
+    runs-on: macos-26
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        orientation: [portrait, landscape]
+    env:
+      # With regular width, lists and the open item show side by side.
+      JUNIOR_IOS_DEVICE: iPad Pro 13-inch (M4)
+      ORIENTATION: ${{ matrix.orientation }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - name: Install the CI tools
+        run: brew bundle --file=apps/ios/Brewfile.ci
+      - name: Start the mock MCP server
+        run: apps/ios/scripts/start-mock-server.sh "$RUNNER_TEMP/mock-server.log"
+      - name: Take screenshots
+        run: apps/ios/scripts/screenshots.sh "$RUNNER_TEMP/ios-ipad-screenshots" "$ORIENTATION"
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: ios-ipad-${{ matrix.orientation }}-screenshots
+          path: ${{ runner.temp }}/ios-ipad-screenshots
+          if-no-files-found: error

@@ -20,12 +20,9 @@ id: no-sandbox-provider-module-sibling-imports
 language: TypeScript
 severity: error
 message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider().
+# ast-grep's `*` also matches `/`, so this covers subdirectories too.
 files:
   - packages/junior/src/chat/sandbox/*.ts
-ignores:
-  - packages/junior/src/chat/sandbox/*/**
-  - packages/junior/src/chat/sandbox/provider.ts
-  - packages/junior/src/chat/sandbox/vercel/**
 rule:
   any:
     - kind: import_statement
@@ -40,9 +37,6 @@ severity: error
 message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/vercel/. Other code calls getSandboxProvider().
 files:
   - packages/junior/src/chat/sandbox/*/**/*.ts
-ignores:
-  - packages/junior/src/chat/sandbox/provider.ts
-  - packages/junior/src/chat/sandbox/vercel/**
 rule:
   any:
     - kind: import_statement
@@ -73,12 +67,9 @@ id: no-docker-sandbox-provider-module-sibling-imports
 language: TypeScript
 severity: error
 message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider().
+# ast-grep's `*` also matches `/`, so this covers subdirectories too.
 files:
   - packages/junior/src/chat/sandbox/*.ts
-ignores:
-  - packages/junior/src/chat/sandbox/*/**
-  - packages/junior/src/chat/sandbox/provider.ts
-  - packages/junior/src/chat/sandbox/docker/**
 rule:
   any:
     - kind: import_statement
@@ -93,9 +84,6 @@ severity: error
 message: Only packages/junior/src/chat/sandbox/provider.ts may import a sandbox provider module such as chat/sandbox/docker/. Other code calls getSandboxProvider().
 files:
   - packages/junior/src/chat/sandbox/*/**/*.ts
-ignores:
-  - packages/junior/src/chat/sandbox/provider.ts
-  - packages/junior/src/chat/sandbox/docker/**
 rule:
   any:
     - kind: import_statement

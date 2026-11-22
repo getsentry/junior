@@ -1,6 +1,6 @@
 import { FileText, X } from "lucide-react";
 import {
-  MAX_INPUT_ATTACHMENT_BYTES,
+  MAX_ATTACHMENT_BYTES,
   MAX_INPUT_ATTACHMENTS,
   type MessageAttachment,
 } from "@sentry/junior/api/schema";
@@ -18,15 +18,13 @@ import {
 } from "./TranscriptAttachment";
 
 /** What a reader can attach to one message. */
-export const COMPOSER_FILE_LIMIT = `up to ${MAX_INPUT_ATTACHMENTS} files, ${MAX_INPUT_ATTACHMENT_BYTES / 1024 / 1024} MB each`;
+export const COMPOSER_FILE_LIMIT = `up to ${MAX_INPUT_ATTACHMENTS} files, ${MAX_ATTACHMENT_BYTES / 1024 / 1024} MB each`;
 
 /** True when these files fit the message file count and size limits. */
 export function composerFilesFit(files: readonly File[]): boolean {
   return (
     files.length <= MAX_INPUT_ATTACHMENTS &&
-    files.every(
-      (file) => file.size > 0 && file.size <= MAX_INPUT_ATTACHMENT_BYTES,
-    )
+    files.every((file) => file.size > 0 && file.size <= MAX_ATTACHMENT_BYTES)
   );
 }
 
@@ -36,6 +34,7 @@ export async function readStoredComposerFiles(
   attachments: readonly MessageAttachment[] | undefined,
 ): Promise<File[]> {
   return await Promise.all(
+    // oxlint-disable-next-line junior/bounded-fan-out -- A Message has at most MAX_INPUT_ATTACHMENTS files.
     (attachments ?? []).map(async (attachment) => {
       const response = await fetch(
         conversationAttachmentUrl(conversationId, attachment.id),

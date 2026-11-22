@@ -1,16 +1,18 @@
 import { describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
-import { appendConversationBrief } from "@/chat/briefs/store";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
+import { storeConversationEmbedding } from "@/chat/conversations/embedding";
 import { searchConversations } from "@/chat/conversations/search";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { juniorConversations } from "@/db/schema";
-import { conversationBriefFixture } from "../../fixtures/conversation-brief";
+import { readConversationMetadata } from "@/chat/conversations/metadata/store";
+import { storeConversationMetadataFixture } from "../../fixtures/conversation-metadata";
 import { createJuniorSqlFixture } from "../../fixtures/sql";
 
 describe("Conversation search", () => {
-  it("searches the latest Brief of public roots of every surface", async () => {
+  it("searches the summary of public roots of every surface", async () => {
     const fixture = await createJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -81,79 +83,51 @@ describe("Conversation search", () => {
         destination: { platform: "local", conversationId: publicLocalId },
         nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
         source: "local",
-        title: "Public web Brief",
+        title: "Public web summary",
         visibility: "public",
       });
 
+      let throughSeq = 0;
       const append = async (args: {
         conversationId: string;
-        searchText: string;
-        status?: "blocked" | "done";
         summary: string;
-        turnId: string;
       }) =>
-        await appendConversationBrief(db, {
+        await storeConversationMetadataFixture(db, {
           conversationId: args.conversationId,
-          turnId: args.turnId,
-          throughSeq: 1,
-          content: conversationBriefFixture({
-            links: Array.from({ length: 6 }, (_, index) => ({
-              kind: "url" as const,
-              label: `Link ${index + 1}`,
-              url: `https://example.com/${index + 1}`,
-            })),
-            status: args.status,
-            summary: args.summary,
-          }),
-          searchText: args.searchText,
-          modelId: "test-model",
+          summary: args.summary,
+          throughSeq: (throughSeq += 1),
         });
 
       await append({
         conversationId: currentConversationId,
-        searchText: "current deployment decision",
         summary: "The current deployment decision stays excluded.",
-        turnId: "current-turn",
       });
       await append({
         conversationId: targetConversationId,
-        searchText: "obsolete migration choice",
         summary: "The obsolete migration choice was replaced.",
-        turnId: "target-turn-1",
       });
       await append({
         conversationId: targetConversationId,
-        searchText: "deployment decision uses the blue rollout",
-        status: "done",
         summary: "The deployment decision uses the blue rollout.",
-        turnId: "target-turn-2",
       });
       await append({
         conversationId: otherTenantId,
-        searchText: "deployment decision from another workspace",
         summary: "Another workspace has a deployment decision.",
-        turnId: "other-turn",
       });
       await append({
         conversationId: privateId,
-        searchText: "private deployment decision",
         summary: "The private deployment decision stays private.",
-        turnId: "private-turn",
       });
       await append({
         conversationId: childId,
-        searchText: "child deployment decision",
         summary: "The child deployment decision is a child agent.",
-        turnId: "child-turn",
       });
       await append({
         conversationId: publicLocalId,
-        searchText: "browser launch decision",
         summary: "The browser launch decision is public.",
-        turnId: "local-turn",
       });
       const updatedAt = new Date("2026-07-02T12:00:00.000Z");
-      // A purged transcript keeps its Brief searchable.
+      // A purged public transcript keeps its summary searchable.
       await db
         .update(juniorConversations)
         .set({
@@ -186,6 +160,40 @@ describe("Conversation search", () => {
       expect(
         deploymentMatches.map((match) => match.conversationId).sort(),
       ).toEqual([otherTenantId, targetConversationId].sort());
+
+      // A root whose first Turn has not completed has a title but no summary.
+      const unsummarizedId = "slack:CTITLE:1700000000.600000";
+      await conversations.recordActivity({
+        channelName: "ctitle-name",
+        conversationId: unsummarizedId,
+        destination: { platform: "slack", teamId: "T123", channelId: "CTITLE" },
+        nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+        source: "slack",
+        title: "Deployment decision in progress",
+        visibility: "public",
+      });
+      const titleSearch = {
+        includeArchived: false,
+        limit: 10,
+        query: "deployment decision",
+        rootsOnly: true,
+      };
+      expect(
+        (
+          await searchConversations(db, {
+            requesterConversationId: currentConversationId,
+            search: titleSearch,
+          })
+        ).map((match) => match.conversationId),
+      ).toContain(unsummarizedId);
+      expect(
+        (
+          await searchConversations(db, {
+            requesterConversationId: currentConversationId,
+            search: { ...titleSearch, summarizedOnly: true },
+          })
+        ).map((match) => match.conversationId),
+      ).not.toContain(unsummarizedId);
 
       // Child agents match only when the search asks for them.
       const withChildren = await searchConversations(db, {
@@ -249,10 +257,12 @@ describe("Conversation search", () => {
         expect.objectContaining({
           channelName: "carchive-name",
           conversationId: targetConversationId,
-          links: expect.arrayContaining([
-            expect.objectContaining({ url: "https://example.com/1" }),
-          ]),
-          outcomeStatus: "done",
+          links: [
+            {
+              label: "acme/widget#12",
+              url: "https://example.com/acme/widget/12",
+            },
+          ],
           providerDestinationId: "CARCHIVE",
           summary: "The deployment decision uses the blue rollout.",
           title: "Title for CARCHIVE",
@@ -260,7 +270,6 @@ describe("Conversation search", () => {
           updatedAtMs: updatedAt.getTime(),
         }),
       ]);
-      expect(matches[0]?.links).toHaveLength(5);
       expect(matches[0]?.excerpt).toContain("**blue**");
 
       await expect(
@@ -286,7 +295,6 @@ describe("Conversation search", () => {
             annotation: "ACME/WIDGET",
             beforeMs: Date.parse("2026-07-03T00:00:00.000Z"),
             channelId: "CARCHIVE",
-            outcomeStatus: "done",
           },
         }),
       ).resolves.toEqual([
@@ -306,6 +314,146 @@ describe("Conversation search", () => {
       ).resolves.toEqual([
         expect.objectContaining({ conversationId: publicLocalId }),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  }, 15_000);
+
+  it("finds summaries by meaning above the similarity floor, with the same access rules", async () => {
+    const fixture = await createJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const db = fixture.sql.db();
+      const conversations = createSqlStore(fixture.sql);
+      const requesterId = "slack:CREQUEST:1700000000.100000";
+      const paraphraseId = "slack:CROLLOUT:1700000000.200000";
+      const unrelatedId = "slack:CBILLING:1700000000.300000";
+      const privateId = "slack:CPRIVATE:1700000000.400000";
+      const staleId = "slack:CSTALE:1700000000.500000";
+      const rollout = "Roll the release out to production in stages";
+      const query = "ship a new build to prod gradually";
+      // Fake model: one axis per topic. The query is close to the rollout
+      // summaries and far from the invoice summary.
+      const vectors: Record<string, number[]> = {
+        [rollout]: [1, 0, 0],
+        [query]: [0.9, 0.2, 0],
+        "Quarterly invoice totals": [0, 1, 0],
+        "Stale rollout notes": [1, 0, 0],
+        "Notes about lunch": [0, 0, 1],
+      };
+      // A document is the title, then the summary on its last line.
+      const embedder: PluginEmbedder = {
+        model: "test-embedding",
+        provider: "test",
+        async embedTexts({ texts }) {
+          return {
+            dimensions: 3,
+            model: "test-embedding",
+            provider: "test",
+            vectors: texts.map((text) => {
+              const vector = vectors[text.split("\n").at(-1)!];
+              if (!vector) throw new Error(`No test vector for ${text}`);
+              return vector;
+            }),
+          };
+        },
+      };
+      const seed = async (args: {
+        channelId: string;
+        conversationId: string;
+        summaries: string[];
+        visibility: "private" | "public";
+      }) => {
+        await conversations.recordActivity({
+          conversationId: args.conversationId,
+          destination: {
+            platform: "slack",
+            teamId: "T123",
+            channelId: args.channelId,
+          },
+          nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+          source: "slack",
+          title: `Title for ${args.channelId}`,
+          visibility: args.visibility,
+        });
+        for (const [index, summary] of args.summaries.entries()) {
+          await storeConversationMetadataFixture(db, {
+            conversationId: args.conversationId,
+            summary,
+            throughSeq: index + 1,
+          });
+          // Only the first summary is embedded, so a later one makes the
+          // vector stale.
+          if (index === 0) {
+            await storeConversationEmbedding(db, embedder, {
+              conversationId: args.conversationId,
+              metadata: (await readConversationMetadata(
+                db,
+                args.conversationId,
+              ))!,
+            });
+          }
+        }
+      };
+      await seed({
+        channelId: "CREQUEST",
+        conversationId: requesterId,
+        summaries: [rollout],
+        visibility: "public",
+      });
+      await seed({
+        channelId: "CROLLOUT",
+        conversationId: paraphraseId,
+        summaries: [rollout],
+        visibility: "public",
+      });
+      await seed({
+        channelId: "CBILLING",
+        conversationId: unrelatedId,
+        summaries: ["Quarterly invoice totals"],
+        visibility: "public",
+      });
+      await seed({
+        channelId: "CPRIVATE",
+        conversationId: privateId,
+        summaries: [rollout],
+        visibility: "private",
+      });
+      await seed({
+        channelId: "CSTALE",
+        conversationId: staleId,
+        summaries: ["Stale rollout notes", "Notes about lunch"],
+        visibility: "public",
+      });
+      const search = {
+        includeArchived: false,
+        limit: 10,
+        query,
+        rootsOnly: true,
+      };
+
+      // The query shares no word with any summary, so only the vector of the
+      // public rollout summary matches. The invoice summary is under the floor,
+      // and private, own-tree, and stale vectors never count.
+      await expect(
+        searchConversations(db, {
+          embedder,
+          requesterConversationId: requesterId,
+          search,
+        }),
+      ).resolves.toEqual([
+        expect.objectContaining({
+          conversationId: paraphraseId,
+          summary: rollout,
+        }),
+      ]);
+      // Without an embedder, search matches words only.
+      await expect(
+        searchConversations(db, {
+          requesterConversationId: requesterId,
+          search,
+        }),
+      ).resolves.toEqual([]);
     } finally {
       await fixture.close();
     }

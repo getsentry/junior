@@ -76,7 +76,7 @@ export type TurnCheckpoint =
   | {
       resumed: false;
       sliceId: 1;
-      record?: TurnRecord;
+      record?: TurnRecord | undefined;
     };
 
 /**
@@ -89,30 +89,31 @@ interface TurnCheckpointWrite {
   turnId: string;
   messages: PiMessage[];
   /** Required for running/paused; optional for completed/failed (falls back to stored). */
-  sliceId?: number;
+  sliceId?: number | undefined;
   // --- SQL dual-write / restore only ---
-  actor?: Actor;
-  channelName?: string;
-  credentialSubject?: CredentialSubject;
-  destination?: Destination;
-  destinationVisibility?: ConversationPrivacy;
-  dispatchId?: string;
-  dispatchOutcome?: AgentDispatchOutcome;
-  source?: Source;
-  surface?: AgentTurnSurface;
-  turnStartMessageIndex?: number;
+  actor?: Actor | undefined;
+  channelName?: string | undefined;
+  credentialSubject?: CredentialSubject | undefined;
+  destination?: Destination | undefined;
+  destinationVisibility?: ConversationPrivacy | undefined;
+  dispatchId?: string | undefined;
+  dispatchOutcome?: AgentDispatchOutcome | undefined;
+  source?: Source | undefined;
+  surface?: AgentTurnSurface | undefined;
   /** Tool calls charged to this turn; survives history replacement. */
-  cumulativeToolCallCount?: number;
+  cumulativeToolCallCount?: number | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
-  turnLimitWrappedUp?: boolean;
+  turnLimitWrappedUp?: boolean | undefined;
+  /** This slice added the Turn's prompt to the saved messages. */
+  promptSaved?: boolean | undefined;
   /** Times recovery resumed this turn after a lost worker; survives later writes. */
-  lostWorkerResumeCount?: number;
-  trailingMessageProvenance?: ConversationMessageProvenance[];
-  turnContexts?: PluginTurnContext[];
-  durationMs?: number;
-  usage?: AgentTurnUsage;
-  errorMessage?: string;
-  resultMessageId?: string;
+  lostWorkerResumeCount?: number | undefined;
+  trailingMessageProvenance?: ConversationMessageProvenance[] | undefined;
+  turnContexts?: PluginTurnContext[] | undefined;
+  durationMs?: number | undefined;
+  usage?: AgentTurnUsage | undefined;
+  errorMessage?: string | undefined;
+  resultMessageId?: string | undefined;
 }
 
 type ProgressCheckpointArgs =
@@ -234,11 +235,10 @@ function sharedWrite(
       source: args.source,
       surface: args.surface ?? latest?.surface,
       traceContext: latest?.traceContext ?? traceContext,
-      turnStartMessageIndex:
-        args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
+      promptSaved: args.promptSaved,
       lostWorkerResumeCount:
         args.lostWorkerResumeCount ?? latest?.lostWorkerResumeCount,
     }),
@@ -302,6 +302,10 @@ async function savePaused(
     const latest = await getTurnRecord(args.conversationId, args.turnId);
     // Committed history stays whole. A trimmed copy is a branch of it, and
     // the resumed turn adds its prompt after the tail.
+    const keepsMessages =
+      args.reason === "yield" ||
+      args.beforePrompt === true ||
+      continuableMessages(args.messages).length > 0;
     const messages =
       args.reason === "yield" || args.beforePrompt
         ? [...args.messages]
@@ -330,6 +334,9 @@ async function savePaused(
         errorMessage: args.errorMessage,
       }),
       piMessages: messages,
+      // The stored boundary keeps its own prompt flag. The flag in `args`
+      // describes messages that this save does not store.
+      ...(keepsMessages ? undefined : { promptSaved: undefined }),
       resumeReason: args.reason,
     };
 

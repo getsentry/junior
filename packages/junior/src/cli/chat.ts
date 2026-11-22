@@ -123,10 +123,10 @@ function writeStream(
 
 /** Keep local chat ephemeral by default; Redis is opt-in via an explicit adapter. */
 function defaultStateAdapterForLocalChat(): void {
-  if (process.env.JUNIOR_STATE_ADAPTER) {
+  if (process.env["JUNIOR_STATE_ADAPTER"]) {
     return;
   }
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 }
 
 /** Load the app plugin module so source-mode local chat matches server wiring. */
@@ -226,7 +226,7 @@ function newRunConversationId(): string {
 }
 
 function localDevServerUrl(): string {
-  return `http://127.0.0.1:${process.env.PORT?.trim() || "3000"}`;
+  return `http://127.0.0.1:${process.env["PORT"]?.trim() || "3000"}`;
 }
 
 /** Wire the shared local-turn setup so prompt and interactive runs stay identical. */
@@ -236,8 +236,9 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const { setBriefsConfig } = await import("@/chat/briefs/registration");
-  setBriefsConfig({ enabled: true });
+  const { setEventEmbeddingsConfig } =
+    await import("@/chat/conversations/event-embedding-config");
+  setEventEmbeddingsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
     await import("@/chat/local/oauth-callback-server");
@@ -365,6 +366,7 @@ async function runInteractive(
     terminal: true,
   });
   try {
+    /* oxlint-disable no-await-in-loop -- The REPL reads and runs one message at a time. */
     while (true) {
       const message = (await rl.question("junior> ")).trim();
       if (!message) {
@@ -388,6 +390,7 @@ async function runInteractive(
         await reportStatus(io, errorMessage(error));
       }
     }
+    /* oxlint-enable no-await-in-loop */
   } finally {
     rl.close();
     await close();
@@ -398,7 +401,7 @@ async function runInteractive(
 export async function runChat(
   argv: string[],
   io: ChatIo = DEFAULT_IO,
-  deps: { pluginSet?: JuniorPluginSet | null } = {},
+  deps: { pluginSet?: JuniorPluginSet | null | undefined } = {},
 ): Promise<number> {
   const options = parseChatArgs(argv);
   if (!options) {

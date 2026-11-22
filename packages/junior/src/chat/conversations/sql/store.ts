@@ -71,7 +71,7 @@ interface DestinationUpsert {
   metadata?: Record<string, unknown>;
   provider: string;
   providerDestinationId: string;
-  providerTenantId?: string;
+  providerTenantId?: string | undefined;
   refreshVisibility: boolean;
   visibility: JuniorDestinationVisibility;
 }
@@ -142,7 +142,7 @@ function localWorkspaceFromConversationId(
 }
 
 function destinationUpsertFromDestination(args: {
-  channelName?: string;
+  channelName?: string | undefined;
   conversationId?: string;
   destination: Destination | undefined;
   /** Confirmed destination visibility; omit when unavailable. */
@@ -285,6 +285,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
+    ...(row.rootConversationId
+      ? { rootConversationId: row.rootConversationId }
+      : undefined),
     ...(row.archivedAt
       ? { archivedAtMs: row.archivedAt.getTime() }
       : undefined),
@@ -295,6 +298,7 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(source ? { source } : undefined),
     ...(sessionSource ? { sessionSource } : undefined),
     ...(row.title ? { title: row.title } : undefined),
+    ...(row.summary ? { summary: row.summary } : undefined),
     ...(msFromDate(row.transcriptPurgedAt) !== undefined
       ? { transcriptPurgedAtMs: msFromDate(row.transcriptPurgedAt) }
       : undefined),
@@ -310,10 +314,10 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
 
 function emptyConversation(args: {
   conversationId: string;
-  destination?: Destination;
-  kind?: "root" | "automation";
+  destination?: Destination | undefined;
+  kind?: "root" | "automation" | undefined;
   nowMs: number;
-  source?: ConversationSource;
+  source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
 }): Conversation {
   return {
@@ -458,7 +462,7 @@ export class SqlStore implements ConversationStore {
     activityAtMs?: number;
     channelName?: string;
     conversationId: string;
-    destination?: Destination;
+    destination?: Destination | undefined;
     nowMs?: number;
     actor?: StoredSlackActor;
     source?: ConversationSource;
@@ -519,11 +523,11 @@ export class SqlStore implements ConversationStore {
     });
   }
   async recordExecution(args: {
-    actorIdentityId?: string;
+    actorIdentityId?: string | undefined;
     channelName?: string;
     conversationId: string;
     createdAtMs: number;
-    destination?: Destination;
+    destination?: Destination | undefined;
     execution: ConversationExecution;
     lastActivityAtMs: number;
     metrics: ConversationRunMetrics | null;
@@ -571,8 +575,8 @@ export class SqlStore implements ConversationStore {
         ? args.execution
         : (existing?.execution ?? args.execution);
       // Root Actor and origin Source come from the saved Conversation, as in
-      // recordActivity. A later Turn, such as an event on a web Conversation,
-      // must not derive a system Actor from its own Source.
+      // recordActivity. A later Turn, such as an event on a Conversation that
+      // the dashboard started, must not derive a system Actor from its Source.
       const actor = mergeActor(existing?.actor, args.actor);
       const source = existing?.source ?? args.source;
       await this.upsertConversation({
@@ -787,7 +791,7 @@ export class SqlStore implements ConversationStore {
   private async upsertConversation(args: {
     conversation: Conversation;
     /** A new child's Destination row, copied from its parent. */
-    destinationId?: string;
+    destinationId?: string | undefined;
   }): Promise<void> {
     const { conversation } = args;
     if (

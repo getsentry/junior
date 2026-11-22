@@ -68,6 +68,23 @@ export function createVercelAttachmentStorage(): AttachmentStorage {
         url: presignedUrl,
       };
     },
+    async createDownloadUrl(input) {
+      // The token allows only `get` of this key until the expiry.
+      const token = await issueSignedToken({
+        operations: ["get"],
+        pathname: input.key,
+        validUntil: input.expiresAtMs,
+      });
+      const { presignedUrl } = await presignUrl(token, {
+        access: "private",
+        operation: "get",
+        pathname: input.key,
+        // Read from origin, like `get`, so a fresh key is never a stale miss.
+        useCache: false,
+        validUntil: input.expiresAtMs,
+      });
+      return presignedUrl;
+    },
     async get(key, range) {
       // Bypass the CDN so a read shortly after a write for a fresh key cannot
       // observe a not-yet-propagated (empty/stale) cached response. See

@@ -28,13 +28,13 @@ type ExecuteSlackTurn = (
   message: Message,
   options: {
     ack?: () => Promise<void>;
-    conversationId?: string;
+    conversationId: string;
     destination: DispatchRecord["destination"];
     execution: DispatchTurnContext;
     onTurnDeliveryAccepted?: (messageId?: string) => void;
     onTurnOutcome?: (result: DispatchTurnResult) => void;
-    shouldYield?: () => boolean;
-    checkIn?: () => Promise<boolean>;
+    shouldYield?: (() => boolean) | undefined;
+    checkIn?: (() => Promise<boolean>) | undefined;
     skipBackfill?: boolean;
   },
 ) => Promise<void>;
@@ -94,13 +94,14 @@ async function readDispatchTriggerFiles(
  */
 function slackDispatchInputMessage(
   dispatch: DispatchRecord,
+  threadId: string,
   files: SlackMessageFile[],
 ): Message {
   // TODO(dcramer): Remove this synthetic Slack Message after dispatch work
   // supplies Slack Delivery to the shared Turn path.
   const message = new Message({
     id: getDispatchInputMessageId(dispatch.id),
-    threadId: getDispatchConversationId(dispatch),
+    threadId,
     text: dispatch.input,
     attachments: files.map(slackFileAttachment),
     formatted: { type: "root", children: [] },
@@ -143,21 +144,28 @@ export function createSlackDispatchTurnRunner(options: {
       shouldYield?: () => boolean;
       checkIn?: () => Promise<boolean>;
     },
-  ): Promise<DispatchTurnResult> {
+  ): Promise<DispatchTurnResult | undefined> {
     const state = getStateAdapter();
     await state.connect();
     const conversationId = getDispatchConversationId(dispatch);
     const adapter = options.getSlackAdapter();
+    // Thread.id is the Slack thread on every path. A top-level post has no
+    // thread yet, so it gets the channel-level id.
+    const slackThreadId = adapter.encodeThreadId({
+      channel: dispatch.destination.channelId,
+      threadTs: dispatch.destination.threadTs ?? "",
+    });
     // TODO(dcramer): Remove this synthetic Slack Thread after dispatch work
     // supplies Slack Delivery to the shared Turn path.
     const message = slackDispatchInputMessage(
       dispatch,
+      slackThreadId,
       await readDispatchTriggerFiles(dispatch),
     );
     const thread = new ThreadImpl({
       adapter,
       stateAdapter: state,
-      id: conversationId,
+      id: slackThreadId,
       channelId: dispatch.destination.channelId,
       channelVisibility:
         dispatch.destinationVisibility === "public" ? "workspace" : "private",
@@ -167,8 +175,7 @@ export function createSlackDispatchTurnRunner(options: {
       isSubscribedContext: true,
     });
 
-    let outcome: DispatchTurnResult["outcome"] | undefined;
-    let errorMessage: string | undefined;
+    let outcome: DispatchTurnResult | undefined;
     let resultMessageTs: string | undefined;
     const routing = buildDispatchRoutingContext(dispatch);
     await options.executeSlackTurn(thread, message, {
@@ -191,17 +198,21 @@ export function createSlackDispatchTurnRunner(options: {
         resultMessageTs = messageId;
       },
       onTurnOutcome: (result) => {
-        outcome = result.outcome;
-        errorMessage = result.errorMessage;
+        outcome = result;
       },
       shouldYield: hooks.shouldYield,
       checkIn: hooks.checkIn,
       skipBackfill: true,
     });
-    return {
-      ...(errorMessage ? { errorMessage } : undefined),
-      ...(outcome ? { outcome } : undefined),
-      ...(resultMessageTs ? { resultMessageTs } : undefined),
-    };
+    // Without a reported outcome, the dispatch worker reads the turn record.
+    if (
+      resultMessageTs &&
+      (outcome?.outcome === "blocked" ||
+        outcome?.outcome === "completed" ||
+        outcome?.outcome === "failed")
+    ) {
+      return { ...outcome, resultMessageTs };
+    }
+    return outcome;
   };
 }

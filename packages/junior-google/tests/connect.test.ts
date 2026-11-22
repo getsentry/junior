@@ -4,7 +4,7 @@ import {
   type PluginRouteApp,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
+import { googlePlugin } from "../src/index";
 import { getGoogleAccount, type GoogleDb } from "../src/store";
 import {
   ACCOUNT_EMAIL,
@@ -35,7 +35,7 @@ async function readSetupPage(db: GoogleDb) {
   expect(page.navigation).toBe("admin");
   return pluginUserPageContentSchema.parse(
     await page.read({ db } as never, { limit: 20 }),
-  ).records[0]!;
+  ).records[0];
 }
 
 function setupRoutes(db: GoogleDb): PluginRouteApp {
@@ -170,10 +170,10 @@ describe("Google account setup", () => {
     const response = await callback(app, cookie, state);
     const body = await response.text();
     expect(response.status).toBe(200);
-    expect(body).toContain(`Junior now acts as <code>${ACCOUNT_EMAIL}</code>`);
+    expect(body).toContain(`The bot now acts as <code>${ACCOUNT_EMAIL}</code>`);
     expect(body).not.toContain("refresh-token");
 
-    const exchange = new URLSearchParams(String(fetch.mock.calls[0]![1]!.body));
+    const exchange = new URLSearchParams(String(fetch.mock.calls[0][1]!.body));
     expect(exchange.get("redirect_uri")).toBe(`${PREFIX}/oauth/callback`);
     expect(exchange.get("code_verifier")).toBe(cookie.split(".")[1]);
 
@@ -212,7 +212,7 @@ describe("Google account setup", () => {
     const wrong = await callback(app, wrongAccount.cookie, wrongAccount.state);
     expect(wrong.status).toBe(400);
     expect(await wrong.text()).toContain(`Sign in as ${ACCOUNT_EMAIL} instead`);
-    expect(String(fetch.mock.calls[1]![0])).toBe(
+    expect(String(fetch.mock.calls[1][0])).toBe(
       "https://oauth2.googleapis.com/revoke",
     );
 

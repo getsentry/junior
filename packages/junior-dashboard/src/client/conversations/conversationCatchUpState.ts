@@ -4,7 +4,7 @@
  * wait.
  */
 import { useMutation } from "@tanstack/react-query";
-import { createContext, useContext } from "react";
+import { createContext, useContext, useRef } from "react";
 
 import {
   conversationCatchUpSchema,
@@ -12,6 +12,7 @@ import {
   type ConversationDetailReport,
 } from "@sentry/junior/api/schema";
 import { post } from "../http";
+import { recordCatchUpOffered } from "../sentry";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 
 /** Fewer unread Turns than this are quicker to read than a summary. */
@@ -19,8 +20,10 @@ const CATCH_UP_MIN_TURNS = 2;
 
 /** The catch-up offer for the unread range of one Conversation visit. */
 export type ConversationCatchUpState = {
-  data?: ConversationCatchUp;
+  data?: ConversationCatchUp | undefined;
   error: boolean;
+  /** Record that the offer was shown, once for each unread range. */
+  markOffered(): void;
   pending: boolean;
   request(): void;
   /** Unread Messages in the loaded rows. */
@@ -88,10 +91,10 @@ function hasEnoughUnread(
 /** Offer a catch-up only when enough is unread. */
 export function useConversationCatchUp(input: {
   conversationId: string;
-  events?: ConversationDetailReport["events"];
+  events?: ConversationDetailReport["events"] | undefined;
   hasNewerPage: boolean;
   hasPreviousPage: boolean;
-  unread?: TranscriptUnreadRange;
+  unread?: TranscriptUnreadRange | undefined;
 }): ConversationCatchUpState | undefined {
   const { unread } = input;
   const mutation = useMutation({
@@ -102,6 +105,7 @@ export function useConversationCatchUp(input: {
         range,
       ),
   });
+  const offeredRange = useRef<string | undefined>(undefined);
   // Once asked, keep the answer even if the loaded rows change.
   const asked = !mutation.isIdle;
   if (
@@ -113,6 +117,13 @@ export function useConversationCatchUp(input: {
   return {
     data: mutation.data,
     error: mutation.isError,
+    markOffered: () => {
+      // New rows move the end of the unread range, not its start.
+      const range = `${input.conversationId}:${unread.afterSeq}`;
+      if (offeredRange.current === range) return;
+      offeredRange.current = range;
+      recordCatchUpOffered(input.conversationId);
+    },
     pending: mutation.isPending,
     request: () => mutation.mutate(unread),
     unreadMessages: countLoadedUnreadMessages(

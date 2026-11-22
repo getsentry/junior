@@ -104,6 +104,16 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history.filter((event) => event.data.type === type);
   }
 
+  async loadCurrentEventsOfType(
+    conversationId: string,
+    type: string,
+  ): Promise<ConversationEvent[]> {
+    const version = await this.loadCurrentHistoryVersion();
+    return (await this.loadEventsOfType(conversationId, type)).filter(
+      (event) => event.historyVersion === version,
+    );
+  }
+
   async query(
     _conversationId: string,
     query: ConversationEventQuery,

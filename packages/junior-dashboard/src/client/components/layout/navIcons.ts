@@ -1,19 +1,35 @@
 import {
   Boxes,
   Brain,
+  CircleCheck,
+  Clock3,
   CodeXml,
   Gauge,
+  GitPullRequest,
   Inbox,
+  MessageCircleQuestion,
+  MessagesSquare,
+  Settings,
+  ShieldCheck,
+  UserRound,
   Zap,
   type LucideIcon,
 } from "lucide-react";
 
 // Plugin pages without an entry here use the generic plugin icon.
 const NAV_ICONS: Record<string, LucideIcon> = {
+  admin: ShieldCheck,
   automations: Zap,
   code: CodeXml,
+  conversations: MessagesSquare,
+  decisions: MessageCircleQuestion,
+  done: CircleCheck,
+  inbox: Inbox,
   "memory:memories": Brain,
-  review: Inbox,
+  "my-profile": UserRound,
+  prs: GitPullRequest,
+  settings: Settings,
+  snoozed: Clock3,
   system: Gauge,
 };
 

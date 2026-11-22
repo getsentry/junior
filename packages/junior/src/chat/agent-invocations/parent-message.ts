@@ -6,10 +6,9 @@ import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import { credentialContextSchema } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import type { PiMessage } from "@/chat/pi/messages";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { loadForkHistory } from "./fork-history";
+import { commitForkHistory } from "./fork-history";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_PARENT_MESSAGE_EVENT_TYPE,
@@ -163,19 +162,36 @@ export async function readLastParentMessageAtMs(
 }
 
 /**
+ * Commit the parent's history for the first Turn of a fork child, before the
+ * Turn starts. `inputs` passed the sender check.
+ */
+export async function commitParentMessageFork(args: {
+  conversationId: string;
+  inputs: readonly InboundMessage[];
+}): Promise<void> {
+  const parentMessage = args.inputs
+    .map(readParentMessage)
+    .find((input) => input !== undefined);
+  if (parentMessage?.fork) {
+    await commitForkHistory({
+      childConversationId: args.conversationId,
+      parentConversationId: parentMessage.event.identifier,
+      parentToolCallId: parentMessage.parentToolCallId,
+    });
+  }
+}
+
+/**
  * Apply the agent config of a child agent to one of its Turns on the root
- * Turn code. Every Turn keeps the reasoning level. A fork's first Turn
- * starts with its parent's history. A parent message is the child's
- * instruction, as on an Agent invocation, also when its Turn resumes
+ * Turn code. Every Turn keeps the reasoning level. A parent message is the
+ * child's instruction, as on an Agent invocation, also when its Turn resumes
  * (`savedParentMessage`). `inputs` passed the sender check.
  */
 export async function childAgentTurnOptions(args: {
   conversationId: string;
-  history: PiMessage[];
   inputs: readonly InboundMessage[];
   savedParentMessage: boolean;
 }): Promise<{
-  history: PiMessage[];
   instruction: Pick<AgentInstruction, "provenance">;
   run: Pick<AgentRun, "reasoning">;
 }> {
@@ -184,13 +200,6 @@ export async function childAgentTurnOptions(args: {
     .map(readParentMessage)
     .find((input) => input !== undefined);
   return {
-    history:
-      parentMessage?.fork && args.history.length === 0
-        ? await loadForkHistory({
-            parentConversationId: parentMessage.event.identifier,
-            parentToolCallId: parentMessage.parentToolCallId,
-          })
-        : args.history,
     instruction:
       parentMessage || args.savedParentMessage
         ? { provenance: agentInstructionProvenance }

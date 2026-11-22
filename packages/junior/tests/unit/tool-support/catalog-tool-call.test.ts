@@ -4,7 +4,7 @@ import {
   prepareCatalogToolCall,
   resolveCatalogToolCall,
 } from "@/chat/tool-support/catalog-tool-call";
-import { tool } from "@/chat/tools/definition";
+import { tool } from "@/chat/tool-support/definition";
 
 describe("catalog tool calls", () => {
   it("resolves and prepares a catalog tool call", () => {
@@ -18,8 +18,8 @@ describe("catalog tool calls", () => {
       ),
       prepareArguments: (args) => {
         const input = args as Record<string, unknown>;
-        return typeof input.customer_id === "string"
-          ? { customerId: input.customer_id }
+        return typeof input["customer_id"] === "string"
+          ? { customerId: input["customer_id"] }
           : (input as { customerId: string });
       },
     });
@@ -41,6 +41,28 @@ describe("catalog tool calls", () => {
     });
   });
 
+  it("accepts a top-level intent like callMcpTool and drops it", () => {
+    const definition = tool({
+      description: "Catalog demo",
+      inputSchema: Type.Object({ query: Type.String() }),
+    });
+
+    expect(
+      resolveCatalogToolCall(
+        {
+          tool_name: "catalogDemo",
+          arguments: { query: "standup" },
+          intent: "find a slot for the standup",
+        },
+        { catalogDemo: definition },
+      ),
+    ).toEqual({
+      definition,
+      toolName: "catalogDemo",
+      arguments: { query: "standup" },
+    });
+  });
+
   it("rejects non-catalog names and malformed dispatcher arguments", () => {
     const definition = tool({
       description: "Catalog demo",
@@ -55,7 +77,7 @@ describe("catalog tool calls", () => {
         },
         { catalogDemo: definition },
       ),
-    ).toThrow("executeTool can only call catalog tools");
+    ).toThrow("`hiddenDemo` is not a catalog tool");
     expect(() =>
       resolveCatalogToolCall(
         {

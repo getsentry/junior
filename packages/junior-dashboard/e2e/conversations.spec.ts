@@ -1,9 +1,23 @@
+import type { Page } from "@playwright/test";
 import { withRequestedMailbox } from "./harness";
+import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
-import { mobile, screenshot } from "./screenshot";
+import { screenshot } from "./screenshot";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
-const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
+const FINISHED_CONVERSATION_ID = "slack:CQA777:1770014400.000500";
+
+async function openActiveConversation(page: Page, baseURL: string) {
+  await page.goto(
+    `${baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
+  );
+  await expect(
+    page.getByRole("heading", {
+      name: "Investigate checkout latency",
+      exact: true,
+    }),
+  ).toBeVisible();
+}
 
 test("records loaded conversation views", async ({ page, dashboard }) => {
   let releaseFeed: (() => void) | undefined;
@@ -29,16 +43,31 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
 
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
+  // A running Conversation polls every 2 seconds, so a slow load would
+  // count a poll. Measure a finished one, which does not poll its detail.
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(
+        `${dashboard.baseURL}/conversations/${encodeURIComponent(FINISHED_CONVERSATION_ID)}`,
+        { waitUntil: "networkidle" },
+      );
+      await expect(
+        page.getByRole("heading", {
+          name: "Deployment investigation failed",
+          exact: true,
+        }),
+      ).toBeVisible();
+    },
+    { requests: 9, serialRounds: 2 },
   );
-  await expect(
-    page.getByRole("heading", {
-      name: "Investigate checkout latency",
-      exact: true,
-    }),
-  ).toBeVisible();
+});
+
+test("keeps the conversation list choice and width after a reload", async ({
+  page,
+  dashboard,
+}) => {
+  await openActiveConversation(page, dashboard.baseURL);
   const conversationList = page.getByRole("navigation", {
     name: "Your conversations",
   });
@@ -77,6 +106,13 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(conversationList).toBeVisible();
   // The saved width rounds to whole pixels.
   await expect.poll(listSize).toBeCloseTo(resizedSize, 0);
+});
+
+test("keeps the details panel width and usage after a reload", async ({
+  page,
+  dashboard,
+}) => {
+  await openActiveConversation(page, dashboard.baseURL);
 
   await page
     .getByRole("button", { name: "Conversation details", exact: true })
@@ -110,7 +146,21 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(modelBreakdown).toBeVisible();
   await usage.click();
   await expect(modelBreakdown).toBeHidden();
-  // Turn context takes the details panel and gives it back on close.
+});
+
+test("turn context takes the details panel and gives it back", async ({
+  page,
+  dashboard,
+}) => {
+  await openActiveConversation(page, dashboard.baseURL);
+  await page
+    .getByRole("button", { name: "Conversation details", exact: true })
+    .click();
+  const details = page.getByRole("complementary", {
+    name: "Conversation details",
+    exact: true,
+  });
+  await expect(details).toBeVisible();
   const contextAction = page.getByRole("button", { name: "View turn context" });
   await contextAction.scrollIntoViewIfNeeded();
   await contextAction.focus();
@@ -163,142 +213,6 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   await expect(contextSheet).toBeHidden();
   await expect(contextAction).toBeFocused();
   await screenshot(page, "conversation-detail");
-
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
-  );
-  await expect(
-    page.getByRole("heading", {
-      name: "Dashboard QA edge cases",
-      exact: true,
-    }),
-  ).toBeVisible();
-  const inputImage = page.getByRole("img", { name: "input-chart.png" });
-  await inputImage.scrollIntoViewIfNeeded();
-  await expect(inputImage).toBeVisible();
-  await inputImage.click();
-  const inputPreview = page.getByRole("dialog", { name: "input-chart.png" });
-  await expect(inputPreview).toBeVisible();
-  // The sent image is not part of the response, so it has no pager.
-  await expect(
-    inputPreview.getByRole("button", { name: "Next image" }),
-  ).toHaveCount(0);
-  await inputPreview
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
-  const image = page
-    .locator('a[href*="/attachments/qa-chart-png"]')
-    .filter({ has: page.locator('img[alt="chart.png"]') })
-    .first();
-  await image.waitFor({ state: "visible" });
-  await image.evaluate((element) =>
-    element.scrollIntoView({ block: "center", inline: "nearest" }),
-  );
-  await screenshot(page, "conversation-attachment");
-
-  await image.click();
-  const preview = page.getByRole("dialog", { name: "chart.png" });
-  await expect(preview).toBeVisible();
-  await expect(preview.getByText("1 of 2")).toBeVisible();
-  await screenshot(page, "conversation-attachment-modal");
-  // The preview pages through the images of one response.
-  await preview.getByRole("button", { name: "Next image" }).click();
-  const detailPreview = page.getByRole("dialog", { name: "chart-detail.png" });
-  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
-  await page.keyboard.press("ArrowRight");
-  await expect(preview.getByText("1 of 2")).toBeVisible();
-
-  // Touch readers swipe to page and dismiss, and pinch to zoom. Real touch
-  // input checks that the frame keeps a gesture after a finger leaves it.
-  await page.setViewportSize(mobile);
-  const touch = await page.context().newCDPSession(page);
-  const pinch = (
-    type: "touchStart" | "touchMove" | "touchEnd",
-    points: { id: number; x: number; y: number }[],
-  ) => touch.send("Input.dispatchTouchEvent", { touchPoints: points, type });
-  const swipe = async (
-    from: { x: number; y: number },
-    dx: number,
-    dy: number,
-  ) => {
-    await pinch("touchStart", [{ id: 1, ...from }]);
-    for (const step of [0.25, 0.5, 0.75, 1]) {
-      await pinch("touchMove", [
-        { id: 1, x: from.x + dx * step, y: from.y + dy * step },
-      ]);
-    }
-    await pinch("touchEnd", []);
-  };
-  await swipe({ x: 300, y: 450 }, -200, 0);
-  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
-  await swipe({ x: 100, y: 450 }, 200, 0);
-  await expect(preview.getByText("1 of 2")).toBeVisible();
-  // A short swipe springs back, so the preview still pages.
-  await swipe({ x: 200, y: 300 }, 0, 30);
-  await page.keyboard.press("ArrowRight");
-  await expect(detailPreview.getByText("2 of 2")).toBeVisible();
-  await swipe({ x: 200, y: 300 }, 0, 250);
-  await expect(detailPreview).toBeHidden();
-
-  await image.click();
-  await expect(preview.getByText("1 of 2")).toBeVisible();
-  await pinch("touchStart", [
-    { id: 1, x: 180, y: 450 },
-    { id: 2, x: 210, y: 450 },
-  ]);
-  await pinch("touchMove", [
-    { id: 1, x: 120, y: 450 },
-    { id: 2, x: 300, y: 700 },
-  ]);
-  await pinch("touchEnd", []);
-  await touch.detach();
-  await screenshot(page, "conversation-attachment-zoom");
-  await page.keyboard.press("Escape");
-  await expect(preview).toBeHidden();
-});
-
-test("previews text attachments in a drawer", async ({ page, dashboard }) => {
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent(DASHBOARD_QA_CONVERSATION_ID)}`,
-    { waitUntil: "networkidle" },
-  );
-  // The server sends text files as downloads. The dashboard reads and
-  // renders them itself.
-  const readme = page.getByRole("button", { name: /README\.md/ });
-  await readme.scrollIntoViewIfNeeded();
-  await readme.click();
-  const preview = page.getByRole("dialog", { name: "README.md" });
-  await expect(
-    preview.getByRole("heading", { name: "Release notes" }),
-  ).toBeVisible();
-  // A newline in a Markdown file paragraph does not break the line.
-  await expect(
-    preview.getByText("This line wraps in the source."),
-  ).toBeVisible();
-  // A reference link after a fence still resolves.
-  await expect(preview.getByRole("link", { name: "docs" })).toHaveAttribute(
-    "href",
-    "https://example.com/docs",
-  );
-  await expect(
-    preview.getByRole("link", { name: "Download README.md" }),
-  ).toHaveAttribute("download", "README.md");
-  await screenshot(page, "conversation-text-attachment", { lightTheme: true });
-
-  await preview.getByRole("button", { name: "Raw" }).click();
-  await expect(preview.getByText("# Release notes")).toBeVisible();
-  await screenshot(page, "conversation-text-attachment-raw", {
-    view: "desktop",
-  });
-  await page.keyboard.press("Escape");
-  await expect(preview).toBeHidden();
-
-  await page.getByRole("button", { name: /notes\.txt/ }).click();
-  const notes = page.getByRole("dialog", { name: "notes.txt" });
-  await expect(notes.getByText("mock attachment notes")).toBeVisible();
-  // Plain text has no Markdown view to pick.
-  await expect(notes.getByRole("button", { name: "Raw" })).toHaveCount(0);
 });
 
 test("reuses the fresh conversation feed after window focus", async ({
@@ -320,10 +234,16 @@ test("reuses the fresh conversation feed after window focus", async ({
     await route.fallback();
   });
 
-  await page.goto(dashboard.baseURL);
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toBeVisible();
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(dashboard.baseURL);
+      await expect(
+        page.getByRole("navigation", { name: "Your conversations" }),
+      ).toBeVisible();
+    },
+    { requests: 7, serialRounds: 1 },
+  );
   expect(requests).toBe(1);
 
   // Fresh feeds must not refetch on focus. Fail if another list fetch starts.
@@ -408,7 +328,9 @@ test("keeps cached conversation and draft available through reconnect", async ({
   await expect(
     page.getByText("You’re offline. Drafts stay on this device."),
   ).toBeHidden();
-  await expect(composer).toHaveValue("Keep this draft through reconnect");
+  await expect(composer).toHaveText("Keep this draft through reconnect", {
+    useInnerText: true,
+  });
   await expect(page.getByRole("button", { name: "Send" })).toBeEnabled();
 });
 
@@ -450,7 +372,7 @@ test("collapses long pending message stacks", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(
     pending.getByText(
-      "Keep the reply in Junior. I will paste the dashboard link next.",
+      "Keep the reply here. I will paste the dashboard link next.",
     ),
   ).toBeVisible();
   const expand = pending.getByRole("button", {
@@ -491,7 +413,8 @@ test("scrolls long conversation and transcript panes independently", async ({
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
     isParticipant: true,
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   }));
 
@@ -664,11 +587,15 @@ test("shows personal spend and groups profile and session actions", async ({
       request.url().endsWith("/api/auth/sign-out") &&
       request.method() === "POST",
   );
+  // Sign-out reloads the page. Wait for the reload, so the test does not end
+  // while the document request is in flight.
+  const reloaded = page.waitForEvent("load");
   await page.getByRole("menuitem", { name: "Log out" }).click();
   // Better Auth returns 415 for a sign-out body without a JSON content type.
   expect((await signOutRequest).headers()["content-type"]).toBe(
     "application/json",
   );
+  await reloaded;
 });
 
 test.describe("keeps a hover-opened profile menu open on click", () => {

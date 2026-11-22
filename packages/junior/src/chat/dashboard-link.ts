@@ -15,7 +15,9 @@ let dashboardConversationLinkOptions:
   | undefined;
 
 function withHttps(host: string): string {
-  return /^https?:\/\//.test(host) ? host : `https://${host}`;
+  return host.startsWith("https://") || host.startsWith("http://")
+    ? host
+    : `https://${host}`;
 }
 
 function stripTrailingSlashes(value: string): string {
@@ -38,17 +40,17 @@ function normalizeDashboardPath(
 function resolveDashboardBaseURL(
   config: DashboardConversationLinkOptions,
 ): string {
-  const explicit = config.baseURL ?? process.env.JUNIOR_BASE_URL;
+  const explicit = config.baseURL ?? process.env["JUNIOR_BASE_URL"];
   if (explicit?.trim()) {
     return stripTrailingSlashes(withHttps(explicit.trim()));
   }
 
-  const vercelProd = process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim();
+  const vercelProd = process.env["VERCEL_PROJECT_PRODUCTION_URL"]?.trim();
   if (vercelProd) {
     return stripTrailingSlashes(withHttps(vercelProd));
   }
 
-  const vercelUrl = process.env.VERCEL_URL?.trim();
+  const vercelUrl = process.env["VERCEL_URL"]?.trim();
   if (vercelUrl) {
     return stripTrailingSlashes(withHttps(vercelUrl));
   }
@@ -84,6 +86,23 @@ export function getDashboardConversationLink(
 ): string | undefined {
   return resolveDashboardPath(
     `/conversations/${encodeURIComponent(conversationId)}`,
+  );
+}
+
+/**
+ * Return whether a URL is under the core dashboard base path. Other pages on
+ * the same host are not Junior's.
+ */
+export function isDashboardLink(url: URL): boolean {
+  const root = resolveDashboardPath("/");
+  if (!root) return false;
+  const base = new URL(root);
+  const prefix = base.pathname.endsWith("/")
+    ? base.pathname
+    : `${base.pathname}/`;
+  return (
+    url.origin === base.origin &&
+    (url.pathname.startsWith(prefix) || `${url.pathname}/` === prefix)
   );
 }
 
@@ -155,9 +174,21 @@ export function getDashboardTaskLink(taskId: string): string | undefined {
   return resolveDashboardPath(`/automations/${encodeURIComponent(taskId)}`);
 }
 
-/** Build the review desk URL that selects one Review item. */
-export function getDashboardReviewItemLink(itemId: string): string | undefined {
-  return resolveDashboardPath(`/review?item=${encodeURIComponent(itemId)}`);
+/** Build the Inbox URL that selects one Inbox item. */
+export function getDashboardInboxItemLink(itemId: string): string | undefined {
+  return resolveDashboardPath(`/inbox?item=${encodeURIComponent(itemId)}`);
+}
+
+/**
+ * Build the dashboard URL that opens the snooze form of one Inbox item. A
+ * chat card links it, since a message there looks the same to everyone.
+ */
+export function getDashboardInboxItemSnoozeLink(
+  itemId: string,
+): string | undefined {
+  return resolveDashboardPath(
+    `/inbox?item=${encodeURIComponent(itemId)}&snooze=1`,
+  );
 }
 
 /** Public icon asset URL. Headless and local installs keep text-only identity. */

@@ -36,23 +36,26 @@ function parseFiles(value: unknown): SlackMessageFile[] {
   });
 }
 
+// Only `files` is read from a message or its attachments.
+const filesHolderSchema = z.object({ files: z.unknown().optional() });
+const slackMessageFilesSchema = filesHolderSchema.extend({
+  attachments: z.unknown().optional(),
+});
+
 /**
  * Read the files of a Slack message: its own `files`, then the files of
  * linked or forwarded messages under `attachments[].files`. Each file is
  * listed once.
  */
 export function readSlackMessageFiles(message: unknown): SlackMessageFile[] {
-  if (!message || typeof message !== "object") return [];
-  const { attachments, files } = message as {
-    attachments?: unknown;
-    files?: unknown;
-  };
+  const parsed = slackMessageFilesSchema.safeParse(message);
+  if (!parsed.success) return [];
+  const { attachments, files } = parsed.data;
   const nested = Array.isArray(attachments)
-    ? attachments.flatMap((attachment: unknown) =>
-        attachment && typeof attachment === "object"
-          ? parseFiles((attachment as { files?: unknown }).files)
-          : [],
-      )
+    ? attachments.flatMap((attachment: unknown) => {
+        const holder = filesHolderSchema.safeParse(attachment);
+        return holder.success ? parseFiles(holder.data.files) : [];
+      })
     : [];
   const byId = new Map<string, SlackMessageFile>();
   for (const file of [...parseFiles(files), ...nested]) {
@@ -100,13 +103,19 @@ function attachmentType(mimeType: string | undefined): Attachment["type"] {
   return "file";
 }
 
-/** Build the attachment of a Slack file that the Slack adapter did not map. */
+/**
+ * Build the attachment of a Slack file that the Slack adapter did not map.
+ *
+ * Ingest can stream a file from `url` with the bot token, so the attachment
+ * gets a URL only when it is on Slack's file host.
+ */
 export function slackFileAttachment(
   file: SlackMessageFile,
 ): SlackMessageAttachment {
+  const url = slackFileDownloadUrl(file);
   return {
     type: attachmentType(file.mimetype),
-    url: file.url_private,
+    ...(url ? { url } : undefined),
     ...(file.name ? { name: file.name } : undefined),
     ...(file.mimetype ? { mimeType: file.mimetype } : undefined),
     ...(file.size !== undefined ? { size: file.size } : undefined),
@@ -128,7 +137,7 @@ export function readSlackMessageAttachments(
   message: Pick<Message, "attachments" | "raw">,
 ): SlackMessageAttachment[] {
   const attachmentUrl = (attachment: Attachment) =>
-    attachment.url ?? attachment.fetchMetadata?.url;
+    attachment.url ?? attachment.fetchMetadata?.["url"];
   const files = readSlackMessageFiles(message.raw);
   const fileUrls = new Set(files.map((file) => file.url_private));
   return [

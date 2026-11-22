@@ -5,6 +5,7 @@ import { Button } from "../components/ui/button";
 import { Skeleton } from "../components/ui/skeleton";
 import { InlineError } from "../components/InlineError";
 import { DisplayText } from "../display-text/DisplayText";
+import { useInboxUi } from "../uiShell";
 import { useConversationCatchUpState } from "./conversationCatchUpState";
 import { TranscriptJumpToLatestContext } from "./transcriptBottomPinning";
 
@@ -14,7 +15,12 @@ const cardClass =
 /** Offer the catch-up inside the "New" marker, so it takes no extra row. */
 export function ConversationCatchUpButton() {
   const state = useConversationCatchUpState();
-  if (!state || state.data || state.pending) return null;
+  const offered = state && !state.data && !state.pending;
+  // The marker row is not always rendered, so count the offer here.
+  useEffect(() => {
+    if (offered) state.markOffered();
+  });
+  if (!offered) return null;
   const { count, more } = state.unreadMessages;
   // A large count reads as "99+", like an unread badge.
   const shown = count > 99 ? "99+" : `${count}${more ? "+" : ""}`;
@@ -43,6 +49,8 @@ export function ConversationCatchUpButton() {
 /** Show the loading, loaded, or failed catch-up under the "New" marker. */
 export function ConversationCatchUpCard() {
   const state = useConversationCatchUpState();
+  // The new UI drops the label: To do already says what waits on you.
+  const inbox = useInboxUi();
   const jumpToLatest = useContext(TranscriptJumpToLatestContext);
   const cardRef = useRef<HTMLDivElement>(null);
   const shown = state?.data ? "data" : state?.pending ? "pending" : undefined;
@@ -75,15 +83,19 @@ export function ConversationCatchUpCard() {
         <DisplayText text={state.data.summary} />
         {state.data.needsYou ? (
           <p className="m-0 border-t border-dashboard-accent/15 pt-2.5">
-            <span className="font-semibold text-dashboard-accent-text">
-              Needs you
-            </span>
-            <span
-              aria-hidden="true"
-              className="px-1.5 text-dashboard-text-muted"
-            >
-              ·
-            </span>
+            {inbox ? null : (
+              <>
+                <span className="font-semibold text-dashboard-accent-text">
+                  Needs you
+                </span>
+                <span
+                  aria-hidden="true"
+                  className="px-1.5 text-dashboard-text-muted"
+                >
+                  ·
+                </span>
+              </>
+            )}
             {state.data.needsYou}
           </p>
         ) : null}

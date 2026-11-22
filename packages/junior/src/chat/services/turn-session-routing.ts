@@ -5,7 +5,15 @@
  * parent reads through that relation. Later Turns and mailbox wakes use the
  * same Destination so tools stay consistent for the whole Conversation.
  */
-import type { Destination, SlackDestination } from "@sentry/junior-plugin-api";
+import type {
+  Destination,
+  SlackDestination,
+  Source,
+} from "@sentry/junior-plugin-api";
+import {
+  getDispatchConversationId,
+  getDispatchRecord,
+} from "@/chat/agent-dispatch/store";
 import type {
   Conversation,
   ConversationStore,
@@ -35,6 +43,7 @@ async function loadConversationChain(
   const chain: Conversation[] = [];
   const seen = new Set<string>();
   let cursor: string | undefined = conversationId;
+  /* oxlint-disable no-await-in-loop -- Each step reads the parent of the Conversation before. */
   while (cursor && !seen.has(cursor)) {
     seen.add(cursor);
     const conversation = await conversationStore.get({
@@ -46,6 +55,7 @@ async function loadConversationChain(
     chain.push(conversation);
     cursor = conversation.parentConversationId;
   }
+  /* oxlint-enable no-await-in-loop */
   return chain;
 }
 
@@ -56,7 +66,7 @@ async function loadConversationChain(
  */
 function slackSourceForDestination(args: {
   destination: SlackDestination;
-  source?: SessionSource;
+  source?: SessionSource | undefined;
 }): SessionSource | undefined {
   if (
     args.source?.kind !== "slack" ||
@@ -82,7 +92,7 @@ function slackSourceForDestination(args: {
  */
 export async function resolveConversationRouting(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
 }): Promise<TurnSessionRouting | undefined> {
   const conversationStore =
     args.conversationStore ??
@@ -128,7 +138,7 @@ export async function resolveConversationRouting(args: {
 /** Require the Conversation Destination and Source from SQL. */
 export async function resolveTurnSessionRouting(args: {
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
 }): Promise<RequiredTurnSessionRouting> {
   const routing = await resolveConversationRouting(args);
   if (!routing?.destination || !routing.source) {
@@ -140,5 +150,44 @@ export async function resolveTurnSessionRouting(args: {
     destination: routing.destination,
     ...(routing.location ? { location: routing.location } : undefined),
     source: routing.source,
+  };
+}
+
+/** Destination, Location, and Source for a resumed Turn. */
+export interface TurnResumeRouting {
+  destination: Destination;
+  location?: Location;
+  source: Source;
+}
+
+/**
+ * Require the Destination and Source to resume a Turn.
+ *
+ * A dispatch Conversation stores the dispatch Source, which has no session
+ * Source. Its dispatch record owns the Destination and Source.
+ */
+export async function resolveTurnResumeRouting(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore | undefined;
+  dispatchId?: string | undefined;
+}): Promise<TurnResumeRouting> {
+  if (!args.dispatchId) {
+    return await resolveTurnSessionRouting(args);
+  }
+  const dispatch = await getDispatchRecord(args.dispatchId);
+  if (!dispatch) {
+    throw new Error(`Dispatch record is missing for ${args.dispatchId}`);
+  }
+  const dispatchConversationId = getDispatchConversationId(dispatch);
+  if (dispatchConversationId !== args.conversationId) {
+    throw new Error(
+      `Dispatch ${dispatch.id} belongs to ${dispatchConversationId}, not ${args.conversationId}`,
+    );
+  }
+  const location = (await resolveConversationRouting(args))?.location;
+  return {
+    destination: dispatch.destination,
+    ...(location ? { location } : undefined),
+    source: dispatch.source,
   };
 }

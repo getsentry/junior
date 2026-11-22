@@ -1,6 +1,10 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
-import { objectPresentation } from "@sentry/junior-plugin-api";
+import {
+  objectPresentation,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
@@ -22,8 +26,6 @@ import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 
 import {
   formatConversationDuration,
-  formatRelativeTime,
-  formatTime,
   slackLocationLabel,
   summarizeCost,
   summarizeModelUsage,
@@ -44,6 +46,7 @@ import {
   TokenMetric,
 } from "./TelemetryMetrics";
 import type { Conversation } from "../types";
+import { objectSource } from "./objectSource";
 import {
   projectSidebarAnnotationBadges,
   type SidebarAnnotation,
@@ -55,6 +58,7 @@ import {
 } from "./ConversationLinkedWork";
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
+import { formatRelativeTime, formatTime } from "../time";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -243,7 +247,7 @@ function SidebarAnnotationIconFacepile(props: {
  * do not fit wrap onto lines that the row clips, so the count follows the
  * real width.
  */
-function FittingIcons(props: {
+export function FittingIcons(props: {
   className: string;
   icons: ReactNode[];
   overflow(count: number): ReactNode;
@@ -416,8 +420,8 @@ function useIsMobileViewport(): boolean {
 function sidebarAnnotationDetail(annotation: {
   key: string;
   label: string;
-  objectType?: SidebarAnnotation["objectType"];
-  status?: string;
+  objectType?: SidebarAnnotation["objectType"] | undefined;
+  status?: string | undefined;
 }): string {
   const identity = annotation.objectType
     ? [
@@ -440,9 +444,16 @@ type SidebarAnnotationIconName = NonNullable<
   NonNullable<ConversationDetailReport["sidebarAnnotations"]>[number]["icon"]
 >;
 
+/** The open and success green, as GitHub shows an open pull request. */
+export const OPEN_TONE_CLASS = "text-[#3fb950] light:text-[#1a7f37]";
+/** The closed and removed red, as GitHub shows a closed pull request. */
+export const CLOSED_TONE_CLASS = "text-[#f85149] light:text-[#cf222e]";
+/** The attention amber. It reads on both themes, so use it for icons only. */
+export const ATTENTION_TONE_CLASS = "text-[#d29922] light:text-[#9a6700]";
+
 const SIDEBAR_ICON_PRESENTATION = {
   "circle-dot": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: CircleDot,
     label: "Open",
   },
@@ -452,7 +463,7 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Draft",
   },
   "circle-x": {
-    className: "text-[#f85149] light:text-[#cf222e]",
+    className: CLOSED_TONE_CLASS,
     Icon: CircleX,
     label: "Closed",
   },
@@ -462,12 +473,12 @@ const SIDEBAR_ICON_PRESENTATION = {
     label: "Merged",
   },
   "git-pull-request": {
-    className: "text-[#3fb950] light:text-[#1a7f37]",
+    className: OPEN_TONE_CLASS,
     Icon: GitPullRequest,
     label: "Open pull request",
   },
   "triangle-alert": {
-    className: "text-[#d29922] light:text-[#9a6700]",
+    className: ATTENTION_TONE_CLASS,
     Icon: TriangleAlert,
     label: "Needs attention",
   },
@@ -475,6 +486,22 @@ const SIDEBAR_ICON_PRESENTATION = {
   SidebarAnnotationIconName,
   { className: string; Icon: typeof CircleDot; label: string }
 >;
+
+/** The GitHub color and name of a code change state. */
+export function codeChangeTone(
+  state: CodeChangeState,
+  draft: boolean,
+): { className: string; label: string } {
+  return SIDEBAR_ICON_PRESENTATION[
+    state === "merged"
+      ? "git-merge"
+      : state === "closed"
+        ? "circle-x"
+        : draft
+          ? "circle-dashed"
+          : "circle-dot"
+  ];
+}
 
 /** Show a GitHub-style status icon for linked work, such as an open pull request. */
 export function SidebarAnnotationIcon(props: {
@@ -522,7 +549,7 @@ export function ConversationAnnotations(props: {
           key={link.key}
           title={[
             link.label,
-            link.plugin,
+            objectSource(link.plugin),
             linkStatusLabel(link.status),
             link.description,
           ]
@@ -542,7 +569,10 @@ export function ConversationAnnotations(props: {
   );
 }
 
-function LocationLink(props: { label: string; locationUrl?: string }) {
+function LocationLink(props: {
+  label: string;
+  locationUrl?: string | undefined;
+}) {
   return props.locationUrl ? (
     <OutboundLink className={dashboardInlineLinkClass} href={props.locationUrl}>
       {props.label}
@@ -592,7 +622,7 @@ export function liveModelId(
 
 type ConversationStatsProps = {
   conversation: Conversation | undefined;
-  detail?: ConversationDetailReport;
+  detail?: ConversationDetailReport | undefined;
   showUsageBreakdown?: boolean;
 };
 
@@ -666,7 +696,7 @@ export function conversationCost(
     detail?.cumulativeUsage ?? conversation.cumulativeUsage,
   );
   const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
-  const live = (detail?.status ?? conversation.status) === "active";
+  const live = conversationTurnIsActive(detail, conversation);
   if (!costSummary && !auxiliaryCosts && !live) return null;
   return (
     <CostMetric
@@ -695,7 +725,7 @@ function conversationStatItems(
   const tokenSummary =
     summarizeModelUsage(props.detail?.modelUsage) ?? summarizeUsage(usage);
   const durationLabel = formatConversationDuration(props.conversation);
-  const live = (props.detail?.status ?? props.conversation.status) === "active";
+  const live = conversationTurnIsActive(props.detail, props.conversation);
   const activeModelId = liveModelId(props.detail);
   const sourceTask = props.detail?.sourceTask;
   const childAgentTotals =

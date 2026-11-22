@@ -1,8 +1,8 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean,
   index,
   integer,
+  jsonb,
   pgTable,
   primaryKey,
   text,
@@ -19,6 +19,12 @@ export const githubPullRequestStateSchema = z.enum([
 export type GitHubPullRequestState = z.output<
   typeof githubPullRequestStateSchema
 >;
+
+/**
+ * What waits on the requester of a Junior pull request: merge it, or review
+ * it. They take one, not both.
+ */
+export type GitHubPullRequestAction = "merge" | "review";
 
 export const githubPullRequestCommitCompositionSchema = z.enum([
   "junior_only",
@@ -71,6 +77,13 @@ export const juniorGitHubIssues = pgTable(
   ],
 );
 
+/** A merge conflict fix that Junior started: the event it published. */
+export interface GitHubConflictFix {
+  atMs: number;
+  /** The head commit that the fix was for. */
+  headSha: string;
+}
+
 /** Current provider projection for pull requests classified as Junior-owned. */
 export const juniorGitHubPullRequests = pgTable(
   "junior_github_pull_requests",
@@ -86,20 +99,22 @@ export const juniorGitHubPullRequests = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
-    /** The daily reconcile compares this with GitHub. */
-    draft: boolean("draft").notNull().default(false),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
-    mergedAt: timestamp("merged_at", { withTimezone: true }),
-    closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * When the pull request merged or closed. Null while it is open. The
+     * finished work of a Conversation needs this time for every pull
+     * request of every candidate, so it is stored and not read from GitHub.
+     */
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     /**
-     * When Junior saw the pull request become ready to merge and added its
-     * review desk notice. Null when it is not ready.
+     * The requester's next action that Junior last derived from GitHub, and
+     * shows in the Inbox. Null when no action waits on them.
      */
-    readyToMergeAt: timestamp("ready_to_merge_at", { withTimezone: true }),
+    nextAction: text("next_action").$type<GitHubPullRequestAction>(),
     /**
-     * Webhooks that asked to check whether the pull request is ready to
-     * merge. The check runs again when this changes during a check.
+     * Webhooks that asked to check the next action. The check runs again
+     * when this changes during a check.
      */
     readySyncRequests: integer("ready_sync_requests").notNull().default(0),
     /**
@@ -108,11 +123,33 @@ export const juniorGitHubPullRequests = pgTable(
     readySyncId: integer("ready_sync_id"),
     /** When the current check started. */
     readySyncAt: timestamp("ready_sync_at", { withTimezone: true }),
+    /**
+     * When a person last chose Resume on the merge conflict item.
+     * It counts as activity by a person, so the fix count starts again.
+     */
+    conflictFixesResumedAt: timestamp("conflict_fixes_resumed_at", {
+      withTimezone: true,
+    }),
+    /**
+     * When Junior last asked the requester to resume a merge conflict fix
+     * that did not land. It asks once after each Resume, so a Dismiss ends
+     * the asks on the pull request.
+     */
+    conflictFixAskedAt: timestamp("conflict_fix_asked_at", {
+      withTimezone: true,
+    }),
+    /**
+     * The latest merge conflict fixes that Junior started, oldest first.
+     * Only these count as fixes, so a merge or force push for work that a
+     * person asked for does not.
+     */
+    conflictFixes: jsonb("conflict_fixes")
+      .$type<GitHubConflictFix[]>()
+      .notNull()
+      .default([]),
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
-    index("junior_github_pull_requests_merged_at_idx").on(table.mergedAt),
-    index("junior_github_pull_requests_closed_at_idx").on(table.closedAt),
     index("junior_github_pull_requests_open_idx")
       .on(table.pullRequestId)
       .where(sql`${table.state} = 'open'`),

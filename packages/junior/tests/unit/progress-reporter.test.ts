@@ -2,7 +2,6 @@ import { describe, expect, it } from "vitest";
 import { createAssistantStatusScheduler } from "@/chat/slack/assistant-thread/status-scheduler";
 import { makeAssistantStatus } from "@/chat/slack/assistant-thread/status-render";
 
-
 interface FakeTimer {
   id: number;
   runAt: number;
@@ -28,13 +27,13 @@ function createFakeScheduler() {
       canceled: false,
     };
     timers.push(timer);
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        return timer.id as ReturnType<typeof setTimeout>;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    return timer.id as ReturnType<typeof setTimeout>;
   };
 
   const clearTimer = (timer: ReturnType<typeof setTimeout>) => {
-        // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
-        const id = timer as number;
+    // @ts-expect-error non-overlapping boundary cast; rule forbids as-unknown-as chains
+    const id = timer as number;
     const entry = timers.find((candidate) => candidate.id === id);
     if (entry) {
       entry.canceled = true;
@@ -178,7 +177,10 @@ describe("createAssistantStatusScheduler", () => {
 
   it("omits loading messages when clearing the assistant status", async () => {
     const scheduler = createFakeScheduler();
-    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const calls: Array<{
+      text: string;
+      loadingMessages?: string[] | undefined;
+    }> = [];
     const reporter = createAssistantStatusScheduler({
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });
@@ -371,7 +373,10 @@ describe("createAssistantStatusScheduler", () => {
 
   it("uses explicit progress text as the loading message", async () => {
     const scheduler = createFakeScheduler();
-    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const calls: Array<{
+      text: string;
+      loadingMessages?: string[] | undefined;
+    }> = [];
     const reporter = createAssistantStatusScheduler({
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });
@@ -404,7 +409,10 @@ describe("createAssistantStatusScheduler", () => {
 
   it("replaces generic loading messages when explicit progress matches the visible text", async () => {
     const scheduler = createFakeScheduler();
-    const calls: Array<{ text: string; loadingMessages?: string[] }> = [];
+    const calls: Array<{
+      text: string;
+      loadingMessages?: string[] | undefined;
+    }> = [];
     const reporter = createAssistantStatusScheduler({
       sendStatus: async (text, loadingMessages) => {
         calls.push({ text, loadingMessages });

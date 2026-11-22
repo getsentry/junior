@@ -11,6 +11,7 @@ import {
 } from "@/api";
 import { notificationSettingsSchema } from "@/api/schema";
 import { createSlackActor } from "@/chat/actor";
+import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
@@ -89,7 +90,7 @@ async function viewerApi() {
  */
 async function completeDashboardTurn(
   reply: string,
-  stored: { text: string; quiet?: true } | null = { text: reply },
+  stored: { text: string } | null = { text: reply },
 ): Promise<string[]> {
   const conversationId = `local:web:${randomUUID()}`;
   const source = createWebSource(conversationId, "private");
@@ -137,7 +138,6 @@ async function completeDashboardTurn(
           messageId: "turn-1:assistant:1",
           role: "assistant",
           text: stored.text,
-          ...(stored.quiet ? { meta: { quiet: true } } : undefined),
         },
       },
     ]);
@@ -145,11 +145,11 @@ async function completeDashboardTurn(
   const scheduled: string[] = [];
   await scheduleSessionCompletedPluginTasks(
     { conversationId, sessionId: "turn-1" },
-    {
-      send: async (message) => {
-        scheduled.push(`${message.plugin}.${message.name}`);
-        await processPluginTask(message);
-      },
+    async (message) => {
+      // The Conversation metadata task is out of scope here.
+      if (message.plugin === CONVERSATION_METADATA_TASK.plugin) return;
+      scheduled.push(`${message.plugin}.${message.name}`);
+      await processPluginTask(message);
     },
   );
   return scheduled;
@@ -163,9 +163,9 @@ describe("reply notification task", () => {
   beforeEach(async () => {
     for (const name of ENV_NAMES) savedEnv.set(name, process.env[name]);
     const keys = webPush.generateVAPIDKeys();
-    process.env.JUNIOR_WEB_PUSH_PUBLIC_KEY = keys.publicKey;
-    process.env.JUNIOR_WEB_PUSH_PRIVATE_KEY = keys.privateKey;
-    process.env.JUNIOR_WEB_PUSH_SUBJECT = "mailto:junior@example.com";
+    process.env["JUNIOR_WEB_PUSH_PUBLIC_KEY"] = keys.publicKey;
+    process.env["JUNIOR_WEB_PUSH_PRIVATE_KEY"] = keys.privateKey;
+    process.env["JUNIOR_WEB_PUSH_SUBJECT"] = "mailto:junior@example.com";
     previousLinks = setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
@@ -225,7 +225,11 @@ describe("reply notification task", () => {
 
     await expect(
       completeDashboardTurn("The deploy finished."),
-    ).resolves.toEqual(["notifications.notifyReply"]);
+    ).resolves.toEqual([
+      "event-search.indexEvents",
+      "memory.processSession",
+      "notifications.notifyReply",
+    ]);
 
     expect(pushes).toHaveLength(1);
     expect(pushes[0]!.headers.get("content-encoding")).toBe("aes128gcm");
@@ -234,12 +238,8 @@ describe("reply notification task", () => {
     const after = await api("GET", "/api/notifications");
     expect(after?.deviceCount).toBe(1);
 
-    // A Turn with no reply, or with a Quiet message, notifies nobody.
+    // A Turn with no reply notifies nobody.
     await completeDashboardTurn("Nothing to send.", null);
-    await completeDashboardTurn("Fixed the lint failure and pushed.", {
-      text: "Fixed the lint failure and pushed.",
-      quiet: true,
-    });
     expect(pushes).toHaveLength(1);
   });
 

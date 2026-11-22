@@ -103,7 +103,9 @@ function render(node: Node): string {
       const text = renderChildren(node);
       const href = node.getAttribute("href") ?? "";
       // People links point into the dashboard. Keep only their label.
-      return /^https?:/i.test(href) && text.trim() !== href
+      const scheme = href.slice(0, 6).toLowerCase();
+      return (scheme.startsWith("https:") || scheme.startsWith("http:")) &&
+        text.trim() !== href
         ? `[${text}](${href})`
         : text;
     }
@@ -169,7 +171,7 @@ function mark(marker: string, text: string): string {
 
 function fence(pre: Element, code: string): string {
   const language =
-    pre.closest<HTMLElement>("[data-code-language]")?.dataset.codeLanguage ??
+    pre.closest<HTMLElement>("[data-code-language]")?.dataset["codeLanguage"] ??
     "";
   return `\`\`\`${language}\n${code.replace(/\n$/, "")}\n\`\`\``;
 }

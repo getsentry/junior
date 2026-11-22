@@ -17,8 +17,8 @@ import {
 } from "@/chat/slack/tool-support/channel-target";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 
 const booleanInput = (description: string) =>
@@ -54,6 +54,7 @@ function normalizeRangeTimestamp(
     return timestamp;
   }
 
+  // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
   const threadId = parseSlackThreadId(trimmed);
   const threadTimestamp = threadId
     ? parseSlackTimestampParam(field, threadId.threadTs)
@@ -67,64 +68,66 @@ function normalizeRangeTimestamp(
   return timestamp;
 }
 
+export const slackChannelListMessagesToolDefinition = zodToolDefinition({
+  description: "List messages from Slack channel history.",
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  inputSchema: z.object({
+    channel_id: slackChannelRefParam
+      .nullable()
+      .describe(
+        "Omit to read the active channel. Another channel must be public.",
+      )
+      .optional(),
+    limit: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(1000)
+      .describe("Maximum number of messages to return across pages.")
+      .nullable()
+      .optional(),
+    cursor: z
+      .string()
+      .min(1)
+      .describe(
+        "Cursor from `next_cursor` in a prior result. Use null or omit it for the first page; never invent a cursor.",
+      )
+      .nullable()
+      .optional(),
+    oldest: slackTimestampParam(
+      "Oldest message timestamp (Slack ts) for range filtering.",
+    )
+      .nullable()
+      .optional(),
+    latest: slackTimestampParam(
+      "Latest message timestamp (Slack ts) for range filtering.",
+    )
+      .nullable()
+      .optional(),
+    inclusive: booleanInput("Whether oldest/latest bounds should be inclusive.")
+      .nullable()
+      .optional(),
+    max_pages: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .max(10)
+      .describe("Maximum number of API pages to traverse in a single call.")
+      .nullable()
+      .optional(),
+  }),
+  outputSchema: juniorToolOutputSchema,
+});
+
 /** Create the channel history tool with optional cross-channel targets. */
 export function createSlackChannelListMessagesTool(context: SlackToolContext) {
   return zodTool({
-    description: "List messages from Slack channel history.",
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    inputSchema: z.object({
-      channel_id: slackChannelRefParam
-        .nullable()
-        .describe(
-          "Omit to read the active channel. Another channel must be public.",
-        )
-        .optional(),
-      limit: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(1000)
-        .describe("Maximum number of messages to return across pages.")
-        .nullable()
-        .optional(),
-      cursor: z
-        .string()
-        .min(1)
-        .describe(
-          "Cursor from `next_cursor` in a prior result. Use null or omit it for the first page; never invent a cursor.",
-        )
-        .nullable()
-        .optional(),
-      oldest: slackTimestampParam(
-        "Oldest message timestamp (Slack ts) for range filtering.",
-      )
-        .nullable()
-        .optional(),
-      latest: slackTimestampParam(
-        "Latest message timestamp (Slack ts) for range filtering.",
-      )
-        .nullable()
-        .optional(),
-      inclusive: booleanInput(
-        "Whether oldest/latest bounds should be inclusive.",
-      )
-        .nullable()
-        .optional(),
-      max_pages: z.coerce
-        .number()
-        .int()
-        .min(1)
-        .max(10)
-        .describe("Maximum number of API pages to traverse in a single call.")
-        .nullable()
-        .optional(),
-    }),
-    outputSchema: juniorToolOutputSchema,
+    ...slackChannelListMessagesToolDefinition,
     execute: async ({
       channel_id,
       limit,

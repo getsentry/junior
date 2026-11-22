@@ -11,7 +11,7 @@ test("opens conversation details beside the chat", async ({
   await page.goto(dashboard.baseURL);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
-  await expect(page).toHaveTitle("Junior");
+  await expect(page).toHaveTitle(/^\(\d+\) Junior$/);
   const sidebar = page.getByRole("navigation", {
     name: "Your conversations",
   });
@@ -43,7 +43,7 @@ test("opens conversation details beside the chat", async ({
   await expect(
     page.getByRole("heading", { name: "Checkout latency triage" }),
   ).toBeVisible();
-  await expect(page).toHaveTitle("Checkout latency triage - Junior");
+  await expect(page).toHaveTitle(/^\(\d+\) Checkout latency triage - Junior$/);
   await expect(page.getByRole("note")).toHaveCount(0);
 
   const detailsButton = page.getByRole("button", {
@@ -182,10 +182,9 @@ test("opens conversation details beside the chat", async ({
   await page.getByRole("button", { name: "Close conversation menu" }).click();
   await page.setViewportSize({ width: 1600, height: 900 });
 
-  // The full durable Brief stays available after the transcript expires.
-  await page.getByText("Facts, links & keywords", { exact: true }).click();
+  // The summary stays available after the transcript expires.
   await expect(
-    page.getByText("PAYMENTS-42 contained 418 events."),
+    page.getByText(/PAYMENTS-42 contained 418 events\./),
   ).toBeVisible();
 
   await expect(
@@ -223,7 +222,9 @@ test("shows a Watch on linked work in its linked work row", async ({
   await expect(watched).toHaveCount(1);
   await expect(details.getByText("Also waiting on")).toBeVisible();
   await expect(
-    details.getByRole("link", { name: /getsentry\/junior#2351/ }),
+    details.getByRole("link", {
+      name: /^Reply to new review comments on the PR\. expires/,
+    }),
   ).toBeVisible();
 
   await details
@@ -237,7 +238,7 @@ test("shows a Watch on linked work in its linked work row", async ({
   await screenshot(page, "conversation-details-watched-linked-work");
 });
 
-test("shows recalled and captured memories in popovers", async ({
+test("keeps memories out of the transcript and jumps to their Turn", async ({
   page,
   dashboard,
 }) => {
@@ -246,28 +247,6 @@ test("shows recalled and captured memories in popovers", async ({
     `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
   );
 
-  // Captured memories stay out of the collapsed activity rows.
-  const captured = page.getByRole("button", { name: "Captured 2 memories" });
-  await expect(captured).toBeVisible();
-  await captured.click();
-  const capturedPopover = page.getByRole("dialog", {
-    name: "Captured 2 memories",
-  });
-  await expect(
-    capturedPopover.getByText("Use pnpm for repository commands."),
-  ).toBeVisible();
-  await expect(
-    capturedPopover.getByRole("img", { name: "Private" }),
-  ).toBeVisible();
-  await screenshot(page, "conversation-captured-memories-popover");
-  await page.keyboard.press("Escape");
-  await expect(capturedPopover).toBeHidden();
-
-  // A memory in details opens its Turn's popover in the transcript, even
-  // when a search hides that row.
-  await page.getByRole("button", { name: "Search transcript" }).click();
-  await page.getByPlaceholder("Search transcript…").fill("no such text");
-  await expect(captured).toBeHidden();
   const details = page.getByRole("complementary", {
     name: "Conversation details",
     exact: true,
@@ -275,39 +254,26 @@ test("shows recalled and captured memories in popovers", async ({
   await details
     .getByRole("button", { name: "1 recalled · 2 captured" })
     .click();
+  const captured = details
+    .getByRole("listitem")
+    .filter({ hasText: "Use pnpm for repository commands." });
+  await expect(captured).toBeVisible();
+  await expect(captured.getByRole("img", { name: "Private" })).toBeVisible();
+  // The transcript shows no memory chips or capture rows.
+  await expect(page.getByText(/^(Captured|Recalled) \d+ memor/)).toHaveCount(0);
+
+  // A memory jump shows its Turn, even when a search hides that row.
+  await page.getByRole("button", { name: "Search transcript" }).click();
+  await page.getByPlaceholder("Search transcript…").fill("no such text");
   await details
     .getByRole("listitem")
     .filter({ hasText: "Dashboard transcript events should remain" })
     .getByRole("button", { name: "Go to message" })
     .click();
-  await expect(capturedPopover).toBeVisible();
   await expect(
-    details.getByRole("heading", { name: "Memories" }),
-  ).toBeVisible();
-  await screenshot(page, "conversation-memory-list-jump");
-});
-
-test("shows recalled memories under their prompt", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize({ height: 900, width: 1600 });
-  await page.goto(
-    `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
-  );
-
-  const recalled = page.getByRole("button", { name: "Recalled 1 memory" });
-  await recalled.click();
-  const popover = page.getByRole("dialog", { name: "Recalled 1 memory" });
-  await expect(
-    popover.getByText(
-      "Checkout latency investigations start with the deployment comparison dashboard.",
-    ),
-  ).toBeVisible();
-  await expect(
-    popover.getByRole("link", { name: /^Checkout latency investigations/ }),
-  ).toHaveAttribute("href", "/memories/memory-checkout-runbook");
-  await screenshot(page, "conversation-recalled-memories-popover");
-  await recalled.click();
-  await expect(popover).toBeHidden();
+    page
+      .getByLabel("Conversation transcript")
+      .locator("[data-transcript-seq][data-highlighted]"),
+  ).toBeInViewport();
+  await screenshot(page, "conversation-memory-list");
 });

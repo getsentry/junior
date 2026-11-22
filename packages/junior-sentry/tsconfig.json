@@ -8,5 +8,7 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src/**/*.ts"]
+  "include": ["src/**/*.ts", "tests/**/*.ts"],
+  // Listed in scripts/typecheck-coverage-baseline.json until its types pass.
+  "exclude": ["tests/webhook.test.ts"]
 }
