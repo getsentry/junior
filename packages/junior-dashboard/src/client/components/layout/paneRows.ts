@@ -4,6 +4,7 @@ import {
   parseInboxView,
   type InboxView,
 } from "../../inbox/inboxModel";
+import { COMPOSER_PATH } from "../../conversations/conversationRoutes";
 import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
 import { LEAD_NAV_KEY } from "../../shell/primaryNav";
 
@@ -92,10 +93,13 @@ export function paneRowForPath(
 /**
  * How the row that owns a path marks it. On a Conversation page, a row
  * other than the Lead's is the list that opened it, not the page: the
- * Conversation's own row, such as its In flight row, marks the page.
+ * Conversation's own row, such as its In flight row, marks the page. The
+ * composer is no Conversation yet, so its row marks the page.
  */
 export function paneRowMark(pathname: string, row: PaneRow): PaneRowMark {
-  return row !== LEAD_NAV_KEY && under(pathname, "/conversations")
+  return row !== LEAD_NAV_KEY &&
+    pathname !== COMPOSER_PATH &&
+    under(pathname, "/conversations")
     ? "origin"
     : "page";
 }
