@@ -523,6 +523,19 @@ export async function enqueueChildResultToParent(args: {
   ) {
     await closeTodosForResult(args.sender, "completed", nowMs);
   }
+  // A `stopped` result drops the child's open To-dos, as an agent
+  // invocation's does. Only the first send drops them.
+  if (
+    args.result.kind === "stopped" &&
+    !(
+      await readParentChildMessages(
+        args.sender.parentConversationId,
+        args.state,
+      )
+    ).some((message) => message.inboundMessageId === inboundMessageId)
+  ) {
+    await closeTodosForResult(args.sender, "stopped", nowMs);
+  }
   await appendAndEnqueueInboundMessage({
     message: {
       conversationId: args.sender.parentConversationId,

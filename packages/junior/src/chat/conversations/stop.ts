@@ -86,9 +86,9 @@ export async function stopConversation(args: {
     // knows which Conversations this stop already reached.
     const nowMs = Date.now();
     const stoppedAtMs = args.message?.createdAtMs ?? nowMs;
-    // A repeat stop cuts nothing that the first stop did not. Its parent
-    // already has every report, and a stopped child's later reply is dropped
-    // when it reaches the parent.
+    // A repeat stop finds no unread reply to drop: the first stop dropped
+    // them, and a stopped child's later reply is dropped when it reaches the
+    // parent. Skipping it keeps the first stop's `stopped` report.
     const wasStopped =
       (await getConversationStoppedAtMs(args.conversationId)) !== undefined;
     await stopChildAgentsBelow(args.conversationId, {
@@ -104,7 +104,11 @@ export async function stopConversation(args: {
     if (!wasStopped) {
       await dropOwnUnreadLoopReplies(args.conversationId, args.state);
     }
-    const dropped = await cancelWaitingParentMessages(args.conversationId, {
+    await reportPersonStopToParent(args.conversationId, {
+      queue: args.queue,
+      state: args.state,
+    });
+    await cancelWaitingParentMessages(args.conversationId, {
       nowMs: stoppedAtMs,
       state: args.state,
     });
@@ -127,14 +131,6 @@ export async function stopConversation(args: {
         nowMs,
         queue: args.queue,
         replaceExistingWake: true,
-        state: args.state,
-      });
-    }
-    if (!wasStopped) {
-      await reportPersonStopToParent(args.conversationId, {
-        dropped,
-        queue: args.queue,
-        runId: result.status === "requested" ? result.runId : undefined,
         state: args.state,
       });
     }

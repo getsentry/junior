@@ -1,4 +1,3 @@
-import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { getAgentBinding } from "@/chat/agent-invocations/bindings";
 import { MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT } from "@/chat/agent-invocations/create";
@@ -19,7 +18,7 @@ import {
   getLatestAgentInvocationForConversation,
 } from "@/chat/agent-invocations/store";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
-import type { AgentRun, SpawnAgentInput } from "@/chat/agent/types";
+import type { AgentRun } from "@/chat/agent/types";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import {
@@ -27,7 +26,6 @@ import {
   markConversationsStopped,
   resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
-import { stopConversation } from "@/chat/conversations/stop";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
@@ -37,7 +35,6 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
-  getConversationWorkState,
   stopConversationWork,
 } from "@/chat/task-execution/store";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
@@ -50,51 +47,18 @@ import {
   deferred,
   runHeartbeatAfterLeasesExpire,
 } from "../fixtures/conversation-work";
+import {
+  mailboxTexts,
+  message,
+  parentRun,
+  spawn,
+} from "../fixtures/parent-agent-tools";
 import { readProxyProperty } from "../fixtures/proxy-property";
 import {
   createHarness,
   finishRun,
   sendPersonMessage,
-  slackParentRun,
-  type Harness,
 } from "../fixtures/thread-input";
-
-/** The parent's Turn, as the root Turn code binds it to agent tools. */
-function parentRun(turnId = "parent-turn"): AgentRun {
-  return slackParentRun({
-    credentialContext: {
-      actor: { type: "user", userId: slackInvocationInput.actor.userId },
-    },
-    turnId,
-  });
-}
-
-async function spawn(
-  harness: Harness,
-  toolCallId: string,
-  input: Partial<SpawnAgentInput> = {},
-  state: StateAdapter = harness.state,
-  turnId?: string,
-) {
-  const { childConversationId } = await bindSpawnAgent(parentRun(turnId), {
-    conversationStore: harness.conversationStore,
-    queue: harness.queue,
-    state,
-  })!({ task: "Check the deploy.", ...input }, { toolCallId });
-  return childConversationId;
-}
-
-async function message(
-  harness: Harness,
-  to: string,
-  toolCallId: string,
-  turnId?: string,
-) {
-  return await bindMessageAgent(parentRun(turnId), {
-    queue: harness.queue,
-    state: harness.state,
-  })!({ text: "Check it again.", to }, { toolCallId });
-}
 
 /** Record the start of a parent Turn, as the root Turn code does. */
 async function startParentTurn(turnId = "parent-turn") {
@@ -106,14 +70,6 @@ async function startParentTurn(turnId = "parent-turn") {
       surface: "slack",
       turnId,
     },
-  );
-}
-
-async function mailboxTexts(harness: Harness, conversationId: string) {
-  return (
-    (
-      await getConversationWorkState({ conversationId, state: harness.state })
-    )?.messages.map((entry) => entry.input.text) ?? []
   );
 }
 
@@ -626,50 +582,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
     },
   );
 
-  it.each([
-    {
-      input: "new parent work",
-      send: (harness: Harness, threadId: string) =>
-        message(harness, threadId, "call-2"),
-      text: "Check it again.",
-    },
-    {
-      input: "a person's message",
-      send: (harness: Harness, threadId: string) =>
-        sendPersonMessage(harness, threadId, "person-1"),
-      text: "What did you find?",
-    },
-  ])(
-    "runs only $input after a person stops a Thread with a waiting task",
-    async ({ send, text }) => {
-      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-      const harness = await createHarness();
-      try {
-        const threadId = await spawn(harness, "call-1", { kind: "thread" });
-        vi.setSystemTime(1_800_000_001_000);
-        await stopConversation({
-          conversationId: threadId,
-          conversationStore: harness.conversationStore,
-          queue: harness.queue,
-          state: harness.state,
-        });
-
-        vi.setSystemTime(1_800_000_002_000);
-        await send(harness, threadId);
-        harness.onPersonRun(finishRun);
-        await harness.drain(threadId);
-
-        expect(harness.runs).toHaveLength(1);
-        expect(harness.runs[0]!.instruction.text).toContain(text);
-        expect(harness.runs[0]!.instruction.text).not.toContain(
-          "Check the deploy.",
-        );
-      } finally {
-        await harness.close();
-      }
-    },
-  );
-
   it("leaves a stopped parent's message as a note that the child's next Turn shows", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
@@ -786,46 +698,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await harness.close();
     }
   });
-  it.each(["waits", "runs"] as const)(
-    "tells the parent once that a person stopped a Task while it %s",
-    async (when) => {
-      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-      const harness = await createHarness();
-      try {
-        const taskId = await spawn(harness, "call-1");
-        const stopTask = async () => {
-          for (const nowMs of [1_800_000_001_000, 1_800_000_002_000]) {
-            vi.setSystemTime(nowMs);
-            await stopConversation({
-              conversationId: taskId,
-              conversationStore: harness.conversationStore,
-              queue: harness.queue,
-              state: harness.state,
-            });
-          }
-        };
-        if (when === "waits") {
-          await stopTask();
-        } else {
-          harness.onPersonRun(async (run) => {
-            await stopTask();
-            return await finishRun(run);
-          });
-          await harness.drain(taskId);
-        }
-        expect(harness.runs).toHaveLength(when === "runs" ? 1 : 0);
-
-        const stopped = (
-          await mailboxTexts(harness, slackParentConversationId)
-        ).filter((text) => text.includes('status="stopped"'));
-        expect(stopped).toHaveLength(1);
-        expect(stopped[0]).toContain(`conversation_id="${taskId}"`);
-      } finally {
-        await harness.close();
-      }
-    },
-  );
-
   it("lets a parent give work in a Turn that started after its stop", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

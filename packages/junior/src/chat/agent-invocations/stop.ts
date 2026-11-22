@@ -14,13 +14,14 @@ import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import {
   dropPendingMessages,
   getConversationWorkState,
+  hasConversationStop,
   stopConversationWork,
 } from "@/chat/task-execution/store";
 import { juniorAgentInvocations, juniorConversations } from "@/db/schema";
 import { mapBounded } from "@/chat/fan-out";
 import { recordChildAgentEnded, recordSubagentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
-import type { ParentMessage } from "./parent-message-input";
+import { readParentMessage } from "./parent-message-input";
 import { createDeliverToParent } from "./result";
 import { isChildAgentSessionStopped } from "./list";
 import { getChildAgentLockName } from "./ids";
@@ -290,41 +291,33 @@ async function finishStoppedTree(
  * Cancel the parent messages that wait for a Conversation that stops: end
  * their markers and drop them. Call it before the stop request is saved, so
  * none of them runs after the stop and no stop request outlives the stop.
- * Returns the parent messages it dropped.
  */
 export async function cancelWaitingParentMessages(
   conversationId: string,
   options: { nowMs?: number | undefined; state?: StateAdapter | undefined },
-): Promise<ParentMessage[]> {
+): Promise<void> {
   await recordChildAgentEnded(conversationId, "aborted", {
     includeWaiting: true,
     nowMs: options.nowMs,
     state: options.state,
   });
-  return await dropWaitingParentMessages(conversationId, options.state);
+  await dropWaitingParentMessages(conversationId, options.state);
 }
 
 /**
  * Tell the parent of a Task that no Agent invocation names that a person
- * stopped it, when the stop cut its work: it dropped waiting parent messages
- * or asked a running Turn to stop. The Agent invocation worker reports the
- * stop of a child that has one. A Thread, and a Task with no open work, stay
- * quiet. The result is keyed by the cut work, so a retry adds nothing.
+ * stops it, when the stop cuts its work: a waiting parent message or a
+ * running Turn. Call it before the stop request is saved, so a failure
+ * leaves the stop to be retried. The Agent invocation worker reports the
+ * stop of a child that has one. A Thread, a Task with no open work, and a
+ * run that an earlier stop already cut stay quiet. The result is keyed by
+ * the cut work, so a retry adds nothing.
  */
 export async function reportPersonStopToParent(
   conversationId: string,
-  options: {
-    dropped: readonly ParentMessage[];
-    queue: ConversationWorkQueue;
-    /** The run that the stop asked to stop, if any. */
-    runId?: string | undefined;
-    state?: StateAdapter | undefined;
-  },
+  options: { queue: ConversationWorkQueue; state?: StateAdapter | undefined },
 ): Promise<void> {
-  if (
-    (!options.runId && options.dropped.length === 0) ||
-    !(await readAgentConfig(conversationId))
-  ) {
+  if (!(await readAgentConfig(conversationId))) {
     return;
   }
   const conversation = await getConversationStore().get({ conversationId });
@@ -335,18 +328,31 @@ export async function reportPersonStopToParent(
   ) {
     return;
   }
-  const [turn] = options.runId
-    ? await listActiveMailboxTurns(conversationId)
-    : [];
-  const [firstDropped] = options.dropped;
-  const turnId =
-    turn?.turnId ??
-    `stopped:${options.runId ?? firstDropped?.parentToolCallId}`;
+  const work = await getConversationWorkState({
+    conversationId,
+    state: options.state,
+  });
+  const runId = work?.execution.runId;
+  if (
+    runId &&
+    (await hasConversationStop({ conversationId, runId, state: options.state }))
+  ) {
+    return;
+  }
+  const [firstWaiting] = (work?.messages ?? []).flatMap((message) => {
+    const parentMessage = readParentMessage(message);
+    return parentMessage ? [parentMessage] : [];
+  });
+  if (!runId && !firstWaiting) {
+    return;
+  }
+  const [turn] = runId ? await listActiveMailboxTurns(conversationId) : [];
   await createDeliverToParent(options)({
-    actor: turn?.actor ?? firstDropped?.actor ?? EVENT_SYSTEM_ACTOR,
+    actor: turn?.actor ?? firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR,
     conversationId,
     result: { kind: "stopped", text: "A person stopped this task." },
-    turnId,
+    turnId:
+      turn?.turnId ?? `stopped:${runId ?? firstWaiting?.parentToolCallId}`,
   });
 }
 
