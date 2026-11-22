@@ -218,7 +218,9 @@ export function transcriptMessageActorLabel(
   message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return getDashboardAgentName();
+  if (kind === "assistant") {
+    return conversation.kind === "lead" ? "Lead" : getDashboardAgentName();
+  }
   if (kind === "user") {
     // The parent agent wrote this input, and the Turn it starts reports back
     // to the parent. The conversation actor started the child but did not
@@ -734,6 +736,7 @@ export function buildConversations(
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
       awaitingAuthorization: summary.awaitingAuthorization,
+      latestTurnFailed: summary.latestTurnFailed,
       viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
     }))

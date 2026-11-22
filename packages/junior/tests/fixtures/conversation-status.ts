@@ -216,13 +216,13 @@ export async function createStatusFixture(agentRunner = neverRunAgentRunner()) {
         );
       return row && { treeState: row.treeState, watching: row.watching };
     },
-    feedStatus: async (conversationId: string) => {
+    feedRow: async (conversationId: string) => {
       const response = await request("/api/conversations");
       return conversationFeedSchema
         .parse(await response.json())
         .conversations.find(
           (conversation) => conversation.conversationId === conversationId,
-        )?.status;
+        );
     },
   };
 }

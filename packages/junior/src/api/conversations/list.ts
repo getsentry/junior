@@ -58,6 +58,7 @@ import {
 import {
   conversationIsActiveSql,
   conversationStatusSql,
+  conversationTurnFailedSql,
   conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
 import { nestFeedThreads, readFeedThreadRecords } from "./threads";
@@ -202,6 +203,7 @@ async function conversationRows(
       awaitingAuthorization: treeAwaitsAuthorization(
         juniorConversations.conversationId,
       ),
+      latestTurnFailed: conversationTurnFailedSql(juniorConversations),
       links: include.includes("links") ? feedLinksSql(db) : sql<null>`null`,
       media: include.includes("media") ? feedMediaSql(db) : sql<null>`null`,
       viewerAnswer:
@@ -793,6 +795,9 @@ export async function readConversationFeedFromSql(
         ...treeRead,
         ...(row.awaitingAuthorization
           ? { awaitingAuthorization: true as const }
+          : undefined),
+        ...(row.latestTurnFailed
+          ? { latestTurnFailed: true as const }
           : undefined),
         ...(lastMessageAt ? { lastMessageAt } : undefined),
         ...(threads ? { threads } : undefined),

@@ -2448,9 +2448,17 @@ function summaryFromConversation(
     sourceTask: _sourceTask,
     ...summary
   } = conversation;
+  // Like the API: the newest Turn lifecycle Event failed.
+  const latestTurn = [...conversation.events]
+    .reverse()
+    .find((event) => event.data.type === "turn_lifecycle");
+  const latestTurnFailed =
+    latestTurn?.data.type === "turn_lifecycle" &&
+    latestTurn.data.state === "failed";
   const summaryWithActivity = {
     ...summary,
     ...(activityPreview ? { activityPreview } : undefined),
+    ...(latestTurnFailed ? { latestTurnFailed: true } : undefined),
   };
   const withViewerState = withMockViewerState(summaryWithActivity);
   return withViewerState.channel &&
