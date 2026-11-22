@@ -140,7 +140,7 @@ describe("active-turn context compaction", () => {
   it("replaces oversized tool history with continuation state", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const { commitMessages, loadConversationProjection, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const { getConversationEventStore } = await import("@/chat/db");
     const conversationId = "conversation-active-capacity";
@@ -276,7 +276,8 @@ describe("active-turn context compaction", () => {
         messages: result.piMessages!,
       }),
     ).resolves.toBeDefined();
-    const durable = await loadProjection({ conversationId });
+    const durable = (await loadConversationProjection({ conversationId }))
+      .messages;
     expect(durable).toEqual(result.piMessages);
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.provenance[0]).toEqual({ authority: "context" });

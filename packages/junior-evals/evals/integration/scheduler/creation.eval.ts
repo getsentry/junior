@@ -8,8 +8,10 @@ describe("Schedule Creation", () => {
   test("when asked for a simple one-off reminder, create it without asking for confirmation", async ({
     run,
   }) => {
+    // Ask for a DM by name. In a thread, "a direct reminder" can also mean a
+    // ping in that thread, which a timer may set.
     const conversation = await run(
-      slackMention("send me a direct reminder in 1 minute to wash my hands"),
+      slackMention("DM me in 1 minute to wash my hands"),
     );
     await expect(conversation).toSatisfyJudge(
       RubricJudge,

@@ -61,3 +61,8 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 - In a dashboard Conversation, a Turn that ends with a question card and no
   reply sends no push. In Slack, the same card shows in the thread. This
   breaks "Slack and the dashboard ask for attention for the same things".
+- When automatic updates stop at the limit of automated Turns in a row, the
+  notice that asks the person to send a message is a plain Slack reply,
+  with no Inbox item. A dashboard Conversation gets nothing. This breaks
+  "Junior asks a person only with an Inbox item" and "Slack and the
+  dashboard ask for attention for the same things".

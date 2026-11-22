@@ -102,6 +102,8 @@ export function TranscriptRow(props: {
   /** Stable row id that holds the reader's place while layout changes. */
   anchorKey?: string;
   children: ReactNode;
+  /** The `#event-<seq>` anchor that links to the row. */
+  id?: string | undefined;
   indent?: boolean;
   /** Last event sequence in the row. Read positions use it. */
   seq?: number | undefined;
@@ -115,6 +117,7 @@ export function TranscriptRow(props: {
       )}
       data-scroll-anchor={props.anchorKey}
       data-transcript-seq={props.seq}
+      id={props.id}
     >
       {props.indent ? (
         <div className="col-start-2 min-w-0">{props.children}</div>

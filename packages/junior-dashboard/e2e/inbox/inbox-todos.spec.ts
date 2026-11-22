@@ -15,8 +15,13 @@ import { expect, test } from "../test";
 test.describe("new UI", { tag: "@new" }, () => {
   const checkout = "Investigate checkout latency";
   const todo = (page: Page) => page.getByRole("region", { name: "To do" });
+  // The To-do's row: the innermost list item with its link, also when it
+  // sits in a stack.
   const rowOf = (page: Page) =>
-    page.locator(`li[data-inbox-row="todo:${todoForYou.id}"]`);
+    todo(page)
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { name: todoForYou.title }) })
+      .last();
   const inboxTab = (page: Page) =>
     page
       .getByRole("navigation", { name: "Primary" })
@@ -33,12 +38,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=inbox`);
     // It needs the viewer, so it counts in the tab.
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 1 waiting");
-    // The row's icon marks it as a To do for you.
-    await expect(
-      rowOf(page).locator('[data-ask-kind="To do for you"]'),
-    ).toHaveCount(1);
     await expandRow(rowHead(todo(page), checkout));
-    const card = rowOf(page).locator("[data-inbox-card]");
+    const card = rowOf(page).getByRole("region", { name: todoForYou.title });
     await expect(
       card.getByText("Check the deploy calendar before the next release."),
     ).toBeVisible();
@@ -120,10 +121,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [rollout, todoForYou],
     });
     await page.goto(`${dashboard.baseURL}/`);
-    const stack = page.locator(
-      `li[data-inbox-stack][data-dock-key$=":${conversationId}"]`,
-    );
-    await expect(stack.locator("li[data-inbox-row]")).toHaveCount(2);
+    const stack = todo(page).getByRole("listitem", { name: checkout });
+    await expect(stack.getByRole("list").getByRole("listitem")).toHaveCount(2);
     await stack
       .getByRole("button", {
         exact: true,

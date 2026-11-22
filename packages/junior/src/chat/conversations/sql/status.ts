@@ -118,7 +118,9 @@ function conversationStarterUserIdSql(
  * `working`, not waiting. One of these applies:
  *
  * - The latest Turn failed.
- * - The latest Brief outcome is `partial` or `blocked`.
+ * - The latest Brief outcome is `partial` or `blocked`, and that Brief
+ *   covers the latest assistant Message. Turns no longer store Briefs, so a
+ *   legacy Brief stops deciding once the Conversation moves on.
  * - The latest assistant Message is an answer that the starter has not
  *   read. It is an answer when the latest Brief is `answered` or does not
  *   cover it. A `done` Brief that covers it needs no read. The starter read
@@ -182,7 +184,7 @@ function conversationWaitsOnStarterSql(
   );
   // With no starter, nobody can read the answer, so nothing waits on it.
   const unreadAnswer = sql`${replySeq} is not null and ${starterUserId} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
-  const waitsOnFacts = sql`(select ${briefStatus} in ('partial', 'blocked') or (${unreadAnswer})
+  const waitsOnFacts = sql`(select (${briefStatus} in ('partial', 'blocked') and (${replySeq} is null or ${briefThroughSeq} >= ${replySeq})) or (${unreadAnswer})
     from (select ${conversationStarterUserIdSql(conversation)} as user_id offset 0) as ${starter}
     left join lateral ${latestBrief} as ${brief} on true
     left join lateral ${latestReply} as ${reply} on true)`;

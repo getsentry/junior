@@ -1,7 +1,17 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { displayPlainText } from "../../display-text/plainText";
 import { Menu, PanelRight } from "lucide-react";
-import type { ConversationAgentTreeNode } from "@sentry/junior/api/schema";
+import type {
+  ConversationAgentTreeNode,
+  ConversationDetailReport,
+} from "@sentry/junior/api/schema";
 
 import { DropdownMenuItem } from "../../components/ui/dropdown-menu";
 import { TooltipTitle } from "../../components/ui/tooltip";
@@ -18,11 +28,6 @@ import {
 import type { ConversationMenu } from "../../conversations/conversationMenuItems";
 import { ChildAgentTags } from "../../conversations/ChildAgentTags";
 import { ConversationBreadcrumb } from "../../conversations/ConversationBreadcrumb";
-import {
-  BriefOutcomeChip,
-  briefOutcomeLabel,
-  type ConversationBriefReport,
-} from "../../conversations/ConversationBrief";
 import { ConversationOverflowMenu } from "../../conversations/ConversationOverflowMenu";
 import { useSetConversationAutoArchive } from "../../conversations/autoArchiveQueries";
 import { TranscriptSearchBar } from "../../conversations/TranscriptSearchBar";
@@ -35,22 +40,47 @@ import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { useZenMode, ZEN_MODE_SHORTCUT } from "../../components/layout/PaneNav";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { LeadHeader } from "../../lead/LeadHeader";
 
 const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
 const NO_ANCHOR = { current: null };
 
 /**
- * Keep the conversation title and frequently used controls in the header.
- * Run facts and the Brief live in Conversation details.
+ * Head a Conversation page: the Lead's header on the viewer's Lead, an empty
+ * bar until the page knows which it is, else the Conversation's own header.
  */
-export function ConversationHeader(props: {
+export function ConversationHeader(
+  props: ComponentProps<typeof ConversationTitleHeader> & {
+    /** Undefined until the page knows whether it shows the Lead. */
+    lead: boolean | undefined;
+  },
+) {
+  // The app bar names the Lead on a phone.
+  if (props.lead)
+    return <LeadHeader mobileHidden sidebarToggle={props.sidebarToggle} />;
+  if (props.lead === undefined)
+    return (
+      <div
+        aria-hidden="true"
+        className="hidden h-13 border-b border-dashboard-border md:block"
+      />
+    );
+  return <ConversationTitleHeader {...props} />;
+}
+
+/**
+ * Keep the conversation title and frequently used controls in the header.
+ * Run facts and the summary live in Conversation details.
+ */
+function ConversationTitleHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   /** The viewer's auto-archive setting. Unset for non-participants. */
   autoArchive?: boolean | undefined;
-  /** The current Brief. Its outcome and intent show under the title. */
-  brief?: ConversationBriefReport | undefined;
+  /** One line of it shows under the title. */
+  summary?: string | undefined;
+  summaryMentions?: ConversationDetailReport["summaryMentions"];
   contextTags?: ReactNode;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
   cost?: ReactNode | undefined;
@@ -238,15 +268,16 @@ export function ConversationHeader(props: {
     errors.length > 0 ||
     Boolean(props.forks) ||
     Boolean(props.agentTree) ||
-    Boolean(props.brief);
+    Boolean(props.summary);
 
-  // One line from the Brief: where the work stands and what it is for. It
-  // opens the Brief, which leads Conversation details.
-  const brief =
-    props.brief && props.view === "rich"
+  // One line of the summary. It opens Conversation details, which show all
+  // of it.
+  const summary =
+    props.summary && props.view === "rich"
       ? {
-          brief: props.brief,
+          mentions: props.summaryMentions,
           onOpen: openDetails,
+          text: props.summary,
         }
       : undefined;
 
@@ -287,7 +318,7 @@ export function ConversationHeader(props: {
       >
         {/* The title starts 24px in, the inset of the pane's icons. The last
             button's icon ends 24px from the edge, like the details close.
-            The Brief line shares the header row, so the row keeps the
+            The summary line shares the header row, so the row keeps the
             height of the pane and details headers. */}
         <div className="hidden h-header min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
           <div className="grid min-w-0 gap-0.5">
@@ -318,7 +349,7 @@ export function ConversationHeader(props: {
                 </div>
               ) : null}
             </div>
-            {brief ? <BriefLine {...brief} /> : null}
+            {summary ? <SummaryLine {...summary} /> : null}
           </div>
           <div
             className="flex shrink-0 items-center gap-1"
@@ -347,9 +378,9 @@ export function ConversationHeader(props: {
             )}
           </div>
         </div>
-        {brief ? (
+        {summary ? (
           <div className="px-4 pb-2.5 pt-2 md:hidden">
-            <BriefLine {...brief} />
+            <SummaryLine {...summary} />
           </div>
         ) : null}
         {props.forks ? (
@@ -387,20 +418,19 @@ export function ConversationHeader(props: {
   );
 }
 
-function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
-  const status = props.brief.content.outcome.status;
-  const intent = displayPlainText(
-    props.brief.content.intent,
-    props.brief.mentions,
-  );
+function SummaryLine(props: {
+  mentions?: ConversationDetailReport["summaryMentions"];
+  onOpen(): void;
+  text: string;
+}) {
+  const text = displayPlainText(props.text, props.mentions);
   return (
     <button
-      aria-label={`Brief: ${briefOutcomeLabel(status)}. ${intent} Open the Brief.`}
+      aria-label={`${text} Open Conversation details.`}
       className="group flex w-full min-w-0 cursor-pointer items-center gap-2 border-0 bg-transparent p-0 text-left font-sans focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
       onClick={props.onOpen}
       type="button"
     >
-      <BriefOutcomeChip className="shrink-0" status={status} />
       <span
         className={cn(
           fadeOverflowClass,
@@ -408,7 +438,7 @@ function BriefLine(props: { brief: ConversationBriefReport; onOpen(): void }) {
         )}
         ref={fadeWhenOverflowing}
       >
-        {intent}
+        {text}
       </span>
     </button>
   );

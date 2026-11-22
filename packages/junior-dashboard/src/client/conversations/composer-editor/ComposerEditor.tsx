@@ -34,7 +34,7 @@ import { ComposerMentionMenu } from "../ComposerMentionMenu";
 import { ComposerSkillMenu } from "../ComposerSkillMenu";
 import { mentionTokenAt } from "../composerMentionToken";
 import { hashTokenAt } from "../composerReferences";
-import { skillTokenAt } from "../composerSkillToken";
+import { skillTokenAt } from "../skillReferences";
 import { ComposerMentionNode } from "./ComposerMentionNode";
 import { ComposerReferenceNode } from "./ComposerReferenceNode";
 import {

@@ -73,7 +73,7 @@ export const runOperatorSqlToolDefinition = zodToolDefinition({
  *
  * It bypasses every Conversation privacy gate, so `createTools` leaves it out
  * of public Conversations. Its results never reach a public transcript or a
- * public Brief.
+ * public summary.
  */
 export function createRunOperatorSqlTool() {
   return zodTool({

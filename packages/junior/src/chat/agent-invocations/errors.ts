@@ -47,13 +47,3 @@ export class AgentMessageTargetError extends Error {
     this.name = "AgentMessageTargetError";
   }
 }
-
-/** A top-level agent paused automated Turns, so it takes no agent message. */
-export class AgentMessagePausedError extends Error {
-  constructor(conversationId: string) {
-    super(
-      `${conversationId} paused automated work until a person replies there`,
-    );
-    this.name = "AgentMessagePausedError";
-  }
-}

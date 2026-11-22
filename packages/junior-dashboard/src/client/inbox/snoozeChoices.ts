@@ -71,12 +71,21 @@ export interface SnoozeEvents {
 
 /**
  * A custom snooze: it ends at `untilMs`, on any of `triggers`, or on
- * whichever comes first. It has at least one of them.
+ * whichever comes first. It has at least one of them, or else
+ * `untilClosed`: a Someday snooze, which lasts until the item closes.
  */
 export interface CustomSnoozeEnd {
   triggers: InboxSnoozeTrigger[];
+  untilClosed?: true;
   untilMs: number | undefined;
 }
+
+/** The end of a Someday snooze: no time and no Event. */
+export const SOMEDAY: CustomSnoozeEnd = {
+  triggers: [],
+  untilClosed: true,
+  untilMs: undefined,
+};
 
 /**
  * Snooze a row until Events on the subject of its items, or on a page that

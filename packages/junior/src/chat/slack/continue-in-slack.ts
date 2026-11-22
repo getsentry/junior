@@ -1,6 +1,5 @@
 import { and, eq } from "drizzle-orm";
 import type { ConversationAccess } from "@/api/conversations/access";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import type { Conversation } from "@/chat/conversations/store";
 import {
   claimProviderConversation,
@@ -98,13 +97,11 @@ async function movedMessageText(
 ): Promise<string> {
   const title = conversation.title ?? "Untitled conversation";
   const url = getDashboardConversationLink(conversation.conversationId);
-  const brief = await readLatestConversationBrief(
-    getDb(),
-    conversation.conversationId,
-  );
   return [
     `*${url ? formatSlackLink(url, title) : escapeSlackMrkdwnText(title)}*`,
-    ...(brief ? [`> ${escapeSlackMrkdwnText(brief.content.summary)}`] : []),
+    ...(conversation.summary
+      ? [`> ${escapeSlackMrkdwnText(conversation.summary)}`]
+      : []),
     `${escapeSlackMrkdwnText(actorName)} moved this conversation here from the dashboard. Mention me in this thread to continue.`,
   ].join("\n");
 }

@@ -8,9 +8,11 @@ import { CONTENT_VERSION_HEADER } from "../schema/response";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
-  acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
+} from "../schema/conversation-fork";
+import {
+  acceptedConversationMessageSchema,
   conversationAttachmentParamsSchema,
   conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
@@ -272,11 +274,13 @@ export function createConversationRoutes(
       const body = context.req.valid("json");
       return jsonResponse(
         acceptedConversationMessageSchema,
+        // A dashboard message steers the running Turn, like a Slack mention.
         await appendConversationMessageForViewer(
           viewer,
           conversationId,
           body,
           options,
+          "interrupt",
         ),
       );
     },

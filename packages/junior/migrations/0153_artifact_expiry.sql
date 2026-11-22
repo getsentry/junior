@@ -1,0 +1,1 @@
+ALTER TABLE "junior_artifacts" ADD COLUMN "expires_at" timestamp with time zone;

@@ -2,14 +2,16 @@ import type { Source } from "@sentry/junior-plugin-api";
 import type { RunDispatch } from "@/chat/automation-result";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
+import type { StaticToolName } from "@/chat/tool-support/registry";
 
 /**
  * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
  * when spawnAgent is available. `children_and_parent`: the same, but
  * messageAgent stays available to reach the parent when the Turn is too deep
- * to spawn. `none`: neither.
+ * to spawn. `lead`: only messageAgent, to other top-level agents.
+ * `none`: neither.
  */
-export type AgentTools = "none" | "children" | "children_and_parent";
+export type AgentTools = "none" | "children" | "children_and_parent" | "lead";
 
 /**
  * What one Turn does that depends on the Conversation kind and on who opened
@@ -68,6 +70,12 @@ export type TurnBehavior = {
    * Memory is public, so a child agent never captures it.
    */
   sessionTasks: boolean;
+  /**
+   * The first request of the Conversation gets the open Conversations that
+   * may cover the same work. A child agent or an Automation run already
+   * knows what it works on.
+   */
+  relatedConversations: boolean;
   tools: {
     agents: AgentTools;
     inbox: boolean;
@@ -85,6 +93,11 @@ export type TurnBehavior = {
      */
     reportBlocked: "none" | "parent" | "automation";
     noReply: boolean;
+    /**
+     * When set, the Turn lists only these core tools. It gets no run-built,
+     * plugin, or MCP tools, and no skills.
+     */
+    only?: readonly string[];
   };
 };
 
@@ -96,6 +109,7 @@ const ROOT: TurnBehavior = {
   gated: false,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
@@ -107,6 +121,13 @@ const ROOT: TurnBehavior = {
   },
 };
 
+// A Turn on a root that no person sent, such as an Event. It did not come
+// from a request, so it gets no related Conversations.
+const ROOT_RUNTIME_TURN: TurnBehavior = {
+  ...ROOT,
+  relatedConversations: false,
+};
+
 // A person's Turn in a Thread runs like a Turn on a root, but it does not
 // start or message child agents: their results would report to the parent as
 // the wrong Actor.
@@ -115,6 +136,7 @@ const PERSON_IN_THREAD: TurnBehavior = {
   promptMode: "thread",
   sender: "person",
   sessionTasks: false,
+  relatedConversations: false,
   tools: { ...ROOT.tools, agents: "none" },
 };
 
@@ -129,6 +151,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   gated: true,
   failureNotice: "none",
   sessionTasks: false,
+  relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
@@ -175,6 +198,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   gated: true,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: false,
   tools: {
     ...ROOT.tools,
     reply: "automation",
@@ -189,6 +213,41 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   ...ROOT,
   promptMode: "automation",
   sender: "person",
+  relatedConversations: false,
+};
+
+// A Lead finds, starts, and steers its person's other Conversations, and
+// never does their work. So it gets only the tools for that, and no sandbox,
+// skills, MCP, provider, or child-agent tools. Automation tools stay out
+// until a Lead can pick a Slack Destination for one. `updateInboxItem` stays
+// out: a Lead is private and adds no items, so it can change none.
+const LEAD_TOOLS = [
+  "startConversation",
+  "messageAgent",
+  "searchConversations",
+  "searchConversationEvents",
+  "readConversationEvent",
+  "searchInboxItems",
+  "searchEventTypes",
+  "watchEvents",
+  "watchTimer",
+  "listWatches",
+  "stopWatchingResources",
+  "systemTime",
+  "updateUserCustomization",
+  "noReply",
+] as const satisfies readonly StaticToolName[];
+
+const LEAD: TurnBehavior = {
+  ...ROOT,
+  promptMode: "lead",
+  sessionTasks: false,
+  tools: {
+    ...ROOT.tools,
+    agents: "lead",
+    subscriptions: false,
+    only: LEAD_TOOLS,
+  },
 };
 
 /** Return the behavior of one Turn. */
@@ -196,16 +255,20 @@ export function turnBehavior(args: {
   kind: ConversationKind;
   personInput: boolean;
 }): TurnBehavior {
-  if (args.kind === "root") return ROOT;
-  if (args.kind === "automation") {
-    return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
+  switch (args.kind) {
+    case "root":
+      return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
+    case "automation":
+      return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
+    case "thread":
+      return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
+    case "task":
+      if (!args.personInput) return AGENT_IN_TASK;
+      // Only an agent writes input to a task.
+      throw new Error("A task Conversation cannot have a person's input");
+    case "lead":
+      return LEAD;
   }
-  if (args.kind === "thread") {
-    return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
-  }
-  if (!args.personInput) return AGENT_IN_TASK;
-  // Only an agent writes input to a task.
-  throw new Error("A task Conversation cannot have a person's input");
 }
 
 /**
@@ -214,15 +277,42 @@ export function turnBehavior(args: {
  * cannot use are disabled.
  */
 export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
-  if (mode === "automation") return AUTOMATION_RUN.tools;
-  if (mode === "child_agent") return AGENT_IN_TASK.tools;
-  if (mode === "thread") return THREAD_TOOLS;
-  return ROOT.tools;
+  switch (mode) {
+    case "automation":
+      return AUTOMATION_RUN.tools;
+    case "child_agent":
+      return AGENT_IN_TASK.tools;
+    case "thread":
+      return THREAD_TOOLS;
+    case "conversation":
+      return ROOT.tools;
+    case "lead":
+      return LEAD.tools;
+  }
+}
+
+/**
+ * Return whether Turns update the Conversation metadata of this kind. Only
+ * its parent reads a Task, so a Task has no summary.
+ */
+export function hasConversationMetadata(kind: ConversationKind): boolean {
+  return kind !== "task";
 }
 
 /** Return whether a Conversation of this kind has no parent. */
 export function isTopLevelKind(kind: ConversationKind): boolean {
-  return kind === "root" || kind === "automation";
+  return kind === "root" || kind === "automation" || kind === "lead";
+}
+
+/**
+ * Return whether a Watch on this Conversation would repeat what already
+ * reaches the watcher: a child agent's results and messages go to its parent.
+ */
+export function watchRepeatsChildResults(
+  target: { parentConversationId?: string },
+  watcherConversationId: string,
+): boolean {
+  return target.parentConversationId === watcherConversationId;
 }
 
 /** Return whether a person sent input from this Source. */

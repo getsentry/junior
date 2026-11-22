@@ -30,7 +30,7 @@ import { formatAttachmentBytes } from "./TranscriptAttachment";
 import { mentionName } from "./composerMentionToken";
 import { rankPeople } from "./composerPeopleSearch";
 import { linkLabel, type ComposerReference } from "./composerReferences";
-import { conversationPath } from "./conversationRoutes";
+import { conversationUrl } from "./conversationRoutes";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
@@ -158,7 +158,7 @@ function useConversationSource(
         labelMatches: quickOpenMatch(title, query)?.indices,
         details: (
           <ComposerMenuDetails
-            body={row.brief?.summary ?? row.activityPreview?.text}
+            body={row.summary ?? row.activityPreview?.text}
             icon={<ReferenceIcon reference={reference} />}
             meta={`Active ${formatRelativeTime(row.lastSeenAt)}`}
             title={title}
@@ -273,11 +273,6 @@ function useFileSource(
       };
     });
   return { pending: false, rows };
-}
-
-/** The same-origin link of a Conversation, as message text holds it. */
-function conversationUrl(conversationId: string): string {
-  return `${window.location.origin}${conversationPath(conversationId)}`;
 }
 
 /** True from the first render where `value` is true. */

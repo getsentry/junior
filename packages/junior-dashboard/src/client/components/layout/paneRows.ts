@@ -5,10 +5,11 @@ import {
   type InboxView,
 } from "../../inbox/inboxModel";
 import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
+import { LEAD_NAV_KEY } from "../../shell/primaryNav";
 
 /**
  * A row of the pane's destinations that keeps its place: an Inbox view,
- * Automations, or a primary plugin page (its nav item key).
+ * Automations, the Lead, or a primary plugin page (its nav item key).
  */
 export type PaneRow = InboxView | "automations" | (string & {});
 
@@ -34,6 +35,25 @@ export function isOldAutomationsPath(location: {
   );
 }
 
+// A link may leave the colons of a Conversation id unencoded, so compare
+// decoded paths.
+const decodedPath = (path: string) => {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
+
+/** True when a path opens the Lead, the Lead nav item's page. */
+export function isLeadPath(
+  pathname: string,
+  navItems: readonly DashboardHeaderNavItem[],
+): boolean {
+  const lead = navItems.find((item) => item.key === LEAD_NAV_KEY);
+  return lead !== undefined && decodedPath(pathname) === decodedPath(lead.to);
+}
+
 /** Name the part of the destinations that a path is in, if any. */
 export function paneDestinationForPath(
   pathname: string,
@@ -57,6 +77,8 @@ export function paneRowForPath(
   if (isOldAutomationsPath(location)) return "automations";
   if (pathname === "/")
     return parseInboxView(new URLSearchParams(location.search).get("view"));
+  // The Lead is a Conversation with its own row.
+  if (isLeadPath(pathname, navItems)) return LEAD_NAV_KEY;
   if (under(pathname, "/conversations")) return origin ?? "conversations";
   if (under(pathname, "/automations")) return "automations";
   return navItems.find(
