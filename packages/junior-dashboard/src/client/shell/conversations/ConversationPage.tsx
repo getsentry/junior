@@ -46,6 +46,7 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  parseTranscriptRowHash,
   readOpenEventLog,
   readReplyFocus,
   turnStartedEventSeq,
@@ -251,6 +252,8 @@ export function ConversationPage(props: {
   // A sidebar row menu opens the event log with navigation state. The page
   // can be open already, so each new navigation asks once.
   const location = useLocation();
+  // A `#event-<seq>` link shows the transcript row that holds that event.
+  const linkedRowSeq = parseTranscriptRowHash(location.hash);
   const eventLogRequested = readOpenEventLog(location.state);
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     eventOpen || eventLogRequested ? "raw" : "rich",
@@ -276,7 +279,7 @@ export function ConversationPage(props: {
   // A link at open shows its row, so the transcript does not open at the
   // latest message or the read position, unless the link fails first.
   const [startAtLink, setStartAtLink] = useState(
-    () => readConversationLink(searchParams) !== undefined,
+    () => readConversationLink(searchParams, location.hash) !== undefined,
   );
   const detail = props.detail;
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
@@ -290,7 +293,7 @@ export function ConversationPage(props: {
   // the page around it until the reader jumps to the latest. A link at open
   // starts there, so the first render reads no other page.
   const [linkStart, setLinkStart] = useState(() => {
-    const link = readConversationLink(searchParams);
+    const link = readConversationLink(searchParams, location.hash);
     return link && unheldLinkStart(detail.data?.events, link);
   });
   const showLatestPage = useCallback(() => {
@@ -546,8 +549,10 @@ export function ConversationPage(props: {
       openLink({ event: selectedEventSeq });
     } else if (linkedMessageId !== undefined) {
       openLink({ message: linkedMessageId });
+    } else if (linkedRowSeq !== undefined) {
+      openLink({ event: linkedRowSeq });
     }
-  }, [linkedMessageId, linkedTurnId, selectedEventSeq]);
+  }, [linkedMessageId, linkedRowSeq, linkedTurnId, selectedEventSeq]);
   // Replace a found Turn link with a link to its first event.
   const linkedTurnSeq = linkedTurnId
     ? turnStartedEventSeq(transcript?.events, linkedTurnId)
@@ -864,6 +869,13 @@ export function ConversationPage(props: {
                       onShowQuestion={showQuestion}
                       revealAsk={askReveal}
                       linkedMessageId={linkedMessageId}
+                      linkedRowSeq={
+                        // A link past the last event shows the row that its
+                        // read lands on.
+                        linkStart && "event" in linkStart
+                          ? (aroundHistory?.shownSeq ?? linkedRowSeq)
+                          : linkedRowSeq
+                      }
                       revealSeq={revealSeq}
                       responding={
                         !detail.error &&
