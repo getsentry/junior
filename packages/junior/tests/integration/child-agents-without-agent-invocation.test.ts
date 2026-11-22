@@ -14,7 +14,10 @@ import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
-import { stopConversationTree } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  stopConversationTree,
+} from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -41,7 +44,10 @@ import {
   sendParentMessage,
   spawnChildWithoutAgentInvocation,
 } from "../fixtures/child-without-agent-invocation";
-import { webTestActor } from "../fixtures/conversation";
+import {
+  storeConversationStop,
+  webTestActor,
+} from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
   commitRunInput,
@@ -521,6 +527,35 @@ describe("child agents", () => {
       await harness.drain(childId);
 
       await expectOnlyTheTaskRuns(harness, childId);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("stops a helper that a child agent spawned before its run saw its stop", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-1");
+      let helperId = "";
+      harness.onRun(async (run) => {
+        // The spawn raced a person's stop: it created the helper after the
+        // stop time, before the stop was saved, so the stop missed it.
+        vi.setSystemTime(1_800_000_001_000);
+        helperId = await spawnChild(harness, "child-turn:call-1", {
+          parentConversationId: childId,
+        });
+        await storeConversationStop(childId, 1_800_000_000_500);
+        // The child's run sees its stop at its next step.
+        await run.durability?.checkStop?.();
+        run.signal?.throwIfAborted();
+        throw new Error("The stored stop did not abort the run");
+      });
+      await harness.processUntilRun(childId);
+
+      await expect(getConversationStoppedAtMs(helperId)).resolves.toBe(
+        1_800_000_000_500,
+      );
     } finally {
       await harness.close();
     }

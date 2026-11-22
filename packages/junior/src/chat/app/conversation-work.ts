@@ -170,11 +170,9 @@ export function createConversationWork(
   ): Promise<ConversationWorkerResult> => {
     // The stored kind decides the worker, so child work never reaches a root
     // worker. A child Turn can have any Source.
-    if (!topLevel) {
-      return await childWorker(context);
-    }
-    // A root's run can see its stop late. Then it stops the child agents that
-    // it spawned or gave new work to after the stop, as a child's worker does.
+    const worker = topLevel ? runRoot : childWorker;
+    // A run can see its stop late. Then it stops the child agents that it
+    // spawned or gave new work to after the stop.
     const readStopSignal = context.stopSignal;
     let stopSignal: AbortSignal | undefined;
     const stopLateChildAgents = async () => {
@@ -184,7 +182,7 @@ export function createConversationWork(
     };
     let result: ConversationWorkerResult;
     try {
-      result = await runRoot({
+      result = await worker({
         ...context,
         stopSignal: readStopSignal
           ? () => (stopSignal = readStopSignal())
