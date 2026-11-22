@@ -41,7 +41,7 @@ export const setConversationSubscriptionToolDefinition = zodToolDefinition({
  * Build the tool that changes the subscription of the person who started
  * the Turn, in the current Conversation. The actor comes from the runtime,
  * not from model arguments, so it cannot change another person's
- * subscription. The registry never offers it to an Agent invocation,
+ * subscription. The registry never offers it to a Turn on a parent message,
  * because an agent wrote its input. Contract:
  * `api/conversations/subscription.ts`.
  */

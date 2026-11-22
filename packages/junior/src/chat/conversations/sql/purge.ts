@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
@@ -11,7 +12,6 @@ import {
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorInboxItems,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
@@ -19,6 +19,15 @@ import { withConversationEventLock } from "./event-lock";
 import { deleteMessageLinks } from "./message-links";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
+
+// No runtime code reads or writes Agent invocations, but the table stays in
+// the database for one release, with its rows and their foreign keys to
+// Conversations. Purge still deletes the rows of a purged tree.
+// TODO(dcramer): Delete with the migration that drops the table.
+const juniorAgentInvocations = pgTable("junior_agent_invocations", {
+  parentConversationId: text("parent_conversation_id").notNull(),
+  childConversationId: text("child_conversation_id").notNull(),
+});
 
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {

@@ -262,8 +262,7 @@ async function prepareLocalChatRun(
     if (!agentRunner) {
       throw new Error("Local agent runner is not ready");
     }
-    const childWorker = createChildConversationWorker(agentRunner, {
-      queue: localConversationWork.queue,
+    const childWorker = createChildConversationWorker({
       runTurn: createConversationTurnWorker(
         agentRunner,
         undefined,

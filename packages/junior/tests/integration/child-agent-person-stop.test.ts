@@ -51,7 +51,7 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
 
         vi.setSystemTime(1_800_000_002_000);
         await send(harness, threadId);
-        harness.onPersonRun(finishRun);
+        harness.onRun(finishRun);
         await harness.drain(threadId);
 
         expect(harness.runs).toHaveLength(1);
@@ -101,7 +101,7 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
         if (when === "waits") {
           await stopTask();
         } else {
-          harness.onPersonRun(async (run) => {
+          harness.onRun(async (run) => {
             await stopTask();
             return await finishRun(run);
           });
@@ -139,7 +139,7 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
       });
 
       vi.setSystemTime(1_800_000_061_000);
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.processUntilRun(slackParentConversationId);
 
       const parentRuns = harness.runs.filter(

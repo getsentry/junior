@@ -4,8 +4,8 @@ import { credentialContextSchema } from "@/chat/credentials/context";
 import type { InboundMessage } from "@/chat/task-execution/store";
 
 /**
- * A parent agent task or message to a child that no Agent invocation names:
- * who sent it and the instruction. It names the parent Conversation, the
+ * A parent agent task or message to a child: who sent it and the
+ * instruction. It names the parent Conversation, the
  * Actor and grants of the parent's Turn, and the `spawnAgent` or
  * `messageAgent` tool call that sent it. Its text is the raw task. `fork`
  * marks the task of a fork spawn.
