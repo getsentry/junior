@@ -6,17 +6,10 @@ import {
   AgentNameInUseError,
   AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
-import {
-  getAgentInvocationId,
-  getAgentInvocationMessageId,
-} from "@/chat/agent-invocations/ids";
+import { getParentMessageId } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import {
-  getAgentInvocation,
-  getLatestAgentInvocationForConversation,
-} from "@/chat/agent-invocations/store";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import type { AgentRun } from "@/chat/agent/types";
@@ -75,7 +68,7 @@ async function startParentTurn(turnId = "parent-turn") {
   });
 }
 
-describe("spawn and messageAgent without Agent invocations", () => {
+describe("spawn and messageAgent", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
@@ -95,11 +88,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await harness.processUntilRun(childId);
 
       await expect(
-        getAgentInvocation(
-          getAgentInvocationId(slackParentConversationId, "parent-turn:call-1"),
-        ),
-      ).resolves.toBeUndefined();
-      await expect(
         getAgentBinding({
           name: harness.agentName,
           parentConversationId: slackParentConversationId,
@@ -116,7 +104,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
         instruction: { provenance: { authority: "instruction" } },
         reasoning: "high",
       });
-      expect(run.agentInvocationId).toBeUndefined();
       expect(run.instruction.text).toContain("Check the deploy.");
       // A retry of the spawn writes no second marker.
       await spawn(harness, "call-1", {
@@ -125,8 +112,9 @@ describe("spawn and messageAgent without Agent invocations", () => {
         reasoningLevel: "high",
         title: "Deploy check",
       });
-      const markerId = getAgentInvocationMessageId(
-        getAgentInvocationId(slackParentConversationId, "parent-turn:call-1"),
+      const markerId = getParentMessageId(
+        slackParentConversationId,
+        "parent-turn:call-1",
       );
       await expect(
         loadSubagentEvents(slackParentConversationId),
@@ -376,9 +364,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await harness.processUntilRun(childId);
       await message(harness, harness.agentName, "call-2");
       await harness.processUntilRun(childId);
-      await expect(
-        getLatestAgentInvocationForConversation(childId),
-      ).resolves.toBeUndefined();
 
       // An agent writes the child's instructions, so Guardian reads no actor.
       // A Turn records its input before it runs, so it reads its own task.
@@ -398,7 +383,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("gives a child a parent message that writes no Agent invocation", async () => {
+  it("queues a parent message behind the child's waiting task and keeps its agent config", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -415,9 +400,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
         "Check the deploy.",
         "Check it again.",
       ]);
-      await expect(
-        getLatestAgentInvocationForConversation(childId),
-      ).resolves.toBeUndefined();
       await expect(readAgentConfig(childId)).resolves.toEqual({
         agentType: "explore",
       });

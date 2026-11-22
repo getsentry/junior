@@ -1,16 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
-import type { PiMessage } from "@/chat/pi/messages";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import {
-  getAgentInvocationMessageId,
-  getAgentInvocationTurnId,
+  getAgentReplyMessageId,
+  getParentMessageId,
+  getTurnReplyKey,
 } from "@/chat/agent-invocations/ids";
-import {
-  completeAgentInvocation,
-  getActiveAgentInvocationForConversation,
-  getAgentInvocation,
-} from "@/chat/agent-invocations/store";
 import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { createEventInboundMessage } from "@/chat/events/notification";
@@ -29,27 +24,17 @@ import {
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
-import { contextProvenance } from "@/chat/conversations/provenance";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import {
-  getTurnRecord,
-  upsertTurnRecord,
-} from "@/chat/task-execution/turn-cursor";
-import { stoppedConversationMessageTexts } from "../fixtures/conversation";
+import { buildDeterministicTurnId } from "@/chat/state/turn-id";
+import { getTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
-import {
-  createModelAgentRunner,
-  neverRunAgentRunner,
-} from "../fixtures/agent-runner";
+import { createModelAgentRunner } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
 import { createEventSource } from "@sentry/junior-plugin-api";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
 import {
-  destination,
   invocationInput,
   parentConversationId,
   slackDestination,
@@ -68,7 +53,12 @@ import { recordTurnStart } from "../fixtures/turn-start";
 import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
 import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 
-describe("agent invocation conversation work", () => {
+/** The Turn that a child's first parent task runs in. */
+function parentTaskTurnId(parentId: string, idempotencyKey: string) {
+  return buildDeterministicTurnId(getParentMessageId(parentId, idempotencyKey));
+}
+
+describe("child agent task work", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     vi.restoreAllMocks();
@@ -107,27 +97,26 @@ describe("agent invocation conversation work", () => {
       },
     );
     const run = vi.spyOn(agentRunner, "run");
-    const {
-      process,
-      queue,
-      run: route,
-      state,
-    } = await createConversationWorkHarness(agentRunner);
+    const { process, queue, state } =
+      await createConversationWorkHarness(agentRunner);
     try {
-      const created = await createAndEnqueueAgentInvocation(
+      const { childConversationId } = await spawnChildAgent(
         {
           ...slackInvocationInput,
           idempotencyKey: "execute-1",
+          parentToolCallId: "execute-1",
+          parentTurnId: "parent-turn",
         },
-        {
-          conversationStore,
-          nowMs: 2_000,
-          queue,
-          state,
-        },
+        { conversationStore, queue, state },
+        2_000,
       );
+      const taskMessageId = getParentMessageId(
+        slackParentConversationId,
+        "execute-1",
+      );
+      const turnId = buildDeterministicTurnId(taskMessageId);
       const child = await conversationStore.get({
-        conversationId: created.childConversationId,
+        conversationId: childConversationId,
       });
       // The child stores the root's Location and Destination. Only a root
       // delivers to them.
@@ -143,34 +132,15 @@ describe("agent invocation conversation work", () => {
         visibility: "public",
       });
       expect(child).not.toHaveProperty("sessionSource");
-      const queueMessage = queue.takeMessage();
+      const queueMessage = queue.takeMessageFor(childConversationId);
 
-      await expect(
-        processConversationQueueMessage(queueMessage, {
-          conversationStore,
-          queue,
-          run: route,
-          state,
-        }),
-      ).resolves.toMatchObject({ status: "completed" });
-      await expect(
-        processConversationQueueMessage(queueMessage, {
-          conversationStore,
-          queue,
-          run: route,
-          state,
-        }),
-      ).resolves.toMatchObject({ status: "no_work" });
-
-      await expect(
-        getAgentInvocation(created.invocationId),
-      ).resolves.toMatchObject({
-        mailboxStatus: "appended",
-        parentMailboxStatus: "appended",
-        result: "Durable child result",
+      await expect(process(queueMessage)).resolves.toMatchObject({
         status: "completed",
-        terminalAtMs: expect.any(Number),
       });
+      await expect(process(queueMessage)).resolves.toMatchObject({
+        status: "no_work",
+      });
+
       // The parent gets the reply once, even after redelivery, and no
       // completed result.
       const parentWork = await getConversationWorkState({
@@ -181,23 +151,19 @@ describe("agent invocation conversation work", () => {
         expect.objectContaining({
           delivery: "defer",
           inboundMessageId: expect.stringMatching(
-            `^agent-reply:${created.invocationId}:`,
+            `^${getAgentReplyMessageId(childConversationId, getTurnReplyKey(turnId, ""))}`,
           ),
           input: expect.objectContaining({
-            metadata: {
+            metadata: expect.objectContaining({
               kind: "event",
               event: expect.objectContaining({
                 eventType: "agent.reply",
-                identifier: created.invocationId,
+                identifier: childConversationId,
                 namespace: "junior",
               }),
               // The reply stores who sent it, so no reader parses its id.
-              sender: {
-                agentInvocationId: created.invocationId,
-                conversationId: created.childConversationId,
-                turnId: getAgentInvocationTurnId(created.invocationId),
-              },
-            },
+              sender: { conversationId: childConversationId, turnId },
+            }),
             text: expect.stringMatching(
               /^<agent-result [^>]*status="completed">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,
             ),
@@ -217,16 +183,18 @@ describe("agent invocation conversation work", () => {
       ).resolves.toEqual([
         expect.objectContaining({
           type: "subagent_started",
-          subagentInvocationId: created.invocationId,
-          childConversationId: created.childConversationId,
+          subagentInvocationId: taskMessageId,
+          childConversationId,
         }),
         {
           type: "subagent_ended",
-          subagentInvocationId: created.invocationId,
+          subagentInvocationId: taskMessageId,
           outcome: "success",
         },
       ]);
-      // The parent Turn uses the Actor that spawned the child, read from SQL.
+      // The parent Turn uses the Actor of the child Turn that sent the
+      // reply. A reply that names another parent runs as the Event system
+      // Actor.
       const resultMessage = parentWork!.messages[0]!;
       const resultEntry = {
         actor: EVENT_SYSTEM_ACTOR,
@@ -235,7 +203,7 @@ describe("agent invocation conversation work", () => {
         source: createEventSource({
           eventKey: resultMessage.inboundMessageId,
           eventType: "agent.reply",
-          identifier: created.invocationId,
+          identifier: childConversationId,
           namespace: "junior",
         }),
       };
@@ -260,21 +228,11 @@ describe("agent invocation conversation work", () => {
             },
           ],
         }),
-      ).rejects.toThrow("does not belong to");
-      const completed = await getAgentInvocation(created.invocationId);
-      await completeAgentInvocation({
-        errorMessage: "late conflicting failure",
-        invocationId: created.invocationId,
-        nowMs: Date.now() + 1_000,
-        status: "failed",
-      });
-      await expect(getAgentInvocation(created.invocationId)).resolves.toEqual(
-        completed,
-      );
+      ).resolves.toMatchObject({ batch: [{ actor: EVENT_SYSTEM_ACTOR }] });
       expect(
         (
           await loadConversationProjection({
-            conversationId: created.childConversationId,
+            conversationId: childConversationId,
           })
         ).messages,
       ).toEqual(
@@ -291,57 +249,40 @@ describe("agent invocation conversation work", () => {
           }),
         ]),
       );
-      // A child posts nothing to its Location, so the dashboard reads its
-      // input and result from these message events.
-      await expect(
-        loadMessageEvents(created.childConversationId),
-      ).resolves.toEqual([
-        {
+      // A child posts nothing to its Location. Its task is a message event,
+      // and its `reply` stays in its history, as checked above.
+      await expect(loadMessageEvents(childConversationId)).resolves.toEqual([
+        expect.objectContaining({
           type: "message",
-          messageId: getAgentInvocationMessageId(created.invocationId),
+          messageId: taskMessageId,
           role: "user",
-          text: slackInvocationInput.input,
-          meta: { agentInvocationId: created.invocationId },
-        },
-        {
-          type: "message",
-          messageId: `agent-invocation:${created.invocationId}:reply`,
-          role: "assistant",
-          text: "Durable child result",
-        },
+          text: expect.stringContaining(slackInvocationInput.input),
+          meta: expect.objectContaining({
+            requestText: slackInvocationInput.input,
+          }),
+        }),
       ]);
-      await expect(
-        loadTurnEvents(created.childConversationId),
-      ).resolves.toEqual([
+      await expect(loadTurnEvents(childConversationId)).resolves.toEqual([
         expect.objectContaining({
           data: expect.objectContaining({
-            inputMessageIds: [
-              getAgentInvocationMessageId(created.invocationId),
-            ],
-            surface: "internal",
-            turnId: getAgentInvocationTurnId(created.invocationId),
+            inputMessageIds: [taskMessageId],
+            turnId,
             type: "turn_started",
           }),
         }),
         expect.objectContaining({
           data: expect.objectContaining({
-            outcome: "success",
-            turnId: getAgentInvocationTurnId(created.invocationId),
+            turnId,
             type: "turn_completed",
           }),
         }),
       ]);
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
-        // Prompt mode and reportBlocked read this field.
-        agentInvocationId: created.invocationId,
-        conversationId: created.childConversationId,
-        // No parent agent call started it, so its input is not an
-        // instruction.
-        instruction: {
-          provenance: contextProvenance,
-          text: slackInvocationInput.input,
-        },
+        conversationId: childConversationId,
+        // The parent agent wrote the task, so it is an instruction with no
+        // person behind it.
+        instruction: { provenance: { authority: "instruction" } },
         disabledFeatures: ["interactive-auth"],
         reasoning: "medium",
         actor: slackInvocationInput.actor,
@@ -354,20 +295,23 @@ describe("agent invocation conversation work", () => {
           threadTs: "1712345.0001",
         },
         source: { kind: "parent_message" },
-        surface: "internal",
-        runId: created.invocationId,
       });
-      expect(run.mock.calls[0]?.[0].delivery).toBeUndefined();
+      expect(run.mock.calls[0]?.[0].instruction.provenance).not.toHaveProperty(
+        "actor",
+      );
+      expect(run.mock.calls[0]?.[0].instruction.text).toContain(
+        slackInvocationInput.input,
+      );
       expect(observedVisibility).toBe("public");
 
       // A child Conversation has one prompt cache. A Watch Event and its own
-      // child agent's reply run on its Conversation loop, not on an Agent
-      // invocation, and they must send the same system prompt and tools.
+      // child agent's reply run on its Conversation loop, as its task does,
+      // and they must send the same system prompt and tools.
       vi.useFakeTimers({ now: Date.now(), toFake: ["Date"] });
       const processChild = async () => {
         // Event input waits for its burst window, as on a root.
         vi.setSystemTime(Date.now() + 60_000);
-        await process(queue.takeMessageFor(created.childConversationId));
+        await process(queue.takeMessageFor(childConversationId));
       };
       await appendAndEnqueueInboundMessage({
         message: createEventInboundMessage({
@@ -380,7 +324,7 @@ describe("agent invocation conversation work", () => {
             trustedSummary: "A deployment failed.",
           },
           subscription: {
-            conversationId: created.childConversationId,
+            conversationId: childConversationId,
             id: "watch-1",
           },
           text: "Deploy failed.",
@@ -389,34 +333,41 @@ describe("agent invocation conversation work", () => {
         state,
       });
       await processChild();
-      const helper = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "helper-1",
-        parentConversationId: created.childConversationId,
-      });
+      const helper = await spawnChildAgent(
+        {
+          ...slackInvocationInput,
+          idempotencyKey: "helper-1",
+          parentConversationId: childConversationId,
+          parentToolCallId: "helper-1",
+          parentTurnId: turnId,
+        },
+        { conversationStore, queue, state },
+      );
       await enqueueChildResultToParent({
-        actor: helper.actor,
+        actor: slackInvocationInput.actor,
         messageKey: "helper-reply",
         queue,
         result: {
           kind: "reply",
           reply: { text: "Helper fact.", toolCallId: "helper-reply" },
         },
-        sender: helper,
+        sender: {
+          childConversationId: helper.childConversationId,
+          parentConversationId: childConversationId,
+        },
         state,
-        turnId: getAgentInvocationTurnId(helper.invocationId),
+        turnId: "turn_helper",
       });
       await processChild();
       expect(
         run.mock.calls.map(([childRun]) => [
           childRun.source.kind,
-          childRun.agentInvocationId === undefined,
           childRun.location?.provider,
         ]),
       ).toEqual([
-        ["agent_invocation", false, "slack"],
-        ["event", true, "slack"],
-        ["event", true, "slack"],
+        ["parent_message", "slack"],
+        ["event", "slack"],
+        ["event", "slack"],
       ]);
       // The model stream reads each request as a transcript.
       const definitions = modelContexts.map(({ messages }) => ({
@@ -427,8 +378,8 @@ describe("agent invocation conversation work", () => {
       expect(definitions[0]!.systemPrompt).not.toBe("");
       expect(definitions[1]).toEqual(definitions[0]);
       expect(definitions[2]).toEqual(definitions[0]);
-      // A person's stop of the parent holds the unread reply, as it holds a
-      // result, so it starts no parent Turn.
+      // A person's stop of the parent starts no parent Turn for the unread
+      // reply.
       await stopConversationAndChildAgents({
         conversationId: slackParentConversationId,
         nowMs: Date.now(),
@@ -441,9 +392,6 @@ describe("agent invocation conversation work", () => {
           state,
         }),
       ).resolves.toMatchObject({ execution: { pendingMessages: [] } });
-      await expect(
-        stoppedConversationMessageTexts(slackParentConversationId),
-      ).resolves.toEqual([expect.stringContaining("Durable child result")]);
     } finally {
       vi.useRealTimers();
       await fixture.close();
@@ -460,7 +408,6 @@ describe("agent invocation conversation work", () => {
     {
       name: "failed",
       outputs: [{ type: "error" as const, errorMessage: "model unavailable" }],
-      invocation: { errorMessage: "model unavailable", status: "failed" },
       terminal: {
         failureCode: "model_execution_failed",
         type: "turn_failed",
@@ -480,8 +427,7 @@ describe("agent invocation conversation work", () => {
           arguments: { missing: blockedMissing },
         },
       ],
-      invocation: { errorMessage: blockedMissing, status: "blocked" },
-      terminal: { outcome: "blocked", type: "turn_completed" },
+      terminal: { type: "turn_completed" },
       subagentOutcome: "blocked",
       parentMessages: [
         expect.stringMatching(
@@ -499,7 +445,6 @@ describe("agent invocation conversation work", () => {
           arguments: { note: "Bot comment needs no change." },
         },
       ],
-      invocation: { result: "", status: "completed" },
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [],
@@ -508,7 +453,6 @@ describe("agent invocation conversation work", () => {
       // A Task's parent learns that no reply was sent, without the text.
       name: "unanswered task",
       outputs: plainText,
-      invocation: { errorMessage: "No reply was sent.", status: "failed" },
       terminal: {
         failureCode: "model_execution_failed",
         type: "turn_failed",
@@ -525,67 +469,45 @@ describe("agent invocation conversation work", () => {
       name: "unanswered thread",
       kind: "thread" as const,
       outputs: plainText,
-      invocation: { result: "", status: "completed" },
-      terminal: { outcome: "no_reply", type: "turn_completed" },
+      terminal: { type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [],
     },
   ])(
     "finishes a $name child Turn after saving its result",
-    async ({
-      invocation: expectedInvocation,
-      kind,
-      outputs,
-      parentMessages,
-      subagentOutcome,
-      terminal,
-    }) => {
+    async ({ kind, outputs, parentMessages, subagentOutcome, terminal }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const modelStream = vi.fn(createModelStream(outputs));
-      const {
-        queue,
-        run: route,
-        state,
-      } = await createConversationWorkHarness(
+      const { process, queue, state } = await createConversationWorkHarness(
         createModelAgentRunner(modelStream),
       );
       try {
-        const created = await createAndEnqueueAgentInvocation(
+        const { childConversationId } = await spawnChildAgent(
           {
             ...invocationInput,
             idempotencyKey: "failed-result-1",
+            parentToolCallId: "failed-result-1",
+            parentTurnId: "parent-turn",
             ...(kind ? { kind } : undefined),
           },
           { conversationStore, queue, state },
         );
+        const turnId = parentTaskTurnId(
+          parentConversationId,
+          "failed-result-1",
+        );
 
         await expect(
-          processConversationQueueMessage(queue.takeMessage(), {
-            conversationStore,
-            queue,
-            run: route,
-            state,
-          }),
+          process(queue.takeMessageFor(childConversationId)),
         ).resolves.toMatchObject({ status: "completed" });
 
         expect(modelStream).toHaveBeenCalledTimes(outputs.length);
-        await expect(
-          getAgentInvocation(created.invocationId),
-        ).resolves.toMatchObject(expectedInvocation);
-        await expect(
-          loadTurnEvents(created.childConversationId),
-        ).resolves.toEqual([
+        await expect(loadTurnEvents(childConversationId)).resolves.toEqual([
           expect.objectContaining({
-            data: expect.objectContaining({
-              type: "turn_started",
-              turnId: getAgentInvocationTurnId(created.invocationId),
-            }),
+            data: expect.objectContaining({ type: "turn_started", turnId }),
           }),
           expect.objectContaining({
-            data: expect.objectContaining({
-              ...terminal,
-              turnId: getAgentInvocationTurnId(created.invocationId),
-            }),
+            data: expect.objectContaining({ ...terminal, turnId }),
           }),
         ]);
         await expect(loadSubagentEvents(parentConversationId)).resolves.toEqual(
@@ -593,7 +515,10 @@ describe("agent invocation conversation work", () => {
             expect.objectContaining({ type: "subagent_started" }),
             {
               type: "subagent_ended",
-              subagentInvocationId: created.invocationId,
+              subagentInvocationId: getParentMessageId(
+                parentConversationId,
+                "failed-result-1",
+              ),
               outcome: subagentOutcome,
             },
           ],
@@ -611,16 +536,16 @@ describe("agent invocation conversation work", () => {
     },
   );
 
-  // When an agent invocation's Turn yields, the next wake must still reach
-  // that agent invocation, also when it was stopped while its Turn stayed
-  // paused. A resume wake has no messages, but its last try is still final,
-  // so a resume that keeps failing tells the parent.
-  const resumed = { result: "Resumed child result", status: "completed" };
+  // When a child's Turn yields, the next wake must resume that Turn, also
+  // when the child was stopped while its Turn stayed paused. A resume wake
+  // has no messages, but its last try is still final, so a resume that keeps
+  // failing tells the parent.
+  const resumed = [expect.stringContaining("Resumed child result")];
   it.each([
     {
       name: "a parent task",
       runs: 2,
-      expected: resumed,
+      parentMessages: resumed,
     },
     {
       // The swap keeps the earlier Turn's answer after the mark. It belongs
@@ -628,14 +553,14 @@ describe("agent invocation conversation work", () => {
       name: "a child that swapped in a summary at Turn start",
       earlierAnswer: true,
       runs: 2,
-      expected: resumed,
+      parentMessages: resumed,
     },
     {
       // The fork history holds the parent's answer, but not this Turn's.
       name: "a fork child",
       fork: true,
       runs: 2,
-      expected: resumed,
+      parentMessages: resumed,
     },
     {
       // A worker that committed fork history after the Turn start stopped
@@ -644,32 +569,30 @@ describe("agent invocation conversation work", () => {
       fork: true,
       turnStartedFirst: true,
       runs: 2,
-      expected: resumed,
+      parentMessages: resumed,
     },
     {
+      // The parent stopped the child, so it gets no result.
       name: "a stopped child",
       stopBeforeWake: true,
       runs: 1,
-      expected: { parentMailboxStatus: "skipped", status: "stopped" },
+      parentMessages: [],
     },
     {
       name: "a resume that keeps failing",
-      // The last try is final, so it fails the invocation, not the work.
       failedResumes: CONVERSATION_WORK_MAX_RETRIES - 1,
       runs: CONVERSATION_WORK_MAX_RETRIES + 1,
-      expected: {
-        errorMessage: "resume unavailable",
-        parentMailboxStatus: "appended",
-        status: "failed",
-      },
+      parentMessages: [
+        expect.stringMatching(/status="failed"[\s\S]*resume unavailable/),
+      ],
     },
   ])(
-    "gives the wake after a yielded child invocation for $name to that invocation",
+    "resumes a yielded child Turn for $name",
     async ({
       earlierAnswer = false,
-      expected,
       fork = false,
       failedResumes = 0,
+      parentMessages,
       runs,
       stopBeforeWake = false,
       turnStartedFirst = false,
@@ -693,52 +616,37 @@ describe("agent invocation conversation work", () => {
         ]),
       );
       const run = vi.spyOn(agentRunner, "run");
-      const {
-        queue,
-        run: route,
-        state,
-      } = await createConversationWorkHarness(agentRunner);
+      const { process, queue, state } =
+        await createConversationWorkHarness(agentRunner);
       try {
-        const created = await createAndEnqueueAgentInvocation(
+        const { childConversationId } = await spawnChildAgent(
           {
             ...invocationInput,
             idempotencyKey: "resume-1",
-            ...(fork
-              ? { fork, parentToolCallId: await prepareForkParentHistory() }
-              : undefined),
+            parentToolCallId: fork
+              ? await prepareForkParentHistory()
+              : "resume-1",
+            parentTurnId: "parent-turn",
+            ...(fork ? { fork } : undefined),
           },
           { conversationStore, queue, state },
         );
-        const { childConversationId } = created;
+        const turnId = parentTaskTurnId(parentConversationId, "resume-1");
         if (earlierAnswer) {
           await prepareSummarizedHistory(childConversationId);
         }
         if (turnStartedFirst) {
-          await recordTurnStart(
-            childConversationId,
-            getAgentInvocationTurnId(created.invocationId),
-          );
+          await recordTurnStart(childConversationId, turnId);
         }
         // Child results also wake the parent. This test runs only the child.
         const processChild = async (softYieldAfterMs?: number) =>
-          await processConversationQueueMessage(
+          await process(
             queue.takeMessageFor(childConversationId),
-            {
-              conversationStore,
-              queue,
-              run: route,
-              state,
-              ...(softYieldAfterMs === undefined
-                ? undefined
-                : { softYieldAfterMs }),
-            },
+            softYieldAfterMs === undefined ? {} : { softYieldAfterMs },
           );
         await expect(processChild(0)).resolves.toMatchObject({
           status: "yielded",
         });
-        const { invocationId } =
-          (await getActiveAgentInvocationForConversation(childConversationId))!;
-        const turnId = getAgentInvocationTurnId(invocationId);
         const paused = (await getTurnRecord(childConversationId, turnId))!;
         expect(paused).toMatchObject({
           state: "paused",
@@ -758,8 +666,8 @@ describe("agent invocation conversation work", () => {
           savedTurnMessages(paused, turnStart).map(({ message }) => message),
         ).not.toContainEqual(expect.objectContaining({ toolName: "reply" }));
         if (stopBeforeWake) {
-          // The stop request outlives the paused run. The stopped agent
-          // invocation takes the resume wake and does not run again.
+          // The stop request outlives the paused run. The stopped child
+          // takes the resume wake and does not run again.
           await createStopAgentTool(parentConversationId).execute!(
             { conversation_id: childConversationId },
             {},
@@ -780,15 +688,16 @@ describe("agent invocation conversation work", () => {
           status: "completed",
         });
         expect(run).toHaveBeenCalledTimes(runs);
-        await expect(getAgentInvocation(invocationId)).resolves.toMatchObject(
-          expected,
-        );
+        const parentWork = await getConversationWorkState({
+          conversationId: parentConversationId,
+          state,
+        });
+        expect(
+          (parentWork?.messages ?? []).map((message) => message.input.text),
+        ).toEqual(parentMessages);
         // An ended child leaves no paused Turn that a later wake could resume.
         await expect(
-          getTurnRecord(
-            childConversationId,
-            getAgentInvocationTurnId(invocationId),
-          ),
+          getTurnRecord(childConversationId, turnId),
         ).resolves.not.toMatchObject({ state: "paused" });
         const projection = (
           await loadConversationProjection({
@@ -812,162 +721,6 @@ describe("agent invocation conversation work", () => {
             (event) => event.data.type === "guardian_action_reviewed",
           ),
         ).toEqual([]);
-      } finally {
-        await fixture.close();
-      }
-    },
-  );
-
-  const missing = "Write access to getsentry/junior. Ask the user.";
-  it.each([
-    {
-      // The reply reached the parent before the Turn was saved.
-      name: "a reply",
-      tail: [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tool-2",
-              name: "reply",
-              arguments: { text: "Recovered visible result" },
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          toolCallId: "tool-2",
-          toolName: "reply",
-          content: [{ type: "text", text: "Recovered visible result" }],
-          details: { text: "Recovered visible result" },
-          isError: false,
-        },
-      ],
-      expected: { result: "Recovered visible result", status: "completed" },
-      turnOutcome: "success",
-    },
-    {
-      // A Turn saved before `reply` existed ends with its final text, for
-      // one release.
-      name: "final text",
-      tail: [
-        {
-          role: "assistant",
-          content: [{ type: "text", text: "Recovered final text" }],
-        },
-      ],
-      expected: { result: "Recovered final text", status: "completed" },
-      turnOutcome: "success",
-    },
-    {
-      name: "a blocked report",
-      tail: [
-        {
-          role: "assistant",
-          content: [
-            {
-              type: "toolCall",
-              id: "tool-2",
-              name: "reportBlocked",
-              arguments: { missing },
-            },
-          ],
-        },
-        {
-          role: "toolResult",
-          toolCallId: "tool-2",
-          toolName: "reportBlocked",
-          content: [{ type: "text", text: missing }],
-          details: { missing },
-          isError: false,
-        },
-      ],
-      expected: { errorMessage: missing, status: "blocked" },
-      turnOutcome: "blocked",
-    },
-  ])(
-    "recovers a completed child turn that ends with $name through production routing",
-    async ({ expected, tail, turnOutcome }) => {
-      const { conversationStore, fixture } = await prepareParentConversation();
-      const {
-        queue,
-        run: route,
-        state,
-      } = await createConversationWorkHarness(neverRunAgentRunner());
-      try {
-        const created = await createAndEnqueueAgentInvocation(
-          {
-            ...invocationInput,
-            idempotencyKey: "completed-recovery-1",
-          },
-          { conversationStore, queue, state },
-        );
-        await recordTurnStart(
-          created.childConversationId,
-          getAgentInvocationTurnId(created.invocationId),
-        );
-        await upsertTurnRecord({
-          actor: invocationInput.actor,
-          conversationId: created.childConversationId,
-          destination,
-          piMessages: [
-            {
-              role: "user",
-              content: [{ type: "text", text: invocationInput.input }],
-            },
-            {
-              role: "assistant",
-              content: [
-                { type: "text", text: "Calling a tool" },
-                {
-                  type: "toolCall",
-                  id: "tool-1",
-                  name: "lookup",
-                  arguments: {},
-                },
-              ],
-            },
-            {
-              role: "toolResult",
-              toolCallId: "tool-1",
-              toolName: "lookup",
-              content: [{ type: "text", text: "tool output" }],
-              isError: false,
-            },
-            ...tail,
-          ] as PiMessage[],
-          turnId: getAgentInvocationTurnId(created.invocationId),
-          sliceId: 1,
-          source: { kind: "parent_message" },
-          state: "completed",
-          surface: "internal",
-        });
-        await expect(
-          processConversationQueueMessage(queue.takeMessage(), {
-            conversationStore,
-            queue,
-            run: route,
-            state,
-          }),
-        ).resolves.toMatchObject({ status: "completed" });
-
-        await expect(
-          getAgentInvocation(created.invocationId),
-        ).resolves.toMatchObject(expected);
-        await expect(
-          loadTurnEvents(created.childConversationId),
-        ).resolves.toEqual([
-          expect.objectContaining({
-            data: expect.objectContaining({ type: "turn_started" }),
-          }),
-          expect.objectContaining({
-            data: expect.objectContaining({
-              outcome: turnOutcome,
-              type: "turn_completed",
-            }),
-          }),
-        ]);
       } finally {
         await fixture.close();
       }

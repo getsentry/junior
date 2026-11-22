@@ -1,20 +1,11 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
-import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import {
   createDeliverToParent,
-  enqueueAgentInvocationResult,
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-} from "@/chat/agent-invocations/store";
-import type {
-  AgentInvocation,
-  TerminalAgentInvocation,
-} from "@/chat/agent-invocations/types";
+import type { ChildAgentSender } from "@/chat/agent-invocations/types";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { botConfig } from "@/chat/config";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -44,37 +35,49 @@ import {
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
   createHarness,
-  finishInvocation,
+  finishRun,
   sendPersonMessage,
   startThread,
   type Harness,
 } from "../fixtures/thread-input";
 
-/** Start a child whose spawn Turn has ended, so it has no open row. */
+/** Start a child whose spawn Turn has ended, so it has no open work. */
 async function startIdleChild(harness: Harness, kind: "task" | "thread") {
   const childId = await startThread(harness, `${kind}-spawn`, { kind });
-  await harness.process(childId);
-  await finishInvocation(harness, childId);
+  harness.onRun(finishRun);
+  await harness.drain(childId);
+  harness.onRun(undefined);
   return childId;
 }
 
-/** Create one open helper agent invocation of a child. */
+/** Spawn one helper agent of a child, as the child's `spawnAgent` does. */
 async function createHelper(
+  harness: Harness,
   childId: string,
-  overrides: Partial<Parameters<typeof createAgentInvocation>[0]> = {},
-) {
-  return await createAgentInvocation({
-    ...slackInvocationInput,
-    idempotencyKey: "helper",
-    parentConversationId: childId,
-    ...overrides,
-  });
+  overrides: Partial<Parameters<typeof spawnChildAgent>[0]> = {},
+): Promise<ChildAgentSender> {
+  const { childConversationId } = await spawnChildAgent(
+    {
+      ...slackInvocationInput,
+      idempotencyKey: "helper",
+      parentConversationId: childId,
+      parentToolCallId: "helper",
+      parentTurnId: "child-turn",
+      ...overrides,
+    },
+    {
+      conversationStore: harness.conversationStore,
+      queue: harness.queue,
+      state: harness.state,
+    },
+  );
+  return { childConversationId, parentConversationId: childId };
 }
 
 /** Send a helper's `reply` to its parent, the child. */
-async function sendHelperReply(harness: Harness, sender: AgentInvocation) {
+async function sendHelperReply(harness: Harness, sender: ChildAgentSender) {
   await enqueueChildResultToParent({
-    actor: sender.actor,
+    actor: slackInvocationInput.actor,
     messageKey: "helper-reply",
     nowMs: Date.now(),
     queue: harness.queue,
@@ -83,7 +86,7 @@ async function sendHelperReply(harness: Harness, sender: AgentInvocation) {
       reply: { text: "Helper fact.", toolCallId: "helper-reply" },
     },
     sender,
-    turnId: getAgentInvocationTurnId(sender.invocationId),
+    turnId: "turn_helper",
     state: harness.state,
   });
   // Event input waits for its burst window, as on a root.
@@ -106,80 +109,47 @@ describe("child Turns on the Conversation loop", () => {
     await disconnectStateAdapter();
   });
 
-  // A grandchild result still runs on an agent invocation, so a rollback
-  // leaves no unread result that `main` would wait for. It keeps the grants
-  // of the timer Turn that spawned the grandchild. A reply from a later
-  // Watch Event Turn on the grandchild's Conversation loop runs as the Actor
-  // only, as on `main`.
-  it.each([
-    { input: "result", grants: true },
-    { input: "reply", grants: false },
-  ] as const)(
-    "runs a grandchild $input as the spawn's Actor (grants: $grants)",
-    async ({ input, grants }) => {
-      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-      const harness = await createHarness();
-      try {
-        const childId = await startIdleChild(harness, "task");
-        const credentialContext = {
+  // A grandchild's result runs on the child's Conversation loop as the Actor
+  // of the grandchild's Turn only. The grants of the timer Turn that spawned
+  // the grandchild do not come with it.
+  it("runs a grandchild result as its Turn's Actor without the spawn's grants", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await startIdleChild(harness, "task");
+      const helper = await createHelper(harness, childId, {
+        actor: EVENT_SYSTEM_ACTOR,
+        credentialContext: {
           actor: EVENT_SYSTEM_ACTOR,
           subject: bindTimerWatchCredentialSubject({
             conversationId: childId,
             userId: webTestActor.userId,
             watchId: "watch-1",
           })!,
-        };
-        const helper = await createHelper(childId, {
-          actor: EVENT_SYSTEM_ACTOR,
-          credentialContext,
-        });
-        if (input === "result") {
-          const ended = (await completeAgentInvocation({
-            errorMessage: "Needs a token.",
-            invocationId: helper.invocationId,
-            status: "blocked",
-          })) as TerminalAgentInvocation;
-          await enqueueAgentInvocationResult(ended, {
-            queue: harness.queue,
-            state: harness.state,
-          });
-        } else {
-          await completeAgentInvocation({
-            invocationId: helper.invocationId,
-            result: "",
-            status: "completed",
-          });
-          await createDeliverToParent({
-            queue: harness.queue,
-            state: harness.state,
-          })({
-            actor: EVENT_SYSTEM_ACTOR,
-            conversationId: helper.childConversationId,
-            result: {
-              kind: "reply",
-              reply: { text: "Deploy failed.", toolCallId: "call-reply" },
-            },
-            turnId: "turn_watch-event",
-          });
-          vi.setSystemTime(Date.now() + 60_000);
-        }
-        await harness.processUntilRun(childId);
+        },
+      });
+      await createDeliverToParent({
+        queue: harness.queue,
+        state: harness.state,
+      })({
+        actor: EVENT_SYSTEM_ACTOR,
+        conversationId: helper.childConversationId,
+        result: { kind: "blocked", text: "Needs a token." },
+        turnId: "turn_helper",
+      });
+      vi.setSystemTime(Date.now() + 60_000);
+      await harness.processUntilRun(childId);
 
-        const run = harness.runs.at(-1)!;
-        expect(run).toMatchObject({
-          actor: EVENT_SYSTEM_ACTOR,
-          conversationId: childId,
-        });
-        // Without the spawn's grants, the run has only the Actor's own.
-        expect(run.credentialContext).toEqual(
-          grants ? credentialContext : { actor: EVENT_SYSTEM_ACTOR },
-        );
-        expect(run.agentInvocationId !== undefined).toBe(grants);
-      } finally {
-        await harness.close();
-      }
-    },
-  );
+      const run = harness.runs.at(-1)!;
+      expect(run).toMatchObject({
+        actor: EVENT_SYSTEM_ACTOR,
+        conversationId: childId,
+      });
+      expect(run.credentialContext).toEqual({ actor: EVENT_SYSTEM_ACTOR });
+    } finally {
+      await harness.close();
+    }
+  });
 
   // Only a gated Turn answers the parent, so only it keeps the child
   // running. A person's Turn in a Thread does not.
@@ -194,7 +164,7 @@ describe("child Turns on the Conversation loop", () => {
       try {
         const childId = await startIdleChild(harness, "thread");
         const seen: unknown[] = [];
-        harness.onRun(async (run) => {
+        harness.onRun(async () => {
           seen.push(
             await createListAgentsTool({
               conversationId: slackParentConversationId,
@@ -207,11 +177,10 @@ describe("child Turns on the Conversation loop", () => {
               )
             ).map((agent) => agent.childConversationId),
           );
-          expect(run.agentInvocationId).toBeUndefined();
           throw new Error("stop after reading the run");
         });
         if (input === "helper reply") {
-          await sendHelperReply(harness, await createHelper(childId));
+          await sendHelperReply(harness, await createHelper(harness, childId));
         } else {
           await sendPersonMessage(harness, childId, "person-message");
         }
@@ -298,7 +267,7 @@ describe("child Turns on the Conversation loop", () => {
       try {
         const childId = await startIdleChild(harness, kind);
         const before = await parentMessageTexts();
-        await sendHelperReply(harness, await createHelper(childId));
+        await sendHelperReply(harness, await createHelper(harness, childId));
         // The runner throws on each try, so the last try fails the Turn.
         for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
           await harness.drain(childId);
@@ -328,7 +297,7 @@ describe("child Turns on the Conversation loop", () => {
     const harness = await createHarness();
     try {
       const childId = await startIdleChild(harness, "task");
-      const helper = await createHelper(childId);
+      const helper = await createHelper(harness, childId);
       await sendHelperReply(harness, helper);
       await expect(
         createStopAgentTool(childId).execute!(
@@ -364,7 +333,7 @@ describe("child Turns on the Conversation loop", () => {
     const harness = await createHarness();
     try {
       const childId = await startIdleChild(harness, "task");
-      const helper = await createHelper(childId);
+      const helper = await createHelper(harness, childId);
       await expect(
         createStopAgentTool(childId).execute!(
           { conversation_id: helper.childConversationId },
@@ -373,10 +342,7 @@ describe("child Turns on the Conversation loop", () => {
       ).resolves.toMatchObject({ stopped: true });
       vi.setSystemTime(Date.now() + 1_000);
       const runCount = harness.runs.length;
-      await sendHelperReply(
-        harness,
-        (await getAgentInvocation(helper.invocationId))!,
-      );
+      await sendHelperReply(harness, helper);
       await harness.drain(childId);
 
       expect(harness.runs).toHaveLength(runCount);
@@ -399,7 +365,7 @@ describe("child Turns on the Conversation loop", () => {
         throw new Error("The stored stop did not abort the run");
       });
       const before = await parentMessageTexts();
-      await sendHelperReply(harness, await createHelper(childId));
+      await sendHelperReply(harness, await createHelper(harness, childId));
 
       await harness.processUntilRun(childId);
       const run = harness.runs.at(-1)!;
@@ -484,6 +450,3 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 });
-
-// A spawn can stop writing agent invocations only once every deployed reader
-// works without one, so a rollback stays safe. These children have none.
