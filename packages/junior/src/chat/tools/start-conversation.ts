@@ -13,19 +13,14 @@ import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-que
 /** Static definition of `startConversation`, which only a Lead lists. */
 export const startConversationToolDefinition = zodToolDefinition({
   description: [
-    "Do one piece of the person's work by starting a new conversation for it. You do no work yourself, so this is how you carry out what the person asks you to do.",
-    "It is a public conversation of the person, and it starts at once.",
+    "Start a new conversation that does one piece of the person's work. It is a public conversation of the person, and it starts at once.",
     "Your task is its first message, and it runs as the person, so write the task as the person's request.",
     "Use messageAgent instead for work that a conversation already does.",
   ].join(" "),
   exposure: "modelOnly",
-  // Action review read "public" as publishing the work. Say what the start
-  // itself does.
-  describeProposal: ({ title }) =>
-    `Start the person's conversation "${title}" to do the task. Starting it posts nothing to Slack or any other outside place: other people in this install can find and read the conversation on the dashboard, and its own tool calls get action review like any conversation's.`,
-  // The task becomes the person's request in the new conversation, so action
-  // review judges every start.
-  approvalMode: "review",
+  // Like spawnAgent: the start is not reviewed. The new root runs as the
+  // person, and action review judges its own tool calls.
+  approvalMode: "auto",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,

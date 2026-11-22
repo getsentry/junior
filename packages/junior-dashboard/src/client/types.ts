@@ -169,8 +169,7 @@ export type ConversationTranscript = ConversationDetailReport;
 
 export type Conversation = {
   activityPreview?: ConversationSummaryReport["activityPreview"] | undefined;
-  /** The latest Brief's status, summary, and intent, when visible. */
-  brief?: ConversationFeedItem["brief"] | undefined;
+  summary?: ConversationSummaryReport["summary"] | undefined;
   /** The newest stored files, when private content is visible. */
   media?: ConversationFeedItem["media"] | undefined;
   links?: ConversationFeedItem["links"] | undefined;

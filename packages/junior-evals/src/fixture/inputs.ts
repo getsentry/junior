@@ -84,8 +84,6 @@ export interface WebMessageInput {
   files?: FileInput[];
   /** Send it to the person's Lead, which `GET /api/lead` finds or makes. */
   lead?: boolean;
-  /** After the post, the person steers the queued message into the running turn. */
-  steer?: boolean;
   text: string;
 }
 
@@ -233,7 +231,7 @@ export function appHomeUnlink(
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { files?: FileInput[]; lead?: boolean; steer?: boolean } = {},
+  options: { files?: FileInput[]; lead?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }

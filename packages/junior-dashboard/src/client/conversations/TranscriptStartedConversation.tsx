@@ -54,7 +54,7 @@ export function TranscriptStartedConversation(props: {
     (typeof props.timestamp === "number"
       ? new Date(props.timestamp).toISOString()
       : undefined);
-  const summary = conversation?.brief?.summary;
+  const summary = conversation?.summary;
   const actionable = state === "needs_you" || state === "failed";
   return (
     <div className={cn("grid min-w-0", transcriptColumnsClass)}>

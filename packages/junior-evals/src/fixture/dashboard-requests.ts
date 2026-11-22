@@ -7,7 +7,6 @@ import {
   acceptedConversationMessageSchema,
   attachmentUploadSchema,
   leadSchema,
-  steerConversationPendingMessagesResponseSchema,
 } from "@/api/schema";
 import type { FileInput, WebMessageInput } from "./inputs";
 import { VIEWER_HEADER } from "./results";
@@ -93,41 +92,9 @@ async function expectAccepted(response: Response) {
 }
 
 /**
- * Steer one queued web message into the running turn, as the steer action in
- * the dashboard queue does.
- */
-async function steerQueuedWebMessage(
-  api: Hono<JuniorApiEnv>,
-  args: {
-    conversationId: string;
-    inboundMessageId: string;
-    viewerEmail: string;
-  },
-): Promise<void> {
-  const response = await api.request(
-    `/api/conversations/${encodeURIComponent(args.conversationId)}/pending-messages/steer`,
-    jsonRequest(args.viewerEmail, {
-      inboundMessageIds: [args.inboundMessageId],
-    }),
-  );
-  if (response.status !== 200) {
-    throw new Error(
-      `Steer returned ${response.status}: ${await response.text()}`,
-    );
-  }
-  const result = steerConversationPendingMessagesResponseSchema.parse(
-    await response.json(),
-  );
-  // An empty result means Junior read the message before the steer.
-  if (!result.steeredInboundMessageIds.includes(args.inboundMessageId)) {
-    throw new Error("The message left the queue before the steer");
-  }
-}
-
 /**
- * Send one message as the dashboard composer does: upload its files, post
- * it, and steer it when the input asks. With no `conversationId`, the post
- * creates the Conversation.
+ * Send one message as the dashboard composer does: upload its files and
+ * post it. With no `conversationId`, the post creates the Conversation.
  */
 export async function postWebMessage(
   api: Hono<JuniorApiEnv>,
@@ -147,7 +114,7 @@ export async function postWebMessage(
         viewerEmail,
       })
     : undefined;
-  const accepted = await expectAccepted(
+  await expectAccepted(
     await api.request(
       conversationId
         ? `/api/conversations/${encodeURIComponent(conversationId)}/messages`
@@ -159,13 +126,6 @@ export async function postWebMessage(
       }),
     ),
   );
-  if (input.steer) {
-    await steerQueuedWebMessage(api, {
-      conversationId: accepted.conversationId,
-      inboundMessageId: accepted.messageId,
-      viewerEmail,
-    });
-  }
 }
 
 /** Find or make the Lead of `viewerEmail`, as the dashboard home does. */

@@ -1,6 +1,5 @@
 import type { ObjectAnnotation, User } from "@sentry/junior-plugin-api";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import {
   getDashboardConversationLink,
   parseDashboardConversationLink,
@@ -58,16 +57,13 @@ export async function resolveConversationLink(
   const access = await readViewerAccess(viewer, conversationId);
   if (!access?.canViewPrivateContent) return undefined;
 
-  const [firstTexts, automationTitles, brief, participants] = await Promise.all(
-    [
-      readFirstHumanMessageTexts(db, [conversation]),
-      readAutomationTitlesByConversationId([conversation]),
-      readLatestConversationBrief(db, conversationId),
-      readConversationParticipants(db, [conversationId]),
-    ],
-  );
+  const [firstTexts, automationTitles, participants] = await Promise.all([
+    readFirstHumanMessageTexts(db, [conversation]),
+    readAutomationTitlesByConversationId([conversation]),
+    readConversationParticipants(db, [conversationId]),
+  ]);
   return conversationObjectCard({
-    brief: brief?.content.summary,
+    description: conversation.summary,
     participants: participants.get(conversationId) ?? [],
     summary: conversationSummaryFromStoredConversation({
       access,

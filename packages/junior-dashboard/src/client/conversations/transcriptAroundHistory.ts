@@ -60,6 +60,7 @@ import {
   eventRunsKey,
   holdEventPage,
   joinEventPage,
+  nearestHeldSeq,
   laterRead,
   readEventRuns,
   runAt,
@@ -112,7 +113,13 @@ export function useHistoryAround(input: {
   onStartFailed?: () => void;
   /** The page around `start`, when the detail brought it. */
   startPage?: ConversationEventPage;
-}): (TranscriptHistory & { isPending: boolean }) | undefined {
+}):
+  | (TranscriptHistory & {
+      isPending: boolean;
+      /** The event seq the start shows: the nearest held one for a seq past every event. */
+      shownSeq: number | undefined;
+    })
+  | undefined {
   const { conversationId, detail, onShowLatest, onStartFailed, start } = input;
   const startKey = start ? historyStartKey(start) : undefined;
   const queryClient = useQueryClient();
@@ -230,6 +237,7 @@ export function useHistoryAround(input: {
     historyVersion: conversationHistoryVersion(run ? [run] : []),
     isLoadingPreviousPage: earlier.isPending,
     isPending: !run,
+    shownSeq,
     loadPreviousPage: () => {
       if (!run || earlier.isPending) return;
       const [read] = earlierRead(run, runs[runIndex - 1]);
@@ -361,19 +369,28 @@ function aroundQuery(conversationId: string, start: HistoryStart) {
         return shown === undefined ? { page } : { seq: shown };
       }
       // At most two reads: one on each side of the row.
-      const readSides = async (held: EventRuns) => {
-        const [first, second] = aroundReads(held, seq);
-        await Promise.all([
+      const readSides = ([first, second]: EventRead[]) =>
+        Promise.all([
           first && readHeldPage(client, conversationId, first),
           second && readHeldPage(client, conversationId, second),
         ]);
-      };
-      await readSides(runs);
+      const firstReads = aroundReads(runs, seq);
+      await readSides(firstReads);
       // A read that joined another read of its cursor can stop short of
-      // the row. Then the row reads on from there.
+      // the row. Then the row reads on from there. The same reads again
+      // would get the same events.
       const held = readEventRuns(client, conversationId);
-      if (!runAt(held, seq)) await readSides(held);
-      return { seq };
+      const nextReads = runAt(held, seq) ? [] : aroundReads(held, seq);
+      if (JSON.stringify(nextReads) !== JSON.stringify(firstReads)) {
+        await readSides(nextReads);
+      }
+      // A seq that no reporting event has, such as one past the last event,
+      // shows the nearest held event. Otherwise the row would read forever.
+      const read = readEventRuns(client, conversationId);
+      if (runAt(read, seq)) return { seq };
+      const near = nearestHeldSeq(read, seq);
+      if (near === undefined) throw new Error("No events around the start");
+      return { seq: near };
     },
     queryKey: [
       "conversation",

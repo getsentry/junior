@@ -568,8 +568,8 @@ export function projectConversationReportEventPage(args: {
   /** Child Conversations that subagent events name and that are Threads. */
   threadIds?: ReadonlySet<string>;
   events: ConversationEvent[];
-  /** `turn_started` of the Conversation's first Turn. */
-  firstTurnStart?: ConversationEvent;
+  /** The Conversation's first event. */
+  firstEvent?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -607,7 +607,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -617,7 +617,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);

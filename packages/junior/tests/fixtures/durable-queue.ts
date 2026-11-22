@@ -7,7 +7,7 @@ import type { StateAdapter } from "chat";
 import { expect } from "vitest";
 import { readConversationAuthors } from "@/api/conversations/participants";
 import { getDb } from "@/chat/db";
-import { loadProjection } from "@/chat/conversations/projection";
+import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
@@ -127,9 +127,10 @@ export async function expectNextTurn(
 
 /** Assert that SQL history keeps an assistant message with `text`. */
 export async function expectAssistantInSql(text: string): Promise<void> {
-  await expect(
-    loadProjection({ conversationId: CONVERSATION_ID }),
-  ).resolves.toEqual(
+  expect(
+    (await loadConversationProjection({ conversationId: CONVERSATION_ID }))
+      .messages,
+  ).toEqual(
     expect.arrayContaining([
       expect.objectContaining({
         role: "assistant",

@@ -39,6 +39,7 @@ type ConversationProjectionSource = Pick<
   | "location"
   | "parentConversationId"
   | "source"
+  | "summary"
   | "title"
   | "updatedAtMs"
 > & {
@@ -278,6 +279,10 @@ export function conversationSummaryFromStoredConversation(args: {
       visibility,
     }),
     kind: conversation.kind,
+    // The summary holds private content, like the title.
+    ...(canViewPrivateContent && conversation.summary
+      ? { summary: conversation.summary }
+      : undefined),
     ...(conversation.parentConversationId
       ? { parentConversationId: conversation.parentConversationId }
       : undefined),

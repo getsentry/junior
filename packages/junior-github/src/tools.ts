@@ -37,29 +37,33 @@ export function createGitHubTools(
   experimental: GitHubPluginExperiments = {},
 ): Record<string, PluginToolDefinition> {
   const descriptionChecks = experimental.pullRequestDescriptionChecks ?? false;
-  return withGitHubText({
-    reactToIssue: gitHubReactToIssueTool,
-    cloneRepository: gitHubCloneRepositoryTool,
-    commentOnIssue: gitHubCommentOnIssueTool,
-    commentOnPullRequest: gitHubCommentOnPullRequestTool,
-    createIssue: gitHubIssueTool,
+  return {
+    ...withGitHubText({
+      reactToIssue: gitHubReactToIssueTool,
+      cloneRepository: gitHubCloneRepositoryTool,
+      commentOnIssue: gitHubCommentOnIssueTool,
+      commentOnPullRequest: gitHubCommentOnPullRequestTool,
+      createIssue: gitHubIssueTool,
+      getDeployment: gitHubGetDeploymentTool,
+      getIssue: gitHubGetIssueTool,
+      getPullRequest: gitHubGetPullRequestTool,
+      getRelease: gitHubGetReleaseTool,
+      getRepository: gitHubGetRepositoryTool,
+      getStatus: gitHubGetStatusTool,
+      resolvePullRequestReviewThread:
+        createGitHubResolvePullRequestReviewThreadTool(botEmail),
+      submitPullRequestReview: gitHubSubmitPullRequestReviewTool,
+      updateIssue: gitHubUpdateIssueTool,
+      updateIssueComment: createGitHubUpdateIssueCommentTool(botEmail),
+      updatePullRequest: createGitHubUpdatePullRequestTool(descriptionChecks),
+      updatePullRequestFeedback:
+        createGitHubUpdatePullRequestFeedbackTool(botEmail),
+    }),
+    // Rewrites Slack mentions itself, so it can resolve the people it names
+    // from their Slack user IDs first.
     createPullRequest: createGitHubPullRequestTool(
       pullRequestSubscription,
       descriptionChecks,
     ),
-    getDeployment: gitHubGetDeploymentTool,
-    getIssue: gitHubGetIssueTool,
-    getPullRequest: gitHubGetPullRequestTool,
-    getRelease: gitHubGetReleaseTool,
-    getRepository: gitHubGetRepositoryTool,
-    getStatus: gitHubGetStatusTool,
-    resolvePullRequestReviewThread:
-      createGitHubResolvePullRequestReviewThreadTool(botEmail),
-    submitPullRequestReview: gitHubSubmitPullRequestReviewTool,
-    updateIssue: gitHubUpdateIssueTool,
-    updateIssueComment: createGitHubUpdateIssueCommentTool(botEmail),
-    updatePullRequest: createGitHubUpdatePullRequestTool(descriptionChecks),
-    updatePullRequestFeedback:
-      createGitHubUpdatePullRequestFeedbackTool(botEmail),
-  });
+  };
 }

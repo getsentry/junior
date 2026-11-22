@@ -1,6 +1,9 @@
 import type { Button, KnownBlock, ModalView } from "@slack/types";
 import * as z from "zod";
-import { getDashboardInboxItemLink } from "@/chat/dashboard-link";
+import {
+  getDashboardInboxItemLink,
+  getDashboardInboxItemSnoozeLink,
+} from "@/chat/dashboard-link";
 import {
   INBOX_ITEM_REPLIED_REASON,
   type InboxItem,
@@ -26,6 +29,8 @@ const ACTION_ID_PREFIX = "junior_review_item:";
 const CHOICE_ACTION_ID_PREFIX = `${ACTION_ID_PREFIX}choice:`;
 const ANSWER_ACTION_ID = `${ACTION_ID_PREFIX}answer`;
 const DISMISS_ACTION_ID = `${ACTION_ID_PREFIX}dismiss`;
+// A link: Slack sends its click too, with no value, and nothing reads it.
+const SNOOZE_ACTION_ID = `${ACTION_ID_PREFIX}snooze`;
 // Slack allows 12,000 characters in all markdown blocks of one message.
 const MAX_BODY_CHARS = 3_000;
 // Slack allows 3,000 characters in one context element.
@@ -77,19 +82,39 @@ function itemText(item: InboxItem): string {
   );
 }
 
+/**
+ * The card's buttons, in the order of every Inbox card: Dismiss, Snooze,
+ * then the main action. A Slack message looks the same to everyone, so
+ * Snooze opens the item's snooze form in the dashboard, where the snooze
+ * hides it for the person who clicked only.
+ */
 function controls(item: InboxItem): Button[] {
-  const dismiss: Button = {
-    type: "button",
-    action_id: DISMISS_ACTION_ID,
-    text: plainText("Dismiss"),
-    value: item.id,
-  };
+  const snoozeUrl = getDashboardInboxItemSnoozeLink(item.id);
+  const quiet: Button[] = [
+    {
+      type: "button",
+      action_id: DISMISS_ACTION_ID,
+      text: plainText("Dismiss"),
+      value: item.id,
+    },
+    ...(snoozeUrl
+      ? [
+          {
+            type: "button" as const,
+            action_id: SNOOZE_ACTION_ID,
+            text: plainText("Snooze"),
+            url: snoozeUrl,
+          },
+        ]
+      : []),
+  ];
   // A notice has nothing to answer, and it can close by itself, so a person
-  // can only dismiss it.
-  if (item.kind === "notice" || !item.request) return [dismiss];
+  // can only dismiss or snooze it.
+  if (item.kind === "notice" || !item.request) return quiet;
   const buttonField = buttonUserInputField(item.request);
   if (!buttonField) {
     return [
+      ...quiet,
       {
         type: "button",
         action_id: ANSWER_ACTION_ID,
@@ -97,10 +122,10 @@ function controls(item: InboxItem): Button[] {
         text: plainText("Answer"),
         value: item.id,
       },
-      dismiss,
     ];
   }
   return [
+    ...quiet,
     ...buttonField.options.map((option, index): Button => ({
       type: "button",
       // Slack requires a unique action_id for each element in one message.
@@ -123,7 +148,6 @@ function controls(item: InboxItem): Button[] {
           },
         ]
       : []),
-    dismiss,
   ];
 }
 
@@ -154,7 +178,8 @@ function closedNote(item: InboxItem): string {
 /**
  * Render an Inbox item as one Slack message. An open item shows its
  * controls: one button per choice when one click can answer it, an Answer
- * button that opens a form otherwise, and only Dismiss for a notice. A
+ * button that opens a form otherwise, and only Dismiss and Snooze for a
+ * notice. A
  * closed item shows a note instead, so nobody can act on it again.
  */
 export function buildSlackInboxItemCard(item: InboxItem): {

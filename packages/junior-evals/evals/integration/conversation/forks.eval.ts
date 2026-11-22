@@ -18,14 +18,21 @@ describe("Conversation Forks", () => {
     });
 
     const fork = await source.fork(decision);
+    // Ask what the conversation decided, not the banner's live color: Junior
+    // treats its own earlier replies as leads, not proof of current state, so
+    // it can rightly decline to confirm a live value without a tool check.
     const next = await fork.continue(
-      webMessage("Which color is the launch banner right now?"),
+      webMessage("Which color did we last pick for the launch banner?"),
     );
     await expect(next).toSatisfyJudge(
       RubricJudge,
       rubric({
-        pass: ["The reply says the launch banner is blue."],
-        fail: ["Do not say the banner is green or was switched to green."],
+        pass: [
+          "The reply says blue was the last color picked for the launch banner.",
+        ],
+        fail: [
+          "Do not say green was picked, or that the banner is or was switched to green.",
+        ],
       }),
     );
     expect(next.replies).toHaveLength(1);

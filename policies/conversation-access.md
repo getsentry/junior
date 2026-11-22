@@ -21,7 +21,7 @@ rule, and it does not add a surface or tenant check to public access.
 - **Requester**: the Conversation where the work runs and the output goes.
 - **Target**: the Conversation whose data is read, found, or acted on.
 - The root Conversation decides visibility. Child Conversations,
-  events, Messages, Briefs, Annotations, artifacts, and plugin records use
+  events, Messages, Conversation metadata, Annotations, artifacts, and plugin records use
   the values of their root. Missing or unknown visibility is private. A
   direct message is private. When the root or its Destination is missing,
   rows 2 and 3 do not match, and row 4 denies.
@@ -60,8 +60,9 @@ Check the rows in this order. The first match decides.
   Participant. The Lead writes there for that person, as the person could.
   It never writes into another person's public root.
 - `startConversation` makes a public root from a Lead. It runs as the
-  person, and the Lead's task is its first message. Action review judges
-  each `startConversation` call, as it does other tool calls.
+  person, and the Lead's task is its first message. The start is not
+  reviewed. Action review judges the new root's own tool calls, the same
+  way it judges a child agent's.
 
 ## Rules for every surface
 
@@ -93,8 +94,8 @@ never lets one Conversation read another.
 - `searchConversations` finds Conversations whose root is public or is at
   the Destination of the requester's root. It finds child agents only when
   asked. It never finds the requester's own tree. Its results include the
-  latest Brief. `participating` keeps only roots where the person is a
-  Participant.
+  summary and outcome status. `participating` keeps only roots where the
+  person is a Participant.
 - `searchConversationMessages` is only available in public Conversations
   and returns only public Conversations. It is a Slack tool, so it returns
   only Slack Conversations.

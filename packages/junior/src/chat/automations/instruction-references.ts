@@ -95,25 +95,58 @@ function taskTextProblem(
   return `The ${label} names ${requester.fullName} without a Slack mention. Write ${mention} for this person.`;
 }
 
+/** People and the saved task that the task text checks compare against. */
+type TaskTextReferences = {
+  creator: InstructionPerson;
+  /** The person who edits the task, when it is not a new Automation. */
+  requester?: InstructionPerson | undefined;
+  /** The task before this edit. Unset for a new Automation. */
+  current?: AutomationTask | undefined;
+};
+
+function previousTaskText(current: AutomationTask | undefined): string {
+  return (current && automationTaskText(current)) ?? "";
+}
+
 /**
- * Reject task text that a later run cannot use. The Automation tools and the
- * dashboard edit API call this. Restoring a saved version does not, because
- * that text was accepted when it was saved. Text that the current task
- * already had is not checked again.
+ * Return why each task text of an Automation tool call cannot run later.
+ * The tools check every text field, also when the fields do not form a
+ * valid task, so that one rejection names every problem of the call.
+ */
+export function automationTaskTextProblems(
+  texts: {
+    instruction?: string | undefined;
+    context?: string | null | undefined;
+  },
+  references: TaskTextReferences,
+): string[] {
+  const previousText = previousTaskText(references.current);
+  const problems: string[] = [];
+  for (const label of ["instruction", "context"] as const) {
+    const text = texts[label];
+    if (!text || text === previousText) continue;
+    const problem = taskTextProblem(text, {
+      ...references,
+      previousText,
+      label,
+    });
+    if (problem) problems.push(problem);
+  }
+  return problems;
+}
+
+/**
+ * Reject task text that a later run cannot use. The dashboard edit API calls
+ * this. Restoring a saved version does not, because that text was accepted
+ * when it was saved. Text that the current task already had is not checked
+ * again.
  */
 export function requireAutomationTaskText(
   task: AutomationTask,
-  references: {
-    creator: InstructionPerson;
-    /** The person who edits the task, when it is not a new Automation. */
-    requester?: InstructionPerson | undefined;
-    /** The task before this edit. Unset for a new Automation. */
-    current?: AutomationTask | undefined;
-  },
+  references: TaskTextReferences,
 ): void {
   const text = automationTaskText(task);
-  const previousText =
-    (references.current && automationTaskText(references.current)) ?? "";
+  const previousText = previousTaskText(references.current);
   if (text === undefined || text === previousText) return;
   const label = task.kind === "instruction" ? "instruction" : "context";
   const problem = taskTextProblem(text, { ...references, previousText, label });

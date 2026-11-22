@@ -1,5 +1,5 @@
 {
-  "id": "77e12133-945e-475c-8833-49894f9abf45",
+  "id": "eee3e099-55f7-4834-b317-2fea0edf97dd",
   "prevId": "8c016ebf-a0bb-49d0-bf98-29964629b681",
   "version": "7",
   "dialect": "postgresql",
@@ -2269,7 +2269,13 @@
           "name": "brief_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "through_seq": {
+          "name": "through_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "provider": {
           "name": "provider",
@@ -2305,17 +2311,15 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "junior_conversation_embeddings_brief_fk": {
-          "name": "junior_conversation_embeddings_brief_fk",
+        "junior_conversation_embeddings_conversation_fk": {
+          "name": "junior_conversation_embeddings_conversation_fk",
           "tableFrom": "junior_conversation_embeddings",
-          "tableTo": "junior_conversation_briefs",
+          "tableTo": "junior_conversations",
           "columnsFrom": [
-            "conversation_id",
-            "brief_version"
+            "conversation_id"
           ],
           "columnsTo": [
-            "conversation_id",
-            "version"
+            "conversation_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -3407,6 +3411,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata_through_seq": {
+          "name": "metadata_through_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3798,11 +3814,11 @@
       "checkConstraints": {
         "junior_conversations_kind_check": {
           "name": "junior_conversations_kind_check",
-          "value": "\"junior_conversations\".\"kind\" in ('root', 'automation', 'lead', 'thread', 'task')"
+          "value": "\"junior_conversations\".\"kind\" in ('root', 'automation', 'thread', 'task')"
         },
         "junior_conversations_kind_parent_check": {
           "name": "junior_conversations_kind_parent_check",
-          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" in ('root', 'automation', 'lead')) = (\"junior_conversations\".\"parent_conversation_id\" is null))"
+          "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" in ('root', 'automation')) = (\"junior_conversations\".\"parent_conversation_id\" is null))"
         }
       },
       "isRLSEnabled": false

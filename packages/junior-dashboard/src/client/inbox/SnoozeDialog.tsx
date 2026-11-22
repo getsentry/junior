@@ -50,10 +50,11 @@ import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
 import { eventSentence, sentenceCase } from "./snoozeSentences";
-import type {
-  CustomSnoozeEnd,
-  EventSnooze,
-  SnoozeEvents,
+import {
+  SOMEDAY,
+  type CustomSnoozeEnd,
+  type EventSnooze,
+  type SnoozeEvents,
 } from "./snoozeChoices";
 
 // Like the composer's `#` menu: a person who types waits for the next key.
@@ -89,7 +90,8 @@ interface CompleteCondition {
  * the subject of the row's items, a pull request that the search finds, or
  * a pasted link to a pull request or issue. Wake shows the items again
  * then; Dismiss dismisses them, for a viewer who can dismiss each one. The
- * time always wakes them.
+ * time always wakes them. Someday snoozes with neither, until the items
+ * close.
  */
 export function SnoozeDialog(props: {
   /** Set when the row can snooze until an Event. */
@@ -238,6 +240,19 @@ export function SnoozeDialog(props: {
         ) : null}
         <FieldError id={`${id}-error`}>{error?.message}</FieldError>
         <DialogFooter className="flex justify-end gap-1">
+          {props.events ? (
+            <Button
+              className="sm:mr-auto"
+              onClick={() => {
+                props.onSnooze(SOMEDAY);
+                sheet.close();
+              }}
+              type="button"
+              variant="ghost"
+            >
+              Someday
+            </Button>
+          ) : null}
           <Button onClick={sheet.close} type="button" variant="ghost">
             Cancel
           </Button>

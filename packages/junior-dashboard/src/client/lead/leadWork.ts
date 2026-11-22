@@ -9,9 +9,10 @@ export type LeadWorkState = "needs_you" | "working" | "failed" | "done";
  * Inbox items assigned to the viewer (`design/attention.md`) and from a
  * sign-in that the Conversation waits on, as in the sidebar.
  *
- * The feed has no failed status. `needs_input` without a finished Brief is a
- * failed latest Turn or a `blocked` or `partial` Brief, so it reads as
- * Failed.
+ * The feed has no failed status. Turns no longer store Briefs, so
+ * `needs_input` with neither of those is a failed latest Turn or an answer
+ * the viewer has not read, and the feed cannot tell them apart. It reads as
+ * Done. A watched Conversation's failure still shows as a Watch report.
  */
 export function leadWorkState(
   conversation: Conversation,
@@ -20,13 +21,6 @@ export function leadWorkState(
   if (waiting || conversation.awaitingAuthorization) return "needs_you";
   if (conversation.turnActive || conversation.status === "working") {
     return "working";
-  }
-  if (
-    conversation.status === "needs_input" &&
-    conversation.brief?.status !== "answered" &&
-    conversation.brief?.status !== "done"
-  ) {
-    return "failed";
   }
   return "done";
 }

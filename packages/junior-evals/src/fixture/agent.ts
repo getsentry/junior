@@ -538,6 +538,19 @@ export async function createFixtureAgent(
         sentInputs += 1;
       },
     };
+    // MSW logs an error that a request handler throws and answers with a
+    // failed response, which the product retries. Keep the first error of a
+    // hook that runs in a handler, and fail the call with it.
+    let handlerError: { error: unknown } | undefined;
+    const failCallOnError =
+      <A extends unknown[]>(hook: (...args: A) => Promise<void>) =>
+      async (...args: A) => {
+        try {
+          await hook(...args);
+        } catch (error) {
+          handlerError ??= { error };
+        }
+      };
     if (options.onProgress) {
       const onProgress = options.onProgress;
       const report = async (progress: TurnProgress) => {
@@ -547,7 +560,7 @@ export async function createFixtureAgent(
           await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
         }
       };
-      gateway.setProgressHook(report);
+      gateway.setProgressHook(failCallOnError(report));
       queue.setRequeueHook(async (conversationId) => {
         if (
           typeof target === "function" ||
@@ -571,13 +584,16 @@ export async function createFixtureAgent(
           await report({ type: "paused" });
         }
       });
-      slack.setReplyHook(async (post) => {
-        await onProgress({ type: "reply", text: post.text }, progressActions);
-      });
+      slack.setReplyHook(
+        failCallOnError(async (post) => {
+          await onProgress({ type: "reply", text: post.text }, progressActions);
+        }),
+      );
     }
     try {
       await send();
       await waitForIdle();
+      if (handlerError) throw handlerError.error;
     } catch (error) {
       // Keep the partial transcript before cleanup removes the test identities.
       // A timeout must show the work that was still running, not an empty run.

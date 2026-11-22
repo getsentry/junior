@@ -158,7 +158,7 @@ function useConversationSource(
         labelMatches: quickOpenMatch(title, query)?.indices,
         details: (
           <ComposerMenuDetails
-            body={row.brief?.summary ?? row.activityPreview?.text}
+            body={row.summary ?? row.activityPreview?.text}
             icon={<ReferenceIcon reference={reference} />}
             meta={`Active ${formatRelativeTime(row.lastSeenAt)}`}
             title={title}
