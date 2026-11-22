@@ -2,9 +2,13 @@ import type { StateAdapter } from "chat";
 import {
   cancelWaitingParentMessages,
   dropOwnUnreadLoopReplies,
+  reportPersonStopToParent,
   stopChildAgentsBelow,
 } from "@/chat/agent-invocations/stop";
-import { markConversationsStopped } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  markConversationsStopped,
+} from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -34,7 +38,8 @@ export type StopConversationResult =
  * sends input, and then its Turn stops. A Turn that waits for sign-in ends
  * too, so a later sign-in does not resume it. Their Watch Events are saved
  * and start no Turn. Nothing above it changes: a stopped child agent's worker
- * reports the stop to its parent.
+ * reports the stop to its parent, and this reports it for a Task that no
+ * Agent invocation names.
  *
  * A stop that comes from a message or a button press, such as the Slack
  * `stop` keyword or stop button, passes it. Its id is claimed in the mailbox
@@ -81,6 +86,11 @@ export async function stopConversation(args: {
     // knows which Conversations this stop already reached.
     const nowMs = Date.now();
     const stoppedAtMs = args.message?.createdAtMs ?? nowMs;
+    // A repeat stop cuts nothing that the first stop did not. Its parent
+    // already has every report, and a stopped child's later reply is dropped
+    // when it reaches the parent.
+    const wasStopped =
+      (await getConversationStoppedAtMs(args.conversationId)) !== undefined;
     await stopChildAgentsBelow(args.conversationId, {
       nowMs,
       stoppedAtMs,
@@ -91,8 +101,10 @@ export async function stopConversation(args: {
       nowMs: stoppedAtMs,
       state: args.state,
     });
-    await dropOwnUnreadLoopReplies(args.conversationId, args.state);
-    await cancelWaitingParentMessages(args.conversationId, {
+    if (!wasStopped) {
+      await dropOwnUnreadLoopReplies(args.conversationId, args.state);
+    }
+    const dropped = await cancelWaitingParentMessages(args.conversationId, {
       nowMs: stoppedAtMs,
       state: args.state,
     });
@@ -115,6 +127,14 @@ export async function stopConversation(args: {
         nowMs,
         queue: args.queue,
         replaceExistingWake: true,
+        state: args.state,
+      });
+    }
+    if (!wasStopped) {
+      await reportPersonStopToParent(args.conversationId, {
+        dropped,
+        queue: args.queue,
+        runId: result.status === "requested" ? result.runId : undefined,
         state: args.state,
       });
     }

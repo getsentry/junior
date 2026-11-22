@@ -177,7 +177,7 @@ function sharedAuthorIdentityId(
  */
 export type ParentResult =
   | { kind: "reply"; reply: Reply }
-  | { kind: "blocked" | "failed"; text: string };
+  | { kind: "blocked" | "failed" | "stopped"; text: string };
 
 /**
  * Send one child agent Turn's result to the parent agent. `actor` is the

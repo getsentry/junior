@@ -786,6 +786,46 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await harness.close();
     }
   });
+  it.each(["waits", "runs"] as const)(
+    "tells the parent once that a person stopped a Task while it %s",
+    async (when) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const taskId = await spawn(harness, "call-1");
+        const stopTask = async () => {
+          for (const nowMs of [1_800_000_001_000, 1_800_000_002_000]) {
+            vi.setSystemTime(nowMs);
+            await stopConversation({
+              conversationId: taskId,
+              conversationStore: harness.conversationStore,
+              queue: harness.queue,
+              state: harness.state,
+            });
+          }
+        };
+        if (when === "waits") {
+          await stopTask();
+        } else {
+          harness.onPersonRun(async (run) => {
+            await stopTask();
+            return await finishRun(run);
+          });
+          await harness.drain(taskId);
+        }
+        expect(harness.runs).toHaveLength(when === "runs" ? 1 : 0);
+
+        const stopped = (
+          await mailboxTexts(harness, slackParentConversationId)
+        ).filter((text) => text.includes('status="stopped"'));
+        expect(stopped).toHaveLength(1);
+        expect(stopped[0]).toContain(`conversation_id="${taskId}"`);
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
   it("lets a parent give work in a Turn that started after its stop", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

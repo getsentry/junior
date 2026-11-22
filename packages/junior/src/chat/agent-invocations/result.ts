@@ -436,6 +436,7 @@ const RESULT_SUMMARIES = {
   blocked: "is blocked.",
   failed: "failed.",
   reply: "replied.",
+  stopped: "was stopped.",
 } as const;
 
 /**
@@ -541,6 +542,8 @@ export async function enqueueChildResultToParent(args: {
       // A stop drops the unread replies of a Turn on the Conversation loop
       // from the parent's mailbox. One sent before the stop can reach this
       // lock after that drop, so a stopped sender's reply is dropped here.
+      // The `stopped` result reports that stop, so it stays.
+      args.result.kind !== "stopped" &&
       !ownAgentInvocation(sender) &&
       (await getConversationStoppedAtMs(args.sender.childConversationId)) !==
         undefined
@@ -561,6 +564,7 @@ const PARENT_RESULT_OUTCOMES = {
   blocked: "blocked",
   failed: "error",
   reply: "success",
+  stopped: "aborted",
 } as const satisfies Record<ParentResult["kind"], string>;
 
 /**
