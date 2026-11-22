@@ -46,17 +46,13 @@ how the dashboard groups and acts on its rows.
   the transcript, a waiting card spans the transcript width.
 - A click on a choice picks it. Send answers, with the note line. An
   action that takes no words, such as a plugin's Resume, is one click.
-- The first answer closes the item for everyone. A dismiss is not a
-  decision, so it does not continue the work.
-- Dismiss on an item for Everyone or for more than one User hides it for
-  that person only, in the dashboard and on a Slack card. It stays open
-  for everyone else, and their pill and counts skip it. When each member
-  has dismissed it, it closes as dismissed. The members are its
-  assignees, or, for Everyone, the Participants of its Conversations.
-  Dismiss on an item for one User closes it for everyone.
-- A question card in the transcript and in the Inbox has Snooze and
-  Dismiss. A card that the viewer snoozed or dismissed stays in the
-  transcript with no form.
+- The first answer or dismiss closes the item for everyone. A dismiss is
+  not a decision, so it does not continue the work.
+- Dismiss closes the item for everyone. A person who wants someone else to
+  answer snoozes it until it closes. It then waits in their Snoozed view,
+  where they can still answer it, dismiss it, or wake it.
+- A card's actions read Dismiss, Snooze, then the main action, such as
+  Send, last. Every card that shows an item uses this order.
 - Every item has at least one assignee: a User, or Everyone. When no
   assignee is left, the item dismisses itself.
 - With no assignees named, the item goes to the person in the Turn, else
