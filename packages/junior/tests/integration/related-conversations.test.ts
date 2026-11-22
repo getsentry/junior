@@ -35,6 +35,8 @@ async function recordOpenConversation(input: {
   });
 }
 
+const RELATED_CONTEXT = "These open conversations may be about the same work";
+
 function modelInputText(agent: { snapshot(): { messages: unknown[] } }) {
   return JSON.stringify(agent.snapshot().messages);
 }
@@ -67,8 +69,8 @@ describe("related conversations", () => {
     await agent.run("Can you fix the Kafka consumer lag?");
 
     const first = modelInputText(agent);
-    expect(first).toContain("<related-conversations>");
-    expect(first).toContain(`conversation_id: ${KAFKA_CONVERSATION_ID}`);
+    expect(first).toContain(RELATED_CONTEXT);
+    expect(first).toContain(`- conversation_id: ${KAFKA_CONVERSATION_ID}`);
     expect(first).toContain("title: Kafka consumer lag");
     expect(first).not.toContain(LUNCH_CONVERSATION_ID);
     expect(rerankRequests).toHaveLength(1);
@@ -78,9 +80,7 @@ describe("related conversations", () => {
     // The second Turn does not search again. Only the first Turn's context
     // in history has the block.
     expect(rerankRequests).toHaveLength(1);
-    expect(modelInputText(agent).split("<related-conversations>")).toHaveLength(
-      2,
-    );
+    expect(modelInputText(agent).split(RELATED_CONTEXT)).toHaveLength(2);
   });
 
   it("runs the Turn without related conversations when reranking fails", async () => {
@@ -96,6 +96,6 @@ describe("related conversations", () => {
     await agent.run("Can you fix the Kafka consumer lag?");
 
     expect(rerankRequests.length).toBeGreaterThan(0);
-    expect(modelInputText(agent)).not.toContain("<related-conversations>");
+    expect(modelInputText(agent)).not.toContain(RELATED_CONTEXT);
   });
 });

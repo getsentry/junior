@@ -9,6 +9,7 @@ import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-c
 import { memoryRegistration } from "@/chat/memory/registration";
 import { notificationsTaskRegistration } from "@/chat/notifications/task";
 import { readWebPushConfig } from "@/chat/notifications/web-push";
+import { relatedConversationsRegistration } from "@/chat/related-conversations/registration";
 
 /** Return whether a core feature owns this registration name. */
 export function isCoreRegistrationName(name: string): boolean {
@@ -18,6 +19,7 @@ export function isCoreRegistrationName(name: string): boolean {
     eventSearchTaskRegistration({ embedEvents: false }),
     memoryRegistration(),
     notificationsTaskRegistration,
+    relatedConversationsRegistration,
   ].some((registration) => registration.manifest.name === name);
 }
 
@@ -30,14 +32,15 @@ export function apiRoutePrefix(name: string): string {
 }
 
 /**
- * Return enabled core registrations: event search, Memory, and reply
- * notifications. Event search always stores lexemes, which cost no provider
+ * Return enabled core registrations: event search, Memory, related
+ * Conversations, and reply notifications. Event search always stores lexemes, which cost no provider
  * call. It embeds events only when event embeddings are enabled.
  */
 export function coreRegistrations(): PluginRegistration[] {
   return [
     eventSearchTaskRegistration({ embedEvents: isEventEmbeddingsEnabled() }),
     memoryRegistration(),
+    relatedConversationsRegistration,
     ...(readWebPushConfig() ? [notificationsTaskRegistration] : []),
   ];
 }

@@ -1,8 +1,8 @@
 /**
  * Core model calls with required cost attribution.
  *
- * Core code calls the text, object, decision, embedding, reranking, web
- * search, image, and transcription models only through this module. Each call names its
+ * Core code calls the text, object, decision, embedding, web search, image,
+ * and transcription models only through this module. Each call names its
  * operation and where its cost goes, so a new call site cannot drop its cost.
  * Plugins get the same rule through `chat/plugins/model.ts`.
  */
@@ -31,7 +31,6 @@ type ConversationRecordedOperation =
   | "image_generation"
   | "image_prompt_enrichment"
   | "inbox_item_reply_match"
-  | "related_conversation_rerank"
   | "run_title"
   | "task_title"
   | "tool_search_rerank"
@@ -146,22 +145,6 @@ export async function embedTexts(
 ): Promise<Awaited<ReturnType<typeof gateway.embedTexts>>> {
   const { cost, operation: _operation, ...rest } = params;
   const result = await gateway.embedTexts({
-    ...rest,
-    ...("conversationId" in cost
-      ? { metadata: { conversationId: cost.conversationId } }
-      : undefined),
-  });
-  await recordCost(params, result.costUsd);
-  return result;
-}
-
-/** Score documents against one query and attribute the cost. */
-export async function rerankTexts(
-  params: Omit<Parameters<typeof gateway.rerankTexts>[0], "metadata"> &
-    ModelCallAttribution,
-): Promise<Awaited<ReturnType<typeof gateway.rerankTexts>>> {
-  const { cost, operation: _operation, ...rest } = params;
-  const result = await gateway.rerankTexts({
     ...rest,
     ...("conversationId" in cost
       ? { metadata: { conversationId: cost.conversationId } }

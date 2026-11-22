@@ -22,10 +22,6 @@ import {
 import { getPluginUserPromptContributions } from "@/chat/plugins/agent-hooks";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
-import {
-  findRelatedConversations,
-  type RelatedConversation,
-} from "@/chat/conversations/related";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
@@ -128,8 +124,6 @@ export interface PromptTurnContext {
   workspaces?: Workspace[];
   /** IANA timezone of the person who asked, from `findActorTimezone`. */
   askerTimezone?: string | undefined;
-  /** Open Conversations that may cover the same work, on a first Turn. */
-  relatedConversations?: RelatedConversation[] | undefined;
 }
 
 interface PromptReplayArgs {
@@ -564,8 +558,7 @@ function planPromptReplay(args: PromptReplayArgs) {
 
 /**
  * Load the Turn context for a new prompt: plugin prompt hooks, such as
- * memory recall, Conversation notes, the user customization, and related
- * Conversations.
+ * memory recall, Conversation notes, and the user customization.
  *
  * It needs no tool wiring, so the caller can run it while sandbox setup
  * runs.
@@ -574,8 +567,6 @@ export async function loadPromptTurnContext(
   args: PromptReplayArgs & {
     context: PromptHookContext;
     currentActor?: Actor | undefined;
-    /** Search for related Conversations, on a person's first Turn of a root. */
-    findsRelatedConversations: boolean;
     turnId: string;
   },
 ): Promise<PromptTurnContext> {
@@ -589,7 +580,6 @@ export async function loadPromptTurnContext(
     workspaces,
     todos,
     askerTimezone,
-    relatedConversations,
   ] = await Promise.all([
     getPluginUserPromptContributions({
       context: args.context,
@@ -605,19 +595,10 @@ export async function loadPromptTurnContext(
     listWorkspaces(getDb()),
     listTodos(getSqlExecutor(), args.context.conversationId),
     loadAskerTimezone(args.currentActor, args.context),
-    args.findsRelatedConversations
-      ? findRelatedConversations({
-          conversationId: args.context.conversationId,
-          nowMs: Date.now(),
-          text: args.context.userText ?? "",
-          turnId: args.turnId,
-        })
-      : undefined,
   ]);
   return {
     askerTimezone,
     conversationNotes,
-    relatedConversations,
     todos,
     pluginUserPromptContributions,
     userCustomization,
@@ -715,7 +696,6 @@ export async function assemblePrompt(args: {
   const {
     askerTimezone,
     conversationNotes,
-    relatedConversations,
     todos,
     pluginUserPromptContributions,
     userCustomization,
@@ -743,7 +723,6 @@ export async function assemblePrompt(args: {
     ? buildTurnContextPrompt({
         askerTimezone,
         conversationNotes,
-        relatedConversations,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
         // Changes that others made after the To-do version that history

@@ -69,9 +69,9 @@ export type TurnBehavior = {
    */
   sessionTasks: boolean;
   /**
-   * A person's first Turn lists open Conversations that may cover the same
-   * work, so the agent can point to work that someone already does. Only a
-   * root has its own audience to search for.
+   * The first request of the Conversation gets the open Conversations that
+   * may cover the same work. A child agent or an Automation run already
+   * knows what it works on.
    */
   relatedConversations: boolean;
   tools: {
@@ -199,7 +199,6 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   ...ROOT,
   promptMode: "automation",
   sender: "person",
-  relatedConversations: false,
 };
 
 /** Return the behavior of one Turn. */
