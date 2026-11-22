@@ -112,11 +112,17 @@ function proseWordCount(conversation: Conversation): number {
     .filter(Boolean).length;
 }
 
-/** Lines of the replies that start with a bold label, such as `**Why:**`. */
+/**
+ * Lines of the replies that start with a bold label: a bullet that opens with
+ * bold text, or a line that opens with a bold term and a colon, such as
+ * `**Why:**`. A sentence that starts with a bolded term is not a label.
+ */
 function boldLabelLines(conversation: Conversation): string[] {
   return conversation.replies
     .flatMap((item) => item.text.split("\n"))
-    .filter((line) => /^\s*(?:[-*]\s+)?\*\*[^*]+\*\*/.test(line));
+    .filter((line) =>
+      /^\s*(?:[-*•]\s+\*\*[^*]+\*\*|\*\*[^*]+(?::\*\*|\*\*:))/.test(line),
+    );
 }
 
 // None of these requests asks for a length. The reply length must come from
