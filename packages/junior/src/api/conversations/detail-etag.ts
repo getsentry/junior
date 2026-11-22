@@ -47,9 +47,8 @@ const agentTreeRoot = alias(juniorConversations, "detail_agent_tree_root");
 
 /**
  * Return the root fields that label the agent tree of a child: its title and
- * channel name. The other labels cannot change once the child exists. An
- * agent invocation keeps its title and agent name after insert, and only the
- * spawn sets a title. Access to each node comes from the shared root, so the
+ * channel name. The other labels cannot change once the child exists. Only
+ * the spawn sets a child's title and agent name. Access to each node comes from the shared root, so the
  * viewer's access covers it. This keeps the recursive lineage read out of
  * every poll.
  */

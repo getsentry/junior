@@ -503,6 +503,9 @@ ORDER BY table_name ASC, ordinal_position ASC
           ),
         );
       }
+      // The schema drops this table, and 0160 keeps it until it drains.
+      // Remove this when the follow-up migration drops it.
+      actual.delete("junior_agent_invocations");
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 

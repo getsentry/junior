@@ -5,7 +5,6 @@
  */
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { listChildAgents } from "@/chat/agent-invocations/list";
-import { NON_TERMINAL_AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/store";
 import { listWatches, type Watch } from "@/chat/events/store";
 import type { WaitingOn } from "./model";
 
@@ -68,13 +67,7 @@ export async function readPendingWork(
     listWatches({ conversationId }),
     listChildAgents(conversationId),
   ]);
-  if (
-    children.some((child) =>
-      (NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
-        child.status,
-      ),
-    )
-  ) {
+  if (children.some((child) => child.status === "running")) {
     return { watches, waitingOn: "child" };
   }
   if (idleNeedsPendingWork) {

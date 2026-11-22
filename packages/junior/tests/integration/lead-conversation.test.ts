@@ -1,9 +1,6 @@
 import { createWebSource } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it } from "vitest";
-import {
-  getAgentInvocationId,
-  getUnnamedAgentConversationId,
-} from "@/chat/agent-invocations/ids";
+import { getSpawnedChildConversationId } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import type { AgentRun } from "@/chat/agent/types";
@@ -269,8 +266,9 @@ describe("Lead", () => {
     await watch(lead.conversationId, started.conversation_id);
     await watch(boWork.conversationId, started.conversation_id);
     // Any kind may be watched, so a child agent of that root is too.
-    const child = getUnnamedAgentConversationId(
-      getAgentInvocationId(started.conversation_id, "lead-watch-child"),
+    const child = getSpawnedChildConversationId(
+      started.conversation_id,
+      "lead-watch-child",
     );
     await getConversationStore().createChild({
       childConversationId: child,

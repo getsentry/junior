@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
-import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { messageChildAgent } from "@/chat/agent-invocations/create";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { enqueueEventNotification } from "@/chat/events/notification";
@@ -27,7 +26,11 @@ import {
 } from "../fixtures/conversation";
 import { runTestHeartbeat } from "../fixtures/conversation-work";
 import { context, execute } from "../fixtures/event-automations";
-import { loadTurnEvents, spawnChildAgent } from "../fixtures/agent-invocations";
+import {
+  invocationInput,
+  loadTurnEvents,
+  spawnChildAgent,
+} from "../fixtures/agent-invocations";
 
 // Timer heartbeat coverage lives here because heartbeat.test.ts is at its file limit.
 afterEach(async () => {
@@ -448,20 +451,18 @@ it("saves a stopped child's timers until a person writes to its root", async () 
     "child-timer-4",
   );
   clock.mockReturnValue(clock() + 1_000);
-  const message = await createAgentInvocationForMessage({
-    actor: child.actor,
-    childConversationId: child.childConversationId,
-    destination: child.destination,
-    idempotencyKey: "parent-message",
-    input: "Keep watching.",
-    parentConversationId: conversationId,
-    parentToolCallId: "parent-message",
-  });
-  await enqueueAgentInvocation(message.invocation, {
-    conversationStore,
-    queue,
-    state,
-  });
+  await messageChildAgent(
+    {
+      actor: invocationInput.actor,
+      childConversationId: child.childConversationId,
+      idempotencyKey: "parent-message",
+      input: "Keep watching.",
+      parentConversationId: conversationId,
+      parentToolCallId: "parent-message",
+      parentTurnId: "parent-message",
+    },
+    { conversationStore, queue, state },
+  );
   await drain();
   await expect(
     getConversationStoppedAtMs(child.childConversationId),
@@ -475,7 +476,7 @@ it("saves a stopped child's timers until a person writes to its root", async () 
       .filter((run) => run.conversationId === child.childConversationId)
       .slice(1)
       .map((run) => run.source.kind),
-  ).toEqual(["agent_invocation", "event"]);
+  ).toEqual(["parent_message", "event"]);
 });
 
 it("runs a timer on a root whose last Turn failed", async () => {

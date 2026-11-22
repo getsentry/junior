@@ -16,8 +16,8 @@ const AUTHORIZATION_WAIT_MS = 24 * 60 * 60 * 1000;
 /**
  * The request and the events that end its wait: the person connected, or a
  * Turn started or ended after the request. A stop or new input ends the
- * parked Turn with `turn_completed`. A child agent invocation that needs a
- * connection abandons its Turn and ends it as `blocked`, so nothing resumes
+ * parked Turn with `turn_completed`. A child agent's Turn on a parent message
+ * that needs a connection abandons its Turn and ends it as `blocked`, so nothing resumes
  * it and its parent gets the result instead.
  */
 const AUTHORIZATION_WAIT_EVENT_TYPES = [

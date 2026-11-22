@@ -4,6 +4,7 @@ import { getDb } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import {
   claimInboxItemPush,
+  clearInboxItemDeliveries,
   listInboxItemPushUserIds,
   type InboxItemDeliverySkipReason,
 } from "@/chat/inbox-items/deliveries";
@@ -30,6 +31,17 @@ async function isSnoozedBy(db: JuniorDatabase, itemId: string, userId: string) {
     .select({ id: juniorInboxItems.id })
     .from(juniorInboxItems)
     .where(and(eq(juniorInboxItems.id, itemId), inboxItemSnoozedBy(userId)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+async function isOpen(db: JuniorDatabase, itemId: string) {
+  const rows = await db
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
+    .where(
+      and(eq(juniorInboxItems.id, itemId), eq(juniorInboxItems.status, "open")),
+    )
     .limit(1);
   return rows.length > 0;
 }
@@ -97,6 +109,13 @@ export async function syncInboxItemPush(itemId: string): Promise<void> {
               userId,
             });
             if (!claimed) return;
+            // A close that ran before the claim cleared no row for this
+            // User. Clear it now and send nothing. A later close clears
+            // the claimed row itself.
+            if (!(await isOpen(db, item.id))) {
+              await clearInboxItemDeliveries(db, [item.id], Date.now());
+              return;
+            }
             if (reason) {
               logInfo("notification.inbox_item.skipped", {
                 "app.notification.skip_reason": reason,

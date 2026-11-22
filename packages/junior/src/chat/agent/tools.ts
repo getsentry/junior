@@ -15,7 +15,7 @@ import {
   type TurnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import type {
-  AgentInvocationSource,
+  ParentMessageSource,
   Destination,
   EventAutomationSource,
   PluginDispatchSource,
@@ -277,7 +277,7 @@ type ToolRuntimeRoute =
       actor?: Actor | undefined;
       destination: Destination;
       source:
-        | AgentInvocationSource
+        | ParentMessageSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource
@@ -325,7 +325,7 @@ function resolveToolRuntimeRoute(args: {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return {
         destination,
         actor: args.actor,
