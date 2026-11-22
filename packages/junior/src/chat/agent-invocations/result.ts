@@ -508,35 +508,34 @@ export async function enqueueChildResultToParent(args: {
     }),
     ...childMessageSenderMetadata(sender),
   };
-  // A `reply` of an agent invocation is its result. A reply from a Turn on
-  // the Conversation loop is not, so the child's work may go on. Only the
-  // first send closes: a retry must not close To-dos assigned after it.
-  const replyingInvocationId =
-    args.result.kind === "reply" ? ownAgentInvocation(sender) : undefined;
-  if (
-    replyingInvocationId &&
-    !hasAgentInvocationReply(
-      await readParentChildMessages(
-        args.sender.parentConversationId,
-        args.state,
-      ),
-      replyingInvocationId,
-    )
-  ) {
-    await closeTodosForResult(args.sender, "completed", nowMs);
-  }
-  // A `stopped` result drops the child's open To-dos, as an agent
-  // invocation's does. Only the first send drops them.
-  if (
-    args.result.kind === "stopped" &&
-    !(
-      await readParentChildMessages(
-        args.sender.parentConversationId,
-        args.state,
-      )
-    ).some((message) => message.inboundMessageId === inboundMessageId)
-  ) {
-    await closeTodosForResult(args.sender, "stopped", nowMs);
+  // A result closes the child's open To-dos: a `reply` that ends the
+  // child's work closes them done, and `stopped` drops them. A reply from a
+  // Turn on the Conversation loop of a child with an agent invocation is not
+  // its result. Only the first send closes: a retry must not close To-dos
+  // assigned after it.
+  const invocationId = ownAgentInvocation(sender);
+  const todoStatus =
+    args.result.kind === "stopped"
+      ? ("stopped" as const)
+      : args.result.kind === "reply" &&
+          !stillWorks &&
+          (invocationId || !args.sender.invocationId)
+        ? ("completed" as const)
+        : undefined;
+  if (todoStatus) {
+    const sent = await readParentChildMessages(
+      args.sender.parentConversationId,
+      args.state,
+    );
+    const firstSend =
+      todoStatus === "completed" && invocationId
+        ? !hasAgentInvocationReply(sent, invocationId)
+        : !sent.some(
+            (message) => message.inboundMessageId === inboundMessageId,
+          );
+    if (firstSend) {
+      await closeTodosForResult(args.sender, todoStatus, nowMs);
+    }
   }
   await enqueueAutomatedInput({
     message: {
