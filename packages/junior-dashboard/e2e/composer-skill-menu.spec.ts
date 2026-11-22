@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
 import { desktop, mobile, screenshot } from "./screenshot";
+import { clickSkillReference, styledSkillReferences } from "./skill-references";
 
 async function routeSkills(page: Page) {
   await page.route("**/api/skills", (route) =>
@@ -149,6 +150,62 @@ test("describes the skill reference at the caret @classic", async ({
   await composer.press("Backspace");
   await expect(skills).toBeVisible();
   await expect(card).toHaveCount(0);
+});
+
+test("a skill reference in the draft is a link and stays plain text @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByLabel("Continue this conversation");
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  const text = "Run $release-check now, not `$diff-quality` or $missing";
+  await composer.fill(text);
+  // Only the installed name outside code looks like a link.
+  await expect
+    .poll(() => styledSkillReferences(page))
+    .toEqual(["$release-check"]);
+
+  // A click puts the caret and opens the SKILL.md. Closing it gives the
+  // caret back, in the reference, so its card shows.
+  await clickSkillReference(page, "release-check");
+  const drawer = page.getByRole("dialog", { name: "$release-check" });
+  await expect(drawer).toContainText("Compare the release branch");
+  await drawer
+    .getByRole("button", { name: "Close $release-check", exact: true })
+    .click();
+  await expect(composer).toBeFocused();
+  const card = page.getByRole("group", { name: "$release-check" });
+  await expect(card).toBeVisible();
+  await composer.press("Home");
+  for (let step = 0; step < "Run $release-check".length; step++) {
+    await composer.press("ArrowRight");
+  }
+  await screenshot(page, "composer-skill-reference", { view: "desktop" });
+
+  // Backspace deletes one character, and undo puts it back.
+  await composer.press("Backspace");
+  await expect(composer).toHaveText(text.replace("check", "chec"), {
+    useInnerText: true,
+  });
+  await expect.poll(() => styledSkillReferences(page)).toEqual([]);
+  await composer.press("ControlOrMeta+z");
+  await expect(composer).toHaveText(text, { useInnerText: true });
+  await expect
+    .poll(() => styledSkillReferences(page))
+    .toEqual(["$release-check"]);
+
+  // The message is the plain text.
+  await composer.press("Escape");
+  const sent = page.waitForRequest(
+    (request) =>
+      request.method() === "POST" &&
+      /\/api\/conversations\/[^/]+\/messages$/.test(request.url()),
+  );
+  await composer.press("Enter");
+  expect((await sent).postDataJSON()).toMatchObject({ message: text });
 });
 
 test("a caret move before the skill list loads shows the card @classic", async ({
