@@ -121,9 +121,9 @@ describe("conversation child agents API", () => {
 
     const response = await expectSqlBudget(
       () => requestChildAgents(slackParentConversationId),
-      // Each running child also checks that its waiting task comes from
-      // its parent and was sent after any stop.
-      { statements: 10, serialRounds: 6 },
+      // Each running child also checks, in one read, that its waiting task
+      // comes from its parent and was sent after any stop.
+      { statements: 8, serialRounds: 5 },
     );
     const reviewerDetail = conversationDetailReportSchema.parse(
       await (await requestDetail(reviewer)).json(),
