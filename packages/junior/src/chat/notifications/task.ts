@@ -12,32 +12,14 @@ import { getConversationEventStore } from "@/chat/db";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
-import { isWithinNotificationSchedule } from "./schedule";
-import { isPausedBySlack } from "./slack";
-import { readNotificationSchedule } from "./store";
-import { resolveNotificationTimezone } from "./timezone";
+import { readNotificationPause } from "./pause";
+import { notificationPreview } from "./preview";
 import {
   readWebPushConfig,
   sendPushNotificationToUser,
   type PushNotificationPayload,
 } from "./web-push";
 import { botConfig } from "@/chat/config";
-
-const PREVIEW_MAX_CHARS = 180;
-
-/** Turn Markdown reply text into one short plain line for a notification. */
-function notificationPreview(text: string): string {
-  const plain = text
-    .replace(/```[\s\S]*?```/g, " ")
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, " ")
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
-    .replace(/[`*_~>#|]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-  return plain.length > PREVIEW_MAX_CHARS
-    ? `${plain.slice(0, PREVIEW_MAX_CHARS - 1).trimEnd()}…`
-    : plain;
-}
 
 /**
  * Return the stored reply of the Turn: the text that the person sees. The
@@ -122,24 +104,8 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   const userId = await recipientUserId(db, run);
   if (!userId) return skip("no_user");
 
-  const nowMs = Date.now();
-  const schedule = await readNotificationSchedule(db, userId);
-  const pausedBySlack =
-    schedule.followSlack !== false
-      ? await isPausedBySlack(db, userId, nowMs)
-      : undefined;
-  if (pausedBySlack) return skip("slack_paused");
-  if (pausedBySlack === undefined) {
-    const { timezone } = await resolveNotificationTimezone({
-      db,
-      nowMs,
-      schedule,
-      userId,
-    });
-    if (!isWithinNotificationSchedule(schedule, timezone, nowMs)) {
-      return skip("outside_hours");
-    }
-  }
+  const pause = await readNotificationPause(db, userId, Date.now());
+  if (pause) return skip(pause);
 
   // The payload holds only a short plain-text preview. Logs hold only counts.
   const payload: PushNotificationPayload = {

@@ -22,7 +22,7 @@ import {
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
 import type {
@@ -189,7 +189,7 @@ export async function appendConversationMessageForViewer(
       conversationId,
       delivery: {
         queue: services.queue,
-        show: createSlackInboxItemShow(getProductionSlackAdapter),
+        show: createInboxItemShow(getProductionSlackAdapter),
       },
       resolveUser: async () => viewer,
       text: body.message,

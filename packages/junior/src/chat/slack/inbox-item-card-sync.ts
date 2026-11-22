@@ -6,7 +6,6 @@ import { getDb } from "@/chat/db";
 import { runBestEffort } from "@/chat/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { withLock } from "@/chat/state/locks";
-import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { getInboxItem, type InboxItem } from "@/chat/inbox-items/store";
 import { resolveConversationRouting } from "@/chat/services/turn-session-routing";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
@@ -139,16 +138,6 @@ export async function resolveSlackInboxItemCardConversationId(card: {
 
 // Long enough for the sync that holds the lock to post or change a few cards.
 const SYNC_LOCK_WAIT_MS = 10_000;
-
-/**
- * Return the Slack `ShowInboxItem` for app setup. Pass `getSlackAdapter`
- * outside Slack work so each card uses the token of its workspace.
- */
-export function createSlackInboxItemShow(
-  getSlackAdapter?: () => SlackAdapter,
-): ShowInboxItem {
-  return (itemId) => syncInboxItemSlackCards({ getSlackAdapter, itemId });
-}
 
 /**
  * Show the current state of an Inbox item in its linked Slack threads. An

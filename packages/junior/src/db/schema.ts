@@ -40,6 +40,7 @@ import { juniorAutomations } from "./schema/automations";
 import {
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
   juniorInboxItemSlackCards,
   juniorInboxItems,
 } from "./schema/inbox-items";
@@ -80,6 +81,7 @@ export {
   juniorInboxSnoozeTriggers,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
   juniorInboxItemSlackCards,
   juniorInboxItems,
   juniorTodos,
@@ -126,6 +128,7 @@ export const juniorSqlSchema = {
   juniorInboxSnoozeTriggers,
   juniorInboxItemAssignees,
   juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
   juniorInboxItemSlackCards,
   juniorInboxItems,
   juniorTodos,
