@@ -1,0 +1,13 @@
+id: no-turn-lifecycle-writes-outside-turn-state
+valid:
+  - "await executor.db().select().from(juniorTurns);"
+  - "await db.update(juniorTurnInbox).set({ turnId });"
+  - 'const data = { type: "user_message", text };'
+  - 'if (event.data.type === "turn_started") return;'
+invalid:
+  - 'await executor.db().update(juniorTurns).set({ state: "failed" });'
+  - "await db.insert(juniorTurns).values(row);"
+  - "await db.delete(juniorTurns).where(condition);"
+  - 'const data = { type: "turn_started", turnId, inputMessageIds, surface };'
+  - 'append([{ data: { type: "turn_completed", turnId, outcome: "success" } }]);'
+  - "const data = { type: 'turn_failed', turnId, failureCode };"

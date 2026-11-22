@@ -1,0 +1,24 @@
+id: no-turn-lifecycle-writes-outside-turn-state
+language: TypeScript
+severity: error
+message: "In the core Turn engine, only packages/junior/src/core/turn/state.ts may change a juniorTurns row or write a turn_started, turn_completed or turn_failed event. Add a function to state.ts that makes the state change and writes its event in the same transaction, and call it."
+files:
+  - packages/junior/src/core/**/*.ts
+  - packages/junior/src/turn-steps/**/*.ts
+ignores:
+  - packages/junior/src/core/turn/state.ts
+rule:
+  any:
+    - pattern: $DB.insert(juniorTurns)
+    - pattern: $DB.update(juniorTurns)
+    - pattern: $DB.delete(juniorTurns)
+    # The `type` of a lifecycle event, as an object property.
+    - all:
+        - kind: pair
+        - has:
+            field: key
+            regex: ^["']?type["']?$
+        - has:
+            field: value
+            kind: string
+            regex: ^["'`]turn_(started|completed|failed)["'`]$

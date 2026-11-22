@@ -214,9 +214,9 @@ describe("advanceTurn at the end of a Turn", () => {
     ]);
   });
 
-  it("finishes the end work of a failed Turn on a redelivered message", async () => {
+  it("hands on a failed Turn's late input on a redelivered message", async () => {
     const inputId = await engine.addTestInput("How many Turns?");
-    // A crash right after the fail commit: the end work never ran.
+    // A crash right after the fail commit: reconcileTurn never ran.
     await fixture.sql
       .db()
       .update(juniorTurns)
