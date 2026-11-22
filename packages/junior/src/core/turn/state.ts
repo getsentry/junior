@@ -28,12 +28,6 @@
 // cancelTurn publishes the Turn after the cancel. That message claims nothing,
 // so the step consumer runs `reconcileTurn` for it.
 //
-// This file is the only writer of a Turn's lifecycle events, in the same
-// transaction as the state change they record, as main's readers expect:
-// `turn_started` with the first commit that reads inputs, `turn_completed`
-// with the commit that completes the Turn or with cancelTurn, and
-// `turn_failed` with failTurn. Their idempotency keys write each one once.
-//
 // Expired: running, but `lease_expires_at` has passed. Only claimTurn takes
 // over such a Turn, so the queue's redelivery after a crash resumes it.
 //
@@ -45,13 +39,15 @@
 // the same step changes nothing. Lease times use the database clock, so hosts
 // agree on expiry.
 //
-// commitStep, failTurn and cancelTurn take the Conversation lock before they
-// touch the Turn row. A writer that needs both takes them in this order, so
-// writers cannot deadlock.
+// commitStep takes the Conversation lock before it touches the Turn row. A
+// writer that needs both takes them in this order, so writers cannot deadlock.
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { Source } from "@sentry/junior-plugin-api";
-import type { NewConversationEvent } from "@/chat/conversations/history";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@/chat/conversations/history";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -62,10 +58,10 @@ import {
   type InputMessage,
 } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
-import { findTurnReplies, turnEventKeyPrefix } from "@/core/turn/replies";
+import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
 import type { JuniorSqlDatabase } from "@/db/db";
-import { juniorTurnInbox, juniorTurns } from "@/db/schema";
+import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
 
 /** A Turn's id and state. */
@@ -94,47 +90,6 @@ function leaseFence(lease: TurnLease) {
   );
 }
 
-type TurnStartedData = Extract<
-  NewConversationEvent["data"],
-  { type: "turn_started" }
->;
-
-/** Main's failure fields of `turn_failed`: its code, reason and Sentry event id. */
-export type TurnFailure = Omit<
-  Extract<NewConversationEvent["data"], { type: "turn_failed" }>,
-  "type" | "turnId"
->;
-
-// The surface of main's `turn_started`, from the Turn's Source kind, the way
-// main's runs pick one: dispatches and automations are `api`, and runs that
-// Junior starts itself are `internal`.
-const TURN_SURFACES: Record<Source["kind"], TurnStartedData["surface"]> = {
-  slack: "slack",
-  web: "api",
-  plugin_dispatch: "api",
-  scheduled_automation: "api",
-  event_automation: "api",
-  event: "internal",
-  local: "internal",
-  agent_invocation: "internal",
-};
-
-/**
- * A lifecycle event of a Turn. Its idempotency key matches main's, so a Turn
- * has one `started` and one `terminal` event however often a write repeats.
- */
-function lifecycleEvent(
-  turnId: string,
-  mark: "started" | "terminal",
-  data: NewConversationEvent["data"],
-): NewConversationEvent {
-  return {
-    idempotencyKey: `turn:${turnId}:${mark}`,
-    createdAtMs: Date.now(),
-    data,
-  };
-}
-
 /**
  * Inserts a queued Turn. It sends no step message: the caller publishes the
  * Turn after its transaction commits, so a worker can claim it.
@@ -156,11 +111,24 @@ export async function createTurn(
   return { turnId, state: "queued" };
 }
 
-/** A Turn with the facts that `reconcileTurn` needs. */
+/**
+ * Why a Turn failed, in main's failure labels: where it stopped, the provider
+ * error kind when a model request failed, and the Sentry event of the failure.
+ */
+export type TurnFailure = {
+  failureCode: ConversationTurnFailureCode;
+  failureReason?: ConversationTurnFailureReason;
+  eventId?: string;
+};
+
+/** A Turn with the facts that `reconcileTurn` needs, and its failure. */
 export type TurnRecord = Turn & {
   conversationId: string;
   source: Source["kind"];
   actorIdentityId: string;
+  failureCode: ConversationTurnFailureCode | null;
+  failureReason: ConversationTurnFailureReason | null;
+  failureEventId: string | null;
 };
 
 /** Finds a Turn by id. Undefined when it does not exist. */
@@ -176,6 +144,9 @@ export async function findTurn(
       conversationId: juniorTurns.conversationId,
       source: juniorTurns.source,
       actorIdentityId: juniorTurns.actorIdentityId,
+      failureCode: juniorTurns.failureCode,
+      failureReason: juniorTurns.failureReason,
+      failureEventId: juniorTurns.failureEventId,
     })
     .from(juniorTurns)
     .where(eq(juniorTurns.id, turnId));
@@ -279,11 +250,10 @@ function stepEventKey(turnId: string, stepSeq: number, index: number): string {
 /**
  * Commits a step in one transaction: it appends the inputs that the step
  * read, then the step's messages keyed by Turn and step, to the Conversation
- * history and releases the lease. It also writes `turn_started` with the
- * first inputs and `turn_completed` when the Turn ends. A Turn that continues
- * goes back to queued for its next step, which needs a new claim. A Turn that
- * the step completed ends, unless it still has unread inputs: then it
- * continues, so the next step reads them.
+ * history and releases the lease. A Turn that continues goes back to queued
+ * for its next step, which needs a new claim. A Turn that the step completed
+ * ends, unless it still has unread inputs: then it continues, so the next
+ * step reads them.
  * Returns what the Turn does next. Undefined when the lease is lost or the
  * step is already committed, and then nothing is written.
  */
@@ -318,80 +288,28 @@ export async function commitStep(
             eq(juniorTurns.stepSeq, turn.stepSeq),
           ),
         )
-        .returning({ source: juniorTurns.source });
-      const [committed] = rows;
-      if (!committed) {
+        .returning({ id: juniorTurns.id });
+      if (rows.length === 0) {
         return undefined;
       }
-      const events = createSqlConversationEventStore(executor);
-      // `turn_started` goes before the inputs: main's readers take the user
-      // messages after it as the Turn's input.
-      await events.append(turn.conversationId, [
-        ...(await turnStartedEvents(executor, turn, committed.source, inputs)),
-        ...inputs.map(({ inputId, message, provenance }) => ({
-          data: historyItemFromPiMessage(message, provenance),
-          idempotencyKey: inputEventKey(inputId),
-          createdAtMs: message.timestamp,
-        })),
-        ...step.messages.map((message, index) => ({
-          data: historyItemFromPiMessage(message, contextProvenance),
-          idempotencyKey: stepEventKey(turn.turnId, turn.stepSeq, index),
-          createdAtMs: message.timestamp,
-        })),
-      ]);
-      if (outcome === "completed") {
-        // Main's `success` means the Turn has a reply to deliver.
-        const replies = await findTurnReplies(
-          executor,
-          turn.conversationId,
-          turn.turnId,
-        );
-        await events.append(turn.conversationId, [
-          lifecycleEvent(turn.turnId, "terminal", {
-            type: "turn_completed",
-            turnId: turn.turnId,
-            outcome: replies.length > 0 ? "success" : "no_reply",
-          }),
-        ]);
-      }
+      await createSqlConversationEventStore(executor).append(
+        turn.conversationId,
+        [
+          ...inputs.map(({ inputId, message, provenance }) => ({
+            data: historyItemFromPiMessage(message, provenance),
+            idempotencyKey: inputEventKey(inputId),
+            createdAtMs: message.timestamp,
+          })),
+          ...step.messages.map((message, index) => ({
+            data: historyItemFromPiMessage(message, contextProvenance),
+            idempotencyKey: stepEventKey(turn.turnId, turn.stepSeq, index),
+            createdAtMs: message.timestamp,
+          })),
+        ],
+      );
       return outcome;
     }),
   );
-}
-
-/**
- * The `turn_started` event of a commit that reads inputs. Main lists the
- * Source's message ids, so it lists each input's idempotency key. Only the
- * first such commit writes it: later ones repeat its idempotency key.
- */
-async function turnStartedEvents(
-  executor: JuniorSqlDatabase,
-  turn: TurnLease,
-  source: Source["kind"],
-  inputs: InputMessage[],
-): Promise<NewConversationEvent[]> {
-  if (inputs.length === 0) {
-    return [];
-  }
-  const rows = await executor
-    .db()
-    .select({ id: juniorTurnInbox.id, key: juniorTurnInbox.idempotencyKey })
-    .from(juniorTurnInbox)
-    .where(
-      inArray(
-        juniorTurnInbox.id,
-        inputs.map((input) => input.inputId),
-      ),
-    );
-  const keys = new Map(rows.map((row) => [row.id, row.key]));
-  return [
-    lifecycleEvent(turn.turnId, "started", {
-      type: "turn_started",
-      turnId: turn.turnId,
-      inputMessageIds: inputs.flatMap((input) => keys.get(input.inputId) ?? []),
-      surface: TURN_SURFACES[source],
-    }),
-  ];
 }
 
 /**
@@ -416,51 +334,32 @@ async function commitOutcome(
 }
 
 /**
- * Ends a running Turn as failed, with the reason, and writes `turn_failed`
- * with main's failure fields. False when the lease is lost.
+ * Ends a running Turn as failed, with the reason and the failure details.
+ * False when the lease is lost.
  */
 export async function failTurn(
   executor: JuniorSqlDatabase,
-  lease: TurnLease & { conversationId: string },
+  lease: TurnLease,
   endReason: string,
   failure: TurnFailure,
 ): Promise<boolean> {
-  return executor.transaction(() =>
-    withConversationEventLock(executor, lease.conversationId, async () => {
-      const rows = await executor
-        .db()
-        .update(juniorTurns)
-        .set({
-          state: "failed",
-          endReason,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          updatedAt: sql`now()`,
-          endedAt: sql`now()`,
-        })
-        .where(
-          and(
-            leaseFence(lease),
-            eq(juniorTurns.conversationId, lease.conversationId),
-          ),
-        )
-        .returning({ id: juniorTurns.id });
-      if (rows.length === 0) {
-        return false;
-      }
-      await createSqlConversationEventStore(executor).append(
-        lease.conversationId,
-        [
-          lifecycleEvent(lease.turnId, "terminal", {
-            type: "turn_failed",
-            turnId: lease.turnId,
-            ...failure,
-          }),
-        ],
-      );
-      return true;
-    }),
-  );
+  const rows = await executor
+    .db()
+    .update(juniorTurns)
+    .set({
+      state: "failed",
+      endReason,
+      failureCode: failure.failureCode,
+      failureReason: failure.failureReason ?? null,
+      failureEventId: failure.eventId ?? null,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      updatedAt: sql`now()`,
+      endedAt: sql`now()`,
+    })
+    .where(leaseFence(lease))
+    .returning({ id: juniorTurns.id });
+  return rows.length > 0;
 }
 
 /**
@@ -487,57 +386,34 @@ export async function releaseTurn(
 }
 
 /**
- * Cancels a queued or running Turn, and writes main's `turn_completed` with
- * the outcome `cancelled`. It needs no lease. It moves `lease_epoch`, so the
- * invocation that runs the step cannot commit it. After the cancel it
- * publishes the Turn: that message claims nothing and runs `reconcileTurn`.
- * False when the Turn has already ended.
+ * Cancels a queued or running Turn. It needs no lease. It moves
+ * `lease_epoch`, so the invocation that runs the step cannot commit it.
+ * After the cancel it publishes the Turn: that message claims nothing and
+ * runs `reconcileTurn`. False when the Turn has already ended.
  */
 export async function cancelTurn(
   executor: JuniorSqlDatabase,
   turnId: string,
 ): Promise<boolean> {
-  const turn = await findTurn(executor, turnId);
-  if (!turn) {
-    return false;
-  }
-  const cancelled = await executor.transaction(() =>
-    withConversationEventLock(executor, turn.conversationId, async () => {
-      const rows = await executor
-        .db()
-        .update(juniorTurns)
-        .set({
-          state: "cancelled",
-          leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
-          leaseOwner: null,
-          leaseExpiresAt: null,
-          updatedAt: sql`now()`,
-          endedAt: sql`now()`,
-        })
-        .where(
-          and(
-            eq(juniorTurns.id, turnId),
-            inArray(juniorTurns.state, ["queued", "running"]),
-          ),
-        )
-        .returning({ id: juniorTurns.id });
-      if (rows.length === 0) {
-        return false;
-      }
-      await createSqlConversationEventStore(executor).append(
-        turn.conversationId,
-        [
-          lifecycleEvent(turnId, "terminal", {
-            type: "turn_completed",
-            turnId,
-            outcome: "cancelled",
-          }),
-        ],
-      );
-      return true;
-    }),
-  );
-  if (!cancelled) {
+  const rows = await executor
+    .db()
+    .update(juniorTurns)
+    .set({
+      state: "cancelled",
+      leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
+      leaseOwner: null,
+      leaseExpiresAt: null,
+      updatedAt: sql`now()`,
+      endedAt: sql`now()`,
+    })
+    .where(
+      and(
+        eq(juniorTurns.id, turnId),
+        inArray(juniorTurns.state, ["queued", "running"]),
+      ),
+    )
+    .returning({ id: juniorTurns.id });
+  if (rows.length === 0) {
     return false;
   }
   await publishTurnStep(turnId);

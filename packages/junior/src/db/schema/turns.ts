@@ -10,6 +10,10 @@ import {
   uuid,
 } from "drizzle-orm/pg-core";
 import type { Source } from "@sentry/junior-plugin-api";
+import type {
+  ConversationTurnFailureCode,
+  ConversationTurnFailureReason,
+} from "@/chat/conversations/history";
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
@@ -51,6 +55,13 @@ export const juniorTurns = pgTable(
     leaseExpiresAt: timestamptz("lease_expires_at"),
     attempts: integer("attempts").default(0).notNull(),
     endReason: text("end_reason"),
+    // Set only when the Turn fails, with main's failure labels: where it
+    // stopped, the provider error kind of a failed model request, and the
+    // Sentry event id of the failure.
+    failureCode: text("failure_code").$type<ConversationTurnFailureCode>(),
+    failureReason:
+      text("failure_reason").$type<ConversationTurnFailureReason>(),
+    failureEventId: text("failure_event_id"),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
     updatedAt: timestamptz("updated_at").defaultNow().notNull(),
     endedAt: timestamptz("ended_at"),

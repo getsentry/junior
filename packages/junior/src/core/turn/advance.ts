@@ -199,7 +199,7 @@ async function runClaimedStep(
 
 /**
  * Reports a failed model request to Sentry the way main reports a provider
- * error, and returns main's `turn_failed` fields for it.
+ * error, and returns the failure details that `failTurn` stores.
  */
 function captureModelFailure(reply: AssistantMessage): TurnFailure {
   const providerError = createAssistantProviderError(reply);
