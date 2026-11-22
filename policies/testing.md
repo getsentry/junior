@@ -94,8 +94,7 @@ Prefer high-fidelity behavior coverage when it is stable.
   computed style.
 - No fixed sleeps. Wait for the visible state, URL, request, or response.
 - Dashboard E2E runs with reduced motion, so journeys act on UI that has
-  stopped moving. Only a test of motion sets
-  `reducedMotion: "no-preference"`.
+  stopped moving. E2E does not test motion. Visual QA covers it.
 
 ## Exceptions
 
