@@ -11,7 +11,11 @@ import {
   getSqlExecutor,
 } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
-import { ensureConversationWake } from "@/chat/task-execution/store";
+import {
+  ensureConversationWake,
+  getConversationWorkState,
+  hasConversationStop,
+} from "@/chat/task-execution/store";
 import {
   juniorAgentBindings,
   juniorAgentInvocations,
@@ -561,18 +565,26 @@ function spawnAgentConfig(
 }
 
 /**
- * Return whether a Conversation was stopped after its Turn started. A stop
- * from before the Turn does not count: a later Turn runs past it, such as one
- * for the reply of a Thread that a person resumed. With no record of the
- * Turn's start, any stop counts.
+ * Return whether a Conversation's current Turn is stopped: its run has a stop
+ * request, or the stop came after the Turn started. A stop's time is when its
+ * message was sent, so a Turn that started before the stop arrived still has
+ * the stop request. Any other stop from before the Turn does not count: a
+ * later Turn runs past it, such as one for the reply of a Thread that a
+ * person resumed. With no record of the Turn's start, any stop counts.
  */
 async function isStoppedInTurn(
   conversationId: string,
   turnId: string,
+  state: StateAdapter | undefined,
 ): Promise<boolean> {
   const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
   if (stoppedAtMs === undefined) {
     return false;
+  }
+  const runId = (await getConversationWorkState({ conversationId, state }))
+    ?.execution.runId;
+  if (runId && (await hasConversationStop({ conversationId, runId, state }))) {
+    return true;
   }
   const startedAtMs = await new ConversationTurnLifecycleService(
     getConversationEventStore(),
@@ -651,7 +663,13 @@ export async function spawnChildAgent(
       }
       // A new child has no Turn to read a note, so a stopped parent cannot
       // start one.
-      if (await isStoppedInTurn(input.parentConversationId, parentTurnId)) {
+      if (
+        await isStoppedInTurn(
+          input.parentConversationId,
+          parentTurnId,
+          options.state,
+        )
+      ) {
         throw new AgentStoppedError();
       }
       await createChildAgentConversation(
@@ -708,7 +726,13 @@ export async function messageChildAgent(
     },
     options,
     async (open) => {
-      if (await isStoppedInTurn(input.parentConversationId, parentTurnId)) {
+      if (
+        await isStoppedInTurn(
+          input.parentConversationId,
+          parentTurnId,
+          options.state,
+        )
+      ) {
         await addConversationNote({
           conversationId: input.childConversationId,
           createdAtMs: nowMs,

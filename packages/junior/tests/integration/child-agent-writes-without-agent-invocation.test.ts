@@ -38,6 +38,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
+  stopConversationWork,
 } from "@/chat/task-execution/store";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
@@ -822,6 +823,42 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await expect(
         getConversationStoppedAtMs(slackParentConversationId),
       ).resolves.toBe(1_800_000_000_000);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("counts a parent as stopped when a stop sent before its Turn arrives during it", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1");
+      await sendPersonMessage(harness, slackParentConversationId, "person-1");
+      vi.setSystemTime(1_800_000_002_000);
+      await startParentTurn();
+      // The person's stop message was sent before this Turn started, but the
+      // stop arrives while the Turn runs.
+      await markConversationsStopped([slackParentConversationId, childId], {
+        cancelWatches: false,
+        nowMs: 1_800_000_001_000,
+        state: harness.state,
+      });
+      await stopConversationWork({
+        conversationId: slackParentConversationId,
+        state: harness.state,
+      });
+
+      vi.setSystemTime(1_800_000_003_000);
+      await expect(message(harness, childId, "call-2")).resolves.toEqual({
+        conversationId: childId,
+        delivery: "noted",
+      });
+      await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
+        1_800_000_001_000,
+      );
+      await expect(spawn(harness, "call-3")).rejects.toBeInstanceOf(
+        AgentStoppedError,
+      );
     } finally {
       await harness.close();
     }
