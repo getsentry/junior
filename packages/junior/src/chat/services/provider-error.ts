@@ -96,7 +96,7 @@ const INVALID_REQUEST_PATTERN =
 const CAPACITY_PATTERN = /overloaded|at capacity|capacity exceeded/i;
 const TIMEOUT_PATTERN = /timed? out|timeout|gateway timeout/i;
 const NETWORK_PATTERN =
-  /network.?error|connection (?:error|refused|lost|closed)|fetch failed|socket (?:hang up|closed)|stream ended before/i;
+  /network.?error|connection (?:error|refused|lost|closed)|fetch failed|cannot connect to api|socket (?:hang up|closed)|stream ended before/i;
 const SERVER_PATTERN =
   /service(?: temporarily)?[ _-]?unavailable|server.?error|internal.?error|bad gateway|upstream (?:request )?failed/i;
 const TERMINAL_KINDS = new Set<ProviderErrorKind>([
@@ -150,6 +150,11 @@ function extractTransportKind(
       : undefined;
   if (code && TIMEOUT_ERROR_CODES.has(code)) return "timeout";
   if (code && NETWORK_ERROR_CODES.has(code)) return "network";
+  // AI Gateway reports a failed fetch as a 500 response error. Only its
+  // cause, the SDK call error, says that no response came back.
+  if (depth > 0 && NETWORK_PATTERN.test(providerError.message)) {
+    return "network";
+  }
   return extractTransportKind(providerError.cause, depth + 1);
 }
 
@@ -226,6 +231,18 @@ function classifyProviderError(
   return "unknown";
 }
 
+/**
+ * The AI SDK retries a call and then throws `AI_RetryError`. The error of
+ * its last attempt has the status and the transport cause.
+ */
+function lastAttemptError(error: unknown): unknown {
+  return error instanceof Error &&
+    error.name === "AI_RetryError" &&
+    "lastError" in error
+    ? error.lastError
+    : error;
+}
+
 /** Normalize SDK, Gateway, and Pi failures into one provider error contract. */
 export function createProviderError(
   error: unknown,
@@ -234,10 +251,11 @@ export function createProviderError(
   if (error instanceof ProviderError) return error;
 
   const message = providerMessage(error);
-  const status = extractStatus(error, message);
+  const attempt = lastAttemptError(error);
+  const status = extractStatus(attempt, message);
   const kind =
     options.kind ??
-    classifyProviderError(status, message, extractTransportKind(error));
+    classifyProviderError(status, message, extractTransportKind(attempt));
   const retryable =
     !TERMINAL_KINDS.has(kind) &&
     (options.retryable ?? RETRYABLE_KINDS.has(kind));
@@ -246,7 +264,7 @@ export function createProviderError(
     kind,
     modelId: options.modelId,
     retryable,
-    retryAfterMs: extractRetryAfterMs(error, message),
+    retryAfterMs: extractRetryAfterMs(attempt, message),
     status,
   });
 }
@@ -296,37 +314,75 @@ export function findProviderError(error: unknown): ProviderError | undefined {
   return undefined;
 }
 
-const TEMPORARY_PROVIDER_ERROR =
-  "The model provider had a temporary connection problem. Please try again.";
+// AI Gateway model IDs start with the vendor, such as `openai/gpt-6-luna`.
+const PROVIDER_NAMES: Record<string, string> = {
+  anthropic: "Anthropic",
+  google: "Google",
+  openai: "OpenAI",
+  xai: "xAI",
+};
+
+/**
+ * Name the failing model for user copy, such as `OpenAI (gpt-6-luna)`. A
+ * model that serves another step, such as action review, says so, because
+ * the person did not pick it.
+ */
+function providerSubject(
+  modelId: string | undefined,
+  purpose: string | undefined,
+): string {
+  const slash = modelId?.indexOf("/") ?? -1;
+  if (!modelId || slash <= 0) {
+    return purpose
+      ? `The model provider used for ${purpose}`
+      : "The model provider";
+  }
+  const vendor = modelId.slice(0, slash);
+  const model = modelId.slice(slash + 1);
+  const details = purpose ? `${model}, used for ${purpose}` : model;
+  return `${PROVIDER_NAMES[vendor] ?? vendor} (${details})`;
+}
+
+const UPSTREAM =
+  "This is an upstream provider problem, not something you did. Please try again shortly.";
 
 const PROVIDER_ERROR_MESSAGES = {
-  capacity:
-    "The selected model is temporarily unavailable because it is at capacity. Please try again shortly.",
-  rate_limit: "The model is rate-limited. Please try again shortly.",
-  timeout: TEMPORARY_PROVIDER_ERROR,
-  network: TEMPORARY_PROVIDER_ERROR,
-  server: TEMPORARY_PROVIDER_ERROR,
-  auth: "The model provider rejected the configured credentials. This needs an administrator or configuration fix.",
-  permission:
-    "The model provider denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.",
-  quota:
-    "The model provider's usage quota has been exhausted. This needs an administrator or billing configuration fix.",
-  content_policy:
-    "The model provider blocked this request under its content policy. Please revise the request and try again.",
-  invalid_request:
-    "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration.",
-  invalid_response:
-    "The model provider returned an invalid response. Please try again.",
-  unknown: "The model provider returned an error. Please try again.",
-} satisfies Record<ProviderErrorKind, string>;
+  capacity: (subject) => `${subject} is at capacity right now. ${UPSTREAM}`,
+  rate_limit: (subject) =>
+    `${subject} is rate-limiting requests right now. Please try again shortly.`,
+  timeout: (subject) => `${subject} is timing out right now. ${UPSTREAM}`,
+  network: (subject) => `${subject} cannot be reached right now. ${UPSTREAM}`,
+  server: (subject) => `${subject} is returning errors right now. ${UPSTREAM}`,
+  auth: (subject) =>
+    `${subject} rejected the configured credentials. This needs an administrator or configuration fix.`,
+  permission: (subject) =>
+    `${subject} denied access to this model or request. Ask an administrator to check model access, organization policy, and region availability.`,
+  quota: (subject) =>
+    `${subject} reports that the usage quota is exhausted. This needs an administrator or billing configuration fix.`,
+  content_policy: (subject) =>
+    `${subject} blocked this request under its content policy. Please revise the request and try again.`,
+  invalid_request: (subject) =>
+    `${subject} rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration.`,
+  invalid_response: (subject) =>
+    `${subject} returned an invalid response. ${UPSTREAM}`,
+  unknown: (subject) => `${subject} returned an error. ${UPSTREAM}`,
+} satisfies Record<ProviderErrorKind, (subject: string) => string>;
 
-/** Return stable, sanitized copy suitable for a terminal user response. */
-export function getProviderErrorUserMessage(error: ProviderError): string {
+/**
+ * Return stable, sanitized copy suitable for a terminal user response. It
+ * names the provider and model, and `purpose` names the step that the model
+ * serves when it is not the agent model.
+ */
+export function getProviderErrorUserMessage(
+  error: ProviderError,
+  options: { purpose?: string } = {},
+): string {
+  const subject = providerSubject(error.modelId, options.purpose);
   if (error.kind === "rate_limit" && error.retryAfterMs) {
     const seconds = Math.max(1, Math.ceil(error.retryAfterMs / 1_000));
-    return `The model is rate-limited. Please try again in about ${seconds} seconds.`;
+    return `${subject} is rate-limiting requests right now. Please try again in about ${seconds} seconds.`;
   }
-  return PROVIDER_ERROR_MESSAGES[error.kind];
+  return PROVIDER_ERROR_MESSAGES[error.kind](subject);
 }
 
 /** Return safe structured fields for terminal failure telemetry. */
