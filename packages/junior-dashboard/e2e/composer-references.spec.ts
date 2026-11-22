@@ -113,10 +113,19 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
     /Investigate checkout latency/,
   );
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  // The sent message reads the card of its link.
+  const cardRead = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/api/objects" &&
+      url.searchParams.getAll("url").join() === checkout
+    );
+  });
   await composer.press("Enter");
   await composer.press("Enter");
   await expect.poll(() => sent).toHaveLength(2);
   expect(linked).toHaveLength(2);
+  await cardRead;
 });
 
 test("the active row stays put when a source above it loads", async ({
