@@ -217,6 +217,8 @@ export type Conversation = {
   threads?: Conversation[] | undefined;
   /** A Turn waits on a person to finish an authorization. Server-owned. */
   awaitingAuthorization?: boolean | undefined;
+  /** The latest Turn failed and no newer Turn started. Server-owned. */
+  latestTurnFailed?: boolean | undefined;
   visibility?: ConversationSummaryReport["visibility"] | undefined;
   /** The viewer's newest answer here. The viewer's own feed rows only. */
   viewerAnswer?: ConversationFeedItem["viewerAnswer"] | undefined;

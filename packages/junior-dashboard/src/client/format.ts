@@ -736,6 +736,7 @@ export function buildConversations(
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
       awaitingAuthorization: summary.awaitingAuthorization,
+      latestTurnFailed: summary.latestTurnFailed,
       viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
     }))

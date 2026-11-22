@@ -334,6 +334,11 @@ export const conversationSummaryReportSchema = z
      * expired.
      */
     awaitingAuthorization: z.boolean().optional(),
+    /**
+     * True on the conversation feed when the conversation's latest Turn
+     * failed and no newer Turn started.
+     */
+    latestTurnFailed: z.boolean().optional(),
   })
   .strict();
 
