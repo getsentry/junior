@@ -411,7 +411,7 @@ describe("conversation stop API", () => {
     }
   });
 
-  it("drops a child result that waits when a person stops the parent", async () => {
+  it("holds a child result that waits when a person stops the parent", async () => {
     const work = await createConversationWorkHarness(neverRunAgentRunner());
     const fixture = {
       ...(await createConversationFixture()),
@@ -451,14 +451,14 @@ describe("conversation stop API", () => {
       actor.email,
     );
     expect(response.status).toBe(200);
-    // The stop also stops the child, so the parent gets no result from it,
+    // The stop holds the waiting result: it is saved as a skipped Message,
     // and nothing is left to run.
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
     ).resolves.toEqual([]);
     await expect(
       stoppedConversationMessageTexts(created.conversationId),
-    ).resolves.toEqual([]);
+    ).resolves.toEqual([expect.stringContaining("Child needs a token.")]);
     await expect(
       work.process(queue.takeMessageFor(created.conversationId)),
     ).resolves.toMatchObject({ status: "no_work" });
