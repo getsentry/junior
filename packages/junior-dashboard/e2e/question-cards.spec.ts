@@ -131,8 +131,6 @@ for (const view of [desktop, mobile]) {
     page,
   }) => {
     await page.setViewportSize(view);
-    // Without motion the transcript jumps, so each check sees where it ends.
-    await page.emulateMedia({ reducedMotion: "reduce" });
     await openConversation(page, dashboard.baseURL, THREE_QUESTIONS_ID);
     const card = (title: string) =>
       page.getByRole("region", { name: `Asked ${title}` });

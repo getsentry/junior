@@ -332,6 +332,26 @@
     -webkit-text-size-adjust: 100%;
   }
 
+  /*
+   * Reduced motion stops every CSS transition, animation, and smooth
+   * scroll, so a component cannot forget `motion-reduce:`. Transitions go
+   * away: a short duration on every element would turn each style change
+   * into a transition, and code that measures right after a change would
+   * read the old size. Animations only get short, so `animationend` still
+   * fires for UI that waits for it. Important declarations in this base
+   * layer win over utilities and inline styles.
+   */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    ::before,
+    ::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      scroll-behavior: auto !important;
+      transition-property: none !important;
+    }
+  }
+
   /* Controls never double-tap zoom, so taps fire without the zoom wait. */
   :is(a, button, [role="button"]) {
     touch-action: manipulation;

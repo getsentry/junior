@@ -173,48 +173,42 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(child).toHaveCount(1);
   });
 
-  for (const motion of ["no-preference", "reduce"] as const) {
-    test(`a row click opens the row, each row dismisses by itself, and next stays in the stack (${motion} motion)`, async ({
-      dashboard,
-      page,
-    }) => {
-      await page.emulateMedia({ reducedMotion: motion });
-      const actions = await mockInboxItems(page, {
-        open: [rollout, childReview, childLicense, other],
-      });
-      await page.goto(`${dashboard.baseURL}/`);
-      const stack = stackOf(page);
-      await rowOf(page, rollout).locator("[data-inbox-head]").click();
-      await expect(rowOf(page, rollout)).toHaveAttribute(
-        "data-expanded",
-        "true",
-      );
-
-      await dismissIn(rowOf(page, rollout)).click();
-      await expect(rowOf(page, rollout)).toHaveCount(0);
-      await expect.poll(() => actions.map((a) => a.id)).toEqual([rollout.id]);
-      await expect(rowOf(page, childReview)).toHaveAttribute(
-        "data-expanded",
-        "true",
-      );
-      // A stack of one is that ask's own row, still open.
-      await dismissIn(rowOf(page, childReview)).click();
-      await expect(stack).toHaveCount(0);
-      const lone = rowOf(page, childLicense);
-      await expect(lone).toHaveAttribute("data-expanded", "true");
-      await expect(lone).toContainText(childLicense.title);
-
-      // Its last ask takes the row, and the next row opens.
-      await dismissIn(lone).click();
-      await expect(lone).toHaveCount(0);
-      await expect(rowOf(page, other)).toHaveAttribute("data-expanded", "true");
-      expect(actions.map((a) => a.id)).toEqual([
-        rollout.id,
-        childReview.id,
-        childLicense.id,
-      ]);
+  test("a row click opens the row, each row dismisses by itself, and next stays in the stack", async ({
+    dashboard,
+    page,
+  }) => {
+    const actions = await mockInboxItems(page, {
+      open: [rollout, childReview, childLicense, other],
     });
-  }
+    await page.goto(`${dashboard.baseURL}/`);
+    const stack = stackOf(page);
+    await rowOf(page, rollout).locator("[data-inbox-head]").click();
+    await expect(rowOf(page, rollout)).toHaveAttribute("data-expanded", "true");
+
+    await dismissIn(rowOf(page, rollout)).click();
+    await expect(rowOf(page, rollout)).toHaveCount(0);
+    await expect.poll(() => actions.map((a) => a.id)).toEqual([rollout.id]);
+    await expect(rowOf(page, childReview)).toHaveAttribute(
+      "data-expanded",
+      "true",
+    );
+    // A stack of one is that ask's own row, still open.
+    await dismissIn(rowOf(page, childReview)).click();
+    await expect(stack).toHaveCount(0);
+    const lone = rowOf(page, childLicense);
+    await expect(lone).toHaveAttribute("data-expanded", "true");
+    await expect(lone).toContainText(childLicense.title);
+
+    // Its last ask takes the row, and the next row opens.
+    await dismissIn(lone).click();
+    await expect(lone).toHaveCount(0);
+    await expect(rowOf(page, other)).toHaveAttribute("data-expanded", "true");
+    expect(actions.map((a) => a.id)).toEqual([
+      rollout.id,
+      childReview.id,
+      childLicense.id,
+    ]);
+  });
 
   test("the last row of a stack opens a row of its own stack next", async ({
     dashboard,
