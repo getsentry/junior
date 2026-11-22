@@ -98,7 +98,7 @@ export async function deliverTurn(
   senders: DeliverySenders,
 ): Promise<void> {
   await recordReplies(executor, message);
-  for (;;) {
+  while (true) {
     // oxlint-disable-next-line no-await-in-loop -- Rows go out one at a time, in event order.
     const next = await executor.transaction(() =>
       sendNextRow(executor, message.conversationId, senders),
