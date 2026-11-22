@@ -725,7 +725,10 @@ export function ConversationPage(props: {
               autoArchive={conversationDetail?.autoArchive}
               summary={conversationDetail?.summary}
               summaryMentions={conversationDetail?.summaryMentions}
-              contextTags={conversationContextTags(conversation)}
+              contextTags={conversationContextTags(
+                conversation,
+                conversationDetail?.annotations,
+              )}
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               errors={[
