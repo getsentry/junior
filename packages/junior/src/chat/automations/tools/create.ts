@@ -218,7 +218,7 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a one-time or recurring scheduled automation, or an event automation. It delivers to a Slack channel or DM, never a thread or a web conversation. A skill that automations run leaves schedules, destinations, and run endings to the automation. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
+      "Create a durable automation. It delivers to a Slack channel or DM, never a thread or a web conversation. A skill that automations run leaves schedules, destinations, and run endings to the automation. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema.nullable().optional(),

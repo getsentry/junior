@@ -12,7 +12,7 @@ export const watchTimerToolDefinition = zodToolDefinition({
     readOnlyHint: false,
   },
   description:
-    "Wake this conversation once after a delay so you can check back later. The wake-up replies only in this conversation. Returns immediately. Timing is approximate. Use watchEvents instead when you can watch for the event.",
+    "Wake this conversation once after a delay so you can check back later. Returns immediately. Timing is approximate. Use watchEvents instead when you can watch for the event.",
   inputSchema: z
     .object({
       after_ms: z
