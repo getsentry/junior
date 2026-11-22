@@ -13,7 +13,7 @@ const NEW_THROW_GUIDANCE =
   "throw ToolInputError in core or PluginToolInputError in a plugin, with a message that tells the model what to change. " +
   "Keep a plain Error only for a system, config, or integrity failure that the model cannot fix, and add only that line to " +
   `${BASELINE_RELATIVE_PATH} by hand. Do not hide the throw behind a helper or another error construction to pass. ` +
-  "See policies/tool-results.md.";
+  "See policies/tool-design.md.";
 
 /** Return whether a repo-relative path is tool source that the check scans. */
 export function isUnderToolsPath(relativePath) {

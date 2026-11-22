@@ -50,6 +50,9 @@ Do not list behaviors. The verification map in
 - [Inbox](./inbox.md): work that waits for a person.
 - [Inbox stacks](./inbox-stacks.md): the Inbox rows in the dashboard, one
   stack for each root Conversation.
+- [Prompts](./prompts.md): what the model reads in each Turn, and who wrote
+  each part.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
   commands in a Sandbox, with no real token inside it.
 - [Slack](./slack.md): requests in Slack, and who can start work there.
+- [Tools](./tools.md): what the model can call, and what each call returns.
