@@ -1065,6 +1065,13 @@
       "when": 1795301953076,
       "tag": "0151_conversation_search_index",
       "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1795314480776,
+      "tag": "0152_conversation_embedding_cleanup",
+      "breakpoints": true
     }
   ]
 }
