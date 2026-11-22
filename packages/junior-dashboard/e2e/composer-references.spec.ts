@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { waitForReadPosition } from "./harness";
 import { pasteText } from "./paste-text";
 import { pickOption } from "./pick-option";
 
@@ -193,6 +194,8 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect(composer.locator("[data-reference='channel']")).toHaveText(
     "#proj-release",
   );
+  // The thread ends at seq 5 when it opens. The sent message comes after it.
+  const readSaved = waitForReadPosition(page, 5);
   await composer.press("Enter");
 
   await expect
@@ -201,6 +204,7 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
       `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release>`,
     ]);
   await expect.poll(() => linked).toEqual([PULL_REQUEST]);
+  await readSaved;
 });
 
 test("a draft keeps the kind of a chip inserted last", async ({

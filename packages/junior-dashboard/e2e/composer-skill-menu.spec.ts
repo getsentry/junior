@@ -195,13 +195,15 @@ test("a skill reference in the draft is styled and stays plain text @classic", a
 
   // The message is the plain text.
   await composer.press("Escape");
-  const sent = page.waitForRequest(
-    (request) =>
-      request.method() === "POST" &&
-      /\/api\/conversations\/[^/]+\/messages$/.test(request.url()),
+  const sent = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      /\/api\/conversations\/[^/]+\/messages$/.test(response.url()),
   );
   await composer.press("Enter");
-  expect((await sent).postDataJSON()).toMatchObject({ message: text });
+  expect((await sent).request().postDataJSON()).toMatchObject({
+    message: text,
+  });
 });
 
 test("a caret move before the skill list loads shows the card @classic", async ({

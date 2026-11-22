@@ -106,6 +106,22 @@ export function waitForOutlineRead(page: Page, conversationId: string) {
   );
 }
 
+/**
+ * Wait for the page to save a read position past `afterSeq`. The page saves
+ * one shortly after the reader sees new rows, such as a message they sent, so
+ * a test that ends right after that waits for it.
+ */
+export function waitForReadPosition(page: Page, afterSeq: number) {
+  return page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      request.method() === "PUT" &&
+      new URL(response.url()).pathname.endsWith("/read-position") &&
+      request.postDataJSON().lastReadSeq > afterSeq
+    );
+  });
+}
+
 /** Whether a request is a background read that may outlive a test. */
 function isBackgroundRead(request: PageRequest): boolean {
   const { pathname } = new URL(request.url());

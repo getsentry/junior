@@ -63,6 +63,7 @@ test("the tab title and icon count the Inbox until it is zero", async ({
   await page.reload();
   await expect(page).toHaveTitle("Inbox - Junior");
   await expect(icon).toHaveAttribute("href", "/favicon.ico");
+  await transcriptReadToStart(page);
 });
 
 test("the tab icon count fills the top-left corner, clear of the eye", async ({
