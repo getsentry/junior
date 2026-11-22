@@ -51,10 +51,7 @@
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { Source } from "@sentry/junior-plugin-api";
-import type {
-  ConversationTurnFailureCode,
-  NewConversationEvent,
-} from "@/chat/conversations/history";
+import type { NewConversationEvent } from "@/chat/conversations/history";
 import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
@@ -100,6 +97,12 @@ function leaseFence(lease: TurnLease) {
 type TurnStartedData = Extract<
   NewConversationEvent["data"],
   { type: "turn_started" }
+>;
+
+/** Main's failure fields of `turn_failed`: its code, reason and Sentry event id. */
+export type TurnFailure = Omit<
+  Extract<NewConversationEvent["data"], { type: "turn_failed" }>,
+  "type" | "turnId"
 >;
 
 // The surface of main's `turn_started`, from the Turn's Source kind, the way
@@ -414,13 +417,13 @@ async function commitOutcome(
 
 /**
  * Ends a running Turn as failed, with the reason, and writes `turn_failed`
- * with main's failure code. False when the lease is lost.
+ * with main's failure fields. False when the lease is lost.
  */
 export async function failTurn(
   executor: JuniorSqlDatabase,
   lease: TurnLease & { conversationId: string },
   endReason: string,
-  failureCode: ConversationTurnFailureCode,
+  failure: TurnFailure,
 ): Promise<boolean> {
   return executor.transaction(() =>
     withConversationEventLock(executor, lease.conversationId, async () => {
@@ -451,7 +454,7 @@ export async function failTurn(
           lifecycleEvent(lease.turnId, "terminal", {
             type: "turn_failed",
             turnId: lease.turnId,
-            failureCode,
+            ...failure,
           }),
         ],
       );
