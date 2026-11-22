@@ -60,16 +60,18 @@ describe("Conversation Attachments", () => {
         images: [expect.stringContaining(filename)],
       }),
     );
-    const editPaths = edits.flatMap((edit) =>
-      (toolOutput(edit) as { images: { path: string }[] }).images.map(
-        (image) => image.path,
-      ),
+    // Calls from a Code Mode script have no input or output.
+    const editPaths = edits.flatMap(
+      (edit) =>
+        (
+          toolOutput(edit) as { images?: { path: string }[] } | undefined
+        )?.images?.map((image) => image.path) ?? [],
     );
     const sentPaths = completedToolCalls("sendFiles", conversation).flatMap(
       (call) =>
-        (call.input as { files: { path: string }[] }).files.map(
+        (call.input as { files?: { path: string }[] } | undefined)?.files?.map(
           (file) => file.path,
-        ),
+        ) ?? [],
     );
     expect(sentPaths.some((path) => editPaths.includes(path))).toBe(true);
     expect(conversation.files).not.toHaveLength(0);
