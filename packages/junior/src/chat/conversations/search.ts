@@ -12,6 +12,7 @@ import {
   gte,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   lt,
   ne,
@@ -118,6 +119,8 @@ export interface ConversationSearch {
   rootsOnly: boolean;
   /** Only Conversations whose agent has one of these statuses. */
   statuses?: readonly ConversationStatus[];
+  /** Only Conversations with a summary: a completed first Turn. */
+  summarizedOnly?: boolean;
 }
 
 /**
@@ -193,6 +196,7 @@ export async function searchConversations(
     search.statuses
       ? inArray(conversations.executionStatus, [...search.statuses])
       : undefined,
+    search.summarizedOnly ? isNotNull(conversations.summary) : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])
       : undefined,

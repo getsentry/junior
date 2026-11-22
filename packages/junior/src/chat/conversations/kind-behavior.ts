@@ -68,6 +68,12 @@ export type TurnBehavior = {
    * Memory is public, so a child agent never captures it.
    */
   sessionTasks: boolean;
+  /**
+   * The first request of the Conversation gets the open Conversations that
+   * may cover the same work. A child agent or an Automation run already
+   * knows what it works on.
+   */
+  relatedConversations: boolean;
   tools: {
     agents: AgentTools;
     inbox: boolean;
@@ -96,6 +102,7 @@ const ROOT: TurnBehavior = {
   gated: false,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
@@ -107,6 +114,13 @@ const ROOT: TurnBehavior = {
   },
 };
 
+// A Turn on a root that no person sent, such as an Event. It did not come
+// from a request, so it gets no related Conversations.
+const ROOT_RUNTIME_TURN: TurnBehavior = {
+  ...ROOT,
+  relatedConversations: false,
+};
+
 // A person's Turn in a Thread runs like a Turn on a root, but it does not
 // start or message child agents: their results would report to the parent as
 // the wrong Actor.
@@ -115,6 +129,7 @@ const PERSON_IN_THREAD: TurnBehavior = {
   promptMode: "thread",
   sender: "person",
   sessionTasks: false,
+  relatedConversations: false,
   tools: { ...ROOT.tools, agents: "none" },
 };
 
@@ -129,6 +144,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   gated: true,
   failureNotice: "none",
   sessionTasks: false,
+  relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
@@ -175,6 +191,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   gated: true,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: false,
   tools: {
     ...ROOT.tools,
     reply: "automation",
@@ -189,6 +206,7 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   ...ROOT,
   promptMode: "automation",
   sender: "person",
+  relatedConversations: false,
 };
 
 /** Return the behavior of one Turn. */
@@ -196,7 +214,7 @@ export function turnBehavior(args: {
   kind: ConversationKind;
   personInput: boolean;
 }): TurnBehavior {
-  if (args.kind === "root") return ROOT;
+  if (args.kind === "root") return args.personInput ? ROOT : ROOT_RUNTIME_TURN;
   if (args.kind === "automation") {
     return args.personInput ? PERSON_IN_AUTOMATION : AUTOMATION_RUN;
   }
