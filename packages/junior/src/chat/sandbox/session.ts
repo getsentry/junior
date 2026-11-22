@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
+  logWarn,
   setSpanAttributes,
   withSpan,
   type LogContext,
@@ -597,8 +598,17 @@ export function createSandboxRuntime(
         options.rotateOldSession &&
         Date.now() - hintedSandbox.startedAtMs > SESSION_ROTATE_AFTER_MS
       ) {
+        const oldSessionId = hintedSandbox.sessionId;
         await stopSession(hintedSandbox);
         hintedSandbox = await getHintedSandbox();
+        // The same session id means the stop did not take. Keep the session:
+        // the replaced-sandbox notice still covers a later kill by the cap.
+        if (hintedSandbox.sessionId === oldSessionId) {
+          logWarn("sandbox.session.rotation.failed", {
+            "app.sandbox.session.age_ms":
+              Date.now() - hintedSandbox.startedAtMs,
+          });
+        }
       }
     } catch (error) {
       if (getSandboxProvider().errors.isMissing(error)) {

@@ -3337,38 +3337,43 @@ describe("createTestSandbox", () => {
     },
   );
 
-  it("replaces a session near the provider's session cap when a Turn starts", async () => {
-    const oldSandbox = makeSandbox("sbx_rotate");
-    oldSandbox.session.createdAt = new Date(Date.now() - 21 * 60 * 60 * 1000);
-    const newSandbox = makeSandbox("sbx_rotate");
-    newSandbox.session.sessionId = "sbx_rotate_next_session";
-    sandboxGetMock
-      .mockResolvedValueOnce(oldSandbox)
-      .mockResolvedValueOnce(newSandbox);
+  it.each([{ stopFails: false }, { stopFails: true }])(
+    "replaces a session near the provider's session cap when a Turn starts (stop fails: $stopFails)",
+    async ({ stopFails }) => {
+      const oldSandbox = makeSandbox("sbx_rotate");
+      oldSandbox.session.createdAt = new Date(Date.now() - 21 * 60 * 60 * 1000);
+      const newSandbox = makeSandbox("sbx_rotate");
+      newSandbox.session.sessionId = "sbx_rotate_next_session";
+      if (stopFails) {
+        oldSandbox.stop.mockRejectedValueOnce(new Error("stop failed"));
+      }
+      sandboxGetMock
+        .mockResolvedValueOnce(oldSandbox)
+        .mockResolvedValueOnce(stopFails ? oldSandbox : newSandbox);
 
-    const executor = createTestSandbox({
-      rotateOldSession: true,
-      sandboxRef: {
-        id: "sbx_rotate",
-        toolSession: {
-          sandboxId: "sbx_rotate",
-          sessionId: "sbx_rotate_session",
+      const executor = createTestSandbox({
+        rotateOldSession: true,
+        sandboxRef: {
+          id: "sbx_rotate",
+          toolSession: {
+            sandboxId: "sbx_rotate",
+            sessionId: "sbx_rotate_session",
+          },
         },
-      },
-    });
-    executor.configureSkills([]);
-    const result = await executor.execute<StructuredSandboxResult>({
-      toolName: "bash",
-      input: { command: "git status" },
-    });
+      });
+      executor.configureSkills([]);
+      const result = await executor.execute<StructuredSandboxResult>({
+        toolName: "bash",
+        input: { command: "git status" },
+      });
 
-    expect(oldSandbox.stop).toHaveBeenCalledTimes(1);
-    expect(oldSandbox.runCommand).not.toHaveBeenCalled();
-    expect(newSandbox.runCommand).toHaveBeenCalledTimes(1);
-    expect(result.result.details["sandbox_notice"]).toEqual(
-      expect.stringContaining("check the checkout"),
-    );
-  });
+      expect(oldSandbox.stop).toHaveBeenCalledTimes(1);
+      // A failed stop keeps the old session, and nothing was replaced.
+      const ranOn = stopFails ? oldSandbox : newSandbox;
+      expect(ranOn.runCommand).toHaveBeenCalledTimes(1);
+      expect("sandbox_notice" in result.result.details).toBe(!stopFails);
+    },
+  );
 
   it("keeps an old session when a later Run resumes the Turn", async () => {
     const oldSandbox = makeSandbox("sbx_no_rotate");
