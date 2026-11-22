@@ -461,7 +461,10 @@ describe("agent invocation conversation work", () => {
       name: "failed",
       outputs: [{ type: "error" as const, errorMessage: "model unavailable" }],
       invocation: { errorMessage: "model unavailable", status: "failed" },
-      terminal: { failureCode: "model_execution_failed", type: "turn_failed" },
+      terminal: {
+        failureCode: "model_execution_failed",
+        type: "turn_failed",
+      },
       subagentOutcome: "error",
       parentMessages: [
         expect.stringMatching(/status="failed">\n[\s\S]*\nmodel unavailable\n/),
@@ -506,7 +509,10 @@ describe("agent invocation conversation work", () => {
       name: "unanswered task",
       outputs: plainText,
       invocation: { errorMessage: "No reply was sent.", status: "failed" },
-      terminal: { failureCode: "model_execution_failed", type: "turn_failed" },
+      terminal: {
+        failureCode: "model_execution_failed",
+        type: "turn_failed",
+      },
       subagentOutcome: "error",
       parentMessages: [
         expect.stringMatching(

@@ -36,7 +36,7 @@ const AGENT_TYPE_DEFINITIONS: Record<
     whenToUse:
       "Investigation across code, docs, logs, telemetry, or the web. Use it when an answer needs reading across many files or sources and you need the conclusion with evidence, not the raw output.",
     instructions:
-      "You are an explore agent. Your job is to investigate and report, so do not change anything outside your sandbox unless the task asks for it. Report what you found with exact evidence, such as paths, lines, links, and ids.",
+      "You are an explore agent. Investigate, and do not change anything outside your sandbox unless the task asks for it. Back your answer with exact evidence, such as paths, lines, links, and ids.",
   },
   reviewer: {
     whenToUse:
