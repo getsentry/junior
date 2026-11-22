@@ -39,8 +39,9 @@
 // the same step changes nothing. Lease times use the database clock, so hosts
 // agree on expiry.
 //
-// commitStep takes the Conversation lock before it touches the Turn row. A
-// writer that needs both takes them in this order, so writers cannot deadlock.
+// commitStep and cancelTurn take the Conversation lock before they touch the
+// Turn row. A writer that needs both takes them in this order, so writers
+// cannot deadlock.
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
 import type { Source } from "@sentry/junior-plugin-api";
@@ -387,33 +388,44 @@ export async function releaseTurn(
 
 /**
  * Cancels a queued or running Turn. It needs no lease. It moves
- * `lease_epoch`, so the invocation that runs the step cannot commit it.
- * After the cancel it publishes the Turn: that message claims nothing and
- * runs `reconcileTurn`. False when the Turn has already ended.
+ * `lease_epoch`, so the invocation that runs the step cannot commit it. It
+ * holds the Conversation lock, so an input that `scheduleInput` places after
+ * the cancel goes to a new Turn, not to this one. After the cancel it
+ * publishes the Turn: that message claims nothing and runs `reconcileTurn`.
+ * False when the Turn has already ended.
  */
 export async function cancelTurn(
   executor: JuniorSqlDatabase,
   turnId: string,
 ): Promise<boolean> {
-  const rows = await executor
-    .db()
-    .update(juniorTurns)
-    .set({
-      state: "cancelled",
-      leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
-      leaseOwner: null,
-      leaseExpiresAt: null,
-      updatedAt: sql`now()`,
-      endedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(juniorTurns.id, turnId),
-        inArray(juniorTurns.state, ["queued", "running"]),
-      ),
-    )
-    .returning({ id: juniorTurns.id });
-  if (rows.length === 0) {
+  const turn = await findTurn(executor, turnId);
+  if (!turn) {
+    return false;
+  }
+  const cancelled = await executor.transaction(() =>
+    withConversationEventLock(executor, turn.conversationId, async () => {
+      const rows = await executor
+        .db()
+        .update(juniorTurns)
+        .set({
+          state: "cancelled",
+          leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
+          leaseOwner: null,
+          leaseExpiresAt: null,
+          updatedAt: sql`now()`,
+          endedAt: sql`now()`,
+        })
+        .where(
+          and(
+            eq(juniorTurns.id, turnId),
+            inArray(juniorTurns.state, ["queued", "running"]),
+          ),
+        )
+        .returning({ id: juniorTurns.id });
+      return rows.length > 0;
+    }),
+  );
+  if (!cancelled) {
     return false;
   }
   await publishTurnStep(turnId);
