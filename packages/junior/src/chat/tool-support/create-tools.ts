@@ -3,6 +3,7 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
+import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { readLeadUser } from "@/chat/lead/conversation";
@@ -75,7 +76,6 @@ import type {
 } from "@/chat/tool-support/definition";
 import {
   coreToolSlots,
-  withScopeExposure,
   enabledMode,
   type RunBuiltToolSlot,
   type StaticToolName,
@@ -666,8 +666,9 @@ export function createTools(
         ? STATIC_TOOL_BINDERS[slot.name](run)
         : RUN_BUILT_TOOL_BUILDERS[slot.slot](run);
     if (!tool) continue;
-    tools[slot.name] = withScopeExposure(
-      { listedTools },
+    tools[slot.name] = listedToolExposure(
+      listedTools,
+      slot.name,
       slot.kind === "static"
         ? withDisabledReason(
             tool,

@@ -47,11 +47,8 @@ import {
   zodTool,
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
-import type {
-  AnyToolDefinition,
-  ToolRegistry,
-} from "@/chat/tool-support/definition";
-import { effectiveToolExposure } from "@/chat/tool-exposure";
+import type { ToolRegistry } from "@/chat/tool-support/definition";
+import { listedToolExposure } from "@/chat/tool-exposure";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
 import { runOperatorSqlToolDefinition } from "@/chat/tools/operator-sql";
 import { readConversationEventToolDefinition } from "@/chat/tools/read-conversation-event";
@@ -383,20 +380,6 @@ export function coreToolSlots(scope: ToolRegistryScope): CoreToolSlot[] {
   return slots;
 }
 
-/**
- * Return the tool as a Turn with this scope lists it. Deferring keeps a long
- * tool list short. An `only` list is already short, so deferring its tools
- * only makes the model search for its own core tools.
- */
-export function withScopeExposure<T extends AnyToolDefinition>(
-  scope: Pick<ToolRegistryScope, "listedTools">,
-  tool: T,
-): T {
-  return scope.listedTools.only && effectiveToolExposure(tool) === "deferred"
-    ? { ...tool, exposure: "direct" }
-    : tool;
-}
-
 function modelFacing(definition: StaticZodToolDefinition) {
   // `zodTool` accepts a definition with or without an output schema; the
   // overloads only split them for the type of `execute`.
@@ -417,7 +400,11 @@ export function staticToolDefinitions(key: ToolDefinitionsKey): ToolRegistry {
   const core: ToolRegistry = {};
   for (const [name, entry] of coreToolEntries(scope)) {
     if (isRunBuilt(entry) || (entry.when && !entry.when(scope))) continue;
-    core[name] = withScopeExposure(scope, modelFacing(entry.definition(scope)));
+    core[name] = listedToolExposure(
+      scope.listedTools,
+      name,
+      modelFacing(entry.definition(scope)),
+    );
   }
   return scope.listedTools.only
     ? core

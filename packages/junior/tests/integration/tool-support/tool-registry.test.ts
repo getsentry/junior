@@ -410,10 +410,18 @@ describe("static tool registry", () => {
       ].sort(),
     );
     expect(person.disabled).toEqual([]);
-    // The list is short, so the model sees every tool on it without
+    // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
-      expect.arrayContaining(Object.keys(person.tools)),
+      expect.arrayContaining([
+        "listWatches",
+        "readConversationEvent",
+        "searchConversationEvents",
+        "searchConversations",
+        "searchEventTypes",
+        "searchInboxItems",
+        "stopWatchingResources",
+      ]),
     );
   });
 
