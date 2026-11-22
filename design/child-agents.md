@@ -46,7 +46,9 @@ child chooses to report reaches the parent.
   and only the text of a `reply` leaves it.
 - One stop stops the whole tree below it. When a parent stops a child, it
   gets no result. When a person stops a child, its parent gets `stopped`.
-  New work from the parent, or a person's input, ends the stop.
+  New work from the parent, or a person's input, ends the stop. While
+  stopped, a Conversation keeps its Watches and saves automated input as
+  skipped Messages that start no Turn. Only a stop holds input.
 - A parent never waits forever, and never sees a running child as done.
   Each result names the siblings that did not report yet. A Task that fails,
   or still has no answer after one reminder, tells its parent `failed`. A

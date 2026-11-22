@@ -54,7 +54,7 @@ import {
   recordFinishedTurnForAutomatedLimit,
   resetAutomatedTurnLimit,
 } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { isTurnExecutionLimitExceededError } from "@/chat/services/turn-limit";
 import type { SandboxRef } from "@/chat/sandbox/ref";
@@ -100,7 +100,7 @@ import {
   type SendReply,
 } from "./turn-end";
 import { stopChildAgentsOf } from "./stop";
-import { resumeStoppedConversationTree } from "@/chat/conversations/session-stop";
+import { resumeConversationTree } from "@/chat/conversations/session-stop";
 
 const agentInvocationMailboxMetadataSchema = z
   .object({
@@ -171,7 +171,7 @@ export async function enqueueAgentInvocation(
   // New work from a parent tool call ends the stop of the child and of the
   // child agents below it. A child's own Events and results do not.
   if (invocation.parentToolCallId !== undefined) {
-    await resumeStoppedConversationTree(
+    await resumeConversationTree(
       invocation.childConversationId,
       invocation.createdAtMs,
     );
@@ -633,8 +633,7 @@ async function saveAgentInvocationResult(args: {
     });
   } else if (args.invocation.source.kind !== "agent_invocation") {
     const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-    // A child posts no notice, so this clears its claim.
-    await maybePostAutomatedTurnLimitNotice({
+    await stopAtAutomatedTurnLimit({
       conversationId: args.invocation.childConversationId,
       maxTurns,
       update: await recordFinishedTurnForAutomatedLimit({

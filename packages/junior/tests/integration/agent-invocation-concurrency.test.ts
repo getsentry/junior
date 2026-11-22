@@ -535,9 +535,9 @@ describe("agent invocation identity and concurrency", () => {
         agents: [{ status: "idle", task: "Watch the deploy." }],
       });
 
-      // A stop of the idle child ends its watches and records the stop, so
-      // a timer event that already reached it is saved to its transcript
-      // with no Turn, and a later timer never fires.
+      // A stop of the idle child keeps its watches and holds their events:
+      // a timer event that already reached it and a later one are both
+      // saved to its transcript with no Turn.
       await execute(
         childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check once more." },
@@ -555,7 +555,9 @@ describe("agent invocation identity and concurrency", () => {
         stopAgent.execute!({ conversation_id: child.childConversationId }, {}),
       ).resolves.toMatchObject({ stopped: true });
       await expect(execute(childTools["listWatches"]!, {})).resolves.toEqual({
-        subscriptions: [],
+        subscriptions: [
+          expect.objectContaining({ intent: "Check much later." }),
+        ],
       });
       clock.mockReturnValue(clock() + 600_000);
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
@@ -563,7 +565,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(harness.requests()).toHaveLength(2);
       await expect(
         stoppedConversationMessageTexts(child.childConversationId),
-      ).resolves.toEqual([expect.stringContaining("Check once more.")]);
+      ).resolves.toEqual([
+        expect.stringContaining("Check once more."),
+        expect.stringContaining("Check much later."),
+      ]);
       await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });

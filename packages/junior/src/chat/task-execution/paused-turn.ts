@@ -512,6 +512,12 @@ async function runPausedTurnInContext(
               turnId: turn.turnId,
               errorMessage: "Authorization no longer belongs to this request",
             });
+            await getTurnLifecycle().complete({
+              conversationId: payload.conversationId,
+              createdAtMs: Date.now(),
+              outcome: "cancelled",
+              turnId: turn.turnId,
+            });
             clearPendingAuth(conversation, turn.turnId);
             await persistThreadStateById(payload.conversationId, {
               conversation,

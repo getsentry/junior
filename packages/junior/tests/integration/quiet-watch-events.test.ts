@@ -2,15 +2,14 @@ import { createHmac } from "node:crypto";
 import { githubPlugin } from "@sentry/junior-github";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
-import { botConfig } from "@/chat/config";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
+import { stopConversationTree } from "@/chat/conversations/session-stop";
 import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
-import { closeDb, getSqlExecutor } from "@/chat/db";
+import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { createWatch, listWatches } from "@/chat/events/store";
 import { pluginCatalogRuntime } from "@/chat/plugins/catalog-runtime";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { buildTurnContextPrompt } from "@/chat/prompt";
-import { countAutomatedTurn } from "@/chat/services/automated-turn-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { createListWatchesTool } from "@/chat/tools/list-watches";
@@ -204,17 +203,6 @@ describe("Quiet Events from GitHub", () => {
         },
       ],
     });
-    // The automated-turn limit counts Turns. A Quiet Event starts none, so
-    // the limit does not hold it back.
-    const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-    for (let i = 0; i < maxTurns; i += 1) {
-      await countAutomatedTurn({
-        conversationId: CONVERSATION_ID,
-        maxTurns,
-        nowMs: Date.now() + i,
-      });
-    }
-
     await approve();
     await merge();
 
@@ -291,20 +279,25 @@ describe("Quiet Events from GitHub", () => {
       events: ["pull_request.merged"],
       intent: "Tell the person when the pull request merges.",
     });
-    // The automated-turn limit pauses the Watch that would start a Turn.
-    const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-    for (let i = 0; i < maxTurns; i += 1) {
-      await countAutomatedTurn({
-        conversationId: CONVERSATION_ID,
-        maxTurns,
-        nowMs: Date.now() + i,
-      });
-    }
+    // A stopped Conversation holds the Event of the Watch that would start a
+    // Turn.
+    await getConversationStore().recordActivity({
+      conversationId: CONVERSATION_ID,
+      destination: {
+        channelId: "C123",
+        platform: "slack",
+        teamId: "T123",
+        threadTs: "1712345.0001",
+      },
+      nowMs: Date.now(),
+      source: "slack",
+    });
+    await stopConversationTree([CONVERSATION_ID], { stoppedAtMs: Date.now() });
 
     await merge();
 
     expect(conversationWakes()).toEqual([]);
-    await expect(nextTurnContext("turn-after-pause")).resolves.toContain(
+    await expect(nextTurnContext("turn-after-stop")).resolves.toContain(
       `${QUIET_NOTE_RULE} ${LABEL}, pull_request.merged: ${LABEL} was merged.`,
     );
   });
