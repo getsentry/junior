@@ -441,8 +441,20 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(summary).toHaveClass(/line-clamp-2/);
+    // The rows read the cards of their links again after the reload.
+    const cardsRead = ["pull/5378", "people/dev"].map((link) =>
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === "/api/objects" &&
+          url.searchParams.getAll("url").some((value) => value.includes(link))
+        );
+      }),
+    );
     await page.reload();
     await expect(root).toHaveAttribute("data-density", "comfortable");
+    await expect(summary).toHaveClass(/line-clamp-2/);
+    await Promise.all(cardsRead);
   });
 
   test("hides and restores the panels with the shortcuts and Zen mode", async ({
