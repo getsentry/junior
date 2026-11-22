@@ -353,6 +353,12 @@ describe("spawn and messageAgent without Agent invocations", () => {
             expect.stringContaining("The model is unavailable."),
           ),
         );
+        // The dashboard shows the failed work as failed, for both kinds.
+        expect(
+          (await loadSubagentEvents(slackParentConversationId)).filter(
+            (event) => event.type === "subagent_ended",
+          ),
+        ).toEqual([expect.objectContaining({ outcome: "error" })]);
       } finally {
         await harness.close();
       }
@@ -767,6 +773,38 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
         1_800_000_001_000,
       );
+      await expect(spawn(harness, "call-3")).rejects.toBeInstanceOf(
+        AgentStoppedError,
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("counts a parent as stopped while its run has a stop request, after a person resumes it", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawn(harness, "call-1");
+      await sendPersonMessage(harness, slackParentConversationId, "person-1");
+      vi.setSystemTime(1_800_000_001_000);
+      await startParentTurn();
+      await stopConversationTree([slackParentConversationId], {
+        stoppedAtMs: Date.now(),
+        state: harness.state,
+      });
+      await stopConversationWork({
+        conversationId: slackParentConversationId,
+        state: harness.state,
+      });
+      // A person resumes the parent before its run sees the stop request.
+      vi.setSystemTime(1_800_000_002_000);
+      await resumeConversationTree(slackParentConversationId, Date.now());
+
+      await expect(message(harness, childId, "call-2")).resolves.toEqual({
+        conversationId: childId,
+        delivery: "noted",
+      });
       await expect(spawn(harness, "call-3")).rejects.toBeInstanceOf(
         AgentStoppedError,
       );
