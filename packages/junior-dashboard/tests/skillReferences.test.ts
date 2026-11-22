@@ -1,6 +1,7 @@
 import { expect, it } from "vitest";
 
 import {
+  findProseSkillReferences,
   findSkillReferences,
   skillTokenAt,
 } from "../src/client/conversations/skillReferences";
@@ -40,4 +41,15 @@ it("finds each complete skill reference the runtime reads", () => {
   expect(findSkillReferences("$beta_token $brief-v2x_")).toEqual([
     { start: 12, end: 22, name: "brief-v2x" },
   ]);
+});
+
+it("skips skill references in Markdown code, as a sent message does", () => {
+  const names = (text: string) =>
+    findProseSkillReferences(text).map((reference) => reference.name);
+  expect(names("run $brief, not `$review` or ``a `$x` b``")).toEqual(["brief"]);
+  expect(names("```\n$review\n```\n$brief")).toEqual(["brief"]);
+  // An open fence runs to the end, and a lone backtick is text.
+  expect(names("$brief\n```sh\n$review")).toEqual(["brief"]);
+  expect(names("a ` then $brief")).toEqual(["brief"]);
+  expect(names("``$review` $brief")).toEqual(["review", "brief"]);
 });

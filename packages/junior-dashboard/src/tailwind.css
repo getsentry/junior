@@ -465,6 +465,14 @@
   }
 }
 
+/*
+ * Skill references in the composer draft, in the color of a sent
+ * `SkillLink`. A highlight cannot set the font.
+ */
+::highlight(skill-reference) {
+  color: var(--color-dashboard-accent-text);
+}
+
 /* The Quick question selection. Utilities cannot style a highlight. */
 ::highlight(quick-question) {
   background-color: color-mix(
