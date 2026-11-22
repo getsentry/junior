@@ -30,12 +30,11 @@ import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import {
   askTypeOf,
   InboxTypeFilters,
-  inboxTypeOf,
   ConversationStateFilters,
-  conversationStateOf,
   inConversationState,
+  listFiltersOf,
   PinnedFilter,
-  pinnedOnlyOf,
+  withoutFilters,
 } from "./inboxFilters";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
@@ -161,16 +160,14 @@ export function InboxList(props: {
   );
   // `?type=` shows the Inbox asks of one type, and `?pinned=1` only the
   // rows of the viewer's pins, in their places. The feed's first page holds
-  // every pin, so Pinned reads no more of it.
+  // every pin, so Pinned reads no more of it. `?state=` shows the
+  // Conversations in one viewer state.
   const [params] = useSearchParams();
-  const pinnedOnly =
-    data.signedIn &&
-    (view === "inbox" || view === "conversations") &&
-    pinnedOnlyOf(params);
-  const type = data.signedIn && view === "inbox" ? inboxTypeOf(params) : "all";
-  // `?state=` shows the Conversations in one viewer state.
-  const conversationState =
-    view === "conversations" ? conversationStateOf(params) : "all";
+  const { conversationState, pinnedOnly, type } = listFiltersOf(
+    params,
+    view,
+    data.signedIn,
+  );
   const inboxRows =
     pinnedOnly || type !== "all"
       ? data.rowsOf(
@@ -296,7 +293,7 @@ export function InboxList(props: {
       );
       if (!row) return;
       row.scrollIntoView({ block: "center" });
-      void navigate(listPath, { replace: true });
+      void navigate(withoutFilters(listPath), { replace: true });
       return;
     }
     if (snoozedKey || linkedSnoozed) {

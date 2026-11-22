@@ -98,4 +98,23 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("link");
     await expect(filters).toHaveText([/^All\s*2$/, /^Decisions\s*2$/]);
   });
+  test("a link to an ask that a filter hides shows its row and clears the filter", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [prMerge, prReview, todo],
+    });
+    await page.goto(`${dashboard.baseURL}/?type=prs&pinned=1&item=${todo.id}`);
+    const todoList = page.getByRole("region", { name: "To do" });
+    await expect(
+      todoList.locator("[data-inbox-row]").filter({ hasText: todo.title }),
+    ).toBeVisible();
+    await expect(page).not.toHaveURL(/[?&](item|type|pinned)=/);
+    await expect(typeFilter(page, "All")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+  });
 });

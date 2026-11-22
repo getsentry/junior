@@ -11,7 +11,7 @@ import {
 import { ScopeTabs } from "../components/filters/ScopeTabs";
 import { conversationDisplayState } from "../conversations/ConversationStateIcon";
 import type { Conversation } from "../types";
-import { isCodeChangeItem, isDecisionItem } from "./inboxModel";
+import { isCodeChangeItem, isDecisionItem, type InboxView } from "./inboxModel";
 
 /**
  * The type of an ask, as the Inbox filters split them. A pull request ask
@@ -59,6 +59,30 @@ const STATE_FILTERS: readonly Filter<ConversationStateFilter>[] = [
   { icon: Check, key: "done", label: "Done" },
 ];
 
+/**
+ * Copy the current search for a filter link. A filter leaves the one-time
+ * `item` link, so the list does not wait on a row that the filter hides.
+ */
+function filterSearch(search: string) {
+  const params = new URLSearchParams(search);
+  params.delete("item");
+  return params;
+}
+
+/**
+ * Take the filters out of a list path, so a linked row that a filter would
+ * hide stays on screen once the `item` link leaves the URL.
+ */
+export function withoutFilters(path: string): string {
+  const [pathname, search = ""] = path.split("?", 2);
+  const params = new URLSearchParams(search);
+  for (const param of [TYPE_PARAM, STATE_PARAM, PINNED_PARAM]) {
+    params.delete(param);
+  }
+  const rest = params.toString();
+  return rest ? `${pathname}?${rest}` : (pathname ?? path);
+}
+
 /** Link each filter to the search that turns it on; All clears the param. */
 function filterTabs<Key extends string>(
   filters: readonly Filter<Key>[],
@@ -67,7 +91,7 @@ function filterTabs<Key extends string>(
   on: Key,
 ) {
   return filters.map((filter) => {
-    const params = new URLSearchParams(search);
+    const params = filterSearch(search);
     if (filter.key === "all") params.delete(param);
     else params.set(param, filter.key);
     return {
@@ -110,7 +134,9 @@ export function InboxTypeFilters(props: {
 }) {
   const tabs = filterTabs(TYPE_FILTERS, TYPE_PARAM, props.search, props.type)
     .filter(
-      (tab) => tab.key === "all" || tab.on || (props.counts[tab.key] ?? 0) > 0,
+      // An unknown count, before the server totals load, does not hide a
+      // type.
+      (tab) => tab.key === "all" || tab.on || props.counts[tab.key] !== 0,
     )
     .map((tab) => ({ ...tab, count: props.counts[tab.key] }));
   return <ScopeTabs label="Asks to show" tabs={tabs} />;
@@ -122,6 +148,32 @@ export function conversationStateOf(
 ): ConversationStateFilter {
   const value = search.get(STATE_PARAM);
   return STATE_FILTERS.find((filter) => filter.key === value)?.key ?? "all";
+}
+
+/**
+ * Read the filters of an Inbox list view from the URL. A one-time `?item=`
+ * link shows every row, so no filter hides its row.
+ */
+export function listFiltersOf(
+  search: URLSearchParams,
+  view: InboxView,
+  signedIn: boolean,
+): {
+  conversationState: ConversationStateFilter;
+  pinnedOnly: boolean;
+  type: InboxTypeFilter;
+} {
+  const filters = !search.has("item");
+  return {
+    conversationState:
+      filters && view === "conversations" ? conversationStateOf(search) : "all",
+    pinnedOnly:
+      filters &&
+      signedIn &&
+      (view === "inbox" || view === "conversations") &&
+      pinnedOnlyOf(search),
+    type: filters && signedIn && view === "inbox" ? inboxTypeOf(search) : "all",
+  };
 }
 
 /**
@@ -171,9 +223,9 @@ export function ConversationStateFilters(props: {
  * one All / Pinned control.
  */
 export function PinnedFilter(props: { on: boolean; search: string }) {
-  const all = new URLSearchParams(props.search);
+  const all = filterSearch(props.search);
   all.delete(PINNED_PARAM);
-  const pinned = new URLSearchParams(props.search);
+  const pinned = filterSearch(props.search);
   pinned.set(PINNED_PARAM, "1");
   return (
     <ScopeTabs
