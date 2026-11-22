@@ -58,7 +58,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await typeFilter(page, "PRs").click();
     await expect(page).toHaveURL(/[?&]type=prs/);
     const todoList = page.getByRole("region", { name: "To do" });
-    const todoRows = todoList.locator("[data-inbox-row]");
+    const todoRows = todoList.getByRole("listitem");
     // Each pull request ask is a row, headed by its pull request.
     await expect(todoRows).toHaveText([
       new RegExp(prReview.subject.title),
@@ -127,7 +127,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?type=prs&pinned=1&item=${todo.id}`);
     const todoList = page.getByRole("region", { name: "To do" });
     await expect(
-      todoList.locator("[data-inbox-row]").filter({ hasText: todo.title }),
+      // The innermost row: a stack row also holds the ask.
+      todoList.getByRole("listitem").filter({ hasText: todo.title }).last(),
     ).toBeVisible();
     await expect(page).not.toHaveURL(/[?&](item|type|pinned)=/);
     await expect(typeFilter(page, "All")).toHaveAttribute(

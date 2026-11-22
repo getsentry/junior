@@ -72,6 +72,17 @@ describeEval("Tool Search", toolSearchEvals, (it) => {
     });
   });
 
+  it("when the query asks which GitHub events can be watched, it picks the event type search", async ({
+    run,
+  }) => {
+    // watchEvents is a direct tool, so no candidate in this source watches.
+    await run({
+      query: "GitHub events watch pull request issue release deployments",
+      source: "resource-watches",
+      expected: "searchEventTypes",
+    });
+  });
+
   it("when the query says remember something, it picks the create tool", async ({
     run,
   }) => {

@@ -1,5 +1,6 @@
 import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { notLeadConversation } from "@/chat/conversations/sql/listed";
 import { getDb } from "@/chat/db";
 import {
   juniorConversationMetrics,
@@ -359,6 +360,7 @@ export async function recentActorRows(email: string) {
       juniorDestinations,
       eq(juniorDestinations.id, juniorConversations.destinationId),
     )
+    .where(notLeadConversation())
     .orderBy(
       desc(lastTurns.lastTurnAt),
       asc(juniorConversations.conversationId),

@@ -10,9 +10,8 @@ child chooses to report reaches the parent.
 - One execution path runs every Conversation. A child agent has no path of
   its own, so a fix to that path applies to every kind.
 - A parent wakes only when a child messages it. A `reply`, a
-  `messageAgent` message, a blocked report, a failure, and a notice that a
-  paused child dropped Watch Events are all messages. A child owns its Watch
-  work, so the parent does not steer each Event.
+  `messageAgent` message, a blocked report, and a failure are all messages.
+  A child owns its Watch work, so the parent does not steer each Event.
 - Work never runs with the access of another party. A child, its parent,
   and a grandchild never borrow the authority of a different Actor.
 - A parent can plan around its child agents. It knows which ones still
@@ -46,7 +45,9 @@ child chooses to report reaches the parent.
   and only the text of a `reply` leaves it.
 - One stop stops the whole tree below it. When a parent stops a child, it
   gets no result. When a person stops a child, its parent gets `stopped`.
-  New work from the parent, or a person's input, ends the stop.
+  New work from the parent, or a person's input, ends the stop. While
+  stopped, a Conversation keeps its Watches and saves automated input as
+  skipped Messages that start no Turn. Only a stop holds input.
 - A parent never waits forever, and never sees a running child as done.
   Each result names the siblings that did not report yet. A Task that fails,
   or still has no answer after one reminder, tells its parent `failed`. A

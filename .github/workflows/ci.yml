@@ -493,13 +493,15 @@ jobs:
           path: .playwright/junior-dashboard/screenshots
           if-no-files-found: error
           retention-days: 7
-      # Playwright keeps a trace only for a failed test.
+      # Playwright keeps a trace only for a failed attempt. Upload it also
+      # when the retry passed, so a flaky test leaves a trace.
       - name: Upload failed test traces
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dashboard-e2e-traces-${{ matrix.project }}-${{ matrix.shard }}
           path: .playwright/junior-dashboard/*/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # Frameshift saves or compares one screenshot set per run, so it runs once,

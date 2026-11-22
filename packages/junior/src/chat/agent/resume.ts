@@ -39,6 +39,8 @@ import {
   isTurnExecutionLimitExceededError,
 } from "@/chat/services/turn-limit";
 import type { PluginTurnContext } from "@/chat/plugins/prompt";
+import type { TurnStart } from "@/chat/conversations/turn-lifecycle";
+import { isTurnMessage } from "@/chat/task-execution/turn-membership";
 
 interface ResumeStateArgs {
   channelName?: string | undefined;
@@ -54,6 +56,9 @@ interface ResumeStateArgs {
   checkpoint: TurnCheckpoint;
   startedAtMs: number;
   surface: AgentTurnSurface;
+  turnStart?: TurnStart | undefined;
+  /** Event seq of each message of the history that the caller loaded. */
+  historySeqs: readonly number[];
 }
 
 type AuthPauseOutcome = Extract<AgentRunOutcome, { status: "awaiting_auth" }>;
@@ -100,8 +105,17 @@ export function createResumeState(args: ResumeStateArgs) {
   let timedOut = false;
   let resumeMessages: PiMessage[] = [];
   let pausedBeforePrompt = false;
+  // Length of the slice's messages once it added its prompt. A checkpoint
+  // that saves at least that many messages saves the prompt.
+  let promptMessageCount: number | undefined;
+  let promptSaved = false;
   let turnContexts: PluginTurnContext[] = [];
-  let turnStartMessageIndex: number | undefined;
+  // Event seq of each committed agent message, by position. A slice only
+  // appends to its messages, so a message past the end is not committed yet:
+  // this slice added it. A history replacement brings its own seqs.
+  let committedSeqs: readonly number[] = args.checkpoint.resumed
+    ? args.checkpoint.record.piMessageSeqs
+    : args.historySeqs;
   // Durable across slices and history replacement; not derived from live messages.
   let cumulativeToolCallCount =
     args.checkpoint.record?.cumulativeToolCallCount ?? 0;
@@ -121,13 +135,17 @@ export function createResumeState(args: ResumeStateArgs) {
   const currentSliceId = args.checkpoint.sliceId;
   const durationMs = () => Date.now() - args.startedAtMs;
 
-  const writeBase = () => ({
+  const holdsPrompt = (messages: readonly PiMessage[]) =>
+    promptSaved ||
+    (promptMessageCount !== undefined && messages.length >= promptMessageCount);
+  const writeBase = (messages: readonly PiMessage[]) => ({
     conversationId: args.conversationId,
     turnId: args.turnId,
     channelName: args.channelName,
     credentialSubject: args.credentialSubject,
     cumulativeToolCallCount,
     ...(turnLimitWrappedUp ? { turnLimitWrappedUp } : undefined),
+    ...(holdsPrompt(messages) ? { promptSaved: true } : undefined),
     destination: args.destination,
     dispatchId: args.dispatchId,
     source: args.runSource,
@@ -145,12 +163,35 @@ export function createResumeState(args: ResumeStateArgs) {
     get timedOut(): boolean {
       return timedOut;
     },
-    /** Index in the agent messages where the current Turn starts. */
-    get turnStartMessageIndex(): number | undefined {
-      return turnStartMessageIndex;
+    /**
+     * True when the agent message at `index` belongs to this Turn. Without
+     * a `turn_started` event, nothing tells committed messages of this Turn
+     * from earlier history, so only the messages that this slice added
+     * belong to it.
+     */
+    isTurnMessageAt(messages: readonly PiMessage[], index: number): boolean {
+      const message = messages[index];
+      if (!message || message.role === "system") {
+        return false;
+      }
+      const seq = committedSeqs[index];
+      if (seq === undefined) {
+        return true;
+      }
+      return (
+        args.turnStart !== undefined &&
+        isTurnMessage(args.turnStart, seq, message)
+      );
     },
-    setTurnStartMessageIndex(index: number | undefined): void {
-      turnStartMessageIndex = index;
+    /** The agent messages that belong to this Turn. */
+    turnMessages(messages: readonly PiMessage[]): PiMessage[] {
+      return messages.filter((_, index) =>
+        this.isTurnMessageAt(messages, index),
+      );
+    },
+    /** Record that the slice's messages hold its prompt at `messageCount`. */
+    markPromptAdded(messageCount: number): void {
+      promptMessageCount = messageCount;
     },
     setBeforeMessageCount(count: number): void {
       beforeMessageCount = count;
@@ -174,6 +215,20 @@ export function createResumeState(args: ResumeStateArgs) {
     },
     setTurnContexts(contexts: PluginTurnContext[]): void {
       turnContexts = contexts;
+    },
+    /**
+     * Use a history replacement that is already committed: its seqs, and its
+     * messages as the resume baseline, so a later pause cannot save the
+     * history from before it.
+     */
+    adoptReplacement(messages: PiMessage[], seqs: readonly number[]): void {
+      committedSeqs = seqs;
+      this.adoptCommittedBoundary(messages);
+      // The replacement covers a prompt that the slice already added, also
+      // when it is shorter, and later messages extend it.
+      if (promptMessageCount !== undefined) {
+        promptMessageCount = messages.length;
+      }
     },
     /** Use an already committed boundary as the resume baseline. */
     adoptCommittedBoundary(messages: PiMessage[]): void {
@@ -212,16 +267,17 @@ export function createResumeState(args: ResumeStateArgs) {
     ): Promise<boolean> {
       const saved = await saveTurnCheckpoint({
         mode: "running",
-        ...writeBase(),
+        ...writeBase(messages),
         sliceId: currentSliceId,
         messages,
         trailingMessageProvenance,
         turnContexts: turnContexts.length > 0 ? turnContexts : undefined,
-        turnStartMessageIndex,
       });
       if (!saved) {
         return false;
       }
+      promptSaved = holdsPrompt(messages);
+      committedSeqs = saved.piMessageSeqs;
       latestSafeBoundaryMessages = [...messages];
       // Writing the same boundary does not count as progress.
       const persistedKey = boundaryKey(continuableMessages(messages, messages));
@@ -277,7 +333,7 @@ export function createResumeState(args: ResumeStateArgs) {
         const record = await saveTurnCheckpoint({
           mode: "paused",
           reason: "auth",
-          ...writeBase(),
+          ...writeBase(resumeMessages),
           sliceId: currentSliceId,
           durationMs: durationMs(),
           usage,
@@ -358,7 +414,7 @@ export function createResumeState(args: ResumeStateArgs) {
         });
         await saveTurnCheckpoint({
           mode: "failed",
-          ...writeBase(),
+          ...writeBase(parkMessages),
           sliceId: currentSliceId,
           durationMs: durationMs(),
           messages: parkMessages,
@@ -377,7 +433,7 @@ export function createResumeState(args: ResumeStateArgs) {
       const record = await saveTurnCheckpoint({
         mode: "paused",
         reason,
-        ...writeBase(),
+        ...writeBase(parkMessages),
         sliceId: currentSliceId,
         durationMs: durationMs(),
         usage,

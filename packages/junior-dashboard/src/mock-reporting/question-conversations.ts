@@ -1,6 +1,6 @@
 /**
  * The transcripts of the mock question Conversations, whose items come from
- * `inbox-items.ts`.
+ * `inbox-item-seeds.ts`.
  */
 import type { ConversationReportEvent } from "@sentry/junior/api/schema";
 import {
@@ -10,7 +10,7 @@ import {
   type MockItemSeed,
   seeds,
   viewer,
-} from "./inbox-items";
+} from "./inbox-item-seeds";
 
 // Each Turn of a mock Conversation, as events without their seqs.
 type MockEvent = Omit<ConversationReportEvent, "seq">;

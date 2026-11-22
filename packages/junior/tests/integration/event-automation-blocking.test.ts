@@ -194,7 +194,7 @@ describe("event automation blocking", () => {
         },
       ]);
     try {
-      const create = (skill: string) =>
+      const create = (skill: string, fields: Record<string, string> = {}) =>
         execute(
           createAutomationTool(
             automationToolContext(context()),
@@ -202,6 +202,7 @@ describe("event automation blocking", () => {
           ),
           {
             skill,
+            ...fields,
             outcomes: [],
             trigger: {
               type: "event",
@@ -213,6 +214,15 @@ describe("event automation blocking", () => {
           },
           `skill-create-${skill}`,
         ) as Promise<{ automation: { id: string } }>;
+      // One rejection names every problem, so one more call can fix them.
+      await expect(
+        create("release-check", {
+          instruction: "Post the review summary in this channel.",
+          context: "Only check getsentry/junior.",
+        }),
+      ).rejects.toThrow(
+        'Set instruction or skill, not both. Context goes only with a skill: for an instruction, drop skill and context and put everything in the instruction. The run does not see this conversation, and its outcomes already set where it posts. Remove "this channel"',
+      );
       await expect(create("unknown-check")).rejects.toThrow(
         "The skill unknown-check is not installed.",
       );

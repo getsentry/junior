@@ -64,22 +64,31 @@ const snoozeUntil = {
     .min(1)
     .max(INBOX_SNOOZE_MAX_TRIGGERS)
     .optional(),
+  /**
+   * No time and no Event: the snooze lasts until the item closes, so it
+   * waits until someone else handles it, or the viewer wakes it.
+   */
+  untilClosed: z.literal(true).optional(),
   wakeAt: z.string().datetime().optional(),
 };
 
 /**
  * `POST /api/inbox/snoozes` body: hide the row's open items from the viewer
- * until `wakeAt` or one of `triggers` fires, whichever is first. A later
- * item in the row shows by itself.
+ * until `wakeAt` or one of `triggers` fires, whichever is first, or with
+ * `untilClosed`, until each item closes. A later item in the row shows by
+ * itself.
  */
 export const inboxSnoozeCreateSchema = z
   .union([
     conversationRowSchema.extend(snoozeUntil).strict(),
     itemRowSchema.extend(snoozeUntil).strict(),
   ])
-  .refine((body) => body.wakeAt !== undefined || body.triggers !== undefined, {
-    message: "Set wakeAt, triggers, or both.",
-  });
+  .refine(
+    (body) =>
+      (body.untilClosed === true) !==
+      (body.wakeAt !== undefined || body.triggers !== undefined),
+    { message: "Set wakeAt, triggers, or both, or set untilClosed alone." },
+  );
 
 /** The items that a snooze hid from the viewer, one snooze each. */
 export const inboxSnoozeSchema = z

@@ -19,7 +19,6 @@ import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import {
   juniorConversationAnnotations,
-  juniorConversationBriefs,
   juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
@@ -34,7 +33,7 @@ import { createSearchConversationsTool } from "@/chat/tools/search-conversations
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { stopChildAgentInvocations } from "@/chat/agent-invocations/stop";
 import { neverRunAgentRunner } from "../fixtures/agent-runner";
-import { conversationBriefFixture } from "../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
   prepareSlackParentConversation,
@@ -615,19 +614,11 @@ describe("messageAgent", () => {
         .update(juniorConversations)
         .set({ title: "Classifier queue backlog" })
         .where(eq(juniorConversations.conversationId, publicTarget));
-      await getDb()
-        .insert(juniorConversationBriefs)
-        .values({
-          content: conversationBriefFixture({
-            summary: "Opened the deploy check pull request.",
-          }),
-          conversationId: publicTarget,
-          modelId: "test-model",
-          searchText: "deploy check pull request",
-          throughSeq: 1,
-          turnId: "brief-turn",
-          version: 1,
-        });
+      await storeConversationMetadataFixture(getDb(), {
+        conversationId: publicTarget,
+        summary: "Opened the deploy check pull request.",
+        throughSeq: 1,
+      });
       const searchRoots = async (
         conversationId: string,
         input: Record<string, unknown> = {},

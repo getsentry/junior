@@ -85,7 +85,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await pinnedTab.click();
       await expect(page).toHaveURL(/[?&]pinned=1/);
       await expect(pinnedTab).toHaveAttribute("aria-current", "page");
-      const rows = list.locator("a[data-inbox-head]");
+      const rows = list.getByRole("listitem");
       await expect(rows).toHaveCount(1);
       await expect(row).toBeVisible();
       await page.reload();
@@ -118,9 +118,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     }) => {
       await page.goto(`${dashboard.baseURL}/?view=conversations`);
       const list = conversationsList(page);
-      const rows = list.locator("[data-inbox-row]");
+      const rows = list.getByRole("listitem");
       const waiting = rows.filter({
-        has: page.locator('[aria-label="Waiting on you"]'),
+        has: page.getByRole("img", { name: "Waiting on you" }),
       });
       const working = rowLink(list, "Investigate checkout latency");
       const asking = rowLink(list, "Roll out payments-v42");

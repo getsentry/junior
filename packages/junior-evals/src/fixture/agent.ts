@@ -26,9 +26,9 @@ import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver } from "./gateway";
 import {
-  expectAccepted,
   jsonRequest,
-  uploadWebFiles,
+  postWebMessage,
+  readLeadConversationId,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
 import { actOnWebInboxItem } from "./inbox";
@@ -367,32 +367,16 @@ export async function createFixtureAgent(
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
-      const path = started
-        ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
-        : "/api/conversations";
-      const idempotencyKey = started
-        ? fixtureId("web-message", 32)
-        : record.idempotencyKey;
-      const uploadIds = input.files?.length
-        ? await uploadWebFiles(api, {
-            ...(started
-              ? { conversationId: record.conversationId }
-              : undefined),
-            files: input.files,
-            idempotencyKey,
-            viewerEmail: record.viewerEmail,
-          })
-        : undefined;
-      await expectAccepted(
-        await api.request(
-          path,
-          jsonRequest(record.viewerEmail, {
-            idempotencyKey,
-            message: input.text,
-            ...(uploadIds ? { uploadIds } : undefined),
-          }),
-        ),
-      );
+      await postWebMessage(api, {
+        // The Lead exists before its first message.
+        conversationId:
+          started || input.lead ? record.conversationId : undefined,
+        idempotencyKey: started
+          ? fixtureId("web-message", 32)
+          : record.idempotencyKey,
+        input,
+        viewerEmail: record.viewerEmail,
+      });
       return;
     }
     if (record.surface !== "slack") {
@@ -451,10 +435,17 @@ export async function createFixtureAgent(
   };
 
   /** Create the record for a new Conversation. It starts with its first input. */
-  const newConversation = (
+  const newConversation = async (
     first: MessageInput | InboxItemActionInput,
     history: CallOptions["history"],
-  ): ConversationRecord => {
+  ): Promise<ConversationRecord> => {
+    if (first.kind === "web_message" && first.lead) {
+      return newRecord({
+        conversationId: await readLeadConversationId(api, WEB_VIEWER_EMAIL),
+        idempotencyKey: fixtureId("web-conversation", 32),
+        surface: "web",
+      });
+    }
     // An Inbox action comes from the dashboard.
     if (first.kind === "web_message" || first.kind === "inbox_item_action") {
       // The Conversation id comes from this key, and attachment ids come
@@ -910,7 +901,7 @@ export async function createFixtureAgent(
       throw new Error("appHomeUnlink() continues a Slack Conversation");
     }
     return await converse(
-      newConversation(first, options.history),
+      await newConversation(first, options.history),
       input,
       options,
     );

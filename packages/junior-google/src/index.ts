@@ -109,6 +109,7 @@ export function googlePlugin(): PluginRegistration {
           (ctx): GoogleToolContext => ({
             accountEmail: config.accountEmail,
             allowedDomains: config.allowedDomains,
+            ...(ctx.artifacts ? { artifacts: ctx.artifacts } : undefined),
             egress: ctx.egress,
             sandbox: ctx.sandbox,
             users: ctx.users,

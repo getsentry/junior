@@ -218,7 +218,9 @@ export function transcriptMessageActorLabel(
   message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return getDashboardAgentName();
+  if (kind === "assistant") {
+    return conversation.kind === "lead" ? "Lead" : getDashboardAgentName();
+  }
   if (kind === "user") {
     // The parent agent wrote this input, and the Turn it starts reports back
     // to the parent. The conversation actor started the child but did not
@@ -696,7 +698,7 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       activityPreview: summary.activityPreview,
-      brief: summary.brief,
+      summary: summary.summary,
       media: summary.media,
       links: summary.links,
       annotations: summary.annotations,
@@ -734,6 +736,7 @@ export function buildConversations(
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
       awaitingAuthorization: summary.awaitingAuthorization,
+      latestTurnFailed: summary.latestTurnFailed,
       viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
     }))
@@ -745,22 +748,7 @@ export function conversationFromDetail(
   detail: ConversationTranscript | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
-  // The detail carries the whole Brief; a row keeps the feed's short form.
-  const { brief, ...summary } = detail;
-  const conversation = buildConversations([
-    {
-      ...summary,
-      ...(brief
-        ? {
-            brief: {
-              intent: brief.content.intent,
-              status: brief.content.outcome.status,
-              summary: brief.content.summary,
-            },
-          }
-        : undefined),
-    },
-  ])[0];
+  const conversation = buildConversations([detail])[0];
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;

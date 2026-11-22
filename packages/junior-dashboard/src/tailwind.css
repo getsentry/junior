@@ -33,7 +33,7 @@
    */
   /*
    * Header row height (`h-header`) for every column: the pane's logo row, page
-   * links, the conversation title and Brief, and side panels. Each column
+   * links, the conversation title and summary, and side panels. Each column
    * draws a 1px rule under the row, so the rules meet on one line.
    */
   --spacing-header: 3.5rem;

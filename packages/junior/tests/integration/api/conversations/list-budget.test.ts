@@ -8,9 +8,9 @@ import { conversationFeedSchema } from "@/api/schema";
 import { ACTIVITY_PREVIEW_MAX_LENGTH } from "@/api/schema/activity-preview-text";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { juniorConversationBriefs, juniorConversations } from "@/db/schema";
+import { juniorConversations } from "@/db/schema";
 import { closeConversationFixture } from "../../../fixtures/conversation";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import {
   ACTION_ITEM,
   addItem,
@@ -38,7 +38,7 @@ function url(length: number): string {
 
 /**
  * Give a root the most that a feed row can show: a full title, Threads, a
- * long latest message, a Brief, an open Inbox item, and annotations at their max
+ * long latest message, a summary, an open Inbox item, and annotations at their max
  * lengths.
  */
 async function makeHeavy(fixture: StatusFixture, conversationId: string) {
@@ -65,20 +65,11 @@ async function makeHeavy(fixture: StatusFixture, conversationId: string) {
       createdAtMs: Date.now(),
     },
   ]);
-  await getDb()
-    .insert(juniorConversationBriefs)
-    .values({
-      conversationId,
-      version: 1,
-      turnId: "brief-turn-1",
-      throughSeq: await lastSeq(conversationId),
-      content: {
-        ...conversationBriefFixture({ summary: text(600, "s") }),
-        intent: text(400, "i"),
-      },
-      searchText: "stored brief",
-      modelId: "test-model",
-    });
+  await storeConversationMetadataFixture(getDb(), {
+    conversationId,
+    summary: text(600, "s"),
+    throughSeq: await lastSeq(conversationId),
+  });
   await addItem(conversationId, ACTION_ITEM);
   const facts = {
     type: "code_change" as const,

@@ -19,6 +19,7 @@ import {
 } from "../../../fixtures/conversation";
 import { useGitHubEvents } from "../../../fixtures/event-automations";
 import {
+  addEveryoneItem,
   addItem,
   addNotice,
   addPullRequestItem,
@@ -172,6 +173,90 @@ describe("snoozes", () => {
       inbox: ["Review globex entry"],
       waiting: [ROOT],
     });
+  });
+
+  it("snoozes a shared item until someone else handles it", async () => {
+    const ana = await user("ana@example.com");
+    const bob = await user("bob@example.com");
+    const shared = await addItem(ROOT, [ana, bob], "Review acme entry");
+    vi.setSystemTime(NOW_MS + 1);
+    const everyone = await addEveryoneItem(ROOT, "Review globex entry");
+    const asAna = api(fixture, ana);
+    const asBob = api(fixture, bob);
+
+    // A snooze with no time and no Event lasts until the item closes.
+    for (const id of [shared, everyone]) {
+      const snoozed = await asAna.postSnooze({
+        conversationId: ROOT,
+        inboxItemId: id,
+        untilClosed: true,
+      });
+      expect(snoozed.status).toBe(201);
+    }
+    expect(await asAna.inbox()).toEqual({ count: 0, inbox: [], waiting: [] });
+    expect(await asAna.snoozed()).toEqual({
+      count: 2,
+      items: ["Review acme entry", "Review globex entry"],
+    });
+    expect(await feedWaitingIds(ana.id)).toEqual([]);
+    // The Conversation's own list still shows both, marked for Ana only.
+    const conversationList = `/inbox-items?conversationId=${encodeURIComponent(ROOT)}`;
+    const marks = async (as: typeof asAna) =>
+      (
+        (await as.json(conversationList)) as {
+          items: { snoozedByViewer?: true; title: string }[];
+        }
+      ).items.map((item) => [item.title, item.snoozedByViewer ?? null]);
+    expect(await marks(asAna)).toEqual([
+      ["Review acme entry", true],
+      ["Review globex entry", true],
+    ]);
+    expect(await marks(asBob)).toEqual([
+      ["Review acme entry", null],
+      ["Review globex entry", null],
+    ]);
+
+    // Bob's answer closes the item for everyone, and it leaves Snoozed.
+    expect(
+      (
+        await asBob.act(shared, {
+          action: "submit",
+          answer: { values: { decision: ["Approve"] } },
+        })
+      ).status,
+    ).toBe(200);
+    expect(await asAna.snoozed()).toEqual({
+      count: 1,
+      items: ["Review globex entry"],
+    });
+    // Ana can still wake the other one. An Everyone item that she has not
+    // taken shows in her Inbox, and it does not count as waiting on her.
+    expect(
+      (await asAna.unsnooze({ conversationId: ROOT, inboxItemId: everyone }))
+        .status,
+    ).toBe(204);
+    expect(await asAna.inbox()).toEqual({
+      count: 0,
+      inbox: ["Review globex entry"],
+      waiting: [],
+    });
+  });
+
+  it("takes a snooze until close only with no time and no Event", async () => {
+    const ana = await user("ana@example.com");
+    const id = await addItem(ROOT, [ana], "Review acme entry");
+    const subject = { conversationId: ROOT, inboxItemId: id };
+    for (const body of [
+      subject,
+      {
+        ...subject,
+        untilClosed: true,
+        wakeAt: new Date(NOW_MS + HOUR_MS).toISOString(),
+      },
+    ]) {
+      expect((await api(fixture, ana).postSnooze(body)).status).toBe(400);
+    }
+    expect(await api(fixture, ana).snoozed()).toEqual(NOTHING_SNOOZED);
   });
 
   it("counts each item that one snooze on their root hides", async () => {

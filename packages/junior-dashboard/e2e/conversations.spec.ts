@@ -19,7 +19,8 @@ async function openActiveConversation(page: Page, baseURL: string) {
   ).toBeVisible();
 }
 
-test("records loaded conversation views", async ({ page, dashboard }) => {
+// Classic home shows the Lead. lead-home.spec.ts covers it.
+test("records loaded conversation views @new", async ({ page, dashboard }) => {
   let releaseFeed: (() => void) | undefined;
   const feedPending = new Promise<void>((resolve) => {
     releaseFeed = resolve;
@@ -42,7 +43,12 @@ test("records loaded conversation views", async ({ page, dashboard }) => {
   const composer = page.getByLabel("Start a conversation");
   await expect(composer).toBeFocused();
   await screenshot(page, "conversation-create-focused");
+});
 
+test("loads a finished conversation within its request budget", async ({
+  page,
+  dashboard,
+}) => {
   // A running Conversation polls every 2 seconds, so a slow load would
   // count a poll. Measure a finished one, which does not poll its detail.
   await expectRequestBudget(
@@ -237,12 +243,13 @@ test("reuses the fresh conversation feed after window focus", async ({
   await expectRequestBudget(
     page,
     async () => {
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/conversations`);
       await expect(
         page.getByRole("navigation", { name: "Your conversations" }),
       ).toBeVisible();
     },
-    { requests: 7, serialRounds: 1 },
+    // Classic home is the Lead: its id, then its Conversation page.
+    { requests: 11, serialRounds: 3 },
   );
   expect(requests).toBe(1);
 
@@ -280,7 +287,7 @@ test("loads more conversations as the list scrolls and retries a failed page", a
     await route.fallback();
   });
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
   const list = page.getByRole("navigation", { name: "Your conversations" });
   const firstRow = list
     .getByRole("link", { name: /Investigate checkout latency/ })
@@ -339,7 +346,7 @@ test("shows the repo name on linked work tags on mobile", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ height: 844, width: 390 });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   const conversation = page.getByRole("listitem").filter({
     has: page.getByRole("heading", { name: "Checkout latency triage" }),
@@ -528,7 +535,7 @@ test("shows personal spend and groups profile and session actions", async ({
   dashboard,
 }) => {
   await page.setViewportSize({ width: 1440, height: 1150 });
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   const topBarTrigger = page.getByRole("button", {
     name: "Open profile menu for Dashboard User. Personal model spend: 7 days $0.46, 30 days $0.46.",
@@ -602,7 +609,7 @@ test.describe("keeps a hover-opened profile menu open on click", () => {
   test.use({ controlTimers: true });
 
   test("after the hover pause", async ({ page, dashboard }) => {
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const trigger = page.getByRole("button", {
       name: /^(Open|Close) profile menu for Dashboard User/,
     });
