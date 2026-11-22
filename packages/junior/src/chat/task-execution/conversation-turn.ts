@@ -749,6 +749,9 @@ export function createConversationTurnWorker(
                 }
               } else if (reply.reply && behavior.tools.reply === "parent") {
                 await sendToParent({ kind: "reply", reply: reply.reply });
+                // The `reply` is also the child's answer in its own
+                // transcript. A child does not deliver to its Location.
+                await deliverAssistantMessage(reply.reply.text);
               } else if (reply.reply) {
                 await deliverAssistantMessage(reply.reply.text, {
                   reply: true,
@@ -822,7 +825,11 @@ export function createConversationTurnWorker(
               completedSuccessfully = reply.diagnostics.outcome === "success";
               return completedSuccessfully
                 ? {
-                    outcome: assistantMessageDelivered ? "success" : "no_reply",
+                    outcome: reply.blocked
+                      ? "blocked"
+                      : assistantMessageDelivered
+                        ? "success"
+                        : "no_reply",
                   }
                 : {
                     ...(modelFailureEventId

@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
+import { createJuniorApi } from "@/api";
+import {
+  conversationEventPageSchema,
+  conversationOutlineSchema,
+} from "@/api/schema";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import {
   getAgentReplyMessageId,
@@ -249,8 +254,8 @@ describe("child agent task work", () => {
           }),
         ]),
       );
-      // A child posts nothing to its Location. Its task is a message event,
-      // and its `reply` stays in its history, as checked above.
+      // A child posts nothing to its Location. Its task and its `reply` are
+      // message events in its own transcript.
       await expect(loadMessageEvents(childConversationId)).resolves.toEqual([
         expect.objectContaining({
           type: "message",
@@ -260,6 +265,11 @@ describe("child agent task work", () => {
           meta: expect.objectContaining({
             requestText: slackInvocationInput.input,
           }),
+        }),
+        expect.objectContaining({
+          type: "message",
+          role: "assistant",
+          text: "Durable child result",
         }),
       ]);
       await expect(loadTurnEvents(childConversationId)).resolves.toEqual([
@@ -272,11 +282,39 @@ describe("child agent task work", () => {
         }),
         expect.objectContaining({
           data: expect.objectContaining({
+            outcome: "success",
             turnId,
             type: "turn_completed",
           }),
         }),
       ]);
+      // The dashboard shows the task as parent agent input, not as the
+      // person who started the root, with the `reply` as its answer.
+      const api = createJuniorApi();
+      const childPath = `http://localhost/api/conversations/${encodeURIComponent(childConversationId)}`;
+      const outline = conversationOutlineSchema.parse(
+        await (await api.request(`${childPath}/outline`)).json(),
+      );
+      expect(outline.items).toEqual([
+        expect.objectContaining({
+          agentInvocationId: taskMessageId,
+          reply: "Durable child result",
+        }),
+      ]);
+      const eventPage = conversationEventPageSchema.parse(
+        await (
+          await api.request(
+            `${childPath}/events?message=${encodeURIComponent(taskMessageId)}`,
+          )
+        ).json(),
+      );
+      expect(eventPage.events.map((event) => event.data)).toContainEqual(
+        expect.objectContaining({
+          type: "message",
+          messageId: taskMessageId,
+          agentInvocationId: taskMessageId,
+        }),
+      );
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
         conversationId: childConversationId,
@@ -427,7 +465,7 @@ describe("child agent task work", () => {
           arguments: { missing: blockedMissing },
         },
       ],
-      terminal: { type: "turn_completed" },
+      terminal: { outcome: "blocked", type: "turn_completed" },
       subagentOutcome: "blocked",
       parentMessages: [
         expect.stringMatching(
@@ -465,11 +503,11 @@ describe("child agent task work", () => {
       ],
     },
     {
-      // A Thread stays quiet.
+      // A Thread stays quiet. Its text is its answer in its own transcript.
       name: "unanswered thread",
       kind: "thread" as const,
       outputs: plainText,
-      terminal: { type: "turn_completed" },
+      terminal: { outcome: "success", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [],
     },
