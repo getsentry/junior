@@ -349,6 +349,7 @@ describe("remote MCP HTTP", () => {
       "listConversationMessages",
       "markConversationRead",
       "pinConversation",
+      "renameConversation",
       "searchAutomations",
       "searchConversations",
       "searchInboxItems",
