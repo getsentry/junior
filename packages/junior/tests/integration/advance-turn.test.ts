@@ -547,7 +547,7 @@ describe("advanceTurn", () => {
     ).loadCurrentHistory(CONVERSATION_ID);
     expect(events.map((event) => event.idempotencyKey)).toEqual([
       `inbox:${inputId}`,
-      undefined,
+      `step:${turnId}:0:0`,
     ]);
     expect(events[0]!.data).toMatchObject({
       type: "user_message",
