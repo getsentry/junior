@@ -34,6 +34,14 @@ returns a result that shows the model its next step.
   prose.
 - A description promises only what the tool enforces. When it says that a
   call fails, that call fails.
+- Arguments that contradict each other fail the call. The tool does not
+  pick one of them.
+- A tool takes a target as an ID, a mention, or a link. It matches a plain
+  name only against what Junior already stores. It never pages through a
+  provider's whole list to find a name.
+- The model never chooses who acts, where a result goes, or which
+  credentials a call uses. The runtime sets them from the request.
+- One value has one name in tool arguments, tool results, and prompt text.
 - A call that changes state returns the saved state, not only "done". An
   empty list is a success, not an error.
 - An error that the model can fix says what was wrong and how to fix it:
@@ -43,8 +51,3 @@ returns a result that shows the model its next step.
   Sentry.
 - MCP tools keep the names and results of their provider. Junior's own
   wrappers around them follow these rules.
-
-## Gaps
-
-- Most tool errors say what went wrong, but not how to fix it. This breaks
-  "an error that the model can fix says what was wrong and how to fix it".

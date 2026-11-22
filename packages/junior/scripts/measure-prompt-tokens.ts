@@ -17,8 +17,9 @@ import { CAPABILITY_SECTION_TAG } from "@/chat/turn-context-tag";
 
 const GATEWAY_ORIGIN = "https://ai-gateway.vercel.sh";
 const PROMPT = "Reply with ok.";
-// The core headings of `policies/system-prompt.md`. Other headings belong to
-// the consumer's SOUL.md or WORLD.md and stay in their section.
+// The core headings of the system prompt (see `system-prompt-rules.ts`).
+// Other headings belong to the consumer's SOUL.md or WORLD.md and stay in
+// their section.
 const CORE_HEADINGS = new Map([
   ["# Identity", "Identity"],
   ["# Personality", "Personality"],

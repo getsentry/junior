@@ -38,7 +38,14 @@
     "inbox-item-answer": ["id"]
   },
   "packages/junior/src/chat/services/conversation-memory.ts": {
-    "message": ["author_id", "author_name", "index", "role", "slack_ts", "ts"]
+    "message": [
+      "author_id",
+      "author_name",
+      "index",
+      "role",
+      "sent_at",
+      "slack_ts"
+    ]
   },
   "packages/junior/src/chat/services/subscribed-decision.ts": {
     "truncated": ["omitted_approx_tokens"]

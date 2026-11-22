@@ -233,7 +233,7 @@ function renderThreadContextMessage(
       "message",
       {
         index,
-        ts: new Date(message.createdAtMs).toISOString(),
+        sent_at: new Date(message.createdAtMs).toISOString(),
         role: message.role,
         ...authorAttrs({
           authorId: message.author?.userId,
