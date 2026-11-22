@@ -14,6 +14,7 @@ import {
   enqueueChildResultToParent,
 } from "@/chat/agent-invocations/result";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { AgentRun } from "@/chat/agent/types";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -212,10 +213,12 @@ describe("nested agent invocations", () => {
         turnId: getAgentInvocationTurnId(sender.invocationId),
         state,
       });
-    const lastText = async (conversationId: string) =>
+    const lastMessage = async (conversationId: string) =>
       (await getConversationWorkState({ conversationId, state }))?.messages.at(
         -1,
-      )?.input.text;
+      );
+    const lastText = async (conversationId: string) =>
+      (await lastMessage(conversationId))?.input.text;
     try {
       const child = await createAgentInvocation({
         ...slackInvocationInput,
@@ -233,6 +236,12 @@ describe("nested agent invocations", () => {
       expect(await lastText(slackParentConversationId)).toMatch(
         /^<agent-message [^>]*source="child_agent"/,
       );
+      // It names no agent invocation, so it is not the child's answer.
+      const progress = await lastMessage(slackParentConversationId);
+      expect(progress && readInboundMessageSender(progress)).toEqual({
+        conversationId: child.childConversationId,
+        turnId: getAgentInvocationTurnId(child.invocationId),
+      });
 
       // A helper reply that waits in the child's mailbox starts another
       // child Turn, so the child still works.
@@ -243,6 +252,29 @@ describe("nested agent invocations", () => {
         status: "completed",
       });
       await sendReply(child, "Still waiting.");
+      expect(await lastText(slackParentConversationId)).toMatch(
+        /^<agent-message /,
+      );
+
+      // A helper result that is saved but not yet in the child's mailbox
+      // also starts another child Turn.
+      const pending = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "pending-child",
+      });
+      const pendingHelper = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "pending-helper",
+        parentConversationId: pending.childConversationId,
+      });
+      await expect(
+        completeAgentInvocation({
+          errorMessage: "Needs a region.",
+          invocationId: pendingHelper.invocationId,
+          status: "blocked",
+        }),
+      ).resolves.toMatchObject({ parentMailboxStatus: "pending" });
+      await sendReply(pending, "Waiting on the helper.");
       expect(await lastText(slackParentConversationId)).toMatch(
         /^<agent-message /,
       );

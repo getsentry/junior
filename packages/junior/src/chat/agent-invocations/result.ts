@@ -440,8 +440,8 @@ const RESULT_SUMMARIES = {
 /**
  * Append the result of one child agent Turn to its parent mailbox and wake
  * the parent: a `reply`, which the parent reads as a completed
- * `<agent-result>` or, while the child still works, as an `<agent-message>`,
- * or a blocked or failed result. `sender` names the child:
+ * `<agent-result>` or, while the child still works, as a message, or a
+ * blocked or failed result. `sender` names the child:
  * an agent invocation, open or not, or the child Conversation when none
  * names it. `actor` is the Actor of the child's Turn; the parent never runs
  * with more authority than it. The key of the result, the `reply` tool call
@@ -471,20 +471,36 @@ export async function enqueueChildResultToParent(args: {
     args.result.kind === "reply"
       ? { output: args.result.reply.text, status: "completed" as const }
       : { output: args.result.text, status: args.result.kind };
-  const sender: InboundMessageSender = {
+  const replyTurn: InboundMessageSender = {
     ...(args.sender.invocationId
       ? { agentInvocationId: args.sender.invocationId }
       : undefined),
     conversationId: args.sender.childConversationId,
     turnId: args.turnId,
   };
+  // A child may message its parent more than once. A `reply` while the
+  // child still works is a message, not its result. Its sender names no
+  // agent invocation, so it closes no To-dos and does not count as the
+  // child's answer for `waiting_on`.
+  const stillWorks =
+    args.result.kind === "reply" &&
+    (await childAgentStillWorks(
+      args.sender.childConversationId,
+      ownAgentInvocation(replyTurn),
+    ));
+  const sender: InboundMessageSender = stillWorks
+    ? { conversationId: replyTurn.conversationId, turnId: replyTurn.turnId }
+    : replyTurn;
+  const text = stillWorks
+    ? renderMessageInput(args.sender, rendered.output)
+    : renderResultInput(args.sender, rendered, []);
   const metadata = {
     ...senderEventMetadata(args.sender, actor, {
       eventKey: inboundMessageId,
       eventType: AGENT_REPLY_EVENT_TYPE,
       identifier: senderId,
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
-      trustedSummary: `${childAgentLabel(args.sender)} ${RESULT_SUMMARIES[args.result.kind]}`,
+      trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[args.result.kind]}`,
     }),
     ...childMessageSenderMetadata(sender),
   };
@@ -505,17 +521,6 @@ export async function enqueueChildResultToParent(args: {
   ) {
     await closeTodosForResult(args.sender, "completed", nowMs);
   }
-  // A child may message its parent more than once. While it still works, a
-  // `reply` is not its result, so the parent must not read it as completed.
-  const stillWorks =
-    args.result.kind === "reply" &&
-    (await childAgentStillWorks(
-      args.sender.childConversationId,
-      ownAgentInvocation(sender),
-    ));
-  const text = stillWorks
-    ? renderMessageInput(args.sender, rendered.output)
-    : renderResultInput(args.sender, rendered, []);
   await appendAndEnqueueInboundMessage({
     message: {
       conversationId: args.sender.parentConversationId,
@@ -531,24 +536,20 @@ export async function enqueueChildResultToParent(args: {
       receivedAtMs: nowMs,
       source: "event",
     },
-    renderText: async (parentInboundMessageIds, messageSenders) => {
+    renderText: async (parentInboundMessageIds, messageSenders) =>
       // A stop drops the unread replies of a Turn on the Conversation loop
       // from the parent's mailbox. One sent before the stop can reach this
       // lock after that drop, so a stopped sender's reply is dropped here.
-      if (
-        !ownAgentInvocation(sender) &&
-        (await getConversationStoppedAtMs(args.sender.childConversationId)) !==
-          undefined
-      ) {
-        return undefined;
-      }
-      return stillWorks
-        ? text
-        : await renderResultUnderLock(args.sender, rendered)(
-            parentInboundMessageIds,
-            messageSenders,
-          );
-    },
+      !ownAgentInvocation(sender) &&
+      (await getConversationStoppedAtMs(args.sender.childConversationId)) !==
+        undefined
+        ? undefined
+        : stillWorks
+          ? text
+          : await renderResultUnderLock(args.sender, rendered)(
+              parentInboundMessageIds,
+              messageSenders,
+            ),
     queue: args.queue,
     queueDelayMs: EVENT_WAIT_MS,
     state: args.state,

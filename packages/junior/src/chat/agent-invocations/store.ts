@@ -253,40 +253,16 @@ export function sendsResultToParent(
  * agent that no Agent invocation names is open as `listAgents` shows it,
  * and its unread result or reply also waits.
  */
-async function hasOpenAgentWork(
+async function hasOpenChildWork(
   conversationId: string,
   exceptInvocationId: string | undefined,
 ): Promise<boolean> {
   const open = await listOpenAgentInvocations(conversationId);
-  return (
+  if (
     open.some((row) => row.invocationId !== exceptInvocationId) ||
     (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).length >
       0
-  );
-}
-
-/**
- * Return whether a child agent still works after the Turn that sends its
- * `reply`: another of its agent invocations is open, one of its own child
- * agents is open, or a message from one of them waits in its mailbox. Its
- * parent then gets the reply as a message, not as the child's result.
- */
-export async function childAgentStillWorks(
-  conversationId: string,
-  exceptInvocationId: string | undefined,
-): Promise<boolean> {
-  if (await hasOpenAgentWork(conversationId, exceptInvocationId)) {
-    return true;
-  }
-  const work = await getConversationWorkState({ conversationId });
-  return (await readChildMessageSenders(work?.messages ?? [])).some(
-    (sender) => sender !== undefined,
-  );
-}
-
-async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
-  const conversationId = invocation.childConversationId;
-  if (await hasOpenAgentWork(conversationId, invocation.invocationId)) {
+  ) {
     return true;
   }
   // An unread reply or result from a child that no Agent invocation names
@@ -331,6 +307,25 @@ async function hasOpenChildWork(invocation: AgentInvocation): Promise<boolean> {
       sendsResultToParent(row, parentMessages) &&
       (row.parentMailboxStatus === "pending" ||
         unread.has(getAgentInvocationResultMessageId(row.invocationId))),
+  );
+}
+
+/**
+ * Return whether a child agent still works when its Turn sends a `reply`:
+ * it has open child work, or a message from one of its own child agents
+ * waits in its mailbox. That reply then goes to the parent as a message, not
+ * as the child's result.
+ */
+export async function childAgentStillWorks(
+  conversationId: string,
+  exceptInvocationId: string | undefined,
+): Promise<boolean> {
+  if (await hasOpenChildWork(conversationId, exceptInvocationId)) {
+    return true;
+  }
+  const work = await getConversationWorkState({ conversationId });
+  return (await readChildMessageSenders(work?.messages ?? [])).some(
+    (sender) => sender !== undefined,
   );
 }
 
@@ -407,7 +402,7 @@ export async function reportReplacedWithoutOpenWork(
     !latest ||
     !isTerminalAgentInvocation(latest) ||
     latest.parentMailboxStatus !== "replaced" ||
-    (await hasOpenChildWork(latest))
+    (await hasOpenChildWork(latest.childConversationId, latest.invocationId))
   ) {
     return undefined;
   }
@@ -534,7 +529,7 @@ export async function completeAgentInvocation(
   const parentMailboxStatus =
     !args.reportNow &&
     args.status !== "stopped" &&
-    (await hasOpenChildWork(current))
+    (await hasOpenChildWork(current.childConversationId, current.invocationId))
       ? "replaced"
       : "pending";
   await getSqlExecutor()
