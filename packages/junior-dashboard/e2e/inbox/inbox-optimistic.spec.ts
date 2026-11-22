@@ -220,6 +220,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     await mockInboxItems(page, { open: [...asks] });
     await page.goto(`${dashboard.baseURL}/`);
     // Slow the leave motion, so the test sees the next row open before the

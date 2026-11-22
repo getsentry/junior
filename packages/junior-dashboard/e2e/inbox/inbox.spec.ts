@@ -867,6 +867,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
+    // Only motion grows a card under the pointer.
+    await page.emulateMedia({ reducedMotion: "no-preference" });
     // Both changes wait on the viewer, so they share one list.
     await mockInboxItems(page, { open: [prReview, prMerge] });
     await mockViewerCodeChanges(page, [

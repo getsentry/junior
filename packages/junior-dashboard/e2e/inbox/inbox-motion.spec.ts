@@ -12,6 +12,9 @@ import {
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
+  // These tests are about motion, so they run with it unless they say not.
+  test.use({ contextOptions: { reducedMotion: "no-preference" } });
+
   // Longer than the focus intent, so the card under the pointer grows. The
   // tests drive the page clock, so it passes at once.
   const PAST_REST_MS = 350;
