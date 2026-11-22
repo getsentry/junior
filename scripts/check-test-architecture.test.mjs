@@ -5,6 +5,7 @@ import {
   checkDatabaseTestFixtures,
   checkIntegrationTestArchitecture,
   DASHBOARD_SPEC_RULES,
+  inboxSpecForkRule,
   SOURCE_RULES,
 } from "./check-test-architecture.mjs";
 
@@ -291,6 +292,30 @@ test("allows user-level dashboard E2E specs and page script in shared helpers", 
       ],
       {},
       DASHBOARD_SPEC_RULES,
+    ),
+    [],
+  );
+});
+
+test("rejects a new inbox spec that copies a shared dashboard spec", () => {
+  const forkPath = "packages/junior-dashboard/e2e/inbox/conversations.spec.ts";
+  const specs = [
+    integrationTest("", DASHBOARD_E2E_PATH),
+    integrationTest("", forkPath),
+    integrationTest(
+      "",
+      "packages/junior-dashboard/e2e/inbox/inbox-rows.spec.ts",
+    ),
+  ];
+  const rules = [inboxSpecForkRule(specs)];
+  assert.deepEqual(checkAgentTestArchitecture(specs, {}, rules), [
+    `${forkPath}: dashboard E2E specs in packages/junior-dashboard/e2e/inbox/ must not copy a spec in packages/junior-dashboard/e2e/; write new UI coverage in the shared spec with a @new or @classic tag, or delete the classic copy (1 found)`,
+  ]);
+  assert.deepEqual(
+    checkAgentTestArchitecture(
+      specs,
+      { "dashboard-inbox-spec-fork": { [forkPath]: 1 } },
+      rules,
     ),
     [],
   );

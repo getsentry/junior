@@ -168,6 +168,26 @@ export const DASHBOARD_SPEC_RULES = [
   },
 ];
 
+const INBOX_SPEC_ROOT = `${DASHBOARD_E2E_ROOT}inbox/`;
+
+/**
+ * A spec in `e2e/inbox/` with a namesake in `e2e/` forks one journey into a
+ * copy per UI shell. The baseline lists the forks that exist today.
+ */
+export function inboxSpecForkRule(files) {
+  const shared = new Set(files.map((file) => file.path));
+  return {
+    id: "dashboard-inbox-spec-fork",
+    message: `dashboard E2E specs in ${INBOX_SPEC_ROOT} must not copy a spec in ${DASHBOARD_E2E_ROOT}; write new UI coverage in the shared spec with a @new or @classic tag, or delete the classic copy`,
+    pathPrefix: INBOX_SPEC_ROOT,
+    pathSuffix: ".spec.ts",
+    count: (file) =>
+      shared.has(file.path.replace(INBOX_SPEC_ROOT, DASHBOARD_E2E_ROOT))
+        ? 1
+        : 0,
+  };
+}
+
 // A kind or person-Source branch outside `kind-behavior.ts`.
 const KIND_BRANCH_PATTERNS = [
   // Conversation kind compared to a value, in either order.
@@ -413,6 +433,7 @@ export async function run({ root, files }) {
   const baseline = JSON.parse(
     fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
   );
+  const dashboardSpecs = await tests([DASHBOARD_E2E_DIR]);
   const errors = [
     ...checkIntegrationTestArchitecture(await tests(TEST_ROOTS)),
     ...checkDatabaseTestFixtures(await tests(DATABASE_TEST_ROOTS)),
@@ -422,11 +443,10 @@ export async function run({ root, files }) {
       baseline,
       SOURCE_RULES,
     ),
-    ...checkAgentTestArchitecture(
-      await tests([DASHBOARD_E2E_DIR]),
-      baseline,
-      DASHBOARD_SPEC_RULES,
-    ),
+    ...checkAgentTestArchitecture(dashboardSpecs, baseline, [
+      ...DASHBOARD_SPEC_RULES,
+      inboxSpecForkRule(dashboardSpecs),
+    ]),
   ];
   if (errors.length === 0) return [];
   return [
