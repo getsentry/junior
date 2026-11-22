@@ -398,7 +398,7 @@ export function createAddInboxItemTool(
           item,
           nowMs: Date.now(),
         });
-        await publishWaiting(context, services, item);
+        await publishWaiting(services, item);
         return { created: false, item: itemResult(item) };
       }
       const item = await insertInboxItem(db, {
@@ -422,25 +422,27 @@ export function createAddInboxItemTool(
         item,
         nowMs: Date.now(),
       });
-      await publishWaiting(context, services, item);
+      await publishWaiting(services, item);
       return { created: true, item: itemResult(item) };
     },
   });
 }
 
 /**
- * Report that the Conversation waits on a person when the item is an action,
- * also when an update makes a notice an action. The Event key is the item, so
- * a later update of the same action does not report it again.
+ * Report that the item's owner Conversation waits on a person when the item
+ * is an action, also when an update makes a notice an action. An update can
+ * come from another Conversation, so the owner, not the caller, reports it.
+ * The Event key is the item, so a later update of the same action does not
+ * report it again.
  */
 async function publishWaiting(
-  context: InboxItemToolContext,
   services: InboxItemToolServices,
-  item: { id: string; kind: string },
+  item: Pick<InboxItem, "id" | "kind" | "owner">,
 ): Promise<void> {
-  if (item.kind !== "action") return;
+  const conversationId = ownerConversationId(item);
+  if (item.kind !== "action" || !conversationId) return;
   await publishConversationStatus(
-    context.conversationId,
+    conversationId,
     { type: "waiting", inboxItemId: item.id },
     { queue: services.queue() },
   );
