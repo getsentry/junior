@@ -99,10 +99,6 @@ describe("Output Contract", () => {
   });
 });
 
-// Production runs Opus 5.5, whose default replies run long. These cases pin
-// it so they measure what people read in Slack.
-const PRODUCTION_MODEL_ID = "anthropic/claude-opus-5.5";
-
 /** Words that people read in the replies of a call, without code blocks. */
 function proseWordCount(conversation: Conversation): number {
   return conversation.replies
@@ -129,9 +125,8 @@ function boldLabelLines(conversation: Conversation): string[] {
 // Junior's defaults, the way a teammate answers in Slack.
 describe("Reply Length", () => {
   test("when asked a simple question, answer in a few sentences", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
     const conversation = await run(
       slackMention("what's the difference between git fetch and git pull?"),
     );
@@ -149,9 +144,8 @@ describe("Reply Length", () => {
   });
 
   test("when asked a yes-or-no follow-up, answer it in one or two sentences", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
     const conversation = await run(
       slackMention("so is that the same as no-store?"),
       {
@@ -177,9 +171,8 @@ describe("Reply Length", () => {
   });
 
   test("when a request leaves a small choice open, deliver without a report around it", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
     const conversation = await run(
       slackMention(
         "need a regex that matches a semver version string for a CI check",
@@ -201,9 +194,8 @@ describe("Reply Length", () => {
   });
 
   test("when asked for a recommendation, give it and the main reason", async ({
-    agent,
+    run,
   }) => {
-    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
     const conversation = await run(
       slackMention(
         "for the new billing tables, should we use uuidv7 or bigint ids?",
@@ -223,11 +215,10 @@ describe("Reply Length", () => {
   });
 
   test("when a long debugging thread reaches the fix, answer the last question without recapping the thread", async ({
-    agent,
+    run,
   }) => {
     const alice = person("U0ALICE", "Alice");
     const bob = person("U0BOB", "Bob");
-    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
     const conversation = await run(
       slackMention("cool, what do I need to change to unblock the deploy?", {
         author: alice,
@@ -316,10 +307,7 @@ describe("Reply Length", () => {
     expect(boldLabelLines(conversation)).toEqual([]);
   });
 
-  test("when thanked, reply in a few words or not at all", async ({
-    agent,
-  }) => {
-    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+  test("when thanked, reply in a few words or not at all", async ({ run }) => {
     const conversation = await run(
       slackMention("perfect, that worked. thanks!"),
       {
@@ -334,8 +322,7 @@ describe("Reply Length", () => {
     expect(proseWordCount(conversation)).toBeLessThanOrEqual(15);
   });
 
-  test("when asked for depth, give a thorough answer", async ({ agent }) => {
-    const { run } = await agent({ modelId: PRODUCTION_MODEL_ID });
+  test("when asked for depth, give a thorough answer", async ({ run }) => {
     const conversation = await run(
       slackMention(
         "I'm writing onboarding docs for new backend engineers. Explain how TCP slow start works and why it was designed that way, with enough detail for a few paragraphs of the doc.",
