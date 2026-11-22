@@ -39,7 +39,11 @@ async function requireDestinationTeamId(
 ): Promise<SlackTeamId> {
   if (context.destination) {
     const teamId = parseSlackTeamId(context.destination.teamId);
-    if (!teamId) throw new ToolInputError("Slack workspace is unavailable.");
+    if (!teamId) {
+      throw new ToolInputError(
+        'The Slack workspace of this Conversation is unknown. Set destination to "current_conversation", or ask from the Slack channel where the automation should deliver.',
+      );
+    }
     return teamId;
   }
   const teamId = parseSlackTeamId(await resolveBotSlackTeamId());

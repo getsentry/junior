@@ -148,7 +148,8 @@ describe("getIssue", () => {
     });
 
     await expect(getIssue(tool)).rejects.toMatchObject({
-      message: "GitHub issue lookup failed with HTTP 404",
+      message:
+        "GitHub issue lookup failed with HTTP 404. Check repo and issue. If they are correct, the GitHub App cannot see the repository.",
       name: "PluginToolInputError",
     });
   });

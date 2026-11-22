@@ -209,9 +209,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/review?bundle=automations`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
     // The pane stays on the Automation pages too.
+    const runsRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations/runs",
+    );
     await page.goto(`${dashboard.baseURL}/automations/runs`);
     await expect(automations).toHaveAttribute("aria-current", "page");
     await expect(primary.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+    await runsRead;
   });
 
   test("an old Automations link does not become the Inbox's place", async ({
@@ -326,8 +331,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations/runs`);
     // A press on the row that shows goes back to its top level.
+    const listRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations" &&
+        new URL(response.url()).searchParams.get("pageSize") === "100",
+    );
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+    await listRead;
 
     // The pane's search bar opens the command palette.
     await page.getByRole("button", { name: /^Search/ }).click();
@@ -436,8 +447,22 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(summary).toHaveClass(/line-clamp-2/);
-    await page.reload();
+    await page.reload({ waitUntil: "commit" });
+    // The rows read the cards of their links again after the reload. Wait
+    // from the commit of the new document, so a read from the page before
+    // the reload does not count.
+    const cardsRead = ["pull/5378", "people/dev"].map((link) =>
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === "/api/objects" &&
+          url.searchParams.getAll("url").some((value) => value.includes(link))
+        );
+      }),
+    );
     await expect(root).toHaveAttribute("data-density", "comfortable");
+    await expect(summary).toHaveClass(/line-clamp-2/);
+    await Promise.all(cardsRead);
   });
 
   test("hides and restores the panels with the shortcuts and Zen mode", async ({

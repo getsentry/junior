@@ -305,8 +305,10 @@ test("searches, paginates, and forgets plugin page records", async ({
   await expect(page).not.toHaveURL(/q=/);
   await expect(page.getByText("No memories yet.")).toBeVisible();
 
+  // The Overview reads its summary again.
+  const overviewRead = page.waitForResponse("**/api/memory/dashboard");
   await memoryNavigation.getByRole("link", { name: "Overview" }).click();
-  await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+  await overviewRead;
 });
 
 test("lists archived memories and restores one", async ({

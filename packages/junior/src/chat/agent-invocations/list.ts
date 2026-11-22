@@ -1,4 +1,4 @@
-import { and, desc, eq, inArray, isNotNull, ne, notExists } from "drizzle-orm";
+import { and, desc, eq, isNotNull, ne, sql } from "drizzle-orm";
 import pLimit from "p-limit";
 import { FAN_OUT_CONCURRENCY, mapBounded } from "@/chat/fan-out";
 import type { Source } from "@sentry/junior-plugin-api";
@@ -12,17 +12,12 @@ import {
 } from "@/chat/conversations/kind-behavior";
 import * as z from "zod";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
-import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import type {
   ConversationKind,
   ConversationStatus,
 } from "@/chat/conversations/store";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import {
-  juniorAgentBindings,
-  juniorAgentInvocations,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import {
   listActiveMailboxTurns,
   listActiveMailboxTurnSources,
@@ -32,268 +27,24 @@ import {
   getConversationWorkStates,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import { getAgentInvocationIdForResult } from "./ids";
-import { hasAgentInvocationReply, type ChildMessage } from "./child-message";
-import {
-  invocationFromRow,
-  isTerminalAgentInvocation,
-  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-  sendsResultToParent,
-} from "./store";
-import { routeChildInput } from "./child-input";
-import {
-  CHILD_AGENT_KINDS,
-  CHILD_AGENT_RESULTS,
-  type AgentInvocation,
-  type AgentInvocationStatus,
-  type ChildAgent,
-  type ChildAgentResult,
-} from "./types";
-
-function isChildAgentResult(
-  status: AgentInvocationStatus,
-): status is ChildAgentResult {
-  return (CHILD_AGENT_RESULTS as readonly string[]).includes(status);
-}
+import type { ChildMessage } from "./child-message";
+import { isDroppedChildInput } from "./child-input";
+import { CHILD_AGENT_KINDS, type ChildAgent } from "./types";
 
 const childAgentKindSchema = z.enum(CHILD_AGENT_KINDS);
 
-/** Bound the agent invocations that one child agent listing reads. */
-const CHILD_AGENT_LIST_INVOCATION_LIMIT = 200;
-
-/** Return whether a child's session stopped after its latest agent invocation. */
-export function isChildAgentSessionStopped(
-  latest: AgentInvocation,
-  stoppedAtMs: number | undefined,
-): boolean {
-  return stoppedAtMs !== undefined && stoppedAtMs >= latest.createdAtMs;
-}
-
-/** Stored facts of a child Conversation that its listing shows. */
-type ChildConversationFacts = Pick<ChildAgent, "archivedAtMs" | "kind"> & {
-  stoppedAtMs?: number;
-  /** The child's work runs on the Conversation loop. */
-  onConversationLoop?: boolean;
-};
-
-/** Return the child state that one child's agent invocations show. */
-function childAgentFromInvocations(
-  invocations: readonly AgentInvocation[],
-  resultInvocationIds: ReadonlySet<string>,
-  facts: ChildConversationFacts,
-): ChildAgent {
-  const { stoppedAtMs } = facts;
-  // `invocations` is newest first. The oldest open agent invocation is the
-  // one that runs, so it owns the status. A `steered` agent invocation never
-  // ran: the agent invocation that read its input owns its status.
-  const latest = invocations[0]!;
-  let current =
-    invocations.find(
-      (invocation) =>
-        !isTerminalAgentInvocation(invocation) ||
-        invocation.parentMailboxStatus !== "steered",
-    ) ?? latest;
-  for (const invocation of invocations) {
-    if (!isTerminalAgentInvocation(invocation)) {
-      current = invocation;
-    }
-  }
-  // A task comes from a parent tool call: spawnAgent or messageAgent. An
-  // agent invocation that gives a grandchild result or message, or a watch
-  // event, to the child is not a task.
-  const tasks = invocations.filter(
-    (invocation) =>
-      invocation.source.kind === "agent_invocation" &&
-      !resultInvocationIds.has(invocation.invocationId),
-  );
-  const task =
-    tasks.find((invocation) => invocation.parentToolCallId) ??
-    tasks[0] ??
-    invocations[invocations.length - 1]!;
-  const terminal = isTerminalAgentInvocation(current) ? current : undefined;
-  // A `replaced`, `skipped`, or `steered` result is not reported, so it does
-  // not count as a result. A tree stop marks `replaced` results `skipped`.
-  const lastResult = invocations
-    .filter(isTerminalAgentInvocation)
-    .filter(
-      (invocation) =>
-        invocation.parentMailboxStatus !== "replaced" &&
-        invocation.parentMailboxStatus !== "skipped" &&
-        invocation.parentMailboxStatus !== "steered",
-    )
-    .map((invocation) => invocation.status)
-    .find(isChildAgentResult);
-  return {
-    ...(latest.agentName ? { agentName: latest.agentName } : undefined),
-    ...(facts.archivedAtMs !== undefined
-      ? { archivedAtMs: facts.archivedAtMs }
-      : undefined),
-    childConversationId: latest.childConversationId,
-    ...(terminal && terminal.status !== "completed"
-      ? { errorMessage: terminal.errorMessage }
-      : undefined),
-    kind: facts.kind,
-    ...(lastResult ? { lastResult } : undefined),
-    // A `replaced` result means open child work starts a later agent
-    // invocation on this child, so the child has not finished. Only a stop
-    // skips a result.
-    // A Turn on the Conversation loop has no agent invocation, so its
-    // work shows that the child still runs.
-    status: isChildAgentSessionStopped(latest, stoppedAtMs)
-      ? "stopped"
-      : terminal && facts.onConversationLoop
-        ? "running"
-        : terminal?.parentMailboxStatus === "replaced"
-          ? "pending"
-          : terminal?.parentMailboxStatus === "skipped"
-            ? "stopped"
-            : current.status,
-    task: task.input,
-    ...(task.title ? { title: task.title } : undefined),
-    updatedAtMs: Math.max(
-      ...invocations.map((invocation) => invocation.updatedAtMs),
-    ),
-  };
-}
+/** Bound the child agents that one listing reads. */
+const CHILD_AGENT_LIST_LIMIT = 200;
 
 /**
  * List the direct child agents of one parent Conversation, with the newest
- * activity first. The state comes from SQL agent invocation records, not from
- * model output. A child that no agent invocation names shows the state of
- * its Turns and mailbox.
+ * activity first. The state comes from each child's Turns and mailbox, not
+ * from model output. Each child agent stores its agent config, so older
+ * children of a parent, such as ones that a removed feature created, are not
+ * listed. A child is `running` while a Turn or mailbox input that answers its
+ * parent is open, and is `failed` when its last Turn failed.
  */
 export async function listChildAgents(
-  parentConversationId: string,
-): Promise<ChildAgent[]> {
-  const [withInvocations, withoutInvocations] = await Promise.all([
-    listChildAgentsFromInvocations(parentConversationId),
-    listChildAgentsWithoutAgentInvocations(parentConversationId),
-  ]);
-  return [...withInvocations, ...withoutInvocations].sort(
-    (left, right) => right.updatedAtMs - left.updatedAtMs,
-  );
-}
-
-async function listChildAgentsFromInvocations(
-  parentConversationId: string,
-): Promise<ChildAgent[]> {
-  const db = getSqlExecutor().db();
-  const rows = await db
-    .select()
-    .from(juniorAgentInvocations)
-    .where(
-      eq(juniorAgentInvocations.parentConversationId, parentConversationId),
-    )
-    .orderBy(desc(juniorAgentInvocations.createdAt))
-    .limit(CHILD_AGENT_LIST_INVOCATION_LIMIT);
-  if (rows.length === 0) {
-    return [];
-  }
-  const byChild = new Map<string, AgentInvocation[]>();
-  for (const invocation of rows.map(invocationFromRow)) {
-    const invocations = byChild.get(invocation.childConversationId) ?? [];
-    invocations.push(invocation);
-    byChild.set(invocation.childConversationId, invocations);
-  }
-  const grandchildren = await db
-    .select({ invocationId: juniorAgentInvocations.invocationId })
-    .from(juniorAgentInvocations)
-    .where(
-      inArray(juniorAgentInvocations.parentConversationId, [...byChild.keys()]),
-    );
-  const resultInvocationIds = new Set(
-    grandchildren.map((row) => getAgentInvocationIdForResult(row.invocationId)),
-  );
-  const conversations = await db
-    .select({
-      archivedAt: juniorConversations.archivedAt,
-      conversationId: juniorConversations.conversationId,
-      executionStatus: juniorConversations.executionStatus,
-      kind: juniorConversations.kind,
-      parentConversationId: juniorConversations.parentConversationId,
-      stoppedAt: juniorConversations.stoppedAt,
-    })
-    .from(juniorConversations)
-    .where(inArray(juniorConversations.conversationId, [...byChild.keys()]));
-  const active = conversations.filter(
-    (row) =>
-      row.executionStatus === "pending" ||
-      row.executionStatus === "running" ||
-      row.executionStatus === "paused",
-  );
-  const activeIds = active.map((row) => row.conversationId);
-  // A purge deletes a child's Turn history together with its agent
-  // invocations, so a listed child never has a Turn without history.
-  const [workStates, mailboxTurnSources] = await Promise.all([
-    getConversationWorkStates(activeIds),
-    listActiveMailboxTurnSources(activeIds),
-  ]);
-  const onConversationLoop = new Set(
-    (
-      await mapBounded(active, async (row) =>
-        (await runsOnConversationLoop(
-          conversationKindFromRow(row),
-          byChild.get(row.conversationId)![0],
-          workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
-          mailboxTurnSources.get(row.conversationId) ?? [],
-        ))
-          ? row.conversationId
-          : undefined,
-      )
-    ).filter((id) => id !== undefined),
-  );
-  const factsByChild = new Map(
-    conversations.map((row): [string, ChildConversationFacts] => [
-      row.conversationId,
-      {
-        ...(row.archivedAt
-          ? { archivedAtMs: row.archivedAt.getTime() }
-          : undefined),
-        kind: conversationKindFromRow(row) === "thread" ? "thread" : "task",
-        ...(row.stoppedAt
-          ? { stoppedAtMs: row.stoppedAt.getTime() }
-          : undefined),
-        onConversationLoop: onConversationLoop.has(row.conversationId),
-      },
-    ]),
-  );
-  return [...byChild.entries()].map(([childConversationId, invocations]) =>
-    childAgentFromInvocations(
-      invocations,
-      resultInvocationIds,
-      // A child row from before the kind column reads as a Task.
-      factsByChild.get(childConversationId) ?? { kind: "task" },
-    ),
-  );
-}
-
-/**
- * List the ids of the child agents of one parent that no agent invocation
- * names and that have open work.
- */
-export async function listOpenChildAgentsWithoutAgentInvocations(
-  parentConversationId: string,
-): Promise<string[]> {
-  return (await listChildAgentsWithoutAgentInvocations(parentConversationId))
-    .filter((child) =>
-      (NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
-        child.status,
-      ),
-    )
-    .map((child) => child.childConversationId);
-}
-
-/**
- * List the child agents of one parent that no agent invocation names. Each
- * stores its agent config, so older children of a parent, such as ones
- * that a removed feature created, are not listed. A child is `running` while
- * a Turn or mailbox input that answers its parent is open, and is `failed`
- * when its last Turn failed.
- *
- * TODO(dcramer): Make this the only listing when #3060 step 7 drops the
- * agent invocation table.
- */
-async function listChildAgentsWithoutAgentInvocations(
   parentConversationId: string,
 ): Promise<ChildAgent[]> {
   const db = getSqlExecutor().db();
@@ -305,7 +56,6 @@ async function listChildAgentsWithoutAgentInvocations(
       executionStatus: juniorConversations.executionStatus,
       executionUpdatedAt: juniorConversations.executionUpdatedAt,
       kind: juniorConversations.kind,
-      parentConversationId: juniorConversations.parentConversationId,
       stoppedAt: juniorConversations.stoppedAt,
       title: juniorConversations.title,
       updatedAt: juniorConversations.updatedAt,
@@ -322,29 +72,25 @@ async function listChildAgentsWithoutAgentInvocations(
       and(
         eq(juniorConversations.parentConversationId, parentConversationId),
         isNotNull(juniorConversations.agentConfig),
-        notExists(
-          db
-            .select({ invocationId: juniorAgentInvocations.invocationId })
-            .from(juniorAgentInvocations)
-            .where(
-              eq(
-                juniorAgentInvocations.childConversationId,
-                juniorConversations.conversationId,
-              ),
-            ),
-        ),
       ),
     )
-    .limit(CHILD_AGENT_LIST_INVOCATION_LIMIT);
+    // The limit keeps the newest activity, so a child with open work stays
+    // in the listing.
+    .orderBy(
+      desc(
+        sql`coalesce(${juniorConversations.executionUpdatedAt}, ${juniorConversations.updatedAt})`,
+      ),
+    )
+    .limit(CHILD_AGENT_LIST_LIMIT);
   const ids = rows.map((row) => row.conversationId);
   const [workStates, mailboxTurnSources] = await Promise.all([
     getConversationWorkStates(ids),
     listActiveMailboxTurnSources(ids),
   ]);
   const limit = pLimit(FAN_OUT_CONCURRENCY);
-  return await Promise.all(
+  const children = await Promise.all(
     rows.map(async (row): Promise<ChildAgent> => {
-      // A spawn without an agent invocation always stores the kind.
+      // Every child agent stores its kind.
       const kind = childAgentKindSchema.parse(row.kind);
       const stoppedAtMs = row.stoppedAt?.getTime();
       const running =
@@ -352,7 +98,6 @@ async function listChildAgentsWithoutAgentInvocations(
         (await limit(() =>
           runsOnConversationLoop(
             kind,
-            undefined,
             workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
             mailboxTurnSources.get(row.conversationId) ?? [],
           ),
@@ -380,6 +125,16 @@ async function listChildAgentsWithoutAgentInvocations(
       };
     }),
   );
+  return children.sort((left, right) => right.updatedAtMs - left.updatedAtMs);
+}
+
+/** List the ids of the child agents of one parent that have open work. */
+export async function listOpenChildAgents(
+  parentConversationId: string,
+): Promise<string[]> {
+  return (await listChildAgents(parentConversationId))
+    .filter((child) => child.status === "running")
+    .map((child) => child.childConversationId);
 }
 
 // Only a gated Turn answers the parent. A person's Turn in a Thread does not.
@@ -389,22 +144,20 @@ function answersParent(kind: ConversationKind, source: string | undefined) {
 }
 
 /**
- * Return whether a child whose `latest` agent invocation ended has work on
- * the Conversation loop that will answer its parent: `pending` input that
- * waits in the mailbox until its Turn commits it, such as a Watch Event in
- * its debounce window, or an open mailbox Turn that answers.
+ * Return whether a child has work that will answer its parent: `pending`
+ * input that waits in the mailbox until its Turn commits it, such as a Watch
+ * Event in its debounce window, or an open mailbox Turn that answers.
  */
 async function runsOnConversationLoop(
   kind: ConversationKind,
-  latest: AgentInvocation | undefined,
   pending: readonly InboundMessage[],
   mailboxTurnSources: ReadonlyArray<Source | undefined>,
 ) {
   for (const message of pending) {
     if (
       answersParent(kind, message.source) &&
-      // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first loop route ends the check.
-      (await routeChildInput(message, latest)) === "Conversation loop"
+      // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first input that runs ends the check.
+      !(await isDroppedChildInput(message))
     ) {
       return true;
     }
@@ -457,90 +210,25 @@ async function listAnsweredLoopChildren(
 }
 
 /**
- * List the other child agents of one parent whose results have not reached
- * the parent yet. A child counts while it runs and after it finishes until its
- * result is appended to the parent mailbox. A running child whose `reply` is
- * already among `parentMessages`, the child replies and results that reached
- * the parent's mailbox, has answered, so it does not count.
+ * List the other child agents of one parent that still run and have not
+ * answered. A running child whose open Turn's `reply` is already among
+ * `parentMessages`, the child replies and results that reached the parent's
+ * mailbox, has answered, so it does not count.
  */
 export async function listUnreportedSiblingAgents(
   parentConversationId: string,
   childConversationId: string,
   parentMessages: readonly ChildMessage[],
 ): Promise<ChildAgent[]> {
-  const db = getSqlExecutor().db();
-  const [children, pendingResults, openInvocations] = await Promise.all([
-    listChildAgents(parentConversationId),
-    db
-      .select({
-        childConversationId: juniorAgentInvocations.childConversationId,
-        invocationId: juniorAgentInvocations.invocationId,
-        result: juniorAgentInvocations.result,
-        status: juniorAgentInvocations.status,
-      })
-      .from(juniorAgentInvocations)
-      .where(
-        and(
-          eq(juniorAgentInvocations.parentConversationId, parentConversationId),
-          eq(juniorAgentInvocations.parentMailboxStatus, "pending"),
-        ),
-      ),
-    db
-      .select({
-        childConversationId: juniorAgentInvocations.childConversationId,
-        invocationId: juniorAgentInvocations.invocationId,
-      })
-      .from(juniorAgentInvocations)
-      .where(
-        and(
-          eq(juniorAgentInvocations.parentConversationId, parentConversationId),
-          inArray(juniorAgentInvocations.status, [
-            ...NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-          ]),
-        ),
-      ),
-  ]);
-  // A result that is not sent is not waited for.
-  const withPendingResult = new Set(
-    pendingResults
-      .filter((row) => sendsResultToParent(row, parentMessages))
-      .map((row) => row.childConversationId),
-  );
-  const unanswered = new Set(
-    openInvocations
-      .filter(
-        (row) => !hasAgentInvocationReply(parentMessages, row.invocationId),
-      )
-      .map((row) => row.childConversationId),
-  );
-  const answered = new Set(
-    openInvocations
-      .map((row) => row.childConversationId)
-      .filter((child) => !unanswered.has(child)),
-  );
-  // A Turn on the Conversation loop has no open agent invocation. Its reply
-  // is keyed by its Turn id, so a child whose open Turn replied has answered.
-  for (const child of await listAnsweredLoopChildren(
-    children.filter(
-      (child) =>
-        child.status === "running" &&
-        !openInvocations.some(
-          (row) => row.childConversationId === child.childConversationId,
-        ),
-    ),
-    parentMessages,
-  )) {
-    answered.add(child);
-  }
-  return children.filter(
+  const running = (await listChildAgents(parentConversationId)).filter(
     (child) =>
       child.childConversationId !== childConversationId &&
-      (((NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
-        child.status,
-      ) &&
-        !answered.has(child.childConversationId)) ||
-        withPendingResult.has(child.childConversationId)),
+      child.status === "running",
   );
+  const answered = new Set(
+    await listAnsweredLoopChildren(running, parentMessages),
+  );
+  return running.filter((child) => !answered.has(child.childConversationId));
 }
 
 /** One child agent below a Conversation, at any depth. */

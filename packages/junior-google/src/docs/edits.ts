@@ -159,7 +159,9 @@ export function isEmptyParagraph(paragraph: DocParagraph | undefined): boolean {
 export function convertDocMarkdown(markdown: string): ConvertedMarkdown {
   const converted = convertMarkdown(markdown);
   if (!converted.text.trim()) {
-    throw new PluginToolInputError("content has no text to write.");
+    throw new PluginToolInputError(
+      "content has no text to write. Set content to Markdown that has text.",
+    );
   }
   return converted;
 }

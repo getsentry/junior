@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Request } from "@playwright/test";
 
 import { pasteText } from "./paste-text";
 import { expect, test } from "./test";
@@ -25,6 +25,23 @@ async function typeMention(composer: Locator, text: string, person: RegExp) {
   const mentions = composer.page().getByRole("listbox", { name: "Mentions" });
   await expect(mentions.getByRole("option", { name: person })).toBeVisible();
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+}
+
+// Hold people searches. The returned function answers them and waits for
+// their responses.
+async function holdSearches(page: Page) {
+  const held: Request[] = [];
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/people/search?*", async (route) => {
+    held.push(route.request());
+    await released;
+    await route.fallback();
+  });
+  return async () => {
+    release();
+    await Promise.all(held.map((request) => request.response()));
+  };
 }
 
 test("text typed before the editor loads stays in the editor", async ({
@@ -146,7 +163,7 @@ test("an earlier row cannot be inserted while the next search loads", async ({
 
   // The next search does not answer yet. Only the API knows whether it
   // matches Avery, by a name the menu may not show.
-  await page.route("**/api/people/search?*", () => {});
+  const answer = await holdSearches(page);
   await composer.pressSequentially("e");
   await expect(mentions).toHaveAttribute("aria-busy", "true");
   // Neither inserts the earlier row nor sends the half-typed mention.
@@ -154,6 +171,7 @@ test("an earlier row cannot be inserted while the next search loads", async ({
   await composer.press("Enter");
   await expect(composer.locator("[data-mention]")).toHaveCount(0);
   await expect(composer).toHaveText("@ave");
+  await answer();
 });
 
 test("Enter and Tab wait while the first people search loads", async ({
@@ -168,7 +186,7 @@ test("Enter and Tab wait while the first people search loads", async ({
     await route.fallback();
   });
   // The first search does not answer yet, so there are no rows.
-  await page.route("**/api/people/search?*", () => {});
+  const answer = await holdSearches(page);
   const composer = await openComposer(
     page,
     dashboard.baseURL,
@@ -182,6 +200,7 @@ test("Enter and Tab wait while the first people search loads", async ({
   await expect(composer).toBeFocused();
   await expect(composer).toHaveText("@ca");
   expect(sent).toEqual([]);
+  await answer();
 });
 
 test("a person without a People page still has a card with Invite", async ({

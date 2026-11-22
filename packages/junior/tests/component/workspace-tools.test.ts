@@ -294,7 +294,8 @@ describe("Workspace tools", () => {
           },
         }),
         expect.objectContaining({
-          error: "Workspace not found: missing",
+          error:
+            "Workspace not found: missing. Use listWorkspaces to find its name.",
           ok: false,
           toolCallId: expect.any(String),
           toolName: "switchWorkspace",

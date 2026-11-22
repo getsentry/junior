@@ -26,11 +26,11 @@ export type SlackChannelReadDenialReason =
 const DENIED_PRIVATE =
   "Cannot read this Slack conversation because it is private. Only the current conversation or public channels are readable.";
 const DENIED_NOT_FOUND =
-  "Cannot read this Slack conversation because the channel was not found or the bot cannot see it.";
+  "Cannot read this Slack conversation because the channel was not found or the bot cannot see it. Check the channel id.";
 const DENIED_NOT_IN_CHANNEL =
-  "Cannot read this Slack conversation because the bot is not in the channel.";
+  "Cannot read this Slack conversation because the bot is not in the channel. Join it with slackChannelJoin if it is public, or ask someone to add the bot.";
 const DENIED_MISSING_SCOPE =
-  "Cannot verify Slack channel access because this installation is missing channel read scopes.";
+  "Cannot verify Slack channel access because this installation is missing channel read scopes. No change to the call can fix this.";
 
 function deny(
   reason: SlackChannelReadDenialReason,
@@ -125,7 +125,7 @@ export async function joinPublicChannelForRead(args: {
           ok: false as const,
           reason: "missing_scope" as const,
           error:
-            "Cannot join this public Slack channel because this installation is missing the `channels:join` scope.",
+            "Cannot join this public Slack channel because this installation is missing the `channels:join` scope. No change to the call can fix this; ask someone to add the bot to the channel.",
         };
       }
       if (error.code === "not_found") {

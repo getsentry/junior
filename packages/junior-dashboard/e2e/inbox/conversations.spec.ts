@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { withRequestedMailbox } from "../harness";
+import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
@@ -92,10 +92,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("ArrowRight");
     await expect.poll(listSize).toBeGreaterThan(startSize);
     const resizedSize = await listSize();
+    const outlineRead = waitForOutlineRead(page, ACTIVE_CONVERSATION_ID);
     await page.reload();
     await expect(conversationList).toBeVisible();
     // The saved width rounds to whole pixels.
     await expect.poll(listSize).toBeCloseTo(resizedSize, 0);
+    await outlineRead;
   });
 
   test("keeps the details panel width and usage after a reload", async ({
@@ -851,6 +853,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await screenshot(page, "conversation-child-agent-page");
 
+    // Each visit reads the outline of its Conversation.
+    const outlineRead = waitForOutlineRead(page, "internal:dashboard-qa");
     await tree.getByRole("link", { name: "Dashboard QA edge cases" }).click();
     await expect(
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
@@ -858,5 +862,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("navigation", { name: "Breadcrumb" }),
     ).toHaveCount(0);
+    await outlineRead;
   });
 });

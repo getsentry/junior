@@ -370,7 +370,7 @@ describe("conversation status", () => {
 
     await expect(fixture.status(conversationId)).resolves.toBe("done");
     await expect(
-      fixture.status(running.invocation.childConversationId),
+      fixture.status(running.child.childConversationId),
     ).resolves.toBe("working");
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",

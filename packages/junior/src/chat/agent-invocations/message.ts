@@ -5,20 +5,15 @@ import type {
   MessageAgent,
   MessageAgentInput,
 } from "@/chat/agent/types";
-import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
+import { actorFromRun } from "@/chat/agent/types";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { findChildAgentConversationId } from "./bindings";
 import { readChildConversationSender } from "./child-input";
 import { AgentMessageTargetError } from "./errors";
 import { enqueueAgentMessageToParent } from "./result";
-import { createAgentInvocationForMessage, messageChildAgent } from "./create";
-import {
-  getActiveAgentInvocationForConversation,
-  getLatestAgentInvocationForConversation,
-} from "./store";
+import { messageChildAgent } from "./create";
 import { enqueueTopLevelAgentMessage } from "./top-level-message";
 import { PARENT_AGENT_TARGET } from "./types";
-import { enqueueAgentInvocation } from "./work";
 
 type MessageOptions = {
   conversationStore?: ConversationStore;
@@ -48,13 +43,7 @@ export function bindMessageAgent(
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
     if (input.to === PARENT_AGENT_TARGET) {
-      // A Turn on the Conversation loop has no open agent
-      // invocation. Its newest one names the child for the parent, or its
-      // child Conversation when no agent invocation names it.
-      const sender =
-        (await getActiveAgentInvocationForConversation(run.conversationId)) ??
-        (await getLatestAgentInvocationForConversation(run.conversationId)) ??
-        (await readChildConversationSender(run.conversationId));
+      const sender = await readChildConversationSender(run.conversationId);
       if (!sender) {
         throw new AgentMessageTargetError(
           "This conversation has no parent agent",
@@ -88,35 +77,21 @@ export function bindMessageAgent(
       });
       return { conversationId: input.to, delivery: "queued" };
     }
-    const message = {
-      actor,
-      childConversationId,
-      ...(run.credentialContext
-        ? { credentialContext: run.credentialContext }
-        : undefined),
-      idempotencyKey: `${run.turnId}:${call.toolCallId}`,
-      input: input.text,
-      parentConversationId: run.conversationId,
-      parentToolCallId: call.toolCallId,
-    };
-    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7). A child
-    // that has an Agent invocation keeps getting its work as Agent
-    // invocations, so one child's work never runs on both paths.
-    if (!(await getLatestAgentInvocationForConversation(childConversationId))) {
-      const { delivery } = await messageChildAgent(
-        { ...message, parentTurnId: run.turnId },
-        { ...options, queue },
-      );
-      return { conversationId: childConversationId, delivery };
-    }
-    const { invocation, queued } = await createAgentInvocationForMessage({
-      ...message,
-      destination: toolInvocationDestination(run),
-    });
-    await enqueueAgentInvocation(invocation, { ...options, queue });
-    return {
-      conversationId: childConversationId,
-      delivery: queued ? "queued" : "started",
-    };
+    const { delivery } = await messageChildAgent(
+      {
+        actor,
+        childConversationId,
+        ...(run.credentialContext
+          ? { credentialContext: run.credentialContext }
+          : undefined),
+        idempotencyKey: `${run.turnId}:${call.toolCallId}`,
+        input: input.text,
+        parentConversationId: run.conversationId,
+        parentToolCallId: call.toolCallId,
+        parentTurnId: run.turnId,
+      },
+      { ...options, queue },
+    );
+    return { conversationId: childConversationId, delivery };
   };
 }

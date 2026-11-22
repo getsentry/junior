@@ -339,12 +339,12 @@ function explicitSearchError(error: SlackActionError): string | undefined {
   if (error.code === "missing_scope") {
     const needed = error.needed?.trim();
     if (needed) {
-      return `Public Slack search is unavailable because this installation is missing the \`${needed}\` scope.`;
+      return `Public Slack search is unavailable because this installation is missing the \`${needed}\` scope. Use slackChannelListMessages or slackThreadRead when you know the channel.`;
     }
-    return "Public Slack search is unavailable because this installation is missing a required search scope (`search:read.public`, and `search:read.files` / `search:read.users` when those content types are requested).";
+    return "Public Slack search is unavailable because this installation is missing a required search scope (`search:read.public`, and `search:read.files` / `search:read.users` when those content types are requested). Use slackChannelListMessages or slackThreadRead when you know the channel.";
   }
   if (error.code === "feature_unavailable") {
-    return "Public Slack search is not available for this Slack workspace or app installation.";
+    return "Public Slack search is not available for this Slack workspace or app installation. Use slackChannelListMessages or slackThreadRead when you know the channel.";
   }
   if (error.apiError === "invalid_action_token") {
     return "Public Slack search could not use the current Slack interaction token. Ask again in a new message or mention.";

@@ -346,7 +346,9 @@ export function createAutomationTool(
           !sameDestination(candidate.task.destination, destination) ||
           candidate.task.createdBy.slackUserId !== createdBy.slackUserId
         ) {
-          throw new ToolInputError("Automation operation identity is invalid.");
+          throw new ToolInputError(
+            "Automation operation identity is invalid. No change to the call can fix this in this Turn.",
+          );
         }
         return automationToolResult(context.conversationId, candidate, catalog);
       };

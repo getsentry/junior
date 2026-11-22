@@ -195,15 +195,20 @@ function parseCreateIssueInput(input: unknown): CreateGitHubIssueInput {
   try {
     return Value.Parse(createIssueInputSchema, input);
   } catch (error) {
-    throw new PluginToolInputError("Invalid GitHub createIssue input.", {
-      cause: error,
-    });
+    throw new PluginToolInputError(
+      "Invalid GitHub createIssue input. Check the arguments against the tool schema and call it again.",
+      {
+        cause: error,
+      },
+    );
   }
 }
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new PluginToolInputError(`${name} is required`);
+    throw new PluginToolInputError(
+      `${name} must not be empty. Set it and call the tool again.`,
+    );
   }
   return value.trim();
 }

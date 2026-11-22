@@ -134,7 +134,7 @@ export function requireEventAutomationTrigger(
   const resourceType = input.resourceType ?? undefined;
   if ((identifier === undefined) !== (resourceType === undefined)) {
     throw new ToolInputError(
-      "Set both resourceType and identifier for one resource, or leave out both to run for every resource.",
+      "Set both resource_type and identifier for one resource, or leave out both to run for every resource.",
     );
   }
   const events = [...new Set(input.events)];

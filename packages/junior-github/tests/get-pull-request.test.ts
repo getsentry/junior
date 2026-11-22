@@ -407,7 +407,8 @@ describe("getPullRequest", () => {
         { toolCallId: "missing-pr" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub pull request lookup failed with HTTP 404",
+      message:
+        "GitHub pull request lookup failed with HTTP 404. Check repo and pull_request. If they are correct, the GitHub App cannot see the repository.",
       name: "PluginToolInputError",
     });
   });

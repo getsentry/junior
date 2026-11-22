@@ -1,17 +1,7 @@
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
-import {
-  getAgentInvocationId,
-  getAgentInvocationIdForMessage,
-} from "@/chat/agent-invocations/ids";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-  markAgentInvocationRunning,
-} from "@/chat/agent-invocations/store";
-import type { AgentInvocation } from "@/chat/agent-invocations/types";
+import { stopChildAgent } from "@/chat/agent-invocations/stop";
 import type { AgentRun } from "@/chat/agent/types";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getConversationStore, getDb } from "@/chat/db";
@@ -23,7 +13,7 @@ import {
   juniorConversations,
   juniorIdentities,
 } from "@/db/schema";
-import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   getConversationWorkState,
   type InboundMessage,
@@ -31,36 +21,22 @@ import {
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { stopChildAgentInvocations } from "@/chat/agent-invocations/stop";
-import { neverRunAgentRunner } from "../fixtures/agent-runner";
+import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
-import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
-  prepareSlackParentConversation,
-  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
+import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
+import {
+  createHarness,
+  finishRun,
+  slackParentRun,
+  type Harness,
+} from "../fixtures/thread-input";
 
 const parentActor = slackInvocationInput.actor;
 
-function parentRun(): AgentRun {
-  return {
-    actor: parentActor,
-    conversationId: slackParentConversationId,
-    destination: slackDestination,
-    instruction: { text: "Coordinate the work." },
-    source: createSlackSource({
-      channelId: "C123",
-      teamId: "T123",
-      threadTs: "1712345.0001",
-      visibility: "public",
-    }),
-    turnId: "parent-turn",
-  };
-}
-
-/** Save one top-level Slack Conversation with its visibility. */
 async function topLevelConversation(args: {
   channelId: string;
   teamId?: string;
@@ -91,49 +67,42 @@ function topLevelRun(
   conversationId: string,
   actor: AgentRun["actor"] = parentActor,
 ): AgentRun {
-  return { ...parentRun(), actor, conversationId, turnId: "top-level-turn" };
+  return slackParentRun({ actor, conversationId, turnId: "top-level-turn" });
 }
 
-/** The Run of one child agent invocation, as the invocation worker builds it. */
-function childRun(invocation: AgentInvocation): AgentRun {
-  return {
-    agentInvocationId: invocation.invocationId,
-    actor: invocation.actor,
-    conversationId: invocation.childConversationId,
-    destination: invocation.destination,
-    instruction: { text: invocation.input },
-    runId: invocation.invocationId,
-    source: invocation.source,
-    turnId: `agent-invocation:${invocation.invocationId}`,
-  };
+/** A Run of one child agent's Turn for a parent message. */
+function childRun(conversationId: string): AgentRun {
+  return slackParentRun({
+    conversationId,
+    instruction: { text: "Check the deploy." },
+    source: { kind: "parent_message" },
+    turnId: `turn_${conversationId}`,
+  });
+}
+
+/** Spawn a child agent of `parentConversationId` as `spawnAgent` does. */
+async function spawnChild(
+  harness: Harness,
+  idempotencyKey: string,
+  input: Partial<Parameters<typeof spawnChildWithoutAgentInvocation>[0]> = {},
+) {
+  return await spawnChildWithoutAgentInvocation({
+    actor: parentActor,
+    conversationStore: harness.conversationStore,
+    idempotencyKey,
+    parentConversationId: slackParentConversationId,
+    queue: harness.queue,
+    state: harness.state,
+    ...input,
+  });
 }
 
 /** Read the Event messages, such as agent messages, in one mailbox. */
 async function eventMessages(
   conversationId: string,
 ): Promise<InboundMessage[]> {
-  const work = await getConversationWorkState({
-    conversationId,
-    state: getStateAdapter(),
-  });
+  const work = await getConversationWorkState({ conversationId });
   return work?.messages.filter((message) => message.source === "event") ?? [];
-}
-
-/**
- * Integration tests do not run the agent. This runner reads each run and
- * stops it, so the work retries.
- */
-function readRunsAgentRunner() {
-  const runs: AgentRun[] = [];
-  return {
-    agentRunner: {
-      run: async (run: AgentRun): Promise<never> => {
-        runs.push(run);
-        throw new Error("stop after reading the run");
-      },
-    },
-    runs,
-  };
 }
 
 const PULL_REQUEST_KEY = "getsentry/junior#1591";
@@ -159,31 +128,25 @@ async function annotatePullRequest(conversationId: string): Promise<void> {
 
 describe("messageAgent", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
-    vi.restoreAllMocks();
   });
 
   it("gives a busy child more work and lets a child message its parent", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const parent = readRunsAgentRunner();
-    const harness = await createConversationWorkHarness(parent.agentRunner);
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
     const { queue, state } = harness;
     const mailbox = async (conversationId: string) =>
-      (await getConversationWorkState({ conversationId, state }))?.messages ??
-      [];
+      (await getConversationWorkState({ conversationId }))?.messages ?? [];
     try {
-      const child = await createAgentInvocation({
-        ...slackInvocationInput,
+      // The child's task still waits, so it is busy.
+      const childId = await spawnChild(harness, "message-child", {
         agentName: "researcher",
-        reasoningLevel: "low",
-        idempotencyKey: "message-child",
-        parentToolCallId: "call-spawn",
       });
-      const running = (await markAgentInvocationRunning(child.invocationId))!;
 
       // Parent to busy child: the message waits for the current work.
       const parentTool = createMessageAgentTool(
-        bindMessageAgent(parentRun(), { queue, state })!,
+        bindMessageAgent(slackParentRun(), { queue, state })!,
       );
       const sendFromParent = async (to: string, toolCallId: string) =>
         await parentTool.execute!(
@@ -193,33 +156,23 @@ describe("messageAgent", () => {
       await expect(
         sendFromParent("researcher", "call-message"),
       ).resolves.toEqual({
-        conversation_id: child.childConversationId,
+        conversation_id: childId,
         delivery: "queued",
       });
       // A replayed tool call, here by conversation id, queues no second
       // message.
-      await expect(
-        sendFromParent(child.childConversationId, "call-message"),
-      ).resolves.toEqual({
-        conversation_id: child.childConversationId,
+      await expect(sendFromParent(childId, "call-message")).resolves.toEqual({
+        conversation_id: childId,
         delivery: "queued",
       });
-      expect(await mailbox(child.childConversationId)).toHaveLength(1);
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationId(
-            slackParentConversationId,
-            "parent-turn:call-message",
-          ),
-        ),
-      ).resolves.toMatchObject({ reasoningLevel: "low" });
+      expect(await mailbox(childId)).toHaveLength(2);
       await expect(sendFromParent("nobody", "call-unknown")).rejects.toThrow(
         /"nobody" is not "parent", a child agent/,
       );
 
       // Child to parent: the message wakes the parent as the child's Actor.
       const childTool = createMessageAgentTool(
-        bindMessageAgent(childRun(running), { queue, state })!,
+        bindMessageAgent(childRun(childId), { queue, state })!,
       );
       await expect(
         childTool.execute!(
@@ -254,157 +207,128 @@ describe("messageAgent", () => {
         "Found the bug in the retry path.",
       );
       // The parent Turn runs after the Event burst window.
-      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
-      await harness.process(queue.takeMessageFor(slackParentConversationId));
-      vi.mocked(Date.now).mockRestore();
-      expect(parent.runs).toEqual([
-        expect.objectContaining({ actor: parentActor }),
+      vi.setSystemTime(Date.now() + 60_000);
+      await harness.processUntilRun(slackParentConversationId);
+      expect(harness.runs).toEqual([
+        expect.objectContaining({
+          actor: parentActor,
+          conversationId: slackParentConversationId,
+        }),
       ]);
 
-      // The first work finishes. The queued message reports for both.
-      await expect(
-        completeAgentInvocation({
-          invocationId: child.invocationId,
-          result: "First pass done.",
-          status: "completed",
-        }),
-      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
+      // The child reads the queued message after its task.
+      harness.onRun(finishRun);
+      await harness.drain(childId);
+      expect(
+        harness.runs
+          .filter((run) => run.conversationId === childId)
+          .map((run) => run.instruction.text)
+          .join("\n"),
+      ).toContain("Also check the retry path.");
       await expect(
         createListAgentsTool({ conversationId: slackParentConversationId })
           .execute!({}, {}),
       ).resolves.toMatchObject({
         agents: [
           {
-            conversation_id: child.childConversationId,
+            conversation_id: childId,
             name: "researcher",
-            status: "pending",
-            task: "Also check the retry path.",
+            status: "idle",
           },
         ],
       });
     } finally {
-      await fixture.close();
+      await harness.close();
     }
   });
 
-  // A child with an open agent invocation still runs input on the agent
-  // invocation worker, not on its Conversation loop.
-  it("starts a new agent invocation when a grandchild messages a child with open work, even after a stop", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const runner = readRunsAgentRunner();
-    const harness = await createConversationWorkHarness(runner.agentRunner);
+  it("runs a grandchild's message on its parent child, also after a stop of the grandchild", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
     const { queue, state } = harness;
     try {
-      const child = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "nested-message-child",
+      const childId = await spawnChild(harness, "nested-message-child");
+      harness.onRun(finishRun);
+      await harness.drain(childId);
+      harness.onRun(undefined);
+      const helperId = await spawnChild(harness, "nested-message-helper", {
+        parentConversationId: childId,
       });
-      const helper = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "nested-message-helper",
-        parentConversationId: child.childConversationId,
-      });
-      const runningHelper = (await markAgentInvocationRunning(
-        helper.invocationId,
-      ))!;
-      const helperTool = createMessageAgentTool(
-        bindMessageAgent(childRun(runningHelper), { queue, state })!,
-      );
-      await helperTool.execute!(
+      queue.takeMessageFor(helperId);
+      await createMessageAgentTool(
+        bindMessageAgent(childRun(helperId), { queue, state })!,
+      ).execute!(
         { text: "Halfway there.", to: "parent" },
         { toolCallId: "call-halfway" },
       );
-      const messages = await eventMessages(child.childConversationId);
-      expect(messages).toHaveLength(1);
+      expect(await eventMessages(childId)).toHaveLength(1);
       // A stop after the send does not drop the message.
-      await stopChildAgentInvocations({
-        childConversationId: helper.childConversationId,
-        parentConversationId: child.childConversationId,
+      await stopChildAgent({
+        childConversationId: helperId,
+        parentConversationId: childId,
+        state,
       });
-      // The message starts and runs a new agent invocation on the child.
-      await harness.process(queue.takeMessageFor(child.childConversationId));
-      const started = await getAgentInvocation(
-        getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
-      );
-      expect(started).toMatchObject({
-        childConversationId: child.childConversationId,
-        input: expect.stringContaining("Halfway there."),
-        parentConversationId: slackParentConversationId,
-        status: "running",
+
+      // The message runs on the child after the Event burst window.
+      vi.setSystemTime(Date.now() + 60_000);
+      await harness.processUntilRun(childId);
+      expect(harness.runs.at(-1)).toMatchObject({
+        actor: parentActor,
+        conversationId: childId,
       });
-      expect(runner.runs).toEqual([
-        expect.objectContaining({
-          agentInvocationId: started!.invocationId,
-          runId: started!.invocationId,
-        }),
-      ]);
+      expect(harness.runs.at(-1)!.instruction.text).toContain("Halfway there.");
     } finally {
-      await fixture.close();
+      await harness.close();
     }
   });
 
-  it("drops a grandchild message when the tree of its parent is stopped", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const harness = await createConversationWorkHarness(neverRunAgentRunner());
+  it("holds a grandchild message when the tree of its parent is stopped", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
     const { queue, state } = harness;
     try {
-      const child = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "stopped-tree-child",
+      const childId = await spawnChild(harness, "stopped-tree-child");
+      harness.onRun(finishRun);
+      await harness.drain(childId);
+      harness.onRun(undefined);
+      const helperId = await spawnChild(harness, "stopped-tree-helper", {
+        parentConversationId: childId,
       });
-      const helper = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "stopped-tree-helper",
-        parentConversationId: child.childConversationId,
-      });
-      const runningHelper = (await markAgentInvocationRunning(
-        helper.invocationId,
-      ))!;
+      queue.takeMessageFor(helperId);
       await createMessageAgentTool(
-        bindMessageAgent(childRun(runningHelper), { queue, state })!,
+        bindMessageAgent(childRun(helperId), { queue, state })!,
       ).execute!(
         { text: "Late finding.", to: "parent" },
         { toolCallId: "call-late" },
       );
-      // The child finishes while its helper is open, so its result is
-      // `replaced`. Then the parent stops the whole child tree.
-      await expect(
-        completeAgentInvocation({
-          invocationId: child.invocationId,
-          result: "Waiting on the helper.",
-          status: "completed",
-        }),
-      ).resolves.toMatchObject({ parentMailboxStatus: "replaced" });
-      await stopChildAgentInvocations({
-        childConversationId: child.childConversationId,
+      // The parent stops the whole child tree.
+      await stopChildAgent({
+        childConversationId: childId,
         parentConversationId: slackParentConversationId,
+        state,
       });
-      // The `replaced` result was never reported, so it is not a result.
       const { agents } = (await createListAgentsTool({
         conversationId: slackParentConversationId,
       }).execute!({}, {})) as { agents: Record<string, unknown>[] };
-      expect(agents).toHaveLength(1);
-      expect(agents[0]).toMatchObject({ status: "stopped" });
-      expect(agents[0]).not.toHaveProperty("last_result");
-      const messages = await eventMessages(child.childConversationId);
-      expect(messages).toHaveLength(1);
-      await expect(
-        harness.process(queue.takeMessageFor(child.childConversationId)),
-      ).resolves.toMatchObject({ status: "completed" });
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationIdForMessage(messages[0]!.inboundMessageId),
-        ),
-      ).resolves.toBeUndefined();
+      expect(agents).toEqual([expect.objectContaining({ status: "stopped" })]);
+
+      // The stop holds the message as a skipped Message, so it starts no
+      // work.
+      expect(await eventMessages(childId)).toEqual([]);
+      await expect(stoppedConversationMessageTexts(childId)).resolves.toEqual([
+        expect.stringContaining("Late finding."),
+      ]);
+      const runCount = harness.runs.length;
+      vi.setSystemTime(Date.now() + 60_000);
+      await harness.drain(childId);
+      expect(harness.runs).toHaveLength(runCount);
     } finally {
-      await fixture.close();
+      await harness.close();
     }
   });
 
   it("lets public agents, and agents in one private channel, message each other", async () => {
-    const { fixture } = await prepareSlackParentConversation();
-    const runner = readRunsAgentRunner();
-    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const harness = await createHarness();
     const { queue, state } = harness;
     try {
       const publicTarget = await topLevelConversation({
@@ -541,31 +465,27 @@ describe("messageAgent", () => {
       );
 
       // A child agent reaches only its own tree.
-      const child = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "top-level-child",
-      });
+      const child = await spawnChild(harness, "top-level-child");
       await expect(
         send(childRun(child), publicTarget, "call-from-child"),
       ).rejects.toThrow(`"${publicTarget}" is not "parent" or a child agent`);
 
       // The target runs the message as an Event, not as the sender's Actor.
-      vi.spyOn(Date, "now").mockReturnValue(Date.now() + 60_000);
-      await harness.process(queue.takeMessageFor(publicTarget));
-      vi.mocked(Date.now).mockRestore();
-      expect(runner.runs).toEqual([
+      vi.useFakeTimers({ now: Date.now() + 60_000, toFake: ["Date"] });
+      await harness.processUntilRun(publicTarget);
+      expect(harness.runs).toEqual([
         expect.objectContaining({
           actor: EVENT_SYSTEM_ACTOR,
           conversationId: publicTarget,
         }),
       ]);
     } finally {
-      await fixture.close();
+      await harness.close();
     }
   });
 
   it("finds public root conversations and ones in the same private channel", async () => {
-    const { fixture } = await prepareSlackParentConversation();
+    const harness = await createHarness();
     try {
       const publicTarget = await topLevelConversation({
         channelId: "CPUB",
@@ -704,15 +624,12 @@ describe("messageAgent", () => {
       });
       // A child agent searches with the access of its root, and never finds
       // its own tree.
-      const child = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "top-level-search-child",
-      });
+      const child = await spawnChild(harness, "top-level-search-child");
       await expect(
-        searchRoots(child.childConversationId, { include_archived: true }),
+        searchRoots(child, { include_archived: true }),
       ).resolves.toEqual([publicTarget, otherWorkspace].sort());
     } finally {
-      await fixture.close();
+      await harness.close();
     }
   });
 });

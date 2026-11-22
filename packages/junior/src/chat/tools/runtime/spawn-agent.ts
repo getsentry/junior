@@ -131,7 +131,9 @@ export function createSpawnAgentTool(
     ...spawnAgentToolDefinition,
     execute: async (input, options) => {
       if (!options.toolCallId) {
-        throw new ToolInputError("spawnAgent requires an active tool call ID");
+        throw new ToolInputError(
+          "spawnAgent requires an active tool call ID. No change to the call can fix this.",
+        );
       }
       const title = await resolveTaskTitle({
         completeText,

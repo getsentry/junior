@@ -113,7 +113,10 @@ export function createSwitchWorkspaceTool(context: {
     ...switchWorkspaceToolDefinition,
     async execute({ name }, options) {
       const workspace = await getWorkspaceByName(getDb(), name);
-      if (!workspace) throw new ToolInputError(`Workspace not found: ${name}`);
+      if (!workspace)
+        throw new ToolInputError(
+          `Workspace not found: ${name}. Use listWorkspaces to find its name.`,
+        );
 
       // Watch before the build job can finish. A ready event is terminal and
       // will not replay for a late subscription.

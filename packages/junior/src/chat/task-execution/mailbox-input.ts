@@ -99,7 +99,7 @@ export function savedTurnInputMessages(
 
 /**
  * Render the Turn inputs of one new mailbox batch. A parent batch is the
- * parent's task, as on an Agent invocation. An Event batch also returns the
+ * parent's task. An Event batch also returns the
  * meta of its one saved Message. A web batch returns one transcript Message
  * per input.
  */
