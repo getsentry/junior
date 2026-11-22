@@ -16,6 +16,7 @@ import {
 } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderUntrustedTag } from "@/chat/input-tags";
+import { leadPersonParticipates } from "@/chat/lead/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import { AgentMessageTargetError } from "./errors";
@@ -29,7 +30,9 @@ const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";
  * Check that a top-level agent can message another top-level agent under
  * `policies/conversation-access.md`. Public agents can message each other.
  * A private agent can message only agents at its own Destination, such as
- * another thread in the same private Slack channel.
+ * another thread in the same private Slack channel. A Lead can also message
+ * a public root where its person is a Participant, so it can steer the
+ * person's work.
  * Every target that the sender cannot reach gets the same error, so the
  * error does not show that a private Conversation exists.
  */
@@ -70,9 +73,17 @@ async function requireTopLevelAgentAccess(args: {
     throw notReachable;
   }
   // A message writes the sender's data into the target. Private data never
-  // enters a public Conversation. The target is public, so this error shows
-  // nothing private.
-  if (receiver.visibility === "public" && sender.visibility !== "public") {
+  // enters a public Conversation, except from a Lead into a root where its
+  // person takes part: the Lead writes there for that person. The target is
+  // public, so this error shows nothing private.
+  if (
+    receiver.visibility === "public" &&
+    sender.visibility !== "public" &&
+    !(await leadPersonParticipates({
+      leadConversationId: args.senderConversationId,
+      rootConversationId: args.to,
+    }))
+  ) {
     throw new AgentMessageTargetError(
       `"${args.to}" is a public conversation and this conversation is private. A private conversation can message only conversations in its own channel or DM`,
     );

@@ -56,6 +56,13 @@ Check the rows in this order. The first match decides.
   example, `messageAgent` from a private Conversation to a public one is
   denied. Together with row 4, a private Conversation writes only into
   Conversations at its own Destination.
+- One exception: a Lead may write into a public root where its person is a
+  Participant. The Lead writes there for that person, as the person could.
+  It never writes into another person's public root.
+- `startConversation` makes a public root from a Lead. It runs as the
+  person, and the Lead's task is its first message. The start is not
+  reviewed. Action review judges the new root's own tool calls, the same
+  way it judges a child agent's.
 
 ## Rules for every surface
 
@@ -84,7 +91,8 @@ never lets one Conversation read another.
 - `searchConversations` finds Conversations whose root is public or is at
   the Destination of the requester's root. It finds child agents only when
   asked. It never finds the requester's own tree. Its results include the
-  summary and outcome status.
+  summary and outcome status. `participating` keeps only roots where the
+  person is a Participant.
 - `searchConversationMessages` is only available in public Conversations
   and returns only public Conversations. It is a Slack tool, so it returns
   only Slack Conversations.
