@@ -89,10 +89,10 @@ interface SandboxCandidate extends ActiveSandbox {
 interface SandboxRuntimeOptions {
   sandboxRef?: SandboxRef | undefined;
   /**
-   * True on the first Run of a Turn. Only that Run replaces an old session,
-   * so a later Run does not drop unpushed work in the middle of the Turn.
+   * Replace a session near the provider's session cap before any work.
+   * Only safe when no unsaved work depends on the current session.
    */
-  startsTurn?: boolean | undefined;
+  rotateOldSession?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
@@ -594,7 +594,7 @@ export function createSandboxRuntime(
     try {
       hintedSandbox = await getHintedSandbox();
       if (
-        options.startsTurn &&
+        options.rotateOldSession &&
         Date.now() - hintedSandbox.startedAtMs > SESSION_ROTATE_AFTER_MS
       ) {
         await stopSession(hintedSandbox);

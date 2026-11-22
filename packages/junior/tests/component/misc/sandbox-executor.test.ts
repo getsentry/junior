@@ -218,7 +218,7 @@ interface SandboxFixtureOptions {
   sandboxId?: string;
   /** The stored ref of an earlier Run. Wins over `sandboxId`. */
   sandboxRef?: SandboxRef;
-  startsTurn?: boolean;
+  rotateOldSession?: boolean;
   onSandboxRefChanged?: (ref: SandboxRef) => void;
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
@@ -294,7 +294,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
   let access: ReturnType<typeof createSandbox> | undefined;
   const getAccess = () =>
     (access ??= createSandbox({
-      startsTurn: options.startsTurn,
+      rotateOldSession: options.rotateOldSession,
       sandboxRef: options.sandboxRef
         ? options.sandboxRef
         : options.sandboxId
@@ -3347,7 +3347,7 @@ describe("createTestSandbox", () => {
       .mockResolvedValueOnce(newSandbox);
 
     const executor = createTestSandbox({
-      startsTurn: true,
+      rotateOldSession: true,
       sandboxRef: {
         id: "sbx_rotate",
         toolSession: {
@@ -3376,7 +3376,7 @@ describe("createTestSandbox", () => {
     sandboxGetMock.mockResolvedValueOnce(oldSandbox);
 
     const executor = createTestSandbox({
-      startsTurn: false,
+      rotateOldSession: false,
       sandboxRef: {
         id: "sbx_no_rotate",
         toolSession: {

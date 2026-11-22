@@ -96,8 +96,8 @@ export interface SandboxAccess {
 
 export interface SandboxOptions {
   sandboxRef?: SandboxRef | undefined;
-  /** True on the first Run of a Turn. */
-  startsTurn?: boolean | undefined;
+  /** Replace a session near the provider's cap. See `SandboxRuntimeOptions`. */
+  rotateOldSession?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
@@ -282,7 +282,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
-    startsTurn: options.startsTurn,
+    rotateOldSession: options.rotateOldSession,
     workspace: options.workspace,
     skills: options.skills,
     referenceFiles: options.referenceFiles,

@@ -869,7 +869,7 @@ describe("agent run continuation", () => {
     expect(reply.diagnostics.outcome).toBe("success");
     // A new Turn may replace a sandbox session near the provider's cap.
     expect(createSandbox).toHaveBeenCalledWith(
-      expect.objectContaining({ startsTurn: true }),
+      expect.objectContaining({ rotateOldSession: true }),
     );
     expect(reply.diagnostics.toolResultCount).toBe(1);
     expect(reply.diagnostics.usage).toMatchObject({
@@ -1380,7 +1380,7 @@ describe("agent run continuation", () => {
     expect(counters.continueCalls).toBe(2);
     // A resumed Turn keeps its session and its unpushed work.
     expect(createSandbox).toHaveBeenCalledWith(
-      expect.objectContaining({ startsTurn: false }),
+      expect.objectContaining({ rotateOldSession: false }),
     );
   });
 
