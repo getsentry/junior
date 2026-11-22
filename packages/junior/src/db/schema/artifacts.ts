@@ -37,6 +37,8 @@ export const juniorArtifacts = pgTable(
     createdAt: timestamptz("created_at").notNull(),
     /** Set when the artifact is unpublished or its live file is deleted. */
     deleteRequestedAt: timestamptz("delete_requested_at"),
+    /** When a public artifact stops serving. Null serves until unpublished. */
+    expiresAt: timestamptz("expires_at"),
   },
   (table) => [
     check(
@@ -53,9 +55,14 @@ export const juniorArtifacts = pgTable(
       table.conversationId,
       table.path,
     ),
-    uniqueIndex("junior_artifacts_public_sha_uidx")
+    // One URL per conversation and bytes for artifacts that do not expire.
+    // An expiring artifact always gets its own row, so its expiry is never
+    // shared with a URL that serves longer.
+    uniqueIndex("junior_artifacts_permanent_sha_uidx")
       .on(table.conversationId, table.sha256)
-      .where(sql`${table.visibility} = 'public'`),
+      .where(
+        sql`${table.visibility} = 'public' and ${table.expiresAt} is null`,
+      ),
     index("junior_artifacts_gc_idx").on(
       table.deleteRequestedAt,
       table.createdAt,

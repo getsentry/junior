@@ -234,7 +234,8 @@ function itemsWithTriggers(
 /**
  * Snooze the open items of one Inbox row for the viewer until `wakeAtMs`,
  * or until one of `triggers` fires on an item's subject or on a page that
- * the viewer names, whichever is first. Each item gets its own snooze, which replaces the viewer's
+ * the viewer names, whichever is first. With `untilClosed`, it has neither,
+ * and lasts until the item closes or the viewer wakes it. Each item gets its own snooze, which replaces the viewer's
  * earlier one; a later item in the row shows by itself. Returns the
  * snoozed items.
  */
@@ -243,13 +244,18 @@ export async function createViewerSnooze(
   input: {
     subject: InboxSnoozeSubject;
     triggers?: readonly ViewerSnoozeTrigger[];
+    /** No wake time and no trigger: it lasts until the item closes. */
+    untilClosed?: true;
     wakeAtMs?: number;
   },
   nowMs = Date.now(),
 ): Promise<string[]> {
   const { wakeAtMs } = input;
-  if (wakeAtMs === undefined && !input.triggers?.length) {
-    throw new InboxSnoozeInputError("Set a wake time or a trigger.");
+  const ends = wakeAtMs !== undefined || Boolean(input.triggers?.length);
+  if (ends === Boolean(input.untilClosed)) {
+    throw new InboxSnoozeInputError(
+      "Set a wake time or a trigger, or snooze until the item closes.",
+    );
   }
   if (wakeAtMs !== undefined && wakeAtMs <= nowMs) {
     throw new InboxSnoozeInputError("The wake time must be in the future.");

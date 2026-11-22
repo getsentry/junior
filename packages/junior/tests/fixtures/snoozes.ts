@@ -181,6 +181,38 @@ export async function addPullRequestItem(
   return item!.id;
 }
 
+/** Add an open action item for Everyone. Anyone in the workspace can act. */
+export async function addEveryoneItem(
+  conversationId: string,
+  title: string,
+): Promise<string> {
+  const item = await insertInboxItem(getDb(), {
+    owner: { id: conversationId, kind: "conversation" },
+    assignedToEveryone: true,
+    assigneeUserIds: [],
+    body: title,
+    conversationIds: [conversationId],
+    dedupeKey: title,
+    kind: "action",
+    nowMs: Date.now(),
+    request: {
+      fields: [
+        {
+          id: "decision",
+          kind: "choice",
+          label: "Decision",
+          options: [{ label: "Approve" }, { label: "Reject" }],
+        },
+      ],
+      question: title,
+    },
+    tenant: { provider: "slack", providerTenantId: "T123" },
+    title,
+    visibility: "public",
+  });
+  return item!.id;
+}
+
 /** Add an open notice for these Users. A notice waits on nobody. */
 export async function addNotice(
   conversationId: string,
@@ -219,12 +251,16 @@ export function api(fixture: ConversationFixture, viewer: User) {
       method,
     });
   return {
+    /** Read one API path as JSON. */
+    json,
     /** Read one API path, with these request headers. */
     request: (path: string, headers?: Record<string, string>) =>
       app.request(`http://localhost/api${path}`, { headers }),
     /** Snooze a row until this time. */
     snooze: (subject: InboxSnoozeSubjectBody, wakeAtMs: number) =>
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
+    /** Post this snooze body as it is, such as `untilClosed`. */
+    postSnooze: (body: unknown) => snoozes("POST", body),
     /** The Events of a page that the viewer names for a snooze. */
     resource: (url: string) =>
       app.request(

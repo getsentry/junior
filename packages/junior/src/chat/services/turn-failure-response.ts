@@ -2,11 +2,13 @@ import type { ConversationTurnFailureReason } from "@/chat/conversations/history
 import { buildTurnFailureResponse } from "@/chat/logging";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { formatSentryEventReference } from "@/chat/sentry-links";
+import { ToolActionReviewUnavailableError } from "@/chat/guardian/gate";
+import { findInErrorChain } from "@/chat/sandbox/errors";
 import {
+  createProviderError,
   findProviderError,
   getProviderErrorAttributes,
   getProviderErrorUserMessage,
-  ProviderError,
 } from "@/chat/services/provider-error";
 import type { AgentRunResult } from "@/chat/services/turn-result";
 
@@ -137,6 +139,30 @@ export function getAgentTurnDiagnosticsAttributes(
   };
 }
 
+/**
+ * Build the failure reply that names the upstream provider when a model call
+ * in the error's cause chain failed, or undefined for any other failure.
+ * Action review runs its own model, so its failure says which step it served.
+ */
+export function buildProviderFailureResponse(
+  error: unknown,
+  eventId: string,
+): string | undefined {
+  const providerError = findProviderError(error);
+  if (!providerError) {
+    return undefined;
+  }
+  const actionReview = findInErrorChain(
+    error,
+    (candidate) => candidate instanceof ToolActionReviewUnavailableError,
+  );
+  const message = getProviderErrorUserMessage(
+    providerError,
+    actionReview ? { purpose: "action review" } : {},
+  );
+  return `${message} Reference: ${formatSentryEventReference(eventId)}.`;
+}
+
 /** Sanitized failure fallback plus its optional captured event ID. */
 export interface FinalizedTurnFailure {
   eventId?: string;
@@ -170,6 +196,28 @@ export function captureTurnFailure(
   return { ...result, diagnostics: { ...result.diagnostics, eventId } };
 }
 
+/**
+ * The provider failure behind a failed run. A model message that ends the
+ * run with no text, no tool call, and no error is an empty provider
+ * response, as model APIs return during some outages.
+ */
+function runProviderError(
+  reply: AgentRunResult,
+  failureReason: ConversationTurnFailureReason | undefined,
+): unknown {
+  if (
+    failureReason === "empty_output" &&
+    reply.diagnostics.assistantMessageCount > 0 &&
+    !reply.diagnostics.errorMessage
+  ) {
+    return createProviderError("The model returned an empty response.", {
+      kind: "invalid_response",
+      modelId: reply.diagnostics.modelId,
+    });
+  }
+  return reply.diagnostics.providerError;
+}
+
 /** Build the failure reply for a reported failed run, with its event ID. */
 export function finalizeFailedTurnReplyWithEvent(args: {
   reply: AgentRunResult;
@@ -193,23 +241,22 @@ export function finalizeFailedTurnReplyWithEvent(args: {
     args.reply.diagnostics.assistantMessageCount > 0
       ? args.reply.text.trim()
       : "";
-  const providerUserMessage =
-    args.reply.diagnostics.providerError instanceof ProviderError
-      ? getProviderErrorUserMessage(args.reply.diagnostics.providerError)
-      : "";
-  const failureText = providerUserMessage
-    ? `${providerUserMessage} Reference: ${formatSentryEventReference(eventId)}.`
-    : buildTurnFailureResponse(eventId);
+  const providerFailureText = buildProviderFailureResponse(
+    runProviderError(args.reply, failureReason),
+    eventId,
+  );
+  // Partial text keeps the provider failure after it, so the person still
+  // learns why the reply stopped.
+  const text = providerPartialText
+    ? [`${providerPartialText}${getInterruptionMarker()}`, providerFailureText]
+        .filter(Boolean)
+        .join("\n\n")
+    : (providerFailureText ?? buildTurnFailureResponse(eventId));
 
   return {
     eventId,
     ...(failureReason ? { failureReason } : undefined),
-    reply: {
-      ...args.reply,
-      text: providerPartialText
-        ? `${providerPartialText}${getInterruptionMarker()}`
-        : failureText,
-    },
+    reply: { ...args.reply, text },
   };
 }
 

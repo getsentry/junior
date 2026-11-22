@@ -22,7 +22,8 @@ import {
 } from "./InboxItemSubjectPreview";
 import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import { RowDismissButton } from "./RowDismissButton";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import { wakeReasonText } from "./snoozeSentences";
 import { InboxItemTitle } from "./InboxItemPeople";
 import {

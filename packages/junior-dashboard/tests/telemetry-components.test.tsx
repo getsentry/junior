@@ -1752,7 +1752,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     const reportOnlyPluginHtml = renderSystemPage(
-      "/system/plugins/briefs",
+      "/system/plugins/report-only",
       loading,
     );
     expect(reportOnlyPluginHtml).toContain("Loading plugin");

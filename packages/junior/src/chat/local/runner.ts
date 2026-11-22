@@ -12,7 +12,7 @@ import type { AgentRunResult } from "@/chat/services/turn-result";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { randomUUID } from "node:crypto";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
-import type { PiMessage } from "@/chat/pi/messages";
+import type { AgentHistory } from "@/chat/agent/types";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import {
   createLocalSource,
@@ -45,7 +45,7 @@ import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   commitAcceptedReply,
-  loadProjection,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
@@ -151,11 +151,11 @@ function captureLocalBoundaryFailure(args: {
 /** Load durable local Pi history from the conversation-event projection. */
 async function loadLocalPiMessages(args: {
   conversationId: string;
-}): Promise<PiMessage[] | undefined> {
-  const projection = await loadProjection({
+}): Promise<AgentHistory | undefined> {
+  const projection = await loadConversationProjection({
     conversationId: args.conversationId,
   });
-  if (projection.length === 0) {
+  if (projection.messages.length === 0) {
     return undefined;
   }
   return projection;
@@ -314,7 +314,7 @@ async function runLocalAgentTurnInContext(
       conversationId: input.conversationId,
     });
     failureCode = "agent_run_failed";
-    const runAgent = async (messages: PiMessage[] | undefined) => {
+    const runAgent = async (history: AgentHistory | undefined) => {
       currentRunId = localRunId();
       setTags({ runId: currentRunId });
       const authorization = deps.authorization
@@ -333,11 +333,11 @@ async function runLocalAgentTurnInContext(
             conversation,
             conversationId: input.conversationId,
             excludeMessageIds: [userMessageId],
-            hasHistory: Boolean(messages?.length),
+            hasHistory: Boolean(history?.messages.length),
             turnId,
           }),
         },
-        history: messages,
+        history,
         actor: localActor,
         credentialContext: credentialContextForActor(localActor),
         destination,
