@@ -13,19 +13,6 @@ function recordToolRequests(names: string[]): CallOptions["onProgress"] {
   };
 }
 
-/**
- * Record the text of each result that a child agent sends to its parent.
- * Only a child agent has the `reply` tool, so each `reply` request is a
- * child's result.
- */
-function recordChildResults(texts: string[]): CallOptions["onProgress"] {
-  return (progress) => {
-    if (progress.type === "tool_request" && progress.name === "reply") {
-      texts.push((progress.args as { text?: string } | undefined)?.text ?? "");
-    }
-  };
-}
-
 // A child agent result starts a later Turn in the parent thread. These tests
 // check that the thread gets exactly one such Turn for each child agent.
 describe("Child Agents", () => {
@@ -74,29 +61,28 @@ describe("Child Agents", () => {
   test("when the parent delegates, the task carries facts from earlier thread messages", async ({
     agent,
   }) => {
-    // The ticket id is only in an earlier message, and a child agent gets no
-    // thread history. So the child can cite the ticket only if the parent
-    // puts it in the task. The test checks the child's result, not the task
-    // text, because the parent can word the task in its own way.
     const { run } = await agent();
-    const childResults: string[] = [];
     const conversation = await run(
       slackMention(
-        "Hand off writing a one-line commit message for that typo fix to a child agent. The message must cite the ticket. Post its message here. No repo changes.",
+        "Hand off writing a one-line commit message for that typo fix to a child agent. The message must cite the ticket. When its result arrives, post the message here. No repo changes.",
       ),
       {
+        // The child gets no thread history, so the ticket id reaches it only
+        // through the task.
         history: [
           slackMention("I filed the README typo as ticket TYPO-4821."),
           reply("Got it."),
         ],
-        onProgress: recordChildResults(childResults),
       },
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
-    expect(childResults).toContainEqual(expect.stringContaining("TYPO-4821"));
     expect(conversation.turns).toHaveLength(2);
-    expect(conversation.turns[1]?.status).toBe("succeeded");
+    const resultTurn = conversation.turns[1];
+    expect(resultTurn?.status).toBe("succeeded");
+    expect(resultTurn?.replies.map((reply) => reply.text)).toEqual([
+      expect.stringContaining("TYPO-4821"),
+    ]);
   });
 
   test("when a child agent is missing input, it reports the block in one result turn", async ({
