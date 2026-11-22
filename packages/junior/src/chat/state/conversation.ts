@@ -52,8 +52,8 @@ export interface ConversationMessageMeta {
   quiet?: true;
   replied?: boolean;
   /**
-   * The request words of an Event Message's inputs, such as a parent
-   * agent's task, so a resumed Turn recalls from them as the first did.
+   * The request words of an Event or parent agent Message's inputs, such
+   * as a parent agent's task, so a resumed Turn recalls from them as the first did.
    */
   requestText?: string;
   /** Person changes to Review items that this Message records. */

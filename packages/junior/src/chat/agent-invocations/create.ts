@@ -639,7 +639,6 @@ export async function spawnChildAgent(
       nowMs,
       parentToolCallId: rawInput.parentToolCallId,
       text: input.input,
-      trustedSummary: "Your parent agent sent a task.",
     },
     options,
     async (open) => {
@@ -706,7 +705,6 @@ export async function messageChildAgent(
       nowMs,
       text: input.input,
       title: sender?.title,
-      trustedSummary: "Your parent agent sent a message.",
     },
     options,
     async (open) => {

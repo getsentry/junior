@@ -84,7 +84,8 @@ export function childAgentInput(
  * result, and input to a child that waits for its own child agents
  * (`replaced`). A stopped child drops input from its own child agents, also
  * input sent before the stop. A session stop at `stoppedAtMs` skips Events
- * as `skipInputAfterConversationStop` does.
+ * as `skipInputAfterConversationStop` does, and drops a parent message that
+ * was sent before it.
  *
  * TODO(dcramer): Drop the agent invocation route with the legacy child worker
  * (#3060 step 7).
@@ -112,7 +113,8 @@ export async function routeChildInput(
     if (open) {
       return "agent invocation";
     }
-    return isSkippedAfterConversationStop(message, stoppedAtMs)
+    // A stop drops the parent messages that were sent before it.
+    return stoppedAtMs !== undefined && message.receivedAtMs <= stoppedAtMs
       ? "dropped"
       : "Conversation loop";
   }

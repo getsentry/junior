@@ -38,7 +38,6 @@ export async function sendParentMessage(args: {
     parentConversationId: args.from ?? args.parentConversationId,
     parentToolCallId: args.idempotencyKey,
     text: args.text ?? "Check the deploy.",
-    trustedSummary: "Your parent agent sent a task.",
   });
   if (args.authorId) {
     message.input.authorId = args.authorId;

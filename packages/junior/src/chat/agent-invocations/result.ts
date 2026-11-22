@@ -919,8 +919,8 @@ export async function withAgentInvocationResultActors(
       ])
     : [undefined, undefined];
   const batch = await mapBounded(work.batch, async (entry) => {
-    // A parent message from the stored parent runs as the Actor of the
-    // parent's Turn, with its grants and text, as on an Agent invocation.
+    // A parent message from the stored parent gets its text, as on an Agent
+    // invocation. Its Actor and grants come with it.
     const parentMessage = readParentMessage(entry.message);
     if (parentMessage) {
       if (
@@ -933,11 +933,7 @@ export async function withAgentInvocationResultActors(
       const text = await parentMessageText(entry.message, parentMessage);
       return {
         ...entry,
-        actor: parentMessage.actor,
         requestText: entry.message.input.text.trim(),
-        ...(parentMessage.credentialContext
-          ? { credentialContext: parentMessage.credentialContext }
-          : undefined),
         message: {
           ...entry.message,
           input: { ...entry.message.input, text },

@@ -27,6 +27,10 @@ import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import {
+  countAutomatedTurn,
+  getAutomatedTurnLimitState,
+} from "@/chat/services/automated-turn-limit";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import {
@@ -152,6 +156,32 @@ describe("child agents that no Agent invocation names", () => {
       });
       expect(run.agentInvocationId).toBeUndefined();
       expect(run.instruction.text).toContain("Check the deploy.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("resets the child's automated-turn count after a parent task, as a person's Message does", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const childId = await spawnChild(harness, "parent-turn:call-1");
+      // Watch Event Turns already counted toward the limit.
+      await countAutomatedTurn({
+        conversationId: childId,
+        maxTurns: 10,
+        state: harness.state,
+      });
+      harness.onPersonRun(finishRun);
+      await harness.drain(childId);
+
+      expect(harness.runs).toHaveLength(1);
+      await expect(
+        getAutomatedTurnLimitState({
+          conversationId: childId,
+          state: harness.state,
+        }),
+      ).resolves.toMatchObject({ consecutiveAutomatedTurns: 0, paused: false });
     } finally {
       await harness.close();
     }

@@ -1,6 +1,6 @@
 import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
-import { and, desc, eq, sql } from "drizzle-orm";
+import { and, desc, eq, like, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
@@ -27,32 +27,26 @@ import {
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { loadForkHistory } from "./fork-history";
 import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
-import {
-  AGENT_INVOCATION_EVENT_NAMESPACE,
-  AGENT_PARENT_MESSAGE_EVENT_TYPE,
-} from "./result-event-type";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { agentInvocationInputText } from "./work";
 
 /**
- * A parent agent task or message to a child that no Agent invocation names.
- * It is an Event from the parent Conversation (`event.identifier`) with the
+ * A parent agent task or message to a child that no Agent invocation names:
+ * who sent it and the instruction. It names the parent Conversation, the
  * Actor and grants of the parent's Turn, and the `spawnAgent` or
  * `messageAgent` tool call that sent it. Its text is the raw task. `fork`
  * marks the task of a fork spawn.
  */
-const parentMessageSchema = z.object({
-  actor: actorSchema,
-  credentialContext: credentialContextSchema.optional(),
-  event: z.object({
-    eventType: z.literal(AGENT_PARENT_MESSAGE_EVENT_TYPE),
-    identifier: z.string().min(1),
-    namespace: z.literal(AGENT_INVOCATION_EVENT_NAMESPACE),
-  }),
-  fork: z.literal(true).optional(),
-  kind: z.literal("event"),
-  parentToolCallId: z.string().min(1),
-});
+const parentMessageSchema = z
+  .object({
+    actor: actorSchema,
+    credentialContext: credentialContextSchema.optional(),
+    fork: z.literal(true).optional(),
+    kind: z.literal("parent_message"),
+    parentConversationId: z.string().min(1),
+    parentToolCallId: z.string().min(1),
+  })
+  .strict();
 
 /** One parent agent task or message read from a child's mailbox. */
 export type ParentMessage = z.output<typeof parentMessageSchema>;
@@ -63,8 +57,10 @@ export type ParentMessage = z.output<typeof parentMessageSchema>;
  * sender's input.
  */
 export function parentMessageAuthorId(parentConversationId: string): string {
-  return `parent-agent:${parentConversationId}`;
+  return `${PARENT_MESSAGE_AUTHOR_PREFIX}${parentConversationId}`;
 }
+
+const PARENT_MESSAGE_AUTHOR_PREFIX = "parent-agent:";
 
 /**
  * Build the parent message that gives one task or message to a child that no
@@ -81,7 +77,6 @@ export function buildParentMessage(args: {
   parentConversationId: string;
   parentToolCallId: string;
   text: string;
-  trustedSummary: string;
 }): InboundMessage {
   const inboundMessageId = getAgentInvocationMessageId(
     getAgentInvocationId(args.parentConversationId, args.idempotencyKey),
@@ -100,21 +95,15 @@ export function buildParentMessage(args: {
         ...(args.credentialContext
           ? { credentialContext: args.credentialContext }
           : undefined),
-        event: {
-          eventKey: inboundMessageId,
-          eventType: AGENT_PARENT_MESSAGE_EVENT_TYPE,
-          identifier: args.parentConversationId,
-          namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
-          trustedSummary: args.trustedSummary,
-        },
         ...(args.fork ? { fork: true } : undefined),
-        kind: "event",
+        kind: "parent_message",
+        parentConversationId: args.parentConversationId,
         parentToolCallId: args.parentToolCallId,
-      },
+      } satisfies ParentMessage,
       text: args.text,
     },
     receivedAtMs: args.nowMs,
-    source: "event",
+    source: "internal",
   };
 }
 
@@ -232,7 +221,7 @@ export async function dropWaitingParentMessages(
 export function readParentMessage(
   message: InboundMessage,
 ): ParentMessage | undefined {
-  if (message.source !== "event") {
+  if (message.source !== "internal") {
     return undefined;
   }
   const parsed = parentMessageSchema.safeParse(message.input.metadata);
@@ -250,7 +239,7 @@ export async function isFromStoredParent(
 ): Promise<boolean> {
   const rows =
     message.input.authorId ===
-    parentMessageAuthorId(parentMessage.event.identifier)
+    parentMessageAuthorId(parentMessage.parentConversationId)
       ? await getSqlExecutor()
           .db()
           .select({ conversationId: juniorConversations.conversationId })
@@ -260,7 +249,7 @@ export async function isFromStoredParent(
               eq(juniorConversations.conversationId, message.conversationId),
               eq(
                 juniorConversations.parentConversationId,
-                parentMessage.event.identifier,
+                parentMessage.parentConversationId,
               ),
             ),
           )
@@ -279,7 +268,7 @@ export function logDroppedParentMessage(
   logWarn("agent.parent_message.dropped", {
     "app.conversation_id": message.conversationId,
     "app.inbound_message_id": message.inboundMessageId,
-    "app.parent_conversation_id": parentMessage.event.identifier,
+    "app.parent_conversation_id": parentMessage.parentConversationId,
   });
 }
 
@@ -300,16 +289,25 @@ export async function parentMessageText(
   });
 }
 
+/** Saved transcript author of every parent message from one parent. */
+export function parentMessageAuthor(parentConversationId: string) {
+  return {
+    fullName: "Parent agent",
+    isBot: true,
+    userId: parentMessageAuthorId(parentConversationId),
+  } as const;
+}
+
 /**
- * Return whether a saved transcript Message is a parent message. Only the
- * root Turn code saves one, after its sender check.
+ * Return whether a saved transcript Message is a parent message, by its
+ * author. Only the root Turn code saves one, after its sender check.
  */
-export function isParentMessageMeta(
-  meta: { eventNamespace?: unknown; eventType?: unknown } | undefined,
+export function isParentMessageAuthor(
+  author: { userId?: unknown } | undefined,
 ): boolean {
   return (
-    meta?.eventNamespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
-    meta.eventType === AGENT_PARENT_MESSAGE_EVENT_TYPE
+    typeof author?.userId === "string" &&
+    author.userId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX)
   );
 }
 
@@ -329,8 +327,10 @@ export async function readLastParentMessageAtMs(
       and(
         eq(juniorConversationEvents.conversationId, conversationId),
         eq(juniorConversationEvents.type, "message"),
-        sql`${payload}->'meta'->>'eventNamespace' = ${AGENT_INVOCATION_EVENT_NAMESPACE}`,
-        sql`${payload}->'meta'->>'eventType' = ${AGENT_PARENT_MESSAGE_EVENT_TYPE}`,
+        like(
+          sql`${payload}->'meta'->'author'->>'userId'`,
+          `${PARENT_MESSAGE_AUTHOR_PREFIX}%`,
+        ),
       ),
     )
     .orderBy(desc(juniorConversationEvents.createdAt))
@@ -343,13 +343,13 @@ export async function readLastParentMessageAtMs(
  * Turn code. Every Turn keeps the reasoning level. A fork's first Turn
  * starts with its parent's history. A parent message is the child's
  * instruction, as on an Agent invocation, also when its Turn resumes
- * (`savedParentMessage`). `inputs` passed the sender check.
+ * (`fromParent`). `inputs` passed the sender check.
  */
 export async function childAgentTurnOptions(args: {
   conversationId: string;
+  fromParent: boolean;
   history: PiMessage[];
   inputs: readonly InboundMessage[];
-  savedParentMessage: boolean;
 }): Promise<{
   history: PiMessage[];
   instruction: Pick<AgentInstruction, "provenance">;
@@ -363,14 +363,13 @@ export async function childAgentTurnOptions(args: {
     history:
       parentMessage?.fork && args.history.length === 0
         ? await loadForkHistory({
-            parentConversationId: parentMessage.event.identifier,
+            parentConversationId: parentMessage.parentConversationId,
             parentToolCallId: parentMessage.parentToolCallId,
           })
         : args.history,
-    instruction:
-      parentMessage || args.savedParentMessage
-        ? { provenance: agentInstructionProvenance }
-        : {},
+    instruction: args.fromParent
+      ? { provenance: agentInstructionProvenance }
+      : {},
     run: options?.reasoningLevel ? { reasoning: options.reasoningLevel } : {},
   };
 }
