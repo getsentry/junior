@@ -35,6 +35,25 @@ export function isOldAutomationsPath(location: {
   );
 }
 
+// A link may leave the colons of a Conversation id unencoded, so compare
+// decoded paths.
+const decodedPath = (path: string) => {
+  try {
+    return decodeURIComponent(path);
+  } catch {
+    return path;
+  }
+};
+
+/** True when a path opens the Lead, the Lead nav item's page. */
+export function isLeadPath(
+  pathname: string,
+  navItems: readonly DashboardHeaderNavItem[],
+): boolean {
+  const lead = navItems.find((item) => item.key === LEAD_NAV_KEY);
+  return lead !== undefined && decodedPath(pathname) === decodedPath(lead.to);
+}
+
 /** Name the part of the destinations that a path is in, if any. */
 export function paneDestinationForPath(
   pathname: string,
@@ -59,8 +78,7 @@ export function paneRowForPath(
   if (pathname === "/")
     return parseInboxView(new URLSearchParams(location.search).get("view"));
   // The Lead is a Conversation with its own row.
-  const lead = navItems.find((item) => item.key === LEAD_NAV_KEY);
-  if (lead && pathname === lead.to) return LEAD_NAV_KEY;
+  if (isLeadPath(pathname, navItems)) return LEAD_NAV_KEY;
   if (under(pathname, "/conversations")) return origin ?? "conversations";
   if (under(pathname, "/automations")) return "automations";
   return navItems.find(

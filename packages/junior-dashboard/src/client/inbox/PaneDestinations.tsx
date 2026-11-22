@@ -12,7 +12,7 @@ import { Link, useLocation, useSearchParams } from "react-router";
 
 import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
-import type { PaneRow } from "../components/layout/paneRows";
+import { isLeadPath, type PaneRow } from "../components/layout/paneRows";
 import { cn, dashboardCountClass } from "../styles";
 import { LEAD_NAV_KEY } from "../shell/primaryNav";
 import { useInboxData } from "./inboxData";
@@ -157,7 +157,7 @@ export function PaneDestinations(props: { phone?: boolean }) {
             phone={props.phone}
             phoneTo={leadItem.to}
             row={leadItem.key}
-            phoneSelected={pathname === leadItem.to}
+            phoneSelected={isLeadPath(pathname, navItems)}
           />
         ) : null}
         {view("inbox", true)}

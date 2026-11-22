@@ -301,7 +301,8 @@ function Shell() {
   // To do's own count, so the header and the tab match its cards.
   const inboxCount = useInboxData().todoCount;
   useInboxTabCount(inboxCount);
-  const leadId = useLead(loggedIn).data?.conversationId;
+  const lead = useLead(loggedIn);
+  const leadId = lead.data?.conversationId;
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
     leadPath: leadId ? conversationPath(leadId) : undefined,
@@ -364,6 +365,7 @@ function Shell() {
   return (
     <DashboardChromeProvider>
       <PaneNavProvider
+        leadPending={loggedIn && lead.isPending}
         navItems={primaryNavItems}
         onOpenChange={setPaneOpen}
         onSearch={openCommandPalette}

@@ -169,6 +169,31 @@ test("the Lead nav item opens the Lead from other pages", async ({
   await expect(page.getByRole("button", { name: /details/i })).toHaveCount(0);
 });
 
+test("a direct link to the Lead leaves the other rows their places @new", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(`${dashboard.baseURL}/automations`);
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  const lead = nav.getByRole("link", { name: "Lead", exact: true });
+  await lead.click();
+  await expect(page.getByRole("heading", { name: "Your Lead" })).toBeVisible();
+  const leadPath = decodeURIComponent(new URL(page.url()).pathname);
+
+  // Reload the Lead from a link with unencoded colons, with its id slow to
+  // load. The Lead keeps its row, and Conversations still opens its list.
+  await page.route("**/api/lead", async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await route.fallback();
+  });
+  await page.goto(`${dashboard.baseURL}${leadPath}`);
+  await expect(page.getByRole("heading", { name: "Your Lead" })).toBeVisible();
+  await expect(lead).toHaveAttribute("aria-current", "page");
+  await nav.getByRole("link", { name: "Conversations", exact: true }).click();
+  await expect(page).toHaveURL(/\/\?view=conversations$/);
+});
+
 test("a new Lead introduces itself @classic", async ({ page, dashboard }) => {
   await emptyLead(page);
   await page.setViewportSize(desktop);
