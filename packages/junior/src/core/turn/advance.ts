@@ -44,7 +44,12 @@ const LEASE_CHECK_INTERVAL_MS = 1_000;
 /** The parts of a step's input that do not come from the Turn's history. */
 export type PreparedStep = Omit<
   StepInput,
-  "abandonToolCalls" | "client" | "messages" | "replay" | "session" | "signal"
+  | "client"
+  | "messages"
+  | "replay"
+  | "session"
+  | "signal"
+  | "skipDanglingToolCalls"
 >;
 
 type AdvanceTurnOptions = {
@@ -152,7 +157,7 @@ async function runClaimedStep(
     // A later claim of the same step means an earlier attempt did not commit.
     replay: claim.attempts > 1,
     // Tool calls pending at a Turn's first step belong to an earlier Turn.
-    abandonToolCalls: claim.stepSeq === 0,
+    skipDanglingToolCalls: claim.stepSeq === 0,
   });
   if (!result) {
     return;

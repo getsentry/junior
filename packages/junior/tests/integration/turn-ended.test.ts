@@ -73,7 +73,7 @@ function modelError(): AssistantMessage {
 }
 
 /** The error result that closes a tool call of an earlier Turn. */
-function abandonedResult(toolCallId: string, text: string) {
+function danglingResult(toolCallId: string, text: string) {
   return expect.objectContaining({
     role: "toolResult",
     toolCallId,
@@ -172,11 +172,11 @@ describe("advanceTurn at the end of a Turn", () => {
 
     expect(executed).toEqual([]);
     const closed = [
-      abandonedResult(
+      danglingResult(
         "call-1",
         "The previous Turn ended before this call's result was saved. It may or may not have run. Check its effect before you call it again.",
       ),
-      abandonedResult(
+      danglingResult(
         "call-2",
         "The previous Turn ended before this call returned, so there is no result. Call it again if you still need it.",
       ),
