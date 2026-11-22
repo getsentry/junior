@@ -10,7 +10,8 @@ import type { Conversation } from "../types";
 import { INBOX_STACK_CLASS } from "./inboxRowStyles";
 import { onLinkOpen, openOnClick, useOpenPath } from "./rowClick";
 import { itemNeedsViewer, type InboxBundle } from "./inboxItemFormat";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import { RowDismissButton } from "./RowDismissButton";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 
 const QUIET_BUTTON_CLASS =
