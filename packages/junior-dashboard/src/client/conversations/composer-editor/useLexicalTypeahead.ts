@@ -27,7 +27,7 @@ import type {
   ComposerMenuKey,
   ComposerTypeahead,
 } from "../ComposerMenu";
-import type { ComposerToken } from "../composerSkillToken";
+import type { ComposerToken } from "../skillReferences";
 import { $createComposerMentionNode } from "./ComposerMentionNode";
 import { $createComposerReferenceNode } from "./ComposerReferenceNode";
 
