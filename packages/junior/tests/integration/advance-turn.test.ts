@@ -152,8 +152,8 @@ describe("advanceTurn", () => {
     ]);
   });
 
-  it("ends the Turn when the step completes it, and sends nothing", async () => {
-    await engine.addTestInput("How many Turns?");
+  it("ends the Turn when the step completes it, writes its lifecycle events once, and sends nothing", async () => {
+    const inputId = await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "All done." });
     await engine.advance(prepareWith([reply]));
 
@@ -167,6 +167,17 @@ describe("advanceTurn", () => {
     await expect(engine.loadHistory()).resolves.toEqual([
       userText("How many Turns?"),
       storedReply(reply),
+    ]);
+    // A redelivered message claims nothing and writes no event again.
+    await engine.advance(prepareWith([]));
+    await expect(engine.loadLifecycleEvents()).resolves.toEqual([
+      {
+        type: "turn_started",
+        turnId,
+        inputMessageIds: [`slack-event:${inputId}`],
+        surface: "slack",
+      },
+      { type: "turn_completed", turnId, outcome: "success" },
     ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(0);
   });
@@ -183,6 +194,12 @@ describe("advanceTurn", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
+    // No commit read the input, so the Turn has no `turn_started`. A
+    // redelivered message writes no event again.
+    await engine.advance(prepareWith([]));
+    await expect(engine.loadLifecycleEvents()).resolves.toEqual([
+      { type: "turn_failed", turnId, failureCode: "model_execution_failed" },
+    ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(0);
   });
 
@@ -235,7 +252,7 @@ describe("advanceTurn", () => {
     },
   );
 
-  it("stops the step when the Turn is cancelled during it, and writes nothing", async () => {
+  it("stops the step when the Turn is cancelled during it, and writes only the cancel", async () => {
     await engine.advance(
       prepareInterrupted(() => cancelTurn(fixture.sql, turnId)),
     );
@@ -246,6 +263,11 @@ describe("advanceTurn", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
+    // cancelTurn's own message claims nothing and writes no event again.
+    await engine.advance(prepareWith([]));
+    await expect(engine.loadLifecycleEvents()).resolves.toEqual([
+      { type: "turn_completed", turnId, outcome: "cancelled" },
+    ]);
     // Only cancelTurn's own message.
     await expect(engine.deliveredStepMessages()).resolves.toBe(1);
   });
@@ -420,6 +442,10 @@ describe("advanceTurn", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
+    await engine.advance({ prepare });
+    await expect(engine.loadLifecycleEvents()).resolves.toEqual([
+      { type: "turn_failed", turnId, failureCode: "agent_run_failed" },
+    ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(0);
   });
 
@@ -590,10 +616,12 @@ describe("advanceTurn", () => {
       fixture.sql,
     ).loadCurrentHistory(CONVERSATION_ID);
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `turn:${turnId}:started`,
       `inbox:${inputId}`,
       `step:${turnId}:0:0`,
+      `turn:${turnId}:terminal`,
     ]);
-    expect(events[0]!.data).toMatchObject({
+    expect(events[1]!.data).toMatchObject({
       type: "user_message",
       provenance: { authority: "instruction", actor: ACTOR },
     });

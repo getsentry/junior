@@ -5,14 +5,16 @@
 // the message is acknowledged, and the Turn never runs. `assignTurn` picks
 // which Turn takes the input.
 //
-// When a Turn ends, `turnEnded` moves a failed Turn's inputs that arrived
-// after its last claim to the Turn that `assignTurn` picks, then publishes
-// the Conversation's queued Turn. Every part of it is safe to repeat, so it needs
-// no marker: it runs on every end path, and again on a redelivery.
+// After any change to a Turn, `reconcileTurn` brings delivery and the queue
+// in line with the Turn's stored state. It lives here because a failed Turn
+// hands on its late inputs through `assignTurn`, and only this file writes
+// input rows. Every part of it is safe to repeat, so it needs no marker: every
+// path in `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
+import { publishDelivery } from "@/core/delivery/queue";
 import {
   findInputTurn,
   findUnreadInputs,
@@ -118,7 +120,7 @@ export async function scheduleInput(
   return { turnId: placement.turnId, created: placement.created };
 }
 
-// Not exported, like addInput: only turnEnded moves inputs, under the
+// Not exported, like addInput: only reconcileTurn moves inputs, under the
 // Conversation lock. A row keeps its id and idempotency key.
 async function moveInputs(
   executor: JuniorSqlDatabase,
@@ -166,29 +168,34 @@ async function moveLeftovers(
 }
 
 /**
- * The end work of a Turn: a failed Turn hands on its inputs that arrived
- * after its last claim, then the Conversation's queued Turn is published. It does
- * nothing for a Turn that has not ended. Safe to run any number of times.
- * Call it outside a transaction: it publishes after its own commit.
+ * Brings delivery and the queue in line with this Turn's stored state. Safe
+ * to repeat. It publishes the Turn's delivery message, moves a failed Turn's
+ * inputs that arrived after its last claim, then publishes the Conversation's
+ * open Turn if it is queued. What it does depends only on the stored state,
+ * not on why it runs. Call it outside a transaction: it publishes after its
+ * own commit.
  */
-export async function turnEnded(
+export async function reconcileTurn(
   executor: JuniorSqlDatabase,
   turnId: string,
 ): Promise<void> {
-  const ended = await findTurn(executor, turnId);
-  if (!ended || ended.state === "queued" || ended.state === "running") {
+  const turn = await findTurn(executor, turnId);
+  if (!turn) {
     return;
   }
+  await publishDelivery({ conversationId: turn.conversationId, turnId });
   const openTurn = await withConversationEventLock(
     executor,
-    ended.conversationId,
+    turn.conversationId,
     async () => {
-      if (ended.state === "failed") {
-        await moveLeftovers(executor, ended);
+      if (turn.state === "failed") {
+        await moveLeftovers(executor, turn);
       }
-      return findOpenTurn(executor, ended.conversationId);
+      return findOpenTurn(executor, turn.conversationId);
     },
   );
+  // A Turn that a step commit continued is the queued open Turn, so this also
+  // sends its next step. A running Turn has a worker, so it needs no message.
   if (openTurn?.state === "queued") {
     await publishTurnStep(openTurn.turnId);
   }

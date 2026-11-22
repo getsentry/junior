@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { getQueueProvider } from "@/chat/queue/provider";
 import { markInputsAttempted } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
-import { scheduleInput, turnEnded } from "@/core/turn/schedule";
+import { reconcileTurn, scheduleInput } from "@/core/turn/schedule";
 import { cancelTurn, claimTurn, failTurn } from "@/core/turn/state";
 import {
   juniorConversations,
@@ -216,10 +216,15 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const failed = await schedule("event-1");
     const claimed = await claim(failed.turnId);
     await schedule("event-2");
-    await failTurn(fixture.sql, claimed, "overloaded");
+    await failTurn(
+      fixture.sql,
+      claimed,
+      "overloaded",
+      "model_execution_failed",
+    );
     publishes = [];
 
-    await turnEnded(fixture.sql, failed.turnId);
+    await reconcileTurn(fixture.sql, failed.turnId);
 
     const next = (await readTurns()).find((turn) => turn.id !== failed.turnId);
     expect(next).toEqual({
@@ -236,7 +241,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(readInputs()).resolves.toEqual(moved);
     expect(publishes).toEqual([{ turnId: next!.id, committed: true }]);
 
-    await turnEnded(fixture.sql, failed.turnId);
+    await reconcileTurn(fixture.sql, failed.turnId);
 
     await expect(readTurns()).resolves.toHaveLength(2);
     await expect(readInputs()).resolves.toEqual(moved);
@@ -248,10 +253,15 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("moves a failed Turn's inputs to the open Turn when one exists", async () => {
     const failed = await schedule("event-1");
-    await failTurn(fixture.sql, await claim(failed.turnId), "overloaded");
+    await failTurn(
+      fixture.sql,
+      await claim(failed.turnId),
+      "overloaded",
+      "model_execution_failed",
+    );
     const open = await schedule("event-2");
 
-    await turnEnded(fixture.sql, failed.turnId);
+    await reconcileTurn(fixture.sql, failed.turnId);
 
     await expect(readTurns()).resolves.toHaveLength(2);
     await expect(readInputs()).resolves.toEqual([
@@ -268,7 +278,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       .set({ state: "completed", endedAt: new Date() })
       .where(eq(juniorTurns.id, completed.turnId));
 
-    await turnEnded(fixture.sql, completed.turnId);
+    await reconcileTurn(fixture.sql, completed.turnId);
 
     await expect(readInputs()).resolves.toEqual([
       { turnId: completed.turnId, idempotencyKey: "event-1" },
@@ -276,11 +286,11 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
-  it("publishes a cancelled Turn, and its end work leaves its inputs on it", async () => {
+  it("publishes a cancelled Turn, and reconcileTurn leaves its inputs on it", async () => {
     const cancelled = await schedule("event-1");
 
     await cancelTurn(fixture.sql, cancelled.turnId);
-    await turnEnded(fixture.sql, cancelled.turnId);
+    await reconcileTurn(fixture.sql, cancelled.turnId);
 
     expect(publishes).toEqual([
       { turnId: cancelled.turnId, committed: true },

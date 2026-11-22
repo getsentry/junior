@@ -5,13 +5,13 @@
 // invocation checks its lease and aborts the step when the lease is lost.
 // When the invocation throws, it queues the Turn again for the queue's retry.
 // The queue retries without a limit, so a claim past `maxAttempts` fails the
-// Turn instead of running the step again. After each step commit it sends
-// the Turn's delivery message, and after each end commit it runs the Turn's
-// end work. A message whose claim misses does both again.
+// Turn instead of running the step again. After every change it makes to the
+// Turn, and on a message whose claim misses, it runs `reconcileTurn`, which
+// sends the delivery message and the next step message that the stored
+// state calls for.
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import { stepCommitted } from "@/core/delivery/deliver";
 import type { ModelClient } from "@/core/model/client";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import {
@@ -20,8 +20,7 @@ import {
   type InputMessage,
   type UnreadInput,
 } from "@/core/turn/inbox";
-import { publishTurnStep } from "@/core/turn/queue";
-import { turnEnded } from "@/core/turn/schedule";
+import { reconcileTurn } from "@/core/turn/schedule";
 import {
   claimTurn,
   commitStep,
@@ -92,16 +91,14 @@ export async function advanceTurn(
     leaseMs: options.leaseMs,
   });
   if (!claim) {
-    // The Turn may have ended without its end work or its delivery message,
-    // for example in a crash after the end commit. Both are safe to repeat.
-    await stepCommitted(executor, message.turnId);
-    await turnEnded(executor, message.turnId);
+    // A crash after a commit can lose what follows it. It is safe to repeat.
+    await reconcileTurn(executor, message.turnId);
     return;
   }
   try {
     // Inside the try, so a failed write here also releases the lease. After
-    // the Turn ends, the release matches nothing, so an error in the end
-    // work only makes the queue retry, and that retry runs it again.
+    // the Turn ends, the release matches nothing, so an error in
+    // reconcileTurn only makes the queue retry, and that retry runs it again.
     // An attempt takes the inputs that are unread when it claims the Turn. A
     // failed Turn drops them, and moves only inputs that came after its last
     // claim.
@@ -111,10 +108,15 @@ export async function advanceTurn(
       unread.map((input) => input.inputId),
     );
     if (claim.attempts > options.maxAttempts) {
-      if (await failTurn(executor, claim, "attempts_exhausted")) {
-        // Rings delivery in case an earlier step's delivery message was lost.
-        await stepCommitted(executor, claim.turnId);
-        await turnEnded(executor, claim.turnId);
+      if (
+        await failTurn(
+          executor,
+          claim,
+          "attempts_exhausted",
+          "agent_run_failed",
+        )
+      ) {
+        await reconcileTurn(executor, claim.turnId);
       }
       return;
     }
@@ -170,23 +172,16 @@ async function runClaimedStep(
   switch (result.outcome) {
     case "continue":
     case "completed": {
-      const next = await commitStep(executor, claim, result, inputs);
-      if (next) {
-        await stepCommitted(executor, claim.turnId);
-      }
-      if (next === "continue") {
-        await publishTurnStep(claim.turnId);
-      } else if (next === "completed") {
-        await turnEnded(executor, claim.turnId);
+      if (await commitStep(executor, claim, result, inputs)) {
+        await reconcileTurn(executor, claim.turnId);
       }
       return;
     }
     case "failed":
-      if (await failTurn(executor, claim, result.error)) {
-        // An earlier step's delivery message may have been lost, and the
-        // queue does not run this Turn again, so ring delivery here too.
-        await stepCommitted(executor, claim.turnId);
-        await turnEnded(executor, claim.turnId);
+      if (
+        await failTurn(executor, claim, result.error, "model_execution_failed")
+      ) {
+        await reconcileTurn(executor, claim.turnId);
       }
       return;
     default: {

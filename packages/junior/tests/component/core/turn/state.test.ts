@@ -93,6 +93,16 @@ describe("Turn state", () => {
     };
   }
 
+  /** The Turn's lifecycle events, in history order. */
+  async function loadLifecycleEvents() {
+    const events = await createSqlConversationEventStore(
+      fixture.sql,
+    ).loadCurrentHistory(CONVERSATION_ID);
+    return events
+      .filter((event) => event.data.type.startsWith("turn_"))
+      .map(({ idempotencyKey, data }) => ({ idempotencyKey, data }));
+  }
+
   function claim(owner = "worker-a", leaseMs = LEASE_MS) {
     return claimTurn(fixture.sql, { turnId, owner, leaseMs });
   }
@@ -164,7 +174,9 @@ describe("Turn state", () => {
     await expect(
       commitStep(fixture.sql, stale, finishedStep(), []),
     ).resolves.toBeUndefined();
-    await expect(failTurn(fixture.sql, stale, "late")).resolves.toBe(false);
+    await expect(
+      failTurn(fixture.sql, stale, "late", "model_execution_failed"),
+    ).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(running);
     await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
   });
@@ -190,12 +202,20 @@ describe("Turn state", () => {
     expect(["worker-b", "worker-c"]).toContain(turn.leaseOwner);
   });
 
-  it("fails a running Turn with its end reason", async () => {
+  it("fails a running Turn with its end reason, and writes turn_failed once", async () => {
     const claimed = (await claim())!;
 
     await expect(
-      failTurn(fixture.sql, claimed, "Model request failed"),
+      failTurn(
+        fixture.sql,
+        claimed,
+        "Model request failed",
+        "model_execution_failed",
+      ),
     ).resolves.toBe(true);
+    await expect(
+      failTurn(fixture.sql, claimed, "late", "agent_run_failed"),
+    ).resolves.toBe(false);
     const failed = await readTurn();
     expect(failed).toMatchObject({
       state: "failed",
@@ -204,6 +224,16 @@ describe("Turn state", () => {
       leaseExpiresAt: null,
     });
     expect(failed.endedAt).toBeInstanceOf(Date);
+    await expect(loadLifecycleEvents()).resolves.toEqual([
+      {
+        idempotencyKey: `turn:${turnId}:terminal`,
+        data: {
+          type: "turn_failed",
+          turnId,
+          failureCode: "model_execution_failed",
+        },
+      },
+    ]);
   });
 
   it("cancels a running Turn and fences out its lease holder", async () => {
@@ -221,6 +251,18 @@ describe("Turn state", () => {
     expect(cancelled.endedAt).toBeInstanceOf(Date);
     await expect(holdsLease(fixture.sql, claimed)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(cancelled);
+  });
+
+  it("writes turn_completed with the outcome cancelled once for a cancel", async () => {
+    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(true);
+    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(false);
+
+    await expect(loadLifecycleEvents()).resolves.toEqual([
+      {
+        idempotencyKey: `turn:${turnId}:terminal`,
+        data: { type: "turn_completed", turnId, outcome: "cancelled" },
+      },
+    ]);
   });
 
   it("cancels a queued Turn so no worker can claim it", async () => {
@@ -308,12 +350,20 @@ describe("Turn state", () => {
     });
     expect(completed.endedAt).toBeInstanceOf(Date);
     await expect(loadHistory()).resolves.toEqual({
-      types: ["assistant_message"],
+      types: ["assistant_message", "turn_completed"],
       messages,
     });
+    await expect(loadLifecycleEvents()).resolves.toEqual([
+      {
+        idempotencyKey: `turn:${turnId}:terminal`,
+        data: { type: "turn_completed", turnId, outcome: "success" },
+      },
+    ]);
 
     await expect(claim()).resolves.toBeUndefined();
-    await expect(failTurn(fixture.sql, claimed, "late")).resolves.toBe(false);
+    await expect(
+      failTurn(fixture.sql, claimed, "late", "model_execution_failed"),
+    ).resolves.toBe(false);
     await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(completed);
   });
@@ -368,25 +418,74 @@ describe("Turn state", () => {
       fixture.sql,
     ).loadCurrentHistory(CONVERSATION_ID);
     expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `turn:${turnId}:started`,
       `inbox:${inputId}`,
       `step:${turnId}:0:0`,
       `step:${turnId}:0:1`,
       `step:${turnId}:1:0`,
+      `turn:${turnId}:terminal`,
     ]);
-    expect(events[0]!.data).toMatchObject({
+    expect(events[1]!.data).toMatchObject({
       type: "user_message",
       provenance: { authority: "instruction", actor: ACTOR },
     });
     await expect(loadHistory()).resolves.toEqual({
       types: [
+        "turn_started",
         "user_message",
         "assistant_message",
         "tool_result",
         "assistant_message",
+        "turn_completed",
       ],
       messages: [question(), toolCallReply(), toolResult(), finalReply()],
     });
     await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([]);
+  });
+
+  it("writes turn_started with the inputs of the first commit that reads any", async () => {
+    // The first step reads no input, like a step that closes an earlier
+    // Turn's tool calls.
+    await commitStep(
+      fixture.sql,
+      (await claim())!,
+      { outcome: "continue", messages: [toolCallReply(), toolResult()] },
+      [],
+    );
+    await expect(loadLifecycleEvents()).resolves.toEqual([]);
+    const firstId = await addTestInput("How many Turns?");
+    const secondId = await addTestInput("And how many failed?");
+    const inputMessage = (inputId: string) => ({
+      inputId,
+      message: question(),
+      provenance: instructionProvenanceFor(ACTOR),
+    });
+
+    await commitStep(
+      fixture.sql,
+      (await claim())!,
+      { outcome: "continue", messages: [toolCallReply(), toolResult()] },
+      [inputMessage(firstId)],
+    );
+    await commitStep(fixture.sql, (await claim())!, noReplyStep(), [
+      inputMessage(secondId),
+    ]);
+
+    await expect(loadLifecycleEvents()).resolves.toEqual([
+      {
+        idempotencyKey: `turn:${turnId}:started`,
+        data: {
+          type: "turn_started",
+          turnId,
+          inputMessageIds: [`slack-event:${firstId}`],
+          surface: "slack",
+        },
+      },
+      {
+        idempotencyKey: `turn:${turnId}:terminal`,
+        data: { type: "turn_completed", turnId, outcome: "no_reply" },
+      },
+    ]);
   });
 
   it("rejects a commit after cancel, and appends nothing", async () => {
@@ -398,7 +497,10 @@ describe("Turn state", () => {
       commitStep(fixture.sql, claimed, finishedStep(), []),
     ).resolves.toBeUndefined();
     await expect(readTurn()).resolves.toEqual(cancelled);
-    await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
+    await expect(loadHistory()).resolves.toEqual({
+      types: ["turn_completed"],
+      messages: [],
+    });
   });
 });
 
@@ -464,4 +566,9 @@ function finalReply() {
 
 function finishedStep() {
   return { outcome: "completed" as const, messages: [finalReply()] };
+}
+
+/** A step that ends the Turn with a tool result, so the Turn has no reply. */
+function noReplyStep() {
+  return { outcome: "completed" as const, messages: [toolResult()] };
 }

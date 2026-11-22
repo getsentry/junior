@@ -1,10 +1,10 @@
-// Delivery of a Turn's replies to the Conversation's Location. Each step
-// commit publishes a delivery message. Its consumer records every reply of
-// the Turn as an outbox row, then sends the Conversation's pending rows in
-// event order under a lock on the Conversation. Each send commits its own
+// Delivery of a Turn's replies to the Conversation's Location. Each change
+// of a Turn publishes a delivery message (see `reconcileTurn`). Its consumer
+// records every reply of the Turn as an outbox row, then sends the
+// Conversation's pending rows in event order under a lock on the Conversation. Each send commits its own
 // row, so a crash sends at most that one reply again.
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, like, sql } from "drizzle-orm";
+import { and, asc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
 import {
   canPauseConversationDelivery,
@@ -12,12 +12,9 @@ import {
 } from "@/chat/conversations/delivery-pause";
 import { locationSchema, type Location } from "@/chat/conversations/location";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
-import { eventFromRow } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
-import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
-import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import { publishDelivery, type DeliveryMessage } from "@/core/delivery/queue";
-import { findTurn, turnEventKeyPrefix } from "@/core/turn/state";
+import { findTurnReplies, replyText } from "@/core/turn/replies";
 import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
@@ -71,21 +68,6 @@ const RETRY_MAX_DELAY_MS = 60_000;
 const tryLockResultSchema = z.object({
   rows: z.tuple([z.object({ locked: z.boolean() })]),
 });
-
-/**
- * Publishes the delivery message of a Turn after one of its steps commits.
- * It is safe to repeat: the outbox sends each reply once.
- */
-export async function stepCommitted(
-  executor: JuniorSqlDatabase,
-  turnId: string,
-): Promise<void> {
-  const turn = await findTurn(executor, turnId);
-  if (!turn) {
-    return;
-  }
-  await publishDelivery({ conversationId: turn.conversationId, turnId });
-}
 
 /**
  * Delivers the replies of a Turn: it records them in the outbox, then sends
@@ -149,21 +131,11 @@ function recordReplies(
     ) {
       return;
     }
-    const events = await db
-      .select()
-      .from(juniorConversationEvents)
-      .where(
-        and(
-          eq(juniorConversationEvents.conversationId, message.conversationId),
-          eq(juniorConversationEvents.type, "assistant_message"),
-          like(
-            juniorConversationEvents.idempotencyKey,
-            `${turnEventKeyPrefix(message.turnId)}%`,
-          ),
-        ),
-      )
-      .orderBy(asc(juniorConversationEvents.seq));
-    const replies = events.filter((row) => replyText(row) !== undefined);
+    const replies = await findTurnReplies(
+      executor,
+      message.conversationId,
+      message.turnId,
+    );
     if (replies.length > 0) {
       await db
         .insert(juniorTurnOutbox)
@@ -291,20 +263,6 @@ async function sendNextRow(
       .where(eq(juniorTurnOutbox.id, row.id));
     return { kind: "settled" };
   }
-}
-
-/** The text that a message event delivers, or undefined when it is no reply. */
-function replyText(
-  row: typeof juniorConversationEvents.$inferSelect,
-): string | undefined {
-  const { data } = eventFromRow(row);
-  if (data.type !== "assistant_message") {
-    return undefined;
-  }
-  const message = piMessageFromHistoryItem(data);
-  return message.role === "assistant"
-    ? getAssistantReplyText(message)
-    : undefined;
 }
 
 /** The wait before the next try of a retryable send. */
