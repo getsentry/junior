@@ -5,7 +5,7 @@ import type {
 } from "./history";
 import { getConversationEventStore } from "@/chat/db";
 import { publishConversationStatus } from "@/chat/conversations/watch-events";
-import { isEventInboundMessageId } from "@/chat/events/notification";
+import { isEventInboundMessageId } from "@/chat/events/inbound-message-id";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
