@@ -60,8 +60,9 @@ Check the rows in this order. The first match decides.
   Participant. The Lead writes there for that person, as the person could.
   It never writes into another person's public root.
 - `startConversation` makes a public root from a Lead. It runs as the
-  person, and the Lead's task is its first message. Action review judges
-  each `startConversation` call, as it does other tool calls.
+  person, and the Lead's task is its first message. The start is not
+  reviewed. Action review judges the new root's own tool calls, the same
+  way it judges a child agent's.
 
 ## Rules for every surface
 
