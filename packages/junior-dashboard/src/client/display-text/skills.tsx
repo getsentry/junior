@@ -57,7 +57,13 @@ export function SkillReferenceText(props: { text: string }) {
         />,
       );
     }
-    nodes.push(<SkillLink key={`s${ref.start}`} name={ref.name} />);
+    nodes.push(
+      <SkillLink key={`s${ref.start}`} name={ref.name}>
+        <span className="font-mono">
+          <HighlightText text={props.text.slice(ref.start, ref.end)} />
+        </span>
+      </SkillLink>,
+    );
     cursor = ref.end;
   }
   if (cursor < props.text.length) {
