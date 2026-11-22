@@ -1,9 +1,6 @@
 import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { botConfig } from "@/chat/config";
-import { logInfo } from "@/chat/logging";
-import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
+import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import {
   renderTaskBatchInput,
   renderTaskInput,
@@ -16,11 +13,11 @@ import type {
 } from "@/chat/state/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { RuntimeInstructionInput } from "@/chat/agent/types";
-import {
-  appendAndEnqueueInboundMessage,
-  type AppendAndEnqueueInboundMessageResult,
-  type InboundMessage,
+import type {
+  AppendAndEnqueueInboundMessageResult,
+  InboundMessage,
 } from "@/chat/task-execution/store";
+import type { StateAdapter } from "chat";
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -447,8 +444,7 @@ export async function addQuietEventNote(args: {
  * Enqueue a event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
- * and is applied when the worker runs. After too many automated Turns with no
- * user Turn, later wakes stay quiet until a user message clears the pause.
+ * and is applied when the worker runs. A stopped Conversation holds the Event.
  */
 export async function enqueueEventNotification(args: {
   /** Core's decision for the Event author. */
@@ -460,37 +456,8 @@ export async function enqueueEventNotification(args: {
   people?: readonly string[] | undefined;
   queue: ConversationWorkQueue;
   subscription: Watch;
-  state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
-}): Promise<AppendAndEnqueueInboundMessageResult | { status: "paused" }> {
-  const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-  const decision = await admitAutomatedTurn({
-    conversationId: args.subscription.conversationId,
-    maxTurns,
-    nowMs: args.event.occurredAtMs,
-    state: args.state,
-  });
-  if (decision.status === "paused") {
-    logInfo("events.automated_turn_limit.paused", {
-      conversationId: args.subscription.conversationId,
-      "app.automated_turn_limit.consecutive":
-        decision.consecutiveAutomatedTurns,
-      "app.automated_turn_limit.max": maxTurns,
-      "app.event.event_type": args.event.eventType,
-      "app.event.namespace": args.event.namespace,
-    });
-    if (decision.shouldPostNotice) {
-      // Safety net when the Turn that hit the limit could not post a notice.
-      await postAutomatedTurnLimitNoticeForConversation({
-        conversationId: args.subscription.conversationId,
-        maxTurns,
-        nowMs: args.event.occurredAtMs,
-        queue: args.queue,
-      });
-    }
-    // Do not enqueue a Turn. Terminal watches may still complete after this.
-    return { status: "paused" };
-  }
-
+  state?: StateAdapter | undefined;
+}): Promise<AppendAndEnqueueInboundMessageResult | { status: "held" }> {
   const task = eventTaskFacts(
     args.subscription,
     args.event,
@@ -498,7 +465,7 @@ export async function enqueueEventNotification(args: {
     args.doneBy,
     args.author,
   );
-  return await appendAndEnqueueInboundMessage({
+  return await enqueueAutomatedInput({
     message: createEventInboundMessage({
       author: args.author,
       event: args.event,

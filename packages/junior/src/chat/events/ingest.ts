@@ -110,7 +110,7 @@ export async function ingestEvent(
             state: options.state,
             subscription: current,
           });
-          if (result.status === "paused") return false;
+          if (result.status === "held") return false;
           turnConversations.add(current.conversationId);
           return result.status === "appended";
         },

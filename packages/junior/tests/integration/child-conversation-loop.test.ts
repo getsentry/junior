@@ -15,14 +15,13 @@ import type {
   AgentInvocation,
   TerminalAgentInvocation,
 } from "@/chat/agent-invocations/types";
-import { markConversationsStopped } from "@/chat/conversations/session-stop";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { botConfig } from "@/chat/config";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { ingestEvent } from "@/chat/events/ingest";
-import { createWatch } from "@/chat/events/store";
-import { countAutomatedTurn } from "@/chat/services/automated-turn-limit";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
+import { createWatch, listWatches } from "@/chat/events/store";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -37,7 +36,11 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
-import { webTestActor } from "../fixtures/conversation";
+import {
+  stoppedConversationMessageTexts,
+  storeConversationStop,
+  webTestActor,
+} from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
   createHarness,
@@ -389,9 +392,7 @@ describe("child Turns on the Conversation loop", () => {
       const childId = await startIdleChild(harness, "task");
       harness.onPersonRun(async (run) => {
         // Only the stored stop is set. No stop request reaches the worker.
-        await markConversationsStopped([run.conversationId], {
-          cancelWatches: false,
-        });
+        await storeConversationStop(run.conversationId);
         // The agent loop checks for a stop at each step boundary.
         await run.durability?.checkStop?.();
         run.signal?.throwIfAborted();
@@ -422,7 +423,7 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 
-  it("tells the parent once when the automated-turn limit drops a child's Watch Events", async () => {
+  it("stops a child at the automated-turn limit and holds its Watch Events", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -441,18 +442,16 @@ describe("child Turns on the Conversation loop", () => {
         { state: harness.state },
       );
       const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-      for (let turn = 0; turn < maxTurns; turn += 1) {
-        await countAutomatedTurn({ conversationId: childId, maxTurns });
-      }
-      // The Turn that reached the limit posts no notice: a child has no
-      // Location.
-      await expect(
-        postAutomatedTurnLimitNoticeForConversation({
-          conversationId: childId,
-          maxTurns,
-        }),
-      ).resolves.toBe(false);
-      const before = await parentMessageTexts();
+      // The Turn that reached the limit stops the child's tree. A child has
+      // no Location, so no notice is posted.
+      await stopAtAutomatedTurnLimit({
+        conversationId: childId,
+        maxTurns,
+        update: { consecutiveAutomatedTurns: maxTurns, reached: true },
+      });
+      await expect(getConversationStoppedAtMs(childId)).resolves.toEqual(
+        Date.now(),
+      );
 
       for (const headSha of ["abc123", "def456"]) {
         await expect(
@@ -471,13 +470,14 @@ describe("child Turns on the Conversation loop", () => {
         ).resolves.toEqual({ enqueued: 0 });
       }
 
-      // The paused child starts no Turn, and its parent learns once, so it
-      // can message the child to continue.
-      const added = (await parentMessageTexts()).slice(before.length);
-      expect(added).toEqual([
-        expect.stringContaining(
-          `I stopped taking Watch Events after ${maxTurns} automated Turns in a row`,
-        ),
+      // The stopped child keeps its Watch and holds its Events as skipped
+      // Messages.
+      await expect(
+        listWatches({ conversationId: childId, state: harness.state }),
+      ).resolves.toHaveLength(1);
+      await expect(stoppedConversationMessageTexts(childId)).resolves.toEqual([
+        expect.stringContaining("getsentry/junior#3796 has merge conflicts."),
+        expect.stringContaining("getsentry/junior#3796 has merge conflicts."),
       ]);
     } finally {
       await harness.close();
