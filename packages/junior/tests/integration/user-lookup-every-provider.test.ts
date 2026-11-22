@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { findLinkedHandle } from "@/chat/identities/user-lookup";
@@ -15,6 +15,13 @@ import {
 } from "../msw/handlers/slack-api";
 
 describe("userLookup without a provider", () => {
+  // `createApp` keeps its plugins after its test ends. Start each test from
+  // a default app, so a plugin's `searchUsers` hook from an earlier test
+  // does not add accounts.
+  beforeEach(async () => {
+    await createApp();
+  });
+
   it("merges the providers that matched one person", async () => {
     await seedLinkedIdentities({
       githubId: "12345",
