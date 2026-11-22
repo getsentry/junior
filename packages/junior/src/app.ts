@@ -80,6 +80,7 @@ import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
+  JUNIOR_TURN_STEP_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
@@ -122,6 +123,11 @@ import {
   registerVercelBackgroundCompactionDevConsumer,
 } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
+import {
+  createVercelTurnStepCallback,
+  registerVercelTurnStepDevConsumer,
+  turnStepQueueConsumer,
+} from "@/turn-steps/consumer";
 import {
   vercelBackgroundCompactionQueue,
   type BackgroundCompactionMessage,
@@ -882,6 +888,7 @@ export async function createApp(
     registerVercelWorkspaceSnapshotJobDevConsumer();
     registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
+    registerVercelTurnStepDevConsumer();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -913,6 +920,11 @@ export async function createApp(
   app.post(JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE, (c) => {
     backgroundCompactionPOST ??= createVercelBackgroundCompactionCallback();
     return backgroundCompactionPOST(c.req.raw);
+  });
+  let turnStepPOST: ReturnType<typeof createVercelTurnStepCallback> | undefined;
+  app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, (c) => {
+    turnStepPOST ??= createVercelTurnStepCallback();
+    return turnStepPOST(c.req.raw);
   });
 
   app.get("/api/internal/heartbeat", (c) => {
@@ -951,6 +963,7 @@ export async function createApp(
           workspaceSnapshotJobQueueConsumer(),
           cacheWarmupQueueConsumer(),
           backgroundCompactionQueueConsumer(),
+          turnStepQueueConsumer(),
         ],
         backgroundWork,
       ),

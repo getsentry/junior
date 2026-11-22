@@ -5,6 +5,7 @@ import path from "node:path";
 import {
   applyJuniorDevelopmentDefaults,
   JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
+  JUNIOR_LOCAL_QUEUE_REDIS_URL,
   loadEnvFiles,
 } from "./lib/load-env-files.mjs";
 import {
@@ -154,8 +155,7 @@ const tunnelUrl =
   process.env.CLOUDFLARE_TUNNEL_URL?.trim() || `http://localhost:${devPort}`;
 applyJuniorDevelopmentDefaults(process.env, {
   baseUrl: `http://localhost:${devPort}`,
-  // The Redis service in `compose.yaml`.
-  queueRedisUrl: "redis://localhost:6382",
+  queueRedisUrl: JUNIOR_LOCAL_QUEUE_REDIS_URL,
 });
 // With BullMQ, one separate worker process pulls the queue jobs.
 const runQueueWorker = process.env.JUNIOR_QUEUE_PROVIDER?.trim() === "bullmq";

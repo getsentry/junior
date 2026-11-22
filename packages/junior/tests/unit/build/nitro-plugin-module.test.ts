@@ -7,6 +7,7 @@ import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC } from "@/chat/task-execution/vercel-queue";
+import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
@@ -18,6 +19,7 @@ import {
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
   JUNIOR_AUTO_ARCHIVE_ROUTE,
+  JUNIOR_TURN_STEP_CALLBACK_ROUTE,
 } from "@/deployment";
 import { juniorNitro } from "@/nitro";
 import { defineJuniorPlugins } from "@/plugins";
@@ -154,6 +156,15 @@ describe("juniorNitro plugin modules", () => {
         {
           type: "queue/v2beta",
           topic: BACKGROUND_COMPACTION_QUEUE_TOPIC,
+        },
+      ],
+    });
+    expect(vercel.functionRules?.[JUNIOR_TURN_STEP_CALLBACK_ROUTE]).toEqual({
+      maxDuration: 300,
+      experimentalTriggers: [
+        {
+          type: "queue/v2beta",
+          topic: TURN_STEP_TOPIC,
         },
       ],
     });

@@ -22,7 +22,7 @@ import { setActiveSpanAttributes } from "@/core/telemetry";
 import {
   publishTurnStep,
   TURN_STEP_TOPIC,
-  turnStepCallback,
+  createTurnStepConsumer,
 } from "@/core/turn/queue";
 
 // Chat config reads the queue provider when it loads, so set it first. CI
@@ -78,7 +78,7 @@ afterEach(async () => {
 });
 
 /** The step runner that the runner PR adds. It only records its runs. */
-const turnStep = turnStepCallback(async (message, metadata) => {
+const turnStep = createTurnStepConsumer(async (message, metadata) => {
   setActiveSpanAttributes({
     "app.turn.step_seq": 3,
     "gen_ai.conversation.id": "slack:C123:1",
