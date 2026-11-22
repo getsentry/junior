@@ -69,6 +69,17 @@ test("renames a conversation from its title", async ({ page, dashboard }) => {
   await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
   await expect(field).toBeFocused();
   await expect(field).toHaveValue("Checkout latency follow-up");
+  // The field stays open after the menu closes, so typing reaches it.
+  await expect(page.getByRole("menu")).toHaveCount(0);
+  await page.keyboard.type("Checkout p95 regression");
+  await page.keyboard.press("Enter");
+  await expect(
+    page.getByRole("heading", { name: "Checkout p95 regression" }),
+  ).toBeVisible();
+  expect(renames).toEqual([
+    { title: "Checkout latency follow-up" },
+    { title: "Checkout p95 regression" },
+  ]);
 });
 
 test("a failed rename on a phone keeps the old title", async ({
