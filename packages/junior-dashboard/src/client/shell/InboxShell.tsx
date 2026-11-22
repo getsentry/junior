@@ -365,7 +365,9 @@ function Shell() {
   return (
     <DashboardChromeProvider>
       <PaneNavProvider
-        leadPending={loggedIn && lead.isPending}
+        // Without embedded bootstrap data, the viewer is unknown at first, so
+        // the Lead may still be coming.
+        leadPending={loading || (loggedIn && lead.isPending)}
         navItems={primaryNavItems}
         onOpenChange={setPaneOpen}
         onSearch={openCommandPalette}
