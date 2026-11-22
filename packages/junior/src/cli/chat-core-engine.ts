@@ -20,7 +20,7 @@ import { scheduleInput } from "@/core/turn/schedule";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
-import { turnStepQueueConsumer } from "@/turn-steps/consumer";
+import { turnStepConsumer } from "@/turn-steps/consumer";
 import type { TurnInputPayload } from "@/turn-steps/prepare";
 
 const LOCAL_ACTOR: TurnInputPayload["actor"] = {
@@ -103,7 +103,7 @@ export async function runCoreEnginePrompt(args: {
     );
   }
   const executor = getSqlExecutor();
-  const worker = await queue.startWorker([turnStepQueueConsumer()]);
+  const worker = await queue.startWorker([turnStepConsumer.consumer]);
   try {
     await getConversationStore().recordActivity({
       conversationId: args.conversationId,
