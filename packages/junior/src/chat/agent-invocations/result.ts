@@ -13,7 +13,10 @@ import {
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { credentialContextForActor } from "@/chat/credentials/context";
 import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  enqueueAutomatedInput,
+  getConversationStoppedAtMs,
+} from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { closeOpenTodosOfChild } from "@/chat/todos/store";
@@ -31,7 +34,6 @@ import type {
 } from "@/chat/task-execution/conversation-turn";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
-  appendAndEnqueueInboundMessage,
   getConversationWorkState,
   type InboundMessage,
   type RenderInboundText,
@@ -243,8 +245,8 @@ function buildResultInboundMessage(
  * Append one terminal agent invocation result to the parent mailbox and wake
  * the parent. Repeat calls are safe.
  *
- * Results do not go through `admitAutomatedTurn`, so the automated-turn limit
- * never drops them. Result Turns still count toward that limit.
+ * A stopped parent holds the result. Result Turns count toward the
+ * automated-turn limit.
  * TODO(dcramer): Add a per-parent total invocation limit as the loop guard
  * for spawn -> result -> spawn chains (#881).
  */
@@ -298,7 +300,7 @@ export async function enqueueAgentInvocationResult(
   ) {
     await closeTodosForResult(invocation, invocation.status, nowMs);
   }
-  await appendAndEnqueueInboundMessage({
+  await enqueueAutomatedInput({
     message: buildResultInboundMessage(invocation, nowMs),
     renderText: renderResultUnderLock(invocation, terminalResult(invocation)),
     queue: options.queue,
@@ -410,7 +412,7 @@ export async function enqueueAgentMessageToParent(args: {
     namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
     trustedSummary: summary,
   });
-  await appendAndEnqueueInboundMessage({
+  await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,
       createdAtMs: nowMs,
@@ -521,7 +523,7 @@ export async function enqueueChildResultToParent(args: {
   ) {
     await closeTodosForResult(args.sender, "completed", nowMs);
   }
-  await appendAndEnqueueInboundMessage({
+  await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,
       createdAtMs: nowMs,
@@ -686,9 +688,8 @@ async function startAgentInvocationsForChildInput(
   if (messages.length === 0 || !latest) {
     return undefined;
   }
-  const stoppedAtMs = await getConversationStoppedAtMs(context.conversationId);
   const routes = await mapBounded(messages, (message) =>
-    routeChildInput(message, latest, stoppedAtMs),
+    routeChildInput(message, latest),
   );
   if (!routes.includes("agent invocation")) {
     return undefined;
