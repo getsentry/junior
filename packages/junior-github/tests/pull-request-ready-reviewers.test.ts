@@ -355,7 +355,10 @@ describe("review request when a draft is ready", () => {
       expected: [{ reviewers: ["Requester"] }],
       name: "asks the requester whose review was dismissed",
       reviewers: undefined,
-      reviews: [{ login: "Requester", state: "DISMISSED" }],
+      reviews: [
+        { login: "Requester", state: "COMMENTED" },
+        { login: "Requester", state: "DISMISSED" },
+      ],
     },
   ])("$name", async ({ expected, reviewers, reviews }) => {
     const fixture = await createGitHubFixture();
