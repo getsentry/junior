@@ -44,10 +44,7 @@ import {
   sendParentMessage,
   spawnChildWithoutAgentInvocation,
 } from "../fixtures/child-without-agent-invocation";
-import {
-  storeConversationStop,
-  webTestActor,
-} from "../fixtures/conversation";
+import { storeConversationStop, webTestActor } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
   commitRunInput,
