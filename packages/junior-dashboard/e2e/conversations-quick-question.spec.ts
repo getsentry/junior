@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
-import { waitForOutlineRead } from "./harness";
+import { waitForOutlineRead, waitForReadPosition } from "./harness";
 
 const conversationId = "slack:CQA123:1770003600.000200";
 
@@ -409,6 +409,9 @@ test.describe("on a touch screen", () => {
     );
     const reply = page.locator("[data-quick-question-message-id]").last();
     await expect(reply).toBeVisible();
+    // A tap in the transcript counts as reading, so the page saves the read
+    // position.
+    const readSaved = waitForReadPosition(page, 0);
     // The last pointer is a finger. Touch selection sends no mouseup.
     await reply.locator("p").first().tap();
     const quote = await selectReplyText(page, { touch: true });
@@ -430,5 +433,6 @@ test.describe("on a touch screen", () => {
     await expect(
       page.getByRole("textbox", { name: "Continue this conversation" }),
     ).toHaveText(`> ${quote}\n\n`, { useInnerText: true });
+    await readSaved;
   });
 });

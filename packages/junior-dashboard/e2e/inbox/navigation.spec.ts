@@ -331,8 +331,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations/runs`);
     // A press on the row that shows goes back to its top level.
+    const listRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations" &&
+        new URL(response.url()).searchParams.get("pageSize") === "100",
+    );
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+    await listRead;
 
     // The pane's search bar opens the command palette.
     await page.getByRole("button", { name: /^Search/ }).click();

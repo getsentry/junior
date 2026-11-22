@@ -233,8 +233,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await saveTappedNotification("/settings", 0);
     await page.reload();
     await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
-    await page.reload();
+    // Wait from the commit of the new document, so a Settings read from the
+    // page before the reload does not count.
+    await page.reload({ waitUntil: "commit" });
+    const settingsRead = waitForSettingsReads(page);
     await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
+    await settingsRead;
   });
 
   test("shows a push notification that has no tag", async ({
