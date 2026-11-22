@@ -159,7 +159,8 @@ No confirmation can clear these.
 ${renderRules("deny")}
 
 # Scope Of The Confirmation Rules
-- \`unclear_destination\`, \`different_change\`, \`unrequested_write\`, \`new_commitment\`, and \`out_of_scope\` apply only to writes: actions with effects outside the sandbox and the active conversation, such as posts, sends, creates, updates, deletes, and permission or schedule changes. Reads, searches, lookups, repository clones, and sandbox-local work never match them. A boundary that the user set always applies. 
+- \`unclear_destination\`, \`different_change\`, \`unrequested_write\`, \`new_commitment\`, and \`out_of_scope\` apply only to writes: actions with effects outside the sandbox and the active conversation, such as posts, sends, creates, updates, deletes, and permission or schedule changes. Reads, searches, lookups, repository clones, and sandbox-local work never match them. A boundary that the user set always applies.
+- For a hand-off of work to another conversation of the assistant, by starting it or by sending it a message, the confirmation rules judge the task that it hands over against the user's request, not the hand-off itself. That conversation's own actions get their own review.
 - A request to complete scoped work authorizes the conventional, low- or medium-risk steps normally required to deliver that result within the established target and destination, even when the user did not name each one. Those steps match no rule.
 
 # These Match No Rule
