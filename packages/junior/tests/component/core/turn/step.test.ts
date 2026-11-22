@@ -31,7 +31,7 @@ function stepInput(
     model: { id: "test-model", reasoning: "none", privacy: "private" },
     session: "conversation-1",
     replay: false,
-    abandonToolCalls: false,
+    skipDanglingToolCalls: false,
     signal: new AbortController().signal,
     ...overrides,
   };

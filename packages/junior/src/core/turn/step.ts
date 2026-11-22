@@ -38,7 +38,7 @@ export type StepInput = {
    * before their results. The step runs none of them and closes each with an
    * error result, so the next step is a model request.
    */
-  abandonToolCalls: boolean;
+  skipDanglingToolCalls: boolean;
   signal: AbortSignal;
   environment?: ToolExecutionEnvironment;
 };
@@ -177,7 +177,7 @@ type ToolCallStatus =
   | "invalid_arguments"
   | "replay_skipped"
   | "truncated"
-  | "abandoned";
+  | "dangling_skipped";
 
 type ToolCallRun = { status: ToolCallStatus; result: ToolResult };
 
@@ -209,8 +209,8 @@ async function executeToolCall(
   truncated: boolean,
   input: StepInput,
 ): Promise<ToolCallRun> {
-  if (input.abandonToolCalls) {
-    return abandonedRun(call, input);
+  if (input.skipDanglingToolCalls) {
+    return danglingRun(call, input);
   }
   if (truncated) {
     return errorRun(
@@ -256,10 +256,10 @@ async function executeToolCall(
   }
 }
 
-function abandonedRun(call: ToolCall, input: StepInput): ToolCallRun {
+function danglingRun(call: ToolCall, input: StepInput): ToolCallRun {
   const tool = input.tools.find((candidate) => candidate.name === call.name);
   return errorRun(
-    "abandoned",
+    "dangling_skipped",
     tool?.replay === "safe"
       ? "The previous Turn ended before this call returned, so there is no result. Call it again if you still need it."
       : "The previous Turn ended before this call's result was saved. It may or may not have run. Check its effect before you call it again.",
