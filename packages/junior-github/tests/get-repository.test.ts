@@ -102,7 +102,8 @@ describe("getRepository", () => {
         { toolCallId: "missing-repository" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub repository lookup failed with HTTP 404",
+      message:
+        "GitHub repository lookup failed with HTTP 404. Check repo. If it is correct, the GitHub App cannot see the repository.",
       name: "PluginToolInputError",
     });
   });

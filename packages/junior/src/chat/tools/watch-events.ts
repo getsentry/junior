@@ -106,10 +106,14 @@ function cleanStrings(values: string[]): string[] {
 function ttlMs(input: Input): number {
   if (input.ttl_ms === undefined) return RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS;
   if (!Number.isFinite(input.ttl_ms) || input.ttl_ms <= 0) {
-    throw new ToolInputError("ttl_ms must be a positive finite number");
+    throw new ToolInputError(
+      "ttl_ms must be a positive number of milliseconds. Leave it out to use the default.",
+    );
   }
   if (input.ttl_ms > RESOURCE_SUBSCRIPTION_MAX_TTL_MS) {
-    throw new ToolInputError("Watches cannot exceed 30 days");
+    throw new ToolInputError(
+      `Watches cannot exceed 30 days. Set ttl_ms to at most ${RESOURCE_SUBSCRIPTION_MAX_TTL_MS}.`,
+    );
   }
   return input.ttl_ms;
 }
@@ -128,7 +132,7 @@ async function requireWatchableConversation(
     !(await canReadConversation(getDb(), watcherConversationId, conversationId))
   ) {
     throw new ToolInputError(
-      `Conversation is not accessible: ${conversationId}`,
+      `Conversation is not accessible: ${conversationId}. Check identifier, or use searchConversations to find a Conversation that you can read.`,
     );
   }
   const target = await getConversationStore().get({ conversationId });
@@ -171,7 +175,11 @@ export function createWatchEventsTool(
       if (unavailable) throw new ToolInputError(unavailable);
       const events = cleanStrings(input.events);
       const intent = input.intent.trim();
-      if (!intent) throw new ToolInputError("intent is required");
+      if (!intent) {
+        throw new ToolInputError(
+          "intent is required. Set intent to why this conversation wants these events.",
+        );
+      }
       const match = requireValidEventTrigger(
         catalog,
         {

@@ -62,13 +62,17 @@ async function readImage(
   }
   const bytes = await ctx.sandbox.readFile(path);
   if (!bytes) {
-    throw new PluginToolInputError(`No sandbox file at ${path}.`);
+    throw new PluginToolInputError(
+      `No sandbox file at ${path}. Check the path, or create the image first.`,
+    );
   }
   const known = IMAGE_SIGNATURES.some((signature) =>
     signature.every((byte, index) => bytes[index] === byte),
   );
   if (!known) {
-    throw new PluginToolInputError(`${path} is not a PNG, JPEG, or GIF.`);
+    throw new PluginToolInputError(
+      `${path} is not a PNG, JPEG, or GIF. Convert it to PNG, or use another image.`,
+    );
   }
   return bytes;
 }

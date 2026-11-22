@@ -135,14 +135,14 @@ async function requireReadableSources(
   // A refresh reads the chart's Sheet, which the request does not name.
   if (requests.some((request) => "refreshSheetsChart" in request)) {
     throw new PluginToolInputError(
-      "refreshSheetsChart is not supported: you cannot check who can open the chart's Sheet.",
+      "refreshSheetsChart is not supported: you cannot check who can open the chart's Sheet. Remove it from requests.",
     );
   }
   const sources = requests.map((request) => {
     const parsed = sourceSchema.safeParse(request);
     if (!parsed.success) {
       throw new PluginToolInputError(
-        `Malformed ${Object.keys(request)[0]} request: ${parsed.error.issues[0]?.message ?? "invalid"}.`,
+        `Malformed ${Object.keys(request)[0]} request: ${parsed.error.issues[0]?.message ?? "invalid"}. Fix it to match the Slides API batchUpdate request.`,
       );
     }
     return parsed.data;

@@ -118,7 +118,9 @@ function throwLookupError(
     target === "deployment" &&
     (status === 404 || (status === 422 && hasValidationErrors))
   ) {
-    throw new PluginToolInputError(message);
+    throw new PluginToolInputError(
+      `${message}. Check repo and commit_sha, and that environment is a deployment environment of the repo.`,
+    );
   }
   throw new Error(message);
 }

@@ -224,7 +224,7 @@ export function validateAndApplyTextEdits(
     const occurrences = countOccurrences(content, edit.oldText);
     if (occurrences > 1) {
       throw new ToolInputError(
-        `Found ${occurrences} occurrences of edits[${index}] in ${targetName}. Each old_text must be unique.`,
+        `Found ${occurrences} occurrences of edits[${index}] in ${targetName}. Each old_text must be unique. Add surrounding text to old_text so that it matches once.`,
       );
     }
     matchedEdits.push({
@@ -257,7 +257,9 @@ export function validateAndApplyTextEdits(
   }
 
   if (newContent === content) {
-    throw new ToolInputError(`No changes made to ${targetName}.`);
+    throw new ToolInputError(
+      `No changes made to ${targetName}. Set new_text to text that differs from old_text, or remove that edit.`,
+    );
   }
 
   return { baseContent: content, newContent };

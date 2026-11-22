@@ -67,7 +67,7 @@ export function createMessageAgentTool(
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError(
-          "messageAgent requires an active tool call ID",
+          "messageAgent requires an active tool call ID. No change to the call can fix this.",
         );
       }
       let result;
