@@ -715,7 +715,10 @@ export function ConversationPage(props: {
               ) : (
                 <ConversationHeader
                   agentTree={conversationDetail?.agentTree}
-                  contextTags={conversationContextTags(conversation)}
+                  contextTags={conversationContextTags(
+                    conversation,
+                    conversationDetail?.annotations,
+                  )}
                   cost={conversationCost(
                     conversation,
                     conversationDetail,

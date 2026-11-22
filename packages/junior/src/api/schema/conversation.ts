@@ -308,12 +308,9 @@ export const conversationSummaryReportSchema = z
     locationUrl: z.string().url().optional(),
     traceId: z.string().optional(),
     /**
-     * Plugin-owned resource links for this conversation.
-     * Present on the conversation feed when the viewer can see private content.
-     * Clients must not fetch provider state while rendering these links.
+     * Plugin-selected annotations for the compact conversation row. The feed
+     * sends only these; the detail also sends the full `annotations`.
      */
-    annotations: z.array(conversationAnnotationReportSchema).optional(),
-    /** Plugin-selected annotations for the compact conversation row. */
     sidebarAnnotations: z.array(conversationSidebarAnnotationSchema).optional(),
     assignedWork: z.boolean().optional(),
     finishedWorkAt: z.string().datetime().optional(),
@@ -869,6 +866,12 @@ export const conversationDetailReportSchema = conversationSummaryReportSchema
      * Conversation last. Root Conversations omit it.
      */
     agentTree: z.array(conversationAgentTreeNodeSchema).min(2).optional(),
+    /**
+     * Plugin-owned annotations of this Conversation and its tree, when the
+     * viewer can see private content. Clients must not fetch provider state
+     * while rendering them.
+     */
+    annotations: z.array(conversationAnnotationReportSchema).optional(),
     /** The viewer's effective auto-archive choice. Participants only. */
     autoArchive: z.boolean().optional(),
     /** The viewer can fork this conversation from an assistant reply. */

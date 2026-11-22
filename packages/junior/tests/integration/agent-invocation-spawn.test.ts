@@ -480,8 +480,8 @@ describe("agent invocation spawn and result delivery", () => {
       expect(
         feed.conversations.find(
           (item) => item.conversationId === slackParentConversationId,
-        )?.annotations,
-      ).toMatchObject([{ plugin: "github", key: change.key }]);
+        )?.sidebarAnnotations,
+      ).toMatchObject([{ key: change.key, objectType: "code_change" }]);
     } finally {
       await fixture.close();
     }
