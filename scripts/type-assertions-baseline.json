@@ -158,7 +158,7 @@
   "packages/junior/src/chat/sandbox/errors.ts": 2,
   "packages/junior/src/chat/sandbox/file-utils.ts": 1,
   "packages/junior/src/chat/sandbox/http-error-details.ts": 1,
-  "packages/junior/src/chat/sandbox/sandbox.ts": 10,
+  "packages/junior/src/chat/sandbox/sandbox.ts": 6,
   "packages/junior/src/chat/sandbox/session.ts": 1,
   "packages/junior/src/chat/sandbox/skill-sandbox.ts": 1,
   "packages/junior/src/chat/sandbox/skill-sync.ts": 2,
