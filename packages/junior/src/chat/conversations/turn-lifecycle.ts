@@ -39,9 +39,10 @@ export interface FailConversationTurnInput {
   turnId: string;
 }
 
-/** The seq of a Turn's `turn_started` event. */
+/** The seq and time of a Turn's `turn_started` event. */
 export interface TurnStart {
   seq: number;
+  startedAtMs: number;
 }
 
 function turnStartedKey(turnId: string): string {
@@ -57,7 +58,9 @@ export async function loadTurnStart(
     conversationId,
     turnStartedKey(turnId),
   );
-  return event?.data.type === "turn_started" ? { seq: event.seq } : undefined;
+  return event?.data.type === "turn_started"
+    ? { seq: event.seq, startedAtMs: event.createdAtMs }
+    : undefined;
 }
 
 /** Runtime port for correlated canonical turn lifecycle persistence. */

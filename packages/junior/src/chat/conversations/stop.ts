@@ -1,6 +1,8 @@
 import type { StateAdapter } from "chat";
 import {
+  cancelWaitingParentMessages,
   dropOwnUnreadLoopReplies,
+  reportPersonStopToParent,
   stopChildAgentsBelow,
 } from "@/chat/agent-invocations/stop";
 import { stopConversationTree } from "@/chat/conversations/session-stop";
@@ -30,8 +32,9 @@ export type StopConversationResult =
  * below it stops, then it and they are stopped Conversations until a person
  * sends input, and then its Turn stops. A Turn that waits for sign-in ends
  * too, so a later sign-in does not resume it. Their automated input is held.
- * Nothing above it changes: a stopped child agent's worker
- * reports the stop to its parent.
+ * Nothing above it changes: a stopped child agent's worker reports the stop
+ * to its parent, and this reports it for a Task that no Agent invocation
+ * names.
  *
  * A stop that comes from a message or a button press, such as the Slack
  * `stop` keyword or stop button, passes it. Its id is claimed in the mailbox
@@ -78,6 +81,13 @@ export async function stopConversation(args: {
     // knows which Conversations this stop already reached.
     const nowMs = Date.now();
     const stoppedAtMs = args.message?.createdAtMs ?? nowMs;
+    // The report goes first: a retry after a later step fails finds the
+    // work that this stop cuts, and the report's key makes it send once.
+    await reportPersonStopToParent(args.conversationId, {
+      queue: args.queue,
+      state: args.state,
+      stoppedAtMs,
+    });
     const result = await stopConversationAndChildAgents({
       conversationId: args.conversationId,
       conversationStore: args.conversationStore,
@@ -117,7 +127,9 @@ export async function stopConversation(args: {
  * Stop a Conversation and every child agent below it, through
  * `stopConversationTree`. A person's stop and the automated-turn limit call
  * this. The child agents stop first, so a failure leaves the Conversation
- * running and the stop can be retried.
+ * running and the stop can be retried. Its waiting parent messages are
+ * dropped before its stop request is saved, so no stop request outlives
+ * the stop.
  */
 export async function stopConversationAndChildAgents(
   args: Omit<Parameters<typeof stopConversationTree>[1], "nowMs"> & {
@@ -130,6 +142,10 @@ export async function stopConversationAndChildAgents(
     nowMs: options.nowMs,
     queue: options.queue,
     stoppedAtMs: options.stoppedAtMs,
+    state: options.state,
+  });
+  await cancelWaitingParentMessages(conversationId, {
+    nowMs: options.stoppedAtMs,
     state: options.state,
   });
   const [result] = await stopConversationTree([conversationId], options);

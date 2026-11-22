@@ -7,7 +7,9 @@ import { getSqlExecutor } from "@/chat/db";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { ownAgentInvocation, readChildMessageSender } from "./child-message";
-import { isFromStoredParent, readParentMessage } from "./parent-message";
+import { isPersonStopTurnId } from "./ids";
+import { isFromStoredParent } from "./parent-message";
+import { readParentMessage } from "./parent-message-input";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
@@ -81,7 +83,8 @@ export function childAgentInput(
  * result, and input to a child that waits for its own child agents
  * (`replaced`). A stopped child drops input from its own child agents, also
  * input sent before the stop. A stopped Conversation never routes automated
- * input: `enqueueAutomatedInput` and the stop hold it first.
+ * input: `enqueueAutomatedInput` and the stop hold it first. A stop drops a
+ * parent message that was sent before it.
  *
  * TODO(dcramer): Drop the agent invocation route with the legacy child worker
  * (#3060 step 7).
@@ -105,7 +108,16 @@ export async function routeChildInput(
     if (!(await isFromStoredParent(message, parentMessage))) {
       return "dropped";
     }
-    return open ? "agent invocation" : "Conversation loop";
+    if (open) {
+      return "agent invocation";
+    }
+    // A stop drops the parent messages that were sent before it.
+    const stoppedAtMs = await getConversationStoppedAtMs(
+      message.conversationId,
+    );
+    return stoppedAtMs !== undefined && message.receivedAtMs <= stoppedAtMs
+      ? "dropped"
+      : "Conversation loop";
   }
   const input = childAgentInput(message);
   if (!input) {
@@ -141,7 +153,8 @@ export async function routeChildInput(
  * that an agent invocation sent names its own work, so it is dropped with
  * that work. A reply from a Turn on the Conversation loop names no work of
  * its own: the stop drops it from the parent's mailbox. While the sending
- * child is stopped, a reply that it sent after the stop is also dropped.
+ * child is stopped, a reply that it sent after the stop is also dropped,
+ * except the `stopped` result that a person's stop sends.
  */
 async function isSkippedAgentResult(
   input: ChildAgentInput,
@@ -158,11 +171,13 @@ async function isSkippedAgentResult(
   if (input.kind === "result") {
     return skipped;
   }
-  if (skipped) {
-    const fields = await readChildMessageSender(message);
-    if (!fields || ownAgentInvocation(fields)) {
-      return true;
-    }
+  const fields = await readChildMessageSender(message);
+  if (skipped && (!fields || ownAgentInvocation(fields))) {
+    return true;
+  }
+  // The `stopped` result that a person's stop sent reports that stop.
+  if (fields && isPersonStopTurnId(fields.turnId)) {
+    return false;
   }
   const senderStoppedAtMs = await getConversationStoppedAtMs(
     sender.childConversationId,
