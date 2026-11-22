@@ -17,6 +17,10 @@ import {
   pinConversationResponseSchema,
 } from "../schema/conversation-pin";
 import {
+  renameConversationBodySchema,
+  renameConversationResponseSchema,
+} from "../schema/conversation-title";
+import {
   conversationSubscriptionBodySchema,
   conversationSubscriptionResponseSchema,
 } from "../schema/conversation-subscription";
@@ -28,6 +32,7 @@ import {
 } from "./auto-archive";
 import { cancelConversationPendingMessagesForViewer } from "./cancel-pending-messages";
 import { pinConversation } from "./pin";
+import { renameConversation } from "./rename";
 import { stopConversationTurnForViewer } from "./stop";
 import { setConversationSubscription } from "./subscription";
 
@@ -79,6 +84,20 @@ export const pinConversationOperation = defineApiOperation({
   annotations: writeAnnotations,
   run: (viewer, { conversationId, ...body }) =>
     pinConversation(viewer, conversationId, body),
+});
+
+/** Rename one Conversation for everyone in it. */
+export const renameConversationOperation = defineApiOperation({
+  name: "renameConversation",
+  title: "Rename conversation",
+  description:
+    "Rename one of your conversations for everyone in it. Later turns keep the new title. The Slack thread does not change. Returns the stored title.",
+  scope: "conversations:manage",
+  input: renameConversationBodySchema.extend(conversationIdInput),
+  output: renameConversationResponseSchema,
+  annotations: writeAnnotations,
+  run: (viewer, { conversationId, ...body }) =>
+    renameConversation(viewer, conversationId, body),
 });
 
 /** Override the viewer's auto-archive default for one Conversation. */
@@ -144,6 +163,7 @@ export const conversationOperations = [
   archiveConversationOperation,
   archiveDoneConversationsOperation,
   pinConversationOperation,
+  renameConversationOperation,
   setConversationAutoArchiveOperation,
   setConversationSubscriptionOperation,
   stopConversationOperation,
