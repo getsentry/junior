@@ -1,7 +1,7 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
 import { useEffect, useState, type ReactNode } from "react";
 import { useNavigate, useSearchParams } from "react-router";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
 import { useDocumentTitle } from "../documentTitle";
@@ -32,6 +32,7 @@ import {
   useCollapseOutside,
   useInboxFocus,
 } from "./inboxFocus";
+import { codeChangeHead } from "./codeChangeHead";
 import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
@@ -60,7 +61,7 @@ import { useLeaveClosedElsewhere } from "./inboxClosedElsewhere";
 import { InboxEmptyState, InboxSection, SweepControl } from "./InboxSection";
 import { InboxStack, STACK_ROW_KEYS, stackRows } from "./InboxStack";
 import { eventSnoozeOf } from "./snoozeChoices";
-import { useReviewItemData, useReviewItemsData } from "./queries";
+import { useInboxItemData, useInboxItemsData } from "./queries";
 import { scrollPages } from "./inboxQueries";
 import {
   conversationAnswerLine,
@@ -68,7 +69,7 @@ import {
   itemNeedsViewer,
   itemOwnerPath,
   itemUpForGrabs,
-} from "./reviewItemFormat";
+} from "./inboxItemFormat";
 
 const TODO_COLLAPSED_KEY = "junior:inbox:todo-collapsed";
 
@@ -116,7 +117,7 @@ export function InboxList(props: {
   const conversationOf = (id: string | undefined) =>
     id === undefined ? undefined : data.conversationById.get(id);
   useEffect(readSnoozed, [readSnoozed]);
-  const done = useReviewItemsData({
+  const done = useInboxItemsData({
     closed: true,
     enabled: data.signedIn && view === "done",
     forViewer: true,
@@ -182,7 +183,7 @@ export function InboxList(props: {
   // Done shows a linked closed item that is past its first page too. The
   // list state keeps it, so a tab switch or a remount keeps its row.
   const [linkedItems, setLinkedItems] = useLinkedInboxItems();
-  const linkedClosed = useReviewItemData(linkedItems.closed).data;
+  const linkedClosed = useInboxItemData(linkedItems.closed).data;
   const doneItems =
     linkedClosed && !done.items.some((item) => item.id === linkedClosed.id)
       ? [linkedClosed, ...done.items]
@@ -205,7 +206,7 @@ export function InboxList(props: {
   const linkedLoaded =
     view === "done" ? Boolean(done.query.data) : ready && !linkedRowKey;
   // An item that is not in this list may be closed, or past its first page.
-  const linked = useReviewItemData(
+  const linked = useInboxItemData(
     linkedId && !linkedRowKey && linkedLoaded ? linkedId : undefined,
   );
   const { includedExtra, includedId, includeItem } = data;
@@ -358,7 +359,7 @@ export function InboxList(props: {
   });
 
   // The items of each row that this render shows, by row key.
-  const rowItems = new Map<string, readonly ReviewItemPayload[]>();
+  const rowItems = new Map<string, readonly InboxItemPayload[]>();
   const bundleRow = (
     row: InboxBundle,
     options: {
@@ -385,6 +386,17 @@ export function InboxList(props: {
     rowItems.set(key, row.items);
     const title = titleOf(row.conversationId) ?? row.newest.title;
     const acted = { items: row.items, key, passing: options.passing, title };
+    const head = options.itemRow
+      ? codeChangeHead(row.newest, conversationOf(row.conversationId))
+      : undefined;
+    const expanded = state.expandedKey === key;
+    // An opened item stops saying why it woke once its row closes.
+    const wake = row.items.find(
+      (item) =>
+        item.status === "open" &&
+        (expanded || !snoozes.wakeOpened(item)) &&
+        item.wake,
+    )?.wake;
     const snoozeRow = options.snoozed
       ? undefined
       : (end: SnoozeEnd) => {
@@ -409,8 +421,9 @@ export function InboxList(props: {
         }
         conversationId={row.conversationId}
         drag={options.drag}
-        expanded={state.expandedKey === key}
+        expanded={expanded}
         foldedNotices={data.foldedNotices}
+        itemHead={head}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSize={
           options.itemRow
@@ -420,7 +433,8 @@ export function InboxList(props: {
         itemSubtitle={
           options.itemRow
             ? itemRowSubtitle(
-                options.subjectShown
+                // The code change head shows the subject's title.
+                options.subjectShown || head
                   ? { ...row.newest, subject: undefined }
                   : row.newest,
                 // A child's item names its sub-thread: under the stack's
@@ -447,8 +461,12 @@ export function InboxList(props: {
                 )
             : undefined
         }
+        onOpen={() => snoozes.openWoken(row.items)}
         onSnoozeMenu={(open) => setSnoozeKey(open ? key : undefined)}
-        onToggle={() => toggle(key)}
+        onToggle={() => {
+          if (!expanded) snoozes.openWoken(row.items);
+          toggle(key);
+        }}
         rowKey={key}
         selected={false}
         showThreads={!options.itemRow}
@@ -456,6 +474,7 @@ export function InboxList(props: {
         take={options.take}
         time={options.time ?? row.waitingSince}
         title={title}
+        wake={wake}
       />
     );
   };
@@ -515,6 +534,7 @@ export function InboxList(props: {
           },
           snoozed: options.snoozed,
         })}
+        onOpen={() => snoozes.openWoken(row.items)}
         onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
         path={
           row.conversationId

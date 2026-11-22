@@ -25,12 +25,12 @@ import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
-  latestSeenPlanVersion,
-  renderPlanDelta,
-  renderPlanReview,
-} from "@/chat/plan/prompt";
-import { listPlanItems } from "@/chat/plan/store";
-import type { PlanItem } from "@/chat/plan/types";
+  latestSeenTodosVersion,
+  renderTodoDelta,
+  renderTodosReview,
+} from "@/chat/todos/prompt";
+import { listTodos } from "@/chat/todos/store";
+import type { Todo } from "@/chat/todos/types";
 import { readUserCustomization } from "@/chat/identities/customization";
 import type { PiMessage } from "@/chat/pi/messages";
 import { systemSectionsUpdate } from "@/chat/pi/agent-history";
@@ -118,8 +118,8 @@ export interface PromptTurnContext {
   pluginUserPromptContributions: Awaited<
     ReturnType<typeof getPluginUserPromptContributions>
   >;
-  /** Every item of the Conversation's plan, for the `<plan-delta>`. */
-  planItems?: PlanItem[];
+  /** Every To-do of the Conversation, for the `<todo-delta>`. */
+  todos?: Todo[];
   userCustomization?: string | undefined;
   workspaces?: Workspace[];
   /** IANA timezone of the person who asked, from `findActorTimezone`. */
@@ -587,7 +587,7 @@ export async function loadPromptTurnContext(
     conversationNotes,
     userCustomization,
     workspaces,
-    planItems,
+    todos,
     askerTimezone,
   ] = await Promise.all([
     getPluginUserPromptContributions({
@@ -602,13 +602,13 @@ export async function loadPromptTurnContext(
       ? loadUserCustomization(args.context)
       : undefined,
     listWorkspaces(getDb()),
-    listPlanItems(getSqlExecutor(), args.context.conversationId),
+    listTodos(getSqlExecutor(), args.context.conversationId),
     loadAskerTimezone(args.currentActor, args.context),
   ]);
   return {
     askerTimezone,
     conversationNotes,
-    planItems,
+    todos,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -704,7 +704,7 @@ export async function assemblePrompt(args: {
   const {
     askerTimezone,
     conversationNotes,
-    planItems,
+    todos,
     pluginUserPromptContributions,
     userCustomization,
     workspaces,
@@ -733,14 +733,15 @@ export async function assemblePrompt(args: {
         conversationNotes,
         disabledTools,
         includeSessionContext: needsBootstrapContextForPrompt,
-        // Changes that others made after the plan version that history
-        // shows, else every open item when history has not shown the plan
-        // for a while. The model's own changes are in its tool results.
-        plan: planItems
-          ? (renderPlanDelta(
-              planItems,
-              latestSeenPlanVersion(promptHistoryMessages),
-            ) ?? renderPlanReview(planItems, promptHistoryMessages))
+        // Changes that others made after the To-do version that history
+        // shows, else every open To-do when history has not shown the
+        // To-dos for a while. The model's own changes are in its tool
+        // results.
+        todos: todos
+          ? (renderTodoDelta(
+              todos,
+              latestSeenTodosVersion(promptHistoryMessages),
+            ) ?? renderTodosReview(todos, promptHistoryMessages))
           : null,
         pluginPromptContributions: pluginUserPromptContributions,
         ...(args.sender ? { turnInput: args.sender } : undefined),

@@ -7,11 +7,11 @@ import type {
   ThreadConversationState,
 } from "@/chat/state/conversation";
 import type { AgentInstructionInput } from "@/chat/agent/types";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 import {
-  eventReviewItemInputs,
-  loadReviewItemInput,
-} from "@/chat/review-items/prompt-input";
+  eventInboxItemInputs,
+  loadInboxItemInput,
+} from "@/chat/inbox-items/prompt-input";
 import {
   eventBatchMessageMeta,
   isEventMailboxMetadata,
@@ -23,20 +23,20 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 /**
  * Return the Turn inputs of web Messages, one per non-empty Message, in
  * order. Each one becomes its own prompt content part. A Message that
- * records an answer becomes its Review item tag. A batch with only
+ * records an answer becomes its Inbox item tag. A batch with only
  * attachments keeps one empty input, so the prompt still has an instruction.
  */
 export async function webTurnInputs(
   messages: readonly {
-    reviewItemChange?: ReviewItemChangeRecord | undefined;
+    reviewItemChange?: InboxItemChangeRecord | undefined;
     text: string;
   }[],
 ): Promise<AgentInstructionInput[]> {
   const inputs = await mapBounded(
     messages,
     async (message): Promise<AgentInstructionInput[]> => {
-      const reviewItem = await loadReviewItemInput(message.reviewItemChange);
-      if (reviewItem) return [reviewItem];
+      const inboxItem = await loadInboxItemInput(message.reviewItemChange);
+      if (inboxItem) return [inboxItem];
       const text = message.text.trim();
       return text ? [{ kind: "person", text }] : [];
     },
@@ -47,7 +47,7 @@ export async function webTurnInputs(
 
 /**
  * Build the transcript Message for one web mailbox Message. Each web Message
- * keeps its own transcript Message and Review item change record, so the
+ * keeps its own transcript Message and Inbox item change record, so the
  * dashboard shows what each Message did even when several share a Turn.
  */
 export function webConversationMessage(
@@ -128,7 +128,7 @@ export async function mailboxTurnInputs(
       eventMeta: eventBatchMessageMeta(messages),
       inputs: renderEventBatchInputs(
         messages,
-        await eventReviewItemInputs(messages),
+        await eventInboxItemInputs(messages),
       ),
       webInputMessages: [],
     };

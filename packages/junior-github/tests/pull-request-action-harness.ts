@@ -4,7 +4,7 @@
  */
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginRoute,
 } from "@sentry/junior-plugin-api";
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
@@ -17,6 +17,7 @@ import {
 import { githubPlugin } from "../src/index";
 import type { GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
+import { memoryState } from "./plugin-harness";
 
 export const PULL_URL = "https://github.com/getsentry/junior/pull/946";
 export const DEDUPE_KEY = "pull-request-action:getsentry/junior#946";
@@ -194,6 +195,8 @@ export interface GitHubState {
     user: { login: string };
   }>;
   state: "closed" | "open";
+  /** The pull request title. */
+  title?: string;
 }
 
 // Each pull request read takes the next merge state, after any hold.
@@ -257,10 +260,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
             (login) => ({ login }),
           ),
           state: github.state,
-          title: "Add the Inbox notice",
+          title: github.title ?? "Add the Inbox notice",
           user: { id: BOT_USER_ID },
         });
       },
+    ),
+    // The repository has no changelog categories, so defaults apply.
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/contents/.github/release.yml",
+      () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
     ),
     // The merge webhook also classifies the commits.
     http.get(
@@ -332,7 +340,7 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
                     })),
                   ],
                 },
-                title: "Add the Inbox notice",
+                title: github.title ?? "Add the Inbox notice",
                 url: PULL_URL,
               },
             },
@@ -394,20 +402,20 @@ export async function markReviewAddressed(reviewId: number): Promise<void> {
   );
 }
 
-export type ReviewItemCall =
+export type InboxItemCall =
   | { conversationId: string; kind: "upsert"; notice: unknown }
   | { conversationId: string; input: unknown; kind: "close" };
 
 export function route(
   fixture: GitHubFixture,
-  calls: ReviewItemCall[],
+  calls: InboxItemCall[],
   errors: string[] = [],
   failures = { close: 0 },
   /** Keys of the other closed items, such as from before one item per pull request. */
   otherCloses: string[] = [],
 ): PluginRoute {
   const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
-  const reviewItems: PluginConversationReviewItems = {
+  const inboxItems: PluginConversationInboxItems = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
@@ -429,7 +437,7 @@ export function route(
       };
     },
   };
-  // These webhooks use no Conversation dispatch, state, or cache.
+  // These webhooks use no Conversation dispatch or cache.
   const unused = () => {
     throw new Error("The next-action webhooks do not use this");
   };
@@ -462,14 +470,8 @@ export function route(
     plugin: { name: "github" },
     events: { hasMatch: async () => false, async publish() {} },
     cache: { getOrLoad: unused },
-    reviewItems,
-    state: {
-      delete: unused,
-      get: unused,
-      set: unused,
-      setIfNotExists: unused,
-      withLock: unused,
-    },
+    inboxItems,
+    state: memoryState(),
     // The requester linked the GitHub account `Requester`.
     users: {
       readIdentity: async (identityId: string) =>

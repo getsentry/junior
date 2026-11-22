@@ -68,6 +68,7 @@ import {
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
 import { groupTranscriptMessages } from "./transcriptRenderModel";
+import { transcriptRowAnchor } from "./conversationRoutes";
 import { useTranscriptSearch } from "./transcriptSearch";
 import {
   TranscriptOpenRows,
@@ -114,11 +115,9 @@ const ASK_HIGHLIGHT_MS = 1_600;
 
 /**
  * Show the transcript row of a question that Junior asked. `version`
- * changes on each request, so the same question can show again. `arrived`
- * means the question came by itself, not by an action of the reader.
+ * changes on each request, so the same question can show again.
  */
 export type TranscriptAskReveal = {
-  arrived: boolean;
   itemId: string;
   version: number;
 };
@@ -126,7 +125,7 @@ export type TranscriptAskReveal = {
 /** The current ask request, and the scroll owner that shows its row. */
 export const TranscriptAskRevealContext = createContext<
   | (TranscriptAskReveal & {
-      showRow(row: Element, options: { arrived: boolean }): boolean;
+      showRow(row: Element): boolean;
     })
   | undefined
 >(undefined);
@@ -567,10 +566,10 @@ function TranscriptEntryList(
     // Wait until the record is in the DOM, so the scroll sees its place.
     const show = () => {
       const row = list.querySelector(`[data-index="${askIndex}"]`);
-      const record = row?.querySelector("[data-review-item-ask]");
+      const record = row?.querySelector("[data-inbox-item-ask]");
       if (!row || !record) return false;
       shownAskVersion.current = askReveal.version;
-      if (!askReveal.showRow(row, { arrived: askReveal.arrived })) return true;
+      if (!askReveal.showRow(row)) return true;
       const previous = askHighlight.current;
       if (previous) {
         window.clearTimeout(previous.timer);
@@ -714,6 +713,7 @@ function TranscriptEntryList(
                 renderEntry={renderEntry}
                 renderTasks={renderTasks}
                 row={rows[item.index]!}
+                rowAnchor={rowAnchorAt(rows, item.index)}
               />
             ))}
           </div>
@@ -750,6 +750,8 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   ) => ReactNode;
   renderTasks: TranscriptEntryRenderers["renderTasks"];
   row: TranscriptListRow;
+  /** The `#event-<seq>` anchor of the row. */
+  rowAnchor: string | undefined;
 }) {
   const { row } = props;
   return (
@@ -766,7 +768,12 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
       {row.kind === "unread_marker" ? (
         <TranscriptUnreadMarker />
       ) : row.kind === "activity" ? (
-        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+        <TranscriptRow
+          anchorKey={row.key}
+          id={props.rowAnchor}
+          indent
+          seq={row.seq}
+        >
           <TranscriptActivityGroup
             entries={row.entries}
             live={props.live}
@@ -775,17 +782,38 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
           />
         </TranscriptRow>
       ) : row.kind === "tasks" ? (
-        <TranscriptRow anchorKey={row.key} indent seq={row.seq}>
+        <TranscriptRow
+          anchorKey={row.key}
+          id={props.rowAnchor}
+          indent
+          seq={row.seq}
+        >
           {props.renderTasks(row.entries)}
         </TranscriptRow>
       ) : (
-        <TranscriptRow anchorKey={row.key} seq={row.seq}>
+        <TranscriptRow anchorKey={row.key} id={props.rowAnchor} seq={row.seq}>
           {props.renderEntry(row.entry, row.tasks)}
         </TranscriptRow>
       )}
     </div>
   );
 });
+
+// A question moved after its reply keeps the reply seq. Only the first row
+// with a seq takes its anchor, so each anchor names one row.
+function rowAnchorAt(
+  rows: readonly TranscriptListRow[],
+  index: number,
+): string | undefined {
+  const seq = rowSeq(rows[index]);
+  return seq === undefined || seq === rowSeq(rows[index - 1])
+    ? undefined
+    : transcriptRowAnchor(seq);
+}
+
+function rowSeq(row: TranscriptListRow | undefined): number | undefined {
+  return row && row.kind !== "unread_marker" ? row.seq : undefined;
+}
 
 function RedactedTranscriptView(
   props: TranscriptListPlacement & {

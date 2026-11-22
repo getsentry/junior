@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import type { Actor } from "@sentry/junior-plugin-api";
 import { isUserActor } from "@/chat/actor";
-import { readParentMessage } from "@/chat/agent-invocations/parent-message";
+import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import { sameActorIdentity } from "@/chat/conversations/provenance";
 import type { CredentialContext } from "@/chat/credentials/context";
 import type { TurnRecord } from "./checkpoint";
@@ -123,7 +123,7 @@ function selectContiguousTurnBatch(
  */
 export function isAttemptInterrupt(
   message: InboundMessage,
-  work: ConversationWorkState,
+  work: Pick<ConversationWorkState, "execution">,
 ): boolean {
   return (
     message.delivery === "interrupt" &&

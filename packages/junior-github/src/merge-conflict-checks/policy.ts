@@ -14,7 +14,7 @@
  *   fix. The limit of fixes in a row still holds.
  * - When a day after its fix the head commit is the same, the fix did not
  *   land, and Junior is stuck. Then it asks the person who asked for the
- *   pull request to resume, with a Review item, once after each Resume. So
+ *   pull request to resume, with an Inbox item, once after each Resume. So
  *   Dismiss ends the asks on the pull request. Resume counts as activity by
  *   a person, and starts a fix at once (`resume.ts`).
  *
@@ -30,12 +30,13 @@
  */
 import type {
   EventInput,
-  PluginConversationReviewItems,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubConflictFix,
@@ -251,8 +252,9 @@ export function parseGitHubConflictItemKey(
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
   db: GitHubDb;
+  loadTitleParts?: LoadGitHubTitleParts | undefined;
   ref: GitHubPullRequestRef;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   title?: string;
 }): Promise<void> {
   const { conflict, ref, title } = args;
@@ -267,7 +269,13 @@ async function addUnlandedItem(args: {
   const url =
     conflict.url ??
     `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
-  await args.reviewItems.forConversation(opener.conversationId).upsert({
+  const titleParts = title
+    ? await args.loadTitleParts?.({
+        repositoryFullName: ref.repositoryFullName,
+        title,
+      })
+    : undefined;
+  await args.inboxItems.forConversation(opener.conversationId).upsert({
     assigneeIdentityIds: [opener.identityId],
     body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
     choices: [{ label: GITHUB_CONFLICT_RESUME }],
@@ -275,6 +283,7 @@ async function addUnlandedItem(args: {
     subject: {
       id: url,
       title: title ? `${title} (#${ref.number})` : url,
+      ...(titleParts ? { titleParts } : undefined),
       url,
     },
     title: `Merge conflict · #${ref.number}`,
@@ -284,7 +293,7 @@ async function addUnlandedItem(args: {
 /**
  * Return the merge conflict events to publish for one conflicted pull
  * request that a Watch or event automation wants. A fix returns `events`.
- * An ask adds the Review item and returns no events. The item is optional,
+ * An ask adds the Inbox item and returns no events. The item is optional,
  * so a failure is logged, and the next check tries again.
  */
 export async function applyGitHubConflictPolicy(args: {
@@ -294,10 +303,12 @@ export async function applyGitHubConflictPolicy(args: {
   events: EventInput[];
   /** Read the pull request's `PULL_REQUEST_CONFLICT_HISTORY` from GitHub. */
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
+  /** Read the title parts of the item subject. */
+  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   title?: string;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
@@ -363,7 +374,7 @@ export async function closeGitHubConflictItem(args: {
   db: GitHubDb;
   reason: string;
   ref: GitHubPullRequestRef;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   status: "done" | "dismissed";
 }): Promise<void> {
   const { ref } = args;
@@ -374,7 +385,7 @@ export async function closeGitHubConflictItem(args: {
     })
   ).get(ref.number);
   if (!opener?.conversationId) return;
-  await args.reviewItems.forConversation(opener.conversationId).close({
+  await args.inboxItems.forConversation(opener.conversationId).close({
     dedupeKey: gitHubConflictItemKey(ref),
     reason: args.reason,
     status: args.status,
@@ -394,7 +405,7 @@ export async function closeGitHubConflictItems(args: {
   numbers: number[];
   reason: string;
   repositoryFullName: string;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   status: "done" | "dismissed";
 }): Promise<void> {
   if (args.numbers.length === 0) return;
@@ -406,7 +417,7 @@ export async function closeGitHubConflictItems(args: {
   const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
   const close = async (number: number, conversationId: string) => {
     try {
-      const closed = await args.reviewItems
+      const closed = await args.inboxItems
         .forConversation(conversationId)
         .close({
           dedupeKey: gitHubConflictItemKey({ number, repositoryFullName }),

@@ -24,6 +24,7 @@ import { Command, CommanderError } from "commander";
 import * as z from "zod";
 import { eq, isNotNull } from "drizzle-orm";
 import { describe, expect, it, vi } from "vitest";
+import { CONTENT_VERSION_HEADER } from "@/api/schema";
 import * as memorySqlSchema from "@/db/schema/memory";
 import {
   conversationMemoryListResponseSchema,
@@ -40,14 +41,12 @@ import { createMemoryCliCommand } from "@/chat/memory/cli";
 import { createMemoryRegistration } from "@/chat/memory/registration";
 import { processMemorySession } from "@/chat/memory/process-session";
 import { reembedMemories } from "@/chat/memory/reembed";
-import {
-  memoryArchiveTool,
-  memoryRestoreTool,
-  memoryCreateTool,
-  memoryListTool,
-  memorySearchTool,
-  type MemoryReviewer,
-} from "@/chat/memory/tools";
+import { memoryArchiveTool } from "@/chat/memory/tools/archive";
+import { memoryCreateTool } from "@/chat/memory/tools/create";
+import { memoryListTool } from "@/chat/memory/tools/list";
+import { memoryRestoreTool } from "@/chat/memory/tools/restore";
+import { memorySearchTool } from "@/chat/memory/tools/search";
+import type { MemoryReviewer } from "@/chat/memory/tool-support";
 import { hashEmbeddedContent } from "@/chat/memory/embedding";
 import { createMemoryStore, type MemoryDb } from "@/chat/memory/store";
 import type {
@@ -108,7 +107,7 @@ function memoryHeartbeatContext(args: {
     log: noopLogger,
     nowMs: args.nowMs,
     plugin: { name: "memory" },
-    reviewItems: { forConversation: vi.fn() },
+    inboxItems: { forConversation: vi.fn() },
     state: memoryState,
   };
 }
@@ -2622,6 +2621,19 @@ describe("memory plugin storage", () => {
           },
         ]),
       });
+      // A read again with the token of an unchanged list comes back empty.
+      const conversationReadAgain = await api.fetch(
+        new Request("http://localhost/conversations/conversation-1/memories", {
+          headers: {
+            [CONTENT_VERSION_HEADER]: conversationResponse.headers.get(
+              CONTENT_VERSION_HEADER,
+            )!,
+          },
+        }),
+        requestContext,
+      );
+      expect(conversationReadAgain.status).toBe(304);
+      expect(await conversationReadAgain.text()).toBe("");
       const missingConversationResponse = await api.fetch(
         new Request("http://localhost/conversations/missing/memories"),
         requestContext,

@@ -1,6 +1,6 @@
 import type {
   AutomationListItem,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { cn, dashboardCountClass } from "../../styles";
 import {
@@ -40,9 +40,9 @@ import {
   AUTOMATION_LIST_SEARCH,
   automationSelectPath,
 } from "../../pages/automations/newAutomation";
-import { useReviewItemsData } from "../../inbox/queries";
+import { useInboxItemsData } from "../../inbox/queries";
 import { inboxViewPath } from "../../inbox/inboxModel";
-import { inboxItemPath } from "../../inbox/reviewItemFormat";
+import { inboxRowPath } from "../../inbox/inboxItemFormat";
 import type { Conversation } from "../../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "../../components/layout/navIcons";
@@ -119,9 +119,9 @@ function CommandPaletteBody(props: {
   const feed = useConversationsData();
   const searched = useConversationsData(search);
   // The Inbox's own list, so the palette reads its cache.
-  const inbox = useReviewItemsData({ forViewer: true, sort: "waiting" });
+  const inbox = useInboxItemsData({ forViewer: true, sort: "waiting" });
   // The server matches body text too, which the cached list cannot.
-  const inboxSearched = useReviewItemsData({
+  const inboxSearched = useInboxItemsData({
     enabled: Boolean(search),
     forViewer: true,
     q: search,
@@ -310,9 +310,9 @@ function paletteItems(input: {
   /** Directory rows, already matched and ranked. */
   directories: PaletteItem[];
   feed: Conversation[];
-  inbox: ReviewItemPayload[];
+  inbox: InboxItemPayload[];
   /** Server matches on title and body. */
-  inboxSearched: ReviewItemPayload[];
+  inboxSearched: InboxItemPayload[];
   navItems: DashboardHeaderNavItem[];
   /** Pages outside the nav items, which list once the viewer types. */
   navPages: PalettePage[];
@@ -490,20 +490,20 @@ function paletteItems(input: {
   );
 }
 
-function inboxItem(item: ReviewItemPayload, query?: string): PaletteItem {
+function inboxItem(item: InboxItemPayload, query?: string): PaletteItem {
   const match = query ? quickOpenMatch(item.title, query) : undefined;
   return {
     group: "Inbox",
     icon: Inbox,
-    id: `review-item-${item.id}`,
+    id: `inbox-item-${item.id}`,
     label: item.title,
     matches: match?.indices,
     score: match?.score ?? 0,
-    to: inboxItemPath(item),
+    to: inboxRowPath(item),
   };
 }
 
-function doneItem(item: ReviewItemPayload, query?: string): PaletteItem {
+function doneItem(item: InboxItemPayload, query?: string): PaletteItem {
   const match = query ? quickOpenMatch(item.title, query) : undefined;
   return {
     group: "Done",

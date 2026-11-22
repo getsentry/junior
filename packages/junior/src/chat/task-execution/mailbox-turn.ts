@@ -35,8 +35,8 @@ import type { InboundMessage } from "@/chat/task-execution/store";
 import {
   isParentMessageAuthor,
   parentMessageAuthor,
-  readParentMessage,
 } from "@/chat/agent-invocations/parent-message";
+import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
 import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 

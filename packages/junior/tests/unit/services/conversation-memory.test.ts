@@ -233,13 +233,13 @@ describe("buildConversationContext", () => {
     expect(context).toMatch(/searchConversationEvents/);
   });
 
-  it("leaves out Review item takes and dismisses, which are not decisions", () => {
+  it("leaves out Inbox item takes and dismisses, which are not decisions", () => {
     const conversation = coerceThreadConversationState({});
     conversation.messages = (["taken", "dismissed", "submitted"] as const).map(
       (kind, index) => ({
         id: `msg-${kind}`,
         role: "user" as const,
-        text: `ana ${kind} review item`,
+        text: `ana ${kind} inbox item`,
         createdAtMs: index,
         meta: { reviewItemChanges: [{ kind, reviewItemId: "item-1" }] },
       }),
@@ -247,9 +247,9 @@ describe("buildConversationContext", () => {
 
     const context = buildConversationContext(conversation).text ?? "";
 
-    expect(context).toContain("ana submitted review item");
-    expect(context).not.toContain("ana taken review item");
-    expect(context).not.toContain("ana dismissed review item");
+    expect(context).toContain("ana submitted inbox item");
+    expect(context).not.toContain("ana taken inbox item");
+    expect(context).not.toContain("ana dismissed inbox item");
   });
 
   it("does not render raw Slack ids as author display names", () => {

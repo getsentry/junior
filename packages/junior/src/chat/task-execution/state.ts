@@ -16,7 +16,7 @@ import { toOptionalString } from "@/chat/coerce";
 import { getChatConfig } from "@/chat/config";
 import { parseDestination, sameDestination } from "@/chat/destination";
 import { parseStoredSlackActor, type StoredSlackActor } from "@/chat/actor";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import {
   getDefaultRedisStateAdapterFor,
   getStateAdapter,
@@ -25,6 +25,7 @@ import {
 import { JUNIOR_THREAD_STATE_TTL_MS } from "@/chat/state/ttl";
 import { logException } from "@/chat/logging";
 import { mapBounded } from "@/chat/fan-out";
+import { isAttemptInterrupt } from "./attempt-selection";
 import {
   normalizeMessageSenders,
   withMessageSenders,
@@ -99,8 +100,8 @@ const agentInputSchema = z
     /** Identity of the input author, resolved at ingress. */
     authorIdentityId: z.string().min(1).optional(),
     metadata: z.record(z.string(), z.unknown()).optional(),
-    /** Review item change that this input reports, on any Source. */
-    reviewItemChange: reviewItemChangeRecordSchema.optional(),
+    /** Inbox item change that this input reports, on any Source. */
+    reviewItemChange: inboxItemChangeRecordSchema.optional(),
     text: z.string(),
   })
   .strict()
@@ -1367,7 +1368,8 @@ async function appendInboundMessageWithAdmission(args: {
         status = current.execution.status === "running" ? "running" : "paused";
       } else if (
         current.execution.status === "paused" &&
-        args.message.delivery === "defer"
+        // Input that cannot start its own attempt waits for the yielded Turn.
+        !isAttemptInterrupt(args.message, current)
       ) {
         status = "paused";
       } else {
@@ -1711,9 +1713,11 @@ export async function moveIdleConversationDestination(args: {
 }
 
 /**
- * Run `work` while no Run holds the Conversation. A Run takes its lease under
- * the same mutation lock, so none can start until `work` ends. Returns `busy`
- * without calling `work` when a Run holds the Conversation. `work` calls
+ * Run `work` while no Run holds the Conversation and no work waits for one.
+ * A Run takes its lease under the same mutation lock, so none can start until
+ * `work` ends. Returns `busy` without calling `work` when a Run holds the
+ * Conversation or work waits, such as a pending mailbox message: that Run
+ * reads the history next, so `work` must not change it first. `work` calls
  * `fence` right before its durable write; it throws when the lock expired.
  */
 export async function withIdleConversation<T>(
@@ -1722,7 +1726,7 @@ export async function withIdleConversation<T>(
 ): Promise<T | "busy"> {
   return await withConversationMutation(args, async (state, lock) => {
     const existing = await readConversation(state, args.conversationId);
-    if (existing && isHeldByRun(existing)) {
+    if (existing && (isHeldByRun(existing) || hasRunnableWork(existing))) {
       return "busy";
     }
     return await work(() =>

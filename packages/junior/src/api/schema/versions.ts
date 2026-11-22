@@ -38,8 +38,8 @@ export const versionsSchema = z
      * can record which inputs moved it.
      */
     conversations: z.string().min(1),
-    /** Open Review items that need the viewer. */
-    reviewItems: z.string().min(1),
+    /** Open Inbox items that need the viewer. */
+    inboxItems: z.string().min(1),
     /** The viewer's rolling model spend. */
     spend: z.string().min(1),
   })

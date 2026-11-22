@@ -53,7 +53,7 @@ function insideWriter(node: ESTree.Node): boolean {
   return false;
 }
 
-// Module constants such as `const PLAN_DELTA_TAG = "plan-delta"`.
+// Module constants such as `const TODO_DELTA_TAG = "todo-delta"`.
 function stringConstants(program: ESTree.Program): Map<string, string> {
   const constants = new Map<string, string>();
   for (const statement of program.body) {

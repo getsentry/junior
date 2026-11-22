@@ -21,8 +21,8 @@ import {
   createChildConversationWorker,
   createDeliverToParent,
   enqueueAgentInvocationResult,
-  withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
+import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { logException, withLogContext } from "@/chat/logging";
 import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";

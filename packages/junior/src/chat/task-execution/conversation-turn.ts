@@ -18,8 +18,8 @@ import { loadProjection } from "@/chat/conversations/projection";
 import {
   childAgentTurnOptions,
   isParentMessageAuthor,
-  readParentMessage,
 } from "@/chat/agent-invocations/parent-message";
+import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import {
   hydrateConversationMessages,
   persistConversationMessages,

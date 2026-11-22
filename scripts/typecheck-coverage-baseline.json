@@ -7,7 +7,6 @@
   "packages/junior-dashboard/e2e/automations.spec.ts",
   "packages/junior-dashboard/e2e/code.spec.ts",
   "packages/junior-dashboard/e2e/command-palette.spec.ts",
-  "packages/junior-dashboard/e2e/composer-questions.spec.ts",
   "packages/junior-dashboard/e2e/connections.spec.ts",
   "packages/junior-dashboard/e2e/conversation-archive.spec.ts",
   "packages/junior-dashboard/e2e/conversation-attachments.spec.ts",

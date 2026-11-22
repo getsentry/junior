@@ -42,9 +42,9 @@ import {
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
   watchParamsSchema,
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
-  planItemStatusBodySchema,
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoStatusBodySchema,
   codeOverviewReportSchema,
   codeRepositoryParamsSchema,
   codeRepositoryQuerySchema,
@@ -88,9 +88,9 @@ import {
 } from "./objects";
 import { readMockConversationOutline } from "./outline";
 import {
-  answerMockReviewItemByReply,
+  answerMockInboxItemByReply,
   withMockViewerAnswers,
-} from "./review-items";
+} from "./inbox-items";
 import {
   markMockConversationRead,
   withMockReadPosition,
@@ -139,8 +139,8 @@ import {
   cancelMockConversationWatch,
   readMockConversationWatches,
 } from "./watches";
-import { addMockReviewItemRoutes } from "./review-item-routes";
-import { readMockConversationPlan, setMockPlanItemStatus } from "./plan";
+import { addMockInboxItemRoutes } from "./inbox-item-routes";
+import { readMockConversationTodos, setMockTodoStatus } from "./todos";
 
 /** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
 function withMockFeedIncludes(
@@ -395,7 +395,7 @@ export function createMockReportingApi(): Hono<{
     }
     // A message answers an open question, like a reply that the decision
     // model matches.
-    answerMockReviewItemByReply(
+    answerMockInboxItemByReply(
       NOW_MS,
       params.data.conversationId,
       body.data.message,
@@ -528,36 +528,36 @@ export function createMockReportingApi(): Hono<{
       ? new Response(null, { status: 204 })
       : errorResponse("Watch not found.", 404);
   });
-  app.get("/conversations/:conversationId/plan", (c) => {
+  app.get("/conversations/:conversationId/todos", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockConversationPlan(params.data.conversationId);
+    const report = readMockConversationTodos(params.data.conversationId);
     return report
-      ? jsonResponse(conversationPlanReportSchema, report)
+      ? jsonResponse(conversationTodosReportSchema, report)
       : errorResponse("Conversation not found.", 404);
   });
-  app.patch("/conversations/:conversationId/plan/:itemId", async (c) => {
+  app.patch("/conversations/:conversationId/todos/:todoId", async (c) => {
     const params = conversationParamsSchema.safeParse({
       conversationId: c.req.param("conversationId"),
     });
-    const itemId = Number(c.req.param("itemId"));
-    if (!params.success || !Number.isInteger(itemId)) {
+    const todoId = Number(c.req.param("todoId"));
+    if (!params.success || !Number.isInteger(todoId)) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const body = planItemStatusBodySchema.safeParse(await c.req.json());
+    const body = todoStatusBodySchema.safeParse(await c.req.json());
     if (!body.success) {
       return errorResponse("Invalid request body.", 400);
     }
-    const item = setMockPlanItemStatus(
+    const todo = setMockTodoStatus(
       params.data.conversationId,
-      itemId,
+      todoId,
       body.data,
     );
-    return item
-      ? jsonResponse(conversationPlanItemSchema, item)
-      : errorResponse("Plan item not found.", 404);
+    return todo
+      ? jsonResponse(conversationTodoSchema, todo)
+      : errorResponse("To-do not found.", 404);
   });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -871,11 +871,11 @@ export function createMockReportingApi(): Hono<{
     jsonResponse(versionsSchema, {
       conversationDetails: {},
       conversations: "mock",
-      reviewItems: "mock",
+      inboxItems: "mock",
       spend: "mock",
     }),
   );
-  addMockReviewItemRoutes(app);
+  addMockInboxItemRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(

@@ -34,7 +34,7 @@ jobs:
               - 'packages/junior-evals/src/fetch-setup.ts'
               - 'packages/junior-evals/src/proxy-dispatcher.ts'
               - 'packages/junior-evals/evals/classifiers/**'
-              - 'packages/junior-evals/src/review-item-reply-harness.ts'
+              - 'packages/junior-evals/src/inbox-item-reply-harness.ts'
               - 'packages/junior-evals/src/pr-description-check-harness.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/vitest.evals.classifiers.config.ts'
@@ -42,7 +42,7 @@ jobs:
               - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/scripts/network-jail.sh'
               - 'packages/junior/src/chat/pi/client.ts'
-              - 'packages/junior/src/chat/review-items/reply-match.ts'
+              - 'packages/junior/src/chat/inbox-items/reply-match.ts'
               - 'packages/junior-github/src/tool-support/pull-request-description.ts'
       - id: decision
         env:

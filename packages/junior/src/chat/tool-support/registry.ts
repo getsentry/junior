@@ -12,7 +12,7 @@
  * MCP tools, the `codemode` declarations and the `searchTools` sources are
  * also built by each run, outside `createTools`.
  */
-import { searchReviewItemsToolDefinition } from "@/chat/review-items/tools/search";
+import { searchInboxItemsToolDefinition } from "@/chat/inbox-items/tools/search";
 import type { Platform } from "@sentry/junior-plugin-api";
 import type { ZodTypeAny } from "zod";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
@@ -51,8 +51,8 @@ import type { ToolRegistry } from "@/chat/tool-support/definition";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
 import { runOperatorSqlToolDefinition } from "@/chat/tools/operator-sql";
 import { readConversationEventToolDefinition } from "@/chat/tools/read-conversation-event";
-import { updateReviewItemToolDefinition } from "@/chat/review-items/tools/update";
-import { addReviewItemToolDefinition } from "@/chat/review-items/tools/add";
+import { updateInboxItemToolDefinition } from "@/chat/inbox-items/tools/update";
+import { addInboxItemToolDefinition } from "@/chat/inbox-items/tools/add";
 import { archiveAgentToolDefinition } from "@/chat/tools/runtime/archive-agent";
 import { messageAgentToolDefinition } from "@/chat/tools/runtime/message-agent";
 import { noReplyToolDefinition } from "@/chat/tools/runtime/no-reply";
@@ -62,7 +62,7 @@ import { reportProgressToolDefinition } from "@/chat/tools/runtime/report-progre
 import { listAgentsToolDefinition } from "@/chat/tools/runtime/list-agents";
 import { spawnAgentToolDefinition } from "@/chat/tools/runtime/spawn-agent";
 import { stopAgentToolDefinition } from "@/chat/tools/runtime/stop-agent";
-import { updatePlanToolDefinition } from "@/chat/tools/runtime/update-plan";
+import { updateTodosToolDefinition } from "@/chat/tools/runtime/update-todos";
 import { bashToolDefinition } from "@/chat/tools/sandbox/bash";
 import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
@@ -81,10 +81,12 @@ import { watchTimerToolDefinition } from "@/chat/tools/watch-timer";
 import { webFetchToolDefinition } from "@/chat/tools/web/fetch-tool";
 import { webSearchToolDefinition } from "@/chat/tools/web/search";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
-import {
-  workspaceProviderNames,
-  workspaceToolDefinitions,
-} from "@/chat/workspaces/tools";
+import { workspaceProviderNames } from "@/chat/workspaces/tool-support";
+import { createWorkspaceToolDefinition } from "@/chat/workspaces/tools/create";
+import { deleteWorkspaceToolDefinition } from "@/chat/workspaces/tools/delete";
+import { listWorkspacesToolDefinition } from "@/chat/workspaces/tools/list";
+import { switchWorkspaceToolDefinition } from "@/chat/workspaces/tools/switch";
+import { updateWorkspaceToolDefinition } from "@/chat/workspaces/tools/update";
 
 /** The platform and Prompt mode that a definitions snapshot is for. */
 export interface ToolDefinitionsKey {
@@ -127,16 +129,14 @@ const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
 const hasAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents !== "none";
 
-// Write tools exist when the deployment has a workspace provider.
-function workspaceTool(
-  name: "createWorkspace" | "updateWorkspace" | "deleteWorkspace",
+// Write tools exist when the deployment has a workspace provider, and their
+// text names those providers.
+function workspaceWriteTool(
+  definition: (providers: [string, ...string[]]) => StaticZodToolDefinition,
 ): StaticToolEntry {
   return {
     when: () => workspaceProviderNames() !== undefined,
-    definition: () =>
-      (workspaceToolDefinitions() as Record<string, StaticZodToolDefinition>)[
-        name
-      ]!,
+    definition: () => definition(workspaceProviderNames()!),
   };
 }
 
@@ -146,7 +146,7 @@ function workspaceTool(
 // keep the order that they had.
 const CORE_TOOLS = {
   loadSkill: RUN_BUILT,
-  updatePlan: always(updatePlanToolDefinition),
+  updateTodos: always(updateTodosToolDefinition),
   reportProgress: always(reportProgressToolDefinition),
   systemTime: always(systemTimeToolDefinition),
   submitFeedback: always(submitFeedbackToolDefinition),
@@ -172,15 +172,11 @@ const CORE_TOOLS = {
   updateAutomation: RUN_BUILT,
   deleteAutomation: always(deleteAutomationToolDefinition),
   runAutomationNow: always(runAutomationNowToolDefinition),
-  createWorkspace: workspaceTool("createWorkspace"),
-  updateWorkspace: workspaceTool("updateWorkspace"),
-  deleteWorkspace: workspaceTool("deleteWorkspace"),
-  listWorkspaces: {
-    definition: () => workspaceToolDefinitions().listWorkspaces,
-  },
-  switchWorkspace: {
-    definition: () => workspaceToolDefinitions().switchWorkspace,
-  },
+  createWorkspace: workspaceWriteTool(createWorkspaceToolDefinition),
+  updateWorkspace: workspaceWriteTool(updateWorkspaceToolDefinition),
+  deleteWorkspace: workspaceWriteTool(() => deleteWorkspaceToolDefinition),
+  listWorkspaces: always(listWorkspacesToolDefinition),
+  switchWorkspace: always(switchWorkspaceToolDefinition),
   runOperatorSql: {
     when: () => isExperimentalFeatureEnabled("operator-tools"),
     definition: () => runOperatorSqlToolDefinition,
@@ -296,9 +292,9 @@ const CORE_TOOLS = {
     definition: () => slackChannelListMessagesToolDefinition,
   },
   addReaction: RUN_BUILT,
-  addReviewItem: always(addReviewItemToolDefinition),
-  searchReviewItems: always(searchReviewItemsToolDefinition),
-  updateReviewItem: always(updateReviewItemToolDefinition),
+  addInboxItem: always(addInboxItemToolDefinition),
+  searchInboxItems: always(searchInboxItemsToolDefinition),
+  updateInboxItem: always(updateInboxItemToolDefinition),
 } satisfies Record<string, StaticToolEntry | RunBuiltToolEntry>;
 
 type CoreToolSlotKey = keyof typeof CORE_TOOLS;
@@ -363,6 +359,7 @@ export function coreToolSlots(scope: ToolRegistryScope): CoreToolSlot[] {
 function modelFacing(definition: StaticZodToolDefinition) {
   // `zodTool` accepts a definition with or without an output schema; the
   // overloads only split them for the type of `execute`.
+  // ast-grep-ignore: tools-defined-in-tools-dir -- binds a definition from tools/; it defines no tool
   return zodTool(definition as StaticZodToolDefinition<ZodTypeAny, ZodTypeAny>);
 }
 

@@ -1,12 +1,12 @@
 import type {
-  ReviewItemActionBody,
-  ReviewItemPayload,
+  InboxItemActionBody,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import pLimit from "p-limit";
 import type { RefObject } from "react";
 
 import { useToastManager } from "../components/ui/toast";
-import { useReviewItemAction } from "./queries";
+import { useInboxItemAction } from "./queries";
 import type { SnoozeEnd } from "./inboxSnoozes";
 import type { InboxCardActions } from "./RowHoverActions";
 import { eventSnoozeOf, type EventSnooze } from "./snoozeChoices";
@@ -18,7 +18,7 @@ import {
 
 /** The Inbox row that an action acts on, as it shows now. */
 type ActedRow = {
-  items: readonly ReviewItemPayload[];
+  items: readonly InboxItemPayload[];
   key: string;
   /** Rows that leave with this one, as its stack in To do. */
   passing?: ReadonlySet<string>;
@@ -30,7 +30,7 @@ type ActedRow = {
 // Action requests that one row sends at once.
 const ROW_ACTION_REQUESTS = 8;
 
-const FAILED_TITLES: Record<ReviewItemActionBody["action"], string> = {
+const FAILED_TITLES: Record<InboxItemActionBody["action"], string> = {
   dismiss: "Could not dismiss",
   submit: "Could not send your answer",
   take: "Could not take it",
@@ -63,24 +63,24 @@ function openRowKey(scroller: HTMLElement): string {
  * names the action and offers Retry. The row opens again only when the
  * viewer has not moved on: the row that opened in its place is still the
  * open one, and they are not typing. A near row scrolls into view. A failed
- * answer keeps its draft (`useFailedReviewItemAnswer`). The returned
+ * answer keeps its draft (`useFailedInboxItemAnswer`). The returned
  * promise rejects when an action fails.
  */
 export function useInboxRowActs(options: {
-  holdLeaving(items: readonly ReviewItemPayload[], held: boolean): void;
+  holdLeaving(items: readonly InboxItemPayload[], held: boolean): void;
   leave: ReturnType<typeof useLeaveRow>;
   leaveCard: ReturnType<typeof useLeaveCard>;
   scroller: RefObject<HTMLElement | null>;
   setExpandedKey(key: string): void;
 }) {
-  const action = useReviewItemAction({ optimistic: true });
+  const action = useInboxItemAction({ optimistic: true });
   const { add, close } = useToastManager();
   const { holdLeaving, leave, leaveCard, scroller, setExpandedKey } = options;
 
   const act = async (
     row: ActedRow,
-    items: readonly ReviewItemPayload[],
-    body: ReviewItemActionBody,
+    items: readonly InboxItemPayload[],
+    body: InboxItemActionBody,
   ): Promise<void> => {
     const toastId = `inbox-action-error:${row.key}`;
     close(toastId);
@@ -148,12 +148,12 @@ export function inboxCardActions(input: {
   leave: ReturnType<typeof useLeaveRow>;
   leaveCard: ReturnType<typeof useLeaveCard>;
   setSnoozeKey(key: string | undefined): void;
-  snoozeItem(item: ReviewItemPayload, end: SnoozeEnd): void;
+  snoozeItem(item: InboxItemPayload, end: SnoozeEnd): void;
   snoozeKey?: string;
 }) {
   const { act, leave, leaveCard, setSnoozeKey } = input;
   return (row: ActedRow, options: { snoozed?: boolean }) =>
-    (item: ReviewItemPayload): InboxCardActions => {
+    (item: InboxItemPayload): InboxCardActions => {
       const menuKey = `${row.key}:${item.id}`;
       const putAway = (release: () => void) =>
         row.passing
@@ -187,7 +187,7 @@ export function inboxCardActions(input: {
 export function inboxStackActions(input: {
   act: ReturnType<typeof useInboxRowActs>;
   expandedKey: string;
-  items: readonly ReviewItemPayload[];
+  items: readonly InboxItemPayload[];
   /** The stack's row keys, in order. */
   keys: readonly string[];
   snooze(end: SnoozeEnd): void;

@@ -15,11 +15,14 @@ import {
 } from "@/chat/conversations/web-input";
 import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  getConversationWorkState,
+  type InboundMessageDelivery,
+} from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
-import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
+import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
 import type {
@@ -144,12 +147,13 @@ export async function createConversationForViewer(
   }
 }
 
-/** Append one dashboard message to an existing conversation. */
+/** Append one viewer message to an existing conversation. */
 export async function appendConversationMessageForViewer(
   viewer: User,
   conversationId: string,
   body: CreateConversationMessageBody,
   services: WebInputServices,
+  delivery: InboundMessageDelivery,
 ): Promise<AcceptedConversationMessage> {
   await requireWebMessageConversation(
     viewer,
@@ -167,6 +171,7 @@ export async function appendConversationMessageForViewer(
       {
         actor,
         conversationId,
+        delivery,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
         uploads,
@@ -180,11 +185,11 @@ export async function appendConversationMessageForViewer(
   // A dashboard message answers the open questions that the agent asked in
   // this Conversation, like a typed Slack reply.
   const closeAnswered = () =>
-    closeReviewItemsAnsweredByReply({
+    closeInboxItemsAnsweredByReply({
       conversationId,
       delivery: {
         queue: services.queue,
-        show: createSlackReviewItemShow(getProductionSlackAdapter),
+        show: createSlackInboxItemShow(getProductionSlackAdapter),
       },
       resolveUser: async () => viewer,
       text: body.message,

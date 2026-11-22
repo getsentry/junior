@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { readRepoFiles } from "./lib/repo-files.mjs";
 
 const TEST_ROOTS = [
   "packages/junior/tests/integration",
@@ -358,80 +358,35 @@ export function checkDatabaseTestFixtures(files) {
   return errors;
 }
 
-function collectSourceFiles(root, roots) {
-  return roots.flatMap((testRoot) => {
-    const directory = path.join(root, testRoot);
-    return fs
-      .readdirSync(directory, { recursive: true, withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isFile() &&
-          /\.(?:ts|mts|mjs)$/.test(entry.name) &&
-          !entry.parentPath.split(path.sep).includes("node_modules"),
-      )
-      .map((entry) => {
-        const absolutePath = path.join(entry.parentPath, entry.name);
-        return {
-          path: path.relative(root, absolutePath).split(path.sep).join("/"),
-          contents: fs.readFileSync(absolutePath, "utf8"),
-        };
-      });
-  });
-}
-
-function collectTests(root, testRoots = TEST_ROOTS) {
-  return testRoots.flatMap((testRoot) => {
-    const directory = path.join(root, testRoot);
-    return fs
-      .readdirSync(directory, { recursive: true, withFileTypes: true })
-      .filter(
-        (entry) =>
-          entry.isFile() &&
-          (entry.name.endsWith(".test.ts") || entry.name.endsWith(".spec.ts")),
-      )
-      .map((entry) => {
-        const absolutePath = path.join(entry.parentPath, entry.name);
-        return {
-          path: path.relative(root, absolutePath).split(path.sep).join("/"),
-          contents: fs.readFileSync(absolutePath, "utf8"),
-        };
-      });
-  });
-}
-
-function main() {
-  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(scriptDirectory, "..");
+/** Check test harness, database fixture, and agent test rules. */
+export async function run({ root, files }) {
+  const collect = (roots, pattern) =>
+    readRepoFiles(
+      root,
+      files.filter(
+        (file) =>
+          roots.some((testRoot) => file.startsWith(`${testRoot}/`)) &&
+          pattern.test(file),
+      ),
+    );
+  const tests = (roots) => collect(roots, /\.(?:test|spec)\.ts$/);
+  const sources = (roots) => collect(roots, /\.(?:ts|mts|mjs)$/);
   const baseline = JSON.parse(
     fs.readFileSync(path.join(root, AGENT_TEST_BASELINE_PATH), "utf8"),
   );
   const errors = [
-    ...checkIntegrationTestArchitecture(collectTests(root)),
-    ...checkDatabaseTestFixtures(collectTests(root, DATABASE_TEST_ROOTS)),
+    ...checkIntegrationTestArchitecture(await tests(TEST_ROOTS)),
+    ...checkDatabaseTestFixtures(await tests(DATABASE_TEST_ROOTS)),
+    ...checkAgentTestArchitecture(await sources(AGENT_TEST_ROOTS), baseline),
     ...checkAgentTestArchitecture(
-      collectSourceFiles(root, AGENT_TEST_ROOTS),
-      baseline,
-    ),
-    ...checkAgentTestArchitecture(
-      collectSourceFiles(root, SOURCE_ROOTS),
+      await sources(SOURCE_ROOTS),
       baseline,
       SOURCE_RULES,
     ),
   ];
-  if (errors.length === 0) {
-    console.log("Tests follow test architecture policy.");
-    return;
-  }
-  console.error(
-    [
-      "Test architecture check failed:",
-      ...errors,
-      `Fix the code to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
-    ].join("\n"),
-  );
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  if (errors.length === 0) return [];
+  return [
+    ...errors,
+    `Fix the code to follow the rule. Do not rename, alias, or wrap the matched code, and do not add or raise entries in ${AGENT_TEST_BASELINE_PATH}, to pass. See policies/testing.md and policies/evals.md.`,
+  ];
 }

@@ -40,15 +40,14 @@ also wake a Conversation or run an Event automation.
   comments, replies to a review comment, or marks the change request
   addressed. When the requester comments or reviews, Junior acts next, and
   the Inbox stops asking. A requester who approved since is not asked.
-- Junior cannot fork or administer a repo, and never pushes to or deletes
-  the default branch.
+- Junior cannot fork or administer a repo, and never deletes the default
+  branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When it is approved and can merge,
-  the requester gets a "Ready to merge" Review item, because a person
-  merges.
+  the requester gets a "Ready to merge" Inbox item.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 

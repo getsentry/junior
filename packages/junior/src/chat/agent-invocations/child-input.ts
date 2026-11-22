@@ -10,7 +10,8 @@ import { getSqlExecutor } from "@/chat/db";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { ownAgentInvocation, readChildMessageSender } from "./child-message";
-import { isFromStoredParent, readParentMessage } from "./parent-message";
+import { isFromStoredParent } from "./parent-message";
+import { readParentMessage } from "./parent-message-input";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,

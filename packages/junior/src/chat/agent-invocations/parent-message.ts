@@ -1,7 +1,6 @@
-import { actorSchema, type Actor } from "@sentry/junior-plugin-api";
+import type { Actor } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { and, desc, eq, like, sql } from "drizzle-orm";
-import * as z from "zod";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -9,10 +8,7 @@ import {
   getConversationStoppedAtMs,
   resumeStoppedConversationTree,
 } from "@/chat/conversations/session-stop";
-import {
-  credentialContextSchema,
-  type CredentialContext,
-} from "@/chat/credentials/context";
+import type { CredentialContext } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
 import type { PiMessage } from "@/chat/pi/messages";
@@ -29,27 +25,7 @@ import { loadForkHistory } from "./fork-history";
 import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { agentInvocationInputText } from "./work";
-
-/**
- * A parent agent task or message to a child that no Agent invocation names:
- * who sent it and the instruction. It names the parent Conversation, the
- * Actor and grants of the parent's Turn, and the `spawnAgent` or
- * `messageAgent` tool call that sent it. Its text is the raw task. `fork`
- * marks the task of a fork spawn.
- */
-const parentMessageSchema = z
-  .object({
-    actor: actorSchema,
-    credentialContext: credentialContextSchema.optional(),
-    fork: z.literal(true).optional(),
-    kind: z.literal("parent_message"),
-    parentConversationId: z.string().min(1),
-    parentToolCallId: z.string().min(1),
-  })
-  .strict();
-
-/** One parent agent task or message read from a child's mailbox. */
-export type ParentMessage = z.output<typeof parentMessageSchema>;
+import { readParentMessage, type ParentMessage } from "./parent-message-input";
 
 /**
  * Return the author id of every parent message from one parent. It matches
@@ -212,20 +188,6 @@ export async function dropWaitingParentMessages(
   for (const { message, parentMessage } of waiting) {
     logDroppedParentMessage(message, parentMessage);
   }
-}
-
-/**
- * Read the parent message that one mailbox input is, if it is one. Check its
- * sender with `isFromStoredParent` before it gets any authority.
- */
-export function readParentMessage(
-  message: InboundMessage,
-): ParentMessage | undefined {
-  if (message.source !== "internal") {
-    return undefined;
-  }
-  const parsed = parentMessageSchema.safeParse(message.input.metadata);
-  return parsed.success ? parsed.data : undefined;
 }
 
 /**

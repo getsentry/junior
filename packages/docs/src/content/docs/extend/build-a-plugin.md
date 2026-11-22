@@ -323,6 +323,7 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `disabledTools(ctx)`     | Return a reason for each tool that the current Turn cannot use, keyed by plugin-local tool name.                                                                                             |
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
+| `searchUsers(ctx)`       | Return the provider accounts that match `ctx.query`, such as an exact login. `userLookup` links each account to a known person. A search that fails is logged and left out of the result. |
 | `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
 
 When a hook, tool, or task belongs to a Conversation, Junior records the cost
@@ -487,7 +488,7 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.reviewItems` as
+`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.inboxItems` as
 from a plugin route.
 
 ```ts title="index.ts"
