@@ -2,8 +2,8 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -70,7 +70,9 @@ export function useReportUnsentAnswer(item: InboxItemPayload, unsent: boolean) {
     !item.assignedToEveryone &&
     itemConversationId(item) === context?.conversationId;
   const title = inboxItemTitleText(item);
-  useEffect(() => {
+  // `confirmSubmit` reads the titles at once, so a layout effect keeps them
+  // current before the next event.
+  useLayoutEffect(() => {
     if (!context || !closesOnReply || !unsent) return;
     context.titles.set(key, title);
     return () => {
