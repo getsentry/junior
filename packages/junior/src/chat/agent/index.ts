@@ -1083,6 +1083,17 @@ async function executeAgentRunInPrivacyContext(
       event: Extract<AgentEvent, { type: "turn_end" }>,
       runSignal: AbortSignal | undefined,
     ): Promise<void> => {
+      // Pi answers a call to a tool outside the model tool list with a bare
+      // "not found". No request has sent the result yet, so replacing it
+      // here keeps the cached prefix, and the save below and the next
+      // request get the same text.
+      const explained = wiring.explainMissingToolResults(
+        currentAgentMessages(),
+        event.toolResults,
+      );
+      if (explained) {
+        setAgentHistory(explained);
+      }
       if (event.toolResults.length > 0) {
         cacheWarming.toolsReturned();
         await requireConversationLease("save");
@@ -1134,7 +1145,7 @@ async function executeAgentRunInPrivacyContext(
           return { contextUpdated, pendingMessages, runEnded };
         },
       );
-      messagesChanged = boundary.contextUpdated;
+      messagesChanged = Boolean(explained) || boundary.contextUpdated;
       // After the final response or a batch that ended the run, such as a
       // `noReply` call, no step follows. A yield would resume the run, and the
       // next slice would call the model again and post its text. Compaction
