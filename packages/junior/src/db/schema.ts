@@ -22,10 +22,7 @@ import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
 import { juniorConversationReadPositions } from "./schema/conversation-read-positions";
 import { juniorConversations } from "./schema/conversations";
-import {
-  juniorAgentBindings,
-  juniorAgentInvocations,
-} from "./schema/agent-invocations";
+import { juniorAgentBindings } from "./schema/agent-bindings";
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
@@ -59,7 +56,6 @@ export {
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
@@ -105,7 +101,6 @@ export const juniorSqlSchema = {
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,

@@ -259,12 +259,12 @@ function isActiveMailboxTurn(
 ): boolean {
   return (
     !record.dispatchId &&
-    // An Agent invocation Turn is never a mailbox Turn, even with a web or
-    // Event Source.
+    // A Turn of a removed Agent invocation worker is never a mailbox Turn,
+    // so a saved one never resumes.
     record.surface !== "internal" &&
     (record.source?.kind === "web" ||
       record.source?.kind === "event" ||
-      record.source?.kind === "agent_invocation" ||
+      record.source?.kind === "parent_message" ||
       (!record.source &&
         (record.surface === "api" || hasEventActor(record.actors)))) &&
     (record.state === "paused" || record.state === "running")
@@ -429,9 +429,7 @@ function parseParentMessages(
         ? { credentialContext: parentMessage.credentialContext }
         : undefined),
       message,
-      // TODO(dcramer): Rename this Source kind with the legacy child worker
-      // (#3060 step 7). It is the Source of every parent agent task.
-      source: { kind: "agent_invocation" },
+      source: { kind: "parent_message" },
     };
   });
 }

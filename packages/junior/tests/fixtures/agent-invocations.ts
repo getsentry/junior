@@ -6,14 +6,11 @@ import {
   defineJuniorPlugin,
   definePluginTool,
   pluginToolOutputSchema,
-  type Destination,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { defineJuniorPlugins } from "@/app";
+import { spawnChildAgent as spawnChild } from "@/chat/agent-invocations/create";
 import { listChildAgents } from "@/chat/agent-invocations/list";
-import { getAgentInvocation } from "@/chat/agent-invocations/store";
-import type { AgentInvocation } from "@/chat/agent-invocations/types";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
 import { commitMessages } from "@/chat/conversations/projection";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -39,7 +36,6 @@ export const destination = {
 } as const;
 export const invocationInput = {
   actor: { name: "parent-agent", platform: "system" } as const,
-  destination,
   input: "Summarize the durable task.",
   parentConversationId,
   reasoningLevel: "medium" as const,
@@ -63,7 +59,6 @@ export const slackInvocationInput = {
     teamId: "T123",
     userId: "U123",
   } as const,
-  destination: slackDestination,
   parentConversationId: slackParentConversationId,
 };
 
@@ -121,38 +116,33 @@ export async function loadMessageEvents(conversationId: string) {
 
 type ChildAgentArgs = {
   conversationStore: ConversationStore;
-  /** Where the child reports, when the parent has no work record yet. */
-  destination?: Destination;
   idempotencyKey: string;
   parentConversationId: string;
   queue: ConversationWorkQueueTestAdapter;
   state: StateAdapter;
 };
 
-/** Spawn a child agent that reports to the destination of the parent's run. */
+/** One child agent and the parent that spawned it. */
+export type SpawnedChild = {
+  childConversationId: string;
+  parentConversationId: string;
+};
+
+/** Spawn a child agent as `spawnAgent` does. */
 export async function spawnChildAgent(
   args: ChildAgentArgs,
-): Promise<AgentInvocation> {
-  const destination =
-    args.destination ??
-    (
-      await getConversationWorkState({
-        conversationId: args.parentConversationId,
-        state: args.state,
-      })
-    )?.destination;
-  if (!destination) {
-    throw new Error("Expected a parent Conversation with a destination");
-  }
-  return await createAndEnqueueAgentInvocation(
+): Promise<SpawnedChild> {
+  const { childConversationId } = await spawnChild(
     {
       ...invocationInput,
-      destination,
       idempotencyKey: args.idempotencyKey,
       parentConversationId: args.parentConversationId,
+      parentToolCallId: args.idempotencyKey,
+      parentTurnId: args.idempotencyKey,
     },
     args,
   );
+  return { childConversationId, parentConversationId: args.parentConversationId };
 }
 
 /**
@@ -161,44 +151,38 @@ export async function spawnChildAgent(
  */
 export async function startRunningChildAgent(
   args: ChildAgentArgs,
-): Promise<{ invocation: AgentInvocation; runId: string }> {
-  const invocation = await spawnChildAgent(args);
+): Promise<{ child: SpawnedChild; runId: string }> {
+  const child = await spawnChildAgent(args);
   // The child worker took its wake, so a queue drain does not run it.
-  args.queue.takeMessageFor(invocation.childConversationId);
+  args.queue.takeMessageFor(child.childConversationId);
   const lease = await startConversationWork({
-    conversationId: invocation.childConversationId,
+    conversationId: child.childConversationId,
     conversationStore: args.conversationStore,
     state: args.state,
   });
   const runId = (
     await getConversationWorkState({
-      conversationId: invocation.childConversationId,
+      conversationId: child.childConversationId,
       state: args.state,
     })
   )?.execution.runId;
   if (lease.status !== "acquired" || !runId) {
     throw new Error("Expected a running child agent");
   }
-  return { invocation, runId };
+  return { child, runId };
 }
 
 /** Expect a stop of the parent to have stopped its running child agent. */
 export async function expectChildAgentStopped(
-  child: { invocation: AgentInvocation; runId: string },
+  running: { child: SpawnedChild; runId: string },
   state: StateAdapter,
 ): Promise<void> {
-  const { childConversationId, invocationId, parentConversationId } =
-    child.invocation;
-  await expect(getAgentInvocation(invocationId)).resolves.toMatchObject({
-    errorMessage: "Stopped by the parent conversation",
-    parentMailboxStatus: "skipped",
-    status: "stopped",
-  });
+  const { childConversationId, parentConversationId } = running.child;
   // The child worker sees this request and aborts its run.
   await expect(
     hasConversationStop({
       conversationId: childConversationId,
-      runId: child.runId,
+      runId: running.runId,
       state,
     }),
   ).resolves.toBe(true);

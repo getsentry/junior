@@ -353,7 +353,7 @@ describe("agent invocation conversation work", () => {
           channelId: "C123",
           threadTs: "1712345.0001",
         },
-        source: { kind: "agent_invocation" },
+        source: { kind: "parent_message" },
         surface: "internal",
         runId: created.invocationId,
       });
@@ -743,7 +743,7 @@ describe("agent invocation conversation work", () => {
         expect(paused).toMatchObject({
           state: "paused",
           resumeReason: "yield",
-          source: { kind: "agent_invocation" },
+          source: { kind: "parent_message" },
           piMessages: expect.arrayContaining([
             expect.objectContaining({
               role: "toolResult",
@@ -939,7 +939,7 @@ describe("agent invocation conversation work", () => {
           ] as PiMessage[],
           turnId: getAgentInvocationTurnId(created.invocationId),
           sliceId: 1,
-          source: { kind: "agent_invocation" },
+          source: { kind: "parent_message" },
           state: "completed",
           surface: "internal",
         });

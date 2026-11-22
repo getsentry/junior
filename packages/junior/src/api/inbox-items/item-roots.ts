@@ -1,11 +1,10 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, desc, eq, inArray, isNotNull, sql } from "drizzle-orm";
+import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { ownerConversationId, type InboxItem } from "@/chat/inbox-items/store";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorConversations,
 } from "@/db/schema";
 
@@ -69,36 +68,13 @@ export async function readItemRoots(
     );
   if (children.length === 0) return new Map();
   const childIds = children.map((child) => child.conversationId);
-  const [access, invocations] = await Promise.all([
-    readConversationAccessFromSql(db, childIds, viewer),
-    // An Agent invocation names its child best: a titled one first, then
-    // the newest.
-    db
-      .selectDistinctOn([juniorAgentInvocations.childConversationId], {
-        agentName: juniorAgentInvocations.agentName,
-        childConversationId: juniorAgentInvocations.childConversationId,
-        title: juniorAgentInvocations.title,
-      })
-      .from(juniorAgentInvocations)
-      .where(inArray(juniorAgentInvocations.childConversationId, childIds))
-      .orderBy(
-        juniorAgentInvocations.childConversationId,
-        sql`${juniorAgentInvocations.title} is null`,
-        desc(juniorAgentInvocations.createdAt),
-      ),
-  ]);
-  const invocationByChild = new Map(
-    invocations.map((row) => [row.childConversationId, row]),
-  );
+  const access = await readConversationAccessFromSql(db, childIds, viewer);
   return new Map(
     children.flatMap((child) => {
       const childAccess = access.get(child.conversationId);
       const rootConversationId = childAccess?.rootConversationId;
       if (!rootConversationId || !childAccess.canViewPrivateContent) return [];
-      const invocation = invocationByChild.get(child.conversationId);
       const label =
-        invocation?.title ??
-        invocation?.agentName ??
         child.title ??
         child.bindingName ??
         kindLabel(child.kind);

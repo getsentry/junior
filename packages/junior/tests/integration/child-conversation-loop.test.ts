@@ -194,7 +194,7 @@ describe("child Turns on the Conversation loop", () => {
       try {
         const childId = await startIdleChild(harness, "thread");
         const seen: unknown[] = [];
-        harness.onPersonRun(async (run) => {
+        harness.onRun(async (run) => {
           seen.push(
             await createListAgentsTool({
               conversationId: slackParentConversationId,
@@ -390,7 +390,7 @@ describe("child Turns on the Conversation loop", () => {
     const harness = await createHarness();
     try {
       const childId = await startIdleChild(harness, "task");
-      harness.onPersonRun(async (run) => {
+      harness.onRun(async (run) => {
         // Only the stored stop is set. No stop request reaches the worker.
         await storeConversationStop(run.conversationId);
         // The agent loop checks for a stop at each step boundary.

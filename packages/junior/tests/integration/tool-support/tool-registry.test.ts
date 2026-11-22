@@ -259,7 +259,7 @@ describe("static tool registry", () => {
           sentTurn(
             turnBehavior({ kind: "thread", personInput }),
             turnRun("slack:T0:C0:1.0:thread", personInput, {
-              kind: "agent_invocation",
+              kind: "parent_message",
             }),
           ),
         ),

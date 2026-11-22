@@ -1,15 +1,12 @@
 import type { StateAdapter } from "chat";
 import type { ConversationStore } from "@/chat/conversations/store";
 import type { AgentRun, SpawnAgent, SpawnAgentInput } from "@/chat/agent/types";
-import { actorFromRun, toolInvocationDestination } from "@/chat/agent/types";
+import { actorFromRun } from "@/chat/agent/types";
 import { botConfig } from "@/chat/config";
 import { readConversationLineage } from "@/chat/conversations/lineage";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { spawnChildAgent } from "./create";
 import { AgentDepthLimitError } from "./errors";
-import { getAgentInvocationId } from "./ids";
-import { getAgentInvocation } from "./store";
-import { createAndEnqueueAgentInvocation } from "./work";
 
 type SpawnOptions = {
   conversationStore?: ConversationStore;
@@ -41,7 +38,7 @@ async function assertCanStartChildAgent(
   }
 }
 
-/** Bind a Run's Actor and credentials to new Agent invocations. */
+/** Bind a Run's Actor and credentials to new child agents. */
 export function bindSpawnAgent(
   run: AgentRun,
   options: SpawnOptions,
@@ -59,43 +56,28 @@ export function bindSpawnAgent(
       run.conversationId,
       options.maxAgentDepth ?? botConfig.maxAgentDepth,
     );
-    const idempotencyKey = `${run.turnId}:${call.toolCallId}`;
     const queue =
       typeof options.queue === "function" ? options.queue() : options.queue;
-    const createInput = {
-      actor,
-      ...(input.name ? { agentName: input.name } : undefined),
-      ...(input.agentType ? { agentType: input.agentType } : undefined),
-      ...(input.fork ? { fork: true as const } : undefined),
-      ...(run.credentialContext
-        ? { credentialContext: run.credentialContext }
-        : undefined),
-      destination: toolInvocationDestination(run),
-      idempotencyKey,
-      input: input.task,
-      ...(input.kind ? { kind: input.kind } : undefined),
-      parentConversationId: run.conversationId,
-      parentToolCallId: call.toolCallId,
-      ...(input.reasoningLevel
-        ? { reasoningLevel: input.reasoningLevel }
-        : undefined),
-      ...(input.title ? { title: input.title } : undefined),
-    };
-    // TODO(dcramer): Delete with Agent invocation rows (#3060 step 7). A spawn
-    // that wrote an Agent invocation before this release replays through it.
-    if (
-      await getAgentInvocation(
-        getAgentInvocationId(run.conversationId, idempotencyKey),
-      )
-    ) {
-      const invocation = await createAndEnqueueAgentInvocation(createInput, {
-        ...options,
-        queue,
-      });
-      return { childConversationId: invocation.childConversationId };
-    }
     return await spawnChildAgent(
-      { ...createInput, parentTurnId: run.turnId },
+      {
+        actor,
+        ...(input.name ? { agentName: input.name } : undefined),
+        ...(input.agentType ? { agentType: input.agentType } : undefined),
+        ...(input.fork ? { fork: true as const } : undefined),
+        ...(run.credentialContext
+          ? { credentialContext: run.credentialContext }
+          : undefined),
+        idempotencyKey: `${run.turnId}:${call.toolCallId}`,
+        input: input.task,
+        ...(input.kind ? { kind: input.kind } : undefined),
+        parentConversationId: run.conversationId,
+        parentToolCallId: call.toolCallId,
+        parentTurnId: run.turnId,
+        ...(input.reasoningLevel
+          ? { reasoningLevel: input.reasoningLevel }
+          : undefined),
+        ...(input.title ? { title: input.title } : undefined),
+      },
       { ...options, queue },
     );
   };

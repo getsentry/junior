@@ -21,7 +21,7 @@ import {
 import { storeConversationStop, webTestActor } from "../fixtures/conversation";
 import {
   createHarness,
-  finishInvocation,
+  startFinishedThread,
   startThread,
   sendPersonMessage,
   personPausedPrompt,
@@ -52,9 +52,7 @@ describe("Thread input stop", () => {
     async ({ queued, withoutMessage }) => {
       const harness = await createHarness();
       try {
-        const threadId = await startThread(harness, "thread-spawn");
-        await harness.process(threadId);
-        await finishInvocation(harness, threadId);
+        const threadId = await startFinishedThread(harness);
         const personTurnId = await savePersonTurn(threadId, "auth", {
           signInPrompt: true,
           withoutMessage,
@@ -125,10 +123,8 @@ describe("Thread input stop", () => {
   it("ends a person's Turn in a Thread at its next step after a stored stop", async () => {
     const harness = await createHarness();
     try {
-      const threadId = await startThread(harness, "thread-step-stop");
-      await harness.process(threadId);
-      await finishInvocation(harness, threadId);
-      harness.onPersonRun(async (run) => {
+      const threadId = await startFinishedThread(harness, "thread-step-stop");
+      harness.onRun(async (run) => {
         // Only the stored stop is set. No stop request reaches the worker.
         await storeConversationStop(run.conversationId);
         // The agent loop checks for a stop at each step boundary.

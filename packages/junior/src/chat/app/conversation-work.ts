@@ -20,13 +20,11 @@ import {
 import {
   createChildConversationWorker,
   createDeliverToParent,
-  enqueueAgentInvocationResult,
 } from "@/chat/agent-invocations/result";
 import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { logException, withLogContext } from "@/chat/logging";
 import { resumeForPersonInput } from "@/chat/conversations/session-stop";
-import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
@@ -117,13 +115,6 @@ export function createConversationWork(
     },
     runTurn: runtime.runDispatchTurn,
   });
-  const enqueueResult = async (
-    invocation: TerminalAgentInvocation,
-  ): Promise<void> =>
-    await enqueueAgentInvocationResult(invocation, {
-      queue: options.queue,
-      state: options.state,
-    });
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
     createSlackSystemTurnDelivery({
@@ -132,9 +123,7 @@ export function createConversationWork(
     }),
     createDeliverToParent({ queue: options.queue, state: options.state }),
   );
-  const childWorker = createChildConversationWorker(options.agentRunner, {
-    enqueueResult,
-    queue: options.queue,
+  const childWorker = createChildConversationWorker({
     runTurn: conversationTurnWorker,
     state: options.state,
   });
@@ -163,7 +152,7 @@ export function createConversationWork(
     if (mailboxTurn) {
       const work = await withAgentInvocationResultActors(mailboxTurn);
       if (!work) {
-        // A stop skipped every child result in this input.
+        // A stop or parent check dropped every input.
         await context.attempt.ack();
         return { status: "completed" };
       }

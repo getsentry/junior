@@ -78,7 +78,7 @@ describe("conversation tree state", () => {
       watching: true,
     });
     await expect(
-      fixture.tree(running.invocation.childConversationId),
+      fixture.tree(running.child.childConversationId),
     ).resolves.toEqual({ treeState: "working", watching: false });
 
     const asking = await spawnChildAgent({

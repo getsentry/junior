@@ -9,7 +9,6 @@ import { contextProvenance } from "@/chat/conversations/provenance";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorConversationEvents } from "@/db/schema";
 import type { PiMessage } from "@/chat/pi/messages";
-import type { AgentInvocation } from "./types";
 
 /** Instructions that a fork child reads with its first task. */
 export const FORK_INSTRUCTIONS =
@@ -23,17 +22,15 @@ export const FORK_INSTRUCTIONS =
  */
 function forkHistoryFrom(
   messages: readonly PiMessage[],
-  parentToolCallId: string | undefined,
+  parentToolCallId: string,
 ): PiMessage[] {
-  const spawnIndex = parentToolCallId
-    ? messages.findIndex(
-        (message) =>
-          message.role === "assistant" &&
-          message.content.some(
-            (part) => part.type === "toolCall" && part.id === parentToolCallId,
-          ),
-      )
-    : -1;
+  const spawnIndex = messages.findIndex(
+    (message) =>
+      message.role === "assistant" &&
+      message.content.some(
+        (part) => part.type === "toolCall" && part.id === parentToolCallId,
+      ),
+  );
   const before = spawnIndex >= 0 ? messages.slice(0, spawnIndex) : messages;
   const pending = new Set<string>();
   let end = 0;
@@ -53,16 +50,14 @@ function forkHistoryFrom(
 /**
  * Load the start history of a fork child from its parent Conversation.
  */
-async function loadForkHistory(
-  invocation: Pick<
-    AgentInvocation,
-    "parentConversationId" | "parentToolCallId"
-  >,
-): Promise<PiMessage[]> {
+async function loadForkHistory(fork: {
+  parentConversationId: string;
+  parentToolCallId: string;
+}): Promise<PiMessage[]> {
   const parent = await openConversationProjection({
-    conversationId: invocation.parentConversationId,
+    conversationId: fork.parentConversationId,
   });
-  return forkHistoryFrom(parent.messages, invocation.parentToolCallId);
+  return forkHistoryFrom(parent.messages, fork.parentToolCallId);
 }
 
 async function hasTurnStarted(conversationId: string): Promise<boolean> {
@@ -88,12 +83,11 @@ async function hasTurnStarted(conversationId: string): Promise<boolean> {
  * parent `reply` in it would read as the Turn's answer. Only a worker that
  * committed fork history after the Turn start leaves such a child.
  */
-export async function commitForkHistory(
-  args: Pick<
-    AgentInvocation,
-    "childConversationId" | "parentConversationId" | "parentToolCallId"
-  >,
-): Promise<void> {
+export async function commitForkHistory(args: {
+  childConversationId: string;
+  parentConversationId: string;
+  parentToolCallId: string;
+}): Promise<void> {
   const child = await openConversationProjection({
     conversationId: args.childConversationId,
   });

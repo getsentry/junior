@@ -1,7 +1,7 @@
 import type { FileUpload } from "chat";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
-  AgentInvocationSource,
+  ParentMessageSource,
   EventAutomationSource,
   WebSource,
   EventSource,
@@ -160,7 +160,7 @@ export type ToolRuntimeContext =
       destination: Destination;
       actor?: Actor | undefined;
       source:
-        | AgentInvocationSource
+        | ParentMessageSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource

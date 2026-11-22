@@ -251,7 +251,7 @@ function pluginInvocationContext(
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return {
         ...common,
         actor: context.actor,
@@ -1008,7 +1008,7 @@ export function getPluginTools(
       case "scheduled_automation":
       case "event_automation":
       case "plugin_dispatch":
-      case "agent_invocation":
+      case "parent_message":
         pluginContext = {
           ...common,
           actor: context.actor,

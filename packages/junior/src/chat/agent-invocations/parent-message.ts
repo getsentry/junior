@@ -20,10 +20,11 @@ import {
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { commitForkHistory } from "./fork-history";
-import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
+import { commitForkHistory, FORK_INSTRUCTIONS } from "./fork-history";
+import { getParentMessageId } from "./ids";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
-import { agentInvocationInputText } from "./work";
+import { renderParentAgentTask } from "@/chat/input-tags";
+import { agentTypeInstructions, type AgentType } from "./agent-types";
 import { readParentMessage, type ParentMessage } from "./parent-message-input";
 
 /**
@@ -38,9 +39,8 @@ export function parentMessageAuthorId(parentConversationId: string): string {
 const PARENT_MESSAGE_AUTHOR_PREFIX = "parent-agent:";
 
 /**
- * Build the parent message that gives one task or message to a child that no
- * Agent invocation names. It has the mailbox id that an Agent invocation with
- * the same idempotency key would have, so a replay is a duplicate.
+ * Build the parent message that gives one task or message to a child. Its
+ * mailbox id comes from the idempotency key, so a replay is a duplicate.
  */
 export function buildParentMessage(args: {
   actor: Actor;
@@ -53,8 +53,9 @@ export function buildParentMessage(args: {
   parentToolCallId: string;
   text: string;
 }): InboundMessage {
-  const inboundMessageId = getAgentInvocationMessageId(
-    getAgentInvocationId(args.parentConversationId, args.idempotencyKey),
+  const inboundMessageId = getParentMessageId(
+    args.parentConversationId,
+    args.idempotencyKey,
   );
   return {
     conversationId: args.childConversationId,
@@ -98,7 +99,7 @@ export type ParentMessageDelivery = "message" | "new_child";
  * exists only when this transaction commits.
  *
  * New work for a child that exists ends the stop of the child and of the
- * child agents below it, as an Agent invocation does. The stop already
+ * child agents below it. The stop already
  * dropped the parent messages that waited then. A message that already
  * reached the mailbox changes nothing, so a replay does not end a later
  * stop.
@@ -231,19 +232,34 @@ export function logDroppedParentMessage(
 }
 
 /**
- * Render a parent message as the child model reads it, as an Agent
- * invocation renders its task.
+ * Render a parent task or message as the child model reads it: one
+ * `<parent-agent-task>`, after the fork and Agent type instructions.
  */
+export function parentTaskText(args: {
+  agentType?: AgentType | undefined;
+  fork?: true | undefined;
+  text: string;
+}): string {
+  const instructions = [
+    args.fork ? FORK_INSTRUCTIONS : undefined,
+    agentTypeInstructions(args.agentType),
+  ].filter((text) => text !== undefined);
+  return renderParentAgentTask([
+    ...instructions.flatMap((text) => [text, ""]),
+    args.text,
+  ]);
+}
+
+/** Render a parent message as the child model reads it. */
 export async function parentMessageText(
   message: InboundMessage,
   parentMessage: ParentMessage,
 ): Promise<string> {
   const options = await readAgentConfig(message.conversationId);
-  return agentInvocationInputText({
+  return parentTaskText({
     agentType: options?.agentType,
     fork: parentMessage.fork,
-    input: message.input.text,
-    parentToolCallId: parentMessage.parentToolCallId,
+    text: message.input.text,
   });
 }
 
@@ -319,8 +335,7 @@ export async function commitParentMessageFork(args: {
 /**
  * Apply the agent config of a child agent to one of its Turns on the root
  * Turn code. Every Turn keeps the reasoning level. A parent message is the
- * child's instruction, as on an Agent invocation, also when its Turn resumes
- * (`fromParent`).
+ * child's instruction, also when its Turn resumes (`fromParent`).
  */
 export async function childAgentTurnOptions(args: {
   conversationId: string;
