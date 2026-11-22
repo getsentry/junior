@@ -1,8 +1,9 @@
 /**
  * Start one Conversation from a Lead. The new Conversation is a public web
  * root of the Lead's person and runs as that person, like any root. The
- * Lead's task is its first Message. The start is not reviewed. Action
- * review judges the new root's own tool calls, as it does a child agent's.
+ * Lead's task is its first Message. Action review judges the
+ * `startConversation` call, as it does `spawnAgent`, and then the new root's
+ * own tool calls, as it does a child agent's.
  */
 import {
   appendAndEnqueueWebMessage,
