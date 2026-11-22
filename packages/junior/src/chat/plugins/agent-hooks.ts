@@ -110,6 +110,7 @@ import {
 } from "@/chat/plugins/core-registrations";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
+import { createPluginArtifacts } from "@/chat/plugins/artifacts";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -847,6 +848,10 @@ export function getPluginTools(
   sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
+  const artifacts = createPluginArtifacts(
+    context.attachmentStorage,
+    context.conversationId,
+  );
   for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
@@ -897,6 +902,7 @@ export function getPluginTools(
           conversationId: context.conversationId,
           resolveActor,
         }),
+      ...(artifacts ? { artifacts } : undefined),
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),

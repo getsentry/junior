@@ -106,6 +106,22 @@ export interface PluginEgress {
   }): Promise<Response>;
 }
 
+/** Public artifacts that a plugin tool publishes for the conversation. */
+export interface PluginArtifacts {
+  /**
+   * Publish image bytes at a public HTTPS URL that anyone with the URL can
+   * open. With `expiresInMs`, the URL stops serving after that long. PNG,
+   * JPEG, GIF, or WebP up to 10 MB; other input throws a tool input error.
+   */
+  publishImage(input: { body: Uint8Array; expiresInMs?: number }): Promise<{
+    url: string;
+    /** ISO time when the URL stops serving. Absent when it does not expire. */
+    expiresAt?: string;
+  }>;
+  /** Stop serving an image that this conversation published, by its URL. */
+  unpublishImage(url: string): Promise<void>;
+}
+
 export const pluginToolContentSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("text"), text: z.string() }).strict(),
   z
@@ -821,6 +837,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   resolveWorkOwner(): Promise<PluginWorkOwner | undefined>;
   /** Host-owned dashboard link to this conversation, when the dashboard is enabled. */
   conversationLink?: { url: string };
+  /** Absent when the install has no artifact storage or public base URL. */
+  artifacts?: PluginArtifacts;
   /** Decision model for narrow choices, such as checks on text a tool writes. */
   decider: PluginDecider;
   embedder: PluginEmbedder;
