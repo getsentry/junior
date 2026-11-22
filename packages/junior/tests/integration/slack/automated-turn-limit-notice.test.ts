@@ -4,7 +4,8 @@ import {
   resumeConversationDelivery,
 } from "@/chat/conversations/delivery-pause";
 import { closeDb, getConversationStore } from "@/chat/db";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { getCapturedSlackApiCalls } from "../../msw/handlers/slack-api";
 
@@ -16,7 +17,7 @@ describe("automated-turn limit notice", () => {
     await closeDb();
   });
 
-  it("posts no notice in a thread that its Conversation detached from", async () => {
+  it("stops the Conversation and posts no notice in a detached thread", async () => {
     await getConversationStore().recordActivity({
       conversationId,
       destination: {
@@ -32,21 +33,23 @@ describe("automated-turn limit notice", () => {
     });
     await pauseConversationDelivery(conversationId);
 
-    await expect(
-      postAutomatedTurnLimitNoticeForConversation({
-        conversationId,
-        maxTurns: 3,
-      }),
-    ).resolves.toBe(false);
+    const reached = { consecutiveAutomatedTurns: 3, reached: true };
+    await stopAtAutomatedTurnLimit({
+      conversationId,
+      maxTurns: 3,
+      update: reached,
+    });
+    await expect(getConversationStoppedAtMs(conversationId)).resolves.toEqual(
+      expect.any(Number),
+    );
     expect(getCapturedSlackApiCalls("chat.postMessage")).toEqual([]);
 
     await resumeConversationDelivery(conversationId);
-    await expect(
-      postAutomatedTurnLimitNoticeForConversation({
-        conversationId,
-        maxTurns: 3,
-      }),
-    ).resolves.toBe(true);
+    await stopAtAutomatedTurnLimit({
+      conversationId,
+      maxTurns: 3,
+      update: reached,
+    });
     expect(
       getCapturedSlackApiCalls("chat.postMessage")[0]?.params,
     ).toMatchObject({ channel: "C123", thread_ts: "1700000000.100" });
