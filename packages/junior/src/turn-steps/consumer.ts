@@ -37,5 +37,11 @@ function runTurnStep(message: { turnId: string }): Promise<void> {
   });
 }
 
-/** The queue consumer of Turn step messages. The queue provider picks which entry point is live. */
-export const turnStepConsumer = createTurnStepConsumer(runTurnStep);
+/**
+ * The queue consumer of Turn step messages. The queue provider picks which
+ * entry point is live. Build it after `createApp` sets the runtime config,
+ * because the visibility timeout reads `functionMaxDurationSeconds`.
+ */
+export function turnStepConsumer() {
+  return createTurnStepConsumer(runTurnStep);
+}

@@ -5,6 +5,11 @@ import type {
   registerDevConsumer,
 } from "@vercel/queue";
 import {
+  resetRuntimeConfig,
+  restoreRuntimeConfig,
+  snapshotRuntimeConfig,
+} from "@/chat/config";
+import {
   PLUGIN_TASK_QUEUE_TOPIC,
   createVercelPluginTaskCallback,
   pluginTaskId,
@@ -24,6 +29,7 @@ import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
+import { turnStepConsumer } from "@/turn-steps/consumer";
 
 // Mock the SDK once for the file and import statically. Per-test
 // `vi.doMock` needs `vi.resetModules`, and then a parallel import can load
@@ -309,5 +315,24 @@ describe("conversation work Vercel queue integration", () => {
       registerVercelConversationWorkDevConsumer({ run: vi.fn() }),
     ).toBeUndefined();
     expect(mocks.registerDevConsumer).not.toHaveBeenCalled();
+  });
+});
+
+describe("Turn step Vercel queue integration", () => {
+  const runtimeConfig = snapshotRuntimeConfig();
+  afterEach(() => {
+    restoreRuntimeConfig(runtimeConfig);
+  });
+
+  it("uses the app's max duration in the visibility timeout", () => {
+    // createApp sets the host's max duration after this module loads.
+    resetRuntimeConfig(600);
+
+    turnStepConsumer().create();
+
+    expect(mocks.handleCallback).toHaveBeenCalledWith(expect.any(Function), {
+      retry: expect.any(Function),
+      visibilityTimeoutSeconds: 630,
+    });
   });
 });
