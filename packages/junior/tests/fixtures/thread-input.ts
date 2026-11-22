@@ -132,6 +132,10 @@ function runInputCheckpoint(run: AgentRun) {
     sliceId: 1,
     source: run.source!,
     surface: run.surface,
+    // As the agent does, the input keeps its author, such as a parent agent.
+    ...(run.instruction.provenance
+      ? { trailingMessageProvenance: [run.instruction.provenance] }
+      : undefined),
     turnId: run.turnId,
   };
 }
