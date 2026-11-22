@@ -14,10 +14,14 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Deployment**: a revision sent to a target environment.
 - **Conversation**: the durable container for visible history and execution
   state, keyed by a unique `conversationId`. Parent is optional and separate
-  from Location. Its `kind` is `root`, `automation`, `thread`, or `task`, and
-  never changes. `automation` is a top-level Conversation for an Automation run.
+  from Location. Its `kind` is `root`, `automation`, `lead`, `thread`, or
+  `task`, and never changes. `automation` is a top-level Conversation for an
+  Automation run.
   A Conversation is the default. Slack is a Destination attached to it. Do not
   say "web Conversation".
+- **Lead**: one person's private top-level Conversation that finds, starts,
+  and steers their other Conversations. It has no child agents and does no
+  work itself. `startConversation` starts a public root for the person.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
@@ -25,8 +29,10 @@ Canonical words for Junior code and docs. One concept, one word.
   `task` type, the `spawnAgent` `task` field) keep their meaning.
 - **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
   bindings, Agent invocations). Not a UI word.
-- **Brief**: the versioned record of a Conversation's intent, outcome,
-  decisions, facts, and evidence. Public Briefs outlive the transcript.
+- **Conversation metadata**: the stored facts about a Conversation: its
+  title and summary. A core task updates the summary after each Turn. A
+  public summary outlives the transcript.
+  Do not say "Brief"; it is the retired name.
 - **Catch-up**: a short summary of the rows after a reader's read position,
   and what waits on them. Made on request and not stored.
 - **Source**: the input that caused work (Slack message, CLI, dashboard,
@@ -202,8 +208,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Snooze**: one User hides one Inbox item in their Inbox until a
   trigger, such as a timer or an Event, wakes or resolves it. A later item
   in the row is not snoozed.
-  Not an Automation. **Snoozed** (Inbox): the view of the User's snoozed
-  items.
+  Not an Automation. **Someday**: a Snooze with no trigger. It lasts until
+  the item closes, such as when someone else handles it, or until the User
+  wakes it. **Snoozed** (Inbox): the view of the User's snoozed items.
 - **To-do**: one entry in the durable list of work that outlives a Turn in
   one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
   status is open, in progress, done, or dropped. It has one Assignee: the

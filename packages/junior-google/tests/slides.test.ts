@@ -1,6 +1,9 @@
 // oxlint-disable anti-slop/no-shape-in-symbol-names -- `shape` is a Slides API field.
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
-import { PluginToolInputError } from "@sentry/junior-plugin-api";
+import {
+  PluginToolInputError,
+  type PluginArtifacts,
+} from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { googlePlugin } from "../src/index";
 import { ACCOUNT_EMAIL, stubGoogleEnv, withReadCheck } from "./fixture";
@@ -15,6 +18,9 @@ function slidesTools(
   responses: Response[],
   curlExitCode = 0,
   readableIds: readonly string[] = [DECK_ID],
+  /** Sandbox files by path. Any other path reads as the PNG stub. */
+  files: Record<string, Uint8Array | null> = {},
+  artifacts?: PluginArtifacts,
 ) {
   const fetch = vi.fn();
   for (const response of responses) fetch.mockResolvedValueOnce(response);
@@ -23,8 +29,11 @@ function slidesTools(
     stderr: cmd === "curl" && curlExitCode ? "403 Forbidden" : "",
     stdout: "",
   }));
-  const readFile = vi.fn(async () => PNG);
+  const readFile = vi.fn(async (path: string) =>
+    path in files ? (files[path] ?? null) : PNG,
+  );
   const tools = bindPluginTools(googlePlugin().hooks!.tools!(), {
+    ...(artifacts ? { artifacts } : undefined),
     egress: { fetch: withReadCheck(fetch, readableIds) },
     sandbox: { readFile, root: SANDBOX_ROOT, run, writeFile: vi.fn() },
     users: {
@@ -38,13 +47,16 @@ function slidesTools(
     const tool = tools[name];
     return tool.execute(tool.prepareArguments!(input), { toolCallId: name });
   };
-  /** Operation, URL, and JSON body of each Google request, in order. */
+  /** Operation, URL, and body of each Google request, in order. */
   const calls = async () =>
     Promise.all(
       fetch.mock.calls.map(async ([request]) => ({
-        body: request.request.body
-          ? await request.request.clone().json()
-          : undefined,
+        body: !request.request.body
+          ? undefined
+          : request.request.headers.get("content-type")?.includes("json")
+            ? await request.request.clone().json()
+            : new Uint8Array(await request.request.clone().arrayBuffer()),
+        contentType: request.request.headers.get("content-type"),
         operation: request.operation as string,
         url: new URL(request.request.url),
       })),
@@ -344,6 +356,244 @@ describe("Google Slides tools", () => {
     ).rejects.toThrow("The edit applied at revision rev-2, but reading");
   });
 
+  describe("sandbox images", () => {
+    const GRID = `${SANDBOX_ROOT}/slides/grid.png`;
+    const GRID_PNG = new Uint8Array([
+      0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13,
+    ]);
+    const editor = () =>
+      permissions({ role: "writer", type: "user", emailAddress: REQUESTER });
+    const createGrid = {
+      createImage: {
+        elementProperties: { pageObjectId: "s1" },
+        objectId: "grid",
+        url: GRID,
+      },
+    };
+    const input = (requests: Array<Record<string, unknown>>) => ({
+      presentation: DECK_LINK,
+      requests,
+      revision_id: "rev-1",
+    });
+    /** Artifacts that record each published and unpublished image. */
+    const fakeArtifacts = (
+      options: { failAfter?: number; failUnpublish?: boolean } = {},
+    ) => {
+      const published: Array<{ body: Uint8Array; expiresInMs?: number }> = [];
+      const unpublished: string[] = [];
+      const artifacts: PluginArtifacts = {
+        async publishImage(image) {
+          if (published.length === options.failAfter) {
+            throw new PluginToolInputError("image is empty");
+          }
+          published.push(image);
+          return {
+            expiresAt: "2026-11-21T12:05:00.000Z",
+            url: `https://junior.example/public/artifacts/${published.length}.png`,
+          };
+        },
+        async unpublishImage(url) {
+          if (options.failUnpublish) throw new Error("database is down");
+          unpublished.push(url);
+        },
+      };
+      return { artifacts, published, unpublished };
+    };
+
+    it("inserts a sandbox image from a public artifact that expires within 5 minutes", async () => {
+      const store = fakeArtifacts();
+      const { call, calls } = slidesTools(
+        [
+          deckFile(),
+          editor(),
+          Response.json({
+            replies: [{ createImage: { objectId: "grid" } }, {}, {}],
+            writeControl: { requiredRevisionId: "rev-2" },
+          }),
+          checkedDeck({ objectId: "s1" }),
+        ],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG },
+        store.artifacts,
+      );
+      const logo = {
+        replaceImage: {
+          imageObjectId: "logo",
+          url: "https://example.com/logo.png",
+        },
+      };
+      const swap = { replaceImage: { imageObjectId: "old_grid", url: GRID } };
+
+      await expect(
+        call("updateGoogleSlides", input([createGrid, logo, swap])),
+      ).resolves.toMatchObject({ revision_id: "rev-2" });
+
+      const sent = await calls();
+      expect(sent.map((item) => item.operation)).toEqual([
+        "google.drive.file.get",
+        "google.drive.permissions.list",
+        "google.slides.presentation.batchUpdate",
+        "google.slides.presentation.get",
+      ]);
+      // One artifact for the path that two requests use.
+      expect(store.published).toEqual([
+        { body: GRID_PNG, expiresInMs: 5 * 60 * 1000 },
+      ]);
+      const url = "https://junior.example/public/artifacts/1.png";
+      expect(sent[2]?.body).toEqual({
+        requests: [
+          { createImage: { ...createGrid.createImage, url } },
+          logo,
+          { replaceImage: { imageObjectId: "old_grid", url } },
+        ],
+        writeControl: { requiredRevisionId: "rev-1" },
+      });
+      // Google has fetched the image, so its URL stops serving now.
+      expect(store.unpublished).toEqual([url]);
+    });
+
+    it("refuses a bad image or an install without artifacts before publishing anything or editing", async () => {
+      // Any absolute sandbox path works, such as the scratch directory.
+      const PHOTO = "/tmp/jr/photo.jpg";
+      const refused: Array<
+        [Record<string, Uint8Array | null>, string, string, boolean]
+      > = [
+        [
+          {},
+          `${SANDBOX_ROOT}/../etc/grid.png`,
+          "normalized absolute sandbox path",
+          true,
+        ],
+        [{ [GRID]: null }, GRID, `No sandbox file at ${GRID}.`, true],
+        [
+          { [GRID]: new TextEncoder().encode("<svg/>") },
+          GRID,
+          "is not a PNG, JPEG, or GIF",
+          true,
+        ],
+        [
+          { [GRID]: GRID_PNG },
+          GRID,
+          "cannot publish artifacts, so you cannot insert a sandbox image",
+          false,
+        ],
+      ];
+      for (const [files, path, message, hasArtifacts] of refused) {
+        const store = fakeArtifacts();
+        const tools = slidesTools(
+          [deckFile(), editor()],
+          0,
+          [DECK_ID],
+          files,
+          hasArtifacts ? store.artifacts : undefined,
+        );
+        await expect(
+          tools.call(
+            "updateGoogleSlides",
+            input([{ createImage: { ...createGrid.createImage, url: path } }]),
+          ),
+        ).rejects.toThrow(message);
+        expect(store.published).toEqual([]);
+        expect((await tools.calls()).map((item) => item.operation)).toEqual([
+          "google.drive.file.get",
+          "google.drive.permissions.list",
+        ]);
+      }
+
+      // A good image is not published when another image in the edit is bad.
+      const store = fakeArtifacts();
+      await expect(
+        slidesTools(
+          [deckFile(), editor()],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG, [PHOTO]: new Uint8Array([1, 2, 3]) },
+          store.artifacts,
+        ).call(
+          "updateGoogleSlides",
+          input([
+            createGrid,
+            { createImage: { ...createGrid.createImage, url: PHOTO } },
+          ]),
+        ),
+      ).rejects.toThrow(`${PHOTO} is not a PNG, JPEG, or GIF.`);
+      expect(store.published).toEqual([]);
+
+      // The artifact store's own refusal, such as its size limit, reaches
+      // the model before any edit, and an image already published stops
+      // serving.
+      const failing = fakeArtifacts({ failAfter: 1 });
+      const tools = slidesTools(
+        [deckFile(), editor()],
+        0,
+        [DECK_ID],
+        { [GRID]: GRID_PNG, [PHOTO]: GRID_PNG },
+        failing.artifacts,
+      );
+      await expect(
+        tools.call(
+          "updateGoogleSlides",
+          input([
+            createGrid,
+            { createImage: { ...createGrid.createImage, url: PHOTO } },
+          ]),
+        ),
+      ).rejects.toThrow("image is empty");
+      expect(failing.unpublished).toEqual([
+        "https://junior.example/public/artifacts/1.png",
+      ]);
+      expect((await tools.calls()).map((item) => item.operation)).toEqual([
+        "google.drive.file.get",
+        "google.drive.permissions.list",
+      ]);
+    });
+
+    it("unpublishes when the edit fails, and applies the edit when an unpublish fails, because the URL expires anyway", async () => {
+      const refused = fakeArtifacts();
+      await expect(
+        slidesTools(
+          [
+            deckFile(),
+            editor(),
+            Response.json(
+              {
+                error: {
+                  message:
+                    "Invalid requests[0].createImage: Access to the provided image was forbidden.",
+                },
+              },
+              { status: 400 },
+            ),
+          ],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG },
+          refused.artifacts,
+        ).call("updateGoogleSlides", input([createGrid])),
+      ).rejects.toThrow("Access to the provided image was forbidden.");
+      expect(refused.unpublished).toHaveLength(1);
+
+      await expect(
+        slidesTools(
+          [
+            deckFile(),
+            editor(),
+            Response.json({
+              replies: [{}],
+              writeControl: { requiredRevisionId: "rev-2" },
+            }),
+            checkedDeck({ objectId: "s1" }),
+          ],
+          0,
+          [DECK_ID],
+          { [GRID]: GRID_PNG },
+          fakeArtifacts({ failUnpublish: true }).artifacts,
+        ).call("updateGoogleSlides", input([createGrid])),
+      ).resolves.toMatchObject({ revision_id: "rev-2" });
+    });
+  });
+
   it("refuses edits that either account cannot make, and malformed requests", async () => {
     const input = {
       presentation: DECK_LINK,
@@ -493,20 +743,36 @@ describe("Google Slides tools", () => {
       /^revisionId,pageSize,layouts\(objectId,.*\),slides\(objectId,/,
     );
 
+    // The sourceUrl of a sandbox image is its artifact URL, which serves
+    // until it expires, so no read returns any image's sourceUrl.
+    const image = {
+      contentUrl: "https://lh7-us.googleusercontent.com/image",
+      sourceUrl: "https://junior.example/public/artifacts/sandbox-image.png",
+    };
     const slide = slidesTools([
       deckFile(),
-      Response.json({ objectId: "g1:2", revisionId: "rev-1" }),
+      Response.json({
+        objectId: "g1:2",
+        pageElements: [{ image, objectId: "img1" }],
+        revisionId: "rev-1",
+      }),
     ]);
-    await slide.call("readGoogleSlidesLayout", {
-      fields: "pageElements(objectId)",
+    const read = await slide.call("readGoogleSlidesLayout", {
+      fields: "pageElements(objectId,image)",
       presentation: DECK_ID,
       slide_object_id: "g1:2",
     });
+    expect(read).toMatchObject({
+      content: {
+        pageElements: [{ image: { contentUrl: image.contentUrl } }],
+      },
+    });
+    expect(JSON.stringify(read)).not.toContain(image.sourceUrl);
     const [, page] = await slide.calls();
     expect(page?.operation).toBe("google.slides.page.get");
     expect(page?.url.pathname).toBe(`/v1/presentations/${DECK_ID}/pages/g1:2`);
     expect(page?.url.searchParams.get("fields")).toBe(
-      "revisionId,pageElements(objectId)",
+      "revisionId,pageElements(objectId,image)",
     );
 
     // A revisionId inside a nested selection is not the deck's revision.

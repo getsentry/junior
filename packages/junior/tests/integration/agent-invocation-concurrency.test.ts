@@ -192,7 +192,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(second.childConversationId).not.toBe(first.childConversationId);
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
-      expect(requests.map((request) => request.history)).toEqual([[], []]);
+      expect(requests.map((request) => request.history?.messages)).toEqual([
+        [],
+        [],
+      ]);
       await expect(
         getAgentInvocation(first.invocationId),
       ).resolves.toMatchObject({
@@ -244,19 +247,19 @@ describe("agent invocation identity and concurrency", () => {
       expect(second.childConversationId).toBe(first.childConversationId);
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
-      expect(requests[0]?.history).toEqual([]);
+      expect(requests[0]?.history?.messages).toEqual([]);
       expect(requests[0]?.reasoning).toBe("high");
       expect(requests[0]?.disabledFeatures).toEqual(["interactive-auth"]);
       // A message keeps the reasoning level of the child.
       expect(requests[1]?.reasoning).toBe("high");
       expect(requests[1]?.disabledFeatures).toEqual(["interactive-auth"]);
-      expect(requests[1]?.history).toEqual(
+      expect(requests[1]?.history?.messages).toEqual(
         expect.arrayContaining([
           expect.objectContaining({ role: "user" }),
           expect.objectContaining({ role: "assistant" }),
         ]),
       );
-      expect(JSON.stringify(requests[1]?.history)).toContain(
+      expect(JSON.stringify(requests[1]?.history?.messages)).toContain(
         "result:first named task",
       );
       await expect(
@@ -315,7 +318,10 @@ describe("agent invocation identity and concurrency", () => {
         Object.fromEntries(
           harness
             .requests()
-            .map((request) => [request.instruction.text, request.history]),
+            .map((request) => [
+              request.instruction.text,
+              request.history?.messages,
+            ]),
         ),
       ).toEqual({
         "parallel first": [],
@@ -529,9 +535,9 @@ describe("agent invocation identity and concurrency", () => {
         agents: [{ status: "idle", task: "Watch the deploy." }],
       });
 
-      // A stop of the idle child ends its watches and records the stop, so
-      // a timer event that already reached it is saved to its transcript
-      // with no Turn, and a later timer never fires.
+      // A stop of the idle child keeps its watches and holds their events:
+      // a timer event that already reached it and a later one are both
+      // saved to its transcript with no Turn.
       await execute(
         childTools["watchTimer"]!,
         { after_ms: 60_000, intent: "Check once more." },
@@ -549,7 +555,9 @@ describe("agent invocation identity and concurrency", () => {
         stopAgent.execute!({ conversation_id: child.childConversationId }, {}),
       ).resolves.toMatchObject({ stopped: true });
       await expect(execute(childTools["listWatches"]!, {})).resolves.toEqual({
-        subscriptions: [],
+        subscriptions: [
+          expect.objectContaining({ intent: "Check much later." }),
+        ],
       });
       clock.mockReturnValue(clock() + 600_000);
       await runTimerWatchHeartbeat({ nowMs: clock(), queue: harness.queue });
@@ -557,7 +565,10 @@ describe("agent invocation identity and concurrency", () => {
       expect(harness.requests()).toHaveLength(2);
       await expect(
         stoppedConversationMessageTexts(child.childConversationId),
-      ).resolves.toEqual([expect.stringContaining("Check once more.")]);
+      ).resolves.toEqual([
+        expect.stringContaining("Check once more."),
+        expect.stringContaining("Check much later."),
+      ]);
       await expect(listAgents()).resolves.toMatchObject({
         agents: [{ status: "stopped" }],
       });

@@ -153,6 +153,7 @@ describe("event batch message meta", () => {
 
   it("keeps the record of one Inbox item change, with no own Event", () => {
     expect(eventBatchMessageMeta([reviewItemChange(taken)])).toEqual({
+      eventIdentifier: "item-1",
       eventNamespace: "junior",
       eventType: "inbox_item.taken",
       reviewItemChanges: [taken],

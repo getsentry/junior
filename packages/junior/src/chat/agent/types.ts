@@ -301,6 +301,15 @@ export type AgentEnvironment = {
 };
 
 /**
+ * Committed agent messages with the event seq of each, from one projection.
+ * A Turn owns the messages above its `turn_started` seq.
+ */
+export interface AgentHistory {
+  messages: readonly PiMessage[];
+  seqs: readonly number[];
+}
+
+/**
  * One bounded attempt to advance a Turn.
  *
  * Build identity, instruction, history, delivery, and durability here. Bind
@@ -324,7 +333,7 @@ export type AgentRun = {
 
   instruction: AgentInstruction;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
-  history?: readonly PiMessage[] | undefined;
+  history?: AgentHistory | undefined;
 
   /**
    * Who this run executes as. Prefer always setting this. Derive

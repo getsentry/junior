@@ -1,10 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { createJuniorApi } from "@/api";
 import { CONTENT_VERSION_HEADER, conversationFeedSchema } from "@/api/schema";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("conversation list API page versions", () => {
@@ -46,13 +45,9 @@ describe("conversation list API page versions", () => {
         conversationFeedSchema.parse(await archived.json()).conversations,
       ).toEqual([]);
 
-      await appendConversationBrief(fixture.sql.db(), {
+      await storeConversationMetadataFixture(fixture.sql.db(), {
         conversationId,
-        turnId: "turn-1",
-        throughSeq: 0,
-        content: conversationBriefFixture({ summary: "The plan changed." }),
-        searchText: "The plan changed.",
-        modelId: "test-model",
+        summary: "The plan changed.",
       });
       const changed = await read("", version);
       expect(changed.status).toBe(200);
@@ -61,8 +56,8 @@ describe("conversation list API page versions", () => {
         conversationFeedSchema.parse(await changed.json()).conversations,
       ).toEqual([
         expect.objectContaining({
-          brief: expect.objectContaining({ summary: "The plan changed." }),
           conversationId,
+          summary: "The plan changed.",
         }),
       ]);
     } finally {

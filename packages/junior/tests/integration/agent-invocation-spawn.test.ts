@@ -54,6 +54,7 @@ import {
   destination,
   invocationInput,
   parentConversationId,
+  slackDestination,
   slackInvocationInput,
   slackParentConversationId,
   prepareParentConversation,
@@ -402,7 +403,9 @@ describe("agent invocation spawn and result delivery", () => {
     const state = getStateAdapter();
     await state.connect();
     const events = getConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(events);
+    const lifecycle = new ConversationTurnLifecycleService(events, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
     const change: ObjectAnnotation = {
       kind: "object",
       objectType: "code_change",
@@ -490,7 +493,9 @@ describe("agent invocation spawn and result delivery", () => {
     const state = getStateAdapter();
     await state.connect();
     const events = getConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(events);
+    const lifecycle = new ConversationTurnLifecycleService(events, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
     const change = (key: string): ObjectAnnotation => ({
       kind: "object",
       objectType: "code_change",
@@ -840,6 +845,36 @@ describe("agent invocation spawn and result delivery", () => {
       expect(texts.filter((text) => text.includes("waiting_on="))).toEqual([
         expect.stringMatching(/ waiting_on="(analyst|auditor)"/),
       ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("makes a child private when its root's channel goes private", async () => {
+    const { conversationStore, fixture } =
+      await prepareSlackParentConversation();
+    try {
+      const created = await createAgentInvocation({
+        ...slackInvocationInput,
+        idempotencyKey: "private-1",
+      });
+      const childBefore = await conversationStore.get({
+        conversationId: created.childConversationId,
+      });
+      expect(childBefore).toMatchObject({ visibility: "public" });
+
+      // Only the root records the new visibility. The child shares its
+      // Destination row, so its own row does not change.
+      await conversationStore.recordActivity({
+        conversationId: slackParentConversationId,
+        destination: slackDestination,
+        nowMs: 3_000,
+        source: "slack",
+        visibility: "private",
+      });
+      await expect(
+        conversationStore.get({ conversationId: created.childConversationId }),
+      ).resolves.toEqual({ ...childBefore, visibility: "private" });
     } finally {
       await fixture.close();
     }

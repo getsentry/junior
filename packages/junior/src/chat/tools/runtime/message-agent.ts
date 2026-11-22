@@ -1,7 +1,6 @@
 import * as z from "zod";
 import {
   AgentInvocationLimitError,
-  AgentMessagePausedError,
   AgentMessageQueueFullError,
   AgentMessageTargetError,
   AgentStoppedError,
@@ -85,12 +84,6 @@ export function createMessageAgentTool(
         if (error instanceof AgentMessageTargetError) {
           throw new ToolInputError(
             `${error.message}. Use listAgents to find an agent.`,
-            { cause: error },
-          );
-        }
-        if (error instanceof AgentMessagePausedError) {
-          throw new ToolInputError(
-            `${error.message}. Do not send it more messages. Tell the user instead.`,
             { cause: error },
           );
         }

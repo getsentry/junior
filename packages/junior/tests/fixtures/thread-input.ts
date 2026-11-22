@@ -130,7 +130,7 @@ export type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 // The checkpoint fields of a run's input: its history, then its instruction.
 function runInputCheckpoint(run: AgentRun) {
-  const history = run.history ?? [];
+  const history = run.history?.messages ?? [];
   return {
     actor: run.actor!,
     conversationId: run.conversationId,
@@ -146,7 +146,6 @@ function runInputCheckpoint(run: AgentRun) {
     source: run.source!,
     surface: run.surface,
     turnId: run.turnId,
-    turnStartMessageIndex: history.length,
   };
 }
 

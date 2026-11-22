@@ -3,7 +3,6 @@ import type { Actor } from "@/chat/actor";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { MailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
   childAgentInput,
@@ -59,21 +58,15 @@ export async function withAgentInvocationResultActors(
     return work;
   }
   const conversationId = work.batch[0]?.message.conversationId;
-  const [latest, stoppedAtMs] = conversationId
-    ? await Promise.all([
-        getLatestAgentInvocationForConversation(conversationId),
-        getConversationStoppedAtMs(conversationId),
-      ])
-    : [undefined, undefined];
+  const latest = conversationId
+    ? await getLatestAgentInvocationForConversation(conversationId)
+    : undefined;
   const batch = await mapBounded(work.batch, async (entry) => {
     // A parent message from the stored parent runs as the Actor of the
     // parent's Turn, with its grants and text, as on an Agent invocation.
     const parentMessage = readParentMessage(entry.message);
     if (parentMessage) {
-      if (
-        (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
-        "dropped"
-      ) {
+      if ((await routeChildInput(entry.message, latest)) === "dropped") {
         logDroppedParentMessage(entry.message, parentMessage);
         return undefined;
       }
@@ -95,9 +88,7 @@ export async function withAgentInvocationResultActors(
     if (!input) {
       return entry;
     }
-    if (
-      (await routeChildInput(entry.message, latest, stoppedAtMs)) === "dropped"
-    ) {
+    if ((await routeChildInput(entry.message, latest)) === "dropped") {
       return undefined;
     }
     const { invocation } = await getChildAgentInputSender(entry.message, input);

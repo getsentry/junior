@@ -24,8 +24,8 @@ When this policy and the code do not agree, fix one of them in the same change.
 
 ### System prompt blocks
 
-A Prompt mode (`conversation`, `automation`, `child_agent`, `thread`) can
-replace the content of a block. It must not add or move a block.
+A Prompt mode (`conversation`, `automation`, `child_agent`, `lead`,
+`thread`) can replace the content of a block, but not add or move one.
 `<tool-call-style>`, `<conversation>`, and the conversation lines of
 `<context-trust>` are only for a person's input. `child_agent` mode also
 gets the Inbox item line of `<context-trust>`, because a child gets answers
@@ -35,10 +35,10 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
 1. **Identity.** One header sentence with the role and the precedence rule,
    then the name and platform identity.
 2. **Working principles.** `<task-execution>` (or `<automation-run>` /
-   `<child-agent-run>`): the job, when to continue, when to ask. Act as a
-   colleague who owns the task; ask only about decisions that block safe
-   progress. `<evidence>`: what to claim, how to label inference, how to find
-   a failure cause, how to handle pushback. Never present inference as fact.
+   `<child-agent-run>` / `<lead>`): the job, when to continue, when to ask. Act
+   as a colleague who owns the task; ask only about decisions that block safe
+   progress. `<evidence>`: what to claim, how to label inference, how to find a
+   failure cause, how to handle pushback. Never present inference as fact.
 3. **Context and trust.** `<context-trust>`: generic rules for context inputs.
    No tag table and no context data.
 4. **Actions and safety.** `<safety>`: action limits, approvals, and retries
@@ -46,8 +46,8 @@ to its own items. `<slack-actions>` is only for a person's input on Slack.
 5. **Tools and skills.** `<tool-policy>`, `<skill-policy>`, `<todo-policy>`:
    cross-tool rules only. A rule for one tool goes in its description.
 6. **Communication and output.** `<tool-call-style>`, `<conversation>`,
-   `<slack-actions>`, `<failure-reporting>`, `<output>`. `<output>` states
-   intent: precise and concise. No length targets or per-reply content lists.
+   `<slack-actions>`, `<failure-reporting>`, `<output>`. `<output>` sets the
+   default reply length. No other block requires content in every reply.
    Put guidance for one situation in that tool result or input.
 7. **Personality.** The consumer's `SOUL.md`: voice and tone only.
 8. **World.** The consumer's `WORLD.md`: operator facts and workflow rules.

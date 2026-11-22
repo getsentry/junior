@@ -125,6 +125,33 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
     },
   );
 
+  it("shows the parent's next Turn that a person stopped a Task", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const taskId = await spawn(harness, "call-report");
+      vi.setSystemTime(1_800_000_001_000);
+      await stopConversation({
+        conversationId: taskId,
+        conversationStore: harness.conversationStore,
+        queue: harness.queue,
+        state: harness.state,
+      });
+
+      vi.setSystemTime(1_800_000_061_000);
+      harness.onPersonRun(finishRun);
+      await harness.processUntilRun(slackParentConversationId);
+
+      const parentRuns = harness.runs.filter(
+        (run) => run.conversationId === slackParentConversationId,
+      );
+      expect(parentRuns).toHaveLength(1);
+      expect(parentRuns[0]!.instruction.text).toContain('status="stopped"');
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("tells the parent once that a person stopped a Task when a retry follows a failed report", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

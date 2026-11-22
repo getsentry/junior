@@ -48,6 +48,11 @@ how the dashboard groups and acts on its rows.
   action that takes no words, such as a plugin's Resume, is one click.
 - The first answer or dismiss closes the item for everyone. A dismiss is
   not a decision, so it does not continue the work.
+- A person who wants someone else to answer snoozes it until it closes.
+  It then waits in their Snoozed view, where they can still answer it,
+  dismiss it, or wake it.
+- A card's actions read Dismiss, Snooze, then the main action, such as
+  Send, last. Every card that shows an item uses this order.
 - Every item has at least one assignee: a User, or Everyone. When no
   assignee is left, the item dismisses itself.
 - With no assignees named, the item goes to the person in the Turn, else

@@ -4,6 +4,10 @@ import type {
   ConversationTurnFailureReason,
 } from "./history";
 import { getConversationEventStore } from "@/chat/db";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { isEventInboundMessageId } from "@/chat/events/inbound-message-id";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 
 /** Product-owned inputs for opening one correlated conversation turn. */
 export interface StartConversationTurnInput {
@@ -35,6 +39,30 @@ export interface FailConversationTurnInput {
   turnId: string;
 }
 
+/** The seq and time of a Turn's `turn_started` event. */
+export interface TurnStart {
+  seq: number;
+  startedAtMs: number;
+}
+
+function turnStartedKey(turnId: string): string {
+  return `turn:${turnId}:started`;
+}
+
+/** Load the `turn_started` event of a Turn, when it started. */
+export async function loadTurnStart(
+  conversationId: string,
+  turnId: string,
+): Promise<TurnStart | undefined> {
+  const event = await getConversationEventStore().loadByIdempotencyKey(
+    conversationId,
+    turnStartedKey(turnId),
+  );
+  return event?.data.type === "turn_started"
+    ? { seq: event.seq, startedAtMs: event.createdAtMs }
+    : undefined;
+}
+
 /** Runtime port for correlated canonical turn lifecycle persistence. */
 export interface ConversationTurnLifecycle {
   start(input: StartConversationTurnInput): Promise<void>;
@@ -42,17 +70,32 @@ export interface ConversationTurnLifecycle {
   fail(input: FailConversationTurnInput): Promise<void>;
 }
 
-// The key of the event that records a Turn's start.
-function turnStartedKey(turnId: string): string {
-  return `turn:${turnId}:started`;
-}
-
 /** Persist correlated turn lifecycle facts with retry-safe terminal exclusion. */
 export class ConversationTurnLifecycleService implements ConversationTurnLifecycle {
   private readonly events: ConversationEventStore;
+  /** Delivers each Turn end to the Watches on the Conversation. */
+  private readonly watchQueue: () => ConversationWorkQueue;
 
-  constructor(events: ConversationEventStore) {
+  constructor(
+    events: ConversationEventStore,
+    options: { watchQueue: () => ConversationWorkQueue },
+  ) {
     this.events = events;
+    // Required: a lifecycle without a queue drops Turn ends that Watches
+    // must hear.
+    this.watchQueue = options.watchQueue;
+  }
+
+  private async publish(
+    input: { conversationId: string; createdAtMs: number },
+    status: Parameters<typeof publishConversationStatus>[1],
+    skip?: () => Promise<boolean>,
+  ): Promise<void> {
+    await publishConversationStatus(input.conversationId, status, {
+      nowMs: input.createdAtMs,
+      queue: this.watchQueue(),
+      ...(skip ? { skip } : undefined),
+    });
   }
 
   /** Record the turn start once after every input message is durable. */
@@ -88,18 +131,6 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
       : undefined;
   }
 
-  /** Return the time a Turn started, or undefined before its `turn_started` event. */
-  async loadStartedAtMs(
-    conversationId: string,
-    turnId: string,
-  ): Promise<number | undefined> {
-    const event = await this.events.loadByIdempotencyKey(
-      conversationId,
-      turnStartedKey(turnId),
-    );
-    return event?.data.type === "turn_started" ? event.createdAtMs : undefined;
-  }
-
   /** Record a completion that is not a failure once. */
   async complete(input: CompleteConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [
@@ -113,6 +144,7 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         },
       },
     ]);
+    await this.publishTerminal(input);
   }
 
   /** Record a classified failure once. Do not store raw error text. */
@@ -132,10 +164,59 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
         },
       },
     ]);
+    await this.publishTerminal(input);
+  }
+
+  /**
+   * Publish the stored terminal row of a Turn, not the caller's outcome.
+   * Only the first append stores it, so a worker that lost a race publishes
+   * the same outcome as the one that won.
+   */
+  private async publishTerminal(input: {
+    conversationId: string;
+    createdAtMs: number;
+    turnId: string;
+  }): Promise<void> {
+    const stored = await this.events.loadByIdempotencyKey(
+      input.conversationId,
+      `turn:${input.turnId}:terminal`,
+    );
+    if (stored?.data.type === "turn_failed") {
+      await this.publish(input, {
+        type: "turn_failed",
+        failureCode: stored.data.failureCode,
+        turnId: input.turnId,
+      });
+      return;
+    }
+    if (stored?.data.type !== "turn_completed") return;
+    // A Turn that only Watch Events started reports nothing, so a watcher
+    // is not woken for each Event that the Conversation itself watches.
+    await this.publish(
+      input,
+      {
+        type: "turn_completed",
+        outcome: stored.data.outcome,
+        turnId: input.turnId,
+      },
+      async () => {
+        const inputs = await this.loadInputMessageIds(
+          input.conversationId,
+          input.turnId,
+        );
+        return (
+          inputs !== undefined &&
+          inputs.length > 0 &&
+          inputs.every(isEventInboundMessageId)
+        );
+      },
+    );
   }
 }
 
 /** Return the Turn lifecycle that records Conversation events. */
-export function getTurnLifecycle(): ConversationTurnLifecycle {
-  return new ConversationTurnLifecycleService(getConversationEventStore());
+export function getTurnLifecycle(): ConversationTurnLifecycleService {
+  return new ConversationTurnLifecycleService(getConversationEventStore(), {
+    watchQueue: getVercelConversationWorkQueue,
+  });
 }

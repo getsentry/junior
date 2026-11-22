@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import { ToolActionReviewUnavailableError } from "@/chat/guardian/gate";
 import { getInterruptionMarker } from "@/chat/interruption-marker";
 import { createProviderError } from "@/chat/services/provider-error";
 import {
@@ -164,6 +165,71 @@ describe("finalizeFailedTurnReply", () => {
       expect(finalized.text).not.toContain("internal error");
     },
   );
+
+  // Each way an upstream model failure reaches a failed run.
+  it.each([
+    {
+      name: "agent model outage",
+      reply: providerErrorReply({
+        assistantMessageCount: 1,
+        providerError: createProviderError("503 Service Unavailable", {
+          modelId: "anthropic/claude-opus-5.5",
+        }),
+        text: "",
+      }),
+      text: "Anthropic (claude-opus-5.5) is returning errors right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=evt_1`.",
+    },
+    {
+      name: "agent model outage after partial text",
+      reply: providerErrorReply({
+        assistantMessageCount: 1,
+        providerError: createProviderError("socket hang up", {
+          modelId: "anthropic/claude-opus-5.5",
+        }),
+        text: "Here is what I found so far",
+      }),
+      text: `Here is what I found so far${getInterruptionMarker()}\n\nAnthropic (claude-opus-5.5) cannot be reached right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: \`event_id=evt_1\`.`,
+    },
+    {
+      name: "action review model outage",
+      reply: providerErrorReply({
+        assistantMessageCount: 1,
+        providerError: new ToolActionReviewUnavailableError({
+          cause: createProviderError(
+            "Service temporarily unavailable. Please try again shortly.",
+            { modelId: "openai/gpt-6-luna" },
+          ),
+        }),
+        text: "",
+      }),
+      text: "OpenAI (gpt-6-luna, used for action review) is returning errors right now. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=evt_1`.",
+    },
+    {
+      name: "empty model response",
+      reply: {
+        text: "",
+        diagnostics: {
+          outcome: "execution_failure",
+          modelId: "anthropic/claude-opus-5.5",
+          assistantMessageCount: 1,
+          toolCalls: [],
+          toolResultCount: 0,
+          toolErrorCount: 0,
+          usedPrimaryText: false,
+        },
+      } satisfies AgentRunResult,
+      text: "Anthropic (claude-opus-5.5) returned an invalid response. This is an upstream provider problem, not something you did. Please try again shortly. Reference: `event_id=evt_1`.",
+    },
+  ])("names the upstream provider for an $name", ({ reply, text }) => {
+    const finalized = finalizeFailedTurnReply({
+      reply: {
+        ...reply,
+        diagnostics: { ...reply.diagnostics, eventId: "evt_1" },
+      },
+    });
+
+    expect(finalized.text).toBe(text);
+  });
 
   it("delivers genuine model-authored partial text with the interruption marker", () => {
     const finalized = finalizeFailedTurnReply({

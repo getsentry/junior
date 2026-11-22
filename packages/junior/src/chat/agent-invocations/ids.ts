@@ -119,6 +119,20 @@ export function getTurnReplyKey(turnId: string, toolCallId: string): string {
   return `${turnId}:${toolCallId}`;
 }
 
+// The Turn id of the `stopped` result that a person's stop of a child agent
+// sends. No Turn has it, so readers can tell this result from a Turn's reply.
+const PERSON_STOP_TURN_PREFIX = "stopped:";
+
+/** Return the Turn id that keys the `stopped` result of one person's stop. */
+export function getPersonStopTurnId(stoppedAtMs: number): string {
+  return `${PERSON_STOP_TURN_PREFIX}${stoppedAtMs}`;
+}
+
+/** Return whether a sender Turn id names a person's stop, not a Turn. */
+export function isPersonStopTurnId(turnId: string): boolean {
+  return turnId.startsWith(PERSON_STOP_TURN_PREFIX);
+}
+
 /** Return the stable parent mailbox identity for one terminal result. */
 export function getAgentInvocationResultMessageId(
   invocationId: string,

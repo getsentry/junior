@@ -18,13 +18,14 @@ import {
   getLatestAgentInvocationForConversation,
 } from "@/chat/agent-invocations/store";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
+import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import type { AgentRun } from "@/chat/agent/types";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { loadTurnConversationNotes } from "@/chat/conversations/notes";
 import {
   getConversationStoppedAtMs,
-  markConversationsStopped,
-  resumeStoppedConversationTree,
+  resumeConversationTree,
+  stopConversationTree,
 } from "@/chat/conversations/session-stop";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
@@ -44,6 +45,7 @@ import {
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 import {
+  createConversationWorkQueueTestAdapter,
   deferred,
   runHeartbeatAfterLeasesExpire,
 } from "../fixtures/conversation-work";
@@ -62,15 +64,15 @@ import {
 
 /** Record the start of a parent Turn, as the root Turn code does. */
 async function startParentTurn(turnId = "parent-turn") {
-  await new ConversationTurnLifecycleService(getConversationEventStore()).start(
-    {
-      conversationId: slackParentConversationId,
-      createdAtMs: Date.now(),
-      inputMessageIds: [`${turnId}:input`],
-      surface: "slack",
-      turnId,
-    },
-  );
+  await new ConversationTurnLifecycleService(getConversationEventStore(), {
+    watchQueue: createConversationWorkQueueTestAdapter,
+  }).start({
+    conversationId: slackParentConversationId,
+    createdAtMs: Date.now(),
+    inputMessageIds: [`${turnId}:input`],
+    surface: "slack",
+    turnId,
+  });
 }
 
 describe("spawn and messageAgent without Agent invocations", () => {
@@ -588,11 +590,15 @@ describe("spawn and messageAgent without Agent invocations", () => {
     try {
       const childId = await spawn(harness, "call-1");
       await startParentTurn();
-      // A person stops the parent and its tree. The parent's run sees its
-      // stop late, and messages the child first.
-      await markConversationsStopped([slackParentConversationId, childId], {
-        cancelWatches: false,
+      // A person stops the parent and its tree, which drops the child's
+      // waiting task. The parent's run sees its stop late, and messages the
+      // child first.
+      await stopConversationAndChildAgents({
+        conversationId: slackParentConversationId,
+        nowMs: Date.now(),
+        queue: harness.queue,
         state: harness.state,
+        stoppedAtMs: Date.now(),
       });
       vi.setSystemTime(1_800_000_001_000);
       const tool = createMessageAgentTool(
@@ -612,17 +618,12 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await expect(getConversationStoppedAtMs(childId)).resolves.toBe(
         1_800_000_000_000,
       );
-      await expect(mailboxTexts(harness, childId)).resolves.toEqual([
-        "Check the deploy.",
-      ]);
+      await expect(mailboxTexts(harness, childId)).resolves.toEqual([]);
 
       // A person writes to the parent, which ends the stop of the tree. The
       // parent's next message starts the child, and its Turn shows the note.
       vi.setSystemTime(1_800_000_002_000);
-      await resumeStoppedConversationTree(
-        slackParentConversationId,
-        Date.now(),
-      );
+      await resumeConversationTree(slackParentConversationId, Date.now());
       await message(harness, childId, "call-3");
       harness.onPersonRun(finishRun);
       await harness.processUntilRun(childId);
@@ -644,8 +645,8 @@ describe("spawn and messageAgent without Agent invocations", () => {
     const harness = await createHarness();
     try {
       await startParentTurn();
-      await markConversationsStopped([slackParentConversationId], {
-        cancelWatches: false,
+      await stopConversationTree([slackParentConversationId], {
+        stoppedAtMs: Date.now(),
         state: harness.state,
       });
 
@@ -682,9 +683,8 @@ describe("spawn and messageAgent without Agent invocations", () => {
       // The spawn raced the stop: it created the child after the stop, so
       // the stop of the tree missed the child.
       const childId = await spawn(harness, "call-1");
-      await markConversationsStopped([slackParentConversationId], {
-        cancelWatches: false,
-        nowMs: 1_799_999_999_000,
+      await stopConversationTree([slackParentConversationId], {
+        stoppedAtMs: 1_799_999_999_000,
         state: harness.state,
       });
       await stopChildAgentsOf(slackParentConversationId, harness.state);
@@ -703,14 +703,14 @@ describe("spawn and messageAgent without Agent invocations", () => {
     const harness = await createHarness();
     try {
       const threadId = await spawn(harness, "call-1", { kind: "thread" });
-      await markConversationsStopped([slackParentConversationId, threadId], {
-        cancelWatches: false,
+      await stopConversationTree([slackParentConversationId, threadId], {
+        stoppedAtMs: Date.now(),
         state: harness.state,
       });
       // A person resumes only the Thread. Its reply starts a parent Turn
       // while the parent's stop stays.
       vi.setSystemTime(1_800_000_001_000);
-      await resumeStoppedConversationTree(threadId, Date.now());
+      await resumeConversationTree(threadId, Date.now());
       vi.setSystemTime(1_800_000_002_000);
       await startParentTurn("parent-turn-2");
 
@@ -750,9 +750,8 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await startParentTurn();
       // The person's stop message was sent before this Turn started, but the
       // stop arrives while the Turn runs.
-      await markConversationsStopped([slackParentConversationId, childId], {
-        cancelWatches: false,
-        nowMs: 1_800_000_001_000,
+      await stopConversationTree([slackParentConversationId, childId], {
+        stoppedAtMs: 1_800_000_001_000,
         state: harness.state,
       });
       await stopConversationWork({
@@ -782,14 +781,14 @@ describe("spawn and messageAgent without Agent invocations", () => {
     try {
       const threadId = await spawn(harness, "call-1", { kind: "thread" });
       vi.setSystemTime(1_800_000_001_000);
-      await markConversationsStopped([slackParentConversationId, threadId], {
-        cancelWatches: false,
+      await stopConversationTree([slackParentConversationId, threadId], {
+        stoppedAtMs: Date.now(),
         state: harness.state,
       });
       // A person resumes only the Thread. Then the parent's run sees its
       // stop late.
       vi.setSystemTime(1_800_000_002_000);
-      await resumeStoppedConversationTree(threadId, Date.now());
+      await resumeConversationTree(threadId, Date.now());
       await sendPersonMessage(harness, threadId, "person-1");
       await stopChildAgentsOf(slackParentConversationId, harness.state);
 

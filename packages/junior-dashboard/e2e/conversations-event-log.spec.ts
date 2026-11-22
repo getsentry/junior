@@ -881,7 +881,7 @@ test("opens the event log from the sidebar row menu", async ({
   page,
   dashboard,
 }) => {
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
   const row = page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Closed issue summary/ });

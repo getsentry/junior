@@ -68,6 +68,7 @@ import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
 import { writeFileToolDefinition } from "@/chat/tools/sandbox/write-file";
 import { searchConversationsToolDefinition } from "@/chat/tools/search-conversations";
+import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
 import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conversation-events";
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
@@ -128,6 +129,9 @@ const slackOnly = ({ platform }: ToolRegistryScope) => platform === "slack";
 const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
 const hasAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents !== "none";
+const hasChildAgents = ({ listedTools }: ToolRegistryScope) =>
+  listedTools.agents === "children" ||
+  listedTools.agents === "children_and_parent";
 
 // Write tools exist when the deployment has a workspace provider, and their
 // text names those providers.
@@ -207,14 +211,20 @@ const CORE_TOOLS = {
   publishImage: RUN_BUILT,
   unpublishImage: RUN_BUILT,
   transcribeAudio: RUN_BUILT,
-  spawnAgent: { when: hasAgents, definition: () => spawnAgentToolDefinition },
-  stopAgent: { when: hasAgents, definition: () => stopAgentToolDefinition },
+  spawnAgent: {
+    when: hasChildAgents,
+    definition: () => spawnAgentToolDefinition,
+  },
+  stopAgent: {
+    when: hasChildAgents,
+    definition: () => stopAgentToolDefinition,
+  },
   archiveAgent: {
-    when: hasAgents,
+    when: hasChildAgents,
     definition: () => archiveAgentToolDefinition,
   },
   listAgents: {
-    when: hasAgents,
+    when: hasChildAgents,
     definition: () => listAgentsToolDefinition,
   },
   messageAgent: {
@@ -295,6 +305,12 @@ const CORE_TOOLS = {
   addInboxItem: always(addInboxItemToolDefinition),
   searchInboxItems: always(searchInboxItemsToolDefinition),
   updateInboxItem: always(updateInboxItemToolDefinition),
+  // Only a Turn whose `only` list names it lists it, such as a Lead's.
+  startConversation: {
+    when: ({ listedTools }) =>
+      listedTools.only?.includes("startConversation") === true,
+    definition: () => startConversationToolDefinition,
+  },
 } satisfies Record<string, StaticToolEntry | RunBuiltToolEntry>;
 
 type CoreToolSlotKey = keyof typeof CORE_TOOLS;
@@ -329,10 +345,17 @@ export const RUN_BUILT_TOOL_NAMES: readonly string[] = [
   ),
 ];
 
-function coreToolEntries() {
-  return Object.entries(CORE_TOOLS) as Array<
-    [CoreToolSlotKey, StaticToolEntry | RunBuiltToolEntry]
-  >;
+// A Turn with an `only` list lists only those core tools, and no run-built
+// tool.
+function coreToolEntries(scope: ToolRegistryScope) {
+  const { only } = scope.listedTools;
+  return (
+    Object.entries(CORE_TOOLS) as Array<
+      [CoreToolSlotKey, StaticToolEntry | RunBuiltToolEntry]
+    >
+  ).filter(
+    ([key, entry]) => !only || (!isRunBuilt(entry) && only.includes(key)),
+  );
 }
 
 /**
@@ -342,7 +365,7 @@ function coreToolEntries() {
  */
 export function coreToolSlots(scope: ToolRegistryScope): CoreToolSlot[] {
   const slots: CoreToolSlot[] = [];
-  for (const [key, entry] of coreToolEntries()) {
+  for (const [key, entry] of coreToolEntries(scope)) {
     if (isRunBuilt(entry)) {
       slots.push({
         kind: "run_built",
@@ -374,9 +397,11 @@ export function staticToolDefinitions(key: ToolDefinitionsKey): ToolRegistry {
     listedTools: promptModeTurnTools(key.mode),
   };
   const core: ToolRegistry = {};
-  for (const [name, entry] of coreToolEntries()) {
+  for (const [name, entry] of coreToolEntries(scope)) {
     if (isRunBuilt(entry) || (entry.when && !entry.when(scope))) continue;
     core[name] = modelFacing(entry.definition(scope));
   }
-  return { ...core, ...getStaticPluginToolDefinitions() };
+  return scope.listedTools.only
+    ? core
+    : { ...core, ...getStaticPluginToolDefinitions() };
 }

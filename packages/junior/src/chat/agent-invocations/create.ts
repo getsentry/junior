@@ -4,12 +4,8 @@ import { eq } from "drizzle-orm";
 import { addConversationNote } from "@/chat/conversations/notes";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import {
-  getConversationEventStore,
-  getConversationStore,
-  getSqlExecutor,
-} from "@/chat/db";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   ensureConversationWake,
@@ -586,10 +582,8 @@ async function isStoppedInTurn(
   if (runId && (await hasConversationStop({ conversationId, runId, state }))) {
     return true;
   }
-  const startedAtMs = await new ConversationTurnLifecycleService(
-    getConversationEventStore(),
-  ).loadStartedAtMs(conversationId, turnId);
-  return startedAtMs === undefined || stoppedAtMs >= startedAtMs;
+  const start = await loadTurnStart(conversationId, turnId);
+  return start === undefined || stoppedAtMs >= start.startedAtMs;
 }
 
 /**

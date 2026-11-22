@@ -6,12 +6,11 @@ import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import type { ConversationStore } from "@/chat/conversations/store";
 import {
   getConversationStoppedAtMs,
-  resumeStoppedConversationTree,
+  resumeConversationTree,
 } from "@/chat/conversations/session-stop";
 import type { CredentialContext } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import type { PiMessage } from "@/chat/pi/messages";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
   appendInboundMessage,
@@ -21,7 +20,7 @@ import {
   type InboundMessage,
 } from "@/chat/task-execution/store";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { loadForkHistory } from "./fork-history";
+import { commitForkHistory } from "./fork-history";
 import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { agentInvocationInputText } from "./work";
@@ -155,10 +154,7 @@ export async function appendParentMessage(
 async function endStopForParentMessage(message: InboundMessage): Promise<void> {
   const stoppedAtMs = await getConversationStoppedAtMs(message.conversationId);
   if (stoppedAtMs !== undefined && message.createdAtMs > stoppedAtMs) {
-    await resumeStoppedConversationTree(
-      message.conversationId,
-      message.createdAtMs,
-    );
+    await resumeConversationTree(message.conversationId, message.createdAtMs);
   }
 }
 
@@ -301,34 +297,40 @@ export async function readLastParentMessageAtMs(
 }
 
 /**
+ * Commit the parent's history for the first Turn of a fork child, before the
+ * Turn starts. `inputs` passed the sender check.
+ */
+export async function commitParentMessageFork(args: {
+  conversationId: string;
+  inputs: readonly InboundMessage[];
+}): Promise<void> {
+  const parentMessage = args.inputs
+    .map(readParentMessage)
+    .find((input) => input !== undefined);
+  if (parentMessage?.fork) {
+    await commitForkHistory({
+      childConversationId: args.conversationId,
+      parentConversationId: parentMessage.parentConversationId,
+      parentToolCallId: parentMessage.parentToolCallId,
+    });
+  }
+}
+
+/**
  * Apply the agent config of a child agent to one of its Turns on the root
- * Turn code. Every Turn keeps the reasoning level. A fork's first Turn
- * starts with its parent's history. A parent message is the child's
- * instruction, as on an Agent invocation, also when its Turn resumes
- * (`fromParent`). `inputs` passed the sender check.
+ * Turn code. Every Turn keeps the reasoning level. A parent message is the
+ * child's instruction, as on an Agent invocation, also when its Turn resumes
+ * (`fromParent`).
  */
 export async function childAgentTurnOptions(args: {
   conversationId: string;
   fromParent: boolean;
-  history: PiMessage[];
-  inputs: readonly InboundMessage[];
 }): Promise<{
-  history: PiMessage[];
   instruction: Pick<AgentInstruction, "provenance">;
   run: Pick<AgentRun, "reasoning">;
 }> {
   const options = await readAgentConfig(args.conversationId);
-  const parentMessage = args.inputs
-    .map(readParentMessage)
-    .find((input) => input !== undefined);
   return {
-    history:
-      parentMessage?.fork && args.history.length === 0
-        ? await loadForkHistory({
-            parentConversationId: parentMessage.parentConversationId,
-            parentToolCallId: parentMessage.parentToolCallId,
-          })
-        : args.history,
     instruction: args.fromParent
       ? { provenance: agentInstructionProvenance }
       : {},
