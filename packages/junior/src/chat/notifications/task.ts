@@ -9,8 +9,12 @@ import { juniorConversations, juniorIdentities } from "@/db/schema";
 import { projectConversationMessages } from "@/chat/conversations/message-projection";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationEventStore } from "@/chat/db";
-import { recordReplyNoticePush } from "@/chat/inbox-items/deliveries";
+import {
+  clearInboxItemDeliveries,
+  recordReplyNoticePush,
+} from "@/chat/inbox-items/deliveries";
 import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
+import { isInboxItemOpen } from "@/chat/inbox-items/store";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
 import { findUserByEmailFromSql } from "@/chat/plugins/viewer";
@@ -87,6 +91,7 @@ type SkipReason =
   | "no_user"
   | "not_configured"
   | "outside_hours"
+  | "read"
   | "slack_paused";
 
 function skip(reason: SkipReason): void {
@@ -142,6 +147,12 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
     userId,
   });
   if (pause) return skip(pause);
+  // The starter can read the reply before the record. That close cleared
+  // no row, so clear it now and send nothing.
+  if (!(await isInboxItemOpen(db, itemId))) {
+    await clearInboxItemDeliveries(db, [itemId], Date.now());
+    return skip("read");
+  }
 
   // The notice's tag replaces the push of an earlier reply on the device,
   // and the push goes away when the starter reads the reply.

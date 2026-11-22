@@ -342,10 +342,10 @@ describe("reply notification task", () => {
     });
     // The starter takes part in the private Conversation, so they can read it.
     await recordConversationParticipant(getSqlExecutor(), {
-      actorIdentityId: await resolveActorIdentityId(
+      actorIdentityId: (await resolveActorIdentityId(
         getSqlExecutor(),
         webActorFromUser({ ...user!, displayName: "Alice Example" }),
-      ),
+      ))!,
       atMs: Date.now(),
       conversationId,
     });

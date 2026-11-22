@@ -8,7 +8,11 @@ import {
   listInboxItemPushUserIds,
   type InboxItemDeliverySkipReason,
 } from "@/chat/inbox-items/deliveries";
-import { getInboxItem, type InboxItem } from "@/chat/inbox-items/store";
+import {
+  getInboxItem,
+  isInboxItemOpen,
+  type InboxItem,
+} from "@/chat/inbox-items/store";
 import { inboxItemSnoozedBy } from "@/chat/inbox-snoozes/store";
 import { logInfo, runBestEffort, withSpan } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
@@ -31,17 +35,6 @@ async function isSnoozedBy(db: JuniorDatabase, itemId: string, userId: string) {
     .select({ id: juniorInboxItems.id })
     .from(juniorInboxItems)
     .where(and(eq(juniorInboxItems.id, itemId), inboxItemSnoozedBy(userId)))
-    .limit(1);
-  return rows.length > 0;
-}
-
-async function isOpen(db: JuniorDatabase, itemId: string) {
-  const rows = await db
-    .select({ id: juniorInboxItems.id })
-    .from(juniorInboxItems)
-    .where(
-      and(eq(juniorInboxItems.id, itemId), eq(juniorInboxItems.status, "open")),
-    )
     .limit(1);
   return rows.length > 0;
 }
@@ -112,7 +105,7 @@ export async function syncInboxItemPush(itemId: string): Promise<void> {
             // A close that ran before the claim cleared no row for this
             // User. Clear it now and send nothing. A later close clears
             // the claimed row itself.
-            if (!(await isOpen(db, item.id))) {
+            if (!(await isInboxItemOpen(db, item.id))) {
               await clearInboxItemDeliveries(db, [item.id], Date.now());
               return;
             }
