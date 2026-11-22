@@ -1069,8 +1069,15 @@
     {
       "idx": 152,
       "version": "7",
-      "when": 1795314480776,
-      "tag": "0152_conversation_embedding_cleanup",
+      "when": 1795314540484,
+      "tag": "0152_inbox_item_legacy_automation_keys",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1795316676636,
+      "tag": "0153_conversation_embeddings_fk_validate",
       "breakpoints": true
     }
   ]
