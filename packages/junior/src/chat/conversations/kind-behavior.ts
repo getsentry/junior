@@ -360,7 +360,7 @@ export function personSourcePlatform(
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return undefined;
   }
 }
@@ -378,7 +378,7 @@ export function sourceLabel(source: Source): string {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return source.kind;
   }
 }
