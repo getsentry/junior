@@ -98,9 +98,11 @@ export async function findRelatedConversations(
       limit: CANDIDATE_LIMIT,
       query,
       rootsOnly: true,
+      // A Conversation has no summary until its first Turn completes, and
+      // the reranker needs one. Filter before the limit.
+      summarizedOnly: true,
     },
   });
-  // A Conversation has no summary until its first Turn completes.
   const candidates = results.filter((result): result is SummarizedResult =>
     Boolean(result.summary),
   );

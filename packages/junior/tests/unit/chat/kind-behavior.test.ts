@@ -13,6 +13,7 @@ const rootTurn = {
   gated: false,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
@@ -30,6 +31,7 @@ const personInThreadTurn = {
   promptMode: "thread",
   sender: "person",
   sessionTasks: false,
+  relatedConversations: false,
   tools: { ...rootTurn.tools, agents: "none" },
 };
 
@@ -42,6 +44,7 @@ const agentInThreadTurn = {
   gated: true,
   failureNotice: "none",
   sessionTasks: false,
+  relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
@@ -73,6 +76,7 @@ const automationTurn = {
   gated: true,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: false,
   tools: {
     ...rootTurn.tools,
     reply: "automation",

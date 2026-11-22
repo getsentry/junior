@@ -161,6 +161,40 @@ describe("Conversation search", () => {
         deploymentMatches.map((match) => match.conversationId).sort(),
       ).toEqual([otherTenantId, targetConversationId].sort());
 
+      // A root whose first Turn has not completed has a title but no summary.
+      const unsummarizedId = "slack:CTITLE:1700000000.600000";
+      await conversations.recordActivity({
+        channelName: "ctitle-name",
+        conversationId: unsummarizedId,
+        destination: { platform: "slack", teamId: "T123", channelId: "CTITLE" },
+        nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+        source: "slack",
+        title: "Deployment decision in progress",
+        visibility: "public",
+      });
+      const titleSearch = {
+        includeArchived: false,
+        limit: 10,
+        query: "deployment decision",
+        rootsOnly: true,
+      };
+      expect(
+        (
+          await searchConversations(db, {
+            requesterConversationId: currentConversationId,
+            search: titleSearch,
+          })
+        ).map((match) => match.conversationId),
+      ).toContain(unsummarizedId);
+      expect(
+        (
+          await searchConversations(db, {
+            requesterConversationId: currentConversationId,
+            search: { ...titleSearch, summarizedOnly: true },
+          })
+        ).map((match) => match.conversationId),
+      ).not.toContain(unsummarizedId);
+
       // Child agents match only when the search asks for them.
       const withChildren = await searchConversations(db, {
         requesterConversationId: currentConversationId,
