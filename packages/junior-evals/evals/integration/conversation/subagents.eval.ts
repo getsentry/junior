@@ -62,29 +62,35 @@ describe("Child Agents", () => {
     agent,
   }) => {
     const { run } = await agent();
+    const childReplies: string[] = [];
     const conversation = await run(
       slackMention(
-        "Hand that typo fix plan off to a child agent and post the plan here. No repo changes.",
+        "Hand off writing a one-line commit message for that typo fix to a child agent. The message must cite the ticket. Post its message here. No repo changes.",
       ),
       {
         history: [
-          slackMention(
-            'I already checked that README.md has the typo "recieve" on line 12.',
-          ),
+          slackMention("I filed the README typo as ticket TYPO-4821."),
           reply("Got it."),
         ],
+        onProgress: (progress) => {
+          // Only the child agent has the `reply` tool.
+          if (progress.type === "tool_request" && progress.name === "reply") {
+            childReplies.push(
+              (progress.args as { text?: string } | undefined)?.text ?? "",
+            );
+          }
+        },
       },
     );
 
-    const tasks = completedToolCalls("spawnAgent", conversation).map(
-      (call) => (call.input as { task?: string } | undefined)?.task ?? "",
-    );
-    expect(tasks).toHaveLength(1);
-    // The child gets no thread history, so the task must carry the fact
-    // from the earlier message.
-    expect(tasks[0]).toContain("README.md");
-    expect(tasks[0]).toMatch(/recieve|receive/);
-    expect(tasks[0]).toContain("12");
+    expect(completedToolCalls("spawnAgent", conversation)).toHaveLength(1);
+    // The ticket id is only in an earlier message, and the child gets no
+    // thread history, so the child can cite it only if the parent's task
+    // carried it. Check the child's result, not the task text: the parent
+    // may word the task in its own way.
+    expect(childReplies).toContainEqual(expect.stringContaining("TYPO-4821"));
+    expect(conversation.turns).toHaveLength(2);
+    expect(conversation.turns[1]?.status).toBe("succeeded");
   });
 
   test("when a child agent is missing input, it reports the block in one result turn", async ({
