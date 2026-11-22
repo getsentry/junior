@@ -405,6 +405,15 @@ export function createConversationTurnWorker(
         turnId,
       });
     };
+    // A child that sends no failure notice, such as a Thread, ends its
+    // dashboard markers with the failure.
+    const reportFailure = async (text: string): Promise<void> => {
+      if (behavior.failureNotice === "parent") {
+        await sendToParent({ kind: "failed", text });
+      } else {
+        await recordChildAgentEnded(context.conversationId, "error");
+      }
+    };
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
     const surface = postsToProvider ? ("slack" as const) : ("api" as const);
@@ -741,12 +750,9 @@ export function createConversationTurnWorker(
               // lost worker cannot save the Turn and drop the answer.
               if (reply.diagnostics.outcome !== "success") {
                 await deliverAssistantMessage(reply.text);
-                if (behavior.failureNotice === "parent") {
-                  await sendToParent({
-                    kind: "failed",
-                    text: reply.diagnostics.errorMessage ?? reply.text,
-                  });
-                }
+                await reportFailure(
+                  reply.diagnostics.errorMessage ?? reply.text,
+                );
               } else if (reply.reply && behavior.tools.reply === "parent") {
                 await sendToParent({ kind: "reply", reply: reply.reply });
                 // Keep the reply in the child's transcript, not its Location.
@@ -973,17 +979,9 @@ export function createConversationTurnWorker(
             failureCode,
             turnId,
           });
-          if (behavior.failureNotice === "parent") {
-            await sendToParent({
-              kind: "failed",
-              text:
-                failure instanceof Error ? failure.message : String(failure),
-            });
-          } else {
-            // A child that sends no notice, such as a Thread, ends its
-            // dashboard markers with the failure here.
-            await recordChildAgentEnded(context.conversationId, "error");
-          }
+          await reportFailure(
+            failure instanceof Error ? failure.message : String(failure),
+          );
           await acknowledge();
           return { status: "completed" };
         }

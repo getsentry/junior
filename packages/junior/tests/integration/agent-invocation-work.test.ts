@@ -456,6 +456,18 @@ describe("child agent task work", () => {
       ],
     },
     {
+      // A Thread keeps its failure and tells its parent nothing.
+      name: "failed thread",
+      kind: "thread" as const,
+      outputs: [{ type: "error" as const, errorMessage: "model unavailable" }],
+      terminal: {
+        failureCode: "model_execution_failed",
+        type: "turn_failed",
+      },
+      subagentOutcome: "error",
+      parentMessages: [],
+    },
+    {
       // A blocked report is a result, not a model failure.
       name: "blocked",
       outputs: [
