@@ -60,12 +60,12 @@ export type ChildAgentSender = {
   parentConversationId: string;
   title?: string;
 };
-export type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
+type AgentInvocationStatus = (typeof AGENT_INVOCATION_STATUSES)[number];
 export type SpawnChildAgentInput = z.input<typeof spawnChildAgentInputSchema>;
 
 /** How a finished task of a child agent ended. A stop is not a result. */
 export const CHILD_AGENT_RESULTS = ["completed", "blocked", "failed"] as const;
-export type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
+type ChildAgentResult = (typeof CHILD_AGENT_RESULTS)[number];
 
 /** Current state of one child agent, read from its Turns and mailbox. */
 export type ChildAgent = {

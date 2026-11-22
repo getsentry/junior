@@ -259,8 +259,8 @@ function isActiveMailboxTurn(
 ): boolean {
   return (
     !record.dispatchId &&
-    // A Turn of a removed Agent invocation worker is never a mailbox Turn,
-    // so a saved one never resumes.
+    // A Turn of the removed child worker of an earlier release is never a
+    // mailbox Turn, so a saved one never resumes.
     record.surface !== "internal" &&
     (record.source?.kind === "web" ||
       record.source?.kind === "event" ||
@@ -372,7 +372,7 @@ export function getEventBatchDelayMs(
 }
 
 /** Read an event batch as Turn input, or return [] when it is not only events. */
-export function parseEventMessages(
+function parseEventMessages(
   messages: readonly InboundMessage[],
 ): MailboxTurnInput[] {
   if (messages.length === 0) {

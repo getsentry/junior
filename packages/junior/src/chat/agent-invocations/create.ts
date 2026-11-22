@@ -36,10 +36,7 @@ import {
   buildParentMessage,
   type ParentMessageDelivery,
 } from "./parent-message";
-import {
-  spawnChildAgentInputSchema,
-  type SpawnChildAgentInput,
-} from "./types";
+import { spawnChildAgentInputSchema, type SpawnChildAgentInput } from "./types";
 
 /** Cap concurrent active children one parent can keep in flight. */
 export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;

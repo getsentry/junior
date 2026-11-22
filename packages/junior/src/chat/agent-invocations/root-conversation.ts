@@ -251,12 +251,7 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(
-        root,
-        data,
-        args.actor,
-        personIdentityIds,
-      ),
+      author: messageLabel(root, data, args.actor, personIdentityIds),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
@@ -268,12 +263,7 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
-            author: messageLabel(
-              root,
-              opening,
-              args.actor,
-              personIdentityIds,
-            ),
+            author: messageLabel(root, opening, args.actor, personIdentityIds),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]

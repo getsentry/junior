@@ -7,7 +7,7 @@ import {
 } from "./conversation";
 
 /**
- * One direct child agent of a Conversation, from agent invocation records.
+ * One direct child agent of a Conversation, from its stored agent config.
  *
  * Viewers who cannot see private content get the status, time, and usage, but
  * not the name, task, title, or error. Usage covers the child Conversation and

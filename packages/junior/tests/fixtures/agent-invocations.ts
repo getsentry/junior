@@ -142,7 +142,10 @@ export async function spawnChildAgent(
     },
     args,
   );
-  return { childConversationId, parentConversationId: args.parentConversationId };
+  return {
+    childConversationId,
+    parentConversationId: args.parentConversationId,
+  };
 }
 
 /**

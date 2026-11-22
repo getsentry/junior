@@ -3,10 +3,7 @@ import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { ownerConversationId, type InboxItem } from "@/chat/inbox-items/store";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  juniorAgentBindings,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 
 /** Where an item sits in its Conversation tree, for the Inbox's stacks. */
 type ItemRoot = { label: string; rootConversationId: string };
@@ -74,10 +71,7 @@ export async function readItemRoots(
       const childAccess = access.get(child.conversationId);
       const rootConversationId = childAccess?.rootConversationId;
       if (!rootConversationId || !childAccess.canViewPrivateContent) return [];
-      const label =
-        child.title ??
-        child.bindingName ??
-        kindLabel(child.kind);
+      const label = child.title ?? child.bindingName ?? kindLabel(child.kind);
       return [[child.conversationId, { label, rootConversationId }] as const];
     }),
   );

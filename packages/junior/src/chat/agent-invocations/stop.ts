@@ -43,8 +43,7 @@ export async function stopChildAgent(args: {
 }): Promise<{ stopped: boolean } | undefined> {
   // A child is stopped until new input clears its stop.
   const wasStopped =
-    (await getConversationStoppedAtMs(args.childConversationId)) !==
-    undefined;
+    (await getConversationStoppedAtMs(args.childConversationId)) !== undefined;
   const conversationIds = await lockOwnedChildAgentTree(args);
   if (!conversationIds) {
     return undefined;
@@ -233,10 +232,10 @@ export async function cancelWaitingParentMessages(
  * Tell the parent of a Task that a person stops it, when the stop cuts its
  * work: a waiting parent message or a running Turn. Call it before the stop
  * request is saved, so a failure leaves the stop to be retried. A Thread, a
- * Task with no open work, and a
- * run that an earlier stop already cut stay quiet. The result is keyed by
- * the stop time, which a redelivery of the same stop keeps, so a retry adds
- * nothing even when a worker took the waiting work in between.
+ * Task with no open work, and a run that an earlier stop already cut stay
+ * quiet. The result is keyed by the stop time, which a redelivery of the
+ * same stop keeps, so a retry adds nothing even when a worker took the
+ * waiting work in between.
  */
 export async function reportPersonStopToParent(
   conversationId: string,

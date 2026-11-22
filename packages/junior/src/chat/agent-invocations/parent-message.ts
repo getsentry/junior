@@ -32,7 +32,7 @@ import { readParentMessage, type ParentMessage } from "./parent-message-input";
  * no other input, so a parent message never shares a Turn with another
  * sender's input.
  */
-export function parentMessageAuthorId(parentConversationId: string): string {
+function parentMessageAuthorId(parentConversationId: string): string {
   return `${PARENT_MESSAGE_AUTHOR_PREFIX}${parentConversationId}`;
 }
 

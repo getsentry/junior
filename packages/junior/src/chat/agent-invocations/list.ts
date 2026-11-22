@@ -221,9 +221,7 @@ export async function listUnreportedSiblingAgents(
   const answered = new Set(
     await listAnsweredLoopChildren(running, parentMessages),
   );
-  return running.filter(
-    (child) => !answered.has(child.childConversationId),
-  );
+  return running.filter((child) => !answered.has(child.childConversationId));
 }
 
 /** One child agent below a Conversation, at any depth. */

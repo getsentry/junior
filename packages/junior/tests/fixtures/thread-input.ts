@@ -354,8 +354,9 @@ export async function savePersonTurn(
   }
   // The Turn's prompt follows the Thread's committed history, such as its
   // parent's task.
-  const history = (await openConversationProjection({ conversationId: threadId }))
-    .messages;
+  const history = (
+    await openConversationProjection({ conversationId: threadId })
+  ).messages;
   const turn = {
     conversationId: threadId,
     turnId,

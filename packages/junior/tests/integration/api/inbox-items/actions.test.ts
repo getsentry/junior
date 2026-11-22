@@ -22,10 +22,7 @@ import {
   insertInboxItem,
   takeInboxItem,
 } from "@/chat/inbox-items/store";
-import {
-  juniorConversationParticipants,
-  juniorIdentities,
-} from "@/db/schema";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
