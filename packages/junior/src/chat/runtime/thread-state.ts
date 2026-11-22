@@ -35,6 +35,9 @@ function buildThreadStatePayload(
     payload["app_sandbox_dependency_profile_hash"] =
       patch.sandboxRef?.profileHash ?? "";
     payload["app_sandbox_workspace_id"] = patch.sandboxRef?.workspaceId ?? "";
+    const toolSession = patch.sandboxRef?.toolSession;
+    payload["app_sandbox_tool_sandbox_id"] = toolSession?.sandboxId ?? "";
+    payload["app_sandbox_tool_session_id"] = toolSession?.sessionId ?? "";
   }
   return payload;
 }
@@ -75,10 +78,15 @@ export function getPersistedSandboxState(
     state["app_sandbox_dependency_profile_hash"],
   );
   const workspaceId = toOptionalString(state["app_sandbox_workspace_id"]);
+  const toolSandboxId = toOptionalString(state["app_sandbox_tool_sandbox_id"]);
+  const toolSessionId = toOptionalString(state["app_sandbox_tool_session_id"]);
   return {
     id,
     ...(profileHash ? { profileHash } : undefined),
     ...(workspaceId ? { workspaceId } : undefined),
+    ...(toolSandboxId && toolSessionId
+      ? { toolSession: { sandboxId: toolSandboxId, sessionId: toolSessionId } }
+      : undefined),
   };
 }
 
