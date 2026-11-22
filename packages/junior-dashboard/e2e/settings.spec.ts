@@ -6,6 +6,7 @@ import {
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../src/service-worker";
+import { waitForSettingsReads } from "./harness";
 import { screenshot } from "./screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-reporting/fixtures";
 
@@ -236,7 +237,10 @@ test("shows a push notification that has no tag", async ({
   // renotify without a tag, so the worker must still show the notification.
   // The push opens "/", so stay on another page: there the worker alerts.
   await page.context().grantPermissions(["notifications"]);
+  const settingsRead = waitForSettingsReads(page);
   await page.goto(`${dashboard.baseURL}/settings`);
+  // A skip ends the test, so the page reads must be done first.
+  await settingsRead;
   test.skip(
     (await page.evaluate(() => Notification.permission)) !== "granted",
     "Chromium headless shell denies notifications. CI runs Chrome.",

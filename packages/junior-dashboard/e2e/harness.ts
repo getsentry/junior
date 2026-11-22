@@ -122,6 +122,22 @@ export function waitForReadPosition(page: Page, afterSeq: number) {
   });
 }
 
+/**
+ * Wait for the reads that the Settings page makes when it opens. Call it
+ * before the navigation to Settings, and await it before the test ends or
+ * skips there.
+ */
+export function waitForSettingsReads(page: Page) {
+  return Promise.all(
+    ["/api/user-customization", "/api/personal-tokens", "/api/connections"].map(
+      (path) =>
+        page.waitForResponse(
+          (response) => new URL(response.url()).pathname === path,
+        ),
+    ),
+  );
+}
+
 /** Whether a request is a background read that may outlive a test. */
 function isBackgroundRead(request: PageRequest): boolean {
   const { pathname } = new URL(request.url());

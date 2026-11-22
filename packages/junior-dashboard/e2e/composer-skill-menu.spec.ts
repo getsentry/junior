@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { waitForReadPosition } from "./harness";
 import { desktop, mobile, screenshot } from "./screenshot";
 import { clickSkillReference, styledSkillReferences } from "./skill-references";
 
@@ -200,10 +201,14 @@ test("a skill reference in the draft is styled and stays plain text @classic", a
       response.request().method() === "POST" &&
       /\/api\/conversations\/[^/]+\/messages$/.test(response.url()),
   );
+  // The Conversation ends at seq 28 when it opens. The sent message comes
+  // after it.
+  const readSaved = waitForReadPosition(page, 28);
   await composer.press("Enter");
   expect((await sent).request().postDataJSON()).toMatchObject({
     message: text,
   });
+  await readSaved;
 });
 
 test("a caret move before the skill list loads shows the card @classic", async ({
