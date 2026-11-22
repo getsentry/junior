@@ -764,10 +764,10 @@ export function InboxList(props: {
     );
   } else if (view === "conversations") {
     // A state filter can match rows on pages not read yet, so the list
-    // keeps paging before it says that none match.
+    // keeps paging before it says that none match. Pinned reads no pages.
     body =
       streamRows.length === 0 &&
-      !(conversationState !== "all" && data.feed.hasMore) ? (
+      !(conversationState !== "all" && !pinnedOnly && data.feed.hasMore) ? (
         <InboxEmptyState
           label={
             conversationState === "all" && !pinnedOnly
