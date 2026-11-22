@@ -5,6 +5,10 @@ import { MobileHeaderTitlePortal } from "../components/layout/DashboardChrome";
 import { Input } from "../components/ui/input";
 import { cn } from "../styles";
 
+// Browsers reset controls to `text-rendering: auto`, which spaces glyphs
+// unlike the page's `geometricPrecision`, so the title would change width.
+const titleTextRendering = "[text-rendering:inherit]";
+
 /** The title edit that a Conversation header shares with its page. */
 export type ConversationTitleEdit = {
   editing: boolean;
@@ -43,6 +47,7 @@ export function EditableConversationTitle(
         className={cn(
           // The hover box is the field's box, so the text does not move.
           "-mx-1.5 flex min-w-0 cursor-text rounded-md px-1.5 hover:bg-dashboard-fill-soft focus-visible:outline-2 focus-visible:outline-dashboard-focus",
+          titleTextRendering,
           props.className,
         )}
         onClick={() => props.onEditingChange(true)}
@@ -113,6 +118,7 @@ function TitleField(props: {
         autoFocus
         className={cn(
           "-my-px px-1.25 py-0",
+          titleTextRendering,
           // 16px on phones, so iOS does not zoom into the field.
           "max-md:text-base",
           props.className,
