@@ -26,6 +26,7 @@ import {
 } from "@/chat/conversations/session-stop";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { getLeadConversation } from "@/chat/lead/conversation";
 import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
@@ -35,7 +36,7 @@ import {
 } from "@/db/schema";
 import { JUNIOR_AUTO_ARCHIVE_ROUTE } from "@/deployment";
 import { defineJuniorPlugins } from "@/plugins";
-import { isNotNull } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import {
   REQUEST,
   SLACK_VIEWER,
@@ -389,6 +390,27 @@ describe("conversation auto-archive API", () => {
       title: "Follow-up",
       visibility: "private",
     });
+    // The Lead is the viewer's dashboard home, not a feed row, so it stays
+    // however long it has been quiet.
+    const lead = await getLeadConversation(viewer);
+    await getDb()
+      .update(juniorConversations)
+      .set({ lastActivityAt: new Date(staleMs) })
+      .where(eq(juniorConversations.conversationId, lead.conversationId));
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(staleMs),
+        rootConversationId: lead.conversationId,
+        userId: viewer.id,
+      })
+      .onConflictDoUpdate({
+        set: { lastMessageAt: new Date(staleMs) },
+        target: [
+          juniorConversationParticipants.userId,
+          juniorConversationParticipants.rootConversationId,
+        ],
+      });
     // The manual run waits the same time as the scheduled sweep. The recent
     // conversation has no work but had activity a minute ago, so it stays.
     const finishedAt = new Date(staleMs).toISOString();
@@ -442,6 +464,11 @@ describe("conversation auto-archive API", () => {
         await readConversationDetail(doneId, { viewer }),
       ).archivedAt,
     ).toEqual(expect.any(String));
+    const [leadRow] = await getDb()
+      .select({ archivedAt: juniorConversations.archivedAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, lead.conversationId));
+    expect(leadRow?.archivedAt).toBeNull();
   });
 
   it("keeps a conversation that waits on a person to finish an authorization", async () => {

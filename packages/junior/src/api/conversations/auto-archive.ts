@@ -198,10 +198,13 @@ function noParticipantKeepsRoot() {
   return sql`not exists (${keeping})`;
 }
 
-/** True when the participant row's root is not archived. */
-function rootIsUnarchived() {
+/**
+ * True when the participant row's root is not archived and is not a Lead.
+ * The Lead is the dashboard home, not a feed row, so it is never archived.
+ */
+function rootIsArchivable() {
   const root = alias(juniorConversations, "archive_root");
-  const unarchived = getDb()
+  const eligible = getDb()
     .select({ conversationId: root.conversationId })
     .from(root)
     .where(
@@ -211,9 +214,10 @@ function rootIsUnarchived() {
           juniorConversationParticipants.rootConversationId,
         ),
         isNull(root.archivedAt),
+        or(isNull(root.kind), ne(root.kind, "lead")),
       ),
     );
-  return sql`exists (${unarchived})`;
+  return sql`exists (${eligible})`;
 }
 
 /**
@@ -227,7 +231,7 @@ function archivableRow(run: ArchiveRun) {
     // A person who unsubscribed left the conversation to the others.
     // Contract: `subscription.ts`.
     isNull(juniorConversationParticipants.unsubscribedAt),
-    rootIsUnarchived(),
+    rootIsArchivable(),
     // A pin keeps the conversation in the feed on purpose.
     noParticipantKeepsRoot(),
     // The user's own message or a root activity snapshot sets
@@ -387,7 +391,7 @@ async function selectAutoArchiveUsers() {
       and(
         eq(juniorConversationParticipants.userId, juniorUsers.id),
         eq(juniorConversationParticipants.autoArchive, true),
-        rootIsUnarchived(),
+        rootIsArchivable(),
       ),
     );
   return await getDb()
