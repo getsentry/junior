@@ -251,13 +251,13 @@ export function sendsResultToParent(
  * and its unread result or reply also waits.
  */
 async function hasOpenChildWork(
-  invocation: AgentInvocation,
+  conversationId: string,
+  exceptInvocationId: string | undefined,
   endingChildConversationId?: string,
 ): Promise<boolean> {
-  const conversationId = invocation.childConversationId;
   const open = await listOpenAgentInvocations(conversationId);
   if (
-    open.some((row) => row.invocationId !== invocation.invocationId) ||
+    open.some((row) => row.invocationId !== exceptInvocationId) ||
     (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).some(
       (childId) => childId !== endingChildConversationId,
     )
@@ -306,6 +306,25 @@ async function hasOpenChildWork(
       sendsResultToParent(row, parentMessages) &&
       (row.parentMailboxStatus === "pending" ||
         unread.has(getAgentInvocationResultMessageId(row.invocationId))),
+  );
+}
+
+/**
+ * Return whether a child agent still works when its Turn sends a `reply`:
+ * it has open child work, or a message from one of its own child agents
+ * waits in its mailbox. That reply then goes to the parent as a message, not
+ * as the child's result.
+ */
+export async function childAgentStillWorks(
+  conversationId: string,
+  exceptInvocationId: string | undefined,
+): Promise<boolean> {
+  if (await hasOpenChildWork(conversationId, exceptInvocationId)) {
+    return true;
+  }
+  const work = await getConversationWorkState({ conversationId });
+  return (await readChildMessageSenders(work?.messages ?? [])).some(
+    (sender) => sender !== undefined,
   );
 }
 
@@ -386,7 +405,11 @@ export async function reportReplacedWithoutOpenWork(
     !latest ||
     !isTerminalAgentInvocation(latest) ||
     latest.parentMailboxStatus !== "replaced" ||
-    (await hasOpenChildWork(latest, options.endingChildConversationId))
+    (await hasOpenChildWork(
+      latest.childConversationId,
+      latest.invocationId,
+      options.endingChildConversationId,
+    ))
   ) {
     return undefined;
   }
@@ -514,7 +537,7 @@ export async function completeAgentInvocation(
   const parentMailboxStatus =
     !args.reportNow &&
     args.status !== "stopped" &&
-    (await hasOpenChildWork(current))
+    (await hasOpenChildWork(current.childConversationId, current.invocationId))
       ? "replaced"
       : "pending";
   await getSqlExecutor()

@@ -1,8 +1,8 @@
-import * as z from "zod";
 import { mapBounded } from "@/chat/fan-out";
 import type { Actor } from "@/chat/actor";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { MailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
@@ -14,7 +14,7 @@ import { logDroppedParentMessage, parentMessageText } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
 import { getLatestAgentInvocationForConversation } from "./store";
 
-const actorMetadataSchema = z.object({ actor: actorSchema });
+const senderActorMetadataSchema = z.object({ actor: actorSchema });
 
 /**
  * Return the Inbound message author id for results sent by one Actor.
@@ -37,7 +37,7 @@ export function resultAuthorId(actor: Actor): string {
 
 /** Read the Actor that a reply or message from a child without an Agent invocation carries. */
 function senderActorFromMetadata(metadata: unknown): Actor | undefined {
-  const parsed = actorMetadataSchema.safeParse(metadata);
+  const parsed = senderActorMetadataSchema.safeParse(metadata);
   return parsed.success ? parsed.data.actor : undefined;
 }
 
@@ -66,8 +66,8 @@ export async function withAgentInvocationResultActors(
       ])
     : [undefined, undefined];
   const batch = await mapBounded(work.batch, async (entry) => {
-    // A parent message from the stored parent gets its text, as on an Agent
-    // invocation. Its Actor and grants come with it.
+    // A parent message from the stored parent runs as the Actor of the
+    // parent's Turn, with its grants and text, as on an Agent invocation.
     const parentMessage = readParentMessage(entry.message);
     if (parentMessage) {
       if (
@@ -80,7 +80,11 @@ export async function withAgentInvocationResultActors(
       const text = await parentMessageText(entry.message, parentMessage);
       return {
         ...entry,
+        actor: parentMessage.actor,
         requestText: entry.message.input.text.trim(),
+        ...(parentMessage.credentialContext
+          ? { credentialContext: parentMessage.credentialContext }
+          : undefined),
         message: {
           ...entry.message,
           input: { ...entry.message.input, text },
