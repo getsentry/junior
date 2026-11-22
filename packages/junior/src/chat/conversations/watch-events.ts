@@ -150,6 +150,7 @@ export async function publishConversationStatus(
   const event = statusEvent(conversationId, status, nowMs);
   try {
     const watches = await findMatchingWatches({
+      data: event.data,
       eventType: event.eventType,
       identifier: conversationId,
       namespace: event.namespace,
