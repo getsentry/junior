@@ -147,6 +147,8 @@ function fakeSandbox(
   return {
     sandboxId: "sandbox-agent-hooks",
     sessionId: "session-agent-hooks",
+    keepsFilesAcrossSessions: false,
+    startedAtMs: Date.now(),
     fs: {
       async readFile() {
         return "";

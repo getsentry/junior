@@ -6,7 +6,6 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
   attachmentUploadSchema,
-  steerConversationPendingMessagesResponseSchema,
 } from "@/api/schema";
 import type { FileInput } from "./inputs";
 import { VIEWER_HEADER } from "./results";
@@ -89,38 +88,6 @@ export async function expectAccepted(response: Response) {
     );
   }
   return acceptedConversationMessageSchema.parse(await response.json());
-}
-
-/**
- * Steer one queued web message into the running turn, as the steer action in
- * the dashboard queue does.
- */
-export async function steerQueuedWebMessage(
-  api: Hono<JuniorApiEnv>,
-  args: {
-    conversationId: string;
-    inboundMessageId: string;
-    viewerEmail: string;
-  },
-): Promise<void> {
-  const response = await api.request(
-    `/api/conversations/${encodeURIComponent(args.conversationId)}/pending-messages/steer`,
-    jsonRequest(args.viewerEmail, {
-      inboundMessageIds: [args.inboundMessageId],
-    }),
-  );
-  if (response.status !== 200) {
-    throw new Error(
-      `Steer returned ${response.status}: ${await response.text()}`,
-    );
-  }
-  const result = steerConversationPendingMessagesResponseSchema.parse(
-    await response.json(),
-  );
-  // An empty result means Junior read the message before the steer.
-  if (!result.steeredInboundMessageIds.includes(args.inboundMessageId)) {
-    throw new Error("The message left the queue before the steer");
-  }
 }
 
 /**

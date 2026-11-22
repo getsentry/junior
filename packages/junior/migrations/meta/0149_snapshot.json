@@ -1,5 +1,5 @@
 {
-  "id": "e81d501f-21b8-4afc-9924-205c5c04e3b3",
+  "id": "eee3e099-55f7-4834-b317-2fea0edf97dd",
   "prevId": "8c016ebf-a0bb-49d0-bf98-29964629b681",
   "version": "7",
   "dialect": "postgresql",
@@ -488,12 +488,6 @@
         },
         "delete_requested_at": {
           "name": "delete_requested_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "expires_at": {
-          "name": "expires_at",
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
@@ -2275,7 +2269,13 @@
           "name": "brief_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "through_seq": {
+          "name": "through_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "provider": {
           "name": "provider",
@@ -2311,17 +2311,15 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "junior_conversation_embeddings_brief_fk": {
-          "name": "junior_conversation_embeddings_brief_fk",
+        "junior_conversation_embeddings_conversation_fk": {
+          "name": "junior_conversation_embeddings_conversation_fk",
           "tableFrom": "junior_conversation_embeddings",
-          "tableTo": "junior_conversation_briefs",
+          "tableTo": "junior_conversations",
           "columnsFrom": [
-            "conversation_id",
-            "brief_version"
+            "conversation_id"
           ],
           "columnsTo": [
-            "conversation_id",
-            "version"
+            "conversation_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -3410,6 +3408,18 @@
         "title": {
           "name": "title",
           "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata_through_seq": {
+          "name": "metadata_through_seq",
+          "type": "integer",
           "primaryKey": false,
           "notNull": false
         },

@@ -82,8 +82,6 @@ export interface WebMessageInput {
   kind: "web_message";
   /** Files that the person added to the message. */
   files?: FileInput[];
-  /** After the post, the person steers the queued message into the running turn. */
-  steer?: boolean;
   text: string;
 }
 
@@ -231,7 +229,7 @@ export function appHomeUnlink(
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { files?: FileInput[]; steer?: boolean } = {},
+  options: { files?: FileInput[] } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }

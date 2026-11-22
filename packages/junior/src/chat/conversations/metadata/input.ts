@@ -1,3 +1,4 @@
+import type { CodeChangeState } from "@sentry/junior-plugin-api";
 import { and, arrayContains, eq, isNotNull } from "drizzle-orm";
 import type { ConversationReportEvent } from "@/api/schema/conversation";
 import { readConversationEventPage } from "@/api/conversations/event-page";
@@ -5,10 +6,30 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
-import { briefEntriesFromReportEvents } from "./event-entries";
-import { briefResourceLabel, parseBriefInput, type BriefInput } from "./schema";
+import {
+  transcriptEntriesFromReportEvents,
+  type TranscriptEntry,
+} from "@/chat/conversations/transcript-entries";
 
 const EVENT_PAGE_SIZE = 500;
+
+/** What the Conversation metadata model reads for one Conversation. */
+export type ConversationMetadataInput = {
+  title?: string;
+  visibility: "private" | "public";
+  location?: { provider: string; channelName?: string };
+  entries: TranscriptEntry[];
+  codeChanges: {
+    repository: string;
+    number: number;
+    title?: string;
+    url: string;
+    state: CodeChangeState;
+    mergedAt?: string;
+    closedAt?: string;
+  }[];
+  resources: { label: string; url: string; status?: string }[];
+};
 
 async function readReportEventsThrough(
   executor: JuniorSqlDatabase,
@@ -36,15 +57,15 @@ async function readReportEventsThrough(
 }
 
 /**
- * Build generator input from SQL through one durable event. The caller owns
- * the boundary, so a Turn that completes during the read cannot be covered by
- * a Brief that never saw it.
+ * Build model input from SQL through one durable event. The caller owns the
+ * boundary, so a Turn that completes during the read cannot be covered by
+ * metadata that never saw it.
  */
-export async function briefInputFromSql(
+export async function conversationMetadataInputFromSql(
   executor: JuniorSqlDatabase,
   conversationId: string,
   throughSeq: number,
-): Promise<BriefInput> {
+): Promise<ConversationMetadataInput> {
   const db = executor.db();
   const conversation = await createSqlStore(executor).get({ conversationId });
   if (!conversation) {
@@ -58,7 +79,6 @@ export async function briefInputFromSql(
         closedAt: juniorCodeChanges.closedAt,
         mergedAt: juniorCodeChanges.mergedAt,
         number: juniorCodeChanges.number,
-        openedAt: juniorCodeChanges.openedAt,
         repository: juniorCodeRepositories.name,
         state: juniorCodeChanges.state,
         title: juniorCodeChanges.title,
@@ -77,8 +97,7 @@ export async function briefInputFromSql(
       ),
   ]);
   const location = conversation.location;
-  return parseBriefInput({
-    conversationId,
+  return {
     ...(conversation.title ? { title: conversation.title } : undefined),
     visibility: conversation.visibility ?? "private",
     ...(location
@@ -91,14 +110,13 @@ export async function briefInputFromSql(
           },
         }
       : undefined),
-    entries: briefEntriesFromReportEvents(events),
+    entries: transcriptEntriesFromReportEvents(events),
     codeChanges: codeChanges.map((change) => ({
       repository: change.repository,
       number: change.number,
       ...(change.title ? { title: change.title } : undefined),
       url: change.url!,
       state: change.state,
-      openedAt: change.openedAt.toISOString(),
       ...(change.mergedAt
         ? { mergedAt: change.mergedAt.toISOString() }
         : undefined),
@@ -106,10 +124,23 @@ export async function briefInputFromSql(
         ? { closedAt: change.closedAt.toISOString() }
         : undefined),
     })),
-    resources: annotations.map((annotation) => ({
-      label: briefResourceLabel(annotation),
-      url: annotation.url,
-      ...(annotation.status ? { status: annotation.status } : undefined),
-    })),
-  });
+    resources: annotations.flatMap((annotation) =>
+      annotation.url
+        ? [
+            {
+              // An object label is only its id, such as `owner/repo#123`.
+              label:
+                annotation.kind === "object" &&
+                annotation.title !== annotation.label
+                  ? `${annotation.label} · ${annotation.title}`
+                  : annotation.label,
+              url: annotation.url,
+              ...(annotation.status
+                ? { status: annotation.status }
+                : undefined),
+            },
+          ]
+        : [],
+    ),
+  };
 }

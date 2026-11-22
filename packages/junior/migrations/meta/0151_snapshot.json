@@ -1,6 +1,6 @@
 {
-  "id": "8310e911-8833-4be9-b666-cc16f64628cc",
-  "prevId": "5db83d40-c7af-4d88-8223-2fd8df443fba",
+  "id": "db12c7e2-f4a5-4eca-8bf8-275fd2df1381",
+  "prevId": "3a87be52-acf8-43b9-a7c5-65a7e50b0b32",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -491,12 +491,6 @@
           "type": "timestamp with time zone",
           "primaryKey": false,
           "notNull": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": false
         }
       },
       "indexes": {
@@ -521,8 +515,8 @@
           "method": "btree",
           "with": {}
         },
-        "junior_artifacts_permanent_sha_uidx": {
-          "name": "junior_artifacts_permanent_sha_uidx",
+        "junior_artifacts_public_sha_uidx": {
+          "name": "junior_artifacts_public_sha_uidx",
           "columns": [
             {
               "expression": "conversation_id",
@@ -538,7 +532,7 @@
             }
           ],
           "isUnique": true,
-          "where": "\"junior_artifacts\".\"visibility\" = 'public' and \"junior_artifacts\".\"expires_at\" is null",
+          "where": "\"junior_artifacts\".\"visibility\" = 'public'",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -2275,7 +2269,13 @@
           "name": "brief_version",
           "type": "integer",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "through_seq": {
+          "name": "through_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
         },
         "provider": {
           "name": "provider",
@@ -2311,17 +2311,15 @@
       },
       "indexes": {},
       "foreignKeys": {
-        "junior_conversation_embeddings_brief_fk": {
-          "name": "junior_conversation_embeddings_brief_fk",
+        "junior_conversation_embeddings_conversation_fk": {
+          "name": "junior_conversation_embeddings_conversation_fk",
           "tableFrom": "junior_conversation_embeddings",
-          "tableTo": "junior_conversation_briefs",
+          "tableTo": "junior_conversations",
           "columnsFrom": [
-            "conversation_id",
-            "brief_version"
+            "conversation_id"
           ],
           "columnsTo": [
-            "conversation_id",
-            "version"
+            "conversation_id"
           ],
           "onDelete": "cascade",
           "onUpdate": "no action"
@@ -3413,6 +3411,18 @@
           "primaryKey": false,
           "notNull": false
         },
+        "summary": {
+          "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "metadata_through_seq": {
+          "name": "metadata_through_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -3702,6 +3712,21 @@
           "isUnique": false,
           "concurrently": false,
           "method": "btree",
+          "with": {}
+        },
+        "junior_conversations_search_idx": {
+          "name": "junior_conversations_search_idx",
+          "columns": [
+            {
+              "expression": "to_tsvector('english', coalesce(\"title\", '') || ' ' || coalesce(\"summary\", ''))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
           "with": {}
         }
       },

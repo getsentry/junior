@@ -87,7 +87,7 @@ export async function mockLongConversation(
   // Like the server, a page around an event holds half of `limit` up to and
   // with the event, and the rest after it.
   const aroundRange = (around: number, limit: number): [number, number] => [
-    Math.max(0, around - Math.floor(limit / 2) + 1),
+    Math.max(0, Math.min(around, lastSeq) - Math.floor(limit / 2) + 1),
     Math.min(around + limit - Math.floor(limit / 2), lastSeq),
   ];
 

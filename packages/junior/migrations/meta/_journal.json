@@ -1048,22 +1048,43 @@
     {
       "idx": 149,
       "version": "7",
-      "when": 1795303247937,
-      "tag": "0149_artifact_expiry",
+      "when": 1795301948500,
+      "tag": "0149_conversation_metadata",
       "breakpoints": true
     },
     {
       "idx": 150,
       "version": "7",
-      "when": 1795303249512,
-      "tag": "0150_artifact_permanent_sha_index",
+      "when": 1795301950736,
+      "tag": "0150_conversation_metadata_fill",
       "breakpoints": true
     },
     {
       "idx": 151,
       "version": "7",
-      "when": 1795303251108,
-      "tag": "0151_artifact_drop_public_sha_index",
+      "when": 1795301953076,
+      "tag": "0151_conversation_search_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 152,
+      "version": "7",
+      "when": 1795314489350,
+      "tag": "0152_artifact_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 153,
+      "version": "7",
+      "when": 1795314490967,
+      "tag": "0153_artifact_permanent_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1795314492509,
+      "tag": "0154_artifact_drop_public_sha_index",
       "breakpoints": true
     }
   ]
