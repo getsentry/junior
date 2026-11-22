@@ -3,19 +3,11 @@ import { catchUpEvals } from "../../src/catch-up-harness";
 
 const READER = { email: "dana@example.com", name: "Dana Reader" };
 
-const OPENED_BRIEF = {
-  summary: "Junior opened PR #12 to fix the Safari login bug.",
-  intent: "Fix the Safari login bug.",
-  outcome: { status: "in_progress" as const, text: "PR #12 is open." },
-  decisions: [],
-};
-
 describeEval("Conversation Catch-Up", catchUpEvals, (it) => {
   it("when a row asks the reader to review, it adds a Needs you line", async ({
     run,
   }) => {
     await run({
-      brief: OPENED_BRIEF,
       expectNeedsYou: true,
       reader: READER,
       rows: [
@@ -41,7 +33,6 @@ describeEval("Conversation Catch-Up", catchUpEvals, (it) => {
     run,
   }) => {
     await run({
-      brief: OPENED_BRIEF,
       expectNeedsYou: false,
       reader: READER,
       rows: [
@@ -63,7 +54,6 @@ describeEval("Conversation Catch-Up", catchUpEvals, (it) => {
     run,
   }) => {
     await run({
-      brief: OPENED_BRIEF,
       forbidden: ["merged", "deployed", "released"],
       reader: READER,
       rows: [

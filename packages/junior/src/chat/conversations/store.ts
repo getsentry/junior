@@ -114,6 +114,8 @@ export interface Conversation {
   // and all Conversation place readers use Location.
   sessionSource?: SessionSource;
   title?: string | undefined;
+  /** Conversation metadata. Only the metadata task writes it. */
+  summary?: string;
   updatedAtMs: number;
   /**
    * When retention purged this conversation's content. Set means messages and

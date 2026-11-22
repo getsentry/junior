@@ -77,6 +77,17 @@ export function runAt(
   return runs.find((run) => firstSeq(run) <= seq && seq <= lastSeq(run));
 }
 
+/** The held seq nearest to a seq that no run holds: the last one before it, else the first one after it. */
+export function nearestHeldSeq(
+  runs: EventRuns,
+  seq: number,
+): number | undefined {
+  const before = runs.filter((run) => lastSeq(run) < seq).at(-1);
+  if (before) return lastSeq(before);
+  const after = runs.find((run) => firstSeq(run) > seq);
+  return after && firstSeq(after);
+}
+
 /**
  * Join a page into the runs. It merges with the runs it overlaps or
  * touches, and with the runs that `read` continues.

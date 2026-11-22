@@ -22,7 +22,6 @@ import { listedConversation } from "@/chat/conversations/sql/listed";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
-  juniorConversationBriefs,
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
@@ -84,7 +83,7 @@ import {
   latestMessageSeqQuery,
   readConversationActivityPreviews,
 } from "./activity-preview";
-import { readConversationFeedBriefs } from "./feed-brief";
+import { conversationSearchVector } from "@/chat/conversations/metadata/store";
 import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import { feedMediaSql } from "./feed-media";
 import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
@@ -245,19 +244,12 @@ async function conversationRows(
         query
           ? or(
               sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
-              sql<boolean>`exists (
-                select 1
-                from ${juniorConversationBriefs}
-                where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
-                  and ${includePrivateMatches ? sql`true` : eq(juniorDestinations.visibility, "public")}
-                  and ${juniorConversationBriefs.version} = (
-                    select max(${juniorConversationBriefs.version})
-                    from ${juniorConversationBriefs}
-                    where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
-                  )
-                  and to_tsvector('english', ${juniorConversationBriefs.searchText})
-                    @@ websearch_to_tsquery('english', ${query})
-              )`,
+              and(
+                includePrivateMatches
+                  ? undefined
+                  : eq(juniorDestinations.visibility, "public"),
+                sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
+              ),
               annotationMatch(db, query, includePrivateMatches),
             )
           : undefined,
@@ -623,7 +615,6 @@ export async function readConversationFeedFromSql(
       lastUserMessageAt: lastUserMessageAtByConversation,
     },
     activityPreviewByConversation,
-    briefByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     treeStateByConversation,
@@ -668,7 +659,6 @@ export async function readConversationFeedFromSql(
         ),
       })),
     readConversationActivityPreviews(db, conversationIds),
-    readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     readConversationTreeStates(db, conversationIds, options.viewer?.id),
@@ -776,10 +766,6 @@ export async function readConversationFeedFromSql(
       const activityPreview = visibleActivityPreviews.get(
         conversation.conversationId,
       );
-      // Like the preview, the Brief holds private content.
-      const brief = access?.canViewPrivateContent
-        ? briefByConversation.get(conversation.conversationId)
-        : undefined;
       const participants = access?.canViewPrivateContent
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
@@ -796,7 +782,7 @@ export async function readConversationFeedFromSql(
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
       const treeRead = treeStateByConversation.get(conversation.conversationId);
-      // The viewer saw the answer as they gave it, but like the Brief it
+      // The viewer saw the answer as they gave it, but like the summary it
       // holds private content.
       const viewerAnswer = access?.canViewPrivateContent
         ? feedViewerAnswer(row.viewerAnswer)
@@ -814,7 +800,6 @@ export async function readConversationFeedFromSql(
           ? { participants }
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
-        ...(brief ? { brief } : undefined),
         ...(viewerAnswer ? { viewerAnswer } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),

@@ -179,6 +179,18 @@ export function getDashboardInboxItemLink(itemId: string): string | undefined {
   return resolveDashboardPath(`/inbox?item=${encodeURIComponent(itemId)}`);
 }
 
+/**
+ * Build the dashboard URL that opens the snooze form of one Inbox item. A
+ * chat card links it, since a message there looks the same to everyone.
+ */
+export function getDashboardInboxItemSnoozeLink(
+  itemId: string,
+): string | undefined {
+  return resolveDashboardPath(
+    `/inbox?item=${encodeURIComponent(itemId)}&snooze=1`,
+  );
+}
+
 /** Public icon asset URL. Headless and local installs keep text-only identity. */
 export function getDashboardObjectIconLink(
   icon: ObjectIconName,

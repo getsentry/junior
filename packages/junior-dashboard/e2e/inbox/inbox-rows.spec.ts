@@ -246,13 +246,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-summary-lines",
       "2",
     );
-    // The Brief's running marker sits on the title, as the dot does.
-    await expect(
-      row
-        .locator('[data-inbox-slot="title"]')
-        .getByRole("img", { name: /^Brief: / }),
-    ).toBeVisible();
-    await expect(summary.getByRole("img", { name: /^Brief: / })).toHaveCount(0);
     // Compact rows clamp it to one line. A new page has no comfortable
     // density script.
     const compact = await page.context().newPage();

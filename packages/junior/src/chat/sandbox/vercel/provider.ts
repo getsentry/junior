@@ -69,6 +69,8 @@ function adaptSession(
   return {
     sandboxId: sandbox.name,
     sessionId: session.sessionId,
+    keepsFilesAcrossSessions: sandbox.persistent,
+    startedAtMs: (session.startedAt ?? session.createdAt).getTime(),
     fs,
     createPreview(port) {
       return run(async () => {

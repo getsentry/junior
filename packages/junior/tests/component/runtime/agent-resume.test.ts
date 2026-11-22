@@ -28,6 +28,7 @@ async function resumeState(conversationId: string, turnId: string) {
   return {
     boundary: checkpoint.record?.piMessages ?? [],
     resume: createResumeState({
+      historySeqs: [],
       destination: { platform: "local", conversationId },
       durability: {},
       recordActiveMcpProviders: async () => undefined,
@@ -60,6 +61,7 @@ describe("agent resume", () => {
     const conversationId = "local:test:auth-park-failure";
     const turnId = "turn-auth-park-failure";
     const resume = createResumeState({
+      historySeqs: [],
       destination: { platform: "local", conversationId },
       durability: {},
       recordActiveMcpProviders: async () => {
@@ -153,6 +155,49 @@ describe("agent resume", () => {
     expect(sliceThree.resume.turnLimitWrappedUp).toBe(true);
   });
 
+  it("saves the prompt flag only with a checkpoint that holds the prompt", async () => {
+    const conversationId = "local:test:prompt-saved";
+    const turnId = "turn-prompt-saved";
+    const earlier = message("earlier");
+    const prompt = message("prompt");
+    const first = await resumeState(conversationId, turnId);
+    // The input checkpoint failed, so the pause saves the earlier boundary.
+    first.resume.adoptCommittedBoundary([earlier]);
+    first.resume.markPromptAdded(2);
+    await first.resume.parkForAuth(
+      new AuthorizationPauseError("mcp", "example", "Example", "link_sent"),
+    );
+    const paused = await getTurnRecord(conversationId, turnId);
+
+    const second = await resumeState(conversationId, turnId);
+    second.resume.markPromptAdded(2);
+    await second.resume.persistSafeBoundary([earlier, prompt]);
+    const running = await getTurnRecord(conversationId, turnId);
+
+    expect([paused?.promptSaved, running?.promptSaved]).toEqual([
+      undefined,
+      true,
+    ]);
+  });
+
+  it("pauses at a history replacement, not at the history before it", async () => {
+    const conversationId = "local:test:prompt-replacement";
+    const turnId = "turn-prompt-replacement";
+    const summary = message("summary of the request");
+    const { resume } = await resumeState(conversationId, turnId);
+    resume.adoptCommittedBoundary([message("earlier")]);
+    resume.markPromptAdded(3);
+    resume.adoptReplacement([summary], [1]);
+    await resume.parkForAuth(
+      new AuthorizationPauseError("mcp", "example", "Example", "link_sent"),
+    );
+
+    await expect(getTurnRecord(conversationId, turnId)).resolves.toMatchObject({
+      piMessages: [summary],
+      promptSaved: true,
+    });
+  });
+
   it("fails a durable turn when committed history rejects its input checkpoint", async () => {
     const conversationId = "local:test:input-commit-lost";
     const turnId = "turn-input-commit-lost";
@@ -164,6 +209,7 @@ describe("agent resume", () => {
       messages: [message("committed")],
     });
     const resume = createResumeState({
+      historySeqs: [],
       destination: { platform: "local", conversationId },
       durability: { onInputCommitted: async () => undefined },
       recordActiveMcpProviders: async () => undefined,
