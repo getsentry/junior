@@ -11,7 +11,7 @@ const DESCRIPTIONS = {
     text: "The finished result for your parent agent, with everything it needs to continue.",
   },
   automation: {
-    tool: "Post the reply of this Turn when the Turn ends. Until the run has posted, the reply goes to the run's stored destinations, such as a Slack channel. After that, it goes to the run's Slack thread.",
+    tool: "Post the reply of this Turn when the Turn ends. The run's first reply goes to every place the Automation posts to, such as its channel or the creator's DMs. Later replies go in the Slack thread of the first reply in the Automation's channel.",
     text: "The finished message, such as a reminder, digest, or alert.",
   },
 } as const;
