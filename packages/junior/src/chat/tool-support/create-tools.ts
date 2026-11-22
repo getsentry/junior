@@ -3,6 +3,7 @@ import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-ca
 import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
+import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { readLeadUser } from "@/chat/lead/conversation";
@@ -665,13 +666,16 @@ export function createTools(
         ? STATIC_TOOL_BINDERS[slot.name](run)
         : RUN_BUILT_TOOL_BUILDERS[slot.slot](run);
     if (!tool) continue;
-    tools[slot.name] =
+    tools[slot.name] = listedToolExposure(
+      listedTools,
+      slot.name,
       slot.kind === "static"
         ? withDisabledReason(
             tool,
             TURN_TOOL_LIMITS[slot.name]?.(context.turnTools),
           )
-        : tool;
+        : tool,
+    );
   }
 
   // A Turn with an `only` list gets no plugin tools.
