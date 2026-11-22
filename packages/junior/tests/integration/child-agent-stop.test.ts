@@ -11,6 +11,7 @@ import { isEventMailboxMetadata } from "@/chat/events/mailbox-metadata";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
+  appendAndEnqueueInboundMessage,
   getConversationWorkState,
   hasConversationStop,
 } from "@/chat/task-execution/store";
@@ -229,11 +230,46 @@ describe("stopping child agents", () => {
         update: { status: "done", text: "Old finding." },
         turnId: "turn_watch-event",
       });
+      // An earlier release also stored `agentInvocationId` in the sender of
+      // a reply. One that the parent did not read yet outlives the deploy.
+      const legacyReplyMs = Date.now();
+      await appendAndEnqueueInboundMessage({
+        message: {
+          conversationId: parentConversationId,
+          createdAtMs: legacyReplyMs,
+          delivery: "defer",
+          inboundMessageId: "legacy-reply",
+          input: {
+            authorId: "junior",
+            metadata: {
+              kind: "event",
+              event: {
+                eventKey: "legacy-reply",
+                eventType: "agent.reply",
+                identifier: "agent-invocation:legacy",
+                namespace: "junior",
+                trustedSummary: "Child agent replied.",
+              },
+              sender: {
+                agentInvocationId: "agent-invocation:legacy",
+                conversationId: childId,
+                turnId: "turn_legacy",
+              },
+            },
+            text: "Legacy finding.",
+          },
+          receivedAtMs: legacyReplyMs,
+          source: "event",
+        },
+        queue: harness.queue,
+        state: harness.state,
+      });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
         quietResult,
         expect.objectContaining({
           inboundMessageId: getAgentReplyMessageId(childId, "turn_watch-event"),
         }),
+        expect.objectContaining({ inboundMessageId: "legacy-reply" }),
       ]);
 
       const beforeStopMs = Date.now();

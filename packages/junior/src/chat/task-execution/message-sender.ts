@@ -7,10 +7,14 @@ import * as z from "zod";
  */
 export const inboundMessageSenderSchema = z
   .object({
+    // An earlier release also wrote this. Stored mailbox messages and
+    // execution state still have it, so it is read and dropped.
+    agentInvocationId: z.string().min(1).optional(),
     conversationId: z.string().min(1),
     turnId: z.string().min(1),
   })
-  .strict();
+  .strict()
+  .transform(({ agentInvocationId: _retired, ...sender }) => sender);
 
 export type InboundMessageSender = z.output<typeof inboundMessageSenderSchema>;
 
