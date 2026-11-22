@@ -212,7 +212,10 @@ test("shows a far message at once while its page loads", async ({
 
   // The stand-in takes the pointer from the rows below it, and the wheel
   // dismisses it.
-  mock.holdReads = new Promise(() => {});
+  let landNextReads = () => {};
+  mock.holdReads = new Promise((resolve) => {
+    landNextReads = resolve;
+  });
   await outline
     .getByRole("button", { name: "Transcript message 800 with" })
     .click();
@@ -220,6 +223,8 @@ test("shows a far message at once while its page loads", async ({
   await nextStandIn.hover();
   await page.mouse.wheel(0, -400);
   await expect(nextStandIn).toHaveCount(0);
+  landNextReads();
+  await mock.pageReadsLanded();
 });
 
 test("holds read events, so a near jump reads only the events it lacks", async ({

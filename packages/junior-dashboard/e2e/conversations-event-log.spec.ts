@@ -7,6 +7,7 @@ import {
   mockDashboardApis,
   routeConversationVersion,
   withRequestedMailbox,
+  waitForOutlineRead,
 } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -62,6 +63,13 @@ test("reveals a closed tool result in transcript search", async ({
       }),
     })
     .first();
+  // Opening the tool rows is reading them, so the page saves the read
+  // position.
+  const readSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname.endsWith("/read-position"),
+  );
   await activity.locator(':scope > [data-slot="collapsible-trigger"]').click();
   await toolRow.focus();
   await page.keyboard.press("Enter");
@@ -82,6 +90,7 @@ test("reveals a closed tool result in transcript search", async ({
   await expect(toolResult).toBeVisible();
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
+  await readSaved;
 });
 
 test("inspects all reporting events and steps through event details", async ({
@@ -521,12 +530,17 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(linkedEntry).toBeFocused();
   await linkedEntry.click();
   await expect(linked).toBeVisible();
+  const outlineRead = waitForOutlineRead(
+    page,
+    "slack:CQA123:1770003600.000200",
+  );
   await page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(linked).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]event=/);
+  await outlineRead;
 });
 
 test("mounts only the event log rows near the viewport", async ({
