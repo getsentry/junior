@@ -68,6 +68,12 @@ export type TurnBehavior = {
    * Memory is public, so a child agent never captures it.
    */
   sessionTasks: boolean;
+  /**
+   * A person's first Turn lists open Conversations that may cover the same
+   * work, so the agent can point to work that someone already does. Only a
+   * root has its own audience to search for.
+   */
+  relatedConversations: boolean;
   tools: {
     agents: AgentTools;
     inbox: boolean;
@@ -96,6 +102,7 @@ const ROOT: TurnBehavior = {
   gated: false,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
@@ -115,6 +122,7 @@ const PERSON_IN_THREAD: TurnBehavior = {
   promptMode: "thread",
   sender: "person",
   sessionTasks: false,
+  relatedConversations: false,
   tools: { ...ROOT.tools, agents: "none" },
 };
 
@@ -129,6 +137,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   gated: true,
   failureNotice: "none",
   sessionTasks: false,
+  relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
@@ -175,6 +184,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   gated: true,
   failureNotice: "none",
   sessionTasks: true,
+  relatedConversations: false,
   tools: {
     ...ROOT.tools,
     reply: "automation",
@@ -189,6 +199,7 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
   ...ROOT,
   promptMode: "automation",
   sender: "person",
+  relatedConversations: false,
 };
 
 /** Return the behavior of one Turn. */

@@ -339,6 +339,7 @@ export function auxiliaryOperationLabel(
     "junior/image_prompt_enrichment": "Image prompt",
     "junior/passive_reply_routed": "Passive reply routing",
     "junior/inbox_item_reply_match": "Review reply matching",
+    "junior/related_conversation_rerank": "Related conversations",
     "junior/run_title": "Run title",
     "junior/task_title": "Task title",
     "junior/tool_search_rerank": "Tool search",

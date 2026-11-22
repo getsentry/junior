@@ -698,6 +698,13 @@ async function executeAgentRunInPrivacyContext(
       context: createPromptHookContext({ actor, run }),
       currentActor: actor,
       existingTurnMessages: currentTurnMessages,
+      // A person's first Turn: no earlier Turn has answered in history.
+      findsRelatedConversations:
+        behavior.relatedConversations &&
+        isPersonInput(run.source.kind) &&
+        !preAgentPromptMessages().some(
+          (message) => message.role === "assistant",
+        ),
       promptSaved,
       resumedFromSessionRecord,
       turnId,

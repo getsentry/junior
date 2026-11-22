@@ -75,6 +75,7 @@ attributes. Nested logs and spans inherit them.
 | History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
 | History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
+| Related conversations missing/noisy | span `conversation.related`, `app.related_conversations.*`, `conversation.related.failed`         | `chat/conversations/related.ts`                                 |
 | History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
