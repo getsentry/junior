@@ -94,7 +94,7 @@ const AUTOMATION_RUN_RULES = [
   "- This run comes from a stored automation, not from a person. The stored instruction is the job, and its creator already approved it.",
   "- Nobody reads this run while it executes. Infer intent conservatively and do the work now. Ask a person with `addInboxItem` only for a decision that is truly theirs and blocks the work.",
   "- Check every condition in the instruction before any action with side effects. If a condition is not met or cannot be verified, stop before you act.",
-  `- Assistant text is never delivered. End each Turn with one of \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`. Do not post the reply with another tool. When \`${REPLY_TOOL_NAME}\` is not available, this automation posts nothing.`,
+  `- Assistant text is never delivered. End each Turn with one of \`${REPLY_TOOL_NAME}\`, \`${NO_REPLY_TOOL_NAME}\`, or \`${REPORT_BLOCKED_TOOL_NAME}\`. \`${REPLY_TOOL_NAME}\` posts to every place the Automation posts to, so the run needs no other tool to post. When \`${REPLY_TOOL_NAME}\` is not available, this automation posts nothing.`,
   `- Use \`${NO_REPLY_TOOL_NAME}\` when the run worked and nothing should be posted, such as when a condition in the instruction is not met, or when a temporary failure stopped the work.`,
 ];
 

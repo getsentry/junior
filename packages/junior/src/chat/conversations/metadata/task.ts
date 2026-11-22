@@ -8,6 +8,7 @@ import {
 } from "@/chat/conversations/embedding";
 import { hasConversationMetadata } from "@/chat/conversations/kind-behavior";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { completeObject } from "@/chat/core-model";
 import { getDb, getSqlExecutor } from "@/chat/db";
@@ -23,6 +24,7 @@ import {
   getTurnRecord,
   type TurnRecord,
 } from "@/chat/task-execution/checkpoint";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 import { generateConversationMetadata } from "./generate";
 import { conversationMetadataInputFromSql } from "./input";
 import { readConversationMetadata, writeConversationMetadata } from "./store";
@@ -50,18 +52,20 @@ const MAX_PASSES = 3;
 const CATCH_UP_TURN_LIMIT = 20;
 
 /** Return whether a user gave this Turn an instruction. */
-function hasUserInstruction(record: TurnRecord): boolean {
-  const start = record.turnStartMessageIndex ?? 0;
-  return record.piMessages
-    .slice(start)
-    .some(
-      (message, offset) =>
-        record.piMessageProvenance[start + offset]?.authority ===
-          "instruction" &&
-        stripRuntimeTurnContext([message]).some(
-          (stripped) => getUserMessageInstructionText(stripped) !== "",
-        ),
-    );
+async function hasUserInstruction(
+  conversationId: string,
+  record: TurnRecord,
+): Promise<boolean> {
+  return savedTurnMessages(
+    record,
+    await loadTurnStart(conversationId, record.turnId),
+  ).some(
+    ({ message, provenance }) =>
+      provenance.authority === "instruction" &&
+      stripRuntimeTurnContext([message]).some(
+        (stripped) => getUserMessageInstructionText(stripped) !== "",
+      ),
+  );
 }
 
 function logSkip(conversationId: string, reason: string): void {
@@ -91,7 +95,9 @@ async function turnSkipReason(
   ) {
     return "unsupported_source";
   }
-  if (!hasUserInstruction(record)) return "no_user_instruction";
+  if (!(await hasUserInstruction(conversationId, record))) {
+    return "no_user_instruction";
+  }
   return undefined;
 }
 

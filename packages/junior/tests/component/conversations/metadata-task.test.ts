@@ -121,6 +121,32 @@ async function recordCompletedTurn(args: {
   const previousPiMessages = args.previousPiMessages ?? [];
   const turnPiMessages = piMessages(args.instruction, args.turnId);
   const allPiMessages = [...previousPiMessages, ...turnPiMessages];
+  const { getConversationEventStore } = await import("@/chat/db");
+  const messageId = `${args.turnId}:message`;
+  await getConversationEventStore().append(args.conversationId, [
+    {
+      data: {
+        type: "message",
+        messageId,
+        role: "user",
+        text: args.instruction,
+        meta: {
+          author: { fullName: "Local CLI", userId: "local-cli" },
+        },
+      },
+      createdAtMs: 1,
+    },
+    {
+      idempotencyKey: `turn:${args.turnId}:started`,
+      data: {
+        type: "turn_started",
+        turnId: args.turnId,
+        inputMessageIds: [messageId],
+        surface: "internal",
+      },
+      createdAtMs: 2,
+    },
+  ]);
   const { upsertTurnRecord } =
     await import("@/chat/task-execution/turn-cursor");
   await upsertTurnRecord({
@@ -138,37 +164,11 @@ async function recordCompletedTurn(args: {
     source: createLocalSource(args.conversationId),
     state: "completed",
     surface: "internal",
-    ...(previousPiMessages.length > 0
-      ? { turnStartMessageIndex: previousPiMessages.length }
-      : undefined),
   });
 
-  const { getConversationEventStore } = await import("@/chat/db");
-  const messageId = `${args.turnId}:message`;
   const appended = await getConversationEventStore().append(
     args.conversationId,
     [
-      {
-        data: {
-          type: "message",
-          messageId,
-          role: "user",
-          text: args.instruction,
-          meta: {
-            author: { fullName: "Local CLI", userId: "local-cli" },
-          },
-        },
-        createdAtMs: 1,
-      },
-      {
-        data: {
-          type: "turn_started",
-          turnId: args.turnId,
-          inputMessageIds: [messageId],
-          surface: "internal",
-        },
-        createdAtMs: 2,
-      },
       {
         data: {
           type: "message",

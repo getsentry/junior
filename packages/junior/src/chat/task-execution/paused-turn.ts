@@ -18,11 +18,15 @@ import { resumeSlackTurn } from "@/chat/providers/slack/resume";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
-  loadProjection,
+  loadConversationProjection,
   recordAuthorizationCompleted,
 } from "@/chat/conversations/projection";
 import { getTurnAuthorization } from "./authorized-turn";
-import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+import {
+  getTurnLifecycle,
+  loadTurnStart,
+} from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 import {
   completeTurnRecord,
   abandonTurnRecord,
@@ -579,10 +583,10 @@ async function runPausedTurnInContext(
         const source = routing.source;
         const routingDestination = routing.destination;
 
-        const turnMessages =
-          activeTurn.turnStartMessageIndex === undefined
-            ? []
-            : activeTurn.piMessages.slice(activeTurn.turnStartMessageIndex);
+        const turnMessages = savedTurnMessages(
+          activeTurn,
+          await loadTurnStart(payload.conversationId, payload.turnId),
+        ).map(({ message }) => message);
         const recordDispatchOutcome = async (
           dispatchOutcome: "blocked" | "failed",
         ): Promise<void> => {
@@ -628,8 +632,11 @@ async function runPausedTurnInContext(
             // must not become part of a system Turn. Other Turns read
             // Conversation history. This keeps queued steering visible.
             history: dispatchId
-              ? activeTurn.piMessages
-              : await loadProjection({
+              ? {
+                  messages: activeTurn.piMessages,
+                  seqs: activeTurn.piMessageSeqs,
+                }
+              : await loadConversationProjection({
                   conversationId: payload.conversationId,
                 }),
             actor,
