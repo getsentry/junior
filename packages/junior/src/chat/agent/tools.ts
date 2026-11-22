@@ -101,6 +101,8 @@ import {
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import { explainMissingToolResults } from "@/chat/tool-support/missing-tool-result";
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
 
 interface RunSandboxArgs {
   availableSkills: SkillMetadata[];
@@ -353,6 +355,14 @@ export interface ToolWiring {
   close(): Promise<void>;
   /** Tools this Turn cannot run. They stay in the tool list. */
   disabledTools: DisabledToolPromptContext[];
+  /**
+   * Name the next call in each result of a step that called a tool outside
+   * the model tool list. Undefined when no result changed.
+   */
+  explainMissingToolResults(
+    messages: readonly PiMessage[],
+    toolResults: readonly ToolResultMessage[],
+  ): PiMessage[] | undefined;
   /** The tools that a Code Mode script can call, for `<script-tools>`. */
   scriptTools: string;
   toolGuidance: Array<{
@@ -704,6 +714,11 @@ export async function wireAgentTools(
       workspace: agentSandbox.workspace,
     },
   });
+  const missingToolRoutes = {
+    catalogTools: plannedToolExposure.catalogTools,
+    modelToolNames: new Set(agentTools.map((tool) => tool.name)),
+    scriptTools: plannedToolExposure.scriptTools,
+  };
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
   // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
@@ -737,6 +752,8 @@ export async function wireAgentTools(
       }
     },
     disabledTools,
+    explainMissingToolResults: (messages, toolResults) =>
+      explainMissingToolResults(messages, toolResults, missingToolRoutes),
     scriptTools: renderScriptTools(plannedToolExposure.scriptTools),
     toolGuidance,
     toolRuntimeContext,
