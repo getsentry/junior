@@ -2435,6 +2435,7 @@ function summaryFromConversation(
         }
       : undefined;
   const {
+    annotations: _annotations,
     authors: _authors,
     eventHistory: _eventHistory,
     events: _events,

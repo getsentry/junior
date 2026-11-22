@@ -701,7 +701,6 @@ export function buildConversations(
       summary: summary.summary,
       media: summary.media,
       links: summary.links,
-      annotations: summary.annotations,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
       pinnedAt: summary.pinnedAt,
