@@ -9,7 +9,6 @@ import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { insertInboxItem } from "@/chat/inbox-items/store";
-import { juniorConversationParticipants } from "@/db/schema";
 import { mswServer } from "../msw/server";
 import type { ConversationFixture } from "./conversation";
 
@@ -182,18 +181,6 @@ export async function addPullRequestItem(
   return item!.id;
 }
 
-/** Make the User a Participant of a root Conversation. */
-export async function participate(
-  conversationId: string,
-  participant: User,
-): Promise<void> {
-  await getDb().insert(juniorConversationParticipants).values({
-    lastMessageAt: new Date(),
-    rootConversationId: conversationId,
-    userId: participant.id,
-  });
-}
-
 /** Add an open action item for Everyone. Anyone in the workspace can act. */
 export async function addEveryoneItem(
   conversationId: string,
@@ -272,6 +259,8 @@ export function api(fixture: ConversationFixture, viewer: User) {
     /** Snooze a row until this time. */
     snooze: (subject: InboxSnoozeSubjectBody, wakeAtMs: number) =>
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
+    /** Post this snooze body as it is, such as `untilClosed`. */
+    postSnooze: (body: unknown) => snoozes("POST", body),
     /** The Events of a page that the viewer names for a snooze. */
     resource: (url: string) =>
       app.request(

@@ -230,13 +230,12 @@ type AskStatus = {
 /** Say where an item stands: who it waits on, or how it closed and by whom. */
 function askStatus(item: InboxItemPayload, answerShown: boolean): AskStatus {
   if (item.status === "open") {
-    // The viewer snoozed or dismissed it. It still waits on the others.
-    if (item.hiddenFromViewer) {
+    // The viewer snoozed it. It still waits on the others.
+    if (item.snoozedByViewer) {
       return {
-        icon: item.hiddenFromViewer === "snoozed" ? Clock3 : CircleSlash,
+        icon: Clock3,
         iconClassName: "text-dashboard-text-faint",
-        label:
-          item.hiddenFromViewer === "snoozed" ? "Snoozed" : "Dismissed for you",
+        label: "Snoozed",
       };
     }
     if (item.kind === "notice") {

@@ -16,7 +16,7 @@ import {
 } from "../components/ui/popover";
 import { ATTENTION_TONE_CLASS } from "../conversations/ConversationMeta";
 import { formatTime } from "../time";
-import { snoozeChoicesAt, type EventSnooze } from "./snoozeChoices";
+import { SOMEDAY, snoozeChoicesAt, type EventSnooze } from "./snoozeChoices";
 
 // The custom snooze dialog and its pull request search load on first use,
 // so the Inbox's first paint skips their code.
@@ -43,9 +43,11 @@ function targetTime(untilMs: number, nowMs: number): string {
 
 /**
  * Snooze an Inbox row, or every row of a stack, from its action bar: a menu
- * of the snooze times, and Custom…, which opens a dialog to pick a date
+ * of the snooze times, Custom…, which opens a dialog to pick a date
  * and time, Events on the subject of the row's items or on a pull request
- * or issue that the viewer names, or both. Number keys pick the menu rows.
+ * or issue that the viewer names, or both, and Someday, which lasts until
+ * the items close, such as when someone else handles them. Number keys
+ * pick the time rows and Custom….
  */
 export function RowSnoozeButton(props: {
   /** Set when the row can snooze until an Event. */
@@ -136,6 +138,15 @@ export function RowSnoozeButton(props: {
           >
             Custom…
           </button>
+          {props.eventSnooze ? (
+            <button
+              className={MENU_ROW_CLASS}
+              onClick={() => props.eventSnooze?.onSnooze(SOMEDAY)}
+              type="button"
+            >
+              Someday
+            </button>
+          ) : null}
         </PopoverContent>
       </Popover>
       {dialog ? (
@@ -145,8 +156,9 @@ export function RowSnoozeButton(props: {
             nowMs={nowMs}
             onClose={() => setDialog(false)}
             onSnooze={(end) => {
-              if (end.triggers.length > 0) props.eventSnooze?.onSnooze(end);
-              else if (end.untilMs !== undefined) props.onSnooze(end.untilMs);
+              if (end.untilClosed || end.triggers.length > 0) {
+                props.eventSnooze?.onSnooze(end);
+              } else if (end.untilMs !== undefined) props.onSnooze(end.untilMs);
             }}
           />
         </Suspense>
@@ -160,6 +172,7 @@ export function RowSnoozeButton(props: {
  * has no check mark, so it does not read as an answer or an approval.
  */
 export function RowDismissButton(props: {
+  disabled?: boolean;
   /** The action bar's look by default (`ButtonLook`). */
   look?: ButtonLook;
   /** "Dismiss" by default. */
@@ -173,6 +186,7 @@ export function RowDismissButton(props: {
     <Button
       aria-label={props.name}
       className={props.look && LOOK_CLASSES[props.look]}
+      disabled={props.disabled}
       onClick={props.onClick}
       title={props.look === "icon" ? label : undefined}
       variant="ghost"

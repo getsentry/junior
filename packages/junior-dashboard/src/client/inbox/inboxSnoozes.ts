@@ -24,6 +24,9 @@ export type SnoozeEnd = number | CustomSnoozeEnd;
 
 /** The API body of a snooze end. */
 function snoozeEndBody(end: SnoozeEnd) {
+  if (typeof end !== "number" && end.untilClosed) {
+    return { untilClosed: true as const };
+  }
   const untilMs = typeof end === "number" ? end : end.untilMs;
   const triggers = typeof end === "number" ? [] : end.triggers;
   return {

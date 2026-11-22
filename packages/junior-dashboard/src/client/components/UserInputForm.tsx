@@ -293,9 +293,7 @@ export function UserInputForm(props: {
   }
 
   const secondary = props.secondaryActions ? (
-    <div className="flex flex-wrap gap-1 sm:ml-auto">
-      {props.secondaryActions}
-    </div>
+    <div className="flex flex-wrap gap-1">{props.secondaryActions}</div>
   ) : null;
   const failure = failed ? (
     <p className="mb-0 mt-2 text-xs text-rose-300" role="alert">
@@ -306,7 +304,9 @@ export function UserInputForm(props: {
   if (actionField) {
     return (
       <>
-        <div className="flex flex-wrap items-center gap-2">
+        {/* The options are the main actions, so they end the row. */}
+        <div className="flex flex-wrap items-center justify-end gap-2">
+          {secondary}
           {actionField.options.map((option) => (
             <Button
               data-picked={clicked === option.label ? "" : undefined}
@@ -320,7 +320,6 @@ export function UserInputForm(props: {
               {option.recommended ? <SuggestedLabel className="ml-0" /> : null}
             </Button>
           ))}
-          {secondary}
         </div>
         {failure}
       </>
@@ -431,14 +430,8 @@ export function UserInputForm(props: {
           value={other}
         />
       )}
-      {/* Send is the main action. The new UI ends the row with it, on the
-          right; the current UI puts it first, after the note line. */}
-      <div
-        className={cn(
-          "flex flex-wrap items-center gap-2",
-          inbox && "justify-end",
-        )}
-      >
+      {/* Send is the main action, so it ends the row, on the right. */}
+      <div className="flex flex-wrap items-center justify-end gap-2">
         {choiceField ? (
           // One line, so the choices stay the answer and the note stays
           // short.
@@ -451,18 +444,11 @@ export function UserInputForm(props: {
             value={other}
           />
         ) : null}
-        {inbox ? (
-          // The actions stay on one row, also on a phone.
-          <div className="flex items-center gap-1">
-            {secondary}
-            <SendButton disabled={sending || empty} />
-          </div>
-        ) : (
-          <>
-            <SendButton disabled={sending || empty} />
-            {secondary}
-          </>
-        )}
+        {/* The actions stay on one row, also on a phone. */}
+        <div className="flex items-center gap-1">
+          {secondary}
+          <SendButton disabled={sending || empty} />
+        </div>
       </div>
       {/* Progress is not an action, so it goes under the actions row. */}
       {fieldCount > 1 ? (

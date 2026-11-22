@@ -318,6 +318,7 @@ const AutomationGroups = memo(function AutomationGroups(props: {
             onToggle={() => toggleRow(automation.id)}
             rowKey={automation.id}
           >
+            <RowDismissButton onClick={() => props.onDismiss(alert)} />
             <RowSnoozeButton
               onOpenChange={(open) =>
                 setSnoozeId(open ? automation.id : undefined)
@@ -328,7 +329,6 @@ const AutomationGroups = memo(function AutomationGroups(props: {
               }}
               open={snoozeId === automation.id}
             />
-            <RowDismissButton onClick={() => props.onDismiss(alert)} />
           </InboxAutomationRow>
         ))}
       </InboxSection>

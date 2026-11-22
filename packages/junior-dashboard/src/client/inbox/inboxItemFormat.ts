@@ -125,7 +125,7 @@ export function excerptMessage(
 
 /**
  * True when an open item asks a question that the viewer can answer, and
- * they did not snooze or dismiss it.
+ * they did not snooze it.
  */
 export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
   return (
@@ -133,7 +133,7 @@ export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
     item.kind === "action" &&
     Boolean(item.request) &&
     item.canAct &&
-    !item.hiddenFromViewer
+    !item.snoozedByViewer
   );
 }
 

@@ -123,6 +123,7 @@ function blocksOf(call: { params: Record<string, unknown> } | undefined) {
       action_id?: string;
       style?: string;
       text?: unknown;
+      url?: string;
       value?: string;
     }>;
     text?: string;
@@ -299,10 +300,10 @@ describe("Slack webhook: Inbox item cards", () => {
     expect(
       controls?.elements?.map((element) => [element.action_id, element.style]),
     ).toEqual([
+      ["junior_review_item:dismiss", undefined],
       ["junior_review_item:choice:0", "primary"],
       ["junior_review_item:choice:1", undefined],
       ["junior_review_item:answer", undefined],
-      ["junior_review_item:dismiss", undefined],
     ]);
 
     // The agent changes the choices. A click on the old card cannot pick a
@@ -538,7 +539,7 @@ describe("Slack webhook: Inbox item cards", () => {
       blocksOf(card)
         .find((block) => block.type === "actions")
         ?.elements?.map((element) => element.action_id),
-    ).toEqual(["junior_review_item:choice:0", "junior_review_item:dismiss"]);
+    ).toEqual(["junior_review_item:dismiss", "junior_review_item:choice:0"]);
 
     const [item] = await getDb().query.juniorInboxItems.findMany();
     const resume = (actionTs: string) =>
@@ -679,6 +680,47 @@ describe("Slack webhook: Inbox item cards", () => {
     );
   });
 
+  it("orders a card Dismiss, Snooze, then the answer, with Snooze in the dashboard", async () => {
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      harness();
+      await slackThread(THREAD, "public");
+      const ana = await linkSlackUser("ana@example.com", "U123");
+      const { item } = await addItem(ana, {
+        kind: "action",
+        title: "Ship release 1.2.3",
+        body: "The release checks passed.",
+        assignees: ["everyone"],
+        dedupe_key: "release:1.2.3",
+        request: SHIP_REQUEST,
+      });
+
+      const [post] = slackApiOutbox.messages();
+      const controls = blocksOf(post).find((block) => block.type === "actions");
+      // A Slack message looks the same to everyone, so Snooze opens the
+      // item's snooze form in the dashboard, for the person who clicks.
+      expect(
+        controls?.elements?.map((element) => [
+          element.action_id,
+          element.url ?? null,
+        ]),
+      ).toEqual([
+        ["junior_review_item:dismiss", null],
+        [
+          "junior_review_item:snooze",
+          `https://junior.example.com/inbox?item=${encodeURIComponent(item.id)}&snooze=1`,
+        ],
+        ["junior_review_item:choice:0", null],
+        ["junior_review_item:choice:1", null],
+        ["junior_review_item:answer", null],
+      ]);
+    } finally {
+      setDashboardConversationLinkOptions(undefined);
+    }
+  });
+
   it("keeps a long answer inside the Slack limits of a card", async () => {
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
@@ -780,85 +822,6 @@ describe("Slack webhook: Inbox item cards", () => {
       "ana@example.com dismissed this",
     );
     // A dismiss starts no Turn. The thread saves it as a handled Message.
-    const work = await getConversationWorkState({
-      conversationId: THREAD,
-      state,
-    });
-    expect(work?.messages ?? []).toEqual([]);
-    const saved = projectConversationMessages(
-      await getConversationEventStore().loadMessageHistory(THREAD),
-    );
-    expect(saved.map((message) => message.meta?.reviewItemChanges)).toEqual([
-      [{ kind: "dismissed", reviewItemId: item.id }],
-    ]);
-  });
-
-  it("dismisses a shared card for the person only, until each member has", async () => {
-    const { click, state } = harness();
-    const ana = await linkSlackUser("ana@example.com", "U123");
-    await linkSlackUser("ben@example.com", "U456");
-    await slackThread(THREAD, "public");
-    // Ben takes part too, so the Everyone item has two members.
-    await getConversationStore().recordActivity({
-      actor: {
-        email: "ben@example.com",
-        platform: "slack",
-        slackUserId: "U456",
-        teamId: "T123",
-      },
-      conversationId: THREAD,
-      destination: {
-        channelId: "C123",
-        platform: "slack",
-        teamId: "T123",
-        threadTs: "1712345.0001",
-      },
-      nowMs: 2,
-      source: "slack",
-      visibility: "public",
-    });
-    const { item } = await addItem(ana, {
-      kind: "action",
-      title: "Ship release 1.2.3",
-      body: "The release checks passed.",
-      assignees: ["everyone"],
-      dedupe_key: "release:1.2.3",
-      request: SHIP_REQUEST,
-    });
-
-    // Ben's Dismiss hides the item from him only. The shared card stays,
-    // and only Ben hears about it.
-    await click({
-      actionId: "junior_review_item:dismiss",
-      actionTs: "1712345.0003",
-      itemId: item.id,
-      userId: "U456",
-    });
-    expect(slackApiOutbox.calls("chat.postEphemeral")[0]?.params).toMatchObject(
-      {
-        text: "Dismissed for you. It stays open for the others.",
-        user: "U456",
-      },
-    );
-    expect(slackApiOutbox.calls("chat.update")).toHaveLength(0);
-    expect(await getInboxItem(getDb(), item.id)).toMatchObject({
-      status: "open",
-    });
-
-    // Ana is the last member, so her Dismiss closes it for everyone, and
-    // the thread records it as it records any dismiss.
-    await click({
-      actionId: "junior_review_item:dismiss",
-      actionTs: "1712345.0004",
-      itemId: item.id,
-      userId: "U123",
-    });
-    expect(await getInboxItem(getDb(), item.id)).toMatchObject({
-      status: "dismissed",
-    });
-    const closedCard = blocksOf(slackApiOutbox.calls("chat.update")[0]);
-    expect(closedCard.some((block) => block.type === "actions")).toBe(false);
-    expect(JSON.stringify(closedCard)).toContain("dismissed this");
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,

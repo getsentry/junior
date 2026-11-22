@@ -86,22 +86,36 @@ for (const view of [desktop, mobile]) {
 }
 
 for (const view of [desktop, mobile]) {
-  test(`Dismiss hides a shared question for the viewer only (${view.name})`, async ({
+  test(`Someday snoozes a shared question until someone else handles it (${view.name})`, async ({
     dashboard,
     page,
   }) => {
     await page.setViewportSize(view);
     await page.emulateMedia({ reducedMotion: "reduce" });
-    const actions = recordBodies(page, "/actions");
+    const snoozes = recordBodies(page, "/api/inbox/snoozes");
     await openConversation(page, dashboard.baseURL);
 
     const shared = card(page, "Handle the negative invoices");
     await shared.scrollIntoViewIfNeeded();
-    await shared.getByRole("button", { name: "Dismiss" }).click();
-    await expect.poll(() => actions).toEqual([{ action: "dismiss" }]);
-    // It stays open for the teammate, so the record says it is gone for
-    // the viewer only.
-    await expect(shared).toContainText("Dismissed for you");
+    await shared.getByRole("button", { name: "Snooze" }).click();
+    const menu = page.getByRole("dialog", { name: "Snooze until" });
+    await expect(menu.getByRole("button", { name: "Someday" })).toBeVisible();
+    await screenshot(page, "conversation-question-card-someday", {
+      lightTheme: true,
+      view: view.name,
+    });
+    await menu.getByRole("button", { name: "Someday" }).click();
+    // No time and no Event: the snooze lasts until the item closes.
+    await expect
+      .poll(() => snoozes)
+      .toEqual([
+        {
+          conversationId: THREE_QUESTIONS_ID,
+          inboxItemId: "qa-migration-negative",
+          untilClosed: true,
+        },
+      ]);
+    await expect(shared).toContainText("Snoozed");
     await expect(
       shared.getByRole("button", { name: "Send", exact: true }),
     ).toHaveCount(0);
@@ -118,31 +132,60 @@ for (const view of [desktop, mobile]) {
           .getByRole("button", { name: /^Handle the negative invoices/ }),
       ).toHaveCount(0);
     }
-    await shared.scrollIntoViewIfNeeded();
-    await page.mouse.move(0, 0);
-    await screenshot(page, "conversation-question-card-dismissed-for-you", {
-      lightTheme: true,
-      view: view.name,
-    });
+    await page.reload();
+    await expect(
+      page.getByRole("button", { name: "2 questions waiting" }),
+    ).toBeVisible();
   });
 }
 
-test("Dismiss still closes a question for the viewer alone", async ({
+test("Dismiss closes a shared question for everyone", async ({
   dashboard,
   page,
 }) => {
   await page.setViewportSize(desktop);
   await openConversation(page, dashboard.baseURL);
-  const tables = card(page, "Choose the first migration batch");
-  await tables.scrollIntoViewIfNeeded();
-  await tables.getByRole("button", { name: "Dismiss" }).click();
-  await expect(tables).toContainText(/Dismissed by/);
-  await expect(tables).not.toContainText("Dismissed for you");
+  const shared = card(page, "Handle the negative invoices");
+  await shared.scrollIntoViewIfNeeded();
+  // Dismiss, Snooze, then the main action, as on every card.
+  await expect(
+    shared.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
+  ).toHaveText(["Dismiss", "Snooze", "Send"]);
+  await shared.getByRole("button", { name: "Dismiss" }).click();
+  await expect(shared).toContainText(/Dismissed by/);
+});
+
+test("a Slack card's Snooze link opens the item's snooze dialog", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  const snoozes = recordBodies(page, "/api/inbox/snoozes");
+  await page.goto(
+    `${dashboard.baseURL}/inbox?item=qa-migration-negative&snooze=1`,
+  );
+  const dialog = page.getByRole("dialog", { name: "Custom snooze" });
+  await expect(dialog).toBeVisible();
+  // The link leaves the URL, so a reload does not open the dialog again.
+  await expect
+    .poll(() => new URL(page.url()).searchParams.get("snooze"))
+    .toBe(null);
+  await screenshot(page, "inbox-linked-snooze-dialog", { lightTheme: true });
+  await dialog.getByRole("button", { name: "Someday" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect
+    .poll(() => snoozes)
+    .toEqual([
+      expect.objectContaining({
+        inboxItemId: "qa-migration-negative",
+        untilClosed: true,
+      }),
+    ]);
 });
 
 // Only the inbox project runs `@new` tests.
 test(
-  "Dismiss on a shared question in the Inbox hides it for the viewer only",
+  "an Inbox question card reads Dismiss, Snooze, then Send",
   {
     tag: "@new",
   },
@@ -155,18 +198,8 @@ test(
     await expect(inboxCard).toContainText(
       "What should happen to the 12 negative invoices?",
     );
-    await inboxCard.getByRole("button", { name: "Dismiss" }).click();
-    await expect(inboxCard).toHaveCount(0);
-    // It does not come back when the Inbox reads the server again.
-    await page.reload();
     await expect(
-      page.getByText("Pick the billing migration window").first(),
-    ).toBeVisible();
-    await expect(page.getByText("Handle the negative invoices")).toHaveCount(0);
-
-    await openConversation(page, dashboard.baseURL);
-    await expect(card(page, "Handle the negative invoices")).toContainText(
-      "Dismissed for you",
-    );
+      inboxCard.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
+    ).toHaveText(["Dismiss", "Snooze", "Send"]);
   },
 );

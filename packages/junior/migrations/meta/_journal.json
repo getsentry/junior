@@ -1037,13 +1037,6 @@
       "when": 1795290103913,
       "tag": "0147_inbox_snooze_wake_reason",
       "breakpoints": true
-    },
-    {
-      "idx": 148,
-      "version": "7",
-      "when": 1795299757090,
-      "tag": "0148_inbox_hides",
-      "breakpoints": true
     }
   ]
 }

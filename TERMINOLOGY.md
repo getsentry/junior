@@ -186,16 +186,16 @@ Canonical words for Junior code and docs. One concept, one word.
   "notification". **Notice**: an Inbox item that names a step for a
   person but asks no question.
 - **Dismiss**: close an Inbox item without an answer. The one UI word for
-  removing an item, on a row, a card, or many FYIs at once. On an item for
-  Everyone or more than one User, Dismiss hides it for that person only,
-  until each member has dismissed it. Not Clear or Done. Archive is for a Conversation.
+  removing an item, on a row, a card, or many FYIs at once. Not Clear or
+  Done. Archive is for a Conversation.
 - **Done** (Inbox): the view of done and dismissed Inbox items. Not
   Conversation archive.
 - **Snooze**: one User hides one Inbox item in their Inbox until a
   trigger, such as a timer or an Event, wakes or resolves it. A later item
   in the row is not snoozed.
-  Not an Automation. **Snoozed** (Inbox): the view of the User's snoozed
-  items.
+  Not an Automation. **Someday**: a Snooze with no trigger. It lasts until
+  the item closes, such as when someone else handles it, or until the User
+  wakes it. **Snoozed** (Inbox): the view of the User's snoozed items.
 - **To-do**: one entry in the durable list of work that outlives a Turn in
   one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
   status is open, in progress, done, or dropped. It has one Assignee: the

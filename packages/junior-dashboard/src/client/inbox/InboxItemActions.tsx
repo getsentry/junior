@@ -17,7 +17,7 @@ import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
 import { useSnoozeInboxItem } from "./inboxSnoozes";
-import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import { eventSnoozeOf } from "./snoozeChoices";
 
 function actionError(error: unknown): string {
@@ -159,9 +159,9 @@ export function InboxItemActions(props: {
   // A card on its own, as in a transcript, snoozes its item itself. The
   // Inbox brings its own Snooze, so its row leaves with motion.
   const snooze =
-    dismiss && !props.extra && !props.onAction && !item.hiddenFromViewer;
-  // Take, Snooze, and Dismiss are quiet, so the answer stays the main
-  // action.
+    dismiss && !props.extra && !props.onAction && !item.snoozedByViewer;
+  // Take, Dismiss, and Snooze are quiet, so the answer stays the main
+  // action, last.
   const secondaryActions = (
     <>
       {take ? (
@@ -173,16 +173,13 @@ export function InboxItemActions(props: {
           {take}
         </Button>
       ) : null}
-      {snooze ? <CardSnoozeButton item={item} /> : null}
       {dismiss ? (
-        <Button
+        <RowDismissButton
           disabled={action.isPending || sending}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-          variant="ghost"
-        >
-          Dismiss
-        </Button>
+        />
       ) : null}
+      {snooze ? <CardSnoozeButton item={item} /> : null}
       {props.extra}
     </>
   );

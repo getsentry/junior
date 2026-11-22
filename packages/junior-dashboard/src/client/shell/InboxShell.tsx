@@ -87,6 +87,7 @@ import {
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
 import { InboxRedirect } from "../inbox/InboxRedirect";
+import { LinkedSnoozeDialog } from "../inbox/LinkedSnoozeDialog";
 import { InboxListProvider, useInboxReturnPath } from "../inbox/inboxListState";
 import {
   INBOX_VIEW_LABELS,
@@ -847,6 +848,7 @@ function Shell() {
               <Route element={<Navigate replace to="/" />} path="*" />
             </TracedRoutes>
           )}
+          <LinkedSnoozeDialog />
           <span
             aria-hidden="true"
             className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"

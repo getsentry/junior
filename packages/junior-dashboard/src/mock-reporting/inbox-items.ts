@@ -1,7 +1,7 @@
 /**
  * Process-local Inbox items for mock reporting: the seeds from
- * `inbox-item-seeds.ts`, with the viewer's answers, snoozes, and dismisses
- * applied like the API.
+ * `inbox-item-seeds.ts`, with the viewer's answers and snoozes applied
+ * like the API.
  */
 import {
   answeredChoices,
@@ -28,8 +28,6 @@ type MockItemChange = Pick<
 const changes = new Map<string, MockItemChange>();
 /** When each snoozed item wakes, by item id, like the server's snoozes. */
 const snoozes = new Map<string, number>();
-/** The shared items that the viewer dismissed for themselves only. */
-const hides = new Set<string>();
 
 /** The woken items that the viewer opened or acted on, by id. */
 const openedWakes = new Set<string>();
@@ -38,7 +36,6 @@ const openedWakes = new Set<string>();
 export function resetMockInboxItems(): void {
   changes.clear();
   snoozes.clear();
-  hides.clear();
   openedWakes.clear();
 }
 
@@ -71,11 +68,10 @@ export function snoozeMockRow(nowMs: number, body: InboxSnoozeCreateBody) {
         (!body.inboxItemId || seed.id === body.inboxItemId),
     )
     .map((seed) => seed.id);
-  // A snooze with no time waits for its Event, which mock data never sends.
+  // A snooze with no time waits for its Event, which mock data never sends,
+  // or with `untilClosed`, for its item to close.
   const wakeAtMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
-  for (const id of inboxItemIds) {
-    if (!hides.has(id)) snoozes.set(id, wakeAtMs);
-  }
+  for (const id of inboxItemIds) snoozes.set(id, wakeAtMs);
   openMockWakes(inboxItemIds);
   return { inboxItemIds };
 }
@@ -150,18 +146,12 @@ function payload(
   const item = { ...rest, ...change };
   const everyone = seed.assignedToEveryone ?? false;
   const relatedWork = related(seed, all);
-  const hiddenFromViewer =
-    item.status !== "open"
-      ? undefined
-      : hides.has(seed.id)
-        ? "dismissed"
-        : (snoozes.get(seed.id) ?? -Infinity) > nowMs
-          ? "snoozed"
-          : undefined;
+  const snoozedByViewer =
+    item.status === "open" && (snoozes.get(seed.id) ?? -Infinity) > nowMs;
   return {
     ...item,
     ...(childLabel ? { addedByLabel: childLabel } : undefined),
-    ...(hiddenFromViewer ? { hiddenFromViewer } : undefined),
+    ...(snoozedByViewer ? { snoozedByViewer: true as const } : undefined),
     assignedToEveryone: everyone,
     assignees: everyone ? [] : shared ? [viewer, teammate] : [viewer],
     canAct: item.status === "open",
@@ -217,8 +207,7 @@ export function readMockInboxItems(
         (!q || seed.title.toLowerCase().includes(q)) &&
         (filters.snoozed
           ? snoozed.has(seed.id)
-          : !filters.forViewer ||
-            !(snoozed.has(seed.id) || hides.has(seed.id))),
+          : !filters.forViewer || !snoozed.has(seed.id)),
     )
     .map((seed) => payload(seed, all, nowMs));
   if (filters.closed)
@@ -247,21 +236,7 @@ export function actOnMockInboxItem(
   const item = readMockInboxItem(nowMs, id);
   if (!item || item.status !== "open") return item;
   openMockWakes([id]);
-  // Like the API, a take brings back an item that the viewer dismissed.
-  if (body.action === "take") {
-    hides.delete(id);
-    return readMockInboxItem(nowMs, id);
-  }
-  // Like the API, Dismiss on an item that others share hides it for the
-  // viewer only, and ends their snooze.
-  if (
-    body.action === "dismiss" &&
-    (item.assignedToEveryone || item.assignees.length > 1)
-  ) {
-    hides.add(id);
-    snoozes.delete(id);
-    return readMockInboxItem(nowMs, id);
-  }
+  if (body.action === "take") return readMockInboxItem(nowMs, id);
   changes.set(id, {
     closedAt: new Date(nowMs).toISOString(),
     closedBy: viewer,

@@ -86,7 +86,7 @@ export async function resolveAssignees(
 async function participantUserIds(
   db: JuniorDatabase,
   conversationIds: readonly string[],
-  condition?: SQL,
+  condition: SQL,
 ): Promise<string[]> {
   const rows = await db
     .select({ userId: juniorConversationParticipants.userId })
@@ -121,15 +121,6 @@ export async function conversationParticipantUserIds(
       inArray(juniorConversationParticipants.userId, [...userIds]),
     ),
   );
-}
-
-/** Return every Participant of any of the Conversations, active or not. */
-export async function everyParticipantUserId(
-  db: JuniorDatabase,
-  conversationIds: readonly string[],
-): Promise<Set<string>> {
-  if (conversationIds.length === 0) return new Set();
-  return new Set(await participantUserIds(db, conversationIds));
 }
 
 /**

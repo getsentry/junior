@@ -22,7 +22,6 @@ import type { ProviderTenant } from "@/api/conversations/access";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import {
   inboxSnoozesVersion,
-  inboxItemHiddenFrom,
   inboxItemSnoozedBy,
 } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
@@ -742,7 +741,7 @@ function searchConditions(
     conditions.push(inboxItemForUser(filters.forUserId));
   }
   if (filters.awakeForUserId) {
-    conditions.push(not(inboxItemHiddenFrom(filters.awakeForUserId)));
+    conditions.push(not(inboxItemSnoozedBy(filters.awakeForUserId)));
   }
   if (filters.snoozedForUserId) {
     conditions.push(inboxItemSnoozedBy(filters.snoozedForUserId));
@@ -761,10 +760,10 @@ function searchConditions(
 
 /**
  * SQL: the Inbox item needs the User now: `inboxItemNeedsUser`, and the
- * User has not snoozed it or dismissed it for themselves.
+ * User has not snoozed it.
  */
 function inboxItemNeedsUserNow(userId: string): SQL {
-  return and(inboxItemNeedsUser(userId), not(inboxItemHiddenFrom(userId)))!;
+  return and(inboxItemNeedsUser(userId), not(inboxItemSnoozedBy(userId)))!;
 }
 
 /**

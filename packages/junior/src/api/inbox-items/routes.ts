@@ -49,10 +49,9 @@ import type { InboxItemDelivery } from "@/chat/inbox-items/changes";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
   clearInboxWakeReasons,
-  readInboxWakeReasons,
+  readViewerInboxSnoozes,
 } from "@/chat/inbox-snoozes/store";
 import { snoozeSubjectResource } from "@/chat/inbox-snoozes/subject";
-import { readInboxItemsHiddenFrom } from "@/chat/inbox-snoozes/store";
 import { countViewerSnoozes } from "@/chat/inbox-snoozes/viewer";
 import { readLinkObjectType, readObjectLinkTypes } from "@/api/objects/resolve";
 import type { ActorIdentity } from "@/api/schema/conversation";
@@ -257,21 +256,18 @@ async function inboxItemPayloads(
   items: readonly InboxItem[],
   viewer: User,
   reader: InboxItemReader,
-  /** The list already leaves out what the viewer hid, so it skips the read. */
-  awake = false,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const openIds = items
-    .filter((item) => item.status === "open")
-    .map((item) => item.id);
-  const [roots, mentions, related, wakes, hidden] = await Promise.all([
+  const [roots, mentions, related, snoozes] = await Promise.all([
     readItemRoots(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
-    readInboxWakeReasons(db, { inboxItemIds: openIds, userId: viewer.id }),
-    awake
-      ? new Map<string, "dismissed" | "snoozed">()
-      : readInboxItemsHiddenFrom(db, viewer.id, openIds),
+    readViewerInboxSnoozes(db, {
+      inboxItemIds: items
+        .filter((item) => item.status === "open")
+        .map((item) => item.id),
+      userId: viewer.id,
+    }),
   ]);
   return items.map((item, index) => {
     const payload = inboxItemPayload(
@@ -280,10 +276,11 @@ async function inboxItemPayloads(
       roots,
       mentions[index]!,
       related.get(item.id),
-      wakes.get(item.id),
+      snoozes.wakeReasons.get(item.id),
     );
-    const hiddenFromViewer = hidden.get(item.id);
-    return hiddenFromViewer ? { ...payload, hiddenFromViewer } : payload;
+    return snoozes.snoozed.has(item.id)
+      ? { ...payload, snoozedByViewer: true }
+      : payload;
   });
 }
 
@@ -359,20 +356,19 @@ export function createInboxItemRoutes(services: {
             : undefined),
         });
       }
-      // The viewer's Inbox hides the rows they snoozed until they wake, and
-      // the shared items they dismissed. A Conversation's own list and a
-      // search still show them.
-      const awake =
-        query.for === "viewer" &&
-        !filters.conversationId &&
-        !filters.query &&
-        !filters.snoozedForUserId;
       // The archived matches come once, with the first page. They do not
       // depend on the open page, so both reads run at once.
       const [open, archived] = await Promise.all([
         searchInboxItems(db, reader, {
           ...filters,
-          ...(awake ? { awakeForUserId: viewer.id } : undefined),
+          // The viewer's Inbox hides the rows they snoozed until they wake. A
+          // Conversation's own list and a search still show them.
+          ...(query.for === "viewer" &&
+          !filters.conversationId &&
+          !filters.query &&
+          !filters.snoozedForUserId
+            ? { awakeForUserId: viewer.id }
+            : undefined),
           limit: query.limit + 1,
           statuses: ["open"],
           ...(filters.sort
@@ -405,7 +401,6 @@ export function createInboxItemRoutes(services: {
           [...page, ...archived.slice(0, ARCHIVED_LIMIT)],
           viewer,
           reader,
-          awake,
         ),
         ...(archived.length > ARCHIVED_LIMIT
           ? { moreArchived: true }
