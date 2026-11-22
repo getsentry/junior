@@ -9,7 +9,10 @@ import {
   setSpanAttributes,
   withLogContext,
 } from "@/chat/logging";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  saveHeldInput,
+} from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -569,17 +572,23 @@ async function processConversationWorkInContext(
       );
       // A stop can take Event input between this read and the claim. Then
       // select again, so the Turn never runs input that the stop held.
-      if (
-        attemptMessageIds.length > 0 &&
-        !(await claimConversationAttempt({
+      if (attemptMessageIds.length > 0) {
+        const claim = await claimConversationAttempt({
           conversationId,
           inboundMessageIds: attemptMessageIds,
           leaseToken: lease.leaseToken,
           nowMs: now(options),
           state: options.state,
-        }))
-      ) {
-        continue;
+        });
+        if (claim.status === "held") {
+          await saveHeldInput(conversationId, claim.messages);
+          if (claim.pendingCount === 0 && !resumePending) {
+            break;
+          }
+        }
+        if (claim.status !== "claimed") {
+          continue;
+        }
       }
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {

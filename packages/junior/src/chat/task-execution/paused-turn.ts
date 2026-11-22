@@ -217,12 +217,6 @@ async function persistStoppedTurnState(turn: TurnRecord): Promise<void> {
     turnId: turn.turnId,
     errorMessage: "Turn interrupted",
   });
-  await getTurnLifecycle().complete({
-    conversationId: turn.conversationId,
-    createdAtMs: Date.now(),
-    outcome: "cancelled",
-    turnId: turn.turnId,
-  });
   const currentState = await getPersistedThreadState(turn.conversationId);
   const conversation = coerceThreadConversationState(currentState);
   await hydrateConversationMessages({

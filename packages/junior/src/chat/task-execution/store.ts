@@ -539,7 +539,7 @@ export async function claimConversationAttempt(args: {
   leaseToken: string;
   nowMs?: number;
   state?: StateAdapter | undefined;
-}): Promise<boolean> {
+}): Promise<workState.ClaimConversationAttemptResult> {
   return await workState.claimConversationAttempt(args);
 }
 

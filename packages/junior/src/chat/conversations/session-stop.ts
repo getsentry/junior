@@ -235,7 +235,7 @@ export async function resumeForPersonInput(
  * for it, so the next Turn reads it. The append is idempotent by Message id,
  * and the Message takes the id of the first input.
  */
-async function saveHeldInput(
+export async function saveHeldInput(
   conversationId: string,
   messages: readonly InboundMessage[],
 ): Promise<void> {

@@ -15,7 +15,9 @@ import {
 } from "@/chat/conversations/web-input";
 import {
   claimConversationAttempt,
+  ensureConversationWake,
   getConversationWorkState,
+  releaseConversationWork,
   startConversationWork,
 } from "@/chat/task-execution/store";
 import {
@@ -548,7 +550,7 @@ it("holds a timer that arrives while a stop of its root runs", async () => {
 it("leaves a running attempt's timer to its Turn when a stop holds the rest", async () => {
   const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
   const fixture = await timerConversation();
-  const { conversationId, tools, queue, state } = fixture;
+  const { agentRuns, conversationId, drain, tools, queue, state } = fixture;
   for (const [index, intent] of ["Check once.", "Check again."].entries()) {
     await execute(
       tools["watchTimer"]!,
@@ -575,21 +577,36 @@ it("leaves a running attempt's timer to its Turn when a stop holds the rest", as
       leaseToken: lease.leaseToken,
       state,
     }),
-  ).resolves.toBe(true);
+  ).resolves.toEqual({ status: "claimed" });
   await stopConversation({ conversationId, queue });
 
-  // The Turn saves the running timer. The stop holds only the waiting one,
-  // so a worker that selected it before the stop selects again.
+  // The Turn saves the running timer. The stop holds only the waiting one.
   expect(await pending()).toEqual([running]);
   await expect(
     stoppedConversationMessageTexts(conversationId),
   ).resolves.toEqual([expect.stringContaining("Check again.")]);
+
+  // The attempt ends without saving its timer. The next worker holds it and
+  // starts no Turn.
+  await releaseConversationWork({
+    conversationId,
+    leaseToken: lease.leaseToken,
+    state,
+  });
+  await ensureConversationWake({
+    conversationId,
+    idempotencyKey: "after-attempt",
+    queue,
+    replaceExistingWake: true,
+    state,
+  });
+  await drain();
+  expect(await pending()).toEqual([]);
+  expect(agentRuns).toHaveLength(0);
   await expect(
-    claimConversationAttempt({
-      conversationId,
-      inboundMessageIds: [running!.inboundMessageId, waiting!.inboundMessageId],
-      leaseToken: lease.leaseToken,
-      state,
-    }),
-  ).resolves.toBe(false);
+    stoppedConversationMessageTexts(conversationId),
+  ).resolves.toEqual([
+    expect.stringContaining("Check again."),
+    expect.stringContaining("Check once."),
+  ]);
 });
