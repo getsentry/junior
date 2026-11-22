@@ -290,7 +290,10 @@ test("keeps the current search match while earlier pages load", async ({
   await expect(page.getByText("2/4", { exact: true })).toBeVisible();
 
   // The earlier page adds four matches before 1979, which stays current.
-  mock.holdEarlier = new Promise(() => {});
+  let releaseNext = () => {};
+  mock.holdEarlier = new Promise((resolve) => {
+    releaseNext = resolve;
+  });
   release();
   await expect(page.getByText("6/8", { exact: true })).toBeVisible();
   await search.press("Enter");
@@ -298,6 +301,8 @@ test("keeps the current search match while earlier pages load", async ({
   await expect(
     transcript.getByText("Transcript message 1989 "),
   ).toBeInViewport();
+  releaseNext();
+  await mock.pageReadsLanded();
 });
 
 test("opens far behind at the marker and jumps to the latest", async ({

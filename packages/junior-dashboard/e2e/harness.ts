@@ -6,7 +6,8 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import type { Page, Route } from "@playwright/test";
+import { setTimeout as delay } from "node:timers/promises";
+import type { Page, Request as PageRequest, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 import type * as DashboardApp from "../src/app";
 
@@ -66,6 +67,102 @@ export async function routeConversationVersion(
       },
     }),
   );
+}
+
+/**
+ * Reads that the dashboard starts or repeats in the background, so one can be
+ * open whenever a test ends. Only GET reads belong here: a test must await
+ * every write that it causes, or the server may never see it.
+ */
+const BACKGROUND_READS: readonly RegExp[] = [
+  // The versions poll runs for the whole visit (`useVersionsPoll`).
+  /^\/api\/versions$/,
+  // A live Conversation polls its detail. When idle, the versions poll
+  // refreshes it.
+  /^\/api\/conversations\/[^/]+$/,
+  // A detail with a new ETag refreshes its side reads
+  // (`refreshSideReadsOnChange`).
+  /^\/api\/conversations\/[^/]+\/(agents|todos|watches)$/,
+  /^\/api\/memory\/conversations\/[^/]+\/memories$/,
+  // A moved versions token refreshes the feeds, every Inbox item read (the
+  // lists, the count, the waiting Conversations, and each item), and the
+  // viewer's spend (`refreshChangedReads`).
+  /^\/api\/conversations$/,
+  /^\/api\/inbox-items(\/[^/]+)?$/,
+  /^\/api\/people\/me\/spend$/,
+  // A pointer that rests on an Automation row prefetches its page
+  // (`usePrefetchAutomation`). A Conversation row prefetches its detail.
+  /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
+];
+
+/** Whether a request is a background read that may outlive a test. */
+function isBackgroundRead(request: PageRequest): boolean {
+  const { pathname } = new URL(request.url());
+  return (
+    request.method() === "GET" &&
+    BACKGROUND_READS.some((path) => path.test(pathname))
+  );
+}
+
+// How long a request that has its response may take to end its body.
+const BODY_GRACE_MS = 1_000;
+
+/**
+ * Track the API requests of a page so a test cannot end while one that it
+ * caused is open. A request that a test does not wait for races its end:
+ * closing the page drops a write that the server has not seen, and fails a
+ * route handler that is still running.
+ */
+export function trackOpenRequests(page: Page): {
+  /** Fail with each open request other than a background read. */
+  expectNoneOpen: () => Promise<void>;
+} {
+  const open = new Set<PageRequest>();
+  // The body of each request that got a response, once it ends.
+  const bodies = new Map<PageRequest, Promise<unknown>>();
+  page.on("request", (request) => {
+    // The app reads and writes with fetches. A page asset, such as an
+    // image, can still load when the test ends with no harm.
+    if (["fetch", "xhr"].includes(request.resourceType())) open.add(request);
+  });
+  page.on("response", (response) =>
+    bodies.set(
+      response.request(),
+      // The page can close before the body ends.
+      response.finished().catch(() => undefined),
+    ),
+  );
+  page.on("requestfinished", (request) => open.delete(request));
+  page.on("requestfailed", (request) => open.delete(request));
+  return {
+    expectNoneOpen: async () => {
+      const unexpected = [...open].filter(
+        (request) => !isBackgroundRead(request),
+      );
+      // A test that awaited a response can end before its body is read and
+      // `requestfinished` fires. Give each body that started a short time to
+      // end. A request with no response gets none: it is still open.
+      await Promise.all(
+        unexpected.flatMap((request) => {
+          const body = bodies.get(request);
+          return body ? [Promise.race([body, delay(BODY_GRACE_MS)])] : [];
+        }),
+      );
+      const stillOpen = unexpected.filter((request) => open.has(request));
+      if (stillOpen.length === 0) return;
+      const lines = stillOpen.map((request) => {
+        const { pathname, search } = new URL(request.url());
+        return `  ${request.method()} ${pathname}${search}`;
+      });
+      throw new Error(
+        [
+          "The test ended while requests that it caused were open:",
+          ...lines,
+          "Wait for the response or the visible result of each request.",
+        ].join("\n"),
+      );
+    },
+  };
 }
 
 export type DashboardE2eServer = {

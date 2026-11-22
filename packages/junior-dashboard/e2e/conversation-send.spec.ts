@@ -875,10 +875,17 @@ test("keeps details closed on a home send after the reader closed them @new", as
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   // The pending view follows the saved choice, as the page does.
   await expect(details).toBeHidden();
+  // The new Conversation's page reads its outline.
+  const outlineRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${encodeURIComponent(createdConversationId)}/outline`,
+  );
   releaseCreate?.();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
   await expect(transcript.getByText("Check the deploy")).toBeVisible();
   await expect(details).toBeHidden();
+  await outlineRead;
 });

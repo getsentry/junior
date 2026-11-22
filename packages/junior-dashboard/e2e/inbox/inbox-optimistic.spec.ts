@@ -251,6 +251,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator('[aria-controls^="inbox-row-"]')
       .first()
       .click();
+    const woke = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" &&
+        new URL(response.url()).pathname === "/api/inbox/snoozes",
+    );
     await snoozed(buttons!).getByRole("button", { name: "Wake" }).click();
     await expect(snoozed(form!)).toHaveAttribute("data-expanded", "true", {
       timeout: 1000,
@@ -258,6 +263,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(snoozed(buttons!)).toHaveCount(1);
     await cdp.send("Animation.setPlaybackRate", { playbackRate: 1 });
     await expect(snoozed(buttons!)).toHaveCount(0);
+    await woke;
   });
 
   test("a pin that fails to save shows a toast whose Retry pins it", async ({

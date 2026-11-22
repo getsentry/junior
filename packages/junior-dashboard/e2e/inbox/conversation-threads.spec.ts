@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -114,6 +114,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       archived: boolean;
       url: string;
     }> = [];
+    const held: Request[] = [];
     let release: (() => void) | undefined;
     const released = new Promise<void>((resolve) => {
       release = resolve;
@@ -128,10 +129,18 @@ test.describe("new UI", { tag: "@new" }, () => {
         archived: body.archived,
         url: route.request().url(),
       });
+      held.push(route.request());
       await released;
       await route.continue();
     });
-    return { calls, release: () => release?.() };
+    return {
+      calls,
+      /** Let calls through and wait for the response of each call so far. */
+      release: async () => {
+        release?.();
+        await Promise.all(held.map((request) => request.response()));
+      },
+    };
   }
 
   test("archives a Thread from its page", async ({ page, dashboard }) => {
@@ -203,7 +212,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await expect(threadRow).toHaveCount(0);
     await expect(nestedRow).toHaveCount(0);
-    releaseArchive();
+    await releaseArchive();
     await expect(rootRow).toBeVisible();
 
     // An archived Thread stays readable, and Restore brings its row back.
@@ -222,6 +231,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         { applyToChildren: true, archived: true, url: threadArchiveUrl },
         { applyToChildren: true, archived: false, url: threadArchiveUrl },
       ]);
+    await releaseArchive();
   });
 
   test("archives a nested Thread without its parent", async ({
@@ -255,7 +265,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The nested row hides at once. Its parent Thread stays.
     await expect(nestedRow).toHaveCount(0);
     await expect(threadRow).toBeVisible();
-    archive.release();
+    await archive.release();
 
     // Undo puts the nested row back under its parent before the restore
     // settles, so it does not wait on a feed refetch.
@@ -270,7 +280,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       name.includes("Check pinned row order"),
     );
     expect(rowNames[parentIndex + 1]).toContain("Recheck pin order in Safari");
-    restore.release();
+    await restore.release();
   });
 
   test("archives a Thread from its list row", async ({ page, dashboard }) => {
@@ -309,7 +319,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(nestedRow).toHaveCount(0);
     // The list stays open.
     await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
-    archive.release();
+    await archive.release();
   });
 
   test("hides the composer on a Task page", async ({ page, dashboard }) => {
@@ -370,10 +380,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await archivedCard.scrollIntoViewIfNeeded();
     await screenshot(page, "conversation-thread-cards", { view: "mobile" });
     await page.setViewportSize({ height: 900, width: 1440 });
+    // Each visit reads the outline of its Conversation.
+    const outlineRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+        `/api/conversations/${encodeURIComponent(THREAD_ID)}/outline`,
+    );
     await threadCard.click();
     await expect(page).toHaveURL(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
     );
+    await outlineRead;
   });
 
   test("shows the breadcrumb, status, and Turn authors of a Thread", async ({

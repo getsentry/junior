@@ -12,10 +12,26 @@ async function openConversation(page: Page, baseURL: string) {
   );
 }
 
-/** Record the body of each request to a path that the page sends. */
+/**
+ * Reload the Conversation, and wait for the outline that each visit reads.
+ */
+async function reloadConversation(page: Page) {
+  const outlineRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${encodeURIComponent(THREE_QUESTIONS_ID)}/outline`,
+  );
+  await page.reload();
+  await outlineRead;
+}
+
+/**
+ * Record the body of each request to a path that the page sends, once the
+ * server answers it.
+ */
 function recordBodies(page: Page, path: string) {
   const bodies: unknown[] = [];
-  page.on("request", (request) => {
+  page.on("requestfinished", (request) => {
     if (new URL(request.url()).pathname.endsWith(path)) {
       bodies.push(request.postDataJSON());
     }
@@ -78,7 +94,7 @@ for (const view of [desktop, mobile]) {
     ).toHaveCount(0);
     // The transcript opens at the latest message again, and the pill counts
     // the two questions that still wait.
-    await page.reload();
+    await reloadConversation(page);
     await expect(
       page.getByRole("button", { name: "2 questions waiting" }),
     ).toBeVisible();
@@ -132,7 +148,7 @@ for (const view of [desktop, mobile]) {
           .getByRole("button", { name: /^Handle the negative invoices/ }),
       ).toHaveCount(0);
     }
-    await page.reload();
+    await reloadConversation(page);
     await expect(
       page.getByRole("button", { name: "2 questions waiting" }),
     ).toBeVisible();

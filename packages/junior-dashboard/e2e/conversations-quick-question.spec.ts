@@ -248,11 +248,18 @@ test("asks a quick question about selected reply text", async ({
       await route.fulfill({ json: { conversationId: forkId } });
     },
   );
+  // The fork's page reads its outline.
+  const outlineRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${encodeURIComponent(forkId)}/outline`,
+  );
   await panel
     .getByRole("button", { name: "Keep as fork", exact: true })
     .click();
   await expect(page).toHaveURL(/qq-fork/);
   expect(kept).toBe(1);
+  await outlineRead;
 });
 
 test("closes a quick question and shows details again", async ({

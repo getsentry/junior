@@ -478,9 +478,14 @@ test("opens an old Settings page as its section and keeps the query", async ({
     page.getByRole("heading", { exact: true, name: "API Tokens" }),
   ).toBeInViewport();
 
+  // The page reads the viewer's connections.
+  const connectionsRead = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/connections",
+  );
   await page.goto(`${dashboard.baseURL}/settings/connections`);
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
   await expect(
     page.getByRole("heading", { exact: true, name: "Identities" }),
   ).toBeInViewport();
+  await connectionsRead;
 });

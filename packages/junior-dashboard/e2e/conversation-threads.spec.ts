@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
 import { screenshot } from "./screenshot";
 import { expect, test } from "./test";
@@ -55,10 +55,17 @@ test("shows Threads under their parent and in details", async ({
     `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
   );
   await expect(threadRow).toHaveAttribute("aria-current", "page");
+  // Each visit reads the outline of its Conversation.
+  const outlineRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${encodeURIComponent(ROOT_ID)}/outline`,
+  );
   await details.getByRole("link", { name: "Dashboard QA edge cases" }).click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
   );
+  await outlineRead;
 });
 
 test("sends a message from a Thread page", async ({ page, dashboard }) => {
@@ -100,6 +107,7 @@ async function holdArchives(page: Page) {
     archived: boolean;
     url: string;
   }> = [];
+  const held: Request[] = [];
   let release: (() => void) | undefined;
   const released = new Promise<void>((resolve) => {
     release = resolve;
@@ -114,10 +122,18 @@ async function holdArchives(page: Page) {
       archived: body.archived,
       url: route.request().url(),
     });
+    held.push(route.request());
     await released;
     await route.continue();
   });
-  return { calls, release: () => release?.() };
+  return {
+    calls,
+    /** Let calls through and wait for the response of each call so far. */
+    release: async () => {
+      release?.();
+      await Promise.all(held.map((request) => request.response()));
+    },
+  };
 }
 
 test("archives a Thread from its page", async ({ page, dashboard }) => {
@@ -187,7 +203,7 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
   );
   await expect(threadRow).toHaveCount(0);
   await expect(nestedRow).toHaveCount(0);
-  releaseArchive();
+  await releaseArchive();
   await expect(rootRow).toBeVisible();
 
   // An archived Thread stays readable, and Restore brings its row back.
@@ -203,6 +219,7 @@ test("archives a Thread from its page", async ({ page, dashboard }) => {
       { applyToChildren: true, archived: true, url: threadArchiveUrl },
       { applyToChildren: true, archived: false, url: threadArchiveUrl },
     ]);
+  await releaseArchive();
 });
 
 test("archives a nested Thread without its parent", async ({
@@ -234,7 +251,7 @@ test("archives a nested Thread without its parent", async ({
   // The nested row hides at once. Its parent Thread stays.
   await expect(nestedRow).toHaveCount(0);
   await expect(threadRow).toBeVisible();
-  archive.release();
+  await archive.release();
 
   // Undo puts the nested row back under its parent before the restore
   // settles, so it does not wait on a feed refetch.
@@ -249,7 +266,7 @@ test("archives a nested Thread without its parent", async ({
     name.includes("Check pinned row order"),
   );
   expect(rowNames[parentIndex + 1]).toContain("Recheck pin order in Safari");
-  restore.release();
+  await restore.release();
 });
 
 test("archives a Thread from its sidebar row", async ({ page, dashboard }) => {
@@ -290,7 +307,7 @@ test("archives a Thread from its sidebar row", async ({ page, dashboard }) => {
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(ROOT_ID)}`,
   );
-  archive.release();
+  await archive.release();
 });
 
 test("hides the composer on a Task page", async ({ page, dashboard }) => {
@@ -351,10 +368,17 @@ test("links Threads and shows Tasks as chips in the parent transcript", async ({
   await archivedCard.scrollIntoViewIfNeeded();
   await screenshot(page, "conversation-thread-cards", { view: "mobile" });
   await page.setViewportSize({ height: 900, width: 1440 });
+  // Each visit reads the outline of its Conversation.
+  const outlineRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${encodeURIComponent(THREAD_ID)}/outline`,
+  );
   await threadCard.click();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`,
   );
+  await outlineRead;
 });
 
 test("shows the breadcrumb, status, and Turn authors of a Thread", async ({

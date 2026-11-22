@@ -521,12 +521,18 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(linkedEntry).toBeFocused();
   await linkedEntry.click();
   await expect(linked).toBeVisible();
+  const outlineRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname ===
+      `/api/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}/outline`,
+  );
   await page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(linked).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]event=/);
+  await outlineRead;
 });
 
 test("mounts only the event log rows near the viewport", async ({

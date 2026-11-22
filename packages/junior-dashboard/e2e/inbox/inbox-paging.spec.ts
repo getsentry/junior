@@ -450,7 +450,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("list", { name: "In flight" })).toHaveCount(0);
     expect(olderReads).toBe(0);
 
-    // Conversations still lists them.
+    // Conversations still lists them. Their summaries read the cards of
+    // their links.
+    const cardsRead = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/objects",
+    );
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await expect(
       page
@@ -458,6 +462,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         .locator("[data-inbox-row]")
         .first(),
     ).toBeVisible();
+    await cardsRead;
   });
 
   /** Twelve questions, each in its own Conversation, two to a page. */

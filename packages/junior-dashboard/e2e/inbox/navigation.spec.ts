@@ -206,9 +206,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/review?bundle=automations`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
     // The pane stays on the Automation pages too.
+    const runsRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations/runs",
+    );
     await page.goto(`${dashboard.baseURL}/automations/runs`);
     await expect(automations).toHaveAttribute("aria-current", "page");
     await expect(primary.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+    await runsRead;
   });
 
   test("an old Automations link does not become the Inbox's place", async ({

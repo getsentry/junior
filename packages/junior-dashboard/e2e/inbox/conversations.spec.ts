@@ -851,6 +851,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await screenshot(page, "conversation-child-agent-page");
 
+    // Each visit reads the outline of its Conversation.
+    const outlineRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+        `/api/conversations/${encodeURIComponent("internal:dashboard-qa")}/outline`,
+    );
     await tree.getByRole("link", { name: "Dashboard QA edge cases" }).click();
     await expect(
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
@@ -858,5 +864,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("navigation", { name: "Breadcrumb" }),
     ).toHaveCount(0);
+    await outlineRead;
   });
 });

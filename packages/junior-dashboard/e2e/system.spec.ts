@@ -219,6 +219,15 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
     .fill("getsentry/sentry");
   await page.getByLabel("Setup script").fill("pnpm install");
   await page.getByLabel("vCPUs").fill("8");
+  // The new Workspace's page reads it and its usage.
+  const pageReads = Promise.all(
+    ["/api/workspaces/11111111-1111-4111-8111-111111111111", "/api/stats"].map(
+      (path) =>
+        page.waitForResponse(
+          (response) => new URL(response.url()).pathname === path,
+        ),
+    ),
+  );
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
   await expect(page).toHaveURL(
@@ -240,6 +249,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
     setupScript: "pnpm install",
     vcpus: 8,
   });
+  await pageReads;
 });
 
 test("opens Workspace details beside the list and edits on a full page", async ({
