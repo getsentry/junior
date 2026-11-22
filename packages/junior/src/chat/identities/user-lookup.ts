@@ -1,6 +1,9 @@
 import { and, eq, inArray, isNotNull, or, sql } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { PluginEgress } from "@sentry/junior-plugin-api";
+import type {
+  PluginEgress,
+  PluginLinkedHandleLookup,
+} from "@sentry/junior-plugin-api";
 import { getSqlExecutor } from "@/chat/db";
 import { searchPluginUsers } from "@/chat/plugins/user-search-hooks";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
@@ -499,4 +502,33 @@ export async function lookupUsers(input: {
     query,
     ...(await findMatches(teamId, egress, providers, provider, query)),
   });
+}
+
+/**
+ * Return the linked `provider` handle of the one person that `query` names,
+ * so a plugin tool can turn an email, mention, or name into a verified
+ * account.
+ */
+export async function findLinkedHandle(input: {
+  egress: PluginEgress;
+  provider: string;
+  providers: [string, ...string[]];
+  query: string;
+  teamId: SlackTeamId;
+}): Promise<PluginLinkedHandleLookup> {
+  const { provider, ...lookup } = input;
+  let result: UserLookupResult;
+  try {
+    result = await lookupUsers(lookup);
+  } catch (error) {
+    if (isSlackUserNotFound(error)) return { status: "not_found" };
+    throw error;
+  }
+  const users = result.user ? [result.user] : (result.users ?? []);
+  if (users.length === 0) return { status: "not_found" };
+  if (users.length > 1) return { status: "ambiguous" };
+  const handle = users[0]!.linked_identities?.find(
+    (identity) => identity.provider === provider,
+  )?.handle;
+  return handle ? { status: "found", handle } : { status: "unlinked" };
 }

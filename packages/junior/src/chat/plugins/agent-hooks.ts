@@ -37,6 +37,9 @@ import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
+import { userLookupIdentityProviders } from "@/chat/identities/lookup-providers";
+import { findLinkedHandle } from "@/chat/identities/user-lookup";
+import { parseSlackTeamId } from "@/chat/slack/ids";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import {
@@ -934,6 +937,22 @@ export function getPluginTools(
           });
         },
         replaceSlackMentions,
+        async findLinkedHandle(query: string, provider: string) {
+          const teamId =
+            slackToolContext?.teamId ??
+            (context.actor?.platform === "slack"
+              ? parseSlackTeamId(context.actor.teamId)
+              : undefined);
+          // People are found through a Slack workspace's directory.
+          if (!teamId) return { status: "not_found" } as const;
+          return await findLinkedHandle({
+            egress: context.egress,
+            provider,
+            providers: userLookupIdentityProviders(),
+            query,
+            teamId,
+          });
+        },
       },
       workspaces: {
         async active() {
