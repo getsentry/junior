@@ -9,9 +9,15 @@
 // Turn, and on a message whose claim misses, it runs `reconcileTurn`, which
 // sends the delivery message and the next step message that the stored
 // state calls for.
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { logException } from "@/chat/logging";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
+import {
+  createAssistantProviderError,
+  getProviderErrorAttributes,
+} from "@/chat/services/provider-error";
+import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import type { ModelClient } from "@/core/model/client";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import {
@@ -28,6 +34,7 @@ import {
   holdsLease,
   releaseTurn,
   type ClaimedTurn,
+  type TurnFailure,
   type TurnLease,
 } from "@/core/turn/state";
 import {
@@ -109,12 +116,9 @@ export async function advanceTurn(
     );
     if (claim.attempts > options.maxAttempts) {
       if (
-        await failTurn(
-          executor,
-          claim,
-          "attempts_exhausted",
-          "agent_run_failed",
-        )
+        await failTurn(executor, claim, "attempts_exhausted", {
+          failureCode: "agent_run_failed",
+        })
       ) {
         await reconcileTurn(executor, claim.turnId);
       }
@@ -177,18 +181,41 @@ async function runClaimedStep(
       }
       return;
     }
-    case "failed":
-      if (
-        await failTurn(executor, claim, result.error, "model_execution_failed")
-      ) {
+    case "failed": {
+      // The capture comes before the commit. A crash between the two runs
+      // the step again, so a failure that repeats is captured twice.
+      const failure = captureModelFailure(result.reply);
+      if (await failTurn(executor, claim, result.error, failure)) {
         await reconcileTurn(executor, claim.turnId);
       }
       return;
+    }
     default: {
       const unhandled: never = result;
       throw new Error(`Unhandled step result: ${JSON.stringify(unhandled)}`);
     }
   }
+}
+
+/**
+ * Reports a failed model request to Sentry the way main reports a provider
+ * error, and returns main's `turn_failed` fields for it.
+ */
+function captureModelFailure(reply: AssistantMessage): TurnFailure {
+  const providerError = createAssistantProviderError(reply);
+  const eventName = "agent.turn.provider_error";
+  const eventId = requireTurnFailureEventId(
+    logException(providerError, eventName, {
+      ...getProviderErrorAttributes(providerError),
+      "app.ai.failure_reason": providerError.kind,
+    }),
+    eventName,
+  );
+  return {
+    failureCode: "model_execution_failed",
+    failureReason: providerError.kind,
+    eventId,
+  };
 }
 
 /** Throws unless `prepare` returned each unread input exactly once. */

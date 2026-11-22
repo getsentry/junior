@@ -175,7 +175,9 @@ describe("Turn state", () => {
       commitStep(fixture.sql, stale, finishedStep(), []),
     ).resolves.toBeUndefined();
     await expect(
-      failTurn(fixture.sql, stale, "late", "model_execution_failed"),
+      failTurn(fixture.sql, stale, "late", {
+        failureCode: "model_execution_failed",
+      }),
     ).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(running);
     await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });
@@ -206,15 +208,14 @@ describe("Turn state", () => {
     const claimed = (await claim())!;
 
     await expect(
-      failTurn(
-        fixture.sql,
-        claimed,
-        "Model request failed",
-        "model_execution_failed",
-      ),
+      failTurn(fixture.sql, claimed, "Model request failed", {
+        failureCode: "model_execution_failed",
+      }),
     ).resolves.toBe(true);
     await expect(
-      failTurn(fixture.sql, claimed, "late", "agent_run_failed"),
+      failTurn(fixture.sql, claimed, "late", {
+        failureCode: "agent_run_failed",
+      }),
     ).resolves.toBe(false);
     const failed = await readTurn();
     expect(failed).toMatchObject({
@@ -362,7 +363,9 @@ describe("Turn state", () => {
 
     await expect(claim()).resolves.toBeUndefined();
     await expect(
-      failTurn(fixture.sql, claimed, "late", "model_execution_failed"),
+      failTurn(fixture.sql, claimed, "late", {
+        failureCode: "model_execution_failed",
+      }),
     ).resolves.toBe(false);
     await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(completed);

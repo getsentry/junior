@@ -216,12 +216,9 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     const failed = await schedule("event-1");
     const claimed = await claim(failed.turnId);
     await schedule("event-2");
-    await failTurn(
-      fixture.sql,
-      claimed,
-      "overloaded",
-      "model_execution_failed",
-    );
+    await failTurn(fixture.sql, claimed, "overloaded", {
+      failureCode: "model_execution_failed",
+    });
     publishes = [];
 
     await reconcileTurn(fixture.sql, failed.turnId);
@@ -253,12 +250,9 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
 
   it("moves a failed Turn's inputs to the open Turn when one exists", async () => {
     const failed = await schedule("event-1");
-    await failTurn(
-      fixture.sql,
-      await claim(failed.turnId),
-      "overloaded",
-      "model_execution_failed",
-    );
+    await failTurn(fixture.sql, await claim(failed.turnId), "overloaded", {
+      failureCode: "model_execution_failed",
+    });
     const open = await schedule("event-2");
 
     await reconcileTurn(fixture.sql, failed.turnId);

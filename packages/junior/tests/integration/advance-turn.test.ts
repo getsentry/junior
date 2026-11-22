@@ -198,7 +198,13 @@ describe("advanceTurn", () => {
     // redelivered message writes no event again.
     await engine.advance(prepareWith([]));
     await expect(engine.loadLifecycleEvents()).resolves.toEqual([
-      { type: "turn_failed", turnId, failureCode: "model_execution_failed" },
+      {
+        type: "turn_failed",
+        turnId,
+        failureCode: "model_execution_failed",
+        failureReason: "capacity",
+        eventId: expect.any(String),
+      },
     ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(0);
   });
