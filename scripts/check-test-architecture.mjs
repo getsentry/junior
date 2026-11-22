@@ -2,15 +2,13 @@ import fs from "node:fs";
 import path from "node:path";
 import { readRepoFiles } from "./lib/repo-files.mjs";
 
-const TEST_ROOTS = [
-  "packages/junior/tests/integration",
-  "packages/junior-dashboard/e2e",
-];
+const DASHBOARD_E2E_DIR = "packages/junior-dashboard/e2e";
+const DASHBOARD_E2E_ROOT = `${DASHBOARD_E2E_DIR}/`;
+const TEST_ROOTS = ["packages/junior/tests/integration", DASHBOARD_E2E_DIR];
 const DATABASE_TEST_ROOTS = [
   "packages/junior/tests/component",
   "packages/junior/tests/integration",
 ];
-const DASHBOARD_E2E_ROOT = "packages/junior-dashboard/e2e/";
 const EMPTY_DATABASE_TESTS = new Set([
   "packages/junior/tests/component/conversation-storage-sql.test.ts",
   "packages/junior/tests/component/memory-plugin-storage.test.ts",
@@ -130,6 +128,46 @@ const AGENT_TEST_RULES = [
   },
 ];
 
+/**
+ * Rules for dashboard E2E spec bodies. A spec acts and asserts as a user does.
+ * Shared helpers, such as `harness.ts`, are not specs and may do more. Each
+ * rule has a baseline of the specs that break it today.
+ */
+export const DASHBOARD_SPEC_RULES = [
+  {
+    id: "dashboard-spec-page-script",
+    message:
+      "dashboard E2E specs must not run script in the page; assert what the user sees, or move a needed read into a named helper outside the spec",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\b(?:evaluate|evaluateHandle)\s*\(/g,
+  },
+  {
+    id: "dashboard-spec-synthetic-event",
+    message:
+      "dashboard E2E specs must not dispatch synthetic events; use real input such as click, fill, press, or setInputFiles",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\bdispatchEvent\s*\(/g,
+  },
+  {
+    id: "dashboard-spec-selector",
+    message:
+      "dashboard E2E specs must not pass a CSS or attribute selector to locator(); use getByRole, getByLabel, or getByText",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\blocator\s*\(\s*["'`]/g,
+  },
+  {
+    id: "dashboard-spec-timing",
+    message:
+      "dashboard E2E specs must not override timeouts; control time with page.clock and wait for a visible state",
+    pathPrefix: DASHBOARD_E2E_ROOT,
+    pathSuffix: ".spec.ts",
+    pattern: /\btimeout\s*:/g,
+  },
+];
+
 // A kind or person-Source branch outside `kind-behavior.ts`.
 const KIND_BRANCH_PATTERNS = [
   // Conversation kind compared to a value, in either order.
@@ -238,6 +276,7 @@ function agentRuleApplies(rule, filePath) {
   if (filePath.startsWith(AGENT_FIXTURE_ROOT)) return false;
   if (rule.exclude?.includes(filePath)) return false;
   if (rule.pathPrefix && !filePath.startsWith(rule.pathPrefix)) return false;
+  if (rule.pathSuffix && !filePath.endsWith(rule.pathSuffix)) return false;
   if (
     rule.pathPrefix === AGENT_EVALS_ROOT &&
     ISOLATED_EVAL_ROOTS.some((root) => filePath.startsWith(root))
@@ -382,6 +421,11 @@ export async function run({ root, files }) {
       await sources(SOURCE_ROOTS),
       baseline,
       SOURCE_RULES,
+    ),
+    ...checkAgentTestArchitecture(
+      await tests([DASHBOARD_E2E_DIR]),
+      baseline,
+      DASHBOARD_SPEC_RULES,
     ),
   ];
   if (errors.length === 0) return [];
