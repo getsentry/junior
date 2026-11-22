@@ -30,6 +30,7 @@ import {
 } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { addConversationNote } from "@/chat/conversations/notes";
+import { eventInboundMessageId } from "@/chat/events/inbound-message-id";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -409,7 +410,10 @@ export function createEventInboundMessage(input: {
   return {
     conversationId: input.subscription.conversationId,
     createdAtMs: input.event.occurredAtMs,
-    inboundMessageId: `event:${input.subscription.id}:${input.event.eventKey}`,
+    inboundMessageId: eventInboundMessageId(
+      input.subscription.id,
+      input.event.eventKey,
+    ),
     delivery: "defer",
     source: "event",
     receivedAtMs: input.receivedAtMs ?? Date.now(),

@@ -12,6 +12,7 @@ import {
   deliverWatch,
   findMatchingWatches,
   isQuietEvent,
+  type Watch,
 } from "@/chat/events/store";
 import { slackMention } from "@/chat/slack/mrkdwn";
 
@@ -19,6 +20,11 @@ import { slackMention } from "@/chat/slack/mrkdwn";
 export async function ingestEvent(
   input: unknown,
   options: {
+    /**
+     * Last check before each delivery. A Watch that it denies, or that it
+     * fails for, gets nothing.
+     */
+    admit?: (subscription: Watch) => Promise<boolean>;
     nowMs?: number;
     queue: ConversationWorkQueue;
     /** Slack workspace whose users Event people resolve to. */
@@ -94,6 +100,7 @@ export async function ingestEvent(
         subscription,
         waitDeadlineMs,
         deliver: async (current) => {
+          if (options.admit && !(await options.admit(current))) return false;
           if (isQuietEvent(current, event.eventType)) {
             quiet = true;
             if (!turnConversations.has(current.conversationId)) {

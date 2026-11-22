@@ -30,11 +30,11 @@ import {
   type DeliverMessage,
   type DeliveryResult,
 } from "@/chat/task-execution/assistant-message";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { buildTurnThreadContext } from "@/chat/conversations/thread-context";
 import type { ConversationTurnFailureCode } from "@/chat/conversations/history";
 import { credentialContextForActor } from "@/chat/credentials/context";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import { getConversationStore } from "@/chat/db";
 import { logException, setTags } from "@/chat/logging";
 import {
   getTurnInputSpanAttributes,
@@ -214,9 +214,7 @@ export function createConversationTurnWorker(
       if (delayMs > 0) return { status: "deferred", delayMs };
     }
 
-    const lifecycle = new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    );
+    const lifecycle = getTurnLifecycle();
 
     const isResume = resolved.kind === "resume";
     let turnInputFacts: TurnInputFacts | undefined;

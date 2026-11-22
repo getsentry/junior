@@ -85,6 +85,7 @@ export async function stopConversation(args: {
       onStopSaved: () => {
         stopSaved = true;
       },
+      queue: args.queue,
       sentAtOrBeforeMs: args.message ? stoppedAtMs : undefined,
       state: args.state,
       stoppedAtMs,
@@ -127,6 +128,7 @@ export async function stopConversationAndChildAgents(
   const { conversationId, ...options } = args;
   await stopChildAgentsBelow(conversationId, {
     nowMs: options.nowMs,
+    queue: options.queue,
     stoppedAtMs: options.stoppedAtMs,
     state: options.state,
   });

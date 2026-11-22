@@ -1,3 +1,4 @@
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { and, eq, gt, inArray, isNotNull, ne, or } from "drizzle-orm";
 import type { StateAdapter } from "chat";
 import {
@@ -121,17 +122,20 @@ export async function stopChildAgentsBelow(
   conversationId: string,
   options: {
     nowMs: number;
+    /** Delivers each child agent's stop to its Watches. */
+    queue?: ConversationWorkQueue | undefined;
     stoppedAtMs: number;
     state?: StateAdapter | undefined;
   },
 ): Promise<void> {
-  const { nowMs, stoppedAtMs, state } = options;
+  const { nowMs, queue, stoppedAtMs, state } = options;
   const tree = await stopAgentInvocationTree(conversationId, nowMs, {
     includeRoot: false,
   });
   const stoppedIds = tree.conversationIds.filter((id) => id !== conversationId);
   await finishStoppedTree(tree, stoppedIds, {
     nowMs,
+    queue,
     stoppedAtMs,
     state,
   });

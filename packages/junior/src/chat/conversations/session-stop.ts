@@ -22,6 +22,9 @@ import {
 import type { StopConversationWorkResult } from "@/chat/task-execution/state";
 import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import { juniorConversations } from "@/db/schema";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import {
   conversationSubtree,
@@ -94,8 +97,9 @@ export async function enqueueAutomatedInput(
  * transaction with row locks, holds the automated input that already waits
  * in each mailbox, ends a Turn that waits for sign-in, and asks each running
  * Turn to stop. Each Turn it ends records one cancelled `turn_completed`.
- * Watches stay. A Conversation that already stopped later keeps that stop,
- * so a retried or cascaded stop does not move it back.
+ * Watches stay, and each Conversation that this stop starts reports
+ * `conversation.stopped` to them. A Conversation that already stopped later
+ * keeps that stop, so a retried or cascaded stop does not move it back.
  */
 export async function stopConversationTree(
   conversationIds: readonly string[],
@@ -110,6 +114,8 @@ export async function stopConversationTree(
     nowMs?: number;
     /** Run once the running Turn's stop is saved. */
     onStopSaved?: () => void;
+    /** Delivers each new stop to the Watches on its Conversation. */
+    queue?: ConversationWorkQueue | undefined;
     /** Stop only person input sent at or before this time. */
     sentAtOrBeforeMs?: number;
     state?: StateAdapter | undefined;
@@ -120,11 +126,14 @@ export async function stopConversationTree(
     return [];
   }
   const stoppedAt = new Date(options.stoppedAtMs);
-  await getDb().transaction(async (tx) => {
+  const reported = await getDb().transaction(async (tx) => {
     // Lock in id order, as `resumeConversationTree` does, so a stop and a
     // resume of overlapping trees cannot deadlock.
-    await tx
-      .select({ conversationId: juniorConversations.conversationId })
+    const locked = await tx
+      .select({
+        conversationId: juniorConversations.conversationId,
+        stoppedAt: juniorConversations.stoppedAt,
+      })
       .from(juniorConversations)
       .where(inArray(juniorConversations.conversationId, [...conversationIds]))
       .orderBy(asc(juniorConversations.conversationId))
@@ -141,7 +150,24 @@ export async function stopConversationTree(
           ),
         ),
       );
+    // A Conversation that was running reports this stop. A retry of a stop
+    // that failed before its report finds its own stop time and reports it
+    // again; the Event key holds the stop time, so it delivers once. A later
+    // stop of a stopped Conversation reports nothing.
+    return locked.flatMap((row) =>
+      !row.stoppedAt || row.stoppedAt.getTime() === stoppedAt.getTime()
+        ? [row.conversationId]
+        : [],
+    );
   });
+  const queue = options.queue ?? getVercelConversationWorkQueue();
+  await mapBounded(reported, (conversationId) =>
+    publishConversationStatus(
+      conversationId,
+      { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
+      { nowMs: stoppedAt.getTime(), queue, state: options.state },
+    ),
+  );
   return await mapBounded(conversationIds, async (conversationId) => {
     const pending = await takePendingEventMessages({
       conversationId,
