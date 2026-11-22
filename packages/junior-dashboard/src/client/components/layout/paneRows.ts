@@ -5,10 +5,11 @@ import {
   type InboxView,
 } from "../../inbox/inboxModel";
 import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
+import { LEAD_NAV_KEY } from "../../shell/primaryNav";
 
 /**
  * A row of the pane's destinations that keeps its place: an Inbox view,
- * Automations, or a primary plugin page (its nav item key).
+ * Automations, the Lead, or a primary plugin page (its nav item key).
  */
 export type PaneRow = InboxView | "automations" | (string & {});
 
@@ -57,6 +58,9 @@ export function paneRowForPath(
   if (isOldAutomationsPath(location)) return "automations";
   if (pathname === "/")
     return parseInboxView(new URLSearchParams(location.search).get("view"));
+  // The Lead is a Conversation with its own row.
+  const lead = navItems.find((item) => item.key === LEAD_NAV_KEY);
+  if (lead && pathname === lead.to) return LEAD_NAV_KEY;
   if (under(pathname, "/conversations")) return origin ?? "conversations";
   if (under(pathname, "/automations")) return "automations";
   return navItems.find(

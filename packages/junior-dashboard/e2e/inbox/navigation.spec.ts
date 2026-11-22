@@ -17,11 +17,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(dashboard.baseURL);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
-    // One list of labelled rows: the Inbox views, Conversations and
-    // Automations, then the asks by type. No tab bar sits above them.
+    // One list of labelled rows: the Lead, the Inbox views, Conversations
+    // and Automations, then the asks by type. No tab bar sits above them.
     await expect(page.getByRole("tablist")).toHaveCount(0);
     const rows = primary.getByRole("link");
     const names = [
+      "Lead",
       /^Inbox, \d+ waiting$/,
       "Snoozed",
       "Done",
@@ -32,7 +33,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ];
     for (const [index, name] of names.entries())
       await expect(rows.nth(index)).toHaveAccessibleName(name);
-    await expect(rows.nth(0)).toHaveAttribute("aria-current", "page");
+    await expect(rows.nth(1)).toHaveAttribute("aria-current", "page");
     await expect(
       primary.getByRole("heading", { name: "Asks by type" }),
     ).toBeVisible();
@@ -43,7 +44,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       primary.getByRole("link", { name: /^Automations/ }),
     ).toHaveAttribute("aria-current", "page");
-    await expect(rows.nth(0)).toHaveAccessibleName(/^Inbox, \d+ waiting$/);
+    await expect(rows.nth(1)).toHaveAccessibleName(/^Inbox, \d+ waiting$/);
     // The profile row keeps the running spend totals in view.
     const profile = page.getByRole("button", {
       name: /^Open profile menu for Dashboard User\./,

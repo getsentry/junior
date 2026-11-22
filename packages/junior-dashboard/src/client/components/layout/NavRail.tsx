@@ -26,6 +26,7 @@ import {
 } from "../ui/sidebar";
 import type { DashboardHeaderNavItem } from "./DashboardHeader";
 import { navItemIcon } from "./navIcons";
+import { splitLeadNavItem } from "../../primaryNav";
 import { Separator } from "../ui/separator";
 import {
   COMMAND_PALETTE_LABEL,
@@ -126,7 +127,9 @@ function RailSearchItem(props: { onSearch(): void }) {
 }
 
 function RailNavItem(props: { item: DashboardHeaderNavItem }) {
-  const active = useMatch({ end: false, path: props.item.to }) !== null;
+  // `/` would match every page; only home is the Lead.
+  const active =
+    useMatch({ end: props.item.to === "/", path: props.item.to }) !== null;
   return (
     <RailItem
       active={active}
@@ -177,6 +180,7 @@ export function NavRail(props: {
   profile?: ReactNode;
   workspaceActive: boolean;
 }) {
+  const { lead, rest } = splitLeadNavItem(props.navItems);
   return (
     <Sidebar
       className="border-dashboard-border-strong pt-[env(safe-area-inset-top)]"
@@ -211,13 +215,14 @@ export function NavRail(props: {
         <SidebarGroup className="px-3 py-0 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:px-2">
           <nav aria-label="Primary" className="w-full">
             <SidebarMenu className="gap-1 group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-1.5">
+              {lead ? <RailNavItem item={lead} /> : null}
               <RailItem
                 active={props.workspaceActive}
                 icon={MessagesSquare}
                 label="Conversations"
                 to="/conversations"
               />
-              {props.navItems.map((item) => (
+              {rest.map((item) => (
                 <RailNavItem item={item} key={item.key} />
               ))}
             </SidebarMenu>

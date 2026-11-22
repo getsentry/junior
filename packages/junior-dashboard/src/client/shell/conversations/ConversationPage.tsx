@@ -52,6 +52,14 @@ import {
   turnStartedEventSeq,
 } from "../../conversations/conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
+import { eventDetailsTrigger, turnContextTrigger } from "./panelTriggers";
+import { useLeadPageKind } from "../../lead/Lead";
+import {
+  LEAD_REPLY_PLACEHOLDER,
+  LeadFirstRun,
+  useLeadFirstRun,
+} from "../../lead/LeadFirstRun";
+import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
 import { ConversationPageDock } from "../../conversations/ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
@@ -236,12 +244,17 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
+  const { known: kindKnown, lead } = useLeadPageKind(
+    props.conversationId,
+    props.detail.data,
+  );
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
   // brings them back.
   const zen = useZenMode();
-  const detailsShown = showDetails && !zen.active;
+  // A Lead has no details: it is private and never archives.
+  const detailsShown = showDetails && !zen.active && kindKnown && !lead;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -432,6 +445,14 @@ export function ConversationPage(props: {
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
+  const leadFirstRun = useLeadFirstRun(
+    lead &&
+      transcriptShown &&
+      !history.hasPreviousPage &&
+      transcript?.events.length === 0 &&
+      detail.inlineMessages.length === 0,
+    replyRef,
+  );
   useEffect(() => {
     if (transcriptShown) recordTranscriptShown();
   }, [conversationId, transcriptShown]);
@@ -617,19 +638,12 @@ export function ConversationPage(props: {
   );
 
   const closeEventDetails = () => {
-    const trigger = pageRef.current?.querySelector<HTMLButtonElement>(
-      `[data-event-seq="${selectedEventSeq}"] button`,
-    );
+    const trigger = eventDetailsTrigger(pageRef.current, selectedEventSeq);
     setSelectedEventSeq(undefined);
     trigger?.focus({ preventScroll: true });
   };
   const closeTurnContext = () => {
-    // A message can have one context control per layout. Focus the visible one.
-    const trigger = [
-      ...(pageRef.current?.querySelectorAll<HTMLButtonElement>(
-        `[data-turn-context-id="${CSS.escape(turnContext?.id ?? "")}"]`,
-      ) ?? []),
-    ].find((button) => button.getClientRects().length > 0);
+    const trigger = turnContextTrigger(pageRef.current, turnContext?.id);
     setTurnContext(undefined);
     trigger?.focus({ preventScroll: true });
   };
@@ -706,6 +720,7 @@ export function ConversationPage(props: {
         <ChatLayout
           header={
             <ConversationHeader
+              lead={kindKnown ? lead : undefined}
               agentTree={conversationDetail?.agentTree}
               autoArchive={conversationDetail?.autoArchive}
               summary={conversationDetail?.summary}
@@ -814,7 +829,7 @@ export function ConversationPage(props: {
             />
           }
           overlay={
-            view === "rich" && !transcriptPending && outlineEvents ? (
+            view === "rich" && !lead && !transcriptPending && outlineEvents ? (
               <ConversationOutline
                 conversation={conversationDetail}
                 conversationId={conversationId}
@@ -832,7 +847,9 @@ export function ConversationPage(props: {
           }
           scroll={
             <TranscriptColumn full={view === "raw"}>
-              {transcriptPending ? (
+              {leadFirstRun.shown ? (
+                <LeadFirstRun onTry={leadFirstRun.prefill} />
+              ) : transcriptPending ? (
                 view === "raw" ? (
                   <ConversationEventLogLoading />
                 ) : (
@@ -843,7 +860,11 @@ export function ConversationPage(props: {
                   {detail.error.message}
                 </Card>
               ) : (
-                <>
+                <LeadPageScope
+                  lastSeq={detail.data?.events.at(-1)?.seq}
+                  lead={lead}
+                  prefill={leadFirstRun.prefill}
+                >
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
                       Transcript refresh failed. Showing the latest available
@@ -897,7 +918,7 @@ export function ConversationPage(props: {
                       view={view}
                     />
                   </ConversationCatchUpContext>
-                </>
+                </LeadPageScope>
               )}
             </TranscriptColumn>
           }
@@ -916,6 +937,7 @@ export function ConversationPage(props: {
                   live={live}
                   onFocusRequestDone={setReplyFocusDoneKey}
                   onPinRequest={requestPin}
+                  placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
                   ref={replyRef}
                 />
               </div>
