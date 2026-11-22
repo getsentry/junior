@@ -193,8 +193,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Snooze**: one User hides one Inbox item in their Inbox until a
   trigger, such as a timer or an Event, wakes or resolves it. A later item
   in the row is not snoozed.
-  Not an Automation. **Snoozed** (Inbox): the view of the User's snoozed
-  items.
+  Not an Automation. **Someday**: a Snooze with no trigger. It lasts until
+  the item closes, such as when someone else handles it, or until the User
+  wakes it. **Snoozed** (Inbox): the view of the User's snoozed items.
 - **To-do**: one entry in the durable list of work that outlives a Turn in
   one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
   status is open, in progress, done, or dropped. It has one Assignee: the
