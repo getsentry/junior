@@ -441,7 +441,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(summary).toHaveClass(/line-clamp-2/);
-    // The rows read the cards of their links again after the reload.
+    await page.reload({ waitUntil: "commit" });
+    // The rows read the cards of their links again after the reload. Wait
+    // from the commit of the new document, so a read from the page before
+    // the reload does not count.
     const cardsRead = ["pull/5378", "people/dev"].map((link) =>
       page.waitForResponse((response) => {
         const url = new URL(response.url());
@@ -451,7 +454,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         );
       }),
     );
-    await page.reload();
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(summary).toHaveClass(/line-clamp-2/);
     await Promise.all(cardsRead);
