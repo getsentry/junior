@@ -264,7 +264,7 @@ export async function listFiringInboxSnoozeTriggers(
 /**
  * End snoozes that a trigger fired. Only a `snoozed` row changes, so the
  * first trigger to fire wins. A woken snooze records why it woke. Return
- * the items of the snoozes that changed.
+ * the item and the User of each snooze that changed.
  */
 export async function settleInboxSnoozes(
   db: Pick<JuniorDatabase, "update">,
@@ -272,9 +272,9 @@ export async function settleInboxSnoozes(
     | { state: "cancelled" }
     | { reason: InboxSnoozeWakeReason; state: "woken" }
   ),
-): Promise<string[]> {
+): Promise<{ inboxItemId: string; userId: string }[]> {
   if (input.snoozeIds.length === 0) return [];
-  const rows = await db
+  return await db
     .update(juniorInboxSnoozes)
     .set(
       input.state === "woken"
@@ -287,8 +287,10 @@ export async function settleInboxSnoozes(
         eq(juniorInboxSnoozes.state, "snoozed"),
       ),
     )
-    .returning({ inboxItemId: juniorInboxSnoozes.inboxItemId });
-  return rows.map((row) => row.inboxItemId);
+    .returning({
+      inboxItemId: juniorInboxSnoozes.inboxItemId,
+      userId: juniorInboxSnoozes.userId,
+    });
 }
 
 /**

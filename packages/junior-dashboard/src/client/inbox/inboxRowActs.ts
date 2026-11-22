@@ -141,8 +141,9 @@ export function useInboxRowActs(options: {
 }
 
 /**
- * Each card's own Dismiss, or Done for a To-do, and Snooze in an Inbox row. A stack row leaves
- * with the rows that go with it. A card of a row with more leaves by itself.
+ * Each card's own Dismiss, Snooze, and a To-do's Done in an Inbox row. A
+ * stack row leaves with the rows that go with it. A card of a row with more
+ * leaves by itself.
  */
 export function inboxCardActions(input: {
   act: ReturnType<typeof useInboxRowActs>;
@@ -173,7 +174,7 @@ export function inboxCardActions(input: {
       const todo = item.todoId !== undefined;
       return {
         eventSnooze: eventSnoozeOf([item], snooze),
-        onDismiss: todo ? undefined : close("dismiss"),
+        onDismiss: close("dismiss"),
         onDone: todo ? close("done") : undefined,
         onSnooze: snooze,
         onSnoozeMenu: (open) => setSnoozeKey(open ? menuKey : undefined),
@@ -184,8 +185,8 @@ export function inboxCardActions(input: {
 
 /**
  * A stack's own actions: Snooze, for every row, and Dismiss, which closes every
- * open ask of the stack that the viewer can act on, except To-dos: only
- * Done closes those. A snoozed stack has
+ * open ask of the stack that the viewer can act on, except To-dos: each
+ * closes on its own row. A snoozed stack has
  * neither. Dismiss puts the whole stack away (`useLeaveRow`), so the
  * next row after it opens.
  */

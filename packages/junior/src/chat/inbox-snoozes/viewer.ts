@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { User } from "@sentry/junior-plugin-api";
-import { and, count, eq, inArray, notLike, sql } from "drizzle-orm";
+import { and, count, eq, inArray, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -10,9 +10,7 @@ import {
   inboxItemForUser,
   inboxItemReaderForUser,
   inboxItemReaderForUserInConversation,
-  inboxItemTodo,
   inboxItemVisibleTo,
-  TODO_INBOX_ITEM_KEY_PREFIX,
 } from "@/chat/inbox-items/access";
 import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
 import { juniorConversations } from "@/db/schema/conversations";
@@ -78,10 +76,7 @@ async function rootConversationIds(
 
 /** An open item of an Inbox row, as a snooze of it reads it. */
 interface RowItem {
-  /**
-   * The viewer can dismiss it (`canActOnInboxItem`). Nobody dismisses a
-   * To-do's item: it closes with its To-do.
-   */
+  /** The viewer can close it (`canActOnInboxItem`). */
   canAct: boolean;
   id: string;
   subjectUrl: string | null;
@@ -117,7 +112,7 @@ async function visibleRowItems(
     ) {
       return [
         {
-          canAct: canActOnInboxItem(item, user.id) && !inboxItemTodo(item),
+          canAct: canActOnInboxItem(item, user.id),
           id: item.id,
           subjectUrl: item.subject?.url ?? null,
         },
@@ -129,7 +124,7 @@ async function visibleRowItems(
   const reader = await inboxItemReaderForUserInConversation(user, root);
   return getDb()
     .select({
-      canAct: sql<boolean>`${and(inboxItemForUser(user.id), notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`))}`,
+      canAct: sql<boolean>`${inboxItemForUser(user.id)}`,
       id: juniorInboxItems.id,
       subjectUrl: juniorInboxItems.subjectUrl,
     })
@@ -184,8 +179,8 @@ async function namedResources(
 /**
  * Aim each trigger at its named resource, or at the resource of the item's
  * subject. A viewer waits on the subject without a check, as the item
- * already names it. A `resolve` dismisses the item, so it needs a viewer
- * who can dismiss it. Returns undefined when a trigger does not apply to
+ * already names it. A `resolve` closes the item, so it needs a viewer
+ * who can close it. Returns undefined when a trigger does not apply to
  * the item.
  */
 function itemTriggers(

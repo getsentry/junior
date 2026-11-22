@@ -12,7 +12,7 @@ import { RowDoneButton, RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 import { onLinkOpen } from "./rowClick";
 
-/** What one card does by itself: its Dismiss, or Done, and Snooze. */
+/** What one card does by itself: its Dismiss, Snooze, and a To-do's Done. */
 export type InboxCardActions = {
   eventSnooze?: EventSnooze | undefined;
   onDismiss?(): void;
@@ -58,10 +58,10 @@ export function RowActionButton(props: {
 }
 
 /**
- * The quick actions of a row with one ask: Dismiss, or Done for a To-do,
- * Snooze, and its main step at the right end, as on the open card. A row
- * with no main step, such as a question, gets Expand. While the row is
- * open, its card's action line holds them, so these go.
+ * The quick actions of a row with one ask: Dismiss, Snooze, and its main
+ * step at the right end, as on the open card. A To-do's main step is Done.
+ * A row with no main step, such as a question, gets Expand. While the row
+ * is open, its card's action line holds them, so these go.
  */
 export function RowQuickActions(props: {
   actions: InboxCardActions;
@@ -77,9 +77,6 @@ export function RowQuickActions(props: {
       {actions.onDismiss ? (
         <RowDismissButton look="icon" onClick={actions.onDismiss} />
       ) : null}
-      {actions.onDone ? (
-        <RowDoneButton look="icon" onClick={actions.onDone} />
-      ) : null}
       {actions.onSnooze ? (
         <RowSnoozeButton
           eventSnooze={actions.eventSnooze}
@@ -89,15 +86,18 @@ export function RowQuickActions(props: {
           open={actions.snoozeMenuOpen}
         />
       ) : null}
-      {props.main ?? (
-        <RowActionButton
-          disabled={false}
-          icon={<ChevronDown aria-hidden="true" size={14} />}
-          label="Expand"
-          onClick={props.onExpand}
-          tooltip="Expand"
-        />
-      )}
+      {props.main ??
+        (actions.onDone ? (
+          <RowDoneButton look="icon" onClick={actions.onDone} />
+        ) : (
+          <RowActionButton
+            disabled={false}
+            icon={<ChevronDown aria-hidden="true" size={14} />}
+            label="Expand"
+            onClick={props.onExpand}
+            tooltip="Expand"
+          />
+        ))}
     </>
   );
 }
