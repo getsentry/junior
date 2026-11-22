@@ -13,6 +13,8 @@ function envFileNames(nodeEnv) {
 
 export const JUNIOR_LOCAL_DEV_INTERNAL_SECRET = "junior-local-dev-internal";
 export const JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET = "junior-local-dev-heartbeat";
+/** The Redis service in `compose.yaml`, for local BullMQ queue workers. */
+export const JUNIOR_LOCAL_QUEUE_REDIS_URL = "redis://localhost:6382";
 
 function hasValue(value) {
   return typeof value === "string" && value.trim() !== "";

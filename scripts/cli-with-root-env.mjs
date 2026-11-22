@@ -3,6 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
   applyJuniorDevelopmentDefaults,
+  JUNIOR_LOCAL_QUEUE_REDIS_URL,
   loadEnvFiles,
 } from "./lib/load-env-files.mjs";
 
@@ -20,8 +21,15 @@ const juniorTsconfigPath = path.join(
 const rawCliArgs = process.argv.slice(2);
 const cliArgs = rawCliArgs[0] === "--" ? rawCliArgs.slice(1) : rawCliArgs;
 
+const coreEngineChat =
+  cliArgs[0] === "chat" && cliArgs[1] === "--engine" && cliArgs[2] === "core";
+
 loadEnvFiles([workspaceRoot, exampleRoot]);
-applyJuniorDevelopmentDefaults(process.env);
+applyJuniorDevelopmentDefaults(
+  process.env,
+  // The core engine runs its steps on a BullMQ worker in the CLI process.
+  coreEngineChat ? { queueRedisUrl: JUNIOR_LOCAL_QUEUE_REDIS_URL } : {},
+);
 
 function run(command, args, options = {}) {
   return new Promise((resolve) => {

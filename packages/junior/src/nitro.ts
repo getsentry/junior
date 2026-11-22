@@ -17,6 +17,7 @@ import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
 import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
 import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
+import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
@@ -29,6 +30,7 @@ import {
   JUNIOR_RETENTION_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+  JUNIOR_TURN_STEP_CALLBACK_ROUTE,
   getDeploymentServiceVersion,
 } from "@/deployment";
 import {
@@ -251,6 +253,7 @@ function configureVercelDeployment(
     JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
     BACKGROUND_COMPACTION_QUEUE_TOPIC,
   );
+  addQueueTrigger(JUNIOR_TURN_STEP_CALLBACK_ROUTE, TURN_STEP_TOPIC);
 
   return defaultMaxDuration;
 }

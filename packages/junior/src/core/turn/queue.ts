@@ -104,7 +104,7 @@ export type RunTurnStep = (
  * Builds the queue consumer of Turn step messages. It acknowledges a message
  * with a bad or expired signature and retries one that cannot be checked yet.
  */
-export function turnStepCallback(run: RunTurnStep) {
+export function createTurnStepConsumer(run: RunTurnStep) {
   return queueCallback<TurnStepMessage>({
     consumerGroup: TURN_STEP_CONSUMER_GROUP,
     // advanceTurn fails a Turn after `maxAttempts` tries of one step, so the

@@ -18,7 +18,7 @@ import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ToolDefinition } from "@/core/tool";
 import { advanceTurn } from "@/core/turn/advance";
 import type { InputMessage, UnreadInput } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC, turnStepCallback } from "@/core/turn/queue";
+import { TURN_STEP_TOPIC, createTurnStepConsumer } from "@/core/turn/queue";
 import {
   juniorConversations,
   juniorIdentities,
@@ -111,7 +111,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
   // The topic is fixed, so a count takes only the messages of one Turn.
   const worker = await provider.startWorker([
     {
-      ...turnStepCallback(() => Promise.resolve()).consumer,
+      ...createTurnStepConsumer(() => Promise.resolve()).consumer,
       handler: async (payload) => {
         const parsed = carriedPayloadSchema.safeParse(payload);
         if (!parsed.success) {
