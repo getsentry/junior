@@ -6,10 +6,7 @@ import {
   getConversationWorkState,
   type InboundMessage,
 } from "@/chat/task-execution/store";
-import {
-  AGENT_INVOCATION_EVENT_NAMESPACE,
-  AGENT_PARENT_MESSAGE_EVENT_TYPE,
-} from "./result-event-type";
+import { AGENT_INVOCATION_EVENT_NAMESPACE } from "./result-event-type";
 import { getAgentInvocationResultMessageId } from "./ids";
 import {
   hasAgentInvocationReply,
@@ -256,12 +253,14 @@ export function sendsResultToParent(
 async function hasOpenChildWork(
   conversationId: string,
   exceptInvocationId: string | undefined,
+  endingChildConversationId?: string,
 ): Promise<boolean> {
   const open = await listOpenAgentInvocations(conversationId);
   if (
     open.some((row) => row.invocationId !== exceptInvocationId) ||
-    (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).length >
-      0
+    (await listOpenChildAgentsWithoutAgentInvocations(conversationId)).some(
+      (childId) => childId !== endingChildConversationId,
+    )
   ) {
     return true;
   }
@@ -391,18 +390,26 @@ export async function reportReplacedAgentInvocation(
  * ended and sent it nothing, such as a helper that ended with `noReply`. No
  * later agent invocation of the child would send the report. Input from its
  * own child agents that still waits in its mailbox starts one, so that one
- * reports instead.
+ * reports instead. `endingChildConversationId` names a child agent whose
+ * work stops now, so its open work does not count.
  */
 export async function reportReplacedWithoutOpenWork(
   conversationId: string,
-  nowMs = Date.now(),
+  options: {
+    endingChildConversationId?: string | undefined;
+    nowMs?: number;
+  } = {},
 ): Promise<AgentInvocation | undefined> {
   const latest = await getLatestAgentInvocationForConversation(conversationId);
   if (
     !latest ||
     !isTerminalAgentInvocation(latest) ||
     latest.parentMailboxStatus !== "replaced" ||
-    (await hasOpenChildWork(latest.childConversationId, latest.invocationId))
+    (await hasOpenChildWork(
+      latest.childConversationId,
+      latest.invocationId,
+      options.endingChildConversationId,
+    ))
   ) {
     return undefined;
   }
@@ -412,17 +419,18 @@ export async function reportReplacedWithoutOpenWork(
   if (waiting?.messages.some(isChildAgentInputMessage)) {
     return undefined;
   }
-  return await reportReplacedAgentInvocation(latest.invocationId, nowMs);
+  return await reportReplacedAgentInvocation(
+    latest.invocationId,
+    options.nowMs ?? Date.now(),
+  );
 }
 
-// Results, replies, and messages from a child's own child agents. A message
-// from the child's parent is not one.
+// Results, replies, and messages from a child's own child agents.
 function isChildAgentInputMessage(message: InboundMessage): boolean {
   const metadata = message.input.metadata;
   return (
     isEventMailboxMetadata(metadata) &&
-    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
-    metadata.event.eventType !== AGENT_PARENT_MESSAGE_EVENT_TYPE
+    metadata.event.namespace === AGENT_INVOCATION_EVENT_NAMESPACE
   );
 }
 
