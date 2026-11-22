@@ -240,6 +240,9 @@ can start a Thread instead, a child agent that people can open and message
 directly. A parent can have at most 8 child agents with open work, Tasks and
 Threads alike. The model can archive a finished Thread with `archiveAgent`.
 
+A stopped conversation gives its child agents no new work: its `messageAgent`
+calls return `noted` and start nothing, and its `spawnAgent` calls fail.
+
 By default, a child agent of the root Conversation can start its own child
 agents, and those cannot start more. Set `limits.maxAgentDepth` to change how
 many levels of child agents can start their own. `0` lets only the root

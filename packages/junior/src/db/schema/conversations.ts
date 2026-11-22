@@ -7,6 +7,7 @@ import {
   jsonb,
   pgTable,
   text,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { juniorDestinations } from "./destinations";
 import { juniorIdentities } from "./identities";
@@ -81,8 +82,8 @@ export const juniorConversations = pgTable(
     parentConversationId: text("parent_conversation_id").references(
       (): AnyPgColumn => juniorConversations.conversationId,
     ),
-    // `root` or `automation` exactly when parent_conversation_id is null. Set
-    // once at create.
+    // `root`, `automation`, or `lead` exactly when parent_conversation_id is
+    // null. Set once at create.
     // The checks below enforce this. A writer of an older deploy leaves it null.
     // TODO(dcramer): After every deployed writer sets kind, rerun the
     // `kind IS NULL` backfill, add NOT NULL, and drop the `kind is null or`
@@ -98,10 +99,6 @@ export const juniorConversations = pgTable(
     // Archive applies to everyone, on a root or a child. A Conversation shows
     // only while it and every ancestor are unarchived.
     archivedAt: timestamptz("archived_at"),
-    // The old child archive, copied into `archived_at`. Runtime code must not
-    // read or write it. A later migration drops it, so the release before
-    // still reads it while it rolls out.
-    legacyChildArchivedAt: timestamptz("child_archived_at"),
     // Forks are independent roots. This edge supports source/fork lookup and
     // does not affect root ownership or child conversation traversal.
     forkedFromConversationId: text("forked_from_conversation_id").references(
@@ -141,11 +138,11 @@ export const juniorConversations = pgTable(
   (table) => [
     check(
       "junior_conversations_kind_check",
-      sql`${table.kind} in ('root', 'automation', 'thread', 'task')`,
+      sql`${table.kind} in ('root', 'automation', 'lead', 'thread', 'task')`,
     ),
     check(
       "junior_conversations_kind_parent_check",
-      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation')) = (${table.parentConversationId} is null))`,
+      sql`${table.kind} is null or ((${table.kind} in ('root', 'automation', 'lead')) = (${table.parentConversationId} is null))`,
     ),
     index("junior_conversations_last_activity_idx").on(
       table.lastActivityAt.desc(),
@@ -171,6 +168,11 @@ export const juniorConversations = pgTable(
       table.forkedFromConversationId,
     ),
     index("junior_conversations_root_idx").on(table.rootConversationId),
+    // One lead per Identity. Only web creates a lead, so its root Actor is
+    // the web Identity of its User.
+    uniqueIndex("junior_conversations_lead_actor_idx")
+      .on(table.actorIdentityId)
+      .where(sql`${table.kind} = 'lead'`),
     // Search reads this exact expression: `conversationSearchVector`.
     index("junior_conversations_search_idx").using(
       "gin",

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { findLinkedHandle } from "@/chat/identities/user-lookup";
+import { parseSlackTeamId } from "@/chat/slack/ids";
 import { usersInfoOk, usersListPage } from "../fixtures/slack/factories/api";
 import {
   executeTool,
@@ -206,5 +208,55 @@ describe("userLookup without a provider", () => {
     await expect(
       executeTool(lookupTool(), { query: "U0MISSING" }),
     ).resolves.toMatchObject({ count: 0, ambiguous: false, users: [] });
+  });
+});
+
+describe("findLinkedHandle", () => {
+  const findGitHubHandle = async (query: string) =>
+    await findLinkedHandle({
+      egress: {
+        fetch: async () => {
+          throw new Error("findLinkedHandle tests make no provider requests");
+        },
+      },
+      provider: "github",
+      providers: ["slack", "github"],
+      query,
+      teamId: parseSlackTeamId("T0TEST")!,
+    });
+
+  it("returns the linked handle of the person a mention names", async () => {
+    await seedLinkedIdentities({
+      githubId: "12345",
+      githubHandle: "dcramer",
+      slackUserId: "U039RR91S",
+      slackHandle: "david",
+    });
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U039RR91S", userName: "david" }),
+    });
+
+    await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual({
+      status: "found",
+      handle: "dcramer",
+    });
+  });
+
+  it("reports a person with no linked account", async () => {
+    queueSlackApiResponse("users.info", {
+      body: usersInfoOk({ userId: "U0NOLINK", userName: "nolink" }),
+    });
+
+    await expect(findGitHubHandle("<@U0NOLINK>")).resolves.toEqual({
+      status: "unlinked",
+    });
+  });
+
+  it("reports a query that names nobody", async () => {
+    queueSlackApiError("users.info", { error: "user_not_found" });
+
+    await expect(findGitHubHandle("U0MISSING")).resolves.toEqual({
+      status: "not_found",
+    });
   });
 });

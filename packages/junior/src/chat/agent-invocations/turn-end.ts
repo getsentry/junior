@@ -3,6 +3,8 @@ import type { SavedTurnResult } from "@/chat/runtime/turn-execution";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
 import type { TurnRecord } from "@/chat/task-execution/turn-cursor";
 import { readTurnAnswer, type Reply } from "@/chat/turn-answer";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
 import type { AgentInvocation, TerminalAgentInvocation } from "./types";
 
 /** Send the `reply` of one child Turn to the parent's inbox. */
@@ -45,19 +47,21 @@ export function agentInvocationTurnEnd(
  * that, or the Turn is paused. Returns undefined for a paused Turn without a
  * `reply`, which can still resume.
  */
-export function savedTurnEnd(
+export async function savedTurnEnd(
   turn: TurnRecord,
-):
+): Promise<
   | { errorMessage: string; status: "blocked" | "failed" }
   | { result: string; status: "completed" }
-  | undefined {
-  // Read the answer only from this Turn. A Turn record without a start index
-  // cannot tell this Turn from earlier history of a named child. Its reply
-  // reached the parent before the Turn was saved.
-  const answer =
-    turn.turnStartMessageIndex === undefined
-      ? undefined
-      : readTurnAnswer(turn.piMessages.slice(turn.turnStartMessageIndex));
+  | undefined
+> {
+  // Read the answer only from this Turn, not from earlier history of a named
+  // child.
+  const answer = readTurnAnswer(
+    savedTurnMessages(
+      turn,
+      await loadTurnStart(turn.conversationId, turn.turnId),
+    ).map(({ message }) => message),
+  );
   if (answer && "reply" in answer) {
     return { result: answer.reply.text, status: "completed" };
   }

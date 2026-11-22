@@ -1,44 +1,30 @@
-import { actorSchema } from "@sentry/junior-plugin-api";
-import { and, desc, eq, sql } from "drizzle-orm";
-import * as z from "zod";
+import type { Actor } from "@sentry/junior-plugin-api";
+import type { StateAdapter } from "chat";
+import { and, desc, eq, like, sql } from "drizzle-orm";
 import type { AgentInstruction, AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
-import { credentialContextSchema } from "@/chat/credentials/context";
+import type { ConversationStore } from "@/chat/conversations/store";
+import {
+  getConversationStoppedAtMs,
+  resumeConversationTree,
+} from "@/chat/conversations/session-stop";
+import type { CredentialContext } from "@/chat/credentials/context";
 import { getSqlExecutor } from "@/chat/db";
 import { logWarn } from "@/chat/logging";
-import type { PiMessage } from "@/chat/pi/messages";
-import type { InboundMessage } from "@/chat/task-execution/store";
-import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { loadForkHistory } from "./fork-history";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import {
-  AGENT_INVOCATION_EVENT_NAMESPACE,
-  AGENT_PARENT_MESSAGE_EVENT_TYPE,
-} from "./result-event-type";
+  appendInboundMessage,
+  dropPendingMessages,
+  getConversationWorkState,
+  releaseInboundMessage,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
+import { juniorConversationEvents, juniorConversations } from "@/db/schema";
+import { commitForkHistory } from "./fork-history";
+import { getAgentInvocationId, getAgentInvocationMessageId } from "./ids";
 import { readAgentConfig } from "@/chat/conversations/agent-config";
 import { agentInvocationInputText } from "./work";
-
-/**
- * A parent agent task or message to a child that no Agent invocation names.
- * It is an Event from the parent Conversation (`event.identifier`) with the
- * Actor and grants of the parent's Turn, and the `spawnAgent` or
- * `messageAgent` tool call that sent it. Its text is the raw task. `fork`
- * marks the task of a fork spawn.
- */
-const parentMessageSchema = z.object({
-  actor: actorSchema,
-  credentialContext: credentialContextSchema.optional(),
-  event: z.object({
-    eventType: z.literal(AGENT_PARENT_MESSAGE_EVENT_TYPE),
-    identifier: z.string().min(1),
-    namespace: z.literal(AGENT_INVOCATION_EVENT_NAMESPACE),
-  }),
-  fork: z.literal(true).optional(),
-  kind: z.literal("event"),
-  parentToolCallId: z.string().min(1),
-});
-
-/** One parent agent task or message read from a child's mailbox. */
-export type ParentMessage = z.output<typeof parentMessageSchema>;
+import { readParentMessage, type ParentMessage } from "./parent-message-input";
 
 /**
  * Return the author id of every parent message from one parent. It matches
@@ -46,21 +32,158 @@ export type ParentMessage = z.output<typeof parentMessageSchema>;
  * sender's input.
  */
 export function parentMessageAuthorId(parentConversationId: string): string {
-  return `parent-agent:${parentConversationId}`;
+  return `${PARENT_MESSAGE_AUTHOR_PREFIX}${parentConversationId}`;
+}
+
+const PARENT_MESSAGE_AUTHOR_PREFIX = "parent-agent:";
+
+/**
+ * Build the parent message that gives one task or message to a child that no
+ * Agent invocation names. It has the mailbox id that an Agent invocation with
+ * the same idempotency key would have, so a replay is a duplicate.
+ */
+export function buildParentMessage(args: {
+  actor: Actor;
+  childConversationId: string;
+  credentialContext?: CredentialContext | undefined;
+  fork?: true | undefined;
+  idempotencyKey: string;
+  nowMs: number;
+  parentConversationId: string;
+  parentToolCallId: string;
+  text: string;
+}): InboundMessage {
+  const inboundMessageId = getAgentInvocationMessageId(
+    getAgentInvocationId(args.parentConversationId, args.idempotencyKey),
+  );
+  return {
+    conversationId: args.childConversationId,
+    createdAtMs: args.nowMs,
+    delivery: "defer",
+    inboundMessageId,
+    input: {
+      authorId: parentMessageAuthorId(args.parentConversationId),
+      // A parent agent wrote the text, not a person.
+      authorIdentityId: SYSTEM_IDENTITY_ID,
+      metadata: {
+        actor: args.actor,
+        ...(args.credentialContext
+          ? { credentialContext: args.credentialContext }
+          : undefined),
+        ...(args.fork ? { fork: true } : undefined),
+        kind: "parent_message",
+        parentConversationId: args.parentConversationId,
+        parentToolCallId: args.parentToolCallId,
+      } satisfies ParentMessage,
+      text: args.text,
+    },
+    receivedAtMs: args.nowMs,
+    source: "internal",
+  };
 }
 
 /**
- * Read the parent message that one mailbox input is, if it is one. Check its
- * sender with `isFromStoredParent` before it gets any authority.
+ * How a parent message reaches its child. `new_child` is the task of a
+ * spawn that created the child in the same SQL transaction. `message` is
+ * new work for a child that exists.
  */
-export function readParentMessage(
+export type ParentMessageDelivery = "message" | "new_child";
+
+/**
+ * Append one parent message to its child's mailbox without a wake.
+ *
+ * A new child gets its task even when the mailbox already saw its id: a
+ * spawn that rolled back after its mailbox write left that id, and the child
+ * dropped the task because no stored parent sent it. SQL decides: the child
+ * exists only when this transaction commits.
+ *
+ * New work for a child that exists ends the stop of the child and of the
+ * child agents below it, as an Agent invocation does. The stop already
+ * dropped the parent messages that waited then. A message that already
+ * reached the mailbox changes nothing, so a replay does not end a later
+ * stop.
+ */
+export async function appendParentMessage(
   message: InboundMessage,
-): ParentMessage | undefined {
-  if (message.source !== "event") {
-    return undefined;
+  delivery: ParentMessageDelivery,
+  options: {
+    conversationStore?: ConversationStore | undefined;
+    state?: StateAdapter | undefined;
+  },
+): Promise<void> {
+  const conversationId = message.conversationId;
+  const work = await getConversationWorkState({
+    conversationId,
+    state: options.state,
+  });
+  // A task that a rolled-back spawn left still waits, so this append
+  // replaces it.
+  const waiting = work?.messages.some(
+    (pending) => pending.inboundMessageId === message.inboundMessageId,
+  );
+  if (delivery === "new_child") {
+    if (!waiting) {
+      await releaseInboundMessage({ message, state: options.state });
+    }
+  } else {
+    // A replay is not new work, even after a stop dropped it: a drop keeps
+    // the id, so check it before the stop ends.
+    if (work?.execution.inboundMessageIds.includes(message.inboundMessageId)) {
+      return;
+    }
+    await endStopForParentMessage(message);
   }
-  const parsed = parentMessageSchema.safeParse(message.input.metadata);
-  return parsed.success ? parsed.data : undefined;
+  const { status } = await appendInboundMessage({
+    message,
+    ...(options.conversationStore
+      ? { conversationStore: options.conversationStore }
+      : undefined),
+    nowMs: message.receivedAtMs,
+    ...(options.state ? { state: options.state } : undefined),
+  });
+  if (delivery === "new_child") {
+    if (status === "duplicate" && !waiting) {
+      // A worker took the stale id between the release and this append.
+      throw new Error(
+        `Task of new child ${conversationId} was taken before it was appended`,
+      );
+    }
+  }
+}
+
+async function endStopForParentMessage(message: InboundMessage): Promise<void> {
+  const stoppedAtMs = await getConversationStoppedAtMs(message.conversationId);
+  if (stoppedAtMs !== undefined && message.createdAtMs > stoppedAtMs) {
+    await resumeConversationTree(message.conversationId, message.createdAtMs);
+  }
+}
+
+/**
+ * Drop every parent message that waits in a Conversation's mailbox. A stop
+ * calls this before it saves its stop request: no task from before the stop
+ * runs, and an idle Conversation gets no stop request that could cancel its
+ * next Turn after the stop ends.
+ */
+export async function dropWaitingParentMessages(
+  conversationId: string,
+  state?: StateAdapter,
+): Promise<void> {
+  const work = await getConversationWorkState({ conversationId, state });
+  const waiting = (work?.messages ?? []).flatMap((message) => {
+    const parentMessage = readParentMessage(message);
+    return parentMessage ? [{ message, parentMessage }] : [];
+  });
+  if (waiting.length === 0) {
+    return;
+  }
+  await dropPendingMessages({
+    conversationId,
+    inboundMessageIds: waiting.map(({ message }) => message.inboundMessageId),
+    ...(state ? { state } : undefined),
+  });
+  for (const { message, parentMessage } of waiting) {
+    logDroppedParentMessage(message, parentMessage);
+  }
 }
 
 /**
@@ -74,7 +197,7 @@ export async function isFromStoredParent(
 ): Promise<boolean> {
   const rows =
     message.input.authorId ===
-    parentMessageAuthorId(parentMessage.event.identifier)
+    parentMessageAuthorId(parentMessage.parentConversationId)
       ? await getSqlExecutor()
           .db()
           .select({ conversationId: juniorConversations.conversationId })
@@ -84,7 +207,7 @@ export async function isFromStoredParent(
               eq(juniorConversations.conversationId, message.conversationId),
               eq(
                 juniorConversations.parentConversationId,
-                parentMessage.event.identifier,
+                parentMessage.parentConversationId,
               ),
             ),
           )
@@ -103,7 +226,7 @@ export function logDroppedParentMessage(
   logWarn("agent.parent_message.dropped", {
     "app.conversation_id": message.conversationId,
     "app.inbound_message_id": message.inboundMessageId,
-    "app.parent_conversation_id": parentMessage.event.identifier,
+    "app.parent_conversation_id": parentMessage.parentConversationId,
   });
 }
 
@@ -124,16 +247,25 @@ export async function parentMessageText(
   });
 }
 
+/** Saved transcript author of every parent message from one parent. */
+export function parentMessageAuthor(parentConversationId: string) {
+  return {
+    fullName: "Parent agent",
+    isBot: true,
+    userId: parentMessageAuthorId(parentConversationId),
+  } as const;
+}
+
 /**
- * Return whether a saved transcript Message is a parent message. Only the
- * root Turn code saves one, after its sender check.
+ * Return whether a saved transcript Message is a parent message, by its
+ * author. Only the root Turn code saves one, after its sender check.
  */
-export function isParentMessageMeta(
-  meta: { eventNamespace?: unknown; eventType?: unknown } | undefined,
+export function isParentMessageAuthor(
+  author: { userId?: unknown } | undefined,
 ): boolean {
   return (
-    meta?.eventNamespace === AGENT_INVOCATION_EVENT_NAMESPACE &&
-    meta.eventType === AGENT_PARENT_MESSAGE_EVENT_TYPE
+    typeof author?.userId === "string" &&
+    author.userId.startsWith(PARENT_MESSAGE_AUTHOR_PREFIX)
   );
 }
 
@@ -153,8 +285,10 @@ export async function readLastParentMessageAtMs(
       and(
         eq(juniorConversationEvents.conversationId, conversationId),
         eq(juniorConversationEvents.type, "message"),
-        sql`${payload}->'meta'->>'eventNamespace' = ${AGENT_INVOCATION_EVENT_NAMESPACE}`,
-        sql`${payload}->'meta'->>'eventType' = ${AGENT_PARENT_MESSAGE_EVENT_TYPE}`,
+        like(
+          sql`${payload}->'meta'->'author'->>'userId'`,
+          `${PARENT_MESSAGE_AUTHOR_PREFIX}%`,
+        ),
       ),
     )
     .orderBy(desc(juniorConversationEvents.createdAt))
@@ -163,38 +297,43 @@ export async function readLastParentMessageAtMs(
 }
 
 /**
+ * Commit the parent's history for the first Turn of a fork child, before the
+ * Turn starts. `inputs` passed the sender check.
+ */
+export async function commitParentMessageFork(args: {
+  conversationId: string;
+  inputs: readonly InboundMessage[];
+}): Promise<void> {
+  const parentMessage = args.inputs
+    .map(readParentMessage)
+    .find((input) => input !== undefined);
+  if (parentMessage?.fork) {
+    await commitForkHistory({
+      childConversationId: args.conversationId,
+      parentConversationId: parentMessage.parentConversationId,
+      parentToolCallId: parentMessage.parentToolCallId,
+    });
+  }
+}
+
+/**
  * Apply the agent config of a child agent to one of its Turns on the root
- * Turn code. Every Turn keeps the reasoning level. A fork's first Turn
- * starts with its parent's history. A parent message is the child's
- * instruction, as on an Agent invocation, also when its Turn resumes
- * (`savedParentMessage`). `inputs` passed the sender check.
+ * Turn code. Every Turn keeps the reasoning level. A parent message is the
+ * child's instruction, as on an Agent invocation, also when its Turn resumes
+ * (`fromParent`).
  */
 export async function childAgentTurnOptions(args: {
   conversationId: string;
-  history: PiMessage[];
-  inputs: readonly InboundMessage[];
-  savedParentMessage: boolean;
+  fromParent: boolean;
 }): Promise<{
-  history: PiMessage[];
   instruction: Pick<AgentInstruction, "provenance">;
   run: Pick<AgentRun, "reasoning">;
 }> {
   const options = await readAgentConfig(args.conversationId);
-  const parentMessage = args.inputs
-    .map(readParentMessage)
-    .find((input) => input !== undefined);
   return {
-    history:
-      parentMessage?.fork && args.history.length === 0
-        ? await loadForkHistory({
-            parentConversationId: parentMessage.event.identifier,
-            parentToolCallId: parentMessage.parentToolCallId,
-          })
-        : args.history,
-    instruction:
-      parentMessage || args.savedParentMessage
-        ? { provenance: agentInstructionProvenance }
-        : {},
+    instruction: args.fromParent
+      ? { provenance: agentInstructionProvenance }
+      : {},
     run: options?.reasoningLevel ? { reasoning: options.reasoningLevel } : {},
   };
 }

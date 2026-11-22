@@ -478,6 +478,12 @@ export interface GitHubPullRequestMergeState {
   mergeableState?: string;
   /** Logins of the people whose review GitHub still requests. */
   requestedReviewers: string[];
+  /**
+   * Logins of the people whose latest submitted review was not dismissed,
+   * including a comment-only review. Read only when the pull request is open
+   * and not a draft.
+   */
+  reviewedBy: string[];
   state: "closed" | "merged" | "open";
   title: string;
   url: string;
@@ -597,6 +603,7 @@ export async function loadPullRequestMergeState(
         ? [request.requestedReviewer.login]
         : [],
     ),
+    reviewedBy: [],
     state:
       pull.state === "MERGED"
         ? "merged"
@@ -619,6 +626,17 @@ export async function loadPullRequestMergeState(
       latest.set(review.author.login.toLowerCase(), review);
     }
   }
+  // A dismissed review counts only when it is the person's latest review.
+  // GitHub keeps their earlier reviews, such as a comment before it.
+  const latestSubmitted = new Map<string, string>();
+  for (const review of reviews) {
+    if (review.author && review.submittedAt && review.state !== "PENDING") {
+      latestSubmitted.set(review.author.login.toLowerCase(), review.state);
+    }
+  }
+  state.reviewedBy = [...latestSubmitted].flatMap(([login, reviewState]) =>
+    reviewState === "DISMISSED" ? [] : [login],
+  );
   const reviewStates = [...latest.values()].map((review) => review.state);
   if (!state.autoMerge && state.mergeableState === "clean") {
     state.approved =

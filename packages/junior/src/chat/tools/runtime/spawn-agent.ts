@@ -3,6 +3,7 @@ import {
   AgentDepthLimitError,
   AgentInvocationLimitError,
   AgentNameInUseError,
+  AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
 import {
   agentNameSchema,
@@ -168,6 +169,12 @@ export function createSpawnAgentTool(
         if (error instanceof AgentInvocationLimitError) {
           throw new ToolInputError(
             `${error.message}. Wait for active children to finish before spawning more.`,
+            { cause: error },
+          );
+        }
+        if (error instanceof AgentStoppedError) {
+          throw new ToolInputError(
+            `${error.message}. Do not start more work. End this turn.`,
             { cause: error },
           );
         }

@@ -247,7 +247,7 @@ describe("Slack behavior: subscribed messages", () => {
         agentRunner: replyForRun((run) => {
           replyCalls.push({
             prompt: run.instruction.text,
-            piMessages: run.history ? [...run.history] : undefined,
+            piMessages: run.history ? [...run.history.messages] : undefined,
           });
           return "Handled queued subscribed turn.";
         }),

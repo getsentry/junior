@@ -1,6 +1,7 @@
 import { agentEventKeys, declaredEventKeys } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  CORE_EVENT_NAMESPACE,
   eventNamespaceSchema,
   eventWatchUnavailable,
   requireEventIdentifier,
@@ -10,6 +11,10 @@ import {
   requireValidEventTrigger,
   type EventCatalog,
 } from "@/chat/events/catalog";
+import { canReadConversation } from "@/api/conversations/access";
+import { getConversationStore, getDb } from "@/chat/db";
+import { watchRepeatsChildResults } from "@/chat/conversations/kind-behavior";
+import { CONVERSATION_RESOURCE_TYPE } from "@/chat/conversations/watch-events";
 import { createWatch } from "@/chat/events/store";
 import {
   RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS,
@@ -109,6 +114,31 @@ function ttlMs(input: Input): number {
   return input.ttl_ms;
 }
 
+/**
+ * A Watch on a Conversation reads its status, so the watcher must be able to
+ * read it. "Not found" and "no access" get the same error. A child agent's
+ * results already reach its parent, so a Watch on it would deliver each
+ * result twice.
+ */
+async function requireWatchableConversation(
+  watcherConversationId: string,
+  conversationId: string,
+): Promise<void> {
+  if (
+    !(await canReadConversation(getDb(), watcherConversationId, conversationId))
+  ) {
+    throw new ToolInputError(
+      `Conversation is not accessible: ${conversationId}`,
+    );
+  }
+  const target = await getConversationStore().get({ conversationId });
+  if (target && watchRepeatsChildResults(target, watcherConversationId)) {
+    throw new ToolInputError(
+      `${conversationId} is a child agent of this Conversation. Its results and messages already arrive here without a Watch.`,
+    );
+  }
+}
+
 /** Static definition of `watchEvents` for the deployment event catalog. */
 export function watchEventsToolDefinition(catalog: EventCatalog) {
   return zodToolDefinition({
@@ -152,6 +182,16 @@ export function createWatchEventsTool(
         },
         "watch",
       );
+      const identifier = requireEventIdentifier(catalog, {
+        ...input,
+        resourceType: input.resource_type,
+      });
+      if (
+        input.namespace === CORE_EVENT_NAMESPACE &&
+        input.resource_type === CONVERSATION_RESOURCE_TYPE
+      ) {
+        await requireWatchableConversation(context.conversationId, identifier);
+      }
       const nowMs = Date.now();
       const subscription = await createWatch({
         conversationId: context.conversationId,
@@ -161,10 +201,7 @@ export function createWatchEventsTool(
         label: input.label.trim(),
         ...(match ? { match } : undefined),
         namespace: input.namespace.trim(),
-        identifier: requireEventIdentifier(catalog, {
-          ...input,
-          resourceType: input.resource_type,
-        }),
+        identifier,
         resourceType: input.resource_type.trim(),
       });
       const details = {

@@ -6,6 +6,7 @@ import { messageCardRefSchema } from "@/chat/conversations/cards";
 import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import * as z from "zod";
 import { conversationReadPositionSchema } from "./conversation-read-position";
+import { conversationKindSchema } from "./conversation-kind";
 import { conversationTitleSchema } from "./conversation-title";
 import { conversationTreeStateSchema } from "./conversation-tree-state";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
@@ -38,9 +39,6 @@ export const conversationReportStatusSchema = z.enum([
   "working",
   "done",
 ]);
-
-/** Where a Conversation sits in its tree. See `TERMINOLOGY.md`. */
-const conversationKindSchema = z.enum(["root", "automation", "thread", "task"]);
 
 export const conversationSurfaceSchema = z.enum([
   "api",
@@ -336,6 +334,11 @@ export const conversationSummaryReportSchema = z
      * expired.
      */
     awaitingAuthorization: z.boolean().optional(),
+    /**
+     * True on the conversation feed when the conversation's latest Turn
+     * failed and no newer Turn started.
+     */
+    latestTurnFailed: z.boolean().optional(),
   })
   .strict();
 
@@ -363,6 +366,11 @@ const conversationReportMessageEventDataSchema = z
     eventType: z.string().min(1).optional(),
     /** Namespace of the first Event, such as `github`. */
     eventNamespace: z.string().min(1).optional(),
+    /**
+     * Resource identifier of the first Event, such as the id of a watched
+     * Conversation. Only for viewers who can see private content.
+     */
+    eventIdentifier: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),
@@ -420,6 +428,8 @@ const conversationReportToolCallSchema = z
     startedSeq: z.number().int().nonnegative().optional(),
     input: z.unknown().optional(),
     output: z.unknown().optional(),
+    /** The Conversation that a completed `startConversation` call started. */
+    startedConversationId: z.string().min(1).optional(),
   })
   .strict()
   .superRefine((call, context) => {
@@ -804,23 +814,6 @@ function validateConversationEvents(
   }
 }
 
-export const forkConversationBodySchema = z
-  .object({
-    /** Assistant reply that ends the copied history. */
-    messageId: z.string().min(1).max(500),
-    idempotencyKey: z.string().trim().min(1).max(200),
-    /** Start a hidden, read-only Quick question about this reply text. */
-    quickQuestion: z
-      .object({ quote: z.string().trim().min(1).max(4_000) })
-      .strict()
-      .optional(),
-  })
-  .strict();
-
-export const forkConversationResponseSchema = z
-  .object({ conversationId: z.string() })
-  .strict();
-
 /** One Conversation in the agent tree of a child Conversation. */
 export const conversationAgentTreeNodeSchema = z
   .object({
@@ -983,7 +976,6 @@ export type ConversationDetailReport = z.infer<
 >;
 export type ConversationEventPage = z.infer<typeof conversationEventPageSchema>;
 export type ConversationParams = z.infer<typeof conversationParamsSchema>;
-export type ForkConversationBody = z.infer<typeof forkConversationBodySchema>;
 export type CreateConversationBody = z.infer<
   typeof createConversationBodySchema
 >;

@@ -8,10 +8,11 @@ test("opens conversation details beside the chat", async ({
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
-  await expect(page).toHaveTitle(/^\(\d+\) Junior$/);
+  // The wide list opens the viewer's Lead beside it.
+  await expect(page).toHaveTitle(/^\(\d+\) Lead - Junior$/);
   const sidebar = page.getByRole("navigation", {
     name: "Your conversations",
   });

@@ -1076,8 +1076,50 @@
     {
       "idx": 153,
       "version": "7",
-      "when": 1795316676636,
-      "tag": "0153_conversation_embeddings_fk_validate",
+      "when": 1795315494234,
+      "tag": "0153_artifact_expiry",
+      "breakpoints": true
+    },
+    {
+      "idx": 154,
+      "version": "7",
+      "when": 1795315495798,
+      "tag": "0154_artifact_permanent_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 155,
+      "version": "7",
+      "when": 1795315497375,
+      "tag": "0155_artifact_drop_public_sha_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 156,
+      "version": "7",
+      "when": 1795315498375,
+      "tag": "0156_conversation_kind_lead",
+      "breakpoints": true
+    },
+    {
+      "idx": 157,
+      "version": "7",
+      "when": 1795315499375,
+      "tag": "0157_conversation_lead_actor_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 158,
+      "version": "7",
+      "when": 1795331749525,
+      "tag": "0158_keep_legacy_archive_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 159,
+      "version": "7",
+      "when": 1795374840076,
+      "tag": "0159_conversation_embeddings_fk_validate",
       "breakpoints": true
     }
   ]

@@ -1,0 +1,1 @@
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversations_lead_actor_idx" ON "junior_conversations" USING btree ("actor_identity_id") WHERE "junior_conversations"."kind" = 'lead';

@@ -29,7 +29,21 @@ export class AgentDepthLimitError extends Error {
   }
 }
 
-/** A child agent already has the maximum number of open tasks. */
+/** A stopped Conversation cannot give work to child agents. */
+export class AgentStoppedError extends Error {
+  constructor() {
+    super(
+      "This conversation is stopped, so it cannot give work to child agents",
+    );
+    this.name = "AgentStoppedError";
+  }
+}
+
+/**
+ * A child agent already has the maximum number of open tasks.
+ *
+ * TODO(dcramer): Delete with Agent invocation rows (#3060 step 7).
+ */
 export class AgentMessageQueueFullError extends Error {
   constructor(limit: number) {
     super(`The child agent already has ${limit} open tasks`);
@@ -45,15 +59,5 @@ export class AgentMessageTargetError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AgentMessageTargetError";
-  }
-}
-
-/** A top-level agent paused automated Turns, so it takes no agent message. */
-export class AgentMessagePausedError extends Error {
-  constructor(conversationId: string) {
-    super(
-      `${conversationId} paused automated work until a person replies there`,
-    );
-    this.name = "AgentMessagePausedError";
   }
 }

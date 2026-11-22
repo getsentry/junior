@@ -25,6 +25,9 @@ function navItem(
   return { key, label: NAV_PAGES[key].label, to: NAV_PAGES[key].to };
 }
 
+/** The nav item key of the viewer's Lead, a Conversation page. */
+export const LEAD_NAV_KEY = "lead";
+
 const CODE_NAV_ITEM = navItem("code");
 const SYSTEM_NAV_ITEM = navItem("system");
 
@@ -36,6 +39,8 @@ export function buildPrimaryNavItems(input: {
   primaryUserPages: PluginUserPageLink[];
   /** What waits on the viewer: To do in the Inbox. */
   inboxCount?: number | undefined;
+  /** The viewer's Lead, once its id loads. */
+  leadPath?: string | undefined;
 }): DashboardHeaderNavItem[] {
   // Auth-only routes already imply the signed-in primary nav. Hold the
   // Automations slot while core data catches up so the header does not jump.
@@ -47,6 +52,9 @@ export function buildPrimaryNavItems(input: {
   const showAccountPages = !input.loading && !input.loggedIn;
 
   return [
+    ...(input.loggedIn && input.leadPath
+      ? [{ key: LEAD_NAV_KEY, label: "Lead", to: input.leadPath }]
+      : []),
     { ...navItem("inbox"), count: input.inboxCount },
     ...(showTasksNav ? [navItem("automations")] : []),
     ...input.primaryUserPages.map(userPageNavItem),

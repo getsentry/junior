@@ -39,6 +39,8 @@ import { getDashboardAgentName } from "../agentName";
 
 /** Ask the reply box for focus once per navigation `key`. */
 export type ReplyFocusRequest = {
+  /** The reader asked to type, so focus opens the keyboard on touch too. */
+  compose?: boolean | undefined;
   /** Draft id of the composer the reader typed in before. Its text moves here. */
   draftFrom?: string;
   key: string;
@@ -68,8 +70,10 @@ function ReplyFooter(props: {
     | undefined;
   pendingGeneratedAtRef: { current: string | undefined };
   pendingMessages: readonly ConversationMailboxMessage[];
-  /** Lets the page add a quote of selected text to the draft. */
-  ref?: Ref<Pick<ConversationComposerHandle, "appendText">>;
+  /** The message box's hint when it is empty. */
+  placeholder?: string | undefined;
+  /** Lets the page add text, such as a quote, to the draft, or focus it. */
+  ref?: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
   /**
    * True when history is live and no Turn has started, so the next Turn will
    * read a new send at once.
@@ -202,11 +206,13 @@ function ReplyFooter(props: {
   const composerRef = useRef<ConversationComposerHandle>(null);
   useImperativeHandle(props.ref, () => ({
     appendText: (text) => composerRef.current?.appendText(text),
+    focus: () => composerRef.current?.focus(),
   }));
   // On a touch screen, focus would open the keyboard over the transcript.
   const { onFocusRequestDone } = props;
   const focusKey = props.focusRequest?.key;
   const draftFrom = props.focusRequest?.draftFrom;
+  const compose = props.focusRequest?.compose === true;
   useEffect(() => {
     if (!focusKey) return;
     onFocusRequestDone(focusKey);
@@ -215,10 +221,10 @@ function ReplyFooter(props: {
     // even on a touch screen where the keyboard is already open.
     const text = draftFrom ? takeStoredDraftText(draftFrom) : "";
     if (text) composerRef.current?.restoreMessage({ text });
-    else if (draftFrom || !touchKeyboardMatches()) {
+    else if (draftFrom || compose || !touchKeyboardMatches()) {
       composerRef.current?.focus();
     }
-  }, [draftFrom, focusKey, onFocusRequestDone]);
+  }, [compose, draftFrom, focusKey, onFocusRequestDone]);
   const viewerEmail = useDashboardCoreData().data?.me.user.email;
   const onEditMessage = useCallback(
     async (message: ConversationMailboxMessage) => {
@@ -387,6 +393,7 @@ function ReplyFooter(props: {
         linksWork
         ref={composerRef}
         label="Continue this conversation"
+        placeholder={props.placeholder}
         submitLabel="Send"
         onFocus={onComposerFocus}
         onStop={props.stoppable ? onStop : undefined}

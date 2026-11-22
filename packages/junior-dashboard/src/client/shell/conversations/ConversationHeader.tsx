@@ -1,4 +1,11 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from "react";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { displayPlainText } from "../../display-text/plainText";
 import { Menu, PanelRight } from "lucide-react";
 import type {
@@ -33,16 +40,40 @@ import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
 import { isPlatformShortcut, platformShortcut } from "../../keyboard";
 import { useZenMode, ZEN_MODE_SHORTCUT } from "../../components/layout/PaneNav";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
+import { LeadHeader } from "../../lead/LeadHeader";
 
 const DETAILS_TOGGLE_SHORTCUT = platformShortcut("b", { alt: true });
 
 const NO_ANCHOR = { current: null };
 
 /**
+ * Head a Conversation page: the Lead's header on the viewer's Lead, an empty
+ * bar until the page knows which it is, else the Conversation's own header.
+ */
+export function ConversationHeader(
+  props: ComponentProps<typeof ConversationTitleHeader> & {
+    /** Undefined until the page knows whether it shows the Lead. */
+    lead: boolean | undefined;
+  },
+) {
+  // The app bar names the Lead on a phone.
+  if (props.lead)
+    return <LeadHeader mobileHidden sidebarToggle={props.sidebarToggle} />;
+  if (props.lead === undefined)
+    return (
+      <div
+        aria-hidden="true"
+        className="hidden h-13 border-b border-dashboard-border md:block"
+      />
+    );
+  return <ConversationTitleHeader {...props} />;
+}
+
+/**
  * Keep the conversation title and frequently used controls in the header.
  * Run facts and the summary live in Conversation details.
  */
-export function ConversationHeader(props: {
+function ConversationTitleHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   /** The viewer's auto-archive setting. Unset for non-participants. */

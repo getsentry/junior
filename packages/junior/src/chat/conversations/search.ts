@@ -9,9 +9,11 @@ import {
   and,
   desc,
   eq,
+  exists,
   gte,
   ilike,
   inArray,
+  isNotNull,
   isNull,
   lt,
   ne,
@@ -39,6 +41,7 @@ import type {
 } from "@/chat/conversations/store";
 import {
   juniorConversationEmbeddings,
+  juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
 } from "@/db/schema";
@@ -116,8 +119,12 @@ export interface ConversationSearch {
   query?: string;
   /** Return only root Conversations, not their child agents. */
   rootsOnly: boolean;
+  /** Only Conversations whose root has this User as a Participant. */
+  participantUserId?: string;
   /** Only Conversations whose agent has one of these statuses. */
   statuses?: readonly ConversationStatus[];
+  /** Only Conversations with a summary: a completed first Turn. */
+  summarizedOnly?: boolean;
 }
 
 /**
@@ -193,6 +200,26 @@ export async function searchConversations(
     search.statuses
       ? inArray(conversations.executionStatus, [...search.statuses])
       : undefined,
+    search.participantUserId
+      ? exists(
+          db
+            .select({ one: sql`1` })
+            .from(juniorConversationParticipants)
+            .where(
+              and(
+                eq(
+                  juniorConversationParticipants.rootConversationId,
+                  roots.conversationId,
+                ),
+                eq(
+                  juniorConversationParticipants.userId,
+                  search.participantUserId,
+                ),
+              ),
+            ),
+        )
+      : undefined,
+    search.summarizedOnly ? isNotNull(conversations.summary) : undefined,
     search.conversationIds
       ? inArray(conversations.conversationId, [...search.conversationIds])
       : undefined,
