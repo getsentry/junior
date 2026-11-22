@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import type {
   InboxItemActionBody,
   InboxItemPayload,
@@ -16,9 +16,15 @@ import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
-import { useSnoozeInboxItem } from "./inboxSnoozes";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
-import { eventSnoozeOf } from "./snoozeChoices";
+import { RowDismissButton } from "./RowDismissButton";
+
+// Only an open card snoozes from here, so its snooze code stays out of the
+// first load.
+const CardSnoozeButton = lazy(() =>
+  import("./CardSnoozeButton").then((module) => ({
+    default: module.CardSnoozeButton,
+  })),
+);
 
 function actionError(error: unknown): string {
   if (error instanceof DashboardApiError && error.apiError) {
@@ -64,27 +70,6 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
         <AnswerSummary answer={item.answer} request={item.request} />
       ) : null}
     </div>
-  );
-}
-
-/**
- * Snooze one item from its own card, until a time or an Event, as the
- * Inbox card's Snooze does.
- */
-function CardSnoozeButton(props: { item: InboxItemPayload }) {
-  const [open, setOpen] = useState(false);
-  const snooze = useSnoozeInboxItem();
-  const snoozeUntil = (end: Parameters<typeof snooze>[1]) => {
-    setOpen(false);
-    void snooze(props.item, end);
-  };
-  return (
-    <RowSnoozeButton
-      eventSnooze={eventSnoozeOf([props.item], snoozeUntil)}
-      onOpenChange={setOpen}
-      onSnooze={snoozeUntil}
-      open={open}
-    />
   );
 }
 
@@ -179,7 +164,11 @@ export function InboxItemActions(props: {
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
         />
       ) : null}
-      {snooze ? <CardSnoozeButton item={item} /> : null}
+      {snooze ? (
+        <Suspense fallback={null}>
+          <CardSnoozeButton item={item} />
+        </Suspense>
+      ) : null}
       {props.extra}
     </>
   );

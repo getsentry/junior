@@ -7,7 +7,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import { RowDismissButton } from "./RowDismissButton";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 import { onLinkOpen } from "./rowClick";
 

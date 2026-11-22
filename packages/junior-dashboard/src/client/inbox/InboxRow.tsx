@@ -91,12 +91,8 @@ import {
   RowQuickActions,
   type InboxCardActions,
 } from "./RowHoverActions";
-import {
-  ButtonLabel,
-  LOOK_CLASSES,
-  RowSnoozeButton,
-  type ButtonLook,
-} from "./RowSnoozeDismiss";
+import { ButtonLabel, LOOK_CLASSES, type ButtonLook } from "./RowDismissButton";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";

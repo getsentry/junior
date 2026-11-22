@@ -51,7 +51,7 @@ import {
   AutomationsRouteLoading,
 } from "../pages/automations/AutomationsPageLayout";
 import { buildPrimaryNavItems, buildProfileNavItems } from "../primaryNav";
-import { LinkedSnoozeDialog } from "../inbox/LinkedSnoozeDialog";
+import { LinkedSnooze } from "../inbox/LinkedSnooze";
 import { TracedRoutes } from "../TracedRoutes";
 import { InboxLoading, InboxPage } from "../inbox/InboxPage";
 import { useInboxItemCountData } from "../inbox/queries";
@@ -709,7 +709,7 @@ export function ClassicShell() {
             />
             <Route element={<Navigate replace to="/" />} path="*" />
           </TracedRoutes>
-          <LinkedSnoozeDialog />
+          <LinkedSnooze />
           <span
             aria-hidden="true"
             className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"

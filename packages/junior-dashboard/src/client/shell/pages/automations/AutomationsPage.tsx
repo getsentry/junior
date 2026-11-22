@@ -38,10 +38,8 @@ import {
 } from "../../../inbox/inboxQueries";
 import { PageEnd } from "../../../inbox/PageEnd";
 import { useInboxItemAction, useInboxItemsData } from "../../../inbox/queries";
-import {
-  RowDismissButton,
-  RowSnoozeButton,
-} from "../../../inbox/RowSnoozeDismiss";
+import { RowDismissButton } from "../../../inbox/RowDismissButton";
+import { RowSnoozeButton } from "../../../inbox/RowSnoozeDismiss";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationScopeTabs, automationScopeOf } from "./AutomationScopeTabs";
 import { NAV_PAGES } from "../../../navPages";
