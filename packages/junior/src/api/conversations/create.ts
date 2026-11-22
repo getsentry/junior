@@ -22,6 +22,7 @@ import {
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
+import { closeReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
@@ -213,6 +214,13 @@ export async function appendConversationMessageForViewer(
       throw error;
     }
     await closeAnswered();
+    // The viewer wrote in the Conversation, so they saw its latest reply.
+    // The message can wait as pending, with no event yet, so close it here.
+    await closeReplyNotice(getDb(), {
+      conversationId,
+      nowMs: Date.now(),
+      userId: viewer.id,
+    });
     return accepted;
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);

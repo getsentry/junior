@@ -13,7 +13,11 @@ import {
   clearInboxItemDeliveries,
   recordReplyNoticePush,
 } from "@/chat/inbox-items/deliveries";
-import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
+import {
+  closeReadReplyNotice,
+  hasReadLatestReply,
+  upsertReplyNotice,
+} from "@/chat/inbox-items/reply-notice";
 import { isInboxItemOpen } from "@/chat/inbox-items/store";
 import type { ConversationMessage } from "@/chat/state/conversation";
 import { logInfo, setSpanAttributes } from "@/chat/logging";
@@ -119,6 +123,17 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   const db = context.db as JuniorDatabase;
   const userId = await starterUserId(db, run);
   if (!userId) return skip("no_user");
+
+  // A starter who watched the reply arrive has read it already. Their read
+  // came before the notice, so it closes the open one now.
+  if (await hasReadLatestReply(db, run.conversationId, userId)) {
+    await closeReadReplyNotice(db, {
+      conversationId: run.conversationId,
+      nowMs: Date.now(),
+      userId,
+    });
+    return skip("read");
+  }
 
   // The notice and the push hold only a short plain-text preview. Logs
   // hold only counts.

@@ -11,7 +11,10 @@ import {
   resolveViewerUser,
   type JuniorApiVariables,
 } from "@/api";
+import { createConversationRoutes } from "@/api/conversations/routes";
+import type { JuniorApiEnv } from "@/api/route";
 import { notificationSettingsSchema } from "@/api/schema";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { createSlackActor } from "@/chat/actor";
 import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { webActorFromUser } from "@/chat/conversations/web-input";
@@ -34,6 +37,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { juniorInboxItems } from "@/db/schema";
+import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { dndInfoOk } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -83,6 +87,25 @@ async function viewerApp() {
     await next();
   });
   app.route("/", createJuniorApi());
+  return app;
+}
+
+/** The Conversation routes as the viewer, with a test work queue. */
+async function viewerMessagesApp() {
+  const viewer = await resolveViewerUser(EMAIL);
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer!);
+    await next();
+  });
+  app.route(
+    "/api/conversations",
+    createConversationRoutes({
+      attachmentStorage: createMemoryAttachmentStorage(),
+      queue: createConversationWorkQueueTestAdapter(),
+      waitUntil: () => undefined,
+    }),
+  );
   return app;
 }
 
@@ -138,10 +161,13 @@ async function completeDashboardTurn(
   reply: string,
   stored: { text: string } | null = { text: reply },
   {
+    beforeTasks,
     conversationId = `local:web:${randomUUID()}`,
     earlierReplies = [],
     turnId = "turn-1",
   }: {
+    /** Runs after the reply is stored, before its tasks run. */
+    beforeTasks?: (conversationId: string) => Promise<void>;
     conversationId?: string;
     earlierReplies?: string[];
     turnId?: string;
@@ -201,6 +227,7 @@ async function completeDashboardTurn(
       },
     ]);
   }
+  await beforeTasks?.(conversationId);
   const scheduled: string[] = [];
   await scheduleSessionCompletedPluginTasks(
     { conversationId, sessionId: turnId },
@@ -405,6 +432,40 @@ describe("reply notification task", () => {
       close: [notice!.id],
       tag: notices[1]!.id,
     });
+
+    // A follow-up from the starter means they saw the reply.
+    const followUp = await (
+      await viewerMessagesApp()
+    ).request(
+      `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+      {
+        method: "POST",
+        body: JSON.stringify({
+          idempotencyKey: "follow-up",
+          message: "Why did it roll back?",
+        }),
+        headers: { "content-type": "application/json" },
+      },
+    );
+    expect(followUp.status).toBe(200);
+    expect((await replyNotices(conversationId))[1]?.status).toBe("done");
+
+    // A starter who reads the reply before its task runs gets no notice and
+    // no push.
+    await completeDashboardTurn("A bad migration.", undefined, {
+      beforeTasks: (id) => readConversation(id, Number.MAX_SAFE_INTEGER),
+      conversationId,
+      earlierReplies: [
+        "The deploy started.",
+        "The deploy finished.",
+        "The deploy rolled back.",
+      ],
+      turnId: "turn-4",
+    });
+    expect(
+      (await replyNotices(conversationId)).map((item) => item?.status),
+    ).toEqual(["done", "done"]);
+    expect(decrypted).toHaveLength(3);
   });
 
   it("does not push outside the user's working hours", async () => {

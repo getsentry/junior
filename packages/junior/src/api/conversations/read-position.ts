@@ -96,7 +96,7 @@ export async function markConversationRead(
 
   await db.transaction(async (tx) => {
     const before = await readStatus(tx, conversationId);
-    const [stored] = await tx
+    await tx
       .insert(juniorConversationReadPositions)
       .values({
         conversationId,
@@ -113,16 +113,12 @@ export async function markConversationRead(
           lastReadSeq: sql`greatest(${juniorConversationReadPositions.lastReadSeq}, excluded.last_read_seq)`,
           updatedAt: sql`excluded.updated_at`,
         },
-      })
-      .returning({ lastReadSeq: juniorConversationReadPositions.lastReadSeq });
-    if (stored) {
-      await closeReadReplyNotice(tx, {
-        conversationId,
-        lastReadSeq: stored.lastReadSeq,
-        nowMs: Date.now(),
-        userId: viewer.id,
       });
-    }
+    await closeReadReplyNotice(tx, {
+      conversationId,
+      nowMs: Date.now(),
+      userId: viewer.id,
+    });
     // The detail version does not cover read positions, but a starter's
     // read can end a `needs_input` wait. Then polls must reload the status.
     if ((await readStatus(tx, conversationId)) !== before) {

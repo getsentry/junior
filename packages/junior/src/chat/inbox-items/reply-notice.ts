@@ -1,7 +1,12 @@
-import { and, eq, max, sql } from "drizzle-orm";
+import { and, eq, gt, max, sql } from "drizzle-orm";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversationEvents, juniorInboxItems } from "@/db/schema";
+import {
+  juniorConversationEvents,
+  juniorConversationReadPositions,
+  juniorIdentities,
+  juniorInboxItems,
+} from "@/db/schema";
 import { inboxItemAssignedTo, REPLY_NOTICE_KEY_PREFIX } from "./access";
 import {
   closeInboxItem,
@@ -80,19 +85,90 @@ export async function upsertReplyNotice(
 }
 
 /**
- * Close the open reply notice of a Conversation when its assignee's read
- * position reaches the latest reply. The notice holds that reply, so an
- * earlier read leaves it open.
+ * Return whether the User read the latest reply of a Conversation: their
+ * read position reaches it, or they wrote a later Message. Conversation
+ * status reads a starter's read the same way.
+ */
+export async function hasReadLatestReply(
+  db: JuniorDatabase,
+  conversationId: string,
+  userId: string,
+): Promise<boolean> {
+  const [latest] = await db
+    .select({ seq: max(juniorConversationEvents.seq) })
+    .from(juniorConversationEvents)
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
+      ),
+    );
+  const replySeq = latest?.seq;
+  if (replySeq == null) return false;
+  const [position] = await db
+    .select({ lastReadSeq: juniorConversationReadPositions.lastReadSeq })
+    .from(juniorConversationReadPositions)
+    .where(
+      and(
+        eq(juniorConversationReadPositions.conversationId, conversationId),
+        eq(juniorConversationReadPositions.userId, userId),
+      ),
+    )
+    .limit(1);
+  if (position && position.lastReadSeq >= replySeq) return true;
+  const [later] = await db
+    .select({ seq: juniorConversationEvents.seq })
+    .from(juniorConversationEvents)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
+    )
+    .where(
+      and(
+        eq(juniorConversationEvents.conversationId, conversationId),
+        eq(juniorConversationEvents.type, "message"),
+        gt(juniorConversationEvents.seq, replySeq),
+        eq(juniorIdentities.userId, userId),
+      ),
+    )
+    .limit(1);
+  return later !== undefined;
+}
+
+/**
+ * Close the User's open reply notice of a Conversation, such as when they
+ * write in it: they saw the latest reply.
+ */
+export async function closeReplyNotice(
+  db: JuniorDatabase,
+  input: { conversationId: string; nowMs: number; userId: string },
+): Promise<void> {
+  const notice = await openReplyNoticeId(db, input);
+  if (notice) await closeRead(db, notice, input);
+}
+
+/**
+ * Close the User's open reply notice of a Conversation when they read the
+ * latest reply. The notice holds that reply, so an earlier read leaves it
+ * open.
  */
 export async function closeReadReplyNotice(
   db: JuniorDatabase,
-  input: {
-    conversationId: string;
-    lastReadSeq: number;
-    nowMs: number;
-    userId: string;
-  },
+  input: { conversationId: string; nowMs: number; userId: string },
 ): Promise<void> {
+  const notice = await openReplyNoticeId(db, input);
+  if (!notice) return;
+  if (!(await hasReadLatestReply(db, input.conversationId, input.userId))) {
+    return;
+  }
+  await closeRead(db, notice, input);
+}
+
+async function openReplyNoticeId(
+  db: JuniorDatabase,
+  input: { conversationId: string; userId: string },
+): Promise<string | undefined> {
   const [notice] = await db
     .select({ id: juniorInboxItems.id })
     .from(juniorInboxItems)
@@ -104,21 +180,17 @@ export async function closeReadReplyNotice(
       ),
     )
     .limit(1);
-  if (!notice) return;
-  const [latest] = await db
-    .select({ seq: max(juniorConversationEvents.seq) })
-    .from(juniorConversationEvents)
-    .where(
-      and(
-        eq(juniorConversationEvents.conversationId, input.conversationId),
-        eq(juniorConversationEvents.type, "message"),
-        sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
-      ),
-    );
-  if (latest?.seq == null || input.lastReadSeq < latest.seq) return;
+  return notice?.id;
+}
+
+async function closeRead(
+  db: JuniorDatabase,
+  id: string,
+  input: { nowMs: number; userId: string },
+): Promise<void> {
   await closeInboxItem(db, {
     closedByUserId: input.userId,
-    id: notice.id,
+    id,
     nowMs: input.nowMs,
     reason: "Read",
     status: "done",
