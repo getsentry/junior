@@ -68,6 +68,19 @@ export function localContext(
   };
 }
 
+/** A private dashboard Conversation with no Slack channel, like a Lead. */
+export function privateWebContext(
+  userIntent: string,
+): ToolActionProposal["context"] {
+  return localContext(userIntent, {
+    source: {
+      kind: "web",
+      visibility: "private",
+      conversationId: LOCAL_CONVERSATION_ID,
+    },
+  });
+}
+
 /** Core-owned Slack actor/context defaults for one proposal snapshot. */
 export function slackContext(
   userIntent: string,
