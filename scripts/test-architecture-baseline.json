@@ -337,7 +337,7 @@
     "packages/junior-dashboard/e2e/inbox/inbox-snooze.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/inbox-snoozes.spec.ts": 9,
     "packages/junior-dashboard/e2e/inbox/inbox-stacks.spec.ts": 29,
-    "packages/junior-dashboard/e2e/inbox/inbox-tab-count.spec.ts": 8,
+    "packages/junior-dashboard/e2e/inbox/inbox-tab-count.spec.ts": 5,
     "packages/junior-dashboard/e2e/inbox/inbox-wake-reasons.spec.ts": 5,
     "packages/junior-dashboard/e2e/inbox/inbox.spec.ts": 19,
     "packages/junior-dashboard/e2e/inbox/memories.spec.ts": 1,

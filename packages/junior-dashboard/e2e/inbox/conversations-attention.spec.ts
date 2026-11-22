@@ -2,7 +2,6 @@ import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 import { viewAsParticipant } from "./conversationMenu";
-import { openRow } from "./inbox-fixture";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -37,18 +36,18 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test.describe("conversation rows", () => {
-    test("pinning moves a conversation to Pinned and In flight", async ({
+    test("a pin keeps its place, and Pinned lists only the pins", async ({
       page,
       dashboard,
     }) => {
       await viewAsParticipant(page);
       await page.goto(`${dashboard.baseURL}/?view=conversations`);
       const list = conversationsList(page);
-      const row = rowLink(list, "Investigate checkout latency");
+      const title = "Investigate checkout latency";
+      const row = rowLink(list, title);
       await expect(row).toBeVisible();
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .not.toBe("Pinned");
+      const section = await sectionOf(list, title);
+      await expect(list.getByRole("region", { name: "Pinned" })).toHaveCount(0);
 
       // Pin from the row's hover action.
       const pinRequest = page.waitForRequest(
@@ -56,45 +55,118 @@ test.describe("new UI", { tag: "@new" }, () => {
           request.method() === "PATCH" && request.url().endsWith("/pin"),
       );
       await row.hover();
-      await list
-        .getByRole("button", { name: "Pin Investigate checkout latency" })
-        .click();
+      await list.getByRole("button", { name: `Pin ${title}` }).click();
       expect((await pinRequest).postDataJSON()).toEqual({ pinned: true });
 
-      // The row shows only in Pinned, and In flight lists it.
-      await expect(row).toHaveCount(1);
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .toBe("Pinned");
+      // The row stays in its time section, and In flight lists it.
+      await row.hover();
+      await expect(
+        list.getByRole("button", { name: `Unpin ${title}` }),
+      ).toHaveAttribute("aria-pressed", "true");
+      await expect.poll(() => sectionOf(list, title)).toBe(section);
+      await expect(list.getByRole("region", { name: "Pinned" })).toHaveCount(0);
       await expect(
         page
           .getByRole("list", { name: "In flight" })
-          .getByRole("link", { name: /Investigate checkout latency/ }),
+          .getByRole("link", { name: new RegExp(title) }),
       ).toBeVisible();
-      await row.hover();
-      await expect(
-        list.getByRole("button", {
-          name: "Unpin Investigate checkout latency",
-        }),
-      ).toHaveAttribute("aria-pressed", "true");
+
+      // Pinned shows only the pin, also after a reload.
+      // Pinned is a tab of the state filters, which start on All.
+      const rowsToShow = page.getByRole("navigation", {
+        name: "Conversations to show",
+      });
+      const all = rowsToShow.getByRole("link", { exact: true, name: "All" });
+      const pinnedTab = rowsToShow.getByRole("link", {
+        exact: true,
+        name: "Pinned",
+      });
+      await expect(all).toHaveAttribute("aria-current", "page");
+      await pinnedTab.click();
+      await expect(page).toHaveURL(/[?&]pinned=1/);
+      await expect(pinnedTab).toHaveAttribute("aria-current", "page");
+      const rows = list.getByRole("listitem");
+      await expect(rows).toHaveCount(1);
+      await expect(row).toBeVisible();
+      await page.reload();
+      await expect(pinnedTab).toHaveAttribute("aria-current", "page");
+      await expect(rows).toHaveCount(1);
       await screenshot(page, "conversations-pinned", {
         lightTheme: true,
         view: "desktop",
       });
 
-      // Unpin from the conversation `⋯` menu.
-      await openRow(row);
-      await page.getByRole("button", { name: "Conversation menu" }).click();
-      await page.getByRole("menuitem", { name: "Unpin", exact: true }).click();
-      await expect(
-        page.getByRole("menuitem", { name: "Pin", exact: true }),
-      ).toBeVisible();
-      await page.keyboard.press("Escape");
-      await page.getByRole("link", { name: "Back to Conversations" }).click();
+      // An unpin takes the row out of the list, and the empty state says
+      // how to pin.
+      await row.hover();
+      const unpin = list.getByRole("button", { name: `Unpin ${title}` });
+      await expect(unpin).toHaveAttribute("aria-pressed", "true");
+      await unpin.click();
+      await expect(row).toHaveCount(0);
+      await expect(page.getByText(/^Nothing pinned\./)).toBeVisible();
+
+      // All again, every row shows.
+      await all.click();
+      await expect(page).not.toHaveURL(/[?&]pinned=1/);
       await expect(row).toBeVisible();
-      await expect
-        .poll(() => sectionOf(list, "Investigate checkout latency"))
-        .not.toBe("Pinned");
+      await expect.poll(() => sectionOf(list, title)).toBe(section);
+    });
+
+    test("the state filters list only the Conversations in that state, also after a reload", async ({
+      page,
+      dashboard,
+    }) => {
+      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      const list = conversationsList(page);
+      const rows = list.getByRole("listitem");
+      const waiting = rows.filter({
+        has: page.getByRole("img", { name: "Waiting on you" }),
+      });
+      const working = rowLink(list, "Investigate checkout latency");
+      const asking = rowLink(list, "Roll out payments-v42");
+      await expect(working).toBeVisible();
+      await expect(asking).toBeVisible();
+      const filters = page.getByRole("navigation", {
+        name: "Conversations to show",
+      });
+      const filter = (name: string) =>
+        filters.getByRole("link", { exact: true, name });
+      await expect(filter("All")).toHaveAttribute("aria-current", "page");
+
+      // Needs you lists only the rows that wait on the viewer.
+      await filter("Needs you").click();
+      await expect(page).toHaveURL(/[?&]state=needs_you/);
+      await expect(asking).toBeVisible();
+      await expect(working).toHaveCount(0);
+      await expect.poll(() => rows.count()).toBeGreaterThan(0);
+      expect(await waiting.count()).toBe(await rows.count());
+      await page.reload();
+      await expect(filter("Needs you")).toHaveAttribute("aria-current", "page");
+      await expect(asking).toBeVisible();
+      await expect(working).toHaveCount(0);
+
+      // Working lists the row whose Turn runs.
+      await filter("Working").click();
+      await expect(working).toBeVisible();
+      await expect(asking).toHaveCount(0);
+
+      // Done lists neither.
+      await filter("Done").click();
+      await expect(rowLink(list, "Direct Message")).toBeVisible();
+      await expect(working).toHaveCount(0);
+      await expect(asking).toHaveCount(0);
+      await expect(waiting).toHaveCount(0);
+
+      // Watching finds none here.
+      await filter("Watching").click();
+      await expect(
+        page.getByText("No conversations match these filters"),
+      ).toBeVisible();
+
+      await filter("All").click();
+      await expect(page).not.toHaveURL(/[?&]state=/);
+      await expect(working).toBeVisible();
+      await expect(asking).toBeVisible();
     });
 
     test("lists the rows of the conversation menu in the row menu", async ({

@@ -5,6 +5,10 @@ import {
 import { eq } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { conversationFeedSchema } from "@/api/schema";
+import {
+  CONVERSATION_FEED_THREAD_LIMIT,
+  CONVERSATION_FEED_WAITING_LIMIT,
+} from "@/api/schema/conversation-feed";
 import { ACTIVITY_PREVIEW_MAX_LENGTH } from "@/api/schema/activity-preview-text";
 import { getConversationEventStore, getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
@@ -163,13 +167,13 @@ describe("conversation list API response budget", () => {
           () => fixture.request("/api/conversations?include=links,media"),
           { statements: 18, serialRounds: 3 },
         ),
-      // Pins and waiting rows are not paged, so the body has no budget.
+      // Pins are not paged, so the body has no budget.
       {
         // A row's own fields, plus its activity preview, which holds the
         // start of the latest message.
         conversations: 1_959 + 469,
-        // A row lists every one of these, with no cap on the count. Each
-        // item has its own budget, and the row leaves them out.
+        // A row lists many of these. Each item has its own budget, and the
+        // row leaves them out.
         "conversations.participants": 52,
         "conversations.sidebarAnnotations": 674,
         "conversations.threads": 637,
@@ -184,5 +188,58 @@ describe("conversation list API response budget", () => {
     expect(feed.conversations[0]?.activityPreview?.text).toHaveLength(
       ACTIVITY_PREVIEW_MAX_LENGTH,
     );
+  });
+
+  it("caps a row's Threads and the waiting rows from outside the page", async () => {
+    const fixture = await createStatusFixture();
+    const waitingIds: string[] = [];
+    for (let index = 0; index <= CONVERSATION_FEED_WAITING_LIMIT; index += 1) {
+      const conversationId = await recordSlackRoot(
+        fixture.conversationStore,
+        `1700000000.1${String(index).padStart(4, "0")}`,
+      );
+      await addItem(conversationId, ACTION_ITEM);
+      waitingIds.push(conversationId);
+    }
+    for (let index = 0; index < 50; index += 1) {
+      await recordSlackRoot(
+        fixture.conversationStore,
+        `1700000000.2${String(index).padStart(4, "0")}`,
+      );
+    }
+    const rootId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.30000",
+    );
+    // One nested Thread, so the cap keeps whole chains.
+    for (let index = 0; index < CONVERSATION_FEED_THREAD_LIMIT; index += 1) {
+      await fixture.conversationStore.createChild({
+        childConversationId: `agent:${rootId}:thread-${index}`,
+        kind: "thread",
+        parentConversationId: rootId,
+      });
+    }
+    await fixture.conversationStore.createChild({
+      childConversationId: `agent:${rootId}:nested`,
+      kind: "thread",
+      parentConversationId: `agent:${rootId}:thread-0`,
+    });
+
+    const response = await fixture.request("/api/conversations");
+    expect(response.status).toBe(200);
+    const feed = conversationFeedSchema.parse(await response.json());
+    const root = feed.conversations.find(
+      (row) => row.conversationId === rootId,
+    );
+    const shown = (root?.threads ?? []).flatMap((thread) => [
+      thread.conversationId,
+      ...(thread.threads ?? []).map((nested) => nested.conversationId),
+    ]);
+    expect(shown).toHaveLength(CONVERSATION_FEED_THREAD_LIMIT);
+    expect(root?.omittedThreadCount).toBe(1);
+    // The newest waiting rows join the page. The oldest come on a later one.
+    const ids = new Set(feed.conversations.map((row) => row.conversationId));
+    expect(waitingIds.filter((id) => ids.has(id))).toEqual(waitingIds.slice(1));
+    expect(feed.waitingRowsTruncated).toBe(true);
   });
 });

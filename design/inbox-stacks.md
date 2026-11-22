@@ -110,9 +110,9 @@ Actions:
 Order and counts:
 
 - In a stack, actions come first, then notices. Each group is oldest first.
-- In To do, pinned stacks come first. Then stacks that wait on the viewer
-  come, the one that waited longest at the top. Other stacks follow, oldest
-  first. FYI shows the newest notice first. The order does not move while
+- In To do, stacks that wait on the viewer come first, the one that waited
+  longest at the top. Other stacks follow, oldest first. A pinned stack
+  keeps its place. FYI shows the newest notice first. The order does not move while
   the reader works.
 - A stack waits on the viewer when any of its rows does, including a row
   from a child.

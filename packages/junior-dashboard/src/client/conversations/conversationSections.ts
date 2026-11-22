@@ -28,9 +28,9 @@ type Waiting = Pick<
  * Today, Yesterday, Previous 7 days, Previous 30 days, then one section per
  * month.
  *
- * Without `waiting`, as in the new UI, there is no Needs you: a
- * conversation that waits on the viewer stays in its section, and its row
- * carries the waiting marker.
+ * Without `waiting`, there is no Needs you: a conversation that waits on
+ * the viewer stays in its section, and its row carries the waiting marker.
+ * The new UI groups with `buildTimeSections` instead.
  *
  * Needs you holds the conversations that wait on the viewer: an open Review
  * item in `waiting`, or a Turn that waits on an authorization. Open work
@@ -49,13 +49,8 @@ export function buildConversationSections(
   },
 ): ConversationSection[] {
   const nowDay = calendarDay(options.nowMs, options.timeZone);
-  const sections = new Map<string, ConversationSection & { order: number }>();
-  const sorted = [...conversations].sort(
-    (left, right) => activityTime(right) - activityTime(left),
-  );
-
-  for (const conversation of sorted) {
-    const section = conversation.pinnedAt
+  const sections = groupSections(conversations, (conversation) =>
+    conversation.pinnedAt
       ? PINNED_SECTION
       : options.waiting && waitsOnViewer(conversation, options.waiting)
         ? NEEDS_YOU_SECTION
@@ -64,20 +59,35 @@ export function buildConversationSections(
             nowDay,
             options.nowMs,
             options.timeZone,
-          );
+          ),
+  );
+  const section = (key: string) =>
+    sections.find((candidate) => candidate.key === key)?.conversations;
+  section(PINNED_SECTION.key)?.sort(comparePinOrder);
+  const waiting = options.waiting;
+  if (waiting) section(NEEDS_YOU_SECTION.key)?.sort(compareWaitStart(waiting));
+  return sections;
+}
+
+/**
+ * Put each conversation, newest Message first, in the section that
+ * `sectionOf` names, and order the sections by their `order`.
+ */
+function groupSections(
+  conversations: Conversation[],
+  sectionOf: (
+    conversation: Conversation,
+  ) => Pick<ConversationSection, "key" | "label"> & { order: number },
+): ConversationSection[] {
+  const sections = new Map<string, ConversationSection & { order: number }>();
+  for (const conversation of newestFirst(conversations)) {
+    const section = sectionOf(conversation);
     const existing = sections.get(section.key);
     if (existing) {
       existing.conversations.push(conversation);
     } else {
       sections.set(section.key, { ...section, conversations: [conversation] });
     }
-  }
-
-  sections.get(PINNED_SECTION.key)?.conversations.sort(comparePinOrder);
-  if (options.waiting) {
-    sections
-      .get(NEEDS_YOU_SECTION.key)
-      ?.conversations.sort(compareWaitStart(options.waiting));
   }
   return [...sections.values()]
     .sort((left, right) => left.order - right.order)
@@ -102,15 +112,40 @@ function waitsOnViewer(conversation: Conversation, waiting: Waiting): boolean {
  * sections do.
  */
 export function pinnedFirst(conversations: Conversation[]): Conversation[] {
-  return [...conversations]
-    .sort((left, right) => activityTime(right) - activityTime(left))
-    .sort((left, right) => {
-      const leftRank = left.pinnedAt ? 0 : 1;
-      return (
-        leftRank - (right.pinnedAt ? 0 : 1) ||
-        (leftRank === 0 ? comparePinOrder(left, right) : 0)
-      );
-    });
+  return newestFirst(conversations).sort((left, right) => {
+    const leftRank = left.pinnedAt ? 0 : 1;
+    return (
+      leftRank - (right.pinnedAt ? 0 : 1) ||
+      (leftRank === 0 ? comparePinOrder(left, right) : 0)
+    );
+  });
+}
+
+/** Sort conversations by their last Message, newest first. */
+export function newestFirst(conversations: Conversation[]): Conversation[] {
+  return [...conversations].sort(
+    (left, right) => activityTime(right) - activityTime(left),
+  );
+}
+
+/**
+ * Group conversations by last Message only, as the new UI lists them: a pin
+ * or a wait on the viewer stays in its time section, and its row carries
+ * the marker. Sections and their rows run newest first.
+ */
+export function buildTimeSections(
+  conversations: Conversation[],
+  options: { nowMs: number; timeZone: string },
+): ConversationSection[] {
+  const nowDay = calendarDay(options.nowMs, options.timeZone);
+  return groupSections(conversations, (conversation) =>
+    conversationSection(
+      activityTime(conversation),
+      nowDay,
+      options.nowMs,
+      options.timeZone,
+    ),
+  );
 }
 
 /**
