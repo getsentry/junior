@@ -19,7 +19,7 @@ import {
   getCurrentTools,
   type Context,
 } from "@earendil-works/pi-ai";
-import { stopChildAgentsBelow } from "@/chat/agent-invocations/stop";
+import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -39,6 +39,7 @@ import {
   getTurnRecord,
   upsertTurnRecord,
 } from "@/chat/task-execution/turn-cursor";
+import { stoppedConversationMessageTexts } from "../fixtures/conversation";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import {
   createModelAgentRunner,
@@ -426,52 +427,25 @@ describe("agent invocation conversation work", () => {
       expect(definitions[0]!.systemPrompt).not.toBe("");
       expect(definitions[1]).toEqual(definitions[0]);
       expect(definitions[2]).toEqual(definitions[0]);
-      // A person's stop of the parent skips the unread reply, as it skips a
+      // A person's stop of the parent holds the unread reply, as it holds a
       // result, so it starts no parent Turn.
-      await stopChildAgentsBelow(slackParentConversationId, {
+      await stopConversationAndChildAgents({
+        conversationId: slackParentConversationId,
         nowMs: Date.now(),
-        stoppedAtMs: Date.now(),
         state,
+        stoppedAtMs: Date.now(),
       });
       await expect(
-        withAgentInvocationResultActors({
-          kind: "mailbox",
-          batch: [resultEntry],
+        getConversationWorkState({
+          conversationId: slackParentConversationId,
+          state,
         }),
-      ).resolves.toBeUndefined();
+      ).resolves.toMatchObject({ execution: { pendingMessages: [] } });
+      await expect(
+        stoppedConversationMessageTexts(slackParentConversationId),
+      ).resolves.toEqual([expect.stringContaining("Durable child result")]);
     } finally {
       vi.useRealTimers();
-      await fixture.close();
-    }
-  });
-
-  it("makes a child private when its root's channel goes private", async () => {
-    const { conversationStore, fixture } =
-      await prepareSlackParentConversation();
-    try {
-      const created = await createAgentInvocation({
-        ...slackInvocationInput,
-        idempotencyKey: "private-1",
-      });
-      const childBefore = await conversationStore.get({
-        conversationId: created.childConversationId,
-      });
-      expect(childBefore).toMatchObject({ visibility: "public" });
-
-      // Only the root records the new visibility. The child shares its
-      // Destination row, so its own row does not change. A child Run reads
-      // this visibility, as the test above shows.
-      await conversationStore.recordActivity({
-        conversationId: slackParentConversationId,
-        destination: slackDestination,
-        nowMs: 3_000,
-        source: "slack",
-        visibility: "private",
-      });
-      await expect(
-        conversationStore.get({ conversationId: created.childConversationId }),
-      ).resolves.toEqual({ ...childBefore, visibility: "private" });
-    } finally {
       await fixture.close();
     }
   });

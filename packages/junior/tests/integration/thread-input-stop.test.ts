@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
-import {
-  getConversationStoppedAtMs,
-  markConversationsStopped,
-} from "@/chat/conversations/session-stop";
+import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { getWebAuthorization } from "@/chat/conversations/web-authorization";
 import { getPersistedThreadState } from "@/chat/runtime/thread-state";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -21,7 +18,7 @@ import {
   slackParentConversationId,
   loadTurnEvents,
 } from "../fixtures/agent-invocations";
-import { webTestActor } from "../fixtures/conversation";
+import { storeConversationStop, webTestActor } from "../fixtures/conversation";
 import {
   createHarness,
   finishInvocation,
@@ -133,9 +130,7 @@ describe("Thread input stop", () => {
       await finishInvocation(harness, threadId);
       harness.onPersonRun(async (run) => {
         // Only the stored stop is set. No stop request reaches the worker.
-        await markConversationsStopped([run.conversationId], {
-          cancelWatches: false,
-        });
+        await storeConversationStop(run.conversationId);
         // The agent loop checks for a stop at each step boundary.
         await run.durability?.checkStop?.();
         run.signal?.throwIfAborted();
