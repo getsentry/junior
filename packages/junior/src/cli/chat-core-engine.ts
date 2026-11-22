@@ -103,7 +103,7 @@ export async function runCoreEnginePrompt(args: {
     );
   }
   const executor = getSqlExecutor();
-  const worker = await queue.startWorker([turnStepConsumer.consumer]);
+  const worker = await queue.startWorker([turnStepConsumer().consumer]);
   try {
     await getConversationStore().recordActivity({
       conversationId: args.conversationId,

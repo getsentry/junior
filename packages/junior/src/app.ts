@@ -878,13 +878,16 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
+  // Built after resetRuntimeConfig, so the queue visibility timeout uses this
+  // app's functionMaxDurationSeconds.
+  const turnSteps = turnStepConsumer();
   if (process.env["NODE_ENV"] === "development") {
     registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
     registerVercelPluginTaskDevConsumer();
     registerVercelWorkspaceSnapshotJobDevConsumer();
     registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
-    turnStepConsumer.registerDev();
+    turnSteps.registerDev();
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -917,9 +920,9 @@ export async function createApp(
     backgroundCompactionPOST ??= createVercelBackgroundCompactionCallback();
     return backgroundCompactionPOST(c.req.raw);
   });
-  let turnStepPOST: ReturnType<typeof turnStepConsumer.create> | undefined;
+  let turnStepPOST: ReturnType<typeof turnSteps.create> | undefined;
   app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, (c) => {
-    turnStepPOST ??= turnStepConsumer.create();
+    turnStepPOST ??= turnSteps.create();
     return turnStepPOST(c.req.raw);
   });
 
@@ -959,7 +962,7 @@ export async function createApp(
           workspaceSnapshotJobQueueConsumer(),
           cacheWarmupQueueConsumer(),
           backgroundCompactionQueueConsumer(),
-          turnStepConsumer.consumer,
+          turnSteps.consumer,
         ],
         backgroundWork,
       ),
