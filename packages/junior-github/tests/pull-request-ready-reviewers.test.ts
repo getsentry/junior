@@ -248,8 +248,14 @@ describe("review request when a draft is ready", () => {
     );
   }
 
-  /** Serve the ready webhook's GitHub calls and record each review request. */
-  function serveReviewRequests(status = 201): unknown[] {
+  /**
+   * Serve the ready webhook's GitHub calls and record each review request.
+   * `reviews` are the reviews that people submitted on the draft.
+   */
+  function serveReviewRequests(
+    status = 201,
+    reviews: { login: string; state: string }[] = [],
+  ): unknown[] {
     const requests: unknown[] = [];
     mswServer.use(
       http.post(
@@ -263,7 +269,7 @@ describe("review request when a draft is ready", () => {
       http.get("https://api.github.com/repos/getsentry/junior/pulls/946", () =>
         HttpResponse.json({ draft: false, html_url: PULL_URL, number: 946 }),
       ),
-      // The next-action check reads an open pull request with no reviews.
+      // The next-action check and the review request read the same state.
       http.post("https://api.github.com/graphql", () =>
         HttpResponse.json({
           data: {
@@ -276,7 +282,12 @@ describe("review request when a draft is ready", () => {
                 mergeStateStatus: "BLOCKED",
                 reviewRequests: { nodes: [] },
                 reviews: {
-                  nodes: [],
+                  nodes: reviews.map((review) => ({
+                    author: { __typename: "User", login: review.login },
+                    commit: { oid: "head-1" },
+                    state: review.state,
+                    submittedAt: "2026-07-01T13:00:00Z",
+                  })),
                   pageInfo: { hasPreviousPage: false, startCursor: null },
                 },
                 state: "OPEN",
@@ -326,6 +337,42 @@ describe("review request when a draft is ready", () => {
       }
     },
   );
+
+  it.each([
+    {
+      expected: [],
+      name: "does not ask the requester who approved the draft",
+      reviewers: undefined,
+      reviews: [{ login: "requester", state: "APPROVED" }],
+    },
+    {
+      expected: [{ reviewers: ["hubot"] }],
+      name: "asks only the named reviewers who did not review the draft",
+      reviewers: ["octocat", "hubot"],
+      reviews: [{ login: "octocat", state: "COMMENTED" }],
+    },
+    {
+      expected: [{ reviewers: ["Requester"] }],
+      name: "asks the requester whose review was dismissed",
+      reviewers: undefined,
+      reviews: [
+        { login: "Requester", state: "COMMENTED" },
+        { login: "Requester", state: "DISMISSED" },
+      ],
+    },
+  ])("$name", async ({ expected, reviewers, reviews }) => {
+    const fixture = await createGitHubFixture();
+    const requests = serveReviewRequests(201, reviews);
+    try {
+      const state = memoryState();
+      await createDraft(fixture, state, reviewers);
+
+      await route(fixture, { state }).handler(readyForReview());
+      expect(requests).toEqual(expected);
+    } finally {
+      await fixture.close();
+    }
+  });
 
   it("keeps the named reviewers when a draft create call is replayed", async () => {
     const fixture = await createGitHubFixture();
