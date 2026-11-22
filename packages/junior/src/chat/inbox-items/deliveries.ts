@@ -3,8 +3,14 @@ import type { NotificationPause } from "@/chat/notifications/pause";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorInboxItemDeliveries } from "@/db/schema";
 
-/** Why a delivery sent nothing. */
-export type InboxItemDeliverySkipReason = NotificationPause | "snoozed";
+/**
+ * Why a delivery sent nothing. `taken`: the User took the item themselves,
+ * so they already know about it.
+ */
+export type InboxItemDeliverySkipReason =
+  | NotificationPause
+  | "snoozed"
+  | "taken";
 
 /** Keep at most this many closed items in one push. */
 const MAX_CLEARED_ITEMS = 20;

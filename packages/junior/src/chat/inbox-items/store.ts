@@ -50,7 +50,7 @@ import {
   inboxItemVisibleTo,
   type InboxItemReader,
 } from "./access";
-import { clearInboxItemDeliveries } from "./deliveries";
+import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
 import type { InboxItemRequest } from "./evidence";
 
 type InboxItemKind = "notice" | "action";
@@ -601,6 +601,13 @@ export async function takeInboxItem(
     await tx
       .insert(juniorInboxItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
+    // The taker is now an assignee, but needs no push for their own take.
+    await claimInboxItemPush(tx, {
+      itemId: input.id,
+      nowMs: input.nowMs,
+      skipReason: "taken",
+      userId: input.userId,
+    });
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });

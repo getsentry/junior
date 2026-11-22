@@ -57,13 +57,12 @@ async function skipReason(
 }
 
 /**
- * Only an open action for named Users pushes. Everyone items and notices
+ * Only an action for named Users pushes. Everyone items and notices
  * show only in the Inbox. A Slack card already tells its thread, so an item
  * with one does not push.
  */
 async function pushesToAssignees(db: JuniorDatabase, item: InboxItem) {
   return (
-    item.status === "open" &&
     item.kind === "action" &&
     !item.assignedToEveryone &&
     item.assignees.length > 0 &&
@@ -86,7 +85,14 @@ export async function syncInboxItemPush(itemId: string): Promise<void> {
     async () => {
       const db = getDb();
       const item = await getInboxItem(db, itemId);
-      if (!item || !(await pushesToAssignees(db, item))) return;
+      if (!item) return;
+      // The close marks its deliveries cleared, but in its own statement.
+      // A retry of the close shows the item again, so clear here too.
+      if (item.status !== "open") {
+        await clearInboxItemDeliveries(db, [item.id], Date.now());
+        return;
+      }
+      if (!(await pushesToAssignees(db, item))) return;
       const url = getDashboardInboxItemLink(item.id);
       if (!url) return;
       await withSpan(
