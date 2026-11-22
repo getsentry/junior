@@ -11,16 +11,28 @@ type SidebarThread = { conversation: Conversation; depth: number };
  * shows its direct Threads with the most recent activity, plus the direct
  * Thread that holds the open Thread. A nested Thread shows only under its
  * shown parent, so a row never sits under an unrelated Thread.
+ * `omittedCount` is the root's Threads that the feed left out; it shows only
+ * once every loaded Thread shows.
  */
 export function sidebarThreads(
-  threads: readonly Conversation[] | undefined,
+  root: Pick<Conversation, "omittedThreadCount" | "threads">,
   options: { expanded: boolean; selectedId?: string | undefined },
-): { collapsible: boolean; hiddenCount: number; threads: SidebarThread[] } {
-  const direct = threads ?? [];
+): {
+  collapsible: boolean;
+  hiddenCount: number;
+  omittedCount: number;
+  threads: SidebarThread[];
+} {
+  const direct = root.threads ?? [];
   const all = flattenThreads(direct, 0);
   const collapsible = direct.length > SIDEBAR_THREAD_LIMIT;
   if (options.expanded || !collapsible) {
-    return { collapsible, hiddenCount: 0, threads: all };
+    return {
+      collapsible,
+      hiddenCount: 0,
+      omittedCount: root.omittedThreadCount ?? 0,
+      threads: all,
+    };
   }
   const shownIds = new Set(
     [...direct]
@@ -40,6 +52,7 @@ export function sidebarThreads(
   return {
     collapsible,
     hiddenCount: all.length - shown.length,
+    omittedCount: 0,
     threads: shown,
   };
 }
