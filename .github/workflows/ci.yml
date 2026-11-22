@@ -502,6 +502,71 @@ jobs:
           path: .playwright/junior-dashboard/*/trace.zip
           retention-days: 7
 
+  # Runs each dashboard e2e test that the pull request changed 10 times with
+  # no retries, so a flaky test fails before it merges. The select step
+  # explains how it picks tests and when it skips.
+  dashboard-e2e-burn-in:
+    name: test / dashboard e2e burn-in
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    needs: changes
+    permissions:
+      contents: read
+    # Setup and build take about 3 minutes. The select step caps the burn-in
+    # at about 10 minutes of tests.
+    timeout-minutes: 20
+    if: github.event_name == 'pull_request' && (needs.changes.outputs.ci == 'true' || needs.changes.outputs.dashboard == 'true' || needs.changes.outputs.full == 'true')
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      DASHBOARD_E2E_CONFIG: packages/junior-dashboard/playwright.config.ts
+      DATABASE_URL: postgres://junior:junior@localhost:5432/junior
+      REDIS_URL: redis://localhost:6379
+    services:
+      postgres:
+        image: pgvector/pgvector:pg17
+        env:
+          POSTGRES_DB: junior
+          POSTGRES_PASSWORD: junior
+          POSTGRES_USER: junior
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U junior -d junior"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          # The pull request merge commit and its first parent, the base commit.
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: ./.github/actions/setup-node-pnpm
+      - run: node --test scripts/select-dashboard-burn-in.test.mjs
+      - run: pnpm --filter "@sentry/junior-dashboard..." run build
+      - name: Select changed tests
+        id: select
+        run: node scripts/select-dashboard-burn-in.mjs
+      - name: Burn in changed tests
+        if: steps.select.outputs.run == 'true'
+        run: pnpm exec playwright test --config="$DASHBOARD_E2E_CONFIG" --only-changed="$BASE_SHA" --repeat-each=10 --retries=0
+      # Playwright keeps a trace only for a failed test.
+      - name: Upload failed test traces
+        if: failure()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: dashboard-e2e-burn-in-traces
+          path: .playwright/junior-dashboard/*/trace.zip
+          retention-days: 7
+
   # Frameshift saves or compares one screenshot set per run, so it runs once,
   # on the screenshots of every e2e job.
   dashboard-screenshots:
@@ -684,6 +749,7 @@ jobs:
       - plugin-tests
       - dashboard-tests
       - dashboard-e2e
+      - dashboard-e2e-burn-in
       - dashboard-screenshots
       - build-packages
       - build-example
