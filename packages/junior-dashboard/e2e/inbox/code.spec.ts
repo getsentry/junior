@@ -245,8 +245,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Only the pin has the pin marker.
     await expect(list.getByRole("img", { name: "Pinned" })).toHaveCount(1);
 
-    // An All / Pinned switch, on All by default.
-    const rows = list.getByRole("navigation", { name: "Rows to show" });
+    // Pinned is a tab of the state filters, which start on All.
+    const rows = list.getByRole("navigation", {
+      name: "Conversations to show",
+    });
     const all = rows.getByRole("link", { exact: true, name: "All" });
     const pinnedTab = rows.getByRole("link", { exact: true, name: "Pinned" });
     await expect(all).toHaveAttribute("aria-current", "page");
@@ -273,7 +275,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       list.getByRole("link", { name: /^Open / }).first(),
     ).toBeVisible();
     await list
-      .getByRole("navigation", { name: "Rows to show" })
+      .getByRole("navigation", { name: "Conversations to show" })
       .getByRole("link", { exact: true, name: "Pinned" })
       .click();
     await expect(list.getByText(/^Nothing pinned\./)).toBeVisible();

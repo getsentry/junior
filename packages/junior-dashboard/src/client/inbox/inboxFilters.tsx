@@ -86,15 +86,19 @@ export function withoutFilters(path: string): string {
   return rest ? `${pathname}?${rest}` : (pathname ?? path);
 }
 
-/** Link each filter to the search that turns it on; All clears the param. */
+/**
+ * Link each filter to the search that turns it on; All clears the param.
+ * A filter turns Pinned off, as one control holds them all.
+ */
 function filterTabs<Key extends string>(
   filters: readonly Filter<Key>[],
   param: string,
   search: string,
-  on: Key,
+  on: Key | undefined,
 ) {
   return filters.map((filter) => {
     const params = filterSearch(search);
+    params.delete(PINNED_PARAM);
     if (filter.key === "all") params.delete(param);
     else params.set(param, filter.key);
     return {
@@ -105,6 +109,24 @@ function filterTabs<Key extends string>(
       search: params.toString(),
     };
   });
+}
+
+/**
+ * Link the Pinned tab, which shows only the viewer's pinned Conversations
+ * and turns the other filters off.
+ */
+function pinnedTab(search: string, on: boolean) {
+  const params = filterSearch(search);
+  params.delete(TYPE_PARAM);
+  params.delete(STATE_PARAM);
+  params.set(PINNED_PARAM, "1");
+  return {
+    icon: Pin,
+    iconOnlyOnPhone: true,
+    label: "Pinned",
+    on,
+    search: params.toString(),
+  };
 }
 
 /** Say which type an ask is. */
@@ -127,15 +149,21 @@ export function pinnedOnlyOf(search: URLSearchParams): boolean {
 
 /**
  * Pick the type of ask that the Inbox shows, with each type's count of the
- * asks that wait on the viewer. A type with nothing waiting hides, unless
- * it is on; All always shows.
+ * asks that wait on the viewer, or only the pinned rows. A type with
+ * nothing waiting hides, unless it is on; All and Pinned always show.
  */
 function InboxTypeFilters(props: {
   counts: Partial<Record<InboxTypeFilter, number>>;
+  pinned: boolean;
   search: string;
   type: InboxTypeFilter;
 }) {
-  const tabs = filterTabs(TYPE_FILTERS, TYPE_PARAM, props.search, props.type)
+  const tabs = filterTabs(
+    TYPE_FILTERS,
+    TYPE_PARAM,
+    props.search,
+    props.pinned ? undefined : props.type,
+  )
     .filter(
       // An unknown count, before the server totals load, does not hide a
       // type.
@@ -146,7 +174,12 @@ function InboxTypeFilters(props: {
       count: props.counts[tab.key],
       iconOnlyOnPhone: true,
     }));
-  return <ScopeTabs label="Asks to show" tabs={tabs} />;
+  return (
+    <ScopeTabs
+      label="Asks to show"
+      tabs={[...tabs, pinnedTab(props.search, props.pinned)]}
+    />
+  );
 }
 
 /** Read the Conversation state filter from `?state=`. Other values show All. */
@@ -171,15 +204,17 @@ export function listFiltersOf(
   type: InboxTypeFilter;
 } {
   const filters = !search.has("item");
+  const pinnedOnly =
+    filters &&
+    signedIn &&
+    (view === "inbox" || view === "conversations") &&
+    pinnedOnlyOf(search);
+  const others = filters && !pinnedOnly;
   return {
     conversationState:
-      filters && view === "conversations" ? conversationStateOf(search) : "all",
-    pinnedOnly:
-      filters &&
-      signedIn &&
-      (view === "inbox" || view === "conversations") &&
-      pinnedOnlyOf(search),
-    type: filters && signedIn && view === "inbox" ? inboxTypeOf(search) : "all",
+      others && view === "conversations" ? conversationStateOf(search) : "all",
+    pinnedOnly,
+    type: others && signedIn && view === "inbox" ? inboxTypeOf(search) : "all",
   };
 }
 
@@ -207,53 +242,36 @@ export function inConversationState(
   return current === state;
 }
 
-/** Pick the viewer state of the Conversations that a list shows. */
+/**
+ * Pick the viewer state of the Conversations that a list shows, or only the
+ * pinned ones. Without `pinned`, the list has no Pinned tab.
+ */
 export function ConversationStateFilters(props: {
+  pinned?: boolean;
   search: string;
   state: ConversationStateFilter;
 }) {
+  const tabs = filterTabs(
+    STATE_FILTERS,
+    STATE_PARAM,
+    props.search,
+    props.pinned ? undefined : props.state,
+  ).map((tab) => ({ ...tab, iconOnlyOnPhone: true }));
   return (
     <ScopeTabs
       label="Conversations to show"
-      tabs={filterTabs(
-        STATE_FILTERS,
-        STATE_PARAM,
-        props.search,
-        props.state,
-      ).map((tab) => ({ ...tab, iconOnlyOnPhone: true }))}
+      tabs={
+        props.pinned === undefined
+          ? tabs
+          : [...tabs, pinnedTab(props.search, props.pinned)]
+      }
     />
   );
 }
 
 /**
- * Switch between every row and only the viewer's pinned Conversations, as
- * one All / Pinned control.
- */
-export function PinnedFilter(props: { on: boolean; search: string }) {
-  const all = filterSearch(props.search);
-  all.delete(PINNED_PARAM);
-  const pinned = filterSearch(props.search);
-  pinned.set(PINNED_PARAM, "1");
-  return (
-    <ScopeTabs
-      label="Rows to show"
-      tabs={[
-        { label: "All", on: !props.on, search: all.toString() },
-        {
-          icon: Pin,
-          iconOnlyOnPhone: true,
-          label: "Pinned",
-          on: props.on,
-          search: pinned.toString(),
-        },
-      ]}
-    />
-  );
-}
-
-/**
- * The filters of an Inbox list view: the types in the Inbox, the states in
- * Conversations, and the All / Pinned switch in both.
+ * The filters of an Inbox list view, as one control: the types in the
+ * Inbox, the states in Conversations, and Pinned in both.
  */
 export function ListFilters(props: {
   conversationState: ConversationStateFilter;
@@ -264,27 +282,23 @@ export function ListFilters(props: {
   type: InboxTypeFilter;
   view: InboxView;
 }) {
-  const inbox = props.view === "inbox" && props.signedIn;
-  return (
-    <>
-      {inbox ? (
-        <InboxTypeFilters
-          counts={props.counts}
-          search={props.search}
-          type={props.type}
-        />
-      ) : null}
-      {props.view === "conversations" ? (
-        <ConversationStateFilters
-          search={props.search}
-          state={props.conversationState}
-        />
-      ) : null}
-      {inbox || (props.view === "conversations" && props.signedIn) ? (
-        <PinnedFilter on={props.pinnedOnly} search={props.search} />
-      ) : null}
-    </>
-  );
+  if (props.view === "inbox") {
+    return props.signedIn ? (
+      <InboxTypeFilters
+        counts={props.counts}
+        pinned={props.pinnedOnly}
+        search={props.search}
+        type={props.type}
+      />
+    ) : null;
+  }
+  return props.view === "conversations" ? (
+    <ConversationStateFilters
+      pinned={props.signedIn ? props.pinnedOnly : undefined}
+      search={props.search}
+      state={props.conversationState}
+    />
+  ) : null;
 }
 
 /** Say whether an Inbox list view has filters. */

@@ -72,8 +72,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toBeVisible();
 
       // Pinned shows only the pin, also after a reload.
-      // An All / Pinned switch, on All by default.
-      const rowsToShow = page.getByRole("navigation", { name: "Rows to show" });
+      // Pinned is a tab of the state filters, which start on All.
+      const rowsToShow = page.getByRole("navigation", {
+        name: "Conversations to show",
+      });
       const all = rowsToShow.getByRole("link", { exact: true, name: "All" });
       const pinnedTab = rowsToShow.getByRole("link", {
         exact: true,

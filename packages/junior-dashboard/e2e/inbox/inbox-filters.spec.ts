@@ -82,6 +82,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(todoRows).toHaveCount(1);
     await expect(todoList).toContainText(todo.title);
     await expect(todoList).not.toContainText(prReview.subject.title);
+
+    // Pinned is a tab of the same control, so it turns the type off, and a
+    // type turns Pinned off.
+    await typeFilter(page, "Pinned").click();
+    await expect(page).toHaveURL(/[?&]pinned=1/);
+    await expect(page).not.toHaveURL(/[?&]type=/);
+    await expect(typeFilter(page, "Pinned")).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(typeFilter(page, "Other")).not.toHaveAttribute("aria-current");
+    await typeFilter(page, "PRs").click();
+    await expect(page).toHaveURL(/[?&]type=prs/);
+    await expect(page).not.toHaveURL(/[?&]pinned=/);
   });
 
   test("a type with no asks hides, but All shows", async ({
@@ -96,7 +110,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     const filters = page
       .getByRole("navigation", { name: "Asks to show" })
       .getByRole("link");
-    await expect(filters).toHaveText([/^All\s*2$/, /^Decisions\s*2$/]);
+    await expect(filters).toHaveText([
+      /^All\s*2$/,
+      /^Decisions\s*2$/,
+      /^Pinned$/,
+    ]);
   });
   test("a link to an ask that a filter hides shows its row and clears the filter", async ({
     dashboard,

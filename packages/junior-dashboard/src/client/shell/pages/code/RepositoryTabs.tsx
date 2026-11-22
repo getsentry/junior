@@ -26,7 +26,6 @@ import {
   ConversationStateFilters,
   conversationStateOf,
   inConversationState,
-  PinnedFilter,
   pinnedOnlyOf,
 } from "../../../inbox/inboxFilters";
 import { useWaitingConversations } from "../../../inbox/queries";
@@ -40,13 +39,13 @@ const PAGE_SIZE = 25;
 /**
  * Conversations linked to the repository, in the home list layout. A pin
  * stays in its time section. `?state=` shows the Conversations in one viewer
- * state, and `?pinned=1` only the viewer's pins.
+ * state, or `?pinned=1` only the viewer's pins, in one control.
  */
 export function RepositoryConversationsTab(props: { repositoryId: string }) {
   const [page, setPage] = useState(1);
   const [params] = useSearchParams();
   const pinnedOnly = pinnedOnlyOf(params);
-  const state = conversationStateOf(params);
+  const state = pinnedOnly ? "all" : conversationStateOf(params);
   useEffect(() => {
     setPage(1);
   }, [pinnedOnly, state]);
@@ -66,8 +65,11 @@ export function RepositoryConversationsTab(props: { repositoryId: string }) {
   return (
     <section aria-label="Conversations" className="grid gap-3">
       <div className="flex items-center justify-end gap-2">
-        <ConversationStateFilters search={params.toString()} state={state} />
-        <PinnedFilter on={pinnedOnly} search={params.toString()} />
+        <ConversationStateFilters
+          pinned={pinnedOnly}
+          search={params.toString()}
+          state={state}
+        />
       </div>
       {feed.error ? (
         <EmptyTelemetry>
