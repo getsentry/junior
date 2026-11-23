@@ -211,6 +211,9 @@ catalogs:
     '@sentry/starlight-theme':
       specifier: ^0.9.1
       version: 0.9.1
+    '@types/mdast':
+      specifier: ^4.0.4
+      version: 4.0.4
     '@types/node':
       specifier: ^24.19.2
       version: 24.19.2
@@ -223,6 +226,15 @@ catalogs:
     drizzle-orm:
       specifier: ^0.45.4
       version: 0.45.4
+    mdast-util-from-markdown:
+      specifier: ^2.1.0
+      version: 2.1.0
+    mdast-util-gfm:
+      specifier: ^3.1.0
+      version: 3.1.0
+    micromark-extension-gfm:
+      specifier: ^3.0.0
+      version: 3.0.0
     p-limit:
       specifier: ^7.3.3
       version: 7.3.3
@@ -517,13 +529,13 @@ importers:
         specifier: 3.0.1
         version: 3.0.1
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       node-html-markdown:
         specifier: ^2.0.0
@@ -862,13 +874,13 @@ importers:
         specifier: ^18.1.2
         version: 18.1.2
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       p-limit:
         specifier: 'catalog:'
@@ -890,7 +902,7 @@ importers:
         specifier: workspace:*
         version: file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12)
       '@types/mdast':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
@@ -1021,19 +1033,19 @@ importers:
   packages/junior-plugin-api:
     dependencies:
       '@types/mdast':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4
       commander:
         specifier: ^14.0.3
         version: 14.0.3
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       zod:
         specifier: 'catalog:'
@@ -1057,13 +1069,13 @@ importers:
         specifier: workspace:*
         version: link:../junior-plugin-api
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       zod:
         specifier: 'catalog:'
@@ -1073,7 +1085,7 @@ importers:
         specifier: workspace:*
         version: file:packages/junior-testing(vitest@4.1.12)
       '@types/mdast':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
