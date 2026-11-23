@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import {
   createLocalSource,
@@ -1183,6 +1184,7 @@ describe("agent plugin hooks", () => {
     try {
       const publish = vi.fn(async (_event: Event) => {});
       const routes = getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
         dispatchForIdentity,
         events: { publish },
       });
@@ -1242,6 +1244,7 @@ describe("agent plugin hooks", () => {
     try {
       const publish = vi.fn(async () => {});
       const [route] = getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
         dispatchForIdentity,
         events: { publish },
       });
@@ -1311,6 +1314,7 @@ describe("agent plugin hooks", () => {
     try {
       const publish = vi.fn(async () => {});
       const [route] = getPluginRoutes({
+        sendPluginTask: sendVercelPluginTask,
         dispatchForIdentity,
         events: { publish },
       });
@@ -1348,6 +1352,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          sendPluginTask: sendVercelPluginTask,
           dispatchForIdentity,
           events: { publish: async () => {} },
         }),
@@ -1383,6 +1388,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          sendPluginTask: sendVercelPluginTask,
           dispatchForIdentity,
           events: { publish: async () => {} },
         }),
@@ -1423,6 +1429,7 @@ describe("agent plugin hooks", () => {
     try {
       expect(() =>
         getPluginRoutes({
+          sendPluginTask: sendVercelPluginTask,
           dispatchForIdentity,
           events: { publish: async () => {} },
         }),

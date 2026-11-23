@@ -74,6 +74,10 @@ import {
 } from "./events/repository.js";
 import { gitHubDbSchema } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import {
+  GITHUB_PULL_REQUEST_OUTCOME_TASK,
+  githubPullRequestOutcomeTask,
+} from "./pull-request-outcomes/apply-task.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
 import {
@@ -194,6 +198,7 @@ export function githubPlugin(
     packageName: "@sentry/junior-github",
     images: githubImageSource,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
+    tasks: { [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask },
     events: {
       resourceTypes: [
         {
@@ -499,6 +504,7 @@ export function githubPlugin(
             events: ctx.events,
             inboxItems: ctx.inboxItems,
             state: ctx.state,
+            tasks: ctx.tasks,
             tokens: installationEnv.tokens,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),

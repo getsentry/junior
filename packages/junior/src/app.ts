@@ -555,6 +555,8 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     pluginRoutes = getPluginRoutes({
       dispatchForIdentity,
       events,
+      // The queue is chosen below, before any route runs.
+      sendPluginTask: (message) => sendPluginTask(message),
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
@@ -578,7 +580,11 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       }),
     ) ??
     getVercelConversationWorkQueue();
-  const pluginTaskQueue = options?.pluginTaskQueue?.(processPluginTask);
+  const pluginTaskQueue = options?.pluginTaskQueue?.((message) =>
+    processPluginTask(message, {
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+    }),
+  );
   const sendPluginTask: SendPluginTask = pluginTaskQueue
     ? (message) => pluginTaskQueue.send(message)
     : sendVercelPluginTask;
@@ -803,7 +809,9 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     return agentContinuePOST(c.req.raw);
   });
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
-    pluginTaskPOST ??= createVercelPluginTaskCallback();
+    pluginTaskPOST ??= createVercelPluginTaskCallback({
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
+    });
     return pluginTaskPOST(c.req.raw);
   });
   let workspaceSnapshotJobPOST:
@@ -833,6 +841,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       conversationWorkQueue,
       dispatchForIdentity,
       events,
+      sendPluginTask,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
   });

@@ -6,6 +6,7 @@
  */
 import { createHash } from "node:crypto";
 import * as z from "zod";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
@@ -21,7 +22,8 @@ import {
 /** Deploy topic name. Keep stable for Vercel queue wiring. */
 export const PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
 
-const PLUGIN_TASK_MAX_DELIVERIES = 5;
+/** Queue deliveries, and runs of a started task, before a task stops. */
+export const PLUGIN_TASK_MAX_DELIVERIES = 5;
 const PLUGIN_TASK_SIGN_CONTEXT = "junior.plugin_task_queue.v1";
 const PLUGIN_TASK_SIGN_VERSION = "v1" as const;
 
@@ -34,13 +36,35 @@ export const pluginTaskParamsSchema = z
 
 export type PluginTaskParams = z.output<typeof pluginTaskParamsSchema>;
 
-export const pluginTaskQueueMessageSchema = z
+const sessionPluginTaskMessageSchema = z
   .object({
     name: z.string().min(1),
     params: pluginTaskParamsSchema,
     plugin: z.string().min(1),
   })
   .strict();
+
+export type SessionPluginTaskMessage = z.output<
+  typeof sessionPluginTaskMessageSchema
+>;
+
+/** A task that a plugin started. Its row in `junior_plugin_tasks` holds the payload. */
+const startedPluginTaskMessageSchema = z
+  .object({
+    name: z.string().min(1),
+    plugin: z.string().min(1),
+    taskId: z.uuid(),
+  })
+  .strict();
+
+export type StartedPluginTaskMessage = z.output<
+  typeof startedPluginTaskMessageSchema
+>;
+
+export const pluginTaskQueueMessageSchema = z.union([
+  sessionPluginTaskMessageSchema,
+  startedPluginTaskMessageSchema,
+]);
 
 export type PluginTaskQueueMessage = z.output<
   typeof pluginTaskQueueMessageSchema
@@ -50,13 +74,26 @@ const pluginTaskSign = {
   context: PLUGIN_TASK_SIGN_CONTEXT,
   schema: pluginTaskQueueMessageSchema,
   signatureVersion: PLUGIN_TASK_SIGN_VERSION,
-  parts: (message: PluginTaskQueueMessage) => [
-    message.plugin,
-    message.name,
-    message.params.conversationId,
-    message.params.sessionId,
-  ],
+  // A task id is a UUID, so its parts cannot match the parts of a session
+  // task message.
+  parts: (message: PluginTaskQueueMessage) =>
+    "taskId" in message
+      ? [message.plugin, message.name, message.taskId]
+      : [
+          message.plugin,
+          message.name,
+          message.params.conversationId,
+          message.params.sessionId,
+        ],
 };
+
+/**
+ * Seconds before the queue delivers a failed plugin task again: 30, 60, 120,
+ * then 240. One fixed backoff for every task.
+ */
+export function pluginTaskRetryDelaySeconds(deliveryCount: number): number {
+  return 30 * 2 ** (Math.min(Math.max(deliveryCount, 1), 4) - 1);
+}
 
 /** Build the stable id used for delivery dedupe and tracing. */
 export function pluginTaskId(args: {
@@ -102,14 +139,15 @@ function logPluginTaskQueueMessageRejected(
   });
 }
 
-function pluginTaskCallback() {
+function pluginTaskCallback(options: { showInboxItem?: ShowInboxItem }) {
   return queueCallback<PluginTaskQueueMessage>({
     maxDeliveries: PLUGIN_TASK_MAX_DELIVERIES,
     onRejected: logPluginTaskQueueMessageRejected,
+    retryDelaySeconds: pluginTaskRetryDelaySeconds,
     // Load the runner on first use so this module can send without a cycle.
     run: async (message) => {
       const { processPluginTask } = await import("./task-runner");
-      await processPluginTask(message);
+      await processPluginTask(message, options);
     },
     verify: verifyPluginTaskQueueMessage,
   });
@@ -123,15 +161,17 @@ export async function sendVercelPluginTask(
     PLUGIN_TASK_QUEUE_TOPIC,
     signPluginTaskQueueMessage(message),
     {
-      idempotencyKey: pluginTaskId(message),
+      // A started task's row claims each run, and the heartbeat sends a lost
+      // task again, so a key must not drop that send.
+      idempotencyKey: "taskId" in message ? undefined : pluginTaskId(message),
       retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
     },
   );
 }
 
 /** Create the HTTP callback for plugin tasks. */
-export function createVercelPluginTaskCallback(): (
-  request: Request,
-) => Promise<Response> {
-  return pluginTaskCallback().create();
+export function createVercelPluginTaskCallback(
+  options: { showInboxItem?: ShowInboxItem } = {},
+): (request: Request) => Promise<Response> {
+  return pluginTaskCallback(options).create();
 }

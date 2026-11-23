@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { githubPlugin } from "@sentry/junior-github";
 import type { User } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
@@ -157,6 +158,7 @@ describe("Automation alerts", () => {
   let fixture: ConversationFixture;
   const heartbeat = () =>
     runHeartbeat({
+      sendPluginTask: sendVercelPluginTask,
       conversationWorkQueue: fixture.queue,
       dispatchForIdentity: createIdentityDispatcher({
         conversationWorkQueue: () => fixture.queue,

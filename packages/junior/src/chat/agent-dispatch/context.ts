@@ -18,6 +18,8 @@ import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
+import { createPluginTaskStarter } from "@/chat/plugins/task-start";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   buildDispatchId,
@@ -104,6 +106,8 @@ export function createHeartbeatContext(args: {
   plugin: string | PluginRegistration;
   /** Shows an Inbox item that the heartbeat changed. */
   showInboxItem?: ShowInboxItem | undefined;
+  /** Sends the tasks that the heartbeat starts. */
+  sendPluginTask: SendPluginTask;
 }): HeartbeatHookContext {
   const pluginName =
     typeof args.plugin === "string" ? args.plugin : args.plugin.manifest.name;
@@ -142,6 +146,11 @@ export function createHeartbeatContext(args: {
         }),
     },
     state: createPluginState(pluginName),
+    tasks: createPluginTaskStarter({
+      plugin: pluginName,
+      send: args.sendPluginTask,
+      tasks: typeof args.plugin === "string" ? undefined : args.plugin.tasks,
+    }),
     log: createPluginLogger(pluginName),
     agent: {
       async dispatch(options) {

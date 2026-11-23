@@ -42,6 +42,7 @@ import {
   juniorInboxItems,
 } from "./schema/inbox-items";
 import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
+import { juniorPluginTasks } from "./schema/plugin-tasks";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
@@ -82,6 +83,7 @@ export {
   juniorInboxItems,
   juniorTodos,
   juniorTodoVersionSeq,
+  juniorPluginTasks,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
@@ -127,6 +129,7 @@ export const juniorSqlSchema = {
   juniorInboxItemSlackCards,
   juniorInboxItems,
   juniorTodos,
+  juniorPluginTasks,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,

@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import type { Event } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -77,6 +78,7 @@ describe("snoozes", () => {
     });
   const heartbeat = () =>
     runHeartbeat({
+      sendPluginTask: sendVercelPluginTask,
       conversationWorkQueue: fixture.queue,
       dispatchForIdentity: createIdentityDispatcher({
         conversationWorkQueue: () => fixture.queue,
