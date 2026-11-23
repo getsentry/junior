@@ -55,7 +55,7 @@ new RuleTester({
       // A writer passes its own attributes parameter on.
       code: [
         allWritten,
-        "function renderUntrustedTag(name, attrs, text) {",
+        "function renderDataTag(name, attrs, text) {",
         "  return renderTag(name, attrs, [text]);",
         "}",
       ].join("\n"),
