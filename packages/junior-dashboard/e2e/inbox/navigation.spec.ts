@@ -340,10 +340,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
     await listRead;
 
-    // The pane's search bar opens the command palette.
+    // The pane's search bar opens the command palette, which reads the
+    // viewer's Automations when it opens.
     await page.getByRole("button", { name: /^Search/ }).click();
     await expect(
-      page.getByRole("dialog", { name: "Go to conversation" }),
+      page
+        .getByRole("dialog", { name: "Go to conversation" })
+        .getByRole("group", { name: "Automations" })
+        .getByRole("option")
+        .first(),
     ).toBeVisible();
   });
 
