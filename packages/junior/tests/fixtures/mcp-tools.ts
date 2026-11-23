@@ -63,43 +63,35 @@ export async function appendMcpMessages(
   );
 }
 
-/** Store one open Inbox item assigned to the named viewer. */
+/** Store one open private action Inbox item assigned to the named viewer. */
 export async function seedMcpInboxItem(args: {
-  /** Also assign it to Everyone, which makes it public. The viewer stays a named assignee. */
-  assignedToEveryone?: boolean;
   conversationId: string;
   email: string;
-  /** A notice has no question. Defaults to an action. */
-  kind?: "action" | "notice";
   title: string;
 }): Promise<InboxItem> {
   const viewer = await requireViewer(args.email);
   const item = await insertInboxItem(getDb(), {
     owner: { id: args.conversationId, kind: "conversation" },
-    assignedToEveryone: args.assignedToEveryone ?? false,
+    assignedToEveryone: false,
     assigneeUserIds: [viewer.id],
     body: "Pick one.",
     conversationIds: [args.conversationId],
     dedupeKey: args.title,
+    kind: "action",
     nowMs: Date.now(),
-    ...(args.kind === "notice"
-      ? { kind: "notice" }
-      : {
-          kind: "action",
-          request: {
-            question: "Ship it?",
-            fields: [
-              {
-                id: "decision",
-                kind: "choice",
-                label: "Decision",
-                options: [{ label: "Ship" }, { label: "Wait" }],
-              },
-            ],
-          },
-        }),
+    request: {
+      question: "Ship it?",
+      fields: [
+        {
+          id: "decision",
+          kind: "choice",
+          label: "Decision",
+          options: [{ label: "Ship" }, { label: "Wait" }],
+        },
+      ],
+    },
     title: args.title,
-    visibility: args.assignedToEveryone ? "public" : "private",
+    visibility: "private",
   });
   if (!item) throw new Error(`Inbox item ${args.title} was not stored`);
   return item;

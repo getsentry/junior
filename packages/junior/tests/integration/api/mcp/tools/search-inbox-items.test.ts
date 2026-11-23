@@ -45,7 +45,6 @@ describe("searchInboxItems MCP tool", () => {
           id: mine.id,
           canAct: true,
           conversationIds: [CONVERSATION_ID],
-          needsViewer: true,
           question: "Ship it?",
           status: "open",
           title: "Approve the release",

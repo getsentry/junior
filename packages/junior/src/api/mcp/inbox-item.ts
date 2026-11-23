@@ -6,7 +6,7 @@
  */
 import * as z from "zod";
 import { getDashboardInboxItemLink } from "@/chat/dashboard-link";
-import { canActOnInboxItem, itemNeedsUser } from "@/chat/inbox-items/access";
+import { canActOnInboxItem } from "@/chat/inbox-items/access";
 import type { InboxItem } from "@/chat/inbox-items/store";
 
 /** MCP view of one Inbox item. Answers happen in Slack or the dashboard. */
@@ -22,11 +22,6 @@ export const mcpInboxItemSchema = z
       .array(z.string())
       .describe("Names or emails. Empty when anyone can act."),
     canAct: z.boolean().describe("True when you can answer or dismiss it."),
-    needsViewer: z
-      .boolean()
-      .describe(
-        "True when it waits on you: an open action item assigned to you.",
-      ),
     conversationIds: z.array(z.string()),
     subject: z
       .object({
@@ -59,7 +54,6 @@ export function mcpInboxItem(
       ? []
       : item.assignees.map((person) => person.displayName ?? person.email),
     canAct: canActOnInboxItem(item, userId),
-    needsViewer: itemNeedsUser(item, userId),
     conversationIds: item.conversationIds,
     ...(item.subject
       ? {

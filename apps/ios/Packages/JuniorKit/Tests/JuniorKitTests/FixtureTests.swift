@@ -28,12 +28,13 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     _ = try fixture("createConversation", as: AcceptedMessage.self)
     let items = try fixture("searchInboxItems", as: InboxItemList.self)
     #expect(items.items.allSatisfy { $0.status == "open" })
-    // A reply notice lists for its starter, but the badge does not count it.
+    // A reply notice lists for its starter, but the badge counts neither it
+    // nor an item for Everyone.
     let notice = try #require(items.items.first { $0.kind == "notice" })
     #expect(notice.canAct && !notice.needsViewer)
-    // A To-do is an action with no question and no Conversation.
-    let todo = try #require(items.items.first { $0.id == "qa-todo-preview-deploy" })
-    #expect(todo.question == nil && todo.conversationIds.isEmpty && todo.needsViewer)
+    var forEveryone = try #require(items.items.first { $0.needsViewer })
+    forEveryone.assignees = []
+    #expect(!forEveryone.needsViewer)
     _ = try fixture("getInboxItem", as: InboxItemResult.self)
     let automations = try fixture("searchAutomations", as: AutomationList.self)
     #expect(automations.total >= automations.automations.count)
@@ -41,7 +42,7 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     #expect(!automation.automation.task.text.isEmpty)
   }
 
-  @Test func readsAnOlderJunior() throws {
+  @Test func readsConversationsFromAnOlderJunior() throws {
     // Junior 0.310 and older send their old statuses and no `turnActive`.
     func row(_ status: String) throws -> MCPConversation {
       let json = """
@@ -52,17 +53,6 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     }
     #expect(try row("active").turnActive)
     #expect(try !row("completed").turnActive)
-    // Junior 0.313 and older send no `needsViewer` on an Inbox item.
-    func item(_ kind: String, assignees: String) throws -> InboxItem {
-      let json = """
-        {"id":"i1","kind":"\(kind)","status":"open","title":"T","body":"B","assignees":\(assignees),\
-        "canAct":true,"conversationIds":[],"createdAt":"2026-08-07T12:00:00Z","updatedAt":"2026-08-07T12:00:00Z"}
-        """
-      return try JSONDecoder.junior.decode(InboxItem.self, from: Data(json.utf8))
-    }
-    #expect(try item("action", assignees: #"["Dashboard User"]"#).needsViewer)
-    #expect(try !item("notice", assignees: #"["Dashboard User"]"#).needsViewer)
-    #expect(try !item("action", assignees: "[]").needsViewer)
   }
 
   @Test func archiveKeepsTheExactLastSeenAt() throws {

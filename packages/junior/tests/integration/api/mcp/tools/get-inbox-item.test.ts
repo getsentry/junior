@@ -36,47 +36,8 @@ describe("getInboxItem MCP tool", () => {
         body: "Pick one.",
         canAct: true,
         kind: "action",
-        needsViewer: true,
         question: "Ship it?",
         title: "Approve the release",
-      }),
-    });
-  });
-
-  it("marks only open actions assigned to the viewer as waiting on them", async () => {
-    await seedMcpConversation({
-      conversationId: CONVERSATION_ID,
-      email: MCP_TEST_VIEWER,
-      title: "Release review",
-    });
-    const notice = await seedMcpInboxItem({
-      conversationId: CONVERSATION_ID,
-      email: MCP_TEST_VIEWER,
-      kind: "notice",
-      title: "Release review replied",
-    });
-    const forEveryone = await seedMcpInboxItem({
-      assignedToEveryone: true,
-      conversationId: CONVERSATION_ID,
-      email: MCP_TEST_VIEWER,
-      title: "Approve the rollout",
-    });
-    const call = await connectMcpTools();
-
-    const noticeResult = await call("getInboxItem", { id: notice.id });
-    const everyoneResult = await call("getInboxItem", { id: forEveryone.id });
-
-    expect(noticeResult.structuredContent).toEqual({
-      item: expect.objectContaining({
-        canAct: true,
-        kind: "notice",
-        needsViewer: false,
-      }),
-    });
-    expect(everyoneResult.structuredContent).toEqual({
-      item: expect.objectContaining({
-        assignees: [],
-        needsViewer: true,
       }),
     });
   });

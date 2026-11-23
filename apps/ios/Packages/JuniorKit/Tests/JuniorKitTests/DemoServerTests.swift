@@ -47,8 +47,6 @@ final class ManualClock: @unchecked Sendable {
     #expect(!items.items.isEmpty)
     let replyNotice = try #require(items.items.first { $0.id == "qa-reply-dashboard-qa" })
     #expect(replyNotice.canAct && !replyNotice.needsViewer)
-    let todo = try #require(items.items.first { $0.id == "qa-todo-preview-deploy" })
-    #expect(todo.question == nil && todo.needsViewer)
     for item in items.items {
       _ = try await client.call("getInboxItem", ["id": .string(item.id)], as: InboxItemResult.self)
       for conversationId in item.conversationIds {
