@@ -49,8 +49,7 @@ also wake a Conversation or run an Event automation.
   branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
-  matches it. An Event about a PR that Junior owns starts a Turn for the
-  agent, not an ask. When Junior stops that upkeep, it tells nobody.
+  matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When it is approved and can merge,
   the requester gets a "Ready to merge" Inbox item.
