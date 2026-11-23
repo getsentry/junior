@@ -126,7 +126,10 @@ import {
   registerVercelBackgroundCompactionDevConsumer,
 } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
-import { turnStepConsumer } from "@/turn-steps/consumer";
+import {
+  createGatewayModelClient,
+  turnStepConsumer,
+} from "@/turn-steps/consumer";
 import { deliveryConsumer } from "@/turn-steps/delivery";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import {
@@ -884,7 +887,9 @@ export async function createApp(
   // Built after resetRuntimeConfig, so the lease and the queue visibility
   // timeout use this app's functionMaxDurationSeconds.
   const engineCtx = createEngineContext(getChatConfig());
-  const turnSteps = turnStepConsumer(engineCtx);
+  const turnSteps = turnStepConsumer(engineCtx, {
+    client: createGatewayModelClient(),
+  });
   const deliveries = deliveryConsumer(engineCtx, {
     getSlackAdapter: getProductionSlackAdapter,
   });

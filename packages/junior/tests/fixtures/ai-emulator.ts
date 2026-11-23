@@ -4,6 +4,7 @@
 // script the replies and inject faults. Vitest loads this module once per
 // test file, so each test file gets its own emulator. Each test starts with
 // no rules and no recorded calls.
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { createEmulator } from "emulate";
 import { afterAll, afterEach } from "vitest";
@@ -100,4 +101,45 @@ export function streamDisconnected(text: string): ModelRule {
     reply: [{ type: "text", text }],
     fault: { kind: "disconnect", afterChunks: 1 },
   };
+}
+
+/**
+ * The emulator rule that answers with the text and tool calls of a reply.
+ * Tool calls keep their ids.
+ */
+export function replyRule(reply: AssistantMessage): ModelRule {
+  if (reply.stopReason !== "stop" && reply.stopReason !== "toolUse") {
+    throw new Error(`The emulator cannot end a reply with ${reply.stopReason}`);
+  }
+  return {
+    reply: reply.content.map((part) => {
+      if (part.type === "text") {
+        return { type: "text", text: part.text };
+      }
+      if (part.type === "toolCall") {
+        return {
+          type: "tool_call",
+          name: part.name,
+          arguments: part.arguments,
+          id: part.id,
+        };
+      }
+      throw new Error(`The emulator cannot reply with ${part.type}`);
+    }),
+  };
+}
+
+/**
+ * Answers the next model requests in order, one per request. A reply is a
+ * model reply or a rule, such as a fault.
+ */
+export async function setModelReplies(
+  replies: Array<AssistantMessage | ModelRule>,
+): Promise<void> {
+  await setModelRules(
+    replies.map((reply) => ({
+      ...("role" in reply ? replyRule(reply) : reply),
+      times: 1,
+    })),
+  );
 }
