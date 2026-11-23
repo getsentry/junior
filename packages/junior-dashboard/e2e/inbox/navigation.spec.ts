@@ -22,9 +22,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(dashboard.baseURL);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
-    // One list of labelled rows: the Lead, the Inbox views, Conversations
-    // and Automations. The Inbox filters its asks by type, so the pane has no
-    // rows for them. No tab bar sits above them.
+    // One list of labelled rows: the Lead, the Inbox views, Conversations,
+    // Code, and Automations. The Inbox filters its asks by type, so the pane
+    // has no rows for them. No tab bar sits above them.
     await expect(page.getByRole("tablist")).toHaveCount(0);
     const rows = primary.getByRole("link");
     const names = [
@@ -33,6 +33,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "Snoozed",
       "Done",
       "Conversations",
+      "Code",
       /^Automations/,
     ];
     for (const [index, name] of names.entries())

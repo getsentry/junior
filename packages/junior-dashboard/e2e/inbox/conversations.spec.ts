@@ -510,16 +510,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       popover.getByRole("menuitem", { name: "Settings", exact: true }),
     ).toHaveAttribute("href", "/settings");
-    // Low-traffic pages live here instead of the primary nav.
+    // Low-traffic pages live here instead of the primary nav. Code has its
+    // own row in the pane.
     await expect(
       popover.getByRole("menuitem", { name: "Code", exact: true }),
-    ).toHaveAttribute("href", "/code");
+    ).toHaveCount(0);
     await expect(
       popover.getByRole("menuitem", { name: "System", exact: true }),
     ).toHaveAttribute("href", "/system");
-    await expect(
-      primary.getByRole("link", { name: /^(Code|System)$/ }),
-    ).toHaveCount(0);
+    await expect(primary.getByRole("link", { name: /^System$/ })).toHaveCount(
+      0,
+    );
     await expect(
       popover.getByRole("menuitem", { name: "Log out" }),
     ).toBeVisible();

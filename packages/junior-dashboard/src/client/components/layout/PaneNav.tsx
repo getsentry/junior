@@ -42,6 +42,7 @@ import type { DashboardHeaderNavItem } from "../../shell/components/layout/Dashb
 import {
   isInboxView,
   isOldAutomationsPath,
+  isOldPullRequestsPath,
   paneRowForPath,
   paneRowLabel,
   paneRowMark,
@@ -169,7 +170,12 @@ export function PaneNavProvider(props: {
     {},
   );
   // An old link redirects, so it is not a place to reopen.
-  if (row && rowPaths[row] !== here && !isOldAutomationsPath(location))
+  if (
+    row &&
+    rowPaths[row] !== here &&
+    !isOldAutomationsPath(location) &&
+    !isOldPullRequestsPath(location)
+  )
     setRowPaths({ ...rowPaths, [row]: here });
   if (row && row !== lastRow) setLastRow(row);
   const [width, setWidth] = useState(readPaneWidth);
