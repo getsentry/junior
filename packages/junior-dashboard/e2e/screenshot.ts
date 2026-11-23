@@ -106,19 +106,6 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
       await page.setViewportSize({ height, width: view.width });
       await settle(page);
     }
-    // Element shots clip a full-page capture. A plain element shot scrolls
-    // the element into view, where sticky page chrome can cover it.
-    const clip = options.target
-      ? await options.target.evaluate((element) => {
-          const box = element.getBoundingClientRect();
-          return {
-            height: Math.round(box.height),
-            width: Math.round(box.width),
-            x: Math.round(box.x + window.scrollX),
-            y: Math.round(box.y + window.scrollY),
-          };
-        })
-      : options.clip;
     const restoreOrigin = await page.evaluateHandle((origin) => {
       const changed: Array<[Text, string]> = [];
       const walker = document.createTreeWalker(
@@ -136,12 +123,17 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
       };
     }, SCREENSHOT_ORIGIN);
     const file = `${name}__${view.name}.png`;
-    const image = await stableCapture(page, file, {
-      animations: "disabled",
-      clip,
-      fullPage: !options.clip,
-      style: SCREENSHOT_STYLE,
-    });
+    const image = await stableCapture(file, page, async () =>
+      page.screenshot({
+        animations: "disabled",
+        // Element shots clip a full-page capture. A plain element shot
+        // scrolls the element into view, where sticky page chrome can cover
+        // it. Measure on each capture, as late content can move the element.
+        clip: options.target ? await boxOf(options.target) : options.clip,
+        fullPage: !options.clip,
+        style: SCREENSHOT_STYLE,
+      }),
+    );
     await mkdir(SCREENSHOT_DIR, { recursive: true });
     await writeFile(path.join(SCREENSHOT_DIR, file), image);
     // Later steps of the spec read the real URL.
@@ -158,20 +150,33 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
  * unrelated pull request.
  */
 async function stableCapture(
-  page: Page,
   file: string,
-  options: Parameters<Page["screenshot"]>[0],
+  page: Page,
+  shoot: () => Promise<Buffer>,
 ): Promise<Buffer> {
-  let previous = await page.screenshot(options);
+  let previous = await shoot();
   for (let capture = 1; capture < MAX_CAPTURES; capture += 1) {
     await settle(page);
-    const image = await page.screenshot(options);
+    const image = await shoot();
     if (image.equals(previous)) return image;
     previous = image;
   }
   throw new Error(
     `Screenshot ${file} changed in each of ${MAX_CAPTURES} captures. Find what still moves and make it settle before the shot.`,
   );
+}
+
+/** Page box of an element, in whole pixels. */
+async function boxOf(target: Locator) {
+  return target.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return {
+      height: Math.round(box.height),
+      width: Math.round(box.width),
+      x: Math.round(box.x + window.scrollX),
+      y: Math.round(box.y + window.scrollY),
+    };
+  });
 }
 
 /**
