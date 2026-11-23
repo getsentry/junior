@@ -82,7 +82,8 @@ export async function deleteGitHubIssueReviewers(
 /**
  * Claim the reviewers whose reactions are due for a read: added after
  * `since`, and not read after `checkedBefore`, the oldest read first. The
- * claim marks them read at `now`, so a concurrent heartbeat skips them.
+ * claim locks the rows and marks them read at `now`, so a concurrent
+ * heartbeat skips them.
  */
 export async function claimGitHubIssueReviewersForReactions(
   db: GitHubDb,
@@ -103,7 +104,10 @@ export async function claimGitHubIssueReviewersForReactions(
       ),
     )
     .orderBy(sql`${table.checkedAt} asc nulls first`, asc(table.createdAt))
-    .limit(input.limit);
+    .limit(input.limit)
+    // A concurrent heartbeat skips the rows that this claim locked, so it
+    // cannot claim them again after this update commits.
+    .for("update", { skipLocked: true });
   return await db
     .update(table)
     .set({ checkedAt: input.now })
