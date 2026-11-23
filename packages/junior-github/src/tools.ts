@@ -43,7 +43,6 @@ export function createGitHubTools(
       cloneRepository: gitHubCloneRepositoryTool,
       commentOnIssue: gitHubCommentOnIssueTool,
       commentOnPullRequest: gitHubCommentOnPullRequestTool,
-      createIssue: gitHubIssueTool,
       getDeployment: gitHubGetDeploymentTool,
       getIssue: gitHubGetIssueTool,
       getPullRequest: gitHubGetPullRequestTool,
@@ -59,8 +58,9 @@ export function createGitHubTools(
       updatePullRequestFeedback:
         createGitHubUpdatePullRequestFeedbackTool(botEmail),
     }),
-    // Rewrites Slack mentions itself, so it can resolve the people it names
-    // from their Slack user IDs first.
+    // These rewrite Slack mentions themselves, so they can resolve the people
+    // they name from their Slack user IDs first.
+    createIssue: gitHubIssueTool,
     createPullRequest: createGitHubPullRequestTool(
       pullRequestSubscription,
       descriptionChecks,

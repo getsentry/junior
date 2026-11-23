@@ -353,7 +353,14 @@ export const gitHubIssueTool = definePluginTool({
     options: PluginToolExecuteOptions,
     ctx: ToolRegistrationHookContext,
   ) {
-    const parsedInput = parseCreateIssueInput(input);
+    // review_by skips the Slack mention rewrite that other text gets: an
+    // unlinked person's mention would become a name and lose the Slack user
+    // ID that the lookup needs.
+    const { review_by: reviewBy, ...text } = input;
+    const parsedInput = parseCreateIssueInput({
+      ...(await ctx.users.replaceSlackMentions(text, "github")),
+      ...(reviewBy ? { review_by: reviewBy } : undefined),
+    });
     const conversationId = runtimeId(ctx.conversationId, "conversationId");
     const toolCallId = runtimeId(options?.toolCallId, "toolCallId");
     const key = `createIssue:${conversationId}:${toolCallId}`;
@@ -401,8 +408,9 @@ export const gitHubIssueTool = definePluginTool({
           pendingState,
           GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS,
         );
+        let result: GitHubIssueResult;
         try {
-          const result = await createGitHubIssue(ctx, request);
+          result = await createGitHubIssue(ctx, request);
           Object.assign(pendingState, { status: "completed", ...result });
           try {
             await ctx.state.set(
@@ -416,7 +424,6 @@ export const gitHubIssueTool = definePluginTool({
               { cause: error },
             );
           }
-          return await gitHubIssueToolResult(ctx, parsedInput, result);
         } catch (error) {
           if (
             isEgressAuthRequired(error) ||
@@ -426,6 +433,10 @@ export const gitHubIssueTool = definePluginTool({
           }
           throw error;
         }
+        // Outside the try: the issue exists now, so a later failure, such as
+        // an auth prompt while it asks for reviews, must keep the completed
+        // state, or a retry would create a second issue.
+        return await gitHubIssueToolResult(ctx, parsedInput, result);
       },
     );
     if (!attempt.acquired) {

@@ -1,6 +1,7 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
+import { EgressAuthRequired } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createApp, defineJuniorPlugins } from "@/app";
@@ -58,17 +59,22 @@ async function sendGitHubWebhook(
   expect(response.status).toBe(202);
 }
 
-/** The issue bodies and the assignees that Junior sent to GitHub. */
+/** The issues, issue bodies, and assignees that Junior sent to GitHub. */
 const sent = {
   assignees: new Map<number, string[]>(),
   bodies: new Map<number, string>(),
+  creates: new Map<number, number>(),
 };
 
 /**
  * Open an issue from the person's Turn, as Junior does. GitHub assigns each
- * login that Junior sends.
+ * login that Junior sends, unless `assignError` interrupts that request.
  */
-async function createIssue(number: number, reviewBy: string[]) {
+async function createIssue(
+  number: number,
+  reviewBy: string[],
+  assignError?: Error,
+) {
   return await getPluginTools({
     actor: person,
     conversationId: slackParentConversationId,
@@ -80,6 +86,7 @@ async function createIssue(number: number, reviewBy: string[]) {
           body?: string;
         };
         if (new URL(request.url).pathname.endsWith("/assignees")) {
+          if (assignError) throw assignError;
           sent.assignees.set(number, body.assignees ?? []);
           return Response.json({
             assignees: (body.assignees ?? []).map((login) => ({ login })),
@@ -87,6 +94,7 @@ async function createIssue(number: number, reviewBy: string[]) {
           });
         }
         sent.bodies.set(number, body.body ?? "");
+        sent.creates.set(number, (sent.creates.get(number) ?? 0) + 1);
         return Response.json(
           { html_url: issueUrl(number), number },
           { status: 201 },
@@ -199,13 +207,13 @@ describe("an issue that Junior opens for a person's review", () => {
         });
       // Sam linked GitHub, but is not in this Conversation.
       await linkedPerson("U0SAM", "sam-gh");
-      // Slack mentions reach the tool as the `@login` of the linked account.
+      // A Slack mention reaches the lookup with its user ID.
       await expect(
         createIssue(77, [`<@${person.userId}>`, "<@U0SAM>"]),
       ).resolves.toMatchObject({
         review_left_out: [
           {
-            person: "@sam-gh",
+            person: "<@U0SAM>",
             reason: "Is not in this Conversation, so they cannot get an item.",
           },
         ],
@@ -260,6 +268,20 @@ describe("an issue that Junior opens for a person's review", () => {
       // A reopen does not ask again.
       await lifecycle("reopened");
       expect(await reviewItem(78)).toMatchObject({ status: "done" });
+
+      // An auth prompt while it asks for reviews comes after the issue
+      // exists, so the retry of that tool call opens no second issue.
+      await expect(
+        createIssue(
+          79,
+          [`<@${person.userId}>`],
+          new EgressAuthRequired("Connect GitHub"),
+        ),
+      ).rejects.toThrow("Connect GitHub");
+      await expect(
+        createIssue(79, [`<@${person.userId}>`]),
+      ).resolves.toMatchObject({ number: 79, review_requested: ["pat-gh"] });
+      expect(sent.creates.get(79)).toBe(1);
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

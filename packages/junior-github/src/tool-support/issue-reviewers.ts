@@ -43,7 +43,7 @@ async function resolveReviewers(
   >();
   const lookups = await pLimit(PERSON_LOOKUP_CONCURRENCY).map(
     people,
-    // Slack mentions reach the tool as `@login` of the linked account.
+    // A login is looked up as given. A Slack mention keeps its user ID.
     async (person) => ({
       lookup: await ctx.users.findLinkedHandle(
         parseGitHubLogin(person) ?? person,
