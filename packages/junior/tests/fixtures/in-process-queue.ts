@@ -12,9 +12,9 @@
 // payload with its metadata, a throw goes through `consumer.retry()`, and an
 // idempotency key drops a second send.
 //
-// It does not cover the real provider's wire format, signing or visibility
-// timeouts. `tests/integration/turn-step-queue.test.ts` covers those on
-// BullMQ.
+// It does not cover the real provider's wire format, signature expiry or
+// visibility timeouts. `tests/integration/turn-step-queue.test.ts` covers
+// those on BullMQ.
 import { randomUUID } from "node:crypto";
 import type {
   QueueConsumer,
