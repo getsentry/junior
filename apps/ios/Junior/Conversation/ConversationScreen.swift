@@ -60,6 +60,7 @@ struct ConversationScreen: View {
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
     }
+    .onChange(of: app.savedTitleVersion) { model.state = model.state?.applying(app.savedTitle) }
     .renameAlert($renaming) { _, title in
       Task { await model.write("renameConversation", ["title": .string(title)], as: RenameResult.self, app: app) }
     }

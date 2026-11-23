@@ -69,6 +69,10 @@ final class AppModel {
   /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0
   private(set) var inboxItemsVersion = 0
+  /// The latest title that a rename from a list saved. `savedTitleVersion`
+  /// bumps with each one, so the open Conversation shows it at once.
+  private(set) var savedTitle: SavedTitle?
+  private(set) var savedTitleVersion = 0
 
   /// A pinned "now" for deterministic screenshots (`-JuniorFixedNow`).
   let fixedNow: Date?
@@ -266,6 +270,12 @@ final class AppModel {
 
   func noteInput() {
     lastInput = Date()
+  }
+
+  /// Tell the open Conversation about a title that a list saved.
+  func didRename(_ saved: SavedTitle) {
+    savedTitle = saved
+    savedTitleVersion += 1
   }
 
   /// Tell screens that data changed after a local write.

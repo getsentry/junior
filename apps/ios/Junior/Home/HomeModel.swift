@@ -86,6 +86,7 @@ final class HomeModel {
     let result = try await app.call(
       "renameConversation", ["conversationId": .string(row.conversationId), "title": .string(title)], as: Renamed.self)
     update(row.conversationId) { $0.title = result.title }
+    app.didRename(SavedTitle(conversationId: row.conversationId, title: result.title))
   }
 
   private func update(_ id: String, _ change: (inout MCPConversation) -> Void) {
