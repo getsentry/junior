@@ -1,3 +1,4 @@
+import { parsePath } from "react-router";
 import {
   INBOX_VIEW_LABELS,
   inboxViewOfPath,
@@ -31,7 +32,7 @@ export const isInboxView = (row: PaneRow | undefined): row is InboxView =>
 
 /** True for a path, with or without its search, on a Code page. */
 export function isCodePath(path: string): boolean {
-  return under(path.split("?", 1)[0] ?? path, NAV_PAGES.code.to);
+  return under(parsePath(path).pathname ?? "/", NAV_PAGES.code.to);
 }
 
 /** Name the list that a return path opens: Code or an Inbox view. */
@@ -82,9 +83,10 @@ export function oldPullRequestsTarget(search: string): string {
   const params = new URLSearchParams(search);
   const itemId = params.get("item");
   if (!itemId) return NAV_PAGES.code.to;
-  const path = inboxViewPath("inbox", { itemId });
-  // An item link always has a query, so the flag joins it.
-  return params.get("snooze") ? `${path}&snooze=1` : path;
+  return inboxViewPath("inbox", {
+    itemId,
+    snooze: Boolean(params.get("snooze")),
+  });
 }
 
 // A link may leave the colons of a Conversation id unencoded, so compare

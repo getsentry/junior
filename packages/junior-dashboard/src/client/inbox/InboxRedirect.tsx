@@ -26,12 +26,13 @@ export function InboxRedirect() {
       : item.data && item.data.status !== "open"
         ? "done"
         : "inbox";
-  const path = inboxViewPath(view, { itemId });
-  // An item link always has a query, so the flag joins it.
   return (
     <Navigate
       replace
-      to={itemId && params.get("snooze") ? `${path}&snooze=1` : path}
+      to={inboxViewPath(view, {
+        itemId,
+        snooze: Boolean(params.get("snooze")),
+      })}
     />
   );
 }

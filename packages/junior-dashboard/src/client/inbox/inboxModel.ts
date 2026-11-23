@@ -2,6 +2,7 @@ import type {
   AutomationListItem,
   InboxItemPayload,
 } from "@sentry/junior/api/schema";
+import { parsePath } from "react-router";
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import type { Conversation } from "../types";
@@ -51,18 +52,24 @@ export function parseInboxView(value: string | null): InboxView {
 
 /** Read the entry of a list path, such as the return path of a Back. */
 export function inboxViewOfPath(path: string): InboxView {
-  return parseInboxView(new URLSearchParams(path.split("?")[1]).get("view"));
+  return parseInboxView(
+    new URLSearchParams(parsePath(path).search).get("view"),
+  );
 }
 
-/** The list path of an entry, with one item's row expanded when given. */
+/**
+ * The list path of an entry, with one item's row expanded when given, and
+ * its snooze dialog open when `snooze` is set.
+ */
 export function inboxViewPath(
   view: InboxView,
-  options: { itemId?: string } = {},
+  options: { itemId?: string; snooze?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
   // Phones show the entries at `/`, so an item link names its entry.
   if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
+  if (options.itemId && options.snooze) params.set("snooze", "1");
   const search = params.toString();
   return search ? `/?${search}` : "/";
 }
