@@ -208,11 +208,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
     await expect(mineTab).toHaveAttribute("aria-current", "page");
-    // A link to one ask opens that ask in the Inbox.
+    // A link to one ask opens that ask in the Inbox. The Inbox drops the
+    // one-time item link once the row is open.
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
-    await expect(page).toHaveURL(
-      `${dashboard.baseURL}/?view=inbox&item=${encodeURIComponent(prReview.id)}`,
-    );
+    await expect(
+      page.getByRole("region", { name: `${prReview.title}: asks` }),
+    ).toBeVisible();
+    await expect(page).toHaveURL(/\/\?view=inbox/);
   });
 
   test.describe("on a phone", () => {
