@@ -1,9 +1,10 @@
 import SwiftUI
 import UIKit
 
-/// The composer's text view. Return sends, from the software keyboard and from
-/// a hardware keyboard. A newline comes from Shift-Return on a hardware
-/// keyboard, from "New Line" in the edit menu, or from pasted text.
+/// The composer's text view. With `onSubmit`, Return sends, from the software
+/// keyboard and from a hardware keyboard, and a newline comes from Shift-Return
+/// on a hardware keyboard, from "New Line" in the edit menu, or from pasted
+/// text. Without it, Return inserts a newline.
 ///
 /// A SwiftUI `TextField` with a vertical axis cannot do this: Return always
 /// inserts a newline, `onSubmit` never runs, and the field cannot tell
@@ -12,7 +13,7 @@ struct MessageTextView: UIViewRepresentable {
   @Binding var text: String
   @Binding var focused: Bool
   let placeholder: String
-  let onSubmit: () -> Void
+  let onSubmit: (() -> Void)?
 
   /// 16pt Inter with the dashboard's `leading-relaxed` (1.625) line height.
   /// Computed so it follows Dynamic Type.
@@ -44,7 +45,7 @@ struct MessageTextView: UIViewRepresentable {
     view.textContainer.lineFragmentPadding = 0
     view.font = Self.font
     view.adjustsFontForContentSizeCategory = true
-    view.returnKeyType = .send
+    if onSubmit != nil { view.returnKeyType = .send }
     view.tintColor = UIColor(Tokens.accent)
     view.typingAttributes = Self.attributes
     view.accessibilityLabel = placeholder
@@ -86,12 +87,13 @@ struct MessageTextView: UIViewRepresentable {
     init(_ parent: MessageTextView) { self.parent = parent }
 
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText: String) -> Bool {
-      guard replacementText == "\n", let view = textView as? ComposerTextView, !view.insertingLineBreak,
+      guard let onSubmit = parent.onSubmit, replacementText == "\n",
+        let view = textView as? ComposerTextView, !view.insertingLineBreak,
         // Return commits a marked (IME) text first.
         textView.markedTextRange == nil
       else { return true }
       // The composer decides whether the text can send; Return never adds a newline.
-      parent.onSubmit()
+      onSubmit()
       return false
     }
 
@@ -110,7 +112,7 @@ struct MessageTextView: UIViewRepresentable {
     func textView(
       _ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]
     ) -> UIMenu? {
-      guard let view = textView as? ComposerTextView else { return nil }
+      guard parent.onSubmit != nil, let view = textView as? ComposerTextView else { return nil }
       let newLine = UIAction(title: "New Line", image: UIImage(systemName: "return")) { [weak view] _ in
         view?.insertLineBreak()
       }

@@ -51,13 +51,13 @@ struct ComposerSurface<Content: View>: View {
   }
 }
 
-/// The message field: 16pt text, 1.625 line height, 48-112pt tall. Return
-/// calls `onSubmit`, which sends when the composer can.
+/// The message field: 16pt text, 1.625 line height, 48-112pt tall. With
+/// `onSubmit`, Return calls it, and it sends when the composer can.
 struct ComposerField: View {
   @Binding var text: String
   let placeholder: String
   @Binding var focused: Bool
-  let onSubmit: () -> Void
+  var onSubmit: (() -> Void)?
 
   var body: some View {
     MessageTextView(text: $text, focused: $focused, placeholder: placeholder, onSubmit: onSubmit)
@@ -141,9 +141,7 @@ struct NewConversationComposer: View {
       if let error { InlineError(text: error).padding(.horizontal, 4) }
       ComposerSurface(focused: focused) {
         VStack(alignment: .leading, spacing: 0) {
-          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused) {
-            if canSend { send() }
-          }
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
           HStack(spacing: 12) {
             VisibilityMenu(visibility: $visibility)
             Spacer()
