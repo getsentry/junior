@@ -1,7 +1,13 @@
 import * as z from "zod";
+import { TODO_STATUSES } from "@/chat/todos/types";
 
 /** The sources that `/api/search` can search. */
-const SEARCH_SOURCES = ["inboxItems", "automations", "memories"] as const;
+const SEARCH_SOURCES = [
+  "inboxItems",
+  "automations",
+  "memories",
+  "todos",
+] as const;
 
 /** One source of `/api/search`. */
 export type SearchSource = (typeof SEARCH_SOURCES)[number];
@@ -47,16 +53,28 @@ export const searchMemorySchema = z
   })
   .strict();
 
+/** A To-do that matches a search, in a Conversation that shows its title. */
+export const searchTodoSchema = z
+  .object({
+    conversationId: z.string().min(1),
+    id: z.number().int(),
+    status: z.enum(TODO_STATUSES),
+    title: z.string(),
+  })
+  .strict();
+
 /** One group of matches for each source that the search named. */
 export const searchReportSchema = z
   .object({
     automations: z.array(searchAutomationSchema).optional(),
     inboxItems: z.array(searchInboxItemSchema).optional(),
     memories: z.array(searchMemorySchema).optional(),
+    todos: z.array(searchTodoSchema).optional(),
   })
   .strict();
 
 export type SearchAutomation = z.infer<typeof searchAutomationSchema>;
 export type SearchInboxItem = z.infer<typeof searchInboxItemSchema>;
 export type SearchMemory = z.infer<typeof searchMemorySchema>;
+export type SearchTodo = z.infer<typeof searchTodoSchema>;
 export type SearchReport = z.infer<typeof searchReportSchema>;

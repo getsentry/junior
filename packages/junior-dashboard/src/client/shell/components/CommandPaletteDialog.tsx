@@ -4,6 +4,7 @@ import type {
   SearchAutomation,
   SearchInboxItem,
   SearchSource,
+  SearchTodo,
 } from "@sentry/junior/api/schema";
 import { cn, dashboardCountClass } from "../../styles";
 import {
@@ -36,6 +37,7 @@ import {
   COMPOSER_PATH,
   conversationPath,
 } from "../../conversations/conversationRoutes";
+import { todoStatusIcons } from "../../conversations/todoStatusIcons";
 import { useDebouncedValue } from "../../debouncedValue";
 import { buildConversations, conversationDisplayTitle } from "../../format";
 import { paletteNavPages, type PalettePage } from "../../navPages";
@@ -89,6 +91,7 @@ const MORE_LIMIT = 8;
 const PALETTE_SEARCH_SOURCES: readonly SearchSource[] = [
   "inboxItems",
   "automations",
+  "todos",
 ];
 
 /**
@@ -132,7 +135,8 @@ function CommandPaletteBody(props: {
   // rows before the viewer types.
   const inbox = useInboxItemsData({ forViewer: true, sort: "waiting" });
   const automations = useAutomationsData(true, AUTOMATION_LIST_SEARCH);
-  // Typed text finds Inbox items, Automations, and Memories on the server.
+  // Typed text finds Inbox items, Automations, To-dos, and Memories on the
+  // server.
   const searchSources = useMemo(
     () => [
       ...PALETTE_SEARCH_SOURCES,
@@ -207,6 +211,9 @@ function CommandPaletteBody(props: {
           : [],
         searched: searchedCurrent
           ? buildConversations(searched.data?.conversations ?? [])
+          : [],
+        todosSearched: sourcesSearchedCurrent
+          ? (sourcesSearched.data?.todos ?? [])
           : [],
       }),
     [
@@ -300,8 +307,9 @@ function CommandPaletteBody(props: {
  * With no typed text: recent rows of that tab, then the most recently
  * active conversations, actions, and pages. With typed text: matches of
  * each kind, ranked; conversations and pages put the group with the best
- * match first, then Inbox items, automations, and server matches outside
- * the feed. The open conversation is never a row.
+ * match first, then open Inbox items and To-dos, closed ones under Done,
+ * automations, and server matches outside the feed. The open conversation
+ * is never a row.
  */
 function paletteItems(input: {
   actions: PaletteAction[];
@@ -323,6 +331,8 @@ function paletteItems(input: {
   /** Server matches linked to the open repository page. */
   repositorySearched: Conversation[];
   searched: Conversation[];
+  /** Server matches on To-do titles, open ones first. */
+  todosSearched: SearchTodo[];
 }): PaletteItem[] {
   const others = (conversations: Conversation[]) =>
     conversations.filter(
@@ -457,6 +467,14 @@ function paletteItems(input: {
   const matchedDone = input.inboxSearched
     .filter((item) => item.status !== "open")
     .map((item) => doneItem(item, query));
+  const isOpenTodo = (todo: SearchTodo) =>
+    todo.status === "open" || todo.status === "in_progress";
+  const matchedTodos = input.todosSearched
+    .filter(isOpenTodo)
+    .map((todo) => todoItem(todo, "To-dos", query));
+  const matchedDoneTodos = input.todosSearched
+    .filter((todo) => !isOpenTodo(todo))
+    .map((todo) => todoItem(todo, "Done", query));
   const matchedAutomations = input.automationsSearched.map((automation) =>
     automationItem(automation, query),
   );
@@ -473,7 +491,9 @@ function paletteItems(input: {
         ? [matchedPages, conversations]
         : [conversations, matchedPages]),
       matchedInbox,
+      matchedTodos,
       matchedDone,
+      matchedDoneTodos,
       matchedAutomations,
       more,
     ],
@@ -506,6 +526,26 @@ function doneItem(item: PaletteInboxItem, query?: string): PaletteItem {
     // The server matched the text, so the row stays without a title match.
     score: match?.score ?? 1,
     to: inboxViewPath("done", { itemId: item.id }),
+  };
+}
+
+function todoItem(
+  todo: SearchTodo,
+  group: "Done" | "To-dos",
+  query: string,
+): PaletteItem {
+  const match = quickOpenMatch(todo.title, query);
+  return {
+    group,
+    icon: todoStatusIcons[todo.status],
+    id: `todo-${todo.conversationId}-${todo.id}`,
+    label: todo.title,
+    matches: match?.indices,
+    // Done also holds Inbox items, so a closed To-do says what it is.
+    meta: group === "Done" ? "To-do" : undefined,
+    // The server matched the title, maybe through a typo, so the row stays.
+    score: match?.score ?? 1,
+    to: conversationPath(todo.conversationId),
   };
 }
 

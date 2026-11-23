@@ -500,6 +500,7 @@ export type {
   SearchMemory,
   SearchReport,
   SearchSource,
+  SearchTodo,
 } from "./schema/search";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

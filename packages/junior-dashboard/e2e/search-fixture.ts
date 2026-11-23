@@ -41,6 +41,8 @@ export async function mockSearchRows(
         automations: mocked.automations?.() ?? [],
         inboxItems: mocked.inboxItems?.() ?? [],
         memories: mocked.memories?.() ?? [],
+        // No spec mocks To-dos, so the mock server's To-dos answer.
+        todos: [],
       },
       new URL(route.request().url()).searchParams,
     );
