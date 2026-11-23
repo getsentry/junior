@@ -33,11 +33,6 @@ export type PromptMessage =
       provenance: ConversationMessageProvenance;
     };
 
-/** The system prompt of a layout: its sections' texts, joined in order. */
-export function layoutSystemPrompt(layout: PromptLayout): string {
-  return layout.systemPrompt.map((section) => section.text).join("\n\n");
-}
-
 /**
  * Builds the prompt for one step. A required loader that fails or times out
  * throws an error that names it. An optional one gives `undefined` to its
@@ -137,7 +132,7 @@ export async function assemblePrompt(
     }
   }
   return {
-    systemPrompt: layoutSystemPrompt(layout),
+    systemPrompt: layout.systemPrompt.map(({ text }) => text).join("\n\n"),
     messages: [...ctx.history, ...newMessages.map(({ message }) => message)],
     newMessages,
     diagnostics: {

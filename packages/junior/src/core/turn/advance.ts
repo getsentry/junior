@@ -20,7 +20,7 @@ import {
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import type { EngineContext } from "@/core/engine-context";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
-import { assemblePrompt, layoutSystemPrompt } from "@/core/prompt/assemble";
+import { assemblePrompt } from "@/core/prompt/assemble";
 import type { PromptLayout } from "@/core/prompt/layout";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import type { ToolDefinition } from "@/core/tool";
@@ -40,7 +40,7 @@ import {
   type TurnFailure,
   type TurnLease,
 } from "@/core/turn/state";
-import { hasPendingToolCalls, runStep } from "@/core/turn/step";
+import { runStep } from "@/core/turn/step";
 
 // How often a running step checks that its lease still holds. A cancel or a
 // takeover stops the step's model request and tools within this time.
@@ -143,28 +143,21 @@ async function runClaimedStep(
     "gen_ai.conversation.id": claim.conversationId,
   });
   const history = projectConversationEvents(events).messages;
-  const toolStep = hasPendingToolCalls(history);
-  const model = await modelSettings(claim);
-  const step = await whileLeased({ executor }, claim, async (signal) => {
-    // A tool batch must follow its tool calls, so only a model request reads
-    // inputs and gets the layout's messages. The inputs wait for the model
-    // request after the batch.
-    const built = toolStep
-      ? {
-          systemPrompt: layoutSystemPrompt(prompt),
-          messages: history,
-          newMessages: [],
-        }
-      : await assemblePrompt(
+  const step = await whileLeased({ executor }, claim, (signal) =>
+    runStep({
+      history,
+      // Only a model request builds the prompt and reads the model settings.
+      // A tool batch must follow its tool calls, so the inputs wait for the
+      // model request after the batch.
+      request: async () => ({
+        ...(await assemblePrompt(
           prompt,
           { turn: claim, history, inputs: unread },
           { signal },
-        );
-    const result = await runStep({
-      systemPrompt: built.systemPrompt,
-      messages: built.messages,
+        )),
+        model: await modelSettings(claim),
+      }),
       tools,
-      model,
       client,
       session: claim.conversationId,
       // A later claim of the same step means an earlier attempt did not
@@ -173,9 +166,8 @@ async function runClaimedStep(
       // Tool calls pending at a Turn's first step belong to an earlier Turn.
       skipDanglingToolCalls: claim.stepSeq === 0,
       signal,
-    });
-    return { result, newMessages: built.newMessages };
-  });
+    }),
+  );
   if (!step) {
     return;
   }

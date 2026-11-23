@@ -16,16 +16,28 @@ import { withSpan } from "@/core/telemetry";
 import type { ToolDefinition, ToolResult } from "@/core/tool";
 import type { ToolExecutionEnvironment } from "@/core/tool-execution-environment/types";
 
-export type StepInput = {
+/**
+ * The model request of a step: the system prompt, the messages with the new
+ * ones at the end, the model settings, and the new messages in the caller's
+ * own form, which the step returns with its result.
+ */
+export type StepRequest<T> = {
   systemPrompt: string;
-  /**
-   * The Conversation history, with the new inputs at the end. Add inputs only
-   * before a model request: a tool batch must follow its tool calls directly.
-   */
   messages: Message[];
+  model: ModelSettings;
+  newMessages: T[];
+};
+
+export type StepInput<T> = {
+  /** The Conversation history, without the new messages. */
+  history: Message[];
+  /**
+   * Builds the model request. The step calls it only for a model request: a
+   * tool batch must follow its tool calls directly, so it adds no messages.
+   */
+  request: () => Promise<StepRequest<T>>;
   tools: ToolDefinition[];
   client: ModelClient;
-  model: ModelSettings;
   /** The Conversation id, which keeps its model requests in one session. */
   session: string;
   /**
@@ -64,33 +76,51 @@ export function hasPendingToolCalls(messages: Message[]): boolean {
   return collectPendingToolCalls(messages).calls.length > 0;
 }
 
-/** Runs one step of a Turn: the pending tool calls if there are any, else one model request. */
-export async function runStep(input: StepInput): Promise<StepResult> {
-  const pending = collectPendingToolCalls(input.messages);
+/**
+ * Runs one step of a Turn: the pending tool calls if there are any, else one
+ * model request. Only a model request calls `request`, and the step returns
+ * its new messages. A tool batch returns none.
+ */
+export async function runStep<T>(
+  input: StepInput<T>,
+): Promise<{ result: StepResult; newMessages: T[] }> {
+  const pending = collectPendingToolCalls(input.history);
   if (pending.calls.length > 0) {
-    return runToolCalls(pending, input);
+    return { result: await runToolCalls(pending, input), newMessages: [] };
   }
-  if (input.messages.at(-1)?.role === "assistant") {
+  const request = await input.request();
+  if (request.messages.at(-1)?.role === "assistant") {
     throw new Error("The history ends with a reply, so the Turn has no step");
   }
-  return requestModel(input);
+  return {
+    result: await requestModel(request, input),
+    newMessages: request.newMessages,
+  };
 }
 
-async function requestModel(input: StepInput): Promise<StepResult> {
-  const reply = await input.client.complete(
+async function requestModel(
+  { systemPrompt, messages, model }: StepRequest<unknown>,
+  {
+    client,
+    session,
+    tools,
+    signal,
+  }: Pick<StepInput<unknown>, "client" | "session" | "tools" | "signal">,
+): Promise<StepResult> {
+  const reply = await client.complete(
     {
-      model: input.model,
-      session: input.session,
+      model,
+      session,
       context: {
-        systemPrompt: input.systemPrompt,
-        messages: input.messages,
-        tools: input.tools.map(toToolDeclaration),
+        systemPrompt,
+        messages,
+        tools: tools.map(toToolDeclaration),
       },
     },
-    input.signal,
+    signal,
   );
-  if (input.signal.aborted) {
-    throw input.signal.reason;
+  if (signal.aborted) {
+    throw signal.reason;
   }
   if (reply.stopReason === "error" || reply.stopReason === "aborted") {
     return {
@@ -150,7 +180,7 @@ function collectPendingToolCalls(messages: Message[]): PendingToolCalls {
 
 async function runToolCalls(
   pending: PendingToolCalls,
-  input: StepInput,
+  input: StepInput<unknown>,
 ): Promise<StepResult> {
   const results = await Promise.all(
     // oxlint-disable-next-line junior/bounded-fan-out -- The calls of one model message run together, as Pi runs a tool batch.
@@ -186,7 +216,7 @@ type ToolCallOutcome = { call: ToolCall; result: ToolResult };
 function runToolCall(
   call: ToolCall,
   truncated: boolean,
-  input: StepInput,
+  input: StepInput<unknown>,
 ): Promise<ToolCallOutcome> {
   return withSpan(
     "gen_ai.execute_tool",
@@ -207,7 +237,7 @@ function runToolCall(
 async function executeToolCall(
   call: ToolCall,
   truncated: boolean,
-  input: StepInput,
+  input: StepInput<unknown>,
 ): Promise<ToolCallRun> {
   if (input.skipDanglingToolCalls) {
     return danglingRun(call, input);
@@ -256,7 +286,7 @@ async function executeToolCall(
   }
 }
 
-function danglingRun(call: ToolCall, input: StepInput): ToolCallRun {
+function danglingRun(call: ToolCall, input: StepInput<unknown>): ToolCallRun {
   const tool = input.tools.find((candidate) => candidate.name === call.name);
   return errorRun(
     "dangling_skipped",
