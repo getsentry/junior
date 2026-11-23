@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -134,17 +134,6 @@ function assertFunctionHasCodemodeFiles(functionDir) {
   );
 }
 
-// The BullMQ queue provider is for local dev only. Junior imports it at run
-// time so bundlers skip it. Fail if BullMQ or its msgpackr dependency still
-// reaches a deployed function.
-function assertNoDevQueuePackages(functionDir) {
-  for (const entry of readdirSync(functionDir, { recursive: true })) {
-    if (/(^|[\\/])(bullmq|msgpackr)[^\\/]*$/.test(entry)) {
-      fail(`${path.relative(appRoot, functionDir)} contains ${entry}`);
-    }
-  }
-}
-
 if (existsSync(path.join(appRoot, "api"))) {
   fail(
     "apps/example/api exists; Vercel would route source functions before Nitro",
@@ -165,7 +154,6 @@ if (pluginPackages.length === 0) {
 for (const functionDir of [serverFunctionDir, queueFunctionDir]) {
   assertFunctionHasJuniorContent(functionDir, pluginPackages);
   assertFunctionHasCodemodeFiles(functionDir);
-  assertNoDevQueuePackages(functionDir);
 }
 
 console.log(

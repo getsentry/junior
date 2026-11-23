@@ -137,7 +137,6 @@
   "packages/junior/src/chat/plugins/validation.ts": 1,
   "packages/junior/src/chat/prompt.ts": 2,
   "packages/junior/src/chat/providers/slack/turn.ts": 1,
-  "packages/junior/src/chat/queue/bullmq.ts": 1,
   "packages/junior/src/chat/queue/sign.ts": 1,
   "packages/junior/src/chat/repository-instructions.ts": 2,
   "packages/junior/src/chat/runtime/report-progress.ts": 3,
