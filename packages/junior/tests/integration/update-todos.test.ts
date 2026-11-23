@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import { createDeliverToParent } from "@/chat/agent-invocations/result";
-import type { ParentResult } from "@/chat/task-execution/conversation-turn";
+import type { ParentResult } from "@/chat/agent-invocations/parent-result";
 import { getSqlExecutor } from "@/chat/db";
 import { renderTodoDelta } from "@/chat/todos/prompt";
 import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";

@@ -6,16 +6,9 @@ import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
-import {
-  isPersonInput,
-  turnBehavior,
-} from "@/chat/conversations/kind-behavior";
 import * as z from "zod";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
-import type {
-  ConversationKind,
-  ConversationStatus,
-} from "@/chat/conversations/store";
+import type { ConversationStatus } from "@/chat/conversations/store";
 import { conversationTurnFailedSql } from "@/chat/conversations/sql/status";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
@@ -100,7 +93,6 @@ export async function listChildAgents(
         stoppedAtMs === undefined &&
         (await limit(() =>
           runsOnConversationLoop(
-            kind,
             workStates.get(row.conversationId)?.execution.pendingMessages ?? [],
             mailboxTurnSources.get(row.conversationId) ?? [],
           ),
@@ -141,32 +133,45 @@ export async function listOpenChildAgents(
     .map((child) => child.childConversationId);
 }
 
-// Only a gated Turn answers the parent. A person's Turn in a Thread does not.
-function answersParent(kind: ConversationKind, source: string | undefined) {
-  const personInput = isPersonInput(source);
-  return !personInput && turnBehavior({ kind, personInput }).gated;
-}
-
 /**
  * Return whether a child has work that will answer its parent: `pending`
  * input that waits in the mailbox until its Turn commits it, such as a Watch
- * Event in its debounce window, or an open mailbox Turn that answers.
+ * Event in its debounce window, or an open mailbox Turn. Every Turn of a
+ * child answers its parent, whoever started it.
  */
 async function runsOnConversationLoop(
-  kind: ConversationKind,
   pending: readonly InboundMessage[],
   mailboxTurnSources: ReadonlyArray<Source | undefined>,
 ) {
+  if (mailboxTurnSources.length > 0) {
+    return true;
+  }
   for (const message of pending) {
-    if (
-      answersParent(kind, message.source) &&
-      // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first input that runs ends the check.
-      !(await isDroppedChildInput(message))
-    ) {
+    // oxlint-disable-next-line no-await-in-loop -- Callers already run each child under the fan-out cap, and the first input that runs ends the check.
+    if (!(await isDroppedChildInput(message))) {
       return true;
     }
   }
-  return mailboxTurnSources.some((source) => answersParent(kind, source?.kind));
+  return false;
+}
+
+/**
+ * Return whether input waits in a child's mailbox that will run a later Turn
+ * that answers its parent, such as a fired Timer whose Watch is already gone.
+ * The input that the running attempt took belongs to its own Turn, which
+ * can ack it as late as its end.
+ */
+export async function hasWaitingParentWork(
+  conversationId: string,
+): Promise<boolean> {
+  const work = await getConversationWorkState({ conversationId });
+  const running = new Set(work?.runningInboundMessageIds);
+  return await runsOnConversationLoop(
+    (work?.messages ?? []).filter(
+      (message) => !running.has(message.inboundMessageId),
+    ),
+    [],
+  );
 }
 
 /**

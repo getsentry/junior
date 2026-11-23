@@ -313,6 +313,7 @@ describe("Turn delivery with a test step", () => {
       .set({ location: LOCATION, kind: "root" })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
     engine.queue.mount(
+      DELIVERY_TOPIC,
       deliveryConsumer(engine.engineCtx, {
         getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),
       }),

@@ -105,6 +105,9 @@
     "jiti": "^2.7.0",
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
+    "mdast-util-from-markdown": "catalog:",
+    "mdast-util-gfm": "catalog:",
+    "micromark-extension-gfm": "catalog:",
     "node-html-markdown": "^2.0.0",
     "p-limit": "catalog:",
     "parse5": "^7.3.0",
@@ -116,17 +119,7 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "bullmq": "^6.5.0",
-    "nitro": "3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta",
-    "redis": "^5.12.1"
-  },
-  "peerDependenciesMeta": {
-    "bullmq": {
-      "optional": true
-    },
-    "redis": {
-      "optional": true
-    }
+    "nitro": "3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta"
   },
   "devDependencies": {
     "@emnapi/core": "^1.10.0",
@@ -141,13 +134,11 @@
     "@types/web-push": "^3.6.4",
     "@typescript/typescript6": "6.0.2",
     "@vitest/coverage-v8": "catalog:",
-    "bullmq": "6.5.0",
     "dependency-cruiser": "^17.4.0",
     "drizzle-kit": "catalog:",
     "emulate": "0.14.0",
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
-    "redis": "5.12.1",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vercel": "^54.4.0",

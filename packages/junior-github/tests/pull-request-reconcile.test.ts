@@ -193,6 +193,29 @@ describe("daily reconcile of open pull requests", () => {
       "merge-conflict:getsentry/junior#949",
       "pull-request-action:getsentry/junior#949",
     ]);
+    // The chip and the ask change in one write.
+    expect(h.batches).toContainEqual({
+      annotations: [
+        {
+          conversationId: "slack:C1:1.0",
+          upsert: expect.objectContaining({
+            key: "getsentry/junior#949",
+            status: "closed",
+          }),
+        },
+      ],
+      inboxItems: [
+        "pull-request-action:getsentry/junior#949",
+        "merge-conflict:getsentry/junior#949",
+      ].map((dedupeKey) => ({
+        close: {
+          dedupeKey,
+          reason: "The pull request closed without merging.",
+          status: "dismissed",
+        },
+        conversationId: "slack:C1:1.0",
+      })),
+    });
 
     expect(queries.map((numbers) => numbers.sort())).toEqual([
       [946, 947, 949, 951],

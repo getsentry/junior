@@ -334,20 +334,32 @@ function ConversationInboxRow(
       data-inbox-row={props.rowKey}
       ref={props.cardRef}
     >
-      <ContextMenu onOpenChange={actions.onMenuOpenChange}>
+      {/* A closed card opens the menu anywhere on it. An open card opens it
+          only from its title, so its text selects and the browser menu
+          works there. Both stay mounted, so a toggle keeps focus. */}
+      <ContextMenu
+        disabled={props.expanded}
+        onOpenChange={actions.onMenuOpenChange}
+      >
         <ContextMenuTrigger
           {...prefetch}
-          className={cn("group relative min-w-0", dashboardSurfaceRadiusClass)}
+          className={cn(
+            "group relative min-w-0",
+            dashboardSurfaceRadiusClass,
+            props.expanded && "select-text",
+          )}
         >
           <InboxRowBody
             {...props}
             actionsBelow={actionsBelow}
             hoverActions={hoverActions}
             threadsShown={hasThreads}
+            titleMenu={actions}
           />
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
+      {actions.dialogs}
       {threads && threads.threads.length > 0 ? (
         <div className="grid gap-0.5 px-1 pb-2">
           {threads.threads.map((thread) => (
@@ -431,12 +443,41 @@ function RowSummary(props: {
   );
 }
 
+type TitleMenu = Pick<
+  ReturnType<typeof useInboxRowActions>,
+  "menu" | "onMenuOpenChange"
+>;
+
+/** The line that holds a row's title link, and an open row's menu. */
+function RowTitle(props: {
+  children: ReactNode;
+  expanded: boolean;
+  menu?: TitleMenu | undefined;
+}) {
+  const className = "flex min-w-0 items-center gap-1.5";
+  if (!props.menu) return <span className={className}>{props.children}</span>;
+  // A closed row's own menu takes the right-click, so this one waits.
+  return (
+    <ContextMenu
+      disabled={!props.expanded}
+      onOpenChange={props.menu.onMenuOpenChange}
+    >
+      <ContextMenuTrigger className={className} render={<span />}>
+        {props.children}
+      </ContextMenuTrigger>
+      {props.menu.menu}
+    </ContextMenu>
+  );
+}
+
 function InboxRowBody(
   props: InboxRowProps & {
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
     /** Whether the row lists its Threads under the head. */
     threadsShown?: boolean;
+    /** The Conversation menu that an open row's title opens. */
+    titleMenu?: TitleMenu;
   },
 ) {
   const { bundle, conversation } = props;
@@ -580,7 +621,7 @@ function InboxRowBody(
             className="col-start-2 row-start-1 grid min-w-0 gap-1"
             data-inbox-slot="title"
           >
-            <span className="flex min-w-0 items-center gap-1.5">
+            <RowTitle expanded={props.expanded} menu={props.titleMenu}>
               <Link
                 aria-controls={opens ? undefined : controls}
                 aria-current={props.selected ? "page" : undefined}
@@ -657,7 +698,7 @@ function InboxRowBody(
                   </span>
                 ) : null}
               </Link>
-            </span>
+            </RowTitle>
             {wake ? (
               <span
                 className={cn(lineClass, "text-xs text-dashboard-text-muted")}

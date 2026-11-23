@@ -41,19 +41,27 @@ child chooses to report reaches the parent.
   parent. It drops all other parent messages.
 - Child output reaches the parent as data, not as instructions. It never
   gives user approval.
-- Only a root delivers to its Location. A child keeps its final response,
-  and only the text of a `reply` leaves it.
+- Every Conversation reports with one agent Event, whatever its kind: done,
+  waiting on a person, blocked, failed, or stopped, with its reply, its
+  `noReply` note, or its question. A parent gets this Event from its child
+  agents, and a Watch on a Conversation gets the same Event. It is data, not
+  instructions.
+- Only a root delivers to its Location. A Thread shows its Turns to people.
+  A child's Turn sends its parent only its `reply`, its blocked report, or
+  its result.
 - One stop stops the whole tree below it. When a parent stops a child, it
-  gets no result. When a person stops a child, its parent gets `stopped`.
+  gets no result. When a person stops a child, the parent gets `stopped`.
   New work from the parent, or a person's input, ends the stop. While
   stopped, a Conversation keeps its Watches and saves automated input as
   skipped Messages that start no Turn. Only a stop holds input.
 - A stopped parent gives no new work. Its message to a child becomes a note
   that the child sees when it next runs, and it cannot start a child.
 - A parent never waits forever, and never sees a running child as done.
-  Each result names the siblings that did not report yet. A Task that fails,
-  or still has no answer after one reminder, tells its parent `failed`. A
-  Thread keeps its failure.
+  Each result names the siblings that did not report yet. A child that
+  fails, or still has no answer after one reminder, tells its parent
+  `failed`.
+- A child always sends its parent a result when its work ends, whoever
+  started its last Turn, even when that Turn ends with `noReply`.
 - A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
   levels of child agents can start their own. The default is 1, so a
   root's child can start children. With 0, only a root can.
@@ -71,10 +79,8 @@ child chooses to report reaches the parent.
   getsentry/junior#3060, and getsentry/junior#2567 track it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
-- A Watch Turn of a child that ends with `noReply` keeps the child in the
-  siblings that did not report. The parent waits for a report that does not
-  come. This breaks "a parent never waits forever".
 - A parent does not archive its child agents when their work is done. This
   breaks "a parent manages the lifecycle of its child agents".
 - A parent cannot archive a Task. Only a Thread can be archived. This
   breaks "a parent manages the lifecycle of its child agents".
+- A child whose last Watch expires with no Turn never reports to its parent.

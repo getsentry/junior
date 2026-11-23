@@ -127,6 +127,7 @@ export async function createTurnHarness({
     leaseMs: LEASE_MS,
   };
   queue.mount(
+    TURN_STEP_TOPIC,
     await turnStepConsumer(engineCtx, {
       client: emulatedModelClient(),
       bot: getChatConfig().bot,
@@ -134,6 +135,7 @@ export async function createTurnHarness({
     }),
   );
   queue.mount(
+    DELIVERY_TOPIC,
     deliveryConsumer(engineCtx, {
       getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),
     }),

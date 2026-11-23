@@ -8,6 +8,7 @@ import { syncAutomationAlerts } from "@/chat/automations/alert-items";
 import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
+import { runInboxItemPushTimers } from "@/chat/notifications/inbox-item-push";
 import {
   createPluginEventPublisher,
   getRegistrations,
@@ -203,6 +204,11 @@ export async function runHeartbeat(args: {
     }
   } catch (error) {
     logException(error, "inbox_snoozes.heartbeat.failed");
+  }
+  try {
+    await runInboxItemPushTimers(getDb(), args.nowMs);
+  } catch (error) {
+    logException(error, "inbox_item_push.heartbeat.failed");
   }
   try {
     await syncAutomationAlerts(getDb(), args.nowMs);

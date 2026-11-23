@@ -4,7 +4,11 @@ import type {
   ConversationTurnFailureReason,
 } from "./history";
 import { getConversationEventStore } from "@/chat/db";
-import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
+import {
+  failedTurnUpdate,
+  readTurnUpdate,
+} from "@/chat/conversations/turn-update";
 import { isEventInboundMessageId } from "@/chat/events/inbound-message-id";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
@@ -86,18 +90,6 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
     this.watchQueue = options.watchQueue;
   }
 
-  private async publish(
-    input: { conversationId: string; createdAtMs: number },
-    status: Parameters<typeof publishConversationStatus>[1],
-    skip?: () => Promise<boolean>,
-  ): Promise<void> {
-    await publishConversationStatus(input.conversationId, status, {
-      nowMs: input.createdAtMs,
-      queue: this.watchQueue(),
-      ...(skip ? { skip } : undefined),
-    });
-  }
-
   /** Record the turn start once after every input message is durable. */
   async start(input: StartConversationTurnInput): Promise<void> {
     await this.events.append(input.conversationId, [
@@ -168,47 +160,65 @@ export class ConversationTurnLifecycleService implements ConversationTurnLifecyc
   }
 
   /**
-   * Publish the stored terminal row of a Turn, not the caller's outcome.
-   * Only the first append stores it, so a worker that lost a race publishes
-   * the same outcome as the one that won.
+   * Publish the agent update of a Turn from its stored terminal row, not the
+   * caller's outcome. Only the first append stores it, so a worker that lost
+   * a race publishes the same update as the one that won.
    */
   private async publishTerminal(input: {
     conversationId: string;
     createdAtMs: number;
     turnId: string;
   }): Promise<void> {
+    const options = { nowMs: input.createdAtMs, queue: this.watchQueue() };
     const stored = await this.events.loadByIdempotencyKey(
       input.conversationId,
       `turn:${input.turnId}:terminal`,
     );
     if (stored?.data.type === "turn_failed") {
-      await this.publish(input, {
-        type: "turn_failed",
-        failureCode: stored.data.failureCode,
-        turnId: input.turnId,
-      });
+      const { failureCode } = stored.data;
+      await publishAgentUpdate(
+        input.conversationId,
+        { type: "turn_failed", turnId: input.turnId },
+        { ...options, update: async () => failedTurnUpdate(failureCode) },
+      );
       return;
     }
     if (stored?.data.type !== "turn_completed") return;
-    // A Turn that only Watch Events started reports nothing, so a watcher
-    // is not woken for each Event that the Conversation itself watches.
-    await this.publish(
-      input,
+    const { outcome } = stored.data;
+    const terminalSeq = stored.seq;
+    await publishAgentUpdate(
+      input.conversationId,
+      { type: "turn", turnId: input.turnId },
       {
-        type: "turn_completed",
-        outcome: stored.data.outcome,
-        turnId: input.turnId,
-      },
-      async () => {
-        const inputs = await this.loadInputMessageIds(
-          input.conversationId,
-          input.turnId,
-        );
-        return (
-          inputs !== undefined &&
-          inputs.length > 0 &&
-          inputs.every(isEventInboundMessageId)
-        );
+        ...options,
+        // A Turn that only Watch Events started reports nothing, so a
+        // watcher is not woken for each Event that the Conversation itself
+        // watches.
+        skip: async () => {
+          const inputs = await this.loadInputMessageIds(
+            input.conversationId,
+            input.turnId,
+          );
+          return (
+            inputs !== undefined &&
+            inputs.length > 0 &&
+            inputs.every(isEventInboundMessageId)
+          );
+        },
+        update: async () => {
+          const start = await this.events.loadByIdempotencyKey(
+            input.conversationId,
+            turnStartedKey(input.turnId),
+          );
+          return await readTurnUpdate(this.events, {
+            conversationId: input.conversationId,
+            outcome,
+            // A Turn ended before it started holds none of its own events.
+            startSeq: start?.seq ?? terminalSeq,
+            terminalSeq,
+            turnId: input.turnId,
+          });
+        },
       },
     );
   }

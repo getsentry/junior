@@ -20,8 +20,6 @@ import { activeTraceContext, withSpan } from "@/core/telemetry";
 /** Queue topic of Turn step messages. */
 export const TURN_STEP_TOPIC = "junior_turn_step";
 
-const TURN_STEP_CONSUMER_GROUP = "junior_turn_step";
-
 // The queue sends a message again only after the host stops a step that runs
 // too long, so a live step is not delivered twice.
 const VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
@@ -110,7 +108,6 @@ export function createTurnStepConsumer(
   run: RunTurnStep,
 ): QueueConsumer {
   const { consumer } = queueCallback<TurnStepMessage>({
-    consumerGroup: TURN_STEP_CONSUMER_GROUP,
     // advanceTurn fails a Turn after `maxAttempts` tries of one step, so the
     // queue retries without a limit.
     maxDeliveries: null,
@@ -141,7 +138,6 @@ export function createTurnStepConsumer(
           newTrace: true,
         },
       ),
-    topic: TURN_STEP_TOPIC,
     verify: (value) => verifyQueueMessage(turnStepSign, value),
     visibilityTimeoutSeconds:
       leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,

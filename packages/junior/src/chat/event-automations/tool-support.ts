@@ -36,7 +36,7 @@ export const compactEventAutomationResultSchema = z
     status: z.enum(["active", "blocked", "paused", "deleted"]),
     status_reason: z.string().nullable(),
     title: z.string().min(1).nullable(),
-    dashboard_url: z.string().url().nullable(),
+    url: z.string().url().nullable(),
     task: automationTaskSchema,
     trigger: z
       .object({
@@ -196,7 +196,7 @@ export function compactEventAutomation(
     status: task.status,
     status_reason: task.statusReason ?? null,
     title: task.title?.trim() || null,
-    dashboard_url: getDashboardTaskLink(task.id) ?? null,
+    url: getDashboardTaskLink(task.id) ?? null,
     task: task.task,
     trigger: {
       namespace: task.trigger.namespace,

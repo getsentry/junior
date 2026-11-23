@@ -19,8 +19,6 @@ import { activeTraceContext, withSpan } from "@/core/telemetry";
 /** Queue topic of delivery messages. */
 export const DELIVERY_TOPIC = "junior_delivery";
 
-const DELIVERY_CONSUMER_GROUP = "junior_delivery";
-
 // A delivery sends while it holds a transaction, and the host stops it at the
 // function's max duration. The queue sends the message again only after that.
 const VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
@@ -108,7 +106,6 @@ export function createDeliveryConsumer(
   run: RunDelivery,
 ): QueueConsumer {
   const { consumer } = queueCallback<SignedDeliveryMessage>({
-    consumerGroup: DELIVERY_CONSUMER_GROUP,
     // The outbox rows hold the delivery state, so a retry only sends what is
     // left.
     maxDeliveries: null,
@@ -144,7 +141,6 @@ export function createDeliveryConsumer(
           newTrace: true,
         },
       ),
-    topic: DELIVERY_TOPIC,
     verify: (value) => verifyQueueMessage(deliverySign, value),
     visibilityTimeoutSeconds:
       leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,

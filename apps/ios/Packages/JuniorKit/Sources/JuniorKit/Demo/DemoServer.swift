@@ -79,6 +79,7 @@ public actor DemoServer {
     case "archiveConversation": return try archive(arguments)
     case "archiveDoneConversations": return archiveDone()
     case "pinConversation": return try pin(arguments)
+    case "renameConversation": return try rename(arguments)
     case "setConversationAutoArchive":
       _ = try conversationIndex(arguments)
       return .object(["autoArchive": .bool(arguments.flag("autoArchive") ?? true)])
@@ -281,6 +282,15 @@ public actor DemoServer {
     // A pin restores an archived Conversation.
     if pinned { conversations[index].summary["archivedAt"] = nil }
     return .object(["pinnedAt": conversations[index].summary["pinnedAt"] ?? .null])
+  }
+
+  private func rename(_ arguments: JSONObject) throws -> JSONValue {
+    let index = try conversationIndex(arguments)
+    guard let title = arguments.text("title"), title.utf16.count <= conversationTitleMaxLength else {
+      throw DemoToolError("The title must have 1 to \(conversationTitleMaxLength) characters.")
+    }
+    conversations[index].summary["title"] = .string(title)
+    return .object(["title": .string(title)])
   }
 
   /// Unsubscribe removes the Conversation from the viewer's feed.

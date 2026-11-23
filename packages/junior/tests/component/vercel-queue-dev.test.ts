@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  MessageMetadata,
-  handleCallback,
-  registerDevConsumer,
-} from "@vercel/queue";
+import type { MessageMetadata, QueueClient } from "@vercel/queue";
 import {
   getChatConfig,
   resetRuntimeConfig,
@@ -17,19 +13,12 @@ import {
   sendVercelPluginTask,
   signPluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
-import {
-  createVercelWorkspaceSnapshotJobCallback,
-  registerVercelWorkspaceSnapshotJobDevConsumer,
-} from "@/chat/sandbox/snapshot/job-callback";
+import { createVercelWorkspaceSnapshotJobCallback } from "@/chat/sandbox/snapshot/job-callback";
 import {
   sendNextWorkspaceSnapshotJob,
   sendWorkspaceSnapshotJob,
 } from "@/chat/sandbox/snapshot/job-queue";
-import {
-  CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-  createVercelConversationWorkCallback,
-  registerVercelConversationWorkDevConsumer,
-} from "@/chat/task-execution/vercel-callback";
+import { createVercelConversationWorkCallback } from "@/chat/task-execution/vercel-callback";
 import {
   createGatewayModelClient,
   turnStepConsumer,
@@ -47,11 +36,11 @@ const mocks = vi.hoisted(() => {
       _options?: { idempotencyKey?: string; retentionSeconds: number },
     ) => ({ messageId: "msg_1" }),
   );
+  const handleCallback = vi.fn<QueueClient["handleCallback"]>();
   return {
     send,
-    queueClient: { send },
-    handleCallback: vi.fn<typeof handleCallback>(),
-    registerDevConsumer: vi.fn<typeof registerDevConsumer>(),
+    queueClient: { handleCallback, send },
+    handleCallback,
     processPluginTask: vi.fn(async (_message: unknown) => undefined),
     processWorkspaceSnapshotJob: vi.fn(async (_message: unknown) => undefined),
   };
@@ -61,8 +50,6 @@ vi.mock("@vercel/queue", () => ({
   QueueClient: vi.fn(function QueueClientMock() {
     return mocks.queueClient;
   }),
-  handleCallback: mocks.handleCallback,
-  registerDevConsumer: mocks.registerDevConsumer,
 }));
 vi.mock("@/chat/plugins/task-runner", () => ({
   processPluginTask: mocks.processPluginTask,
@@ -71,14 +58,12 @@ vi.mock("@/chat/sandbox/snapshot/job-runner", () => ({
   processWorkspaceSnapshotJob: mocks.processWorkspaceSnapshotJob,
 }));
 
-const originalNodeEnv = process.env["NODE_ENV"];
 const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 const originalConversationWorkEnabled =
   process.env["JUNIOR_CONVERSATION_WORK_ENABLED"];
 
 afterEach(() => {
   vi.clearAllMocks();
-  process.env["NODE_ENV"] = originalNodeEnv;
   if (originalJuniorSecret === undefined) {
     delete process.env["JUNIOR_SECRET"];
   } else {
@@ -105,7 +90,7 @@ function queueMetadata(overrides: Partial<MessageMetadata> = {}) {
   } satisfies MessageMetadata;
 }
 
-/** Return the handler and retry hook passed to the last `handleCallback`. */
+/** Return the handler and retry hook passed to the client's last `handleCallback`. */
 function lastPushCallback() {
   const call = mocks.handleCallback.mock.lastCall;
   const handler = call?.[0];
@@ -120,8 +105,6 @@ describe("Workspace snapshot Vercel queue integration", () => {
   it("runs only messages signed by the snapshot queue sender", async () => {
     const routeHandler = vi.fn(async () => new Response());
     mocks.handleCallback.mockReturnValueOnce(routeHandler);
-    const unregister = vi.fn();
-    mocks.registerDevConsumer.mockReturnValueOnce(unregister);
 
     expect(createVercelWorkspaceSnapshotJobCallback()).toBe(routeHandler);
     const { handler, retry } = lastPushCallback();
@@ -161,18 +144,6 @@ describe("Workspace snapshot Vercel queue integration", () => {
     expect(
       retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
     ).toBeUndefined();
-
-    process.env["NODE_ENV"] = "development";
-    expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
-    expect(mocks.registerDevConsumer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        client: mocks.queueClient,
-        consumerGroup: "junior_workspace_snapshots_dev",
-        handler: expect.any(Function),
-        retry: expect.any(Function),
-        topic: "junior_workspace_snapshots",
-      }),
-    );
   });
 });
 
@@ -267,39 +238,19 @@ describe("conversation work Vercel queue integration", () => {
     });
   });
 
-  it("registers the local Nitro consumer with the Queue SDK", () => {
-    const unregister = vi.fn();
-    mocks.registerDevConsumer.mockReturnValueOnce(unregister);
-    process.env["NODE_ENV"] = "development";
-
-    const result = registerVercelConversationWorkDevConsumer({
-      run: vi.fn(),
-      topic: "local_work",
-      visibilityTimeoutSeconds: 45,
-    });
-
-    expect(result).toBe(unregister);
-    expect(mocks.registerDevConsumer).toHaveBeenCalledWith({
-      client: mocks.queueClient,
-      consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-      handler: expect.any(Function),
-      retry: expect.any(Function),
-      topic: "local_work",
-      visibilityTimeoutSeconds: 45,
-    });
-  });
-
   it("acks disabled conversation work before sign checks", async () => {
     process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] = "false";
     delete process.env["JUNIOR_SECRET"];
     // Config reads the kill switch when it loads, so load a fresh copy.
     vi.resetModules();
-    const { conversationWorkQueueConsumer } =
+    const { createVercelConversationWorkCallback } =
       await import("@/chat/task-execution/vercel-callback");
     const run = vi.fn();
+    createVercelConversationWorkCallback({ run });
+    const { handler } = lastPushCallback();
 
     await expect(
-      conversationWorkQueueConsumer({ run }).handler(
+      handler(
         {
           schemaVersion: 2,
           conversationId: "slack:C123:1712345.0001",
@@ -311,15 +262,6 @@ describe("conversation work Vercel queue integration", () => {
       ),
     ).resolves.toBeUndefined();
     expect(run).not.toHaveBeenCalled();
-  });
-
-  it("does not register outside local development", () => {
-    process.env["NODE_ENV"] = "test";
-
-    expect(
-      registerVercelConversationWorkDevConsumer({ run: vi.fn() }),
-    ).toBeUndefined();
-    expect(mocks.registerDevConsumer).not.toHaveBeenCalled();
   });
 });
 

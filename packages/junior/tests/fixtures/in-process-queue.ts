@@ -14,7 +14,7 @@
 //
 // It does not cover the real provider's wire format, signature expiry or
 // visibility timeouts. `tests/integration/turn-step-queue.test.ts` covers
-// those on BullMQ.
+// those on the local Vercel Queues server.
 import { randomUUID } from "node:crypto";
 import type {
   QueueConsumer,
@@ -41,8 +41,8 @@ export interface QueuedMessage {
 
 /** A queue provider whose deliveries the test drives. */
 export interface InProcessQueue extends QueueProvider {
-  /** Takes the messages of the consumer's topic. One consumer per topic. */
-  mount(consumer: QueueConsumer): void;
+  /** Takes the messages of the topic. One consumer per topic. */
+  mount(topic: string, consumer: QueueConsumer): void;
   /** Messages that wait for a delivery, in send order. */
   pending(topic?: string): QueuedMessage[];
   /** Messages whose last delivery finished or was acknowledged, in order. */
@@ -129,7 +129,7 @@ export function createInProcessQueue(): InProcessQueue {
     const message = pendingMessages.splice(index, 1)[0]!;
     message.deliveryCount += 1;
     const metadata = {
-      consumerGroup: consumer.consumerGroup,
+      consumerGroup: "in_process",
       createdAt: message.createdAt,
       deliveryCount: message.deliveryCount,
       messageId: message.id,
@@ -180,11 +180,11 @@ export function createInProcessQueue(): InProcessQueue {
           status: 404,
         }),
       ),
-    mount: (consumer) => {
-      if (consumers.has(consumer.topic)) {
-        throw new Error(`A consumer is already mounted on ${consumer.topic}`);
+    mount: (topic, consumer) => {
+      if (consumers.has(topic)) {
+        throw new Error(`A consumer is already mounted on ${topic}`);
       }
-      consumers.set(consumer.topic, consumer);
+      consumers.set(topic, consumer);
     },
     pending: (topic) => onTopic(pendingMessages, topic),
     delivered: (topic) => onTopic(deliveredMessages, topic),

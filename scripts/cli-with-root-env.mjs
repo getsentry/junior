@@ -1,9 +1,9 @@
 import { spawn } from "node:child_process";
+import { createServer } from "node:net";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
 import {
   applyJuniorDevelopmentDefaults,
-  JUNIOR_LOCAL_QUEUE_REDIS_URL,
   loadEnvFiles,
 } from "./lib/load-env-files.mjs";
 
@@ -24,12 +24,22 @@ const cliArgs = rawCliArgs[0] === "--" ? rawCliArgs.slice(1) : rawCliArgs;
 const coreEngineChat =
   cliArgs[0] === "chat" && cliArgs[1] === "--engine" && cliArgs[2] === "core";
 
+/** A free port on 127.0.0.1. */
+async function freePort() {
+  const probe = createServer();
+  await new Promise((resolve) => probe.listen(0, "127.0.0.1", resolve));
+  const { port } = probe.address();
+  await new Promise((resolve) => probe.close(resolve));
+  return port;
+}
+
 loadEnvFiles([workspaceRoot, exampleRoot]);
-applyJuniorDevelopmentDefaults(
-  process.env,
-  // The core engine runs its steps on a BullMQ worker in the CLI process.
-  coreEngineChat ? { queueRedisUrl: JUNIOR_LOCAL_QUEUE_REDIS_URL } : {},
-);
+applyJuniorDevelopmentDefaults(process.env);
+// The core engine runs a local queue server in the CLI process. Chat config
+// reads its URL when it loads, so pick the port before the CLI starts.
+if (coreEngineChat && !process.env.JUNIOR_QUEUE_API_URL?.trim()) {
+  process.env.JUNIOR_QUEUE_API_URL = `http://127.0.0.1:${await freePort()}`;
+}
 
 function run(command, args, options = {}) {
   return new Promise((resolve) => {

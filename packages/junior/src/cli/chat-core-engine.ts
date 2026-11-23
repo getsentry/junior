@@ -1,9 +1,10 @@
 /**
  * `junior chat --engine core -p`: one message through the core Turn engine.
  *
- * The CLI is the Source. It schedules the message as an input, runs the Turn
- * step consumer on a BullMQ worker in this process, and reads the reply from
- * the stored history when the Turn ends. The engine has no Delivery yet, so
+ * The CLI is the Source. It schedules the message as an input, runs a local
+ * Vercel Queues server that pushes each Turn step message to the Turn step
+ * consumer in this process, and reads the reply from the stored history when
+ * the Turn ends. The engine has no Delivery yet, so
  * the history is the only place that has the reply.
  */
 import { randomUUID } from "node:crypto";
@@ -13,9 +14,11 @@ import { eq } from "drizzle-orm";
 import { getChatConfig } from "@/chat/config";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { getConversationStore } from "@/chat/db";
+import { startLocalVercelQueueServer } from "@/chat/queue/local-server";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { EngineContext } from "@/core/engine-context";
+import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { scheduleInput } from "@/core/turn/schedule";
 import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
@@ -34,6 +37,10 @@ const LOCAL_ACTOR: TurnInputPayload["actor"] = {
 };
 
 const TURN_POLL_INTERVAL_MS = 250;
+
+// The local queue server pushes to this URL, and this process answers it
+// without a network call.
+const TURN_STEP_CALLBACK_URL = `http://cli.localhost/${TURN_STEP_TOPIC}`;
 
 // A Turn without tools makes one model request. This stops the wait for a
 // Turn whose step message never arrives.
@@ -101,20 +108,35 @@ export async function runCoreEnginePrompt(args: {
 }): Promise<CoreEngineResult> {
   const config = getChatConfig();
   const engineCtx = createEngineContext(config);
-  const { queue } = engineCtx;
-  if (config.queue.provider !== "bullmq" || !queue.startWorker) {
+  const { apiUrl } = config.queue;
+  const port = apiUrl ? Number(new URL(apiUrl).port) : 0;
+  if (!port) {
     throw new Error(
-      "--engine core runs its steps on a BullMQ worker. Set JUNIOR_QUEUE_PROVIDER=bullmq and JUNIOR_QUEUE_REDIS_URL.",
+      "--engine core runs a local queue server. Set JUNIOR_QUEUE_API_URL to a free local URL with a port, such as http://127.0.0.1:4100.",
     );
   }
-  const worker = await queue.startWorker([
+  const turnStepCallback = engineCtx.queue.createCallback(
     await turnStepConsumer(engineCtx, {
       client: createGatewayModelClient(),
       bot: config.bot,
       // Core Turns have no tools yet.
       tools: [],
     }),
-  ]);
+  );
+  const server = await startLocalVercelQueueServer({
+    consumers: [
+      {
+        consumerGroup: "local",
+        topic: TURN_STEP_TOPIC,
+        url: TURN_STEP_CALLBACK_URL,
+      },
+    ],
+    fetch: async (request) =>
+      request.url === TURN_STEP_CALLBACK_URL
+        ? turnStepCallback(request)
+        : new Response(null, { status: 404 }),
+    port,
+  });
   try {
     await getConversationStore().recordActivity({
       conversationId: args.conversationId,
@@ -151,6 +173,6 @@ export async function runCoreEnginePrompt(args: {
       reply: await lastAssistantText(engineCtx, args.conversationId),
     };
   } finally {
-    await worker.close();
+    await server.close();
   }
 }
