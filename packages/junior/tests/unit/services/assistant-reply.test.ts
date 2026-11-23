@@ -59,6 +59,14 @@ describe("assistant reply", () => {
     });
   });
 
+  it("removes thinking after a fence with no closing line", () => {
+    expect(
+      decideReply(
+        assistant("Run this:\n```sh\npnpm test\n<thinking>private</thinking>"),
+      ),
+    ).toEqual({ kind: "deliver", text: "Run this:\n```sh\npnpm test" });
+  });
+
   it("suppresses a legacy marker reply and tool-call messages", () => {
     expect(decideReply(assistant("[[NO_REPLY]]"))).toEqual({
       kind: "suppress",

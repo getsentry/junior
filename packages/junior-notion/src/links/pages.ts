@@ -130,11 +130,13 @@ function inlineText(nodes: readonly PhrasingContent[]): string {
 
 // The prose of one body line, or "" when the line is not body prose:
 // headings, rules, code fences, and lines that hold only a block tag such as
-// `<p />` or `<callout ...>`. A list or quote marker drops.
+// `<p />` or `<callout ...>`. List and quote markers drop, also nested ones.
 function lineProse(line: string): string {
   let [node] = fromMarkdown(line).children;
-  if (node?.type === "list") node = node.children[0]?.children[0];
-  if (node?.type === "blockquote") node = node.children[0];
+  while (node?.type === "list" || node?.type === "blockquote") {
+    node =
+      node.type === "list" ? node.children[0]?.children[0] : node.children[0];
+  }
   return node?.type === "paragraph" ? inlineText(node.children) : "";
 }
 

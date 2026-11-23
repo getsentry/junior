@@ -14,19 +14,35 @@ type ReplyDecision =
   | { kind: "empty" }
   | { kind: "suppress" };
 
-// The `[start, end)` source ranges of the fenced code blocks in Markdown, in
-// text order. An indented line is not code here: reasoning wrappers can be
-// indented.
+// Whether a code block's source is a fenced block with a closing fence. An
+// indented block is not, and neither is a fence with no closing line: it runs
+// to the end of the text, so it would keep any later reasoning wrapper.
+function isClosedFence(source: string): boolean {
+  const opener = source.trimStart();
+  const marker = opener.startsWith("```")
+    ? "`"
+    : opener.startsWith("~~~")
+      ? "~"
+      : undefined;
+  const lastLine = source.lastIndexOf("\n");
+  const closer = lastLine < 0 ? "" : source.slice(lastLine + 1).trim();
+  return (
+    marker !== undefined &&
+    closer.length >= 3 &&
+    closer === marker.repeat(closer.length)
+  );
+}
+
+// The `[start, end)` source ranges of the closed fenced code blocks in
+// Markdown, in text order. An indented line is not code here: reasoning
+// wrappers can be indented.
 function fencedCodeRanges(text: string): [number, number][] {
   const ranges: [number, number][] = [];
   const visit = (node: Nodes) => {
     if (node.type === "code") {
       const start = node.position?.start.offset ?? 0;
       const end = node.position?.end.offset ?? 0;
-      const opener = text.slice(start, end).trimStart();
-      if (opener.startsWith("```") || opener.startsWith("~~~")) {
-        ranges.push([start, end]);
-      }
+      if (isClosedFence(text.slice(start, end))) ranges.push([start, end]);
     } else if ("children" in node) {
       for (const child of node.children) visit(child);
     }
