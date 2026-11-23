@@ -5,7 +5,6 @@ import { logWarn, withLogContext, withSpan } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
   getQueueProvider,
-  type QueueConsumer,
   type QueueMessageMetadata,
 } from "@/chat/queue/provider";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -218,11 +217,4 @@ export function createVercelConversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ): (request: Request) => Promise<Response> {
   return conversationWorkCallback(options).create();
-}
-
-/** Return the queue consumer for conversation work. */
-export function conversationWorkQueueConsumer(
-  options: VercelConversationWorkCallbackOptions,
-): QueueConsumer {
-  return conversationWorkCallback(options).consumer;
 }

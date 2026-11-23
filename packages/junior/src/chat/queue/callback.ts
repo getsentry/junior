@@ -30,7 +30,7 @@ export interface QueueCallbackOptions<Message> {
   visibilityTimeoutSeconds?: number;
 }
 
-/** Build the HTTP callback and queue consumer for one signed queue. */
+/** Build the HTTP callback and the in-process consume path for one signed queue. */
 export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   const consume = async (
     message: Message,
@@ -102,7 +102,6 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   return {
     /** Run a message that an in-process queue already trusts. */
     consume,
-    consumer,
     create: () => getQueueProvider().createCallback(consumer),
   };
 }
