@@ -12,3 +12,25 @@ public func renamedTitle(_ draft: String, current: String) -> String? {
   guard !title.isEmpty, title != current, title.utf16.count <= conversationTitleMaxLength else { return nil }
   return title
 }
+
+/// A title that this app saved for one Conversation. A screen that already
+/// shows that Conversation applies it at once, before its next read.
+public struct SavedTitle: Sendable {
+  public let conversationId: String
+  public let title: String
+
+  public init(conversationId: String, title: String) {
+    self.conversationId = conversationId
+    self.title = title
+  }
+}
+
+extension ConversationState {
+  /// This state with `saved` applied, when `saved` is for this Conversation.
+  public func applying(_ saved: SavedTitle?) -> ConversationState {
+    guard let saved, saved.conversationId == conversation.conversationId else { return self }
+    var state = self
+    state.conversation.title = saved.title
+    return state
+  }
+}

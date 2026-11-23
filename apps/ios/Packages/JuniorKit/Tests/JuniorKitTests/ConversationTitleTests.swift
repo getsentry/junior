@@ -12,4 +12,14 @@ import Testing
     // Junior counts UTF-16 code units, so 100 emoji fill the limit.
     #expect(renamedTitle(String(repeating: "🚀", count: 101), current: "Old") == nil)
   }
+
+  @Test func appliesASavedTitleOnlyToItsConversation() throws {
+    let state = try fixture("getConversation", as: ConversationState.self)
+    let id = state.conversation.conversationId
+    let renamed = state.applying(SavedTitle(conversationId: id, title: "Checkout fix"))
+    #expect(renamed.conversation.title == "Checkout fix")
+    let other = state.applying(SavedTitle(conversationId: "\(id)-other", title: "Checkout fix"))
+    #expect(other.conversation.title == state.conversation.title)
+    #expect(state.applying(nil).conversation.title == state.conversation.title)
+  }
 }
