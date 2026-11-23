@@ -9,6 +9,10 @@ export interface MemoryMatch {
     rank: number;
   };
   memory: MemoryRecord;
+  /** Rank in the word prefix leg of typed search. */
+  prefix?: {
+    rank: number;
+  };
   vector?: {
     rank: number;
   };
@@ -34,7 +38,7 @@ function positiveWeight(value: number | undefined, fallback: number): number {
     : fallback;
 }
 
-/** Fuse lexical and vector ranks without comparing provider raw scores. */
+/** Fuse lexical, word prefix, and vector ranks without comparing raw scores. */
 export function rankMemoryMatches(
   matches: MemoryMatch[],
   options: {
@@ -48,7 +52,11 @@ export function rankMemoryMatches(
   return rankSearchMatches(
     matches.map((match) => ({
       item: match,
-      ranks: { lexical: match.lexical?.rank, vector: match.vector?.rank },
+      ranks: {
+        lexical: match.lexical?.rank,
+        prefix: match.prefix?.rank,
+        vector: match.vector?.rank,
+      },
     })),
     {
       key: (match) => match.memory.id,

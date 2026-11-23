@@ -24,7 +24,7 @@ import {
   type SQL,
   type TablesRelationalConfig,
 } from "drizzle-orm";
-import { PgDatabase } from "drizzle-orm/pg-core";
+import { PgDatabase, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { PgQueryResultHKT } from "drizzle-orm/pg-core/session";
 import * as z from "zod";
 import { getSourceKey } from "@sentry/junior-plugin-api";
@@ -33,6 +33,7 @@ import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
   juniorMemorySignals,
+  memoryPrefixDocument,
 } from "@/db/schema/memory";
 import {
   EMBEDDING_METRIC,
@@ -47,6 +48,8 @@ import {
   type MemoryEmbeddingProvider,
 } from "./embedding";
 import { withDenseRanks } from "@/search/match-ranking";
+import { prefixTsquery } from "@/search/text-match";
+import { parseTypedQuery, type TypedQuery } from "@/search/typed-query";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
   MEMORY_SCOPES,
@@ -1068,31 +1071,18 @@ function retrievalLegLimit(limit: number, overfetch: number): number {
 
 /**
  * Search a bounded active candidate set with PostgreSQL full-text ranking.
- * `prefix` also matches words that a query word starts, for typed text.
+ * A GIN index on `document` finds the matches of `tsquery`, and only a
+ * bounded window of the newest ones is ranked.
  */
-async function searchVisibleLexicalMemories(args: {
+async function searchVisibleTextMemories(args: {
   db: MemoryDb;
+  document: (table: { content: AnyPgColumn; searchVector: AnyPgColumn }) => SQL;
   limit: number;
   nowMs: number;
-  prefix?: boolean;
-  query: string;
-}): Promise<MemoryMatch[]> {
+  tsquery: SQL;
+}): Promise<Array<{ memory: MemoryRecord; rank: number }>> {
+  const { document, tsquery } = args;
   const predicate = activeVisiblePredicate(args.nowMs);
-  const query = normalizeRetrievalQuery(args.query);
-  if (!query) {
-    return [];
-  }
-  const queryVector = sql`to_tsvector('english', ${query})`;
-  const queryTerm = args.prefix
-    ? sql`quote_literal(term) || ':*'`
-    : sql`quote_literal(term)`;
-  const tsquery = sql`(
-    SELECT COALESCE(
-      string_agg(${queryTerm}, ' | ')::tsquery,
-      ''::tsquery
-    )
-    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
-  )`;
   // GIN filter first, then rank only a bounded recent match window.
   const candidateLimit = Math.min(
     MAX_LEXICAL_RANK_CANDIDATES,
@@ -1101,16 +1091,14 @@ async function searchVisibleLexicalMemories(args: {
   const candidates = args.db
     .select()
     .from(juniorMemoryMemories)
-    .where(
-      and(predicate, sql`${juniorMemoryMemories.searchVector} @@ ${tsquery}`),
-    )
+    .where(and(predicate, sql`${document(juniorMemoryMemories)} @@ ${tsquery}`))
     .orderBy(
       desc(juniorMemoryMemories.observedAtMs),
       asc(juniorMemoryMemories.id),
     )
     .limit(candidateLimit)
     .as("lexical_candidates");
-  const textRank = sql<number>`ts_rank_cd(${candidates.searchVector}, ${tsquery})`;
+  const textRank = sql<number>`ts_rank_cd(${document(candidates)}, ${tsquery})`;
   const rows = await args.db
     .select({
       memory: {
@@ -1140,11 +1128,57 @@ async function searchVisibleLexicalMemories(args: {
     .orderBy(desc(textRank), desc(candidates.observedAtMs), asc(candidates.id))
     .limit(args.limit);
   return withDenseRanks(rows, (row) => Number(row.textRank)).map(
-    ({ rank, value: row }) => ({
-      lexical: { rank },
-      memory: parseMemoryRow(row.memory),
-    }),
+    ({ rank, value: row }) => ({ memory: parseMemoryRow(row.memory), rank }),
   );
+}
+
+/** Match the stemmed `english` words of the query, as recall does. */
+async function searchVisibleLexicalMemories(args: {
+  db: MemoryDb;
+  limit: number;
+  nowMs: number;
+  query: string;
+}): Promise<MemoryMatch[]> {
+  const query = normalizeRetrievalQuery(args.query);
+  if (!query) {
+    return [];
+  }
+  const queryVector = sql`to_tsvector('english', ${query})`;
+  const tsquery = sql`(
+    SELECT COALESCE(
+      string_agg(quote_literal(term), ' | ')::tsquery,
+      ''::tsquery
+    )
+    FROM unnest(tsvector_to_array(${queryVector})) AS query_terms(term)
+  )`;
+  const matches = await searchVisibleTextMemories({
+    db: args.db,
+    document: (table) => sql`${table.searchVector}`,
+    limit: args.limit,
+    nowMs: args.nowMs,
+    tsquery,
+  });
+  return matches.map(({ memory, rank }) => ({ lexical: { rank }, memory }));
+}
+
+/**
+ * Match typed text: each word of the query starts a `simple` word of the
+ * memory, so a half-typed inflected word still matches.
+ */
+async function searchVisiblePrefixMemories(args: {
+  db: MemoryDb;
+  limit: number;
+  nowMs: number;
+  query: TypedQuery;
+}): Promise<MemoryMatch[]> {
+  const matches = await searchVisibleTextMemories({
+    db: args.db,
+    document: memoryPrefixDocument,
+    limit: args.limit,
+    nowMs: args.nowMs,
+    tsquery: prefixTsquery(args.query),
+  });
+  return matches.map(({ memory, rank }) => ({ memory, prefix: { rank } }));
 }
 
 interface VectorSearchArgs {
@@ -1305,7 +1339,8 @@ async function retrieveVisibleMemories(args: {
   embedder?: MemoryEmbeddingProvider | undefined;
   input: SearchMemoriesInput;
   nowMs: number;
-  prefix?: boolean;
+  /** Typed text, which also matches by word prefix. */
+  typed?: TypedQuery | undefined;
   vectorMaxDistance?: number;
 }): Promise<MemoryRecord[]> {
   const { db, embedder, nowMs, vectorMaxDistance } = args;
@@ -1345,9 +1380,16 @@ async function retrieveVisibleMemories(args: {
       db,
       limit: candidateLimit,
       nowMs,
-      ...(args.prefix ? { prefix: true } : undefined),
       query: input.query,
     }),
+    args.typed
+      ? searchVisiblePrefixMemories({
+          db,
+          limit: candidateLimit,
+          nowMs,
+          query: args.typed,
+        })
+      : [],
   ]);
   return rankMemoryMatches(matches.flat(), {
     nowMs,
@@ -1362,8 +1404,8 @@ async function retrieveVisibleMemories(args: {
 
 /**
  * Search active public memory for text that a person is typing, with the
- * ranking and vector cutoff of automatic recall. A query word also matches
- * the words that it starts, so a half-typed last word still matches.
+ * legs, ranking, and vector cutoff of automatic recall, plus a word prefix
+ * leg, so a half-typed last word still matches.
  */
 export async function searchTypedMemories(args: {
   db: MemoryDb;
@@ -1377,7 +1419,7 @@ export async function searchTypedMemories(args: {
     embedder: args.embedder,
     input: { limit: args.limit, query: args.query },
     nowMs: args.nowMs,
-    prefix: true,
+    typed: parseTypedQuery(args.query),
     vectorMaxDistance: RECALL_MAX_VECTOR_DISTANCE,
   });
 }

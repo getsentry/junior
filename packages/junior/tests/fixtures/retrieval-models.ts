@@ -11,19 +11,28 @@ type RetrievalModelOptions = {
   rerank: (query: string, document: string) => number | undefined;
 };
 
-/** Answer every embedding call of the model service with `vectorFor(text)`. */
+/**
+ * Answer every embedding call of the model service with `vectorFor(text)`.
+ * Each text uses `tokensPerText` tokens. Returns the texts of each call.
+ */
 export function mockEmbeddings(
   vectorFor: (text: string) => readonly number[],
-): void {
+  options: { tokensPerText?: number } = {},
+): string[][] {
+  const calls: string[][] = [];
   mswServer.use(
     http.post(`${GATEWAY_URL}/embedding-model`, async ({ request }) => {
       const body = (await request.json()) as { values: string[] };
+      calls.push(body.values);
       return HttpResponse.json({
         embeddings: body.values.map(vectorFor),
-        usage: { tokens: body.values.length },
+        usage: {
+          tokens: body.values.length * (options.tokensPerText ?? 1),
+        },
       });
     }),
   );
+  return calls;
 }
 
 /**
