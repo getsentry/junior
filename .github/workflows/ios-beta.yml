@@ -1,8 +1,14 @@
 name: iOS Beta
 
-# Builds a signed Release of apps/ios and uploads it to TestFlight.
-# Run it from the Actions tab or `gh workflow run ios-beta.yml --ref <branch>`.
+# Builds a signed Release of apps/ios and uploads it to TestFlight. It runs
+# when a change to apps/ios lands on main, so testers get each app fix
+# without a manual step. Run it by hand from the Actions tab or
+# `gh workflow run ios-beta.yml --ref <branch>`.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/ios/**"
   workflow_dispatch:
 
 permissions:
