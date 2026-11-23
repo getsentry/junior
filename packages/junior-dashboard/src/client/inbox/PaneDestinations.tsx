@@ -44,7 +44,9 @@ const ICONS: Record<InboxView, LucideIcon> = {
  */
 export const paneEntryClass = (mark?: PaneRowMark, phone?: boolean) =>
   cn(
-    "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+    // A count adds its own column, so a row without one gives its title the
+    // full width, with no gap left for a count.
+    "grid min-w-0 grid-flow-col grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
     phone ? "h-11" : "h-8",
     mark === "page"
       ? "bg-dashboard-accent/[0.12]"
