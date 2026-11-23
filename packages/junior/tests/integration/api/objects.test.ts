@@ -440,6 +440,30 @@ describe("object links API", () => {
       });
       expect(outsider.body).not.toContain("GitHub links as cards");
       expect(reads.slice(readsBefore)).toEqual([]);
+
+      // When GitHub fails after the card TTL, the card keeps the last read.
+      vi.useFakeTimers({ toFake: ["Date"] });
+      vi.setSystemTime(Date.now() + 61_000);
+      mswServer.use(
+        http.get(`${api}/issues/:number`, () =>
+          HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+        ),
+        http.get(`${api}/pulls/34`, () =>
+          HttpResponse.json({ message: "Server Error" }, { status: 502 }),
+        ),
+      );
+      const outage = await (
+        await viewerApi("alice@example.com")
+      )(`${repo}/issues/12`, `${repo}/pull/34`);
+      expect(outage.objects.get(`${repo}/issues/12`)).toMatchObject({
+        objectType: "task",
+        title: "Show GitHub links as cards",
+      });
+      expect(outage.objects.get(`${repo}/pull/34`)).toMatchObject({
+        objectType: "code_change",
+        status: "draft",
+        title: "Add GitHub link cards",
+      });
     } finally {
       vi.unstubAllEnvs();
     }

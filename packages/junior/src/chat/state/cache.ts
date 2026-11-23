@@ -5,9 +5,17 @@ import { withLock } from "@/chat/state/locks";
 const MAX_CACHE_KEY_LENGTH = 512;
 // A caller that waits longer than this loads the value itself.
 const LOAD_WAIT_MS = 10_000;
+// How long a `staleIfError` entry outlives its TTL as the last good value.
+const LAST_GOOD_MS = 24 * 60 * 60 * 1000;
 
 interface StoredEntry<T> {
+  /** Set on `staleIfError` entries: after this time, the entry is stale. */
+  freshUntilMs?: number;
   value: T;
+}
+
+function isFresh(entry: StoredEntry<unknown>): boolean {
+  return entry.freshUntilMs === undefined || Date.now() < entry.freshUntilMs;
 }
 
 /** The prefix of every state key of one cache namespace. */
@@ -17,7 +25,9 @@ export function cacheKeyPrefix(namespace: string): string {
 
 /**
  * Create a cache in the state adapter under `junior:cache:{namespace}:`.
- * Entries are wrapped, so `null` and `false` values are cache hits.
+ * Entries are wrapped, so `null` and `false` values are cache hits. A stale
+ * `staleIfError` entry is returned when its reload throws, unless the caller
+ * asked for `refresh`.
  */
 export function createCache(
   state: StateAdapter,
@@ -41,28 +51,45 @@ export function createCache(
 
       await state.connect();
       const hit = await cached();
-      if (hit) return hit.value;
+      if (hit && isFresh(hit)) return hit.value;
 
-      const attempt = await withLock(
-        state,
-        `${cacheKey}:load`,
-        async () => {
-          const loadedMeanwhile = await cached();
-          if (loadedMeanwhile) return loadedMeanwhile.value;
-          const entry = await load();
-          if (entry.ttlMs !== undefined) {
-            if (!(entry.ttlMs > 0)) {
-              throw new Error("Cache ttlMs must be positive");
+      try {
+        const attempt = await withLock(
+          state,
+          `${cacheKey}:load`,
+          async () => {
+            const loadedMeanwhile = await cached();
+            if (loadedMeanwhile && isFresh(loadedMeanwhile)) {
+              return loadedMeanwhile.value;
             }
-            await state.set(cacheKey, { value: entry.value }, entry.ttlMs);
-          }
-          return entry.value;
-        },
-        { keepAlive: true, waitMs: LOAD_WAIT_MS },
-      );
-      if (attempt.acquired) return attempt.value;
-      // The cache only saves work, so a stuck load must not block this caller.
-      return (await load()).value;
+            const entry = await load();
+            if (entry.ttlMs !== undefined) {
+              if (!(entry.ttlMs > 0)) {
+                throw new Error("Cache ttlMs must be positive");
+              }
+              await state.set<StoredEntry<T>>(
+                cacheKey,
+                entry.staleIfError
+                  ? {
+                      freshUntilMs: Date.now() + entry.ttlMs,
+                      value: entry.value,
+                    }
+                  : { value: entry.value },
+                entry.staleIfError ? entry.ttlMs + LAST_GOOD_MS : entry.ttlMs,
+              );
+            }
+            return entry.value;
+          },
+          { keepAlive: true, waitMs: LOAD_WAIT_MS },
+        );
+        if (attempt.acquired) return attempt.value;
+        // The cache only saves work, so a stuck load must not block this caller.
+        return (await load()).value;
+      } catch (error) {
+        // Only a stale `staleIfError` entry is still here after its TTL.
+        if (hit) return hit.value;
+        throw error;
+      }
     },
   };
 }

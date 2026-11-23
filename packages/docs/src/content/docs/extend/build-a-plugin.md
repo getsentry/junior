@@ -479,7 +479,10 @@ provider reads, such as a user's role. It is not durable. Junior can drop an
 entry at any time, so keep data that must survive in `ctx.state`. Return a
 `ttlMs` to cache the value. Omit `ttlMs` to skip the cache for a result, such
 as an incomplete response. A load that throws is not cached, and concurrent
-callers for one key share one load.
+callers for one key share one load. Set `staleIfError: true` to keep the value
+for a day after its TTL: when a later load throws, such as during a provider
+outage, the cache returns that value. Do not set it on an answer about access,
+because access must expire with its TTL.
 
 ```ts
 const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({

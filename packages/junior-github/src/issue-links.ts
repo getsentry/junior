@@ -21,6 +21,12 @@ import { githubApi, repoPath } from "./tool-support/github-api.js";
 
 // The same time as the card cache, so a changed object shows within a minute.
 const OBJECT_CACHE_TTL_MS = 60_000;
+// When GitHub fails after the TTL, the card keeps the last object read. The
+// repository access check still expires, so access is never extended.
+const OBJECT_CACHE = {
+  staleIfError: true,
+  ttlMs: OBJECT_CACHE_TTL_MS,
+} as const;
 
 const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
 const REPO_PATTERN = /^[\w.-]{1,100}$/;
@@ -129,7 +135,7 @@ async function readObject(
       });
       // GitHub answers 404 for a missing object, and 410 for a deleted issue.
       if (response.status === 404 || response.status === 410) {
-        return { value: null, ttlMs: OBJECT_CACHE_TTL_MS };
+        return { ...OBJECT_CACHE, value: null };
       }
       if (!response.ok) {
         throw new Error(
@@ -137,10 +143,7 @@ async function readObject(
         );
       }
       if (link.kind === "pull_request") {
-        return {
-          value: pullRequestCard(link, response.body),
-          ttlMs: OBJECT_CACHE_TTL_MS,
-        };
+        return { ...OBJECT_CACHE, value: pullRequestCard(link, response.body) };
       }
       // GitHub opens a pull request at its issue URL too, such as a linked
       // `owner/repo#12`. Only the pulls API has its draft and merge state.
@@ -148,7 +151,7 @@ async function readObject(
         issueSchema.parse(response.body).pull_request === undefined
           ? issueCard(link, response.body)
           : await readObject(ctx, { ...link, kind: "pull_request" });
-      return { value, ttlMs: OBJECT_CACHE_TTL_MS };
+      return { ...OBJECT_CACHE, value };
     },
   );
 }

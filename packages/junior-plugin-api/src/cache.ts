@@ -2,6 +2,12 @@
 export interface CacheEntry<T> {
   /** Omit to return the value without caching it, such as for an incomplete response. */
   ttlMs?: number;
+  /**
+   * Keep the value for a day after its TTL, and return it when a later load
+   * throws, such as during a provider outage. Never set it on an answer
+   * about access: access must expire with its TTL.
+   */
+  staleIfError?: boolean;
   /** Must survive JSON serialization. */
   value: T;
 }
@@ -15,7 +21,8 @@ export interface CacheEntry<T> {
 export interface PluginCache {
   /**
    * Return the cached value for `key`, or call `load` and cache its result.
-   * Concurrent callers share one load. A load that throws is not cached.
+   * Concurrent callers share one load. A load that throws is not cached,
+   * and it throws to the caller unless a `staleIfError` value is kept.
    * `refresh` ignores the cached value and replaces it.
    */
   getOrLoad<T>(
