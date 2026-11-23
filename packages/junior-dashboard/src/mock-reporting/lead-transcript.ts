@@ -116,11 +116,7 @@ export function mockLeadEvents(
             startedAt,
             startedSeq,
             input: {
-              events: [
-                "conversation.waiting",
-                "conversation.completed",
-                "conversation.failed",
-              ],
+              events: ["agent.update"],
               identifier: watched.conversationId,
               intent: "Tell the person when it needs them or ends.",
               label: `Conversation ${watched.title}`,
@@ -156,16 +152,18 @@ export function mockLeadEvents(
     });
   };
   const report = (
-    eventType: string,
+    status: string,
     watched: MockStart,
     summary: string,
   ): MockEventData & { type: "message" } => ({
     type: "message",
-    messageId: `mock-lead-${eventType}-${watched.conversationId}`,
+    messageId: `mock-lead-${status}-${watched.conversationId}`,
     role: "user",
-    eventType,
+    eventType: "agent.update",
     eventNamespace: "junior",
     eventIdentifier: watched.conversationId,
+    eventStatus: status,
+    eventWatchId: `mock-lead-watch-${watched.conversationId}`,
     trustedSummary: summary,
     text: summary,
   });
@@ -206,7 +204,7 @@ export function mockLeadEvents(
     atMs: NOW_MS - 36 * MINUTE_MS,
     id: "mock-lead-sentaur-waiting",
     input: report(
-      "conversation.waiting",
+      "waiting",
       sentaur,
       `"${sentaur.title}" waits on the person.`,
     ),
@@ -216,7 +214,7 @@ export function mockLeadEvents(
   turn({
     atMs: NOW_MS - 35 * MINUTE_MS,
     id: "mock-lead-deploy-failed",
-    input: report("conversation.failed", deploy, `"${deploy.title}" failed.`),
+    input: report("failed", deploy, `"${deploy.title}" failed.`),
     reply:
       "The deploy investigation failed: it lost access to the GoCD API halfway through. Tell me if you want it retried.",
   });

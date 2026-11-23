@@ -400,7 +400,7 @@ describe("stopping child agents", () => {
         status: "completed",
       });
       const parentMessages = await harness.mailbox(parentConversationId);
-      expect(parentMessages.map(eventType)).toEqual(["agent.reply"]);
+      expect(parentMessages.map(eventType)).toEqual(["agent.update"]);
       expect(parentMessages[0]!.input.text).toMatch(
         /^<agent-result [^>]*status="stopped"/,
       );
