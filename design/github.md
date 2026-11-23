@@ -20,8 +20,10 @@ also wake a Conversation or run an Event automation.
   says what Junior found and what the person must do.
 - Changes reach the code only through a PR, never a direct push to the
   default branch.
-- Junior never approves or merges a PR, in any repo and from any
-  Automation. A person merges it.
+- Junior never approves a PR. It does not merge one yet. Merging some
+  kinds of PRs is a goal, but its design is not decided.
+- Junior owns its PR workflow, the same in every repo. A repo's own
+  instructions shape the code, not when Junior asks or marks a PR ready.
 - The requester is the first reviewer. Junior does not ask teammates to
   review before the requester has looked, unless the requester names
   reviewers or asks for a ready PR.
@@ -93,10 +95,10 @@ also wake a Conversation or run an Event automation.
 - A check or feedback fix that does not land asks nobody, or gets only a
   Slack message (`github#fix-unlanded`). This breaks Attention's "when
   Junior is stuck, what they must do to unblock it".
-- A draft held for code owners or `AGENTS.md` gets a Slack message that
-  says why it is a draft, and no review ask (`github#draft-held`). This
-  breaks "takes a person's attention only for a step that only a person
-  can take".
+- A draft held for code owners gets a Slack message that says why, and no
+  review ask. A repo's `AGENTS.md` can also hold it (`github#draft-held`).
+  This breaks "takes a person's attention only for a step that only a
+  person can take" and "the same in every repo".
 - `Ready to merge` waits for every check, not only the required ones, and
   does not know stacks (`github#ready-to-merge`, `github#stack`). This
   breaks "a Junior PR that a person can merge gets one `Ready to merge`".
