@@ -322,6 +322,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     const filters = list.getByRole("navigation", {
       name: "Conversations to show",
     });
+    // All, the default, is at the right edge, after Pinned.
+    await expect(filters.getByRole("link")).toHaveText([
+      /^Done$/,
+      /^Watching$/,
+      /^Working$/,
+      /^Needs you$/,
+      /^Pinned$/,
+      /^All$/,
+    ]);
     await filters.getByRole("link", { name: "Working" }).click();
     await expect(page).toHaveURL(/\/conversations\?state=working$/);
     await expect(working).toBeVisible();
