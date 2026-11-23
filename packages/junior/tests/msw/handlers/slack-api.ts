@@ -29,6 +29,7 @@ import {
   slackListsItemsCreateOk,
   slackListsItemsListPage,
   slackListsItemsUpdateOk,
+  usersGetPresenceOk,
   usersInfoOk,
   usersListPage,
   usersLookupByEmailOk,
@@ -75,6 +76,7 @@ export const SUPPORTED_SLACK_API_METHODS = [
   "files.info",
   "files.getUploadURLExternal",
   "files.completeUploadExternal",
+  "users.getPresence",
   "users.info",
   "users.list",
   "users.lookupByEmail",
@@ -295,6 +297,8 @@ function defaultSlackApiResponse(
           botId: typeof params["bot"] === "string" ? params["bot"] : undefined,
         }),
       };
+    case "users.getPresence":
+      return { body: usersGetPresenceOk() };
     case "users.info":
       return {
         body: usersInfoOk({

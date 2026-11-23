@@ -93,7 +93,7 @@ describe("Lead API", () => {
     const leadId = before.conversationId;
     const watch = {
       conversationId: leadId,
-      events: ["conversation.completed"],
+      events: ["agent.update"],
       expiresAtMs: Date.now() + 3_600_000,
       intent: "Tell the person when it finishes.",
     };

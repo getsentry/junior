@@ -596,9 +596,9 @@ describe("child agent identity and concurrency", () => {
 
   // An idle child, such as after a Watch Event Turn that spawned a helper,
   // gets the helper's result on its Conversation loop. That Turn answers the
-  // parent itself. After the re-ask, a Task that ends without an answer tells
-  // the parent, and a Thread stays quiet. It runs as the web user who started
-  // it, but cannot wait for that person to sign in.
+  // parent itself. After the re-ask, a child that ends without an answer
+  // tells the parent. It runs as the web user who started it, but cannot
+  // wait for that person to sign in.
   it.each([
     {
       name: "a Task reply",
@@ -616,7 +616,7 @@ describe("child agent identity and concurrency", () => {
       name: "a Thread with no answer",
       kind: "thread",
       finding: NO_ANSWER,
-      expected: [],
+      expected: ["No reply was sent."],
     },
   ] as const)(
     "runs a grandchild result on the child's Conversation loop for $name",

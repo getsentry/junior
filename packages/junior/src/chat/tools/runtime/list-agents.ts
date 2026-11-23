@@ -110,11 +110,7 @@ const listedAgentSchema = z
       .string()
       .optional()
       .describe("Short display title of the latest task"),
-    dashboard_url: z
-      .string()
-      .url()
-      .optional()
-      .describe("Dashboard link of the conversation"),
+    url: z.string().url().optional().describe("Link to the conversation"),
     archived: z
       .literal(true)
       .optional()
@@ -165,7 +161,7 @@ function listedChildAgent(
   relation: AgentRelation,
   agent: ChildAgent,
 ): ListedAgent {
-  const dashboardUrl = getDashboardConversationLink(agent.childConversationId);
+  const url = getDashboardConversationLink(agent.childConversationId);
   return {
     relation,
     conversation_id: agent.childConversationId,
@@ -175,7 +171,7 @@ function listedChildAgent(
     ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
     task: truncate(agent.task, TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
-    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(url ? { url } : undefined),
     ...(agent.archivedAtMs !== undefined
       ? { archived: true as const }
       : undefined),

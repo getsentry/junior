@@ -30,7 +30,7 @@ export function createSlackListCreateTool(state: ToolState) {
       const operationKey = createOperationKey("slackListCreate", { name });
       const cached = state.getOperationResult<{
         list_id: string;
-        permalink: string;
+        url: string | undefined;
         column_map: unknown;
       }>(operationKey);
       if (cached) {
@@ -43,7 +43,7 @@ export function createSlackListCreateTool(state: ToolState) {
       const list = await createTodoList(name);
       const response = {
         list_id: list.listId,
-        permalink: list.permalink,
+        url: list.permalink,
         column_map: list.listColumnMap,
       };
       state.setOperationResult(operationKey, response);

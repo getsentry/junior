@@ -168,6 +168,7 @@ function StackMenu(props: {
         {props.children}
       </ContextMenuTrigger>
       {actions.menu}
+      {actions.dialogs}
     </ContextMenu>
   );
 }

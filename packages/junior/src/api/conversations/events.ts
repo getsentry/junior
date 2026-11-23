@@ -433,6 +433,12 @@ function reportEventData(args: {
         ...(typeof data.meta?.["eventNamespace"] === "string"
           ? { eventNamespace: data.meta["eventNamespace"] }
           : undefined),
+        ...(typeof data.meta?.["eventStatus"] === "string"
+          ? { eventStatus: data.meta["eventStatus"] }
+          : undefined),
+        ...(typeof data.meta?.["eventWatchId"] === "string"
+          ? { eventWatchId: data.meta["eventWatchId"] }
+          : undefined),
         ...(args.canExposePayload &&
         typeof data.meta?.["eventIdentifier"] === "string"
           ? { eventIdentifier: data.meta["eventIdentifier"] }

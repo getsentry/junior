@@ -661,9 +661,17 @@ describe("inbox item tools", () => {
       body: "The last run failed.",
       assignees: ["everyone"],
     };
-    await expect(
-      execute(agent.add, { ...notice, dedupe_key: "automation:sched_1" }),
-    ).rejects.toThrow("belongs to an Automation alert");
+    // The input schema rejects a key with a prefix that core or a plugin
+    // owns, so the tool never runs.
+    for (const [key, owner] of [
+      ["automation:sched_1", "an Automation alert"],
+      ["plugin:github:pr", "a plugin"],
+      ["reply:local:web:1", "a reply notice"],
+    ]) {
+      expect(() =>
+        agent.add.prepareArguments!({ ...notice, dedupe_key: key }),
+      ).toThrow(`belongs to ${owner}`);
+    }
     // An alert that core added for a public Automation.
     const alert = await insertInboxItem(getDb(), {
       assignedToEveryone: false,

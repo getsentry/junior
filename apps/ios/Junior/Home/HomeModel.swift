@@ -81,6 +81,14 @@ final class HomeModel {
     update(row.conversationId) { $0.pinnedAt = result.pinnedAt }
   }
 
+  func rename(_ row: MCPConversation, title: String, app: AppModel) async throws {
+    struct Renamed: Decodable, Sendable { var title: String }
+    let result = try await app.call(
+      "renameConversation", ["conversationId": .string(row.conversationId), "title": .string(title)], as: Renamed.self)
+    update(row.conversationId) { $0.title = result.title }
+    app.didRename(SavedTitle(conversationId: row.conversationId, title: result.title))
+  }
+
   private func update(_ id: String, _ change: (inout MCPConversation) -> Void) {
     if let index = rows.firstIndex(where: { $0.conversationId == id }) { change(&rows[index]) }
   }

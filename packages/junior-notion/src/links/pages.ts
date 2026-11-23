@@ -8,7 +8,9 @@
  * the card, and the cover image.
  */
 import {
+  markdownText,
   objectSummary,
+  parseMarkdown,
   type ImageSourceContext,
   type ObjectAnnotation,
   type ObjectLinkContext,
@@ -114,9 +116,20 @@ function parseCover(value: unknown): NotionCover | undefined {
     : undefined;
 }
 
-// Text that is not body prose: headings, rules, code fences, and lines that
-// hold only a block tag such as `<p />` or `<callout ...>`.
-const SKIPPED_LINE = /^(#|---|```|<\/?[a-z-]+(\s[^>]*)?\/?>$)/i;
+// The prose of one body line, or "" when the line is not body prose:
+// headings, rules, code fences, and lines that hold only a block tag such as
+// `<p />` or `<callout ...>`. List and quote markers drop, also nested ones.
+function lineProse(line: string): string {
+  let [node] = parseMarkdown(line).children;
+  while (node?.type === "list" || node?.type === "blockquote") {
+    node =
+      node.type === "list" ? node.children[0]?.children[0] : node.children[0];
+  }
+  // Inline tags such as `<span>` drop.
+  return node?.type === "paragraph"
+    ? markdownText(node, { proseOnly: true })
+    : "";
+}
 
 /**
  * Return the first body paragraph of a page as plain text. Notion returns
@@ -125,20 +138,10 @@ const SKIPPED_LINE = /^(#|---|```|<\/?[a-z-]+(\s[^>]*)?\/?>$)/i;
 function pageSummary(text: string | undefined): string | undefined {
   // oxlint-disable-next-line junior/no-prompt-tag-matching -- Notion's response format
   const body = text?.match(/<content>([\s\S]*?)<\/content>/)?.[1] ?? "";
-  for (const raw of body.split("\n")) {
-    const line = raw.trim();
-    if (!line || SKIPPED_LINE.test(line)) continue;
-    // Drop inline tags, then any stray angle bracket, so the summary is
-    // plain text even when a tag is cut or nested.
-    const plain = line
-      .split(/<[^>]*>/)
-      .join("")
-      .replace(/[<>]/g, "")
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-      .replace(/^([-*+]|\d+\.)\s+/, "")
-      .replace(/[*_~`]/g, "")
-      .replaceAll("\\", "");
-    const summary = objectSummary(plain);
+  for (const line of body.split("\n")) {
+    // A stray angle bracket from a cut or nested tag drops too, so the
+    // summary is plain text.
+    const summary = objectSummary(lineProse(line).replace(/[<>]/g, ""));
     if (summary) return summary;
   }
   return undefined;

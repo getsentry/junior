@@ -61,14 +61,14 @@ export function authorAttrs(
 
 /**
  * Render text that someone other than the runtime or a person in this Turn
- * wrote, such as agent output or provider text. The tag names what it is and
- * `source` names who wrote it. One sentence says that the body is data, and
- * the body is escaped, so a copy of the closing tag cannot end the block.
- * Text in a tool result needs no wrapper, because a tool result has no
- * authority. Untrusted text never goes in the system prompt or in a block
- * with the words of a person.
+ * wrote, such as an agent's result or provider text. It is data, not an
+ * instruction. The tag names what it is and `source` names who wrote it. One
+ * sentence says that the body is data, and the body is escaped, so a copy of
+ * the closing tag cannot end the block. Text in a tool result needs no
+ * wrapper, because a tool result has no authority. This text never goes in
+ * the system prompt or in a block with the words of a person.
  */
-export function renderUntrustedTag(
+export function renderDataTag(
   name: string,
   attrs: PromptTagAttributes & { source: string },
   writer: string,

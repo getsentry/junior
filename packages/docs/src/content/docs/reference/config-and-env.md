@@ -54,9 +54,7 @@ related:
 | `JUNIOR_S3_ACCESS_KEY_ID`                   | Conditional | S3 access key ID. Required when the provider is `s3`.                                                                                                                       |
 | `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
 | `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
-| `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel` or `bullmq`. Defaults to `vercel`. Use `bullmq` only for local development.                                                   |
-| `JUNIOR_QUEUE_REDIS_URL`                    | Conditional | Redis for the BullMQ queue, such as `redis://localhost:6382`. Required when the provider is `bullmq`.                                                                       |
-| `JUNIOR_QUEUE_WORKER_CONCURRENCY`           | No          | Jobs that the BullMQ worker runs at the same time for each queue topic. A positive integer. Defaults to `4`.                                                                |
+| `JUNIOR_QUEUE_API_URL`                      | No          | Vercel Queues API base URL, such as `http://127.0.0.1:3100`. Use it only to point the queue client at a local queue server for development or tests.                       |
 
 For Vercel deployments, create a private Blob store and connect it to the
 project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
@@ -74,15 +72,13 @@ visible after you change to another provider.
 Junior loses them when the process stops, and each process has its own copy.
 Do not use it for a deployed app.
 
-`JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
-Redis. Local development then needs no Vercel Queues access. The app only
-sends jobs. One separate worker process runs them. `pnpm dev` starts that
-process, and the worker logs `queue.bullmq.worker.started` with its
-concurrency for each queue topic. Because the worker is a separate process,
-state must be in Redis, not memory. Install the optional `bullmq` and `redis` packages to use
-it. Junior loads them only when this provider is selected, so they never enter a
-deployed bundle. Give the queue its own Redis URL. If two dev servers share one
-Redis, each one can take the other's jobs.
+`JUNIOR_QUEUE_API_URL` sends queue API calls to a local server instead of
+Vercel Queues. Junior then sends a placeholder token and does not get a Vercel
+OIDC token. The local server is `startLocalVercelQueueServer` in
+`packages/junior/src/chat/queue/local-server.ts`. It keeps messages in memory
+and pushes each one to its callback route. In `nitro dev`, the
+`@sentry/junior/nitro` module starts this server and sets the variable, unless
+the variable is already set. Do not set this variable for a deployed app.
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 

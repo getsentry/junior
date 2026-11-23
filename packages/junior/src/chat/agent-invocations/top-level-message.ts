@@ -15,7 +15,7 @@ import {
   type EventMailboxMetadata,
 } from "@/chat/events/notification";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
-import { renderUntrustedTag } from "@/chat/input-tags";
+import { renderDataTag } from "@/chat/input-tags";
 import { leadPersonParticipates } from "@/chat/lead/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
@@ -96,7 +96,7 @@ function renderTopLevelMessageInput(args: {
   senderConversationId: string;
   text: string;
 }): string {
-  return renderUntrustedTag(
+  return renderDataTag(
     "agent-message",
     {
       conversation_id: args.senderConversationId,
