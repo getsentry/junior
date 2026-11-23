@@ -5,16 +5,12 @@ import { screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  /** Vary outcomes so the running cost lines move. */
+  /** Vary merged changes so the running cost line moves. */
   function unitCostDay(index: number) {
     const merged = index % 5 === 3 ? 1 : 0;
-    const mergedCost = merged * (3 + (index % 7) * 0.5);
-    const answered = 2 + (index % 3);
     return {
-      mergedCodeChangeCostUsd: mergedCost,
+      mergedCodeChangeCostUsd: merged * (3 + (index % 7) * 0.5),
       mergedCodeChanges: merged,
-      outcomeCostUsd: answered * 0.5 + (index % 4) * 0.4 + mergedCost,
-      outcomes: answered + merged,
     };
   }
 
@@ -58,10 +54,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByLabel("Conversations per day")).toBeVisible();
     await expect(page.getByText("Input cache")).toBeVisible();
     await expect(
-      page.getByText(/6 merged changes and 90 answered or done conversations/),
+      page.getByText(/6 merged changes\. The line is/),
     ).toBeVisible();
     await expect(
-      page.getByLabel("7-day rolling cost per outcome per day"),
+      page.getByLabel("7-day rolling cost per merged change per day"),
     ).toBeVisible();
     await expect(
       page.getByRole("heading", { name: "Model spend", exact: true }),
@@ -85,7 +81,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "system-cache-tokens", { view: "desktop" });
     await page.getByRole("button", { name: "24h", exact: true }).click();
     await expect(
-      page.getByLabel("6-hour rolling cost per outcome per hour"),
+      page.getByLabel("6-hour rolling cost per merged change per hour"),
     ).toBeVisible();
     await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
     await page.getByText("Largest cache writes", { exact: true }).click();
@@ -217,6 +213,17 @@ test.describe("new UI", { tag: "@new" }, () => {
       .fill("getsentry/sentry");
     await page.getByLabel("Setup script").fill("pnpm install");
     await page.getByLabel("vCPUs").fill("8");
+    // The new Workspace's page reads it and its usage.
+    const pageReads = Promise.all(
+      [
+        "/api/workspaces/11111111-1111-4111-8111-111111111111",
+        "/api/stats",
+      ].map((path) =>
+        page.waitForResponse(
+          (response) => new URL(response.url()).pathname === path,
+        ),
+      ),
+    );
     await page.getByRole("button", { name: "Create Workspace" }).click();
 
     await expect(page).toHaveURL(
@@ -238,6 +245,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       setupScript: "pnpm install",
       vcpus: 8,
     });
+    await pageReads;
   });
 
   test("opens Workspace details beside the list and edits on a full page", async ({

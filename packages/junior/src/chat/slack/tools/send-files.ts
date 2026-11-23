@@ -41,7 +41,7 @@ export function createSlackSendFilesTool(
       if (await isConversationDeliveryPaused(conversationId)) {
         if (!attachments) {
           throw new ToolInputError(
-            "This conversation is detached from Slack, so files cannot be sent to it.",
+            "This conversation is detached from Slack, so files cannot be sent to it. No change to the call can fix this in this Turn.",
           );
         }
         return;

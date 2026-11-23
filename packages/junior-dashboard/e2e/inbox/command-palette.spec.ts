@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { expandRow, mockInboxItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { waitForSettingsReads } from "../harness";
 import { mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
 
@@ -147,19 +148,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(palette).toHaveCount(0);
   });
 
-  test("a palette switch focuses the question while Junior waits for an answer", async ({
+  test("a palette switch focuses the message box, and a question that loads later leaves it there", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize({ height: 800, width: 1280 });
     await routeAsParticipant(page, CLOSED_ISSUE_ID, question.id);
     // The question sits on a second page that loads after the reply box
-    // shows.
+    // shows, and a third page loads after the reader starts to type.
     let releaseQuestion = () => {};
     const questionHeld = new Promise<void>((resolve) => {
       releaseQuestion = resolve;
     });
-    // A third page loads after the reader starts to type.
     let lastPageSent = false;
     let releaseLastPage = () => {};
     const lastPageHeld = new Promise<void>((resolve) => {
@@ -195,17 +195,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     const composer = page.getByLabel("Continue this conversation");
     await expect(composer).toBeVisible();
 
-    // The question takes focus, so a number key answers it at once.
-    releaseQuestion();
-    const docked = page.getByRole("region", {
-      name: `Question: ${question.title}`,
-    });
-    await expect(docked).toBeFocused();
-    await expect(composer).toBeVisible();
-
-    // The last page does not take the focus back from the message box.
-    await composer.click();
+    // The message box takes the focus at once. The question shows in the
+    // transcript when its page loads, and does not take the focus.
+    await expect(composer).toBeFocused();
     await composer.pressSequentially("Hold on");
+    releaseQuestion();
     releaseLastPage();
     await expect.poll(() => lastPageSent).toBe(true);
     // Let the app render the last page before the next keys.
@@ -269,12 +263,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-palette-pages", { lightTheme: true });
 
     await input.fill("API Tokens");
+    const settingsRead = waitForSettingsReads(page);
     await input.press("Enter");
     await expect(palette).toHaveCount(0);
     await expect(page).toHaveURL(/\/settings#api-tokens$/);
     await expect(
       page.getByRole("heading", { name: "API Tokens" }),
     ).toBeVisible();
+    await settingsRead;
   });
 
   test("sends feedback from the command palette", async ({

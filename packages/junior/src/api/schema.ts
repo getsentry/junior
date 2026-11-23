@@ -8,8 +8,9 @@ export {
 } from "../chat/attachments/input";
 export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
-  AGENT_REPLY_EVENT_TYPE,
+  AGENT_UPDATE_EVENT_TYPE,
   isAgentInvocationResultEventType,
+  isAgentUpdateEventType,
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
@@ -81,8 +82,6 @@ export type {
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
-  forkConversationBodySchema,
-  forkConversationResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
@@ -101,6 +100,10 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
+} from "./schema/conversation-fork";
 export { activityPreviewText } from "./schema/activity-preview-text";
 export {
   attachmentUploadSchema,
@@ -371,6 +374,7 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export { leadSchema } from "./schema/lead";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,
@@ -480,12 +484,14 @@ export {
   inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
+  inboxSnoozeWakesClearSchema,
 } from "./schema/inbox-snooze";
 export type {
   InboxSnoozeCreateBody,
   InboxSnoozeResource,
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
+  InboxSnoozeWake,
 } from "./schema/inbox-snooze";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

@@ -38,6 +38,10 @@ export const githubApiHandlers = [
         expires_at: new Date(Date.now() + 60 * 60 * 1000).toISOString(),
       }),
   ),
+  // A failed check event reads githubstatus.com for GitHub incidents.
+  http.get("https://www.githubstatus.com/api/v2/incidents.json", () =>
+    HttpResponse.json({ incidents: [] }),
+  ),
   http.all(/^https:\/\/(api\.)?github\.com\//, async ({ request }) => {
     const url = new URL(request.url);
     // Plugin tools call GitHub in process, so they reach these fixtures here

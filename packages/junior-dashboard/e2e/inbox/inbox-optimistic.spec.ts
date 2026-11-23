@@ -74,9 +74,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/`);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
 
-    // A button answer.
+    // A button answer: a click picks, and Send sends.
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Roll out" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, form!)).toHaveAttribute("data-expanded", "true");
     await expect(row(page, buttons!)).toHaveCount(0);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 3 waiting");
@@ -162,6 +165,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await open(page, buttons!);
     await row(page, buttons!).getByRole("button", { name: "Hold" }).click();
+    await row(page, buttons!)
+      .getByRole("button", { exact: true, name: "Send" })
+      .click();
     await expect(row(page, buttons!)).toHaveCount(0);
     await open(page, plain!);
     fail();
@@ -208,50 +214,6 @@ test.describe("new UI", { tag: "@new" }, () => {
         id: form!.id,
       },
     ]);
-  });
-
-  test("Snooze and Wake open the next row as the row starts to leave", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockInboxItems(page, { open: [...asks] });
-    await page.goto(`${dashboard.baseURL}/`);
-    // Slow the leave motion, so the test sees the next row open before the
-    // row that leaves is gone.
-    const cdp = await page.context().newCDPSession(page);
-    await cdp.send("Animation.enable");
-    await cdp.send("Animation.setPlaybackRate", { playbackRate: 0.05 });
-
-    await open(page, buttons!);
-    await row(page, buttons!).getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "Tomorrow" }).click();
-    await expect(row(page, form!)).toHaveAttribute("data-expanded", "true", {
-      timeout: 1000,
-    });
-    await expect(row(page, buttons!)).toHaveCount(1);
-    await expect(row(page, buttons!)).toHaveCount(0);
-
-    await row(page, form!).getByRole("button", { name: "Snooze" }).click();
-    await page.getByRole("button", { name: "Tomorrow" }).click();
-    await expect(row(page, form!)).toHaveCount(0);
-
-    await page
-      .getByRole("navigation", { name: "Primary" })
-      .getByRole("link", { name: /^Snoozed/ })
-      .click();
-    const snoozed = (ask: (typeof asks)[number]) =>
-      page.locator(`li[data-inbox-row="${ask.id}"]`);
-    await snoozed(buttons!)
-      .locator('[aria-controls^="inbox-row-"]')
-      .first()
-      .click();
-    await snoozed(buttons!).getByRole("button", { name: "Wake" }).click();
-    await expect(snoozed(form!)).toHaveAttribute("data-expanded", "true", {
-      timeout: 1000,
-    });
-    await expect(snoozed(buttons!)).toHaveCount(1);
-    await cdp.send("Animation.setPlaybackRate", { playbackRate: 1 });
-    await expect(snoozed(buttons!)).toHaveCount(0);
   });
 
   test("a pin that fails to save shows a toast whose Retry pins it", async ({

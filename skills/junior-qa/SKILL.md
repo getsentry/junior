@@ -295,11 +295,11 @@ pnpm --filter @sentry/junior-evals evals:integration evals/integration/auth
 For SQL conversation storage changes, verify the resumed turn rebuilds context
 from SQL, not `thread-state` mirrors: conversation context must hydrate from
 `junior_conversation_messages` (`hydrateConversationMessages`) and pi history
-from `junior_conversation_events` through the Pi adapter (`loadProjection`). In
-those tests, transcripts seeded only into `thread-state` must also be persisted
-to SQL (`persistConversationMessages`) before the callback runs, and the
-resumed agent-run input `conversationContext` must contain the SQL-seeded
-messages.
+from `junior_conversation_events` through the Pi adapter
+(`loadConversationProjection`). In those tests, transcripts seeded only into
+`thread-state` must also be persisted to SQL (`persistConversationMessages`)
+before the callback runs, and the resumed agent-run input
+`conversationContext` must contain the SQL-seeded messages.
 
 ## Failure Handling
 

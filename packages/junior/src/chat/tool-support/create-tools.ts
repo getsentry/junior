@@ -1,9 +1,12 @@
 import { createSearchInboxItemsTool } from "@/chat/inbox-items/tools/search";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
-import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
+import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { createStartConversationTool } from "@/chat/tools/start-conversation";
+import { readLeadUser } from "@/chat/lead/conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -184,6 +187,15 @@ function slackOf(run: ToolRun): SlackToolContext {
   return run.slack;
 }
 
+// A deployment without MCP providers has nothing for the MCP tools to find or
+// call, so the Turn does not list them.
+function configuredMcpToolManager(run: ToolRun) {
+  const manager = run.context.mcpToolManager;
+  return manager && manager.getAvailableProviderCatalog().length > 0
+    ? manager
+    : undefined;
+}
+
 function isPublic(run: ToolRun): boolean {
   return run.context.conversationPrivacy === "public";
 }
@@ -290,6 +302,10 @@ const STATIC_TOOL_BINDERS = {
         },
         operation: "conversation_search_embedding",
       }),
+      // A Lead Turn that no person started searches for the Lead's person.
+      resolveUserId: async () =>
+        (await run.context.resolveActorIdentity?.())?.user?.id ??
+        (await readLeadUser(run.context.conversationId))?.id,
     }),
   spawnAgent: (run) =>
     run.context.spawnAgent
@@ -345,7 +361,11 @@ const STATIC_TOOL_BINDERS = {
         : "Slack gives a search token only for a new message or mention.",
     ),
   userLookup: (run) =>
-    createUserLookupTool(slackOf(run).teamId, userLookupIdentityProviders()),
+    createUserLookupTool(
+      slackOf(run).teamId,
+      userLookupIdentityProviders(),
+      run.context.egress,
+    ),
   slackListCreate: (run) => createSlackListCreateTool(run.state),
   slackListAddItems: (run) => createSlackListAddItemsTool(run.state),
   slackListGetItems: () => createSlackListGetItemsTool(),
@@ -363,6 +383,7 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
+  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];
@@ -545,14 +566,14 @@ const RUN_BUILT_TOOL_BUILDERS = {
         })
       : undefined;
   },
-  searchMcpTools: (run) =>
-    run.context.mcpToolManager
-      ? createSearchMcpToolsTool(run.context.mcpToolManager)
-      : undefined,
-  callMcpTool: (run) =>
-    run.context.mcpToolManager
-      ? createCallMcpToolTool(run.context.mcpToolManager)
-      : undefined,
+  searchMcpTools: (run) => {
+    const manager = configuredMcpToolManager(run);
+    return manager ? createSearchMcpToolsTool(manager) : undefined;
+  },
+  callMcpTool: (run) => {
+    const manager = configuredMcpToolManager(run);
+    return manager ? createCallMcpToolTool(manager) : undefined;
+  },
   slackCanvasCreate: (run) => {
     if (!run.slack?.destinationChannelId) return undefined;
     return resolveChannelCapabilities(run.slack.destinationChannelId)
@@ -645,18 +666,23 @@ export function createTools(
         ? STATIC_TOOL_BINDERS[slot.name](run)
         : RUN_BUILT_TOOL_BUILDERS[slot.slot](run);
     if (!tool) continue;
-    tools[slot.name] =
+    tools[slot.name] = listedToolExposure(
+      listedTools,
+      slot.name,
       slot.kind === "static"
         ? withDisabledReason(
             tool,
             TURN_TOOL_LIMITS[slot.name]?.(context.turnTools),
           )
-        : tool;
+        : tool,
+    );
   }
 
-  for (const [name, pluginTool] of Object.entries(
-    getPluginTools(context, options.pluginSandbox),
-  )) {
+  // A Turn with an `only` list gets no plugin tools.
+  const pluginTools = listedTools.only
+    ? {}
+    : getPluginTools(context, options.pluginSandbox);
+  for (const [name, pluginTool] of Object.entries(pluginTools)) {
     if (tools[name]) {
       throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
     }

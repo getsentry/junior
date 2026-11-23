@@ -52,7 +52,7 @@ export interface AutomationToolCaller {
 
 /**
  * Return the Actor when that person started this Turn from any surface.
- * Automation runs, Events, plugin dispatch, and Agent invocations act for no
+ * Automation runs, Events, plugin dispatch, and parent messages act for no
  * person, so they cannot manage Automations.
  */
 function personActor(context: ToolRuntimeContext): UserActor | undefined {
@@ -134,7 +134,7 @@ export async function requireToolCaller(
   const actor = context.actor;
   if (!actor || actor.userId.trim().toLowerCase() === "unknown") {
     throw new ToolInputError(
-      "Automation tools need a Turn that a person started.",
+      "Automation tools need a Turn that a person started. No change to the call can fix this in this Turn.",
     );
   }
   const resolved = await context.users.resolveActor();
@@ -181,7 +181,7 @@ export function requireToolCreator(
   ].find((candidate) => candidate && matches(candidate));
   if (!identity) {
     throw new ToolInputError(
-      `${kind === "scheduled" ? "Scheduled" : "Event"} automation creator identity is unavailable.`,
+      `${kind === "scheduled" ? "Scheduled" : "Event"} automation creator identity is unavailable: the person has no account in the workspace of the destination. No change to the call can fix this in this Turn.`,
     );
   }
   const { actor } = caller;
@@ -198,7 +198,7 @@ export function requireToolCreator(
 }
 
 const NOT_FOUND =
-  "Automation was not found. Automations in private channels and DMs can be managed only from there or by their creator.";
+  "Automation was not found. Use searchAutomations to find its id. Automations in private channels and DMs can be managed only from there or by their creator.";
 
 /** Load one Automation that the tool caller can manage. */
 export async function requireToolAutomation(

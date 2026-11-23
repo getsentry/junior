@@ -15,6 +15,7 @@
   },
   "include": [
     "src/**/*.ts",
+    "tests/code-change-titles.test.ts",
     "tests/conditional-requests.test.ts",
     "tests/pull-request-action-harness.ts",
     "tests/pull-request-action.test.ts",

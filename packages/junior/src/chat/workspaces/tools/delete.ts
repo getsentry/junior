@@ -37,7 +37,9 @@ export function createDeleteWorkspaceTool() {
     async execute({ id }) {
       const deleted = await workspaceWrite(() => deleteWorkspace(id));
       if (!deleted) {
-        throw new ToolInputError(`Workspace not found: ${id}`);
+        throw new ToolInputError(
+          `Workspace not found: ${id}. Use listWorkspaces to find its ID.`,
+        );
       }
       return { deleted: true as const };
     },

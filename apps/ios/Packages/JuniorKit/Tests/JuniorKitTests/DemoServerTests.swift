@@ -115,4 +115,21 @@ final class ManualClock: @unchecked Sendable {
     let restored = try await client.call("searchConversations", as: ConversationList.self)
     #expect(restored.conversations.contains { $0.conversationId == row.conversationId && $0.pinnedAt != nil })
   }
+
+  @Test func renames() async throws {
+    let client = demo()
+    let list = try await client.call("searchConversations", as: ConversationList.self)
+    let row = try #require(list.conversations.first)
+    struct Renamed: Decodable, Sendable { var title: String }
+    let renamed = try await client.call(
+      "renameConversation", id(row.conversationId).merging(["title": "  Checkout fix  "]) { a, _ in a },
+      as: Renamed.self)
+    #expect(renamed.title == "Checkout fix")
+    let state = try await client.call("getConversation", id(row.conversationId), as: ConversationState.self)
+    #expect(state.conversation.title == "Checkout fix")
+    await #expect(throws: JuniorAPIError.tool("The title must have 1 to 200 characters.")) {
+      try await client.call(
+        "renameConversation", id(row.conversationId).merging(["title": " "]) { a, _ in a }, as: Renamed.self)
+    }
+  }
 }

@@ -9,6 +9,7 @@ struct HomeScreen: View {
   @State private var model = HomeModel()
   @State private var archiveError: String?
   @State private var undo: MCPConversation?
+  @State private var renaming: MCPConversation?
   @FocusState private var searchFocused: Bool
   @Environment(\.splitColumn) private var column
 
@@ -35,6 +36,7 @@ struct HomeScreen: View {
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
+    .renameAlert($renaming) { row, title in rename(row, title) }
     .task(id: app.conversationsVersion) { await model.load(app) }
     .task(id: model.query) {
       // Debounce like the dashboard (250ms) before a server search.
@@ -69,7 +71,8 @@ struct HomeScreen: View {
           if !collapsed.wrappedValue {
             VStack(spacing: 8) {
               ForEach(section.rows) { row in
-                ConversationCard(row: row, onArchive: { archive(row) }, onPin: { pin(row) })
+                ConversationCard(
+                  row: row, onArchive: { archive(row) }, onPin: { pin(row) }, onRename: { renaming = row })
               }
             }
           }
@@ -159,6 +162,16 @@ extension HomeScreen {
       }
     }
   }
+
+  private func rename(_ row: MCPConversation, _ title: String) {
+    Task {
+      do {
+        try await model.rename(row, title: title, app: app)
+      } catch {
+        withAnimation { archiveError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not rename." }
+      }
+    }
+  }
 }
 
 /// Above the list beside the open item: closes it to show the
@@ -196,6 +209,7 @@ struct ConversationCard: View {
   let row: MCPConversation
   let onArchive: () -> Void
   let onPin: () -> Void
+  let onRename: () -> Void
 
   var body: some View {
     Button {
@@ -230,6 +244,7 @@ struct ConversationCard: View {
     .contextMenu {
       Button(
         row.pinnedAt == nil ? "Pin" : "Unpin", systemImage: row.pinnedAt == nil ? "pin" : "pin.slash", action: onPin)
+      Button("Rename", systemImage: "pencil", action: onRename)
       Button(row.archivedAt == nil ? "Archive" : "Restore", systemImage: "archivebox", action: onArchive)
     }
     .accessibilityElement(children: .ignore)
@@ -238,6 +253,7 @@ struct ConversationCard: View {
     .accessibilityAddTraits(window.path.first == route ? .isSelected : [])
     .accessibilityAction { window.path = [route] }
     .accessibilityAction(named: row.pinnedAt == nil ? "Pin" : "Unpin", onPin)
+    .accessibilityAction(named: "Rename", onRename)
     .accessibilityAction(named: row.archivedAt == nil ? "Archive" : "Restore", onArchive)
   }
 

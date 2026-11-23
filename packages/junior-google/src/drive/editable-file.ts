@@ -53,7 +53,7 @@ async function requireRequesterCanEdit(
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
-      `The requester's email is unknown, so the tool cannot check that they may edit this ${noun}.`,
+      `The requester's email is unknown, so the tool cannot check that they may edit this ${noun}. No change to the call can fix this.`,
     );
   }
   const domain = emailDomain(requester);
@@ -144,8 +144,9 @@ export async function requireEditableFile(
 
 /**
  * Mark a file that the current tool call just created with Junior's account.
- * Only `createGoogleDoc` uses it: the requester becomes the owner before the
- * call ends, and the Doc is deleted if that fails.
+ * Only `createGoogleDoc` and `createGoogleSlides` use it: the requester
+ * becomes the owner before the call ends, and the file is deleted if that
+ * fails.
  */
 export function newEditableFile(
   ref: FileReference,

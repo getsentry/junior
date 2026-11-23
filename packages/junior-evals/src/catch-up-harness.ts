@@ -10,20 +10,18 @@ import {
   type DescribeEvalOptions,
   type JsonValue,
 } from "vitest-evals";
-import type { BriefEntry } from "@/chat/briefs/schema";
-import { generateCatchUp, type CatchUpBrief } from "@/chat/catch-up/generate";
+import { generateCatchUp } from "@/chat/catch-up/generate";
+import type { TranscriptEntry } from "@/chat/conversations/transcript-entries";
 import { botConfig } from "@/chat/config";
 import { completeText } from "@/chat/core-model";
 
 interface CatchUpEvalInput {
-  /** The Brief from the reader's last visit. */
-  brief?: CatchUpBrief;
   /** True when a row waits on the reader. Leave out when either is fine. */
   expectNeedsYou?: boolean;
   /** Words that the summary must not use, such as an invented outcome. */
   forbidden?: string[];
   reader: { email: string; name: string };
-  rows: Array<Pick<BriefEntry, "author" | "role" | "text">>;
+  rows: Array<Pick<TranscriptEntry, "author" | "role" | "text">>;
 }
 
 interface CatchUpEvalOutput extends Record<string, JsonValue> {
@@ -41,7 +39,6 @@ export const catchUpHarness = createHarness<
   name: "catch-up",
   run: async ({ input }) => {
     const catchUp = await generateCatchUp({
-      ...(input.brief ? { brief: input.brief } : undefined),
       completeText,
       conversationId: "slack:CEVAL:1712345.0001",
       // The eval Conversation is not stored, so it records no cost.

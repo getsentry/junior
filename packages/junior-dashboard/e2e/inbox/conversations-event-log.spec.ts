@@ -65,6 +65,13 @@ test.describe("new UI", { tag: "@new" }, () => {
         }),
       })
       .first();
+    // Opening the tool rows is reading them, so the page saves the read
+    // position.
+    const readSaved = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname.endsWith("/read-position"),
+    );
     await activity
       .locator(':scope > [data-slot="collapsible-trigger"]')
       .click();
@@ -88,6 +95,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toolResult).toBeVisible();
     await page.getByPlaceholder("Search transcript…").fill("");
     await expect(toolResult).toBeHidden();
+    await readSaved;
   });
 
   test("inspects all reporting events and steps through event details", async ({
@@ -781,7 +789,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   for (const view of [desktop, mobile]) {
-    test(`docks a tall question above the message box (${view.name})`, async ({
+    test(`shows a tall question in the transcript, above the message box (${view.name})`, async ({
       page,
       dashboard,
     }) => {
@@ -881,30 +889,30 @@ test.describe("new UI", { tag: "@new" }, () => {
         `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
       );
 
-      // The form scrolls inside the dock, so its title and question stay in
-      // view, and the message box and queued messages stay below it.
-      const question = page.getByRole("region", {
-        name: `Question: ${item.title}`,
-      });
+      // The question shows in its card in the transcript. Nothing docks, so
+      // the message box and the queued messages stay below the transcript.
+      const record = page.getByRole("region", { name: `Asked ${item.title}` });
+      await expect(record).toContainText("Waiting on you");
+      const question = record.getByRole("region", { name: "Question" });
+      await expect(question).toContainText(item.request.question);
       await expect(
-        question.getByRole("radiogroup", { name: "Owner" }),
+        record.getByRole("radiogroup", { name: "Owner" }),
       ).toBeAttached();
       await expect(
-        question.getByRole("heading", { name: item.title }),
-      ).toBeInViewport();
+        page.getByRole("region", { name: `Question: ${item.title}` }),
+      ).toHaveCount(0);
       const composer = page.getByLabel("Continue this conversation");
       const queue = page.getByRole("button", { name: /queued messages/ });
       await expect(composer).toBeInViewport();
       await expect(queue).toBeVisible();
-      const record = page.getByRole("region", { name: `Asked ${item.title}` });
-      await expect(record).toContainText("Waiting on you");
       await screenshot(page, "conversation-question-form", {
         view: view.name,
       });
 
-      // Esc dismisses the question, and its record says so.
-      await question.getByRole("heading", { name: item.title }).click();
-      await page.keyboard.press("Escape");
+      // Dismiss closes the question, and its record says so.
+      await record
+        .getByRole("button", { name: "Dismiss", exact: true })
+        .click();
       await expect(question).toHaveCount(0);
       await expect(record).toContainText("Dismissed");
       await screenshot(page, "conversation-question-dismissed", {

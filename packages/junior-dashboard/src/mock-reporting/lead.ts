@@ -1,0 +1,34 @@
+import { Hono } from "hono";
+import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
+import { apiErrorSchema, leadSchema } from "@sentry/junior/api/schema";
+import { readMockConversationAllEvents } from "./fixtures";
+import { MOCK_LEAD_WATCHED_CONVERSATION_IDS } from "./lead-transcript";
+import { createMockLead } from "./sends";
+
+/** Create the mock route that finds or starts the viewer's Lead. */
+export function createMockLeadRoutes(): Hono<{
+  Variables: JuniorApiVariables;
+}> {
+  const app = new Hono<{ Variables: JuniorApiVariables }>();
+  app.get("/", (c) => {
+    const viewer = c.get("viewer");
+    if (!viewer) {
+      return jsonResponse(
+        apiErrorSchema,
+        { error: "Authentication required." },
+        { status: 401 },
+      );
+    }
+    const conversationId = createMockLead({
+      email: viewer.email,
+      fullName: viewer.displayName ?? viewer.email,
+    });
+    return jsonResponse(leadSchema, {
+      conversationId,
+      lastSeq:
+        readMockConversationAllEvents(conversationId)?.events.at(-1)?.seq ?? -1,
+      watchedConversationIds: MOCK_LEAD_WATCHED_CONVERSATION_IDS,
+    });
+  });
+  return app;
+}

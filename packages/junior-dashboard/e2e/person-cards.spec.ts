@@ -10,6 +10,13 @@ async function openConversation(page: Page, baseURL: string) {
   await page.goto(
     `${baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
+  // The transcript shows its messages before the rows of its Inbox items,
+  // and each row that shows moves the messages. A card trigger that moves
+  // away from a still pointer does not open. The answered question's row
+  // shows last, so hover only after it shows.
+  await expect(
+    page.getByRole("region", { name: "Asked Pick the canary region" }),
+  ).toContainText("Answered by");
 }
 
 function personCard(page: Page, name: string) {
@@ -206,28 +213,26 @@ test("the answer line names the person who answered", async ({
   const answeredBy = ask.getByRole("link", { name: "Dashboard User" });
   await expect(ask).toContainText("Answered by");
   await answeredBy.hover();
-  await expect(personCard(page, "Dashboard User")).toBeVisible();
+  // The card's activity comes from its read.
+  await expect(personCard(page, "Dashboard User")).toContainText("Last active");
 });
 
-test("a tap on a touch screen opens the person card", async ({
-  browser,
-  dashboard,
-}) => {
-  const context = await browser.newContext({
-    colorScheme: "dark",
+test.describe("on a touch screen", () => {
+  test.use({
     hasTouch: true,
     isMobile: true,
     viewport: { height: mobile.height, width: mobile.width },
   });
-  const page = await context.newPage();
-  await openConversation(page, dashboard.baseURL);
-  const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
-  await mention.tap();
-  const card = personCard(page, "Avery Chen");
-  await expect(card).toBeVisible();
-  // The first tap shows the card and stays on the page.
-  await expect(page).toHaveURL(/\/conversations\//);
-  await context.close();
+
+  test("a tap opens the person card", async ({ dashboard, page }) => {
+    await openConversation(page, dashboard.baseURL);
+    const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
+    await mention.tap();
+    const card = personCard(page, "Avery Chen");
+    await expect(card).toBeVisible();
+    // The first tap shows the card and stays on the page.
+    await expect(page).toHaveURL(/\/conversations\//);
+  });
 });
 
 // The screenshots show the new UI, where the request came from.

@@ -99,10 +99,14 @@ async function resolvePublicHostname(
   for (const record of records) {
     const family = record.family === 6 ? 6 : 4;
     if (family === 4 && isPrivateIpv4(record.address)) {
-      throw new ToolInputError("Resolved to a private IPv4 address");
+      throw new ToolInputError(
+        "Resolved to a private IPv4 address. Use a public URL.",
+      );
     }
     if (family === 6 && isPrivateIpv6(record.address)) {
-      throw new ToolInputError("Resolved to a private IPv6 address");
+      throw new ToolInputError(
+        "Resolved to a private IPv6 address. Use a public URL.",
+      );
     }
     deduped.set(`${family}:${record.address}`, {
       address: record.address,
@@ -112,7 +116,7 @@ async function resolvePublicHostname(
 
   const [first, ...rest] = deduped.values();
   if (!first) {
-    throw new ToolInputError("Could not resolve hostname");
+    throw new ToolInputError("Could not resolve hostname. Check the URL.");
   }
   return [first, ...rest];
 }
@@ -263,15 +267,21 @@ export async function assertPublicUrl(rawUrl: string): Promise<URL> {
     hostname.endsWith(".local") ||
     hostname.endsWith(".internal")
   ) {
-    throw new ToolInputError("Local/private hostnames are blocked");
+    throw new ToolInputError(
+      "Local/private hostnames are blocked. Use a public URL.",
+    );
   }
 
   const hostIpType = net.isIP(hostname);
   if (hostIpType === 4 && isPrivateIpv4(hostname)) {
-    throw new ToolInputError("Private IPv4 addresses are blocked");
+    throw new ToolInputError(
+      "Private IPv4 addresses are blocked. Use a public URL.",
+    );
   }
   if (hostIpType === 6 && isPrivateIpv6(hostname)) {
-    throw new ToolInputError("Private IPv6 addresses are blocked");
+    throw new ToolInputError(
+      "Private IPv6 addresses are blocked. Use a public URL.",
+    );
   }
 
   if (hostIpType === 0) {
@@ -326,12 +336,12 @@ export async function fetchTextWithRedirects(
   await response.body?.cancel();
 
   if (redirectsLeft <= 0) {
-    throw new ToolInputError("Too many redirects");
+    throw new ToolInputError("Too many redirects. Use another URL.");
   }
 
   const location = response.headers.get("location");
   if (!location) {
-    throw new ToolInputError("Redirect missing location");
+    throw new ToolInputError("Redirect missing location. Use another URL.");
   }
 
   const nextUrl = new URL(location, url);

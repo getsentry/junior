@@ -24,7 +24,7 @@ export function createExecuteToolTool() {
     ...executeToolDefinition,
     execute: async () => {
       throw new ToolInputError(
-        "executeTool can only run through the agent tool dispatcher.",
+        "executeTool can only run through the agent tool dispatcher. In a codemode script, call the catalog tool as tools.<tool_name>(args) instead.",
       );
     },
   });

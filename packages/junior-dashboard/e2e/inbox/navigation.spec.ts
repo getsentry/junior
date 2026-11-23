@@ -17,25 +17,28 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(dashboard.baseURL);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
-    // One list of labelled rows: the Inbox views, Conversations and
-    // Automations, then the asks by type. No tab bar sits above them.
+    // One list of labelled rows: the Lead, the Inbox views, Conversations
+    // and Automations. The Inbox filters its asks by type, so the pane has no
+    // rows for them. No tab bar sits above them.
     await expect(page.getByRole("tablist")).toHaveCount(0);
     const rows = primary.getByRole("link");
     const names = [
+      "Lead",
       /^Inbox, \d+ waiting$/,
       "Snoozed",
       "Done",
       "Conversations",
       /^Automations/,
-      /^Pull requests/,
-      /^Decisions/,
     ];
     for (const [index, name] of names.entries())
       await expect(rows.nth(index)).toHaveAccessibleName(name);
-    await expect(rows.nth(0)).toHaveAttribute("aria-current", "page");
+    await expect(rows.nth(1)).toHaveAttribute("aria-current", "page");
     await expect(
       primary.getByRole("heading", { name: "Asks by type" }),
-    ).toBeVisible();
+    ).toHaveCount(0);
+    await expect(
+      primary.getByRole("link", { name: /^(Pull requests|Decisions)/ }),
+    ).toHaveCount(0);
 
     // Automations keeps the same pane, with its row marked.
     await primary.getByRole("link", { name: /^Automations/ }).click();
@@ -43,7 +46,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       primary.getByRole("link", { name: /^Automations/ }),
     ).toHaveAttribute("aria-current", "page");
-    await expect(rows.nth(0)).toHaveAccessibleName(/^Inbox, \d+ waiting$/);
+    await expect(rows.nth(1)).toHaveAccessibleName(/^Inbox, \d+ waiting$/);
     // The profile row keeps the running spend totals in view.
     const profile = page.getByRole("button", {
       name: /^Open profile menu for Dashboard User\./,
@@ -206,9 +209,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/review?bundle=automations`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
     // The pane stays on the Automation pages too.
+    const runsRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations/runs",
+    );
     await page.goto(`${dashboard.baseURL}/automations/runs`);
     await expect(automations).toHaveAttribute("aria-current", "page");
     await expect(primary.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+    await runsRead;
   });
 
   test("an old Automations link does not become the Inbox's place", async ({
@@ -323,13 +331,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations/runs`);
     // A press on the row that shows goes back to its top level.
+    const listRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations" &&
+        new URL(response.url()).searchParams.get("pageSize") === "100",
+    );
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+    await listRead;
 
-    // The pane's search bar opens the command palette.
+    // The pane's search bar opens the command palette, which reads the
+    // viewer's Automations when it opens.
     await page.getByRole("button", { name: /^Search/ }).click();
     await expect(
-      page.getByRole("dialog", { name: "Go to conversation" }),
+      page
+        .getByRole("dialog", { name: "Go to conversation" })
+        .getByRole("group", { name: "Automations" })
+        .getByRole("option")
+        .first(),
     ).toBeVisible();
   });
 
@@ -414,15 +433,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const root = page.locator("html");
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await expect(root).toHaveAttribute("data-density", "compact");
-    // A row with a Brief shows its status; Comfortable gives its summary
-    // more lines.
+    // Comfortable gives a row's summary more lines.
     const row = page
       .getByRole("region", { exact: true, name: "Conversations" })
       .getByRole("listitem")
       .filter({
         has: page.getByRole("link", { name: /Checkout latency triage/ }),
       });
-    await expect(row.getByRole("img", { name: "Brief: Done" })).toBeVisible();
     // The clamp holds the summary's display text.
     const summary = row
       .getByText(/traced to payments-v42/)
@@ -435,8 +452,22 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(summary).toHaveClass(/line-clamp-2/);
-    await page.reload();
+    await page.reload({ waitUntil: "commit" });
+    // The rows read the cards of their links again after the reload. Wait
+    // from the commit of the new document, so a read from the page before
+    // the reload does not count.
+    const cardsRead = ["pull/5378", "people/dev"].map((link) =>
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === "/api/objects" &&
+          url.searchParams.getAll("url").some((value) => value.includes(link))
+        );
+      }),
+    );
     await expect(root).toHaveAttribute("data-density", "comfortable");
+    await expect(summary).toHaveClass(/line-clamp-2/);
+    await Promise.all(cardsRead);
   });
 
   test("hides and restores the panels with the shortcuts and Zen mode", async ({

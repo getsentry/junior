@@ -1,21 +1,15 @@
 import { useLocalStorage } from "@uidotdev/usehooks";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { conversationPath } from "../conversations/conversationRoutes";
 import { useDocumentTitle } from "../documentTitle";
 import { InlineError } from "../components/InlineError";
+import { MobileHeaderActionsPortal } from "../components/layout/DashboardChrome";
 import { HeaderBar } from "../components/layout/HeaderBar";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
 import { Skeleton } from "../components/ui/skeleton";
-import { useConversationActionToasts } from "../conversations/conversationActionToasts";
-import {
-  PinnedConversationOrder,
-  usePinnedRowDrag,
-  type PinnedRowDrag,
-} from "../conversations/PinnedConversationOrder";
-import { useReorderPinnedConversations } from "../conversations/useReorderPinnedConversations";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import {
@@ -32,7 +26,16 @@ import {
   useCollapseOutside,
   useInboxFocus,
 } from "./inboxFocus";
+import { codeChangeHead } from "./codeChangeHead";
 import { heldRows, rowPlaces, type RowPlaces } from "./heldRows";
+import {
+  askTypeOf,
+  hasListFilters,
+  inConversationState,
+  ListFilters,
+  listFiltersOf,
+  withoutFilters,
+} from "./inboxFilters";
 import { useInboxListState, useLinkedInboxItems } from "./inboxListState";
 import {
   INBOX_VIEW_LABELS,
@@ -86,14 +89,6 @@ function RowsLoading() {
   );
 }
 
-/** A pinned row of the Conversations bundle, which drags into a new order. */
-function DraggableRow(props: {
-  conversationId: string;
-  render(drag: PinnedRowDrag | undefined): ReactNode;
-}) {
-  return props.render(usePinnedRowDrag(props.conversationId));
-}
-
 /**
  * The list of one Inbox sidebar entry, in the main area, like Google Inbox.
  * The Inbox leads with To do, the asks that wait on the viewer; it
@@ -122,8 +117,6 @@ export function InboxList(props: {
     forViewer: true,
   });
   const donePages = scrollPages(done.query);
-  const reorderPins = useReorderPinnedConversations();
-  const { showActionError } = useConversationActionToasts();
 
   const [todoCollapsed, setTodoCollapsed] = useLocalStorage(
     TODO_COLLAPSED_KEY,
@@ -165,18 +158,45 @@ export function InboxList(props: {
     data.itemPages,
     view === "prs",
   );
+  // `?type=` shows the Inbox asks of one type, and `?pinned=1` only the
+  // rows of the viewer's pins, in their places. The feed's first page holds
+  // every pin, so Pinned reads no more of it. `?state=` shows the
+  // Conversations in one viewer state.
+  const [params] = useSearchParams();
+  const { conversationState, pinnedOnly, type } = listFiltersOf(
+    params,
+    view,
+    data.signedIn,
+  );
+  const inboxRows =
+    pinnedOnly || type !== "all"
+      ? data.rowsOf(
+          (item) =>
+            (type === "all" || askTypeOf(item) === type) &&
+            (!pinnedOnly || data.isPinned(item.rootConversationId)),
+        )
+      : { fyi: data.fyiRows, grabs: data.grabRows, todo: data.todoRows };
   // While the pointer is on the list, a feed refresh moves no row under it.
   const [held, setHeld] = useState<RowPlaces>();
   // Only Conversations lists Conversations. The Inbox holds what needs the
   // viewer, and In flight in the pane holds what runs or is pinned.
   const latestStreamRows =
-    view === "conversations" ? data.conversationRows : [];
+    view === "conversations"
+      ? data.conversationRows.filter(
+          (row) =>
+            (!pinnedOnly || row.conversation?.pinnedAt) &&
+            inConversationState(
+              row.conversation,
+              row.bundle?.needsYou ?? false,
+              conversationState,
+            ),
+        )
+      : [];
   const streamRows = heldRows(latestStreamRows, held);
 
   // `?item=` names one item, as old Inbox links and notifications do. Its
   // row expands, the list shows rows until it renders, and it scrolls into
   // view. Only then does the link leave the URL.
-  const [params] = useSearchParams();
   const navigate = useNavigate();
   const linkedId = params.get("item") ?? undefined;
   // Done shows a linked closed item that is past its first page too. The
@@ -273,7 +293,7 @@ export function InboxList(props: {
       );
       if (!row) return;
       row.scrollIntoView({ block: "center" });
-      void navigate(listPath, { replace: true });
+      void navigate(withoutFilters(listPath), { replace: true });
       return;
     }
     if (snoozedKey || linkedSnoozed) {
@@ -364,7 +384,6 @@ export function InboxList(props: {
     options: {
       answered?: string;
       conversation?: Conversation;
-      drag?: PinnedRowDrag;
       itemRow?: boolean;
       key?: string;
       /** Rows that leave with this one, as its stack in To do. */
@@ -385,6 +404,17 @@ export function InboxList(props: {
     rowItems.set(key, row.items);
     const title = titleOf(row.conversationId) ?? row.newest.title;
     const acted = { items: row.items, key, passing: options.passing, title };
+    const head = options.itemRow
+      ? codeChangeHead(row.newest, conversationOf(row.conversationId))
+      : undefined;
+    const expanded = state.expandedKey === key;
+    // An opened item stops saying why it woke once its row closes.
+    const wake = row.items.find(
+      (item) =>
+        item.status === "open" &&
+        (expanded || !snoozes.wakeOpened(item)) &&
+        item.wake,
+    )?.wake;
     const snoozeRow = options.snoozed
       ? undefined
       : (end: SnoozeEnd) => {
@@ -408,9 +438,9 @@ export function InboxList(props: {
             : (options.conversation ?? conversationOf(row.conversationId))
         }
         conversationId={row.conversationId}
-        drag={options.drag}
-        expanded={state.expandedKey === key}
+        expanded={expanded}
         foldedNotices={data.foldedNotices}
+        itemHead={head}
         itemTitle={options.itemRow ? row.newest.title : undefined}
         itemSize={
           options.itemRow
@@ -420,7 +450,8 @@ export function InboxList(props: {
         itemSubtitle={
           options.itemRow
             ? itemRowSubtitle(
-                options.subjectShown
+                // The code change head shows the subject's title.
+                options.subjectShown || head
                   ? { ...row.newest, subject: undefined }
                   : row.newest,
                 // A child's item names its sub-thread: under the stack's
@@ -447,8 +478,12 @@ export function InboxList(props: {
                 )
             : undefined
         }
+        onOpen={() => snoozes.openWoken(row.items)}
         onSnoozeMenu={(open) => setSnoozeKey(open ? key : undefined)}
-        onToggle={() => toggle(key)}
+        onToggle={() => {
+          if (!expanded) snoozes.openWoken(row.items);
+          toggle(key);
+        }}
         rowKey={key}
         selected={false}
         showThreads={!options.itemRow}
@@ -456,6 +491,7 @@ export function InboxList(props: {
         take={options.take}
         time={options.time ?? row.waitingSince}
         title={title}
+        wake={wake}
       />
     );
   };
@@ -515,6 +551,7 @@ export function InboxList(props: {
           },
           snoozed: options.snoozed,
         })}
+        onOpen={() => snoozes.openWoken(row.items)}
         onSnoozeMenu={(open) => setSnoozeKey(open ? stackKey : undefined)}
         path={
           row.conversationId
@@ -537,7 +574,7 @@ export function InboxList(props: {
       </InboxStack>
     );
   };
-  const conversationRow = (row: ConversationRow, drag?: PinnedRowDrag) => {
+  const conversationRow = (row: ConversationRow) => {
     const key = `conversation:${row.conversationId}`;
     const answered = row.conversation
       ? conversationAnswerLine(row.conversation)
@@ -546,7 +583,6 @@ export function InboxList(props: {
       return bundleRow(row.bundle, {
         answered,
         conversation: row.conversation,
-        drag,
         key,
         time: row.time,
       });
@@ -555,7 +591,6 @@ export function InboxList(props: {
         answered={answered}
         conversation={row.conversation}
         conversationId={row.conversationId}
-        drag={drag}
         expanded={state.expandedKey === key}
         key={key}
         onSnoozeMenu={() => undefined}
@@ -577,7 +612,9 @@ export function InboxList(props: {
     view === "inbox"
       ? [data.itemPages]
       : view === "conversations"
-        ? [data.feed]
+        ? pinnedOnly
+          ? []
+          : [data.feed]
         : view === "prs" || view === "decisions"
           ? [data.itemPages]
           : view === "done"
@@ -635,57 +672,24 @@ export function InboxList(props: {
     />
   );
 
-  const stream = () => {
-    const shown = streamRows.slice(0, state.loaded);
-    const pinned = shown.filter((row) => row.conversation?.pinnedAt);
-    const rest = shown.filter((row) => !pinned.includes(row));
-    const pinnedConversations = pinned.flatMap((row) =>
-      row.conversation ? [row.conversation] : [],
-    );
-    return (
-      <>
-        <PinnedConversationOrder
-          conversations={pinnedConversations}
-          onError={(conversation) =>
-            showActionError(conversation, "Could not reorder")
-          }
-          reorder={
-            pinned.length === data.pinned.length ? reorderPins : undefined
-          }
+  const stream = () =>
+    timeGroups(streamRows.slice(0, state.loaded), (row) => row.time, nowMs).map(
+      (section) => (
+        <InboxSection
+          action={sweepControl(
+            section.rows.flatMap((row) => (row.bundle ? [row.bundle] : [])),
+            section.label,
+          )}
+          collapsed={collapsed.has(section.key)}
+          count={section.rows.length}
+          key={section.key}
+          label={section.label}
+          onToggle={() => toggleSection(section.key)}
         >
-          <InboxSection
-            collapsed={collapsed.has("pinned")}
-            count={pinned.length}
-            label="Pinned"
-            onToggle={() => toggleSection("pinned")}
-          >
-            {pinned.map((row) => (
-              <DraggableRow
-                conversationId={row.conversationId}
-                key={row.conversationId}
-                render={(drag) => conversationRow(row, drag)}
-              />
-            ))}
-          </InboxSection>
-        </PinnedConversationOrder>
-        {timeGroups(rest, (row) => row.time, nowMs).map((section) => (
-          <InboxSection
-            action={sweepControl(
-              section.rows.flatMap((row) => (row.bundle ? [row.bundle] : [])),
-              section.label,
-            )}
-            collapsed={collapsed.has(section.key)}
-            count={section.rows.length}
-            key={section.key}
-            label={section.label}
-            onToggle={() => toggleSection(section.key)}
-          >
-            {section.rows.map((row) => conversationRow(row))}
-          </InboxSection>
-        ))}
-      </>
+          {section.rows.map((row) => conversationRow(row))}
+        </InboxSection>
+      ),
     );
-  };
 
   let body;
   if (data.itemsError) {
@@ -694,22 +698,29 @@ export function InboxList(props: {
     );
   } else if (!ready) {
     body = <RowsLoading />;
+  } else if (pinnedOnly && data.pinned.length === 0) {
+    body = (
+      <InboxEmptyState label="Nothing pinned. Pin a conversation from its row or its menu." />
+    );
   } else if (view === "inbox") {
     const nothingLeft =
       !todoMore &&
-      data.todoRows.length + data.grabRows.length + data.fyiRows.length === 0;
-    const pinnedTodo = data.todoRows.filter((row) =>
-      data.isPinned(row.conversationId),
-    );
+      inboxRows.todo.length + inboxRows.grabs.length + inboxRows.fyi.length ===
+        0;
+    // A type's count adds the asks past the loaded pages, as All's does.
+    // Pinned counts the rows that it shows.
+    const todoCount = pinnedOnly
+      ? rowCount(inboxRows.todo, STACK_ROW_KEYS.todo, true)
+      : data.todoCounts[type];
     body = (
       <>
         {data.signedIn ? (
           <InboxSection
-            action={sweepControl(data.todoRows, "To do")}
+            action={sweepControl(inboxRows.todo, "To do")}
             badge={
-              data.todoCount ? (
+              todoCount ? (
                 <span className="text-xs font-medium tabular-nums text-dashboard-text-muted">
-                  {data.todoCount}
+                  {todoCount}
                 </span>
               ) : null
             }
@@ -718,45 +729,52 @@ export function InboxList(props: {
             // The rows show without the server count, which may still load
             // or have failed.
             count={
-              data.todoCount ||
-              rowCount(data.todoRows, STACK_ROW_KEYS.todo, true)
+              todoCount || rowCount(inboxRows.todo, STACK_ROW_KEYS.todo, true)
             }
             label="To do"
             onToggle={() => setTodoCollapsed(!todoCollapsed)}
           >
-            {[
-              ...pinnedTodo,
-              ...data.todoRows.filter((row) => !pinnedTodo.includes(row)),
-            ].map((row) => stackRow(row, STACK_ROW_KEYS.todo, { todo: true }))}
+            {inboxRows.todo.map((row) =>
+              stackRow(row, STACK_ROW_KEYS.todo, { todo: true }),
+            )}
           </InboxSection>
         ) : null}
         <InboxSection
           collapsed={collapsed.has("grabs")}
-          count={rowCount(data.grabRows, STACK_ROW_KEYS.grabs)}
+          count={rowCount(inboxRows.grabs, STACK_ROW_KEYS.grabs)}
           label="Up for grabs"
           onToggle={() => toggleSection("grabs")}
         >
-          {data.grabRows.map((row) =>
+          {inboxRows.grabs.map((row) =>
             stackRow(row, STACK_ROW_KEYS.grabs, { take: "I'll take it" }),
           )}
         </InboxSection>
         {/* Notices wait on no one: quiet rows, stacked, after the asks. */}
         <InboxSection
-          action={sweepControl(data.fyiRows, "FYI")}
+          action={sweepControl(inboxRows.fyi, "FYI")}
           collapsed={collapsed.has("fyi")}
-          count={rowCount(data.fyiRows, STACK_ROW_KEYS.fyi)}
+          count={rowCount(inboxRows.fyi, STACK_ROW_KEYS.fyi)}
           label="FYI"
           onToggle={() => toggleSection("fyi")}
         >
-          {data.fyiRows.map((row) => stackRow(row, STACK_ROW_KEYS.fyi, {}))}
+          {inboxRows.fyi.map((row) => stackRow(row, STACK_ROW_KEYS.fyi, {}))}
         </InboxSection>
         {nothingLeft ? <InboxEmptyState label="Nothing left here" /> : null}
       </>
     );
   } else if (view === "conversations") {
+    // A state filter can match rows on pages not read yet, so the list
+    // keeps paging before it says that none match. Pinned reads no pages.
     body =
-      streamRows.length === 0 ? (
-        <InboxEmptyState label="No conversations yet" />
+      streamRows.length === 0 &&
+      !(conversationState !== "all" && !pinnedOnly && data.feed.hasMore) ? (
+        <InboxEmptyState
+          label={
+            conversationState === "all" && !pinnedOnly
+              ? "No conversations yet"
+              : "No conversations match these filters"
+          }
+        />
       ) : (
         stream()
       );
@@ -888,13 +906,34 @@ export function InboxList(props: {
 
   // The Inbox has no heading; a bundle shows only its name.
   const heading = view === "inbox" ? undefined : INBOX_VIEW_LABELS[view];
+  const headerBar = Boolean(heading && !props.phone);
+  const filters = hasListFilters(view, data.signedIn) ? (
+    <ListFilters
+      conversationState={conversationState}
+      counts={data.todoCounts}
+      pinnedOnly={pinnedOnly}
+      search={params.toString()}
+      signedIn={data.signedIn}
+      type={type}
+      view={view}
+    />
+  ) : null;
+  // The filters sit in the top row: the phone header, or the desktop header
+  // of a list with a heading. The Inbox on a desktop has no heading, so its
+  // filters sit above the rows.
+  const filterBar = props.phone || headerBar ? null : filters;
   return (
     <section
       aria-label={INBOX_VIEW_LABELS[view]}
       className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg"
     >
-      {heading && !props.phone ? (
-        <HeaderBar title={heading} />
+      {props.phone && filters ? (
+        <MobileHeaderActionsPortal>
+          <div className="flex items-center gap-1">{filters}</div>
+        </MobileHeaderActionsPortal>
+      ) : null}
+      {headerBar ? (
+        <HeaderBar actions={filters} title={heading} />
       ) : (
         <div className="absolute top-2 left-3 z-10 max-md:hidden">
           <PaneCollapsedControls />
@@ -923,6 +962,13 @@ export function InboxList(props: {
           // the scroll area's edge.
           style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
         >
+          {filterBar ? (
+            // One right-aligned row, clear of the pane controls that float
+            // at the top left while the pane is collapsed.
+            <div className="flex items-center justify-end gap-2 pb-2">
+              {filterBar}
+            </div>
+          ) : null}
           <InboxFocusProvider focus={focus.focus}>
             <InboxPreviewGate>{body}</InboxPreviewGate>
           </InboxFocusProvider>

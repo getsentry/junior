@@ -1,5 +1,6 @@
 import * as z from "zod";
 import type { PluginContext } from "./context";
+import type { PluginEgress } from "./tools";
 import { nonBlankStringSchema, pluginCredentialSubjectSchema } from "./schemas";
 
 const pluginProviderNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
@@ -330,6 +331,14 @@ export interface PluginUserTokenSlot {
 export interface PluginTokenStore {
   credentialSubject?: PluginUserTokenSlot;
   currentUser?: PluginUserTokenSlot;
+}
+
+/** Input for a search of one provider's accounts by person. */
+export interface SearchUsersHookContext extends PluginContext {
+  /** Fetch provider URLs with host-owned credentials. */
+  egress: PluginEgress;
+  /** The text to match: an ID, handle, email, mention, or name. */
+  query: string;
 }
 
 export interface ResolveOAuthAccountHookContext extends PluginContext {

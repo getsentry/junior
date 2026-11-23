@@ -2,7 +2,10 @@ import * as z from "zod";
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { inboxItemRequestSchema } from "@/chat/inbox-items/evidence";
 import { actorIdentitySchema } from "./conversation";
-import { inboxSnoozeResourceSchema } from "./inbox-snooze";
+import {
+  inboxSnoozeResourceSchema,
+  inboxSnoozeWakeSchema,
+} from "./inbox-snooze";
 
 const answerSchema = z
   .object({
@@ -47,6 +50,11 @@ export const inboxItemSchema = z
     closedBy: personSchema.optional(),
     conversationIds: z.array(z.string().min(1)),
     createdAt: z.string().datetime(),
+    /**
+     * Set when the viewer snoozed the open item, and the snooze has not
+     * woken. It stays open for the other people it is for.
+     */
+    snoozedByViewer: z.literal(true).optional(),
     id: z.string().min(1),
     kind: z.enum(["notice", "action"]),
     /** People that the title, body, and question mention. */
@@ -106,6 +114,19 @@ export const inboxItemSchema = z
          */
         resource: inboxSnoozeResourceSchema.optional(),
         title: z.string().min(1).optional(),
+        /**
+         * A code change title split by Conventional Commits, as the plugin
+         * that owns the code change parsed it.
+         */
+        titleParts: z
+          .object({
+            breaking: z.boolean().optional(),
+            scope: z.string().min(1).optional(),
+            text: z.string().min(1),
+            type: z.string().min(1).optional(),
+          })
+          .strict()
+          .optional(),
         url: z.string().min(1).optional(),
       })
       .strict()
@@ -113,6 +134,11 @@ export const inboxItemSchema = z
     title: z.string().min(1),
     updatedAt: z.string().datetime(),
     visibility: z.enum(["public", "private"]),
+    /**
+     * Why the viewer's snooze of the open item woke. Only that viewer sees
+     * it, until they open or act on the item.
+     */
+    wake: inboxSnoozeWakeSchema.optional(),
   })
   .strict();
 

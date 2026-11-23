@@ -54,6 +54,7 @@ export async function ensureConversationRow(
 const CONVERSATION_KINDS: ReadonlySet<string> = new Set<ConversationKind>([
   "root",
   "automation",
+  "lead",
   "thread",
   "task",
 ]);

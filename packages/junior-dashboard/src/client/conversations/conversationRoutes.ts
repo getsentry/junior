@@ -31,20 +31,28 @@ export function conversationPath(
   return search ? `${path}?${search}` : path;
 }
 
+/** The same-origin link of a Conversation, as message text holds it. */
+export function conversationUrl(conversationId: string): string {
+  return `${window.location.origin}${conversationPath(conversationId)}`;
+}
+
 /**
  * Navigation state that asks the opened Conversation to focus its reply box.
  * `draftFrom` names the draft of a composer the reader typed in before the
- * page opened. The reply box takes its text. `questionId` names the docked
- * question to show and focus.
+ * page opened. The reply box takes its text.
  */
 export type ReplyFocusState = {
+  /** The reader asked to type, so the reply box takes focus on touch too. */
+  compose?: true | undefined;
   draftFrom?: string | undefined;
   focusReply: true;
-  questionId?: string | undefined;
 };
 
 /** Ask the opened Conversation to focus its reply box. */
 export const FOCUS_REPLY_STATE = { focusReply: true } as const;
+
+/** Ask the opened Conversation for its reply box, to type a new request. */
+export const COMPOSE_REPLY_STATE = { compose: true, focusReply: true } as const;
 
 /** Read the reply focus that navigation state asks for, if any. */
 export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
@@ -57,15 +65,12 @@ export function readReplyFocus(state: unknown): ReplyFocusState | undefined {
     return undefined;
   }
   return {
+    compose: "compose" in state && state.compose === true ? true : undefined,
     draftFrom:
       "draftFrom" in state && typeof state.draftFrom === "string"
         ? state.draftFrom
         : undefined,
     focusReply: true,
-    questionId:
-      "questionId" in state && typeof state.questionId === "string"
-        ? state.questionId
-        : undefined,
   };
 }
 
@@ -107,6 +112,19 @@ export function parseConversationEventSeq(
   value: string | null | undefined,
 ): number | undefined {
   return value && /^\d+$/.test(value) ? Number(value) : undefined;
+}
+
+/**
+ * The anchor of a transcript row: `#event-<seq>`, with the seq of the last
+ * event in the row. A link to any event seq shows the row that holds it.
+ */
+export function transcriptRowAnchor(seq: number): string {
+  return `event-${seq}`;
+}
+
+/** Read the event seq of a `#event-<seq>` transcript row link. */
+export function parseTranscriptRowHash(hash: string): number | undefined {
+  return parseConversationEventSeq(/^#event-(\d+)$/.exec(hash)?.[1]);
 }
 
 /** Query param that opens the Inbox items panel of a Conversation. */

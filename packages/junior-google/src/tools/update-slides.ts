@@ -12,6 +12,10 @@ import { FILE_ID_PATTERN, googleFileRequest } from "../drive/files";
 import type { GoogleToolContext } from "../google-api";
 import { checkTouchedSlides, SLIDE_CHECK_FIELDS } from "../slides/checks";
 import {
+  publishSandboxImages,
+  sandboxImagePaths,
+} from "../slides/sandbox-images";
+import {
   presentationReferenceSchema,
   presentationUrl,
 } from "../slides/presentation";
@@ -40,7 +44,7 @@ const inputSchema = z
       .min(1)
       .max(200)
       .describe(
-        'Slides API batchUpdate requests, applied in order, such as {"insertText": {...}}. createSlide without slideLayoutReference is BLANK. Sizes accept unit PT. See https://developers.google.com/workspace/slides/api/reference/rest/v1/presentations/request.',
+        'Slides API batchUpdate requests, applied in order, such as {"insertText": {...}}. createSlide without slideLayoutReference is BLANK. Sizes accept unit PT. A createImage or replaceImage url can be the absolute sandbox path of a PNG, JPEG, or GIF.',
       ),
   })
   .strict();
@@ -131,14 +135,14 @@ async function requireReadableSources(
   // A refresh reads the chart's Sheet, which the request does not name.
   if (requests.some((request) => "refreshSheetsChart" in request)) {
     throw new PluginToolInputError(
-      "refreshSheetsChart is not supported: you cannot check who can open the chart's Sheet.",
+      "refreshSheetsChart is not supported: you cannot check who can open the chart's Sheet. Remove it from requests.",
     );
   }
   const sources = requests.map((request) => {
     const parsed = sourceSchema.safeParse(request);
     if (!parsed.success) {
       throw new PluginToolInputError(
-        `Malformed ${Object.keys(request)[0]} request: ${parsed.error.issues[0]?.message ?? "invalid"}.`,
+        `Malformed ${Object.keys(request)[0]} request: ${parsed.error.issues[0]?.message ?? "invalid"}. Fix it to match the Slides API batchUpdate request.`,
       );
     }
     return parsed.data;
@@ -253,7 +257,8 @@ export const updateGoogleSlidesTool = definePluginTool({
     readOnlyHint: false,
   },
   describeProposal(input) {
-    return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.`;
+    const images = sandboxImagePaths(input.requests).length;
+    return `In Google Slides ${input.presentation}, apply ${input.requests.length} edit(s): ${describeRequests(input.requests)}.${images ? ` Google fetches ${images} sandbox image(s) from public URLs that expire within 5 minutes.` : ""}`;
   },
   description:
     "Edit a Google Slides presentation with Slides API batchUpdate requests, as your own Google account: add, duplicate, move, or delete slides and elements, and change text, styles, and positions. All requests apply together or not at all. Read the layout with readGoogleSlidesLayout first, and check layout changes with getGoogleSlideThumbnail. Works only when that account and the requester can both edit the presentation. A Sheets chart needs a Sheet that the requester can open; videos must be from YouTube.",
@@ -267,9 +272,10 @@ export const updateGoogleSlidesTool = definePluginTool({
     );
     requireMeaningfulRequests(input.requests);
     await requireReadableSources(ctx, input.requests);
-    const response = await googleFileRequest(ctx, file.ref, {
+    const images = await publishSandboxImages(ctx, input.requests);
+    const batchUpdate = googleFileRequest(ctx, file.ref, {
       body: {
-        requests: input.requests,
+        requests: images.requests,
         writeControl: { requiredRevisionId: input.revision_id },
       },
       editable: file,
@@ -288,6 +294,13 @@ export const updateGoogleSlidesTool = definePluginTool({
       }
       throw error;
     });
+    let response: Awaited<typeof batchUpdate>;
+    try {
+      response = await batchUpdate;
+    } finally {
+      // Google has fetched each image by the time batchUpdate returns.
+      await images.unpublish();
+    }
     const after = revisionAfterUpdate(response.body);
     const { replies } = replySchema.parse(response.body);
     // The edit has applied, so a failed read must not look like a failed

@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { waitForOutlineRead } from "../harness";
 import { expect, test } from "../test";
 
 // Only the inbox project runs `@new` tests.
@@ -240,9 +241,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       targetPosition: { x: empty.x - 48, y: empty.y },
     });
     expect(page.url()).toBe(inbox);
+    const outlineRead = waitForOutlineRead(page, "internal:dashboard-qa");
     await strip.click({ position: empty });
     await expect(page).toHaveURL(new URL(path, dashboard.baseURL).href);
     await expect(page.getByRole("dialog")).toHaveCount(0);
+    await outlineRead;
   });
 
   // The mock's busy row: 90 pull requests and 12 images, 3 in the feed.

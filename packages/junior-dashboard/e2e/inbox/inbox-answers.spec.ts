@@ -11,10 +11,12 @@ function rollout(page: Page) {
 async function answerHold(page: Page) {
   const todo = page.getByRole("region", { name: "To do" });
   await rollout(page).locator('[aria-controls^="inbox-row-"]').first().click();
-  await todo
-    .getByRole("region", { name: "Approve the payments-v42 rollout" })
-    .getByRole("button", { exact: true, name: "Hold" })
-    .click();
+  const card = todo.getByRole("region", {
+    name: "Approve the payments-v42 rollout",
+  });
+  // A click picks the choice, and Send answers.
+  await card.getByRole("button", { exact: true, name: "Hold" }).click();
+  await card.getByRole("button", { exact: true, name: "Send" }).click();
 }
 
 function toasts(page: Page) {
@@ -63,8 +65,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       const summary = rollout(page).locator('[data-inbox-slot="summary"]');
       await expect(summary).toHaveText("You answered Hold");
       await expect(page.getByText(ask)).toHaveCount(0);
+      // The summaries read the cards of their links.
+      const cardsRead = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === "/api/objects",
+      );
       await page.reload();
       await expect(summary).toHaveText("You answered Hold");
+      await cardsRead;
     });
   }
 

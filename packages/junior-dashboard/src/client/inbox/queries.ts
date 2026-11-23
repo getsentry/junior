@@ -38,6 +38,7 @@ import { conversationDetailTitle } from "../format";
 import { DashboardApiError, fetchDashboardJson, post } from "../http";
 import {
   revalidatedJsonQuery,
+  revalidatedPageQuery,
   withoutVersion,
   type ContentVersioned,
 } from "../revalidation";
@@ -154,16 +155,12 @@ export function useInboxItemsData(filters: InboxItemListFilters) {
     enabled: filters.enabled ?? true,
     initialPageParam: undefined as string | undefined,
     queryKey: inboxItemListQueryKey(filters),
-    queryFn: ({ pageParam, signal }) => {
+    queryFn: revalidatedPageQuery(inboxItemListSchema, (pageParam) => {
       const pageParams = new URLSearchParams(search);
       if (pageParam) pageParams.set("cursor", pageParam);
-      return fetchDashboardJson(
-        inboxItemListSchema,
-        `/api/inbox-items?${pageParams.toString()}`,
-        signal,
-      );
-    },
-    getNextPageParam: (lastPage) => lastPage.nextCursor,
+      return `/api/inbox-items?${pageParams.toString()}`;
+    }),
+    getNextPageParam: (lastPage: InboxItemList) => lastPage.nextCursor,
     placeholderData: keepPreviousData,
     retry: false,
   });
@@ -345,7 +342,10 @@ function closesItem(body: InboxItemActionBody): boolean {
   return body.action !== "take";
 }
 
-type InboxItemListCache = InfiniteData<InboxItemList, string | undefined>;
+type InboxItemListCache = InfiniteData<
+  ContentVersioned<InboxItemList>,
+  string | undefined
+>;
 
 /** Where one item showed in each open list, so it can go back there. */
 type ItemPlaces = {
@@ -417,10 +417,17 @@ async function takeOutClosedItem(
     if (places.length === found) continue;
     queryClient.setQueryData<InboxItemListCache>(queryKey, {
       ...list,
-      pages: list.pages.map((page) => ({
-        ...page,
-        items: page.items.filter((open) => open.id !== id),
-      })),
+      pages: list.pages.map((page) =>
+        page.items.some((open) => open.id === id)
+          ? withoutVersion(
+              {
+                ...page,
+                items: page.items.filter((open) => open.id !== id),
+              },
+              "contentVersion",
+            )
+          : page,
+      ),
     });
   }
   if (!item) return undefined;
@@ -449,14 +456,17 @@ function putBackItem(queryClient: QueryClient, { item, places }: ItemPlaces) {
         ...list,
         pages: list.pages.map((page, index) =>
           index === place.page
-            ? {
-                ...page,
-                items: [
-                  ...page.items.slice(0, place.index),
-                  item,
-                  ...page.items.slice(place.index),
-                ],
-              }
+            ? withoutVersion(
+                {
+                  ...page,
+                  items: [
+                    ...page.items.slice(0, place.index),
+                    item,
+                    ...page.items.slice(place.index),
+                  ],
+                },
+                "contentVersion",
+              )
             : page,
         ),
       };

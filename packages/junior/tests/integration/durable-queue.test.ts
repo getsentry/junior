@@ -12,7 +12,7 @@ import {
 } from "@/chat/config";
 import {
   commitAcceptedReply,
-  loadProjection,
+  loadConversationProjection,
 } from "@/chat/conversations/projection";
 import { runWithTurnRequestDeadline } from "@/chat/runtime/request-deadline";
 import {
@@ -856,11 +856,12 @@ describe("durable queue contract", () => {
       });
       await expectNextTurn(q, "1712345.0006");
       // The next turn was told that this one failed.
-      expect(
-        JSON.stringify(
-          await loadProjection({ conversationId: CONVERSATION_ID }),
-        ),
-      ).toContain("Your previous turn failed before it finished.");
+      const next = await loadConversationProjection({
+        conversationId: CONVERSATION_ID,
+      });
+      expect(JSON.stringify(next.messages)).toContain(
+        "Your previous turn failed before it finished.",
+      );
     });
 
     it("fails once when the resumed turn stops before its first save", async () => {

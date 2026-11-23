@@ -169,9 +169,12 @@ export function parseMemoryToolInput<T>(
 ): T {
   const result = schema.safeParse(input);
   if (!result.success) {
-    throw new PluginToolInputError("Invalid memory tool input.", {
-      cause: result.error,
-    });
+    throw new PluginToolInputError(
+      "Invalid memory tool input. Check the arguments against the tool schema and call it again.",
+      {
+        cause: result.error,
+      },
+    );
   }
   return result.data;
 }

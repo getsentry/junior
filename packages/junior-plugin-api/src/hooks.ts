@@ -12,6 +12,7 @@ import type {
   PluginGrant,
   PluginProviderAccount,
   ResolveOAuthAccountHookContext,
+  SearchUsersHookContext,
 } from "./credentials";
 import type {
   HeartbeatHookContext,
@@ -108,7 +109,7 @@ export interface PluginHooks {
   /**
    * Return static guidance for the system prompt. Return the same text for one
    * deployment and platform, so the system prompt stays cacheable. Put text
-   * that changes per request in `userPrompt`. See `policies/system-prompt.md`.
+   * that changes per request in `userPrompt`.
    */
   systemPrompt?(
     ctx: SystemPromptContext,
@@ -191,6 +192,14 @@ export interface PluginHooks {
     | Promise<PluginProviderAccount | undefined>
     | PluginProviderAccount
     | undefined;
+  /**
+   * Return the provider accounts that match a person search. Return only
+   * close matches, such as an exact login, so the agent can choose between
+   * them. `userLookup` links each account to a known person.
+   */
+  searchUsers?(
+    ctx: SearchUsersHookContext,
+  ): Promise<PluginProviderAccount[]> | PluginProviderAccount[];
   routes?(ctx: RouteRegistrationHookContext): PluginRoute[];
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
   workspacePrepare?(

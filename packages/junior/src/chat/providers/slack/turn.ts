@@ -119,7 +119,7 @@ import {
 } from "@/chat/services/turn-failure-response";
 import { buildAuthPauseResponse } from "@/chat/services/auth-pause-response";
 import { recordFinishedTurnForAutomatedLimit } from "@/chat/services/automated-turn-limit";
-import { maybePostAutomatedTurnLimitNotice } from "@/chat/slack/automated-turn-limit-notice";
+import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { AuthorizationFlowDisabledError } from "@/chat/services/auth-pause";
 import { PluginCredentialFailureError } from "@/chat/services/plugin-auth-orchestration";
 import { maybeApplyProviderDefaultConfigRequest } from "@/chat/services/provider-default-config";
@@ -182,6 +182,8 @@ async function persistThreadRuntimeStateWithRetry(
 
 interface LoadedPiMessagesForTurn {
   piMessages?: PiMessage[];
+  /** Event seq of each loaded message. */
+  seqs: readonly number[];
 }
 
 /**
@@ -195,7 +197,7 @@ async function loadPiMessagesForTurn(args: {
   activeTurnId?: string | undefined;
 }): Promise<LoadedPiMessagesForTurn> {
   if (!args.conversationId) {
-    return {};
+    return { seqs: [] };
   }
 
   if (args.activeTurnId) {
@@ -204,8 +206,12 @@ async function loadPiMessagesForTurn(args: {
       args.activeTurnId,
     );
     if (sessionRecord?.piMessages.length) {
+      const piMessages = trimTrailingAssistantMessages(
+        sessionRecord.piMessages,
+      );
       return {
-        piMessages: trimTrailingAssistantMessages(sessionRecord.piMessages),
+        piMessages,
+        seqs: sessionRecord.piMessageSeqs.slice(0, piMessages.length),
       };
     }
   }
@@ -214,10 +220,10 @@ async function loadPiMessagesForTurn(args: {
     conversationId: args.conversationId,
   });
   if (projection.messages.length > 0) {
-    return { piMessages: projection.messages };
+    return { piMessages: projection.messages, seqs: projection.seqs };
   }
 
-  return {};
+  return { seqs: [] };
 }
 
 interface SlackTurnDeps {
@@ -1108,7 +1114,11 @@ export function createSlackTurn(deps: SlackTurnDeps) {
               omittedImageAttachmentCount,
               attachments: userAttachments,
             },
-            history: piMessages,
+            // Steering added after the load is not in `seqs`, so it belongs
+            // to this Turn.
+            history: piMessages
+              ? { messages: piMessages, seqs: loadedPiMessages.seqs }
+              : undefined,
             credentialContext,
             // Always set the execution Actor when known.
             actor: executionActor,
@@ -1272,7 +1282,7 @@ export function createSlackTurn(deps: SlackTurnDeps) {
                   maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                   source,
                 });
-              await maybePostAutomatedTurnLimitNotice({
+              await stopAtAutomatedTurnLimit({
                 conversationId,
                 maxTurns: botConfig.maxConsecutiveAutomatedTurns,
                 source,

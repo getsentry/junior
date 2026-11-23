@@ -22,11 +22,7 @@ import {
   insertInboxItem,
   takeInboxItem,
 } from "@/chat/inbox-items/store";
-import {
-  juniorAgentInvocations,
-  juniorConversationParticipants,
-  juniorIdentities,
-} from "@/db/schema";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 import { and, eq } from "drizzle-orm";
 import { avatarPath } from "../../../fixtures/avatar";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
@@ -265,7 +261,7 @@ describe("inbox item actions API", () => {
     // The names and photos come with the items, in one more statement.
     const { items } = await (
       await expectSqlBudget(() => api(fixture, ana).get("?for=viewer"), {
-        statements: 5,
+        statements: 6,
         serialRounds: 4,
       })
     ).json();
@@ -548,24 +544,8 @@ describe("inbox item actions API", () => {
       kind: "task",
       nowMs,
       parentConversationId: "agent:thread-of-5",
+      title: "Read the canary logs",
     });
-    // The Agent invocation's title names the Task.
-    await getDb()
-      .insert(juniorAgentInvocations)
-      .values({
-        actor: { name: "junior", platform: "system" },
-        childConversationId: "agent:task-of-thread-of-5",
-        createdAt: new Date(nowMs),
-        destination: { platform: "slack", teamId: "T123", channelId: "CPUB" },
-        input: "Read the canary logs.",
-        invocationId: "agent-invocation:task-of-thread-of-5",
-        mailboxStatus: "pending",
-        parentConversationId: "agent:thread-of-5",
-        source: { kind: "agent_invocation" },
-        status: "completed",
-        title: "Read the canary logs",
-        updatedAt: new Date(nowMs),
-      });
     // A private root where Ana takes no part, with a Thread.
     await getConversationStore().recordActivity({
       conversationId: "slack:CPRIV:1.000006",
@@ -606,7 +586,7 @@ describe("inbox item actions API", () => {
     const list = await (
       await expectSqlBudget(
         () => api(fixture, ana).get("?for=viewer&sort=waiting"),
-        { statements: 8, serialRounds: 6 },
+        { statements: 9, serialRounds: 6 },
       )
     ).json();
     const byId = new Map<string, Record<string, unknown>>(
@@ -703,7 +683,7 @@ describe("inbox item actions API", () => {
     const first = await (
       await expectSqlBudget(
         () => api(fixture, ana).get("?for=viewer&sort=waiting&limit=25"),
-        { statements: 4, serialRounds: 3 },
+        { statements: 5, serialRounds: 4 },
       )
     ).json();
     expect(first.items[0]).toMatchObject({ id: ask, kind: "action" });

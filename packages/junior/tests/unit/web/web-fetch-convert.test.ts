@@ -154,7 +154,7 @@ describe("web fetch content conversion", () => {
         new Response("missing", { status: 404 }),
       ),
     ).rejects.toMatchObject({
-      message: "fetch failed: 404",
+      message: "fetch failed: 404. Check the URL, or use another source.",
       name: "ToolInputError",
     });
   });

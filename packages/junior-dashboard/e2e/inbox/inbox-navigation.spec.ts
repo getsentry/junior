@@ -628,8 +628,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.goto(`${dashboard.baseURL}/`);
       const entries = page.getByRole("navigation", { name: "Primary" });
       // A list leaves its path as the place Back returns to.
-      await entries.getByRole("link", { name: /^Decisions/ }).click();
-      await expect(page).toHaveURL(/\/\?view=decisions$/);
+      await entries.getByRole("link", { name: /^Snoozed/ }).click();
+      await expect(page).toHaveURL(/\/\?view=snoozed$/);
       await page
         .getByRole("link", { name: "Back to the Inbox entries" })
         .click();
@@ -817,8 +817,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-row]")
       .filter({ hasText: "Roll out payments-v42" })
       .first();
-    await row.hover();
-    await row.getByRole("link", { name: "Open conversation" }).first().click();
+    await openRow(row.locator("[data-inbox-head]").first());
     await expect(page).toHaveURL(
       new RegExp(`/conversations/${encodeURIComponent(conversationId)}$`),
     );

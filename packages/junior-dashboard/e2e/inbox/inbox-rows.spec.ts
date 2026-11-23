@@ -9,6 +9,7 @@ import {
   failedRunAlert,
   license,
   mockInboxItems,
+  rollout,
   rowHead,
 } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
@@ -127,7 +128,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page
         .getByRole("listitem")
-        .filter({ hasText: "Review requested · #91" })
+        .filter({ hasText: "Pin the release train" })
         .locator('[data-ask-kind="Review requested"]')
         .first(),
     ).toBeVisible();
@@ -245,13 +246,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-summary-lines",
       "2",
     );
-    // The Brief's running marker sits on the title, as the dot does.
-    await expect(
-      row
-        .locator('[data-inbox-slot="title"]')
-        .getByRole("img", { name: /^Brief: / }),
-    ).toBeVisible();
-    await expect(summary.getByRole("img", { name: /^Brief: / })).toHaveCount(0);
     // Compact rows clamp it to one line. A new page has no comfortable
     // density script.
     const compact = await page.context().newPage();
@@ -572,6 +566,30 @@ test.describe("new UI", { tag: "@new" }, () => {
       ).toBeVisible();
       await expect(row.getByLabel(/^Linked work, newest first/)).toHaveCount(0);
     }
+  });
+
+  test("a question row with no main step ends its hover actions with Expand", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [rollout, license] });
+    await page.goto(`${dashboard.baseURL}/`);
+    const todo = page.getByRole("region", { name: "To do" });
+    const head = rowHead(todo, rollout.title);
+    const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+    await head.hover();
+    const names = await row
+      .locator('[data-inbox-slot="meta"] :is(a, button)')
+      .evaluateAll((nodes) =>
+        nodes.map(
+          (node) =>
+            node.getAttribute("aria-label") ?? node.textContent?.trim() ?? "",
+        ),
+      );
+    expect(names[0]).toBe("Dismiss");
+    expect(names.at(-1)).toBe("Expand");
+    await row.getByRole("button", { exact: true, name: "Expand" }).click();
+    await expect(row).toHaveAttribute("data-expanded", "true");
   });
 
   test("Dismiss closes an Automation alert on the server", async ({

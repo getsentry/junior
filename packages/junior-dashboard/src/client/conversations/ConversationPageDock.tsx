@@ -1,6 +1,5 @@
 import { useMemo, useRef, type Ref } from "react";
 import { Lock } from "lucide-react";
-import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
 import type { ConversationComposerHandle } from "./ConversationComposer";
@@ -22,8 +21,9 @@ export function ConversationPageDock(props: {
   live: boolean;
   onFocusRequestDone(key: string): void;
   onPinRequest(): void;
-  onShowQuestion(item: InboxItemPayload, arrived: boolean): void;
-  ref: Ref<Pick<ConversationComposerHandle, "appendText">>;
+  /** The message box's hint when it is empty. */
+  placeholder?: string | undefined;
+  ref: Ref<Pick<ConversationComposerHandle, "appendText" | "focus">>;
 }) {
   const { detail } = props;
   // Key on the event array, not the whole detail object. Metadata-only polls
@@ -63,12 +63,12 @@ export function ConversationPageDock(props: {
       conversation={composerConversation}
       onFocusRequestDone={props.onFocusRequestDone}
       onPinRequest={props.onPinRequest}
-      onShowQuestion={props.onShowQuestion}
       pendingAuthorization={detail.pendingAuthorization}
       // Keep the cancel watermark off props. Live polls refresh generatedAt
       // every 2s; a prop would bust footer memo while the reader types.
       pendingGeneratedAtRef={pendingGeneratedAtRef}
       pendingMessages={detail.pendingMessages}
+      placeholder={props.placeholder}
       ref={props.ref}
       // Without live history, an inline send would never leave the
       // transcript tail. A started Turn reads a new send only later.

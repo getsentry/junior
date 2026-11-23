@@ -1,7 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import { createDeliverToParent } from "@/chat/agent-invocations/result";
+import type { ParentResult } from "@/chat/agent-invocations/parent-result";
 import { getSqlExecutor } from "@/chat/db";
-import { setTodoStatusByUser } from "@/chat/todos/store";
+import { renderTodoDelta } from "@/chat/todos/prompt";
+import { listTodos, setTodoStatusByUser } from "@/chat/todos/store";
 import { parseTodoRef } from "@/chat/todos/tool-output";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -20,15 +23,21 @@ import { signedInViewer } from "../fixtures/user";
 async function createHarness() {
   const { conversationStore, fixture } = await prepareParentConversation();
   const work = await createConversationWorkHarness(neverRunAgentRunner());
-  const child = await createAndEnqueueAgentInvocation(
-    {
-      ...invocationInput,
-      agentName: "Echo",
-      idempotencyKey: "todos-child",
-      input: "Review the draft",
-    },
-    { conversationStore, queue: work.queue, state: work.state },
-  );
+  const spawn = async (agentName: string) =>
+    (
+      await spawnChildAgent(
+        {
+          ...invocationInput,
+          agentName,
+          idempotencyKey: `todos-${agentName}`,
+          input: "Review the draft",
+          parentToolCallId: `todos-${agentName}`,
+          parentTurnId: "parent-turn",
+        },
+        { conversationStore, queue: work.queue, state: work.state },
+      )
+    ).childConversationId;
+  const childConversationId = await spawn("Echo");
   const { findMentionedUserId } = createSlackInboxItemToolServices(
     () => work.queue,
   );
@@ -37,7 +46,7 @@ async function createHarness() {
     findMentionedUserId,
   );
   const childContext = {
-    conversationId: child.childConversationId,
+    conversationId: childConversationId,
     parentConversationId,
   };
   const childListAgents = createListAgentsTool(childContext);
@@ -45,8 +54,21 @@ async function createHarness() {
     childContext,
     findMentionedUserId,
   );
+  const deliverToParent = createDeliverToParent({
+    queue: work.queue,
+    state: work.state,
+  });
   return {
-    childConversationId: child.childConversationId,
+    childConversationId,
+    spawn,
+    /** Sends one child Turn's result to the parent, as its loop does. */
+    send: async (conversationId: string, result: ParentResult) =>
+      await deliverToParent({
+        actor: invocationInput.actor,
+        conversationId,
+        result,
+        turnId: "turn_child",
+      }),
     close: async () => await fixture.close(),
     updateTodos: async (input: unknown) =>
       await tool.execute!(tool.prepareArguments!(input) as never, {}),
@@ -227,6 +249,124 @@ describe("updateTodos", () => {
         harness.updateTodos({ remove: ["TODO-999999"] }),
       ).rejects.toThrow("No To-do has id TODO-999999.");
       await expect(harness.updateTodos({})).resolves.toEqual({ todos });
+    } finally {
+      await harness.close();
+    }
+  });
+  it("lets a child close only its own To-dos of the parent", async () => {
+    const harness = await createHarness();
+    try {
+      const { todos } = await harness.updateTodos({
+        add: [
+          { title: "Review the draft", assignee: "Echo" },
+          { title: "Review the tests", assignee: "Echo" },
+          { title: "Write the brief" },
+        ],
+      });
+      const [draft, tests, brief] = todos;
+      const seen = Math.max(
+        ...(await listTodos(getSqlExecutor(), parentConversationId)).map(
+          (todo) => todo.version,
+        ),
+      );
+
+      await expect(
+        harness.childUpdateTodos({
+          update: [{ id: draft!.id, status: "done" }],
+        }),
+      ).resolves.toEqual({
+        todos: [{ ...draft, status: "done", assignee: "self" }],
+      });
+      // A child only closes its own: no other field, and no other status.
+      await expect(
+        harness.childUpdateTodos({
+          update: [{ id: tests!.id, status: "done", title: "Renamed" }],
+        }),
+      ).rejects.toThrow(/Set only its status, to done or dropped/);
+      await expect(
+        harness.childUpdateTodos({
+          update: [{ id: tests!.id, status: "in_progress" }],
+        }),
+      ).rejects.toThrow(ToolInputError);
+      await expect(
+        harness.childUpdateTodos({
+          update: [{ id: brief!.id, status: "done" }],
+        }),
+      ).rejects.toThrow(ToolInputError);
+
+      // The parent sees the child's change in its next To-do delta.
+      const parentTodos = await listTodos(
+        getSqlExecutor(),
+        parentConversationId,
+      );
+      expect(parentTodos.map((todo) => [todo.title, todo.status])).toEqual([
+        ["Review the draft", "done"],
+        ["Review the tests", "open"],
+        ["Write the brief", "open"],
+      ]);
+      expect(renderTodoDelta(parentTodos, seen)).toBe(
+        [
+          "<todo-delta>",
+          `To-do version ${parentTodos[0]!.version}. Others changed these To-dos since you last saw them. Each To-do shows its current fields.`,
+          `- ${draft!.id} (done, assignee Echo, changed by child agent Echo): Review the draft`,
+          "</todo-delta>",
+        ].join("\n"),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("drops a child's open To-dos when its stopped result arrives", async () => {
+    const harness = await createHarness();
+    try {
+      const children = {
+        stopped: harness.childConversationId,
+        failed: await harness.spawn("Golf"),
+        blocked: await harness.spawn("Hotel"),
+      };
+      await harness.updateTodos({
+        add: [
+          { title: "Echo open", assignee: "Echo" },
+          { title: "Echo started", assignee: "Echo", status: "in_progress" },
+          { title: "Echo dropped", assignee: "Echo", status: "dropped" },
+          { title: "Golf open", assignee: "Golf" },
+          { title: "Hotel open", assignee: "Hotel" },
+          { title: "Parent open" },
+        ],
+      });
+
+      for (const kind of ["stopped", "failed", "blocked"] as const) {
+        await harness.send(children[kind], { kind, text: `Child ${kind}.` });
+      }
+      // A retry of the same result leaves To-dos assigned after it open.
+      await harness.updateTodos({
+        add: [{ title: "Echo next", assignee: "Echo" }],
+      });
+      await harness.send(children.stopped, {
+        kind: "stopped",
+        text: "Child stopped.",
+      });
+
+      const parentTodos = await listTodos(
+        getSqlExecutor(),
+        parentConversationId,
+      );
+      expect(
+        parentTodos.map((todo) => [
+          todo.title,
+          todo.status,
+          todo.changedByAgent?.name,
+        ]),
+      ).toEqual([
+        ["Echo open", "dropped", "Echo"],
+        ["Echo started", "dropped", "Echo"],
+        ["Echo dropped", "dropped", undefined],
+        ["Golf open", "open", undefined],
+        ["Hotel open", "open", undefined],
+        ["Parent open", "open", undefined],
+        ["Echo next", "open", undefined],
+      ]);
     } finally {
       await harness.close();
     }

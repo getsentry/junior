@@ -47,7 +47,7 @@ export function createSlackMessageAddReactionTool(
       const targetMessageTs = context.messageTs;
       if (!targetChannelId || !targetMessageTs) {
         throw new ToolInputError(
-          "No active Slack message is available for reactions.",
+          "No active Slack message is available for reactions. No change to the call can fix this in this Turn.",
         );
       }
       const normalizedEmoji = normalizeSlackEmojiName(emoji);

@@ -75,6 +75,7 @@ attributes. Nested logs and spans inherit them.
 | History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
 | History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
+| Related conversations missing/noisy | span `plugin.hook userPrompt` (`related-conversations`), `app.related-conversations.*`, `related_conversations_provider_failed`, `plugin.user_prompt.hook.failed` | `chat/related-conversations/find.ts` |
 | History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
@@ -103,6 +104,7 @@ attributes. Nested logs and spans inherit them.
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
+| Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |
 
 ## Trace Shape
 
@@ -120,6 +122,14 @@ attributes. Nested logs and spans inherit them.
   without it ran on a WebSocket client. `db.query.text` keeps placeholders.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
+- A reviewed `gen_ai.execute_tool` span has `app.guardian.decision`,
+  `app.guardian.risk_level`, `app.guardian.rule` (the block rule, or `none`),
+  and `app.guardian.user_consent` (the user authorization level). Sentry's
+  data scrubber hides a key that contains `auth`.
+- `guardian.action_review` has `app.guardian.proposal.chars` (the proposal
+  JSON that the size limit counts) and, when a review's model call aborts,
+  `app.guardian.review.aborted_by` (`timeout` or `run`). The span covers one
+  batch, so a Code Mode batch of several actions keeps the last value.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.

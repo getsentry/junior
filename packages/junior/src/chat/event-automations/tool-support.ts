@@ -36,7 +36,7 @@ export const compactEventAutomationResultSchema = z
     status: z.enum(["active", "blocked", "paused", "deleted"]),
     status_reason: z.string().nullable(),
     title: z.string().min(1).nullable(),
-    dashboard_url: z.string().url().nullable(),
+    url: z.string().url().nullable(),
     task: automationTaskSchema,
     trigger: z
       .object({
@@ -134,7 +134,7 @@ export function requireEventAutomationTrigger(
   const resourceType = input.resourceType ?? undefined;
   if ((identifier === undefined) !== (resourceType === undefined)) {
     throw new ToolInputError(
-      "Set both resourceType and identifier for one resource, or leave out both to run for every resource.",
+      "Set both resource_type and identifier for one resource, or leave out both to run for every resource.",
     );
   }
   const events = [...new Set(input.events)];
@@ -196,7 +196,7 @@ export function compactEventAutomation(
     status: task.status,
     status_reason: task.statusReason ?? null,
     title: task.title?.trim() || null,
-    dashboard_url: getDashboardTaskLink(task.id) ?? null,
+    url: getDashboardTaskLink(task.id) ?? null,
     task: task.task,
     trigger: {
       namespace: task.trigger.namespace,

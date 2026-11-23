@@ -27,13 +27,22 @@ const openRowOf = (page: Page) =>
 const customOf = (page: Page) =>
   page.getByRole("dialog", { name: "Custom snooze" });
 
+// Open the Event select of the condition at `index` in the Custom snooze
+// dialog, and return its list. A list that just closed stays in the page while
+// it fades out, with the same options, so read only the list that opened.
+async function openEvents(page: Page, index: number) {
+  const select = customOf(page)
+    .getByRole("combobox", { name: "Event" })
+    .nth(index);
+  await select.click();
+  await expect(select).toHaveAttribute("aria-controls", /.+/);
+  return page.locator(`[id="${await select.getAttribute("aria-controls")}"]`);
+}
+
 // Pick the Event of the condition at `index` in the Custom snooze dialog.
 async function pickEvent(page: Page, index: number, phrase: string) {
-  await customOf(page)
-    .getByRole("combobox", { name: "Event" })
-    .nth(index)
-    .click();
-  await pickOption(page.getByRole("option", { exact: true, name: phrase }));
+  const events = await openEvents(page, index);
+  await pickOption(events.getByRole("option", { exact: true, name: phrase }));
 }
 
 // The next snooze that the page saves.
@@ -169,17 +178,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, { open: [rollout, notice] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    const created = page.waitForRequest(
-      (request) =>
-        request.method() === "POST" &&
-        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    const created = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     // The closed row's quick Snooze.
     const row = rowHead(todo, checkout);
     await row.hover();
     await todo.getByRole("button", { exact: true, name: "Snooze" }).click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
-    expect((await created).postDataJSON()).toEqual({
+    expect((await created).request().postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
       inboxItemId: rollout.id,
       wakeAt: expect.any(String),
@@ -192,13 +201,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
     await expandRow(rowHead(page, checkout));
-    const deleted = page.waitForRequest(
-      (request) =>
-        request.method() === "DELETE" &&
-        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    const deleted = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" &&
+        new URL(response.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     await page.getByRole("button", { name: "Wake" }).click();
-    expect((await deleted).postDataJSON()).toEqual({
+    expect((await deleted).request().postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
       inboxItemId: rollout.id,
     });
@@ -348,7 +357,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: "Review requested · #91" });
+      .filter({ hasText: "Pin the release train" });
     await expect(page.getByRole("button", { name: "Snooze" })).toBeVisible();
     // Hold the reads that follow the snooze, so only the page hides the row.
     let release = () => {};
@@ -372,7 +381,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: "Review requested · #91" });
+      .filter({ hasText: "Pin the release train" });
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await screenshot(page, "inbox-snooze-event-menu", {
@@ -549,12 +558,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       .fill(issue);
     await pickOption(page.getByRole("option", { name: issue }));
     // The second condition offers the issue's Events.
-    await dialog.getByRole("combobox", { name: "Event" }).nth(1).click();
+    const events = await openEvents(page, 1);
     await expect(
-      page.getByRole("option", { exact: true, name: "is merged" }),
+      events.getByRole("option", { exact: true, name: "is merged" }),
     ).toHaveCount(0);
     await pickOption(
-      page.getByRole("option", { exact: true, name: "is closed" }),
+      events.getByRole("option", { exact: true, name: "is closed" }),
     );
     await expect(
       dialog.getByRole("group", { name: "When the issue is closed" }),

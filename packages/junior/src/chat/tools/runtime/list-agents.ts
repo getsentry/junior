@@ -110,11 +110,7 @@ const listedAgentSchema = z
       .string()
       .optional()
       .describe("Short display title of the latest task"),
-    dashboard_url: z
-      .string()
-      .url()
-      .optional()
-      .describe("Dashboard link of the conversation"),
+    url: z.string().url().optional().describe("Link to the conversation"),
     archived: z
       .literal(true)
       .optional()
@@ -128,7 +124,7 @@ const listedAgentSchema = z
       .array(todoOutputSchema)
       .optional()
       .describe(
-        "Open To-dos of the parent, read-only. Only on the parent. Assignee self is this conversation; parent is the parent's own agent.",
+        "Open To-dos of the parent. Only on the parent. Assignee self is this conversation, which can set those to done or dropped with updateTodos; parent is the parent's own agent.",
       ),
   })
   .strict();
@@ -150,7 +146,7 @@ function parentTodo(todo: Todo, conversationId: string) {
   return outputTodo(todo, renderTodoAssignee(assignee));
 }
 
-/** Open To-dos of the parent. A child never edits them. */
+/** Open To-dos of the parent. A child can only close its own. */
 async function parentTodos(
   parentConversationId: string,
   conversationId: string,
@@ -165,7 +161,7 @@ function listedChildAgent(
   relation: AgentRelation,
   agent: ChildAgent,
 ): ListedAgent {
-  const dashboardUrl = getDashboardConversationLink(agent.childConversationId);
+  const url = getDashboardConversationLink(agent.childConversationId);
   return {
     relation,
     conversation_id: agent.childConversationId,
@@ -175,7 +171,7 @@ function listedChildAgent(
     ...(agent.lastResult ? { last_result: agent.lastResult } : undefined),
     task: truncate(agent.task, TASK_MAX_LENGTH),
     ...(agent.title ? { title: agent.title } : undefined),
-    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(url ? { url } : undefined),
     ...(agent.archivedAtMs !== undefined
       ? { archived: true as const }
       : undefined),

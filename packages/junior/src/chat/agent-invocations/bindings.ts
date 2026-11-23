@@ -1,10 +1,6 @@
-import { and, eq, exists, isNotNull, or } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 import { getSqlExecutor } from "@/chat/db";
-import {
-  juniorAgentBindings,
-  juniorAgentInvocations,
-  juniorConversations,
-} from "@/db/schema";
+import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { agentBindingSchema, type AgentBinding } from "./types";
 
 function bindingFromRow(
@@ -37,7 +33,7 @@ export async function getAgentBinding(args: {
 
 /**
  * Find a direct child agent of one parent by name or child Conversation id.
- * A child that no Agent invocation names stores its agent config.
+ * Each child agent stores its agent config.
  */
 export async function findChildAgentConversationId(args: {
   parentConversationId: string;
@@ -50,25 +46,15 @@ export async function findChildAgentConversationId(args: {
   if (binding) {
     return binding.childConversationId;
   }
-  const db = getSqlExecutor().db();
-  const rows = await db
+  const rows = await getSqlExecutor()
+    .db()
     .select({ conversationId: juniorConversations.conversationId })
     .from(juniorConversations)
     .where(
       and(
         eq(juniorConversations.parentConversationId, args.parentConversationId),
         eq(juniorConversations.conversationId, args.target),
-        or(
-          isNotNull(juniorConversations.agentConfig),
-          exists(
-            db
-              .select({ invocationId: juniorAgentInvocations.invocationId })
-              .from(juniorAgentInvocations)
-              .where(
-                eq(juniorAgentInvocations.childConversationId, args.target),
-              ),
-          ),
-        ),
+        isNotNull(juniorConversations.agentConfig),
       ),
     )
     .limit(1);

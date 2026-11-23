@@ -11,14 +11,14 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type {
-  BriefOutcomeStatus,
-  ConversationBrief,
-} from "@/chat/briefs/schema";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
-/** Append-only Brief versions produced for completed Conversation turns. */
+/**
+ * Legacy Brief versions. Conversation metadata replaced Briefs; only purge
+ * still deletes rows here.
+ * TODO(dcramer): Drop this table after the metadata backfill ships.
+ */
 export const juniorConversationBriefs = pgTable(
   "junior_conversation_briefs",
   {
@@ -26,10 +26,9 @@ export const juniorConversationBriefs = pgTable(
     version: integer("version").notNull(),
     turnId: text("turn_id").notNull(),
     throughSeq: integer("through_seq").notNull(),
-    content: jsonb("content").$type<ConversationBrief>().notNull(),
-    // `content.outcome.status`, so a read of many latest statuses does not
-    // load each content. Null on rows that the runtime before it wrote.
-    outcomeStatus: text("outcome_status").$type<BriefOutcomeStatus>(),
+    content: jsonb("content").notNull(),
+    // `content.outcome.status`. Null on rows that older runtimes wrote.
+    outcomeStatus: text("outcome_status"),
     searchText: text("search_text").notNull(),
     modelId: text("model_id").notNull(),
     costMicroUsd: bigint("cost_micro_usd", { mode: "number" }),

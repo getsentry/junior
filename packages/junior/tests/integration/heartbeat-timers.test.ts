@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { createAgentInvocationForMessage } from "@/chat/agent-invocations/create";
-import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { messageChildAgent } from "@/chat/agent-invocations/create";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopConversation } from "@/chat/conversations/stop";
 import { enqueueEventNotification } from "@/chat/events/notification";
@@ -13,7 +12,13 @@ import {
   createConversationId,
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  claimConversationAttempt,
+  ensureConversationWake,
+  getConversationWorkState,
+  releaseConversationWork,
+  startConversationWork,
+} from "@/chat/task-execution/store";
 import {
   closeConversationFixture,
   createConversationWebHarness,
@@ -21,7 +26,11 @@ import {
 } from "../fixtures/conversation";
 import { runTestHeartbeat } from "../fixtures/conversation-work";
 import { context, execute } from "../fixtures/event-automations";
-import { spawnChildAgent } from "../fixtures/agent-invocations";
+import {
+  invocationInput,
+  loadTurnEvents,
+  spawnChildAgent,
+} from "../fixtures/agent-invocations";
 
 // Timer heartbeat coverage lives here because heartbeat.test.ts is at its file limit.
 afterEach(async () => {
@@ -226,7 +235,8 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   expect(saved).toContain("Check after the stop.");
   await expect(fixture.status(conversationId)).resolves.toBe("done");
 
-  // A person's message ends the stop, so the next timer starts a Turn.
+  // A person's message ends the stop. Its Turn reads the held Events, and
+  // the next timer starts a Turn.
   await fixture.continue({
     conversationId,
     idempotencyKey: "after-stop",
@@ -235,6 +245,9 @@ it("saves timers of a stopped root to its transcript until a person writes", asy
   await expect(fixture.status(conversationId)).resolves.toBe("working");
   await drain();
   expect(agentRuns).toHaveLength(1);
+  const instruction = JSON.stringify(agentRuns[0]!.instruction);
+  expect(instruction).toContain("Check much later.");
+  expect(instruction).toContain("Keep watching.");
   // The starter has not read the reply yet.
   await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
   await expect(
@@ -297,8 +310,8 @@ it("keeps a root stopped when the stop drops queued input", async () => {
     expect.stringContaining("Check the deployment."),
   ]);
 
-  // A watch re-created on the same resource after the stop is saved too,
-  // in one batch with the next timer.
+  // A watch re-created on the same resource after the stop is held too.
+  // Each held Event is saved when it arrives, so it forms no batch.
   const recreated = await deployWatch();
   await enqueueEventNotification({
     event: {
@@ -317,12 +330,11 @@ it("keeps a root stopped when the stop drops queued input", async () => {
   clock.mockReturnValue(clock() + 120_000);
   await drain();
   expect(agentRuns).toHaveLength(0);
-  const saved = await stoppedConversationMessageTexts(conversationId);
-  expect(saved).toEqual([
+  expect(await stoppedConversationMessageTexts(conversationId)).toEqual([
     expect.stringContaining("Check the deployment."),
+    expect.stringContaining("Deploy succeeded."),
     expect.stringContaining("Check again later."),
   ]);
-  expect(saved[1]).toContain("Deploy succeeded.");
 });
 
 it("saves a stopped child's timers until a person writes to its root", async () => {
@@ -439,20 +451,18 @@ it("saves a stopped child's timers until a person writes to its root", async () 
     "child-timer-4",
   );
   clock.mockReturnValue(clock() + 1_000);
-  const message = await createAgentInvocationForMessage({
-    actor: child.actor,
-    childConversationId: child.childConversationId,
-    destination: child.destination,
-    idempotencyKey: "parent-message",
-    input: "Keep watching.",
-    parentConversationId: conversationId,
-    parentToolCallId: "parent-message",
-  });
-  await enqueueAgentInvocation(message.invocation, {
-    conversationStore,
-    queue,
-    state,
-  });
+  await messageChildAgent(
+    {
+      actor: invocationInput.actor,
+      childConversationId: child.childConversationId,
+      idempotencyKey: "parent-message",
+      input: "Keep watching.",
+      parentConversationId: conversationId,
+      parentToolCallId: "parent-message",
+      parentTurnId: "parent-message",
+    },
+    { conversationStore, queue, state },
+  );
   await drain();
   await expect(
     getConversationStoppedAtMs(child.childConversationId),
@@ -466,5 +476,138 @@ it("saves a stopped child's timers until a person writes to its root", async () 
       .filter((run) => run.conversationId === child.childConversationId)
       .slice(1)
       .map((run) => run.source.kind),
-  ).toEqual(["agent_invocation", "event"]);
+  ).toEqual(["parent_message", "event"]);
+});
+
+it("runs a timer on a root whose last Turn failed", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+  const fixture = await timerConversation();
+  const { conversationId, tools, queue, drain, agentRuns } = fixture;
+  for (const [index, intent] of ["Check once.", "Check again."].entries()) {
+    await execute(
+      tools["watchTimer"]!,
+      { after_ms: 60_000 * (index + 1) * 10, intent },
+      `timer-${index}`,
+    );
+  }
+  // The model has one reply, so the first timer Turn completes and the
+  // second fails.
+  for (let turn = 0; turn < 2; turn += 1) {
+    clock.mockReturnValue(clock() + 600_000);
+    await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+    clock.mockReturnValue(clock() + 120_000);
+    await drain();
+  }
+  expect(agentRuns).toHaveLength(2);
+  expect((await loadTurnEvents(conversationId)).at(-1)?.data).toMatchObject({
+    type: "turn_failed",
+  });
+
+  // Only a stop holds automated input, so a timer after the failure starts a
+  // Turn.
+  await execute(
+    tools["watchTimer"]!,
+    { after_ms: 60_000, intent: "Check after the failure." },
+    "timer-after-failure",
+  );
+  clock.mockReturnValue(clock() + 60_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  clock.mockReturnValue(clock() + 120_000);
+  await drain();
+  expect(agentRuns).toHaveLength(3);
+  expect(agentRuns[2]!.source).toMatchObject({ kind: "event" });
+  await expect(
+    stoppedConversationMessageTexts(conversationId),
+  ).resolves.toEqual([]);
+});
+
+it("holds a timer that arrives while a stop of its root runs", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+  const fixture = await timerConversation();
+  const { conversationId, tools, queue, drain, agentRuns } = fixture;
+  await execute(
+    tools["watchTimer"]!,
+    { after_ms: 60_000, intent: "Check the deployment." },
+    "timer-1",
+  );
+  clock.mockReturnValue(clock() + 60_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  clock.mockReturnValue(clock() + 120_000);
+
+  // The stop and the delivery of the timer Event race. The Event is held
+  // either way: saved once, with nothing left to run.
+  await Promise.all([stopConversation({ conversationId, queue }), drain()]);
+  await drain();
+  expect(agentRuns).toHaveLength(0);
+  await expect(
+    stoppedConversationMessageTexts(conversationId),
+  ).resolves.toEqual([expect.stringContaining("Check the deployment.")]);
+  expect(
+    (await getConversationWorkState({ conversationId }))?.execution
+      .pendingMessages,
+  ).toEqual([]);
+});
+
+it("leaves a running attempt's timer to its Turn when a stop holds the rest", async () => {
+  const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
+  const fixture = await timerConversation();
+  const { agentRuns, conversationId, drain, tools, queue, state } = fixture;
+  for (const [index, intent] of ["Check once.", "Check again."].entries()) {
+    await execute(
+      tools["watchTimer"]!,
+      { after_ms: 60_000 + index * 1_000, intent },
+      `timer-${index}`,
+    );
+  }
+  clock.mockReturnValue(clock() + 120_000);
+  await runTimerWatchHeartbeat({ nowMs: clock(), queue });
+  const pending = async () =>
+    (await getConversationWorkState({ conversationId }))?.execution
+      .pendingMessages ?? [];
+  const [running, waiting] = await pending();
+  expect(running && waiting).toBeTruthy();
+
+  // A worker starts an attempt with the first timer, then a person stops
+  // the root before that Turn saves its input.
+  const lease = await startConversationWork({ conversationId, state });
+  if (lease.status !== "acquired") throw new Error("Expected a lease");
+  await expect(
+    claimConversationAttempt({
+      conversationId,
+      inboundMessageIds: [running!.inboundMessageId],
+      leaseToken: lease.leaseToken,
+      state,
+    }),
+  ).resolves.toEqual({ status: "claimed" });
+  await stopConversation({ conversationId, queue });
+
+  // The Turn saves the running timer. The stop holds only the waiting one.
+  expect(await pending()).toEqual([running]);
+  await expect(
+    stoppedConversationMessageTexts(conversationId),
+  ).resolves.toEqual([expect.stringContaining("Check again.")]);
+
+  // The attempt ends without saving its timer. The next worker holds it and
+  // starts no Turn.
+  await releaseConversationWork({
+    conversationId,
+    leaseToken: lease.leaseToken,
+    state,
+  });
+  await ensureConversationWake({
+    conversationId,
+    idempotencyKey: "after-attempt",
+    queue,
+    replaceExistingWake: true,
+    state,
+  });
+  await drain();
+  expect(await pending()).toEqual([]);
+  expect(agentRuns).toHaveLength(0);
+  await expect(
+    stoppedConversationMessageTexts(conversationId),
+  ).resolves.toEqual([
+    expect.stringContaining("Check again."),
+    expect.stringContaining("Check once."),
+  ]);
 });

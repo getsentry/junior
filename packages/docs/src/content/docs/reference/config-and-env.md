@@ -177,21 +177,11 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 
 Provider credentials and other plugin-specific variables live on each plugin setup page under [Extend](/extend/). Keep this page limited to core runtime configuration.
 
-## Brief generation
+## Conversation metadata
 
-Brief generation is off by default. Enable it in app configuration when each
-Conversation needs a durable Brief:
-
-```ts
-import { createApp } from "@sentry/junior";
-
-const app = await createApp({
-  briefs: { enabled: true },
-});
-```
-
-This option costs one fast-model call per completed Turn. The example app and
-`junior chat` enable it.
+After each completed Turn, Junior updates the summary of the Conversation and
+its embedding. Search, the dashboard, unfurls, and MCP read them. This is
+always on and costs one fast-model call and one embedding per completed Turn.
 
 ## Event embeddings
 
@@ -249,6 +239,9 @@ A child agent is a Task by default: only its parent gives it work. The model
 can start a Thread instead, a child agent that people can open and message
 directly. A parent can have at most 8 child agents with open work, Tasks and
 Threads alike. The model can archive a finished Thread with `archiveAgent`.
+
+A stopped conversation gives its child agents no new work: its `messageAgent`
+calls return `noted` and start nothing, and its `spawnAgent` calls fail.
 
 By default, a child agent of the root Conversation can start its own child
 agents, and those cannot start more. Set `limits.maxAgentDepth` to change how

@@ -9,6 +9,9 @@ export const TODO_STATUSES = [
 /** One To-do status. */
 export type TodoStatus = (typeof TODO_STATUSES)[number];
 
+/** Statuses that close a To-do. */
+export type ClosedTodoStatus = Extract<TodoStatus, "done" | "dropped">;
+
 /** Statuses of a To-do that is still work to do. */
 export const OPEN_TODO_STATUSES = [
   "open",
@@ -49,6 +52,13 @@ export interface Todo {
   /** The person who made the latest change. Unset when the list's agent did. */
   changedBy?:
     | { userId: string; email: string; name?: string | undefined }
+    | undefined;
+  /**
+   * The assignee child agent that made the latest change: it closed the
+   * To-do, or core closed it on the child's result.
+   */
+  changedByAgent?:
+    | { conversationId: string; name?: string | undefined }
     | undefined;
   createdAtMs: number;
   updatedAtMs: number;

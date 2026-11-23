@@ -138,19 +138,18 @@ test("switches conversations from the command palette without a server search", 
   await expect(palette).toHaveCount(0);
 });
 
-test("a palette switch focuses the question while Junior waits for an answer", async ({
+test("a palette switch focuses the message box, and a question that loads later leaves it there", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize({ height: 800, width: 1280 });
   await routeAsParticipant(page, CLOSED_ISSUE_ID, question.id);
   // The question sits on a second page that loads after the reply box
-  // shows.
+  // shows, and a third page loads after the reader starts to type.
   let releaseQuestion = () => {};
   const questionHeld = new Promise<void>((resolve) => {
     releaseQuestion = resolve;
   });
-  // A third page loads after the reader starts to type.
   let lastPageSent = false;
   let releaseLastPage = () => {};
   const lastPageHeld = new Promise<void>((resolve) => {
@@ -186,17 +185,11 @@ test("a palette switch focuses the question while Junior waits for an answer", a
   const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toBeVisible();
 
-  // The question takes focus, so a number key answers it at once.
-  releaseQuestion();
-  const docked = page.getByRole("region", {
-    name: `Question: ${question.title}`,
-  });
-  await expect(docked).toBeFocused();
-  await expect(composer).toBeVisible();
-
-  // The last page does not take the focus back from the message box.
-  await composer.click();
+  // The message box takes the focus at once. The question shows in the
+  // transcript when its page loads, and does not take the focus.
+  await expect(composer).toBeFocused();
   await composer.pressSequentially("Hold on");
+  releaseQuestion();
   releaseLastPage();
   await expect.poll(() => lastPageSent).toBe(true);
   // Let the app render the last page before the next keys.
@@ -225,8 +218,12 @@ test("jumps to a page from the command palette", async ({
   // The highlighted recent conversation still matches "co" loosely, but the
   // page whose name starts with it ranks first and takes Enter.
   await input.fill("co");
+  const codeRead = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/code",
+  );
   await input.press("Enter");
 
   await expect(page).toHaveURL(/\/code$/);
   await expect(palette).toHaveCount(0);
+  await codeRead;
 });

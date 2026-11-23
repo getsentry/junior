@@ -4,6 +4,7 @@ import { Link } from "react-router";
 import type {
   InboxItemActionBody,
   InboxItemPayload,
+  InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
 
 import { ClampedDisplayText } from "../display-text/DisplayText";
@@ -21,7 +22,9 @@ import {
 } from "./InboxItemSubjectPreview";
 import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
-import { RowDismissButton, RowSnoozeButton } from "./RowSnoozeDismiss";
+import { RowDismissButton } from "./RowDismissButton";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
+import { wakeReasonText } from "./snoozeSentences";
 import { InboxItemTitle } from "./InboxItemPeople";
 import {
   itemConversationId,
@@ -32,8 +35,9 @@ import {
 } from "./inboxItemFormat";
 
 /**
- * The card of one ask in an open row: its message, form, subject, and
- * notices, with its own Snooze and Dismiss.
+ * The card of one ask in an open row: its question, the message of the
+ * Turn that asked it, its form, subject, and notices, with its own Snooze
+ * and Dismiss.
  */
 export function InboxRowCard(props: {
   actions?: InboxCardActions;
@@ -43,11 +47,15 @@ export function InboxRowCard(props: {
   /** Notices about the item's subject (`foldNotices`). */
   notices: readonly InboxItemPayload[];
   onAction?(item: InboxItemPayload, body: InboxItemActionBody): Promise<void>;
+  /** The card's main action, first on its action line. */
+  primaryAction?: ReactNode;
   /** The row's own actions, such as Open, on the card's action line. */
   rowActions?: ReactNode;
   /** The row's head shows the subject's size. */
   sizeShown?: boolean;
   take?: string;
+  /** Why the viewer's snooze of the item woke. */
+  wake?: InboxSnoozeWake | undefined;
 }) {
   const { actions, item, onAction } = props;
   const text = inboxItemText(item);
@@ -57,22 +65,35 @@ export function InboxRowCard(props: {
     (item.kind === "notice" || !item.request) &&
     !(props.headTitled && textRepeatsHead(item, text));
   const kind = inboxItemKind(item);
-  // The card's own Snooze and Dismiss: they act on this item only.
+  // Next to a main action, Snooze and Dismiss show only their icons on a
+  // phone, so the line fits.
+  const look = props.primaryAction ? "narrow" : undefined;
+  const notices = props.notices.map((notice) => (
+    <FoldedNotice
+      key={notice.id}
+      notice={notice}
+      onAction={onAction ? (body) => onAction(notice, body) : undefined}
+    />
+  ));
+  // The card's own Snooze and Dismiss act on this item only. The main
+  // action goes last, at the right end of the line.
   const cardActions =
     actions || props.rowActions ? (
       <>
-        {props.rowActions}
+        {actions?.onDismiss ? (
+          <RowDismissButton look={look} onClick={actions.onDismiss} />
+        ) : null}
         {actions?.onSnooze ? (
           <RowSnoozeButton
             eventSnooze={actions.eventSnooze}
+            look={look}
             onOpenChange={actions.onSnoozeMenu}
             onSnooze={actions.onSnooze}
             open={actions.snoozeMenuOpen}
           />
         ) : null}
-        {actions?.onDismiss ? (
-          <RowDismissButton onClick={actions.onDismiss} />
-        ) : null}
+        {props.rowActions}
+        {props.primaryAction}
       </>
     ) : undefined;
   return (
@@ -134,10 +155,15 @@ export function InboxRowCard(props: {
               </span>
             </Link>
           ) : null}
+          {/* An item row's head says why it woke, so only a Conversation
+              row's card does. */}
+          {props.wake ? (
+            <p className="m-0 text-xs text-dashboard-text-muted">
+              {wakeReasonText(props.wake)}
+            </p>
+          ) : null}
         </>
       )}
-      {/* What Junior said comes first, then its question and the form. */}
-      {item.request ? <InboxItemTurnMessage item={item} /> : null}
       <InboxItemObjects conversationId={itemConversationId(item)}>
         {showBody ? (
           <ClampedDisplayText
@@ -148,7 +174,8 @@ export function InboxRowCard(props: {
             text={text}
           />
         ) : null}
-        {item.subject ? (
+        {/* A question's row head and Related already link its subject. */}
+        {item.subject && !item.request ? (
           <InboxItemSubjectPreview
             // The Conversation that added the item keeps its subject card.
             conversationId={itemConversationId(item)}
@@ -163,23 +190,21 @@ export function InboxRowCard(props: {
         <AutomationAlertDetails automationId={item.owner.id} />
       ) : null}
       {item.subject ? <SubjectMergeConflict subject={item.subject} /> : null}
-      {props.notices.map((notice) => (
-        <FoldedNotice
-          key={notice.id}
-          notice={notice}
-          onAction={onAction ? (body) => onAction(notice, body) : undefined}
-        />
-      ))}
+      {item.request ? null : notices}
       {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a
           Conversation, keeps the plain one. */}
       <InboxItemActions
+        context={<InboxItemTurnMessage item={item} />}
         dismiss={!cardActions}
         extra={cardActions}
         item={item}
         onAction={onAction ? (body) => onAction(item, body) : undefined}
         take={props.take ?? false}
       />
+      {/* A question comes right under the row's head, so its notices
+          follow its form. */}
+      {item.request ? notices : null}
     </section>
   );
 }

@@ -43,7 +43,7 @@ const slackCanvasEditOutputSchema = juniorToolOutputSchema
   .extend({
     canvas_id: z.string().optional(),
     title: z.string().optional(),
-    permalink: z.string().optional(),
+    url: z.string().optional(),
     diff: z.string().optional(),
     first_changed_line: z.number().int().positive().optional(),
     replacements: z.number().int().nonnegative().optional(),
@@ -123,7 +123,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
       const response = {
         canvas_id: target.canvasId,
         title: current.title,
-        permalink: current.permalink,
+        url: current.permalink,
         diff: diff.diff,
         first_changed_line: diff.firstChangedLine,
         replacements: edits.length,
