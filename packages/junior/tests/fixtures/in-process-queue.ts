@@ -1,8 +1,20 @@
-// A queue provider that keeps its messages in memory and delivers them only
-// when the test asks. It follows the production contract: a mounted
-// `QueueConsumer` gets each payload with its metadata, a throw goes through
-// `consumer.retry()`, and an idempotency key drops a second send. Delays use
-// the queue's own clock, which moves only through `advanceTime`.
+// A `QueueProvider` for core's Turn engine tests. It keeps its messages in
+// memory, and the test decides when each message is delivered.
+//
+// Tests use it instead of a real queue because:
+// - the test delivers the next message at once, with no polling;
+// - a test can check that nothing was sent, with no sleep;
+// - delays and Retry-After move on the queue's own clock, which only
+//   `advanceTime` moves, so a test does not wait;
+// - each test gets a new queue, so tests share no Redis state.
+//
+// It follows the production contract: a mounted `QueueConsumer` gets each
+// payload with its metadata, a throw goes through `consumer.retry()`, and an
+// idempotency key drops a second send.
+//
+// It does not cover the real provider's wire format, signing or visibility
+// timeouts. `tests/integration/turn-step-queue.test.ts` covers those on
+// BullMQ.
 import { randomUUID } from "node:crypto";
 import type {
   QueueConsumer,
@@ -51,10 +63,6 @@ export interface InProcessQueue extends QueueProvider {
   ): Promise<number>;
   /** Moves the queue's clock forward, so delayed messages come due. */
   advanceTime(seconds: number): void;
-  /** Puts a delivered message back, due now, as a lost acknowledgement does. */
-  redeliver(messageId: string): void;
-  /** Removes a pending message without a delivery, as a lost message is. */
-  drop(messageId: string): void;
 }
 
 interface StoredMessage {
@@ -98,14 +106,6 @@ export function createInProcessQueue(): InProcessQueue {
     return messages
       .filter((message) => topic === undefined || message.topic === topic)
       .map(view);
-  }
-
-  function take(list: StoredMessage[], messageId: string): StoredMessage {
-    const index = list.findIndex((message) => message.id === messageId);
-    if (index === -1) {
-      throw new Error(`No such queue message: ${messageId}`);
-    }
-    return list.splice(index, 1)[0]!;
   }
 
   /** The index of the first pending message of the topic that is due. */
@@ -206,14 +206,6 @@ export function createInProcessQueue(): InProcessQueue {
     },
     advanceTime: (seconds) => {
       nowSeconds += seconds;
-    },
-    redeliver: (messageId) => {
-      const message = take(deliveredMessages, messageId);
-      message.dueAtSeconds = nowSeconds;
-      pendingMessages.push(message);
-    },
-    drop: (messageId) => {
-      take(pendingMessages, messageId);
     },
   };
 }
