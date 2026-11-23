@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkSnapshot } from "./check-provider-state.mjs";
+import { checkSnapshot, joinTables } from "./check-provider-state.mjs";
 
 function snapshot(table, columns) {
   return {
@@ -14,7 +14,7 @@ function snapshot(table, columns) {
 }
 
 const message = (key) =>
-  `0001_snapshot.json: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to scripts/github-state-baseline.json with the reason.`;
+  `0001_snapshot.json: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to scripts/github-state-exceptions.json with the reason.`;
 
 test("reports every GitHub plugin column that is not an exception", () => {
   assert.deepEqual(
@@ -72,5 +72,27 @@ test("accepts provider state names on tables without provider ids", () => {
       {},
     ),
     [],
+  );
+});
+
+test("joins the exceptions and the baseline", () => {
+  assert.deepEqual(
+    joinTables(
+      {
+        junior_github_reviews: { review_id: "Junior-owned: the key." },
+        junior_github_requesters: "Junior-owned: the requesters.",
+      },
+      {
+        junior_github_reviews: { state: "Mirror awaiting cleanup: cards." },
+        junior_github_requesters: { login: "Mirror awaiting cleanup: cards." },
+      },
+    ),
+    {
+      junior_github_reviews: {
+        review_id: "Junior-owned: the key.",
+        state: "Mirror awaiting cleanup: cards.",
+      },
+      junior_github_requesters: "Junior-owned: the requesters.",
+    },
   );
 });
