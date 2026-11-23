@@ -66,7 +66,7 @@ export function readWebPushConfig(): WebPushConfig | undefined {
 }
 
 /** What caused a notification. A test send comes from the settings page. */
-export type PushNotificationKind = "inbox_item" | "reply" | "test";
+export type PushNotificationKind = "inbox_item" | "reply" | "test" | "wake";
 
 /** Device counts for one notification sent to one user. */
 export interface PushNotificationResult {
