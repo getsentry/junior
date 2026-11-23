@@ -90,6 +90,12 @@ const BACKGROUND_READS: readonly RegExp[] = [
   /^\/api\/conversations$/,
   /^\/api\/inbox-items(\/[^/]+)?$/,
   /^\/api\/people\/me\/spend$/,
+  // The Lead page reads the Lead again each time its transcript gets a new
+  // last event, from the first load on, to refresh its Watches
+  // (`useLeadWatchRefresh`). Nothing on screen changes when the Watches stay
+  // the same, so a test cannot wait for it. The shell's first read of the
+  // Lead has the same path; the Lead nav item shows its result.
+  /^\/api\/lead$/,
   // A pointer that rests on an Automation row prefetches its page
   // (`usePrefetchAutomation`). A Conversation row prefetches its detail.
   /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
