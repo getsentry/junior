@@ -15,7 +15,7 @@ import { quickOpenMatch } from "../components/quickOpenMatch";
 import { useDebouncedValue } from "../debouncedValue";
 import { memoryPath } from "../format";
 import { fetchDashboardJson } from "../http";
-import { searchMemories } from "../pages/memory/memorySearch";
+import { useSearchData } from "../search";
 import { formatRelativeTime } from "../time";
 import {
   ComposerMenu,
@@ -31,11 +31,7 @@ import { conversationDisplayState } from "./ConversationStateIcon";
 import { formatAttachmentBytes } from "./TranscriptAttachment";
 import { mentionName } from "./composerMentionToken";
 import { rankPeople } from "./composerPeopleSearch";
-import {
-  linkLabel,
-  memoryLabel,
-  type ComposerReference,
-} from "./composerReferences";
+import { linkLabel, type ComposerReference } from "./composerReferences";
 import { conversationUrl } from "./conversationRoutes";
 import {
   conversationDetailQueryKey,
@@ -49,6 +45,7 @@ const SOURCE_ROW_LIMIT = 8;
 // A Conversation or memory search costs the server more than a people
 // search.
 const SERVER_SEARCH_DEBOUNCE_MS = 150;
+const MEMORY_SOURCES = ["memories"] as const;
 
 /**
  * Suggest what the reader can mention while they type `@name`: people,
@@ -287,16 +284,10 @@ function useFileSource(
 // gets the link of the memory page, labeled with the start of its text.
 function useMemorySource(query: string): ComposerMenuSource {
   const debounced = useDebouncedValue(query, SERVER_SEARCH_DEBOUNCE_MS);
-  const search = useQuery({
-    enabled: debounced.length > 0,
-    placeholderData: keepPreviousData,
-    queryKey: ["dashboard", "memories", "composer-search", debounced],
-    queryFn: ({ signal }) => searchMemories(debounced, signal),
-    staleTime: SEARCH_STALE_MS,
-  });
+  const search = useSearchData(debounced, MEMORY_SOURCES);
   const stale = search.isPlaceholderData || debounced !== query;
-  const rows = (search.data ?? []).map((memory): ComposerMenuRow => {
-    const title = memoryLabel(memory.content);
+  const rows = (search.data?.memories ?? []).map((memory): ComposerMenuRow => {
+    const title = linkLabel(memory.title);
     const reference: ComposerReference = {
       kind: "memory",
       url: `${window.location.origin}${memoryPath(memory.id)}`,
@@ -309,10 +300,8 @@ function useMemorySource(query: string): ComposerMenuSource {
       label: title,
       labelMatches: quickOpenMatch(title, query)?.indices,
       details: (
-        // The label is only the start of a long memory, so the card shows
-        // all of it.
         <ComposerMenuDetails
-          body={memory.content}
+          body={memory.title}
           icon={<ReferenceIcon reference={reference} />}
           title="Memory"
         />

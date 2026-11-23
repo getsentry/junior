@@ -3,7 +3,6 @@ import { expect, it } from "vitest";
 import {
   hashTokenAt,
   linkedWorkUrls,
-  memoryLabel,
   referenceText,
   splitComposerText,
 } from "../src/client/conversations/composerReferences";
@@ -138,11 +137,4 @@ it("lists the linked work that a message references, once each", () => {
       ORIGIN,
     ),
   ).toEqual([conversation, pull]);
-});
-
-it("labels a memory with its text on one line, cut at 120 characters", () => {
-  expect(memoryLabel("Use pnpm.\n\nNot <npm>.")).toBe("Use pnpm. Not npm .");
-  const label = memoryLabel(`${"word ".repeat(40)}end`);
-  expect(label).toHaveLength(120);
-  expect(label.endsWith("word…")).toBe(true);
 });

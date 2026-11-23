@@ -26,9 +26,9 @@ The composer is the message box under the transcript of a Conversation ("Continu
 - `mention-menu` Typing `@` opens the `Mentions` listbox. Its `People` group has people in the Conversation's Slack workspace. Arrow keys move the selected row, and Enter or Tab inserts it.
 - `mention-chip` An inserted person shows as the button `@<name>` in the box and sends as `<@U…>`.
 - `mention-card` Hover or a tap on the chip opens the shared person card. In a public Conversation, its `Invite` adds a User to the Conversation's feed and then shows `Subscribed`. A person who is not a User gets no `Invite`.
-- `mention-sources` Below `People`, the `Conversations` group has the viewer's Conversations, `Tasks` has this Conversation's Tasks and Threads, `Files` has its files, and `Memories` has active public memories with a word that starts with the typed word.
+- `mention-sources` Below `People`, the `Conversations` group has the viewer's Conversations, `Tasks` has this Conversation's Tasks and Threads, `Files` has its files, and `Memories` has active public memories that match the typed text, from the same search as Cmd+K.
 - `hash-menu` Typing `#` opens the `References` listbox, with `Pull requests` that Junior tracks and the Slack `Channels` it worked in. `a#b`, `# heading`, and a link with `#` stay text.
-- `reference-chip` An inserted Conversation or Task sends as a labeled link, a memory as `<origin/memories/<id>|text>` with at most 120 characters of its text, a pull request (`repo#123`) as `<url|owner/repo#123>`, a channel as `<#C…|name>`, and a file as its name. After the send, each Conversation, Task, and pull request is linked work once. A memory is never linked work.
+- `reference-chip` An inserted Conversation or Task sends as a labeled link, a memory as `<origin/memories/<id>|text>` with the start of its text on one line, a pull request (`repo#123`) as `<url|owner/repo#123>`, a channel as `<#C…|name>`, and a file as its name. After the send, each Conversation, Task, and pull request is linked work once. A memory is never linked work.
 - `read-only` A user who may not reply to a private Conversation sees "Only participants can reply to a private conversation." in place of the box.
 
 ## How to get to it (user POV)
@@ -88,5 +88,5 @@ Preconditions:
 - Wait for `--absent role=dialog` after you close the drawer. The box gets focus back only then, and an earlier key goes to the page.
 - The mention and reference drives use `--mock`, because local development has one User. Wait for the menu to stop being busy before Enter: a row below a source that still loads does not insert. Its people search and `Invite` are mock routes, so they prove only what the dashboard shows. The mock public Conversation `slack:CQA123:1770000000.000100` shows `Invite`.
 - Run the Riley Park steps in their own `browse.mjs` run. After `Invite` in the same run, a later `--type "$C=@rile"` and `--press Tab` left no `@Riley Park` chip.
-- A `--mock` instance still reads memories from the local database, so the Memories drive needs a real Turn to save one first. The mock memories serve only the dashboard e2e server.
+- The mock server holds no memories, so the Memories drive runs without `--mock` and needs a real Turn to save one first.
 - `read-only` needs a second user, which local development does not have (the viewer is always `dev@example.com`). The mock fixture is the only local path, and it proves only what the dashboard shows.

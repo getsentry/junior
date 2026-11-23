@@ -68,8 +68,8 @@ export function referenceName(reference: ComposerReference): string {
 
 /**
  * A Conversation, Task, memory, file, pull request, or channel in the
- * composer: its icon and name, cut off with an ellipsis at about 14rem. A pull request
- * shows `repo#123`. The full name is its tooltip.
+ * composer: its icon and name, cut off with an ellipsis at about 14rem. A
+ * pull request shows `repo#123`. The full name is its tooltip.
  */
 export function ComposerReferenceChip(props: { reference: ComposerReference }) {
   const { reference } = props;

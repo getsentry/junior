@@ -42,7 +42,7 @@ export const composerReferenceSchema = z.discriminatedUnion("kind", [
       kind: z.literal("memory"),
       // The same-origin link of the memory page.
       url: z.string().min(1),
-      // The memory text on one line, cut to `MEMORY_LABEL_CHARS`.
+      // The start of the memory text, on one line.
       title: z.string().min(1),
     })
     .strict(),
@@ -98,18 +98,6 @@ export function codeChangeLabel(change: {
 /** A link label for a title: one line, without the characters that end a link. */
 export function linkLabel(title: string): string {
   return title.replace(/[<>\s]+/g, " ").trim();
-}
-
-// A memory can hold 4,000 characters. Its link label needs only enough to
-// recognize it, and the link leads to the rest.
-const MEMORY_LABEL_CHARS = 120;
-
-/** The link label of a memory: its text on one line, cut with an ellipsis. */
-export function memoryLabel(content: string): string {
-  const label = linkLabel(content);
-  return label.length > MEMORY_LABEL_CHARS
-    ? `${label.slice(0, MEMORY_LABEL_CHARS - 1).trimEnd()}…`
-    : label;
 }
 
 /** One part of composer text: plain text, a person, or a reference. */
