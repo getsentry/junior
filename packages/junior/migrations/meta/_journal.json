@@ -1146,8 +1146,22 @@
     {
       "idx": 163,
       "version": "7",
-      "when": 1795452019543,
-      "tag": "0163_plugin_tasks",
+      "when": 1795449455852,
+      "tag": "0163_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1795449459671,
+      "tag": "0164_search_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1795454808860,
+      "tag": "0165_plugin_tasks",
       "breakpoints": true
     }
   ]
