@@ -66,28 +66,36 @@ export async function applyGitHubPullRequestOutcome(args: {
   outcome: GitHubPullRequestOutcomeInput;
 }): Promise<Awaited<ReturnType<typeof recordGitHubPullRequestOutcome>>> {
   const { outcome } = args;
+  const state =
+    outcome.state === "open"
+      ? undefined
+      : outcome.state === "merged"
+        ? "merged"
+        : "closed";
+  // Find the conversation that owns the items before the row is written.
+  // When this read fails, the row stays open, so the next delivery or
+  // reconcile applies the whole outcome again.
+  const ended = state
+    ? await endedGitHubPullRequestItemChanges({
+        db: args.db,
+        state,
+        target: outcome,
+      })
+    : undefined;
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
   if (!recorded.applied) return recorded;
   await args.codeChanges.record(
     githubCodeChange(outcome, recorded.conversationIds),
   );
-  if (outcome.state !== "open") {
-    const state = outcome.state === "merged" ? "merged" : "closed";
+  if (state) {
     const update = {
       repo: outcome.repositoryFullName,
       number: outcome.number,
       objectType: "code_change",
       status: state,
     } as const;
-    let owner: string | undefined;
-    try {
-      const ended = await endedGitHubPullRequestItemChanges({
-        db: args.db,
-        state,
-        target: outcome,
-      });
-      owner = ended?.conversationId;
-      if (ended) {
+    if (ended) {
+      try {
         await args.conversationChanges.apply({
           annotations: recorded.conversationIds.includes(ended.conversationId)
             ? [
@@ -100,18 +108,20 @@ export async function applyGitHubPullRequestOutcome(args: {
             : [],
           inboxItems: ended.inboxItems,
         });
+      } catch (error) {
+        logFailOpenFailure(
+          args.log,
+          "GitHub ended pull request change failed",
+          error,
+          { number: outcome.number, repository: outcome.repositoryFullName },
+        );
       }
-    } catch (error) {
-      logFailOpenFailure(
-        args.log,
-        "GitHub ended pull request change failed",
-        error,
-        { number: outcome.number, repository: outcome.repositoryFullName },
-      );
     }
     await updateGitHubAnnotations({
       annotations: args.annotations,
-      conversationIds: recorded.conversationIds.filter((id) => id !== owner),
+      conversationIds: recorded.conversationIds.filter(
+        (id) => id !== ended?.conversationId,
+      ),
       log: args.log,
       update,
     });
