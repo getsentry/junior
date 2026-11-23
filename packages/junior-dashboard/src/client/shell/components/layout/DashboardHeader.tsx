@@ -152,7 +152,7 @@ export function DashboardHeader(props: {
             "col-start-2 row-start-1 min-w-0 max-w-full items-center justify-self-center text-inherit no-underline",
             conversationMode ? "hidden" : "flex",
           )}
-          to={NAV_PAGES.inbox.to}
+          to={NAV_PAGES.lead.to}
         >
           <span
             className={cn(fadeOverflowClass, "font-sans text-sm font-semibold")}
@@ -173,7 +173,7 @@ export function DashboardHeader(props: {
             <Link
               aria-label={`${getDashboardAgentName()} home`}
               className="flex min-w-0 font-sans text-sm font-semibold text-inherit no-underline"
-              to={NAV_PAGES.inbox.to}
+              to={NAV_PAGES.lead.to}
             >
               <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
                 {getDashboardAgentName()}

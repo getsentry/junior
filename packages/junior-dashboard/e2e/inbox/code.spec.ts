@@ -190,7 +190,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The ask stays with its pull request, and opens its row in the Inbox.
     await waiting.getByRole("link", { name: /^Review requested/ }).click();
     await expect(page).toHaveURL(
-      `${dashboard.baseURL}/?view=inbox&item=${encodeURIComponent(prReview.id)}`,
+      `${dashboard.baseURL}/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
     );
   });
 
@@ -244,7 +244,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
       dashboard,
     }) => {
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       await page
         .getByRole("navigation", { name: "Primary" })
         .getByRole("link", { exact: true, name: "Code" })
@@ -286,7 +286,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await header
         .getByRole("link", { name: "Back to the Inbox entries" })
         .click();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     });
   });
 

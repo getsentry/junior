@@ -32,7 +32,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         }
       });
       // The mock's own question, which waits on the viewer.
-      await page.goto(`${dashboard.baseURL}/?view=inbox&item=qa-rollout`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=inbox&item=qa-rollout`);
       const row = page
         .locator("[data-inbox-row]")
         .filter({ hasText: "Approve the payments-v42 rollout" });

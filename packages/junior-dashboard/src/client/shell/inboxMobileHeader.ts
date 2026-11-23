@@ -27,16 +27,16 @@ export function inboxMobileHeader(
   if (pathname === NAV_PAGES.code.to)
     return {
       backLabel: "Back to the Inbox entries",
-      backTo: "/",
+      backTo: NAV_PAGES.inbox.to,
       title: "Code",
     };
   if (isCodePath(pathname)) return { ...back(CODE_ALL_PATH), title: "Code" };
   const view = new URLSearchParams(search).get("view");
-  // A list's Back goes to the entries, which "/" shows on a phone.
-  if (pathname === "/" && view !== null)
+  // A list's Back goes to the entries, which `/inbox` shows on a phone.
+  if (pathname === NAV_PAGES.inbox.to && view !== null)
     return {
       backLabel: "Back to the Inbox entries",
-      backTo: "/",
+      backTo: NAV_PAGES.inbox.to,
       title: INBOX_VIEW_LABELS[parseInboxView(view)],
     };
   return {};

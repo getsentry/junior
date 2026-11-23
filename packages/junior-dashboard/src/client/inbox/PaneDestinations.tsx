@@ -134,7 +134,8 @@ export function PaneDestinations(props: { phone?: boolean }) {
   const [params] = useSearchParams();
   const data = useInboxData();
   const navItems = usePaneNavItems();
-  const onList = pathname === "/" && (!props.phone || params.has("view"));
+  const onList =
+    pathname === inboxViewPath("inbox") && (!props.phone || params.has("view"));
   const current = onList ? parseInboxView(params.get("view")) : undefined;
   const view = (row: InboxView, strong?: boolean) => (
     <Entry
@@ -143,9 +144,13 @@ export function PaneDestinations(props: { phone?: boolean }) {
       key={row}
       label={INBOX_VIEW_LABELS[row]}
       phone={props.phone}
-      // On a phone the Inbox entry needs `?view=`, since `/` alone lists
-      // the entries.
-      phoneTo={row === "inbox" ? "/?view=inbox" : inboxViewPath(row)}
+      // On a phone the Inbox entry needs `?view=`, since `/inbox` alone
+      // lists the entries.
+      phoneTo={
+        row === "inbox"
+          ? `${inboxViewPath("inbox")}?view=inbox`
+          : inboxViewPath(row)
+      }
       row={row}
       phoneSelected={current === row}
       strong={strong}

@@ -51,7 +51,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [rollout, license, migration, prMerge, prReview, todoForYou, other],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     // Pull requests counts each ask, and a pull request ask with a question
     // is not also a Decision. A To-do counts in To-dos, not in Other. All,
     // the default, is at the right edge.
@@ -134,7 +134,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [rollout, license],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(typeFilters(page)).toHaveText([
       /^Decisions\s*2$/,
       /^Pinned$/,
@@ -157,8 +157,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [rollout, prMerge, todoForYou, other].flatMap(tenOf),
     });
-    // On a phone, the home page lists the entries; the Inbox has its own.
-    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    // On a phone, `/inbox` lists the entries; the Inbox has its own page.
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
     const tabs = typeFilters(page);
     await expect(tabs).toHaveText([
       /^Other\s*10$/,
@@ -189,7 +189,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [prMerge, prReview, other],
     });
-    await page.goto(`${dashboard.baseURL}/?type=prs&pinned=1&item=${other.id}`);
+    await page.goto(
+      `${dashboard.baseURL}/inbox?type=prs&pinned=1&item=${other.id}`,
+    );
     const todoList = page.getByRole("region", { name: "To do" });
     await expect(
       // The innermost row: a stack row also holds the ask.

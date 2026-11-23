@@ -71,7 +71,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page, { open: [...asks] });
     const actions = await holdActions(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(badge(page)).toHaveAccessibleName("Inbox, 4 waiting");
 
     // A button answer: a click picks, and Send sends.
@@ -118,7 +118,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       failActions,
       open: [...asks],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const rows = page
       .getByRole("region", { name: "To do" })
       .locator(":scope > ul > li[data-inbox-row]");
@@ -150,7 +150,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const failActions = [form!.id, buttons!.id];
     const done = await mockInboxItems(page, { failActions, open: [...asks] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     // The viewer opens another row before the failure lands, so the row
     // comes back shut.
@@ -230,7 +230,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           : route.fallback(),
     );
     // Item rows have no Pin: the Conversations view pins a Conversation.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const conversationRow = page.locator(
       `li[data-inbox-row="conversation:${conversationId}"]`,
     );
@@ -269,7 +269,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           : route.fallback());
       },
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const digestFyi = page
       .getByRole("region", { name: "FYI" })
       .locator("[data-inbox-row]")
@@ -311,7 +311,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fulfill({ json: { error: "Failed" }, status: 500 });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinChecks.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const checks = asks.getByRole("region", { name: pinChecks.title });
     await checks.getByRole("button", { name: "Checks failed" }).click();
