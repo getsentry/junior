@@ -218,6 +218,7 @@ const BIG_TABLES = [
   "junior_inbox_items",
   "junior_memory_embeddings",
   "junior_memory_memories",
+  "junior_todos",
 ];
 
 /**

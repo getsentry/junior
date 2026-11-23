@@ -4,6 +4,7 @@ import {
   type SearchInboxItem,
   type SearchMemory,
   type SearchReport,
+  type SearchTodo,
 } from "@sentry/junior/api/schema";
 
 // The API returns at most this many rows per group.
@@ -64,6 +65,7 @@ export function mockSearchReport(
     automations: readonly AutomationListItem[];
     inboxItems: readonly (SearchInboxItem & { body: string })[];
     memories: readonly SearchMemory[];
+    todos: readonly SearchTodo[];
   },
   params: URLSearchParams,
 ): SearchReport | undefined {
@@ -90,6 +92,16 @@ export function mockSearchReport(
       : undefined),
     ...(sources.includes("memories")
       ? { memories: matches(rows.memories, q, (memory) => memory.title) }
+      : undefined),
+    ...(sources.includes("todos")
+      ? {
+          todos: matches(
+            rows.todos,
+            q,
+            (todo) => todo.title,
+            (todo) => todo.status === "open" || todo.status === "in_progress",
+          ),
+        }
       : undefined),
   };
 }
