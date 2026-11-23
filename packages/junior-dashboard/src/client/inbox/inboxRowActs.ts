@@ -32,6 +32,7 @@ const ROW_ACTION_REQUESTS = 8;
 
 const FAILED_TITLES: Record<InboxItemActionBody["action"], string> = {
   dismiss: "Could not dismiss",
+  done: "Could not mark it done",
   submit: "Could not send your answer",
   take: "Could not take it",
 };
@@ -140,8 +141,9 @@ export function useInboxRowActs(options: {
 }
 
 /**
- * Each card's own Dismiss and Snooze in an Inbox row. A stack row leaves
- * with the rows that go with it. A card of a row with more leaves by itself.
+ * Each card's own Dismiss, Snooze, and a To-do's Done in an Inbox row. A
+ * stack row leaves with the rows that go with it. A card of a row with more
+ * leaves by itself.
  */
 export function inboxCardActions(input: {
   act: ReturnType<typeof useInboxRowActs>;
@@ -165,12 +167,15 @@ export function inboxCardActions(input: {
             setSnoozeKey(undefined);
             putAway(() => input.snoozeItem(item, end));
           };
+      const close = (action: "dismiss" | "done") =>
+        item.status === "open" && item.canAct
+          ? () => void act(row, [item], { action }).catch(() => {})
+          : undefined;
+      const todo = item.todoId !== undefined;
       return {
         eventSnooze: eventSnoozeOf([item], snooze),
-        onDismiss:
-          item.status === "open" && item.canAct
-            ? () => void act(row, [item], { action: "dismiss" }).catch(() => {})
-            : undefined,
+        onDismiss: close("dismiss"),
+        onDone: todo ? close("done") : undefined,
         onSnooze: snooze,
         onSnoozeMenu: (open) => setSnoozeKey(open ? menuKey : undefined),
         snoozeMenuOpen: input.snoozeKey === menuKey,
@@ -180,7 +185,8 @@ export function inboxCardActions(input: {
 
 /**
  * A stack's own actions: Snooze, for every row, and Dismiss, which closes every
- * open ask of the stack that the viewer can act on. A snoozed stack has
+ * open ask of the stack that the viewer can act on, except To-dos: each
+ * closes on its own row. A snoozed stack has
  * neither. Dismiss puts the whole stack away (`useLeaveRow`), so the
  * next row after it opens.
  */
@@ -202,7 +208,8 @@ export function inboxStackActions(input: {
 } {
   if (input.snoozed) return {};
   const open = input.items.filter(
-    (item) => item.status === "open" && item.canAct,
+    (item) =>
+      item.status === "open" && item.canAct && item.todoId === undefined,
   );
   const row: ActedRow = {
     items: input.items,

@@ -3,13 +3,21 @@ import {
   type Event,
   type EventData,
 } from "@sentry/junior-plugin-api";
+import { and, inArray, like } from "drizzle-orm";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import { updateTimerIndex, type TimerIndex } from "@/chat/events/timer-index";
+import { getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
+import {
+  inboxItemTodo,
+  TODO_INBOX_ITEM_KEY_PREFIX,
+} from "@/chat/inbox-items/access";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import { pushInboxSnoozeWakes } from "@/chat/notifications/inbox-item-push";
 import { getStateAdapter } from "@/chat/state/adapter";
+import { setTodoStatusByUser } from "@/chat/todos/store";
 import type { JuniorDatabase } from "@/db/db";
+import { juniorInboxItems } from "@/db/schema/inbox-items";
 import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
 import {
   listFiringInboxSnoozeTriggers,
@@ -31,9 +39,38 @@ type SnoozeEvent = Pick<Event, "eventType" | "namespace"> & {
   identifiers: readonly string[];
 };
 
+/** The To-do of each resolved item that shows one, for its snoozer. */
+async function resolvedTodos(
+  db: JuniorDatabase,
+  resolved: readonly { inboxItemId: string; userId: string }[],
+): Promise<
+  { conversationId: string; id: number; inboxItemId: string; userId: string }[]
+> {
+  if (resolved.length === 0) return [];
+  const items = await db
+    .select({ dedupeKey: juniorInboxItems.dedupeKey, id: juniorInboxItems.id })
+    .from(juniorInboxItems)
+    .where(
+      and(
+        inArray(
+          juniorInboxItems.id,
+          resolved.map((row) => row.inboxItemId),
+        ),
+        like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+      ),
+    );
+  const todoOf = new Map(items.map((item) => [item.id, inboxItemTodo(item)]));
+  return resolved.flatMap((row) => {
+    const todo = todoOf.get(row.inboxItemId);
+    return todo ? [{ ...todo, ...row }] : [];
+  });
+}
+
 /**
  * Fire the snooze triggers that one Event matches. A `resolve` trigger
- * dismisses the item and cancels its snooze; a `wake` trigger ends the
+ * cancels the snooze and closes the item: it dismisses it, or marks the
+ * To-do of a To-do item done for the person who snoozed it, so the agent
+ * sees the change in its next `<todo-delta>`. A `wake` trigger ends the
  * snooze, which records `reason`. When one Event fires both on a snooze,
  * `resolve` wins. A snooze that already ended ignores the Event. Each
  * woken snooze pushes to its User. Returns the number of items woken.
@@ -51,10 +88,10 @@ async function fireTriggers(
       namespace: event.namespace,
     })
   ).filter((trigger) => eventMatches(trigger.match ?? undefined, event.data));
-  const resolving = new Set(
+  const resolving = new Map(
     triggers
       .filter((trigger) => trigger.outcome === "resolve")
-      .map((trigger) => trigger.snoozeId),
+      .map((trigger) => [trigger.snoozeId, trigger]),
   );
   const waking = new Set(
     triggers
@@ -64,13 +101,31 @@ async function fireTriggers(
   if (resolving.size === 0 && waking.size === 0) {
     return 0;
   }
+  // A To-do changes under its own lock, so it cannot join the snooze
+  // transaction. It changes first: if it fails, the snooze stays, so a
+  // redelivered Event fires it again. A repeat finds the To-do closed and
+  // changes nothing. Its change closes its item (`syncTodoInboxItems`).
+  const todos = await resolvedTodos(db, [...resolving.values()]);
+  await mapBounded(todos, (todo) =>
+    setTodoStatusByUser(getSqlExecutor(), {
+      assignedOnly: true,
+      conversationId: todo.conversationId,
+      id: todo.id,
+      nowMs,
+      status: "done",
+      userId: todo.userId,
+    }),
+  );
+  const todoItemIds = new Set(todos.map((todo) => todo.inboxItemId));
   const woken = await db.transaction(async (tx) => {
     const resolved = await settleInboxSnoozes(tx, {
-      snoozeIds: [...resolving],
+      snoozeIds: [...resolving.keys()],
       state: "cancelled",
     });
     await dismissOpenInboxItems(tx, {
-      ids: resolved.map((snooze) => snooze.inboxItemId),
+      ids: resolved
+        .map((row) => row.inboxItemId)
+        .filter((id) => !todoItemIds.has(id)),
       nowMs,
       reason: "A snooze trigger resolved it.",
     });

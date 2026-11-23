@@ -10,7 +10,6 @@ import {
   license,
   migration,
   mockInboxItems,
-  mockViewerCodeChanges,
   prMerge,
   prReady,
   prReview,
@@ -82,6 +81,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Snoozed/,
       /^Done$/,
       /^Conversations$/,
+      /^Code$/,
       /^Automations/,
       new RegExp(checkout),
     ]);
@@ -89,19 +89,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     // "Pull request ready for review" notice does not.
     await expect(
       page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
-    ).toHaveText([/^All\s*6$/, /^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/]);
+    ).toHaveText([/^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/, /^All\s*6$/]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 
-    // Pull requests list the viewer's open changes, with their asks.
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    // Code lists the viewer's open changes, with their asks.
+    await nav.getByRole("link", { name: "Code", exact: true }).click();
     await expect(
-      page.getByRole("heading", { level: 1, name: "Pull requests" }),
+      page.getByRole("heading", { level: 1, name: "Code" }),
     ).toBeVisible();
     await expect(sections).toHaveText([
       /^Waiting on you/,
       /^Waiting on others/,
     ]);
-    await screenshot(page, "inbox-pull-requests", { lightTheme: true });
+    await screenshot(page, "code-mine", { lightTheme: true });
 
     // Decisions group by Conversation, the longest wait first.
     await page.goto(`${dashboard.baseURL}/?view=decisions`);
@@ -379,89 +379,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(details).toHaveCount(0);
   });
 
-  test("Pull requests sorts your open changes into Waiting on you, Waiting on others and Drafts", async ({
-    dashboard,
-    page,
-  }) => {
-    const actions = await mockInboxItems(page, { open: [prReview] });
-    await mockViewerCodeChanges(page, [
-      {
-        idleDays: 0,
-        number: 7,
-        size: { additions: 1204, changedFiles: 12, deletions: 340 },
-        title: "Tune the retry backoff",
-      },
-      // GitHub counted no deletions here.
-      {
-        idleDays: 10,
-        number: 8,
-        size: { additions: 64, changedFiles: 2 },
-        title: "Drop the legacy webhook",
-      },
-      // prReview asks the viewer to review this one.
-      { idleDays: 1, number: 91, title: "Pin the release train" },
-      { draft: true, idleDays: 0, number: 15, title: "Sketch the replay" },
-      {
-        idleDays: 0,
-        number: 9,
-        state: "merged",
-        title: "Rename the payments queue",
-      },
-    ]);
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await expect(
-      page.locator("section[aria-label] section[aria-label]"),
-    ).toHaveText([/^Waiting on you/, /^Waiting on others/, /^Drafts/]);
-    const waiting = page
-      .getByRole("region", { name: "Waiting on you" })
-      .getByRole("listitem", { name: "Pin the release train" });
-    await expect(
-      waiting.getByRole("link", { exact: true, name: "Pin the release train" }),
-    ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
-    // The ask stays with its pull request.
-    await expect(waiting.locator("[data-inbox-head]")).toHaveAccessibleName(
-      /^Review Pin the release train/,
-    );
-    // The rest wait on a reviewer, CI or Junior: newest activity first, so
-    // the idle one comes last.
-    await expect(
-      page
-        .getByRole("region", { name: "Waiting on others" })
-        .getByRole("listitem"),
-    ).toHaveText([/Tune the retry backoff/, /Drop the legacy webhook/]);
-    // Each row gives its size, and leaves out a count it does not know.
-    const others = page.getByRole("region", { name: "Waiting on others" });
-    await expect(
-      others.getByRole("listitem", { name: "Tune the retry backoff" }),
-    ).toContainText("1,204 lines added, 340 removed, 12 files changed");
-    const legacy = others.getByRole("listitem", {
-      name: "Drop the legacy webhook",
-    });
-    await expect(legacy).toContainText("64 lines added, 2 files changed");
-    await expect(legacy).not.toContainText("removed");
-    await expect(page.getByText("Rename the payments queue")).toHaveCount(0);
-    // A draft waits on its author, so it leaves the other piles. Drafts starts
-    // collapsed.
-    const drafts = page.getByRole("region", { name: "Drafts" });
-    await expect(drafts.getByRole("listitem")).toHaveCount(0);
-    await drafts.getByRole("button", { name: /Drafts/ }).click();
-    await expect(drafts.getByRole("listitem")).toHaveText([
-      /Sketch the replay/,
-    ]);
-
-    // The ask keeps its actions: Done closes it.
-    await waiting
-      .locator("[data-inbox-row]")
-      .first()
-      .getByRole("link")
-      .first()
-      .click();
-    await waiting.getByRole("button", { name: "Dismiss", exact: true }).click();
-    await expect
-      .poll(() => actions.map((action) => action.id))
-      .toEqual([prReview.id]);
-  });
-
   test("Done lists closed items, and a row expands in place", async ({
     dashboard,
     page,
@@ -502,7 +419,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
 
     await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
-    await expect(page).toHaveURL(/\/\?view=prs$/);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
     await page.goto(`${dashboard.baseURL}/review`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
     await page.goto(`${dashboard.baseURL}/inbox`);
@@ -541,7 +458,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [prReady, license, audit] });
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
+    await page.goto(`${dashboard.baseURL}/?type=prs&item=${prReady.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
     // The card's Dismiss closes it. The item row's head names it and its
@@ -590,7 +507,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       `**/api/conversations/${encodeURIComponent(prReview.owner.id)}**`,
       (route) => route.fulfill({ json: { error: "Not found" }, status: 404 }),
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/?type=prs`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: prReview.subject.title });
@@ -627,7 +544,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       request: undefined,
     };
     await mockInboxItems(page, { open: [item] });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/?type=prs`);
     await rowHead(page, "Pin the release train").click();
     const toggle = page.getByRole("button", { name: `Expand ${item.title}` });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -665,7 +582,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       request: undefined,
     };
     await mockInboxItems(page, { open: [item] });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/?type=prs`);
     await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",

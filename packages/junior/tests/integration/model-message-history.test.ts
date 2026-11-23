@@ -14,10 +14,27 @@ import { createWorkspace, deleteWorkspace } from "@/chat/workspaces/store";
 import { installTestSkills } from "../fixtures/skill-dirs";
 import { mockTitleModel } from "../fixtures/title-model";
 import { signedInViewer } from "../fixtures/user";
-import { getSqlExecutor } from "@/chat/db";
+import type { User } from "@sentry/junior-plugin-api";
+import { Hono } from "hono";
+import { createJuniorApi } from "@/api";
+import type { JuniorApiEnv } from "@/api/route";
+import { inboxItemListSchema } from "@/api/schema";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { juniorConversationParticipants } from "@/db/schema";
 import { changeTodos, setTodoStatusByUser } from "@/chat/todos/store";
 
 const originalBotConfig = { ...botConfig };
+
+/** The dashboard API as one signed-in person. */
+function personApi(viewer: User) {
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer);
+    await next();
+  });
+  app.route("/", createJuniorApi());
+  return app;
+}
 
 describe("model message history", () => {
   afterEach(async () => {
@@ -239,8 +256,14 @@ describe("model message history", () => {
     // The agent's own changes are already in its tool results. The To-dos
     // are in the database, so a fresh session reads the same ones.
     const self = { conversationId: agent.conversationId() };
+    const person = await signedInViewer("person@example.com");
+    await getDb().insert(juniorConversationParticipants).values({
+      lastMessageAt: new Date(),
+      rootConversationId: agent.conversationId(),
+      userId: person.id,
+    });
     const {
-      todos: [, send],
+      todos: [, send, approve],
     } = await changeTodos(getSqlExecutor(), {
       conversationId: agent.conversationId(),
       nowMs: Date.now(),
@@ -248,6 +271,11 @@ describe("model message history", () => {
         add: [
           { title: "Draft the brief", status: "open", assignee: self },
           { title: "Send the brief", status: "open", assignee: self },
+          {
+            title: "Approve the brief",
+            status: "open",
+            assignee: { userId: person.id },
+          },
         ],
         update: [],
         remove: [],
@@ -257,7 +285,6 @@ describe("model message history", () => {
     const second = agent.snapshot();
     expect(deltas(newText(first, second))).toBe(0);
 
-    const person = await signedInViewer("person@example.com");
     await setTodoStatusByUser(getSqlExecutor(), {
       conversationId: agent.conversationId(),
       id: send!.id,
@@ -265,12 +292,35 @@ describe("model message history", () => {
       status: "dropped",
       userId: person.id,
     });
+    // The person marks their own To-do done in the Inbox.
+    const inbox = personApi(person);
+    const { items } = inboxItemListSchema.parse(
+      await (
+        await inbox.request("http://localhost/api/inbox-items?for=viewer")
+      ).json(),
+    );
+    expect(items.map((item) => item.todoId)).toEqual([approve!.id]);
+    expect(
+      (
+        await inbox.request(
+          `http://localhost/api/inbox-items/${items[0]!.id}/actions`,
+          {
+            body: JSON.stringify({ action: "done" }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        )
+      ).status,
+    ).toBe(200);
     await agent.run("third");
     const third = agent.snapshot();
     const delta = newText(second, third);
     expect(deltas(delta)).toBe(1);
     expect(delta).toContain(
       `- TODO-${send!.id} (dropped, assignee self, changed by person@example.com): Send the brief`,
+    );
+    expect(delta).toContain(
+      `- TODO-${approve!.id} (done, assignee person@example.com, changed by person@example.com): Approve the brief`,
     );
     expect(delta).not.toContain("Draft the brief");
     // The block stays in history, so the next Turn does not send it again.
