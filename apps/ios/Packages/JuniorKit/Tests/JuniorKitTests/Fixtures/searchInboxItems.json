@@ -1,6 +1,19 @@
 {
   "items": [
     {
+      "id": "qa-todo-preview-deploy",
+      "kind": "action",
+      "status": "open",
+      "title": "Approve the preview deploy",
+      "body": "Check the preview before the deploy goes out.",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": [],
+      "createdAt": "2026-08-07T11:54:00.000Z",
+      "updatedAt": "2026-08-07T11:54:00.000Z",
+      "url": "http://127.0.0.1:4317/inbox?item=qa-todo-preview-deploy"
+    },
+    {
       "id": "qa-rollout",
       "kind": "action",
       "status": "open",

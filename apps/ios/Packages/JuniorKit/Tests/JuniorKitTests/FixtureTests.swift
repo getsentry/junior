@@ -32,6 +32,9 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     // nor an item for Everyone.
     let notice = try #require(items.items.first { $0.kind == "notice" })
     #expect(notice.canAct && !notice.needsViewer)
+    // A To-do is an action with no question and no Conversation.
+    let todo = try #require(items.items.first { $0.id == "qa-todo-preview-deploy" })
+    #expect(todo.question == nil && todo.conversationIds.isEmpty && todo.needsViewer)
     var forEveryone = try #require(items.items.first { $0.needsViewer })
     forEveryone.assignees = []
     #expect(!forEveryone.needsViewer)
