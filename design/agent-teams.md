@@ -15,9 +15,15 @@ updates. A person can see and steer each agent.
   the receiver needs, so it can act without a read of history.
 - A watch is the same as a start. A watcher gets the same update, from the
   same code, as the agent that started the target.
-- One contract. Every agent has the same ways to end a Turn, also to end it
-  with no reply. A quiet end still sends an update, so no agent waits
-  forever.
+- One contract. Every agent, except an Automation run, ends a Turn the same
+  way. Its final text is its reply. A tool call ends the Turn with no reply
+  or as blocked, and the update still carries what that call holds. So a
+  quiet end still reaches the receiver, and no agent waits forever.
+- An Automation run is the one exception, because its reply goes to people
+  in a channel. It must end each Turn with an answer tool, so that stray
+  text never posts.
+- The agent that needs a person asks that person. No agent passes on a
+  question or an answer for another agent.
 - Push, not poll. An agent waits for updates. It does not check an agent
   again and again to learn that its work ended.
 - Steering comes when it is needed. When the next step depends on state
@@ -30,7 +36,7 @@ updates. A person can see and steer each agent.
 
 - The model: `startAgent`, `messageAgent`, `listAgents`, `stopAgent`,
   `archiveAgent`, and `watchEvents` on an `agent` resource. To end a Turn:
-  a reply, `noReply`, `reportBlocked`, or an Inbox item.
+  final text, `noReply`, `reportBlocked`, or an Inbox item.
 - Slack and the dashboard: ask Junior to start, steer, or stop work. The
   dashboard shows each agent, its team, and its latest update.
 - Config: `limits.maxAgentDepth`.
@@ -42,6 +48,21 @@ updates. A person can see and steer each agent.
   can read it. Access comes from `../policies/conversation-access.md`.
 - An agent manages only its team. It can message, stop, and archive the
   agents that it started. It can watch other agents that it may read.
+- The final text of a Turn is the reply. It goes to the Location of a root,
+  to the parent of a child, and to the person of a Lead. `messageAgent`
+  sends text to another agent at any time. It is not the reply, and it does
+  not end the Turn.
+- `noReply` ends the Turn with no reply. `reportBlocked` ends it as blocked
+  on what the starter can give. Each still sends an update with its note or
+  the missing part.
+- An agent ends a Turn with no reply only when no person asked for
+  something in that Turn, nothing failed, nobody must decide or act, and
+  the receiver gets nothing new. Its note states the outcome in one
+  sentence, because a receiver can read it.
+- Any agent, also a child, asks a person only with an Inbox item, and only
+  for approval, access, or a decision that is the person's. The answer goes
+  to the agent that asked, as the person's own input. Its starter gets a
+  `waiting` update and does not ask again.
 - Every agent sends one update type, `agent.update`. Its status is `done`,
   `waiting`, `blocked`, `failed`, or `stopped`. It holds the reply, the
   `noReply` note, the question, the missing part, or the failure. Nothing
@@ -50,10 +71,6 @@ updates. A person can see and steer each agent.
   something to do: a reply, a question, a block, a failure, a person's
   stop, or the end of work that the receiver gave. Any other update is a
   Conversation note.
-- An agent ends a Turn with no reply only when no person asked for
-  something in that Turn, nothing failed, nobody must decide or act, and
-  the receiver gets nothing new. Its note states the outcome in one
-  sentence, because a receiver can read it.
 - Update text and message text are data. They never give approval. The
   authority of a message comes from the stored relation of its sender, as
   `./child-agents.md` and `./guardian.md` state.
@@ -70,9 +87,11 @@ updates. A person can see and steer each agent.
 - A child agent reports with `<agent-result>`, and a watched Conversation
   sends `conversation.*` Events with status only. This breaks "one update"
   and "a watch is the same as a start". The event thread builds the fix.
-- A root and a Lead end a Turn with text. A Thread, a Task, and an
-  Automation must call an answer tool. Only some kinds have
-  `reportBlocked`. This breaks "one contract".
+- A Thread and a Task must call `reply`, and their final text goes nowhere.
+  Only some kinds have `reportBlocked`. This breaks "one contract".
+- A child agent cannot ask a person. It reports blocked, and its parent
+  asks and passes on the answer. This breaks "the agent that needs a person
+  asks that person".
 - A Lead asks its person in its reply, not with an Inbox item. This breaks
   "one contract" and `./attention.md`.
 - A Lead cannot stop or archive the Conversations that it starts. This
