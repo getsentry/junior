@@ -46,9 +46,10 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 - An issue that Junior opens for a person's review is an action for that
   person. It closes when the issue closes or when they respond on it.
 - A push goes to each User assigned to an open item, once per item: an
-  action, or a reply notice for its starter. Everyone items and other
-  notices do not push. When the item closes, its push goes away on every
-  device.
+  action, or a reply notice for its starter. When a time or an Event wakes
+  their snooze of that item, it pushes to them once more. Everyone items
+  and other notices do not push. When the item closes, its push goes away
+  on every device.
 
 ## Gaps
 

@@ -5,6 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
   PluginConversationAnnotations,
+  PluginConversationChanges,
   PluginConversationInboxItems,
   PluginLogger,
   PluginRoute,
@@ -153,6 +154,7 @@ export function createGitHubWebhookRoute(args: {
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   codeChanges: CodeChangePublisher;
+  conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
@@ -250,10 +252,10 @@ export function createGitHubWebhookRoute(args: {
         const recordedOutcome = await applyGitHubPullRequestOutcome({
           annotations: args.annotations,
           codeChanges: args.codeChanges,
+          conversationChanges: args.conversationChanges,
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
-          inboxItems: args.inboxItems,
         });
         if (
           recordedOutcome.applied &&

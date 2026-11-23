@@ -64,6 +64,51 @@ function choicesRequest(notice: PluginReviewNotice): InboxItemRequest {
   });
 }
 
+/** The stored dedupe key of a plugin item: `plugin:<name>:<key>`. */
+function pluginItemKey(plugin: string, dedupeKey: string): string {
+  return `${PLUGIN_INBOX_ITEM_KEY_PREFIX}${plugin}:${dedupeKey}`;
+}
+
+async function readAccess(db: JuniorDatabase, conversationId: string) {
+  const access = (
+    await readConversationAccessFromSql(db, [conversationId])
+  ).get(conversationId);
+  if (!access) throw new Error(`Conversation ${conversationId} is not found`);
+  return access;
+}
+
+/**
+ * Close the open item of a plugin with the key, in the tenant of the
+ * Conversation. Return the id of the item that closed, or undefined when no
+ * item was open. Pass a transaction to save it with other changes. The
+ * caller shows the item after the write.
+ */
+export async function closePluginInboxItem(
+  db: JuniorDatabase,
+  args: {
+    conversationId: string;
+    dedupeKey: string;
+    plugin: string;
+    reason: string;
+    status: "done" | "dismissed";
+  },
+): Promise<string | undefined> {
+  const access = await readAccess(db, args.conversationId);
+  const item = await getOpenInboxItemByDedupeKey(
+    db,
+    pluginItemKey(args.plugin, args.dedupeKey),
+    access.tenant,
+  );
+  if (!item) return undefined;
+  const closed = await closeInboxItem(db, {
+    id: item.id,
+    nowMs: Date.now(),
+    reason: args.reason,
+    status: args.status,
+  });
+  return closed ? item.id : undefined;
+}
+
 /**
  * Connect a plugin to the Inbox for one Conversation. Dedupe keys are
  * `plugin:<name>:<key>`, so a plugin changes only its own items, and agents
@@ -77,15 +122,6 @@ export function createPluginInboxItems(args: {
   show: ShowInboxItem;
 }): PluginTurnInboxItems {
   const { conversationId, show } = args;
-  const scopedKey = (dedupeKey: string) =>
-    `${PLUGIN_INBOX_ITEM_KEY_PREFIX}${args.plugin}:${dedupeKey}`;
-  const readAccess = async (db: JuniorDatabase) => {
-    const access = (
-      await readConversationAccessFromSql(db, [conversationId])
-    ).get(conversationId);
-    if (!access) throw new Error(`Conversation ${conversationId} is not found`);
-    return access;
-  };
   return {
     async assignable(identityIds) {
       return (await assignableUsers(getDb(), identityIds, conversationId)).map(
@@ -94,10 +130,10 @@ export function createPluginInboxItems(args: {
     },
     async upsert(notice: PluginReviewNotice) {
       const db = getDb();
-      const access = await readAccess(db);
+      const access = await readAccess(db, conversationId);
       const existing = await getOpenInboxItemByDedupeKey(
         db,
-        scopedKey(notice.dedupeKey),
+        pluginItemKey(args.plugin, notice.dedupeKey),
         access.tenant,
       );
       // An item from a private Conversation stays private.
@@ -142,7 +178,7 @@ export function createPluginInboxItems(args: {
       } else {
         const item = await insertInboxItem(db, {
           ...content,
-          dedupeKey: scopedKey(notice.dedupeKey),
+          dedupeKey: pluginItemKey(args.plugin, notice.dedupeKey),
           owner: { id: conversationId, kind: "conversation" },
           nowMs: Date.now(),
           ...(access.tenant ? { tenant: access.tenant } : undefined),
@@ -170,24 +206,14 @@ export function createPluginInboxItems(args: {
       }
     },
     async close(input) {
-      const db = getDb();
-      const access = await readAccess(db);
-      const item = await getOpenInboxItemByDedupeKey(
-        db,
-        scopedKey(input.dedupeKey),
-        access.tenant,
-      );
-      if (!item) return false;
-      const closed = await closeInboxItem(db, {
-        id: item.id,
-        nowMs: Date.now(),
-        reason: input.reason,
-        status: input.status,
+      const itemId = await closePluginInboxItem(getDb(), {
+        ...input,
+        conversationId,
+        plugin: args.plugin,
       });
-      if (closed) {
-        await show(item.id);
-      }
-      return closed;
+      if (!itemId) return false;
+      await show(itemId);
+      return true;
     },
   };
 }

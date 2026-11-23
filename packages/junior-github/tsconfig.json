@@ -17,6 +17,7 @@
     "src/**/*.ts",
     "tests/code-change-titles.test.ts",
     "tests/conditional-requests.test.ts",
+    "tests/conversation-changes.ts",
     "tests/issue-review-reactions.test.ts",
     "tests/pull-request-action-harness.ts",
     "tests/pull-request-action.test.ts",
