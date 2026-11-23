@@ -1,14 +1,20 @@
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
 import { stopConversation } from "@/chat/conversations/stop";
+import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getSqlExecutor } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { startConversationWork } from "@/chat/task-execution/store";
+import {
+  getConversationWorkState,
+  startConversationWork,
+} from "@/chat/task-execution/store";
 import { changeTodos, listTodos } from "@/chat/todos/store";
 import { slackParentConversationId } from "../fixtures/agent-invocations";
 import { mailboxTexts, message, spawn } from "../fixtures/parent-agent-tools";
 import { readProxyProperty } from "../fixtures/proxy-property";
 import {
+  commitRunInput,
   createHarness,
   finishRun,
   sendPersonMessage,
@@ -140,6 +146,8 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
       vi.setSystemTime(1_800_000_001_000);
       await sendPersonMessage(harness, threadId, "person-1");
       harness.onRun(async (run) => {
+        // The person's Turn has a saved record with the person's Actor.
+        await commitRunInput(run);
         vi.setSystemTime(1_800_000_002_000);
         await stopConversation({
           conversationId: threadId,
@@ -152,11 +160,25 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
       await harness.drain(threadId);
 
       expect(harness.runs.at(-1)).toMatchObject({ source: { kind: "web" } });
+      // The parent runs the result as the Event system Actor, never as the
+      // person.
       expect(
-        (await mailboxTexts(harness, slackParentConversationId)).filter(
-          (text) => text.includes('status="stopped"'),
-        ),
-      ).toEqual([expect.stringContaining(`conversation_id="${threadId}"`)]);
+        (
+          await getConversationWorkState({
+            conversationId: slackParentConversationId,
+          })
+        )?.messages
+          .filter((message) => message.input.text.includes('status="stopped"'))
+          .map((message) => ({
+            authorId: message.input.authorId,
+            text: message.input.text,
+          })),
+      ).toEqual([
+        {
+          authorId: resultAuthorId(EVENT_SYSTEM_ACTOR),
+          text: expect.stringContaining(`conversation_id="${threadId}"`),
+        },
+      ]);
     } finally {
       await harness.close();
     }

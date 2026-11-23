@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import { listUnreportedSiblingAgents } from "@/chat/agent-invocations/list";
+import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
 import {
   createDeliverToParent,
   enqueueChildResultToParent,
@@ -109,14 +110,18 @@ async function sendHelperReply(harness: Harness, sender: ChildAgentSender) {
   vi.setSystemTime(Date.now() + 60_000);
 }
 
-async function parentMessageTexts() {
+async function parentMessages() {
   return (
     (
       await getConversationWorkState({
         conversationId: slackParentConversationId,
       })
-    )?.messages.map((message) => message.input.text) ?? []
+    )?.messages ?? []
   );
+}
+
+async function parentMessageTexts() {
+  return (await parentMessages()).map((message) => message.input.text);
 }
 
 describe("child Turns on the Conversation loop", () => {
@@ -353,23 +358,28 @@ describe("child Turns on the Conversation loop", () => {
   );
 
   // A person's Turn in a Thread reports to the parent like an agent's Turn.
-  // The person also sees its final text. With a Watch left after `noReply`,
-  // the Thread still works and its parent waits.
+  // The person also sees its final text. Final text while a helper works is
+  // a message, as a `reply` is. With a Watch left after `noReply`, the Thread
+  // still works and its parent waits. The parent runs it as the Event system
+  // Actor, never as the person.
   it.each([
-    { end: "final text", watchLeft: false, results: 1 },
-    { end: "noReply", watchLeft: false, results: 1 },
-    { end: "noReply", watchLeft: true, results: 0 },
+    { end: "final text", openWork: "none", sent: "agent-result" },
+    { end: "final text", openWork: "helper", sent: "agent-message" },
+    { end: "noReply", openWork: "none", sent: "agent-result" },
+    { end: "noReply", openWork: "Watch", sent: undefined },
   ] as const)(
-    "reports a person's Turn in a Thread that ends with $end (Watch left: $watchLeft)",
-    async ({ end, watchLeft, results }) => {
+    "reports a person's Turn in a Thread that ends with $end (open work: $openWork)",
+    async ({ end, openWork, sent }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
         const childId = await startIdleChild(harness, "thread");
-        if (watchLeft) {
+        if (openWork === "Watch") {
           await createDeployWatch(harness, childId);
+        } else if (openWork === "helper") {
+          await createHelper(harness, childId);
         }
-        const before = await parentMessageTexts();
+        const before = (await parentMessages()).length;
         await sendPersonMessage(harness, childId, "person-1");
         harness.onRun((run) =>
           finishRun(
@@ -386,13 +396,19 @@ describe("child Turns on the Conversation loop", () => {
           source: { kind: "web" },
         });
         expect(
-          (await parentMessageTexts())
-            .slice(before.length)
-            .filter((text) => text.includes("The deploy is green.")),
+          (await parentMessages())
+            .slice(before)
+            .filter((message) =>
+              message.input.text.includes("The deploy is green."),
+            )
+            .map((message) => ({
+              authorId: message.input.authorId,
+              tag: message.input.text.match(/<(agent-[a-z]+)/)?.[1],
+            })),
         ).toEqual(
-          Array.from({ length: results }, () =>
-            expect.stringMatching(/status="completed"/),
-          ),
+          sent
+            ? [{ authorId: resultAuthorId(EVENT_SYSTEM_ACTOR), tag: sent }]
+            : [],
         );
       } finally {
         await harness.close();

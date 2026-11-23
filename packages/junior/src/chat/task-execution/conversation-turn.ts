@@ -22,6 +22,7 @@ import {
 } from "@/chat/agent-invocations/parent-message";
 import {
   childWorkEnded,
+  parentResultActor,
   type DeliverToParent,
   type ParentResult,
 } from "@/chat/agent-invocations/parent-result";
@@ -382,7 +383,7 @@ export function createConversationTurnWorker(
         );
       }
       await deliverToParent({
-        actor,
+        actor: parentResultActor(actor, source.kind),
         result,
         conversationId: context.conversationId,
         turnId,

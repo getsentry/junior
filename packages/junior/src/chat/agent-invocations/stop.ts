@@ -21,6 +21,7 @@ import { mapBounded } from "@/chat/fan-out";
 import { recordChildAgentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
+import { parentResultActor } from "./parent-result";
 import { createDeliverToParent } from "./result";
 import {
   getChildAgentLockName,
@@ -274,7 +275,10 @@ export async function reportPersonStopToParent(
     return;
   }
   await createDeliverToParent(options)({
-    actor: turn?.actor ?? firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR,
+    actor: parentResultActor(
+      turn?.actor ?? firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR,
+      turn?.source?.kind,
+    ),
     conversationId,
     result: {
       kind: "stopped",
