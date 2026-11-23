@@ -69,14 +69,6 @@ export type StepResult =
   | { outcome: "failed"; error: string; reply: AssistantMessage };
 
 /**
- * True when the last reply has tool calls without results, so the next step
- * runs those calls and not a model request.
- */
-export function hasPendingToolCalls(messages: Message[]): boolean {
-  return collectPendingToolCalls(messages).calls.length > 0;
-}
-
-/**
  * Runs one step of a Turn: the pending tool calls if there are any, else one
  * model request. Only a model request calls `request`, and the step returns
  * its new messages. A tool batch returns none.
