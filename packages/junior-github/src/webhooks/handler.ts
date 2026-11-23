@@ -277,6 +277,8 @@ export function createGitHubWebhookRoute(args: {
         await updateGitHubAnnotations({
           annotations: args.annotations,
           conversationIds: closedIssue.conversationIds,
+          // A person can edit the footer, so it cannot add a card.
+          existingOnly: true,
           log: args.log,
           update: {
             repo: closedIssue.repositoryFullName,
