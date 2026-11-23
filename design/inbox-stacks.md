@@ -37,7 +37,7 @@ can act on it.
   icons with their names as tooltips. The main step comes last. On a code
   change row it opens the change on its provider, such as "Review on
   GitHub". A row with no main step, such as a question, shows Expand. A
-  "To do for you" row has Done in place of Dismiss. A touch screen has no
+  "To do for you" row's main step is Done. A touch screen has no
   hover, so there a row shows its actions only once it is open. Rows do
   not repeat them.
 - On a stack: Dismiss and Snooze, as quiet buttons in the order of a
@@ -90,8 +90,8 @@ Grouping:
 Actions:
 
 - Each row carries its own answer, Dismiss, and Snooze. An answer closes
-  the item as done. A "To do for you" row carries Done and Snooze: only
-  its assignee closes their To-do. None of them act on the other rows of the stack.
+  the item as done. A "To do for you" row carries Dismiss, Snooze, and
+  Done: only its assignee closes their To-do. None of them act on the other rows of the stack.
 - A row that closes leaves with one motion, whatever closed it: its own
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only

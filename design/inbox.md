@@ -32,7 +32,7 @@ how the dashboard groups and acts on its rows.
 - Slack: the item card in each linked thread, and a thread reply.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
   the question card in the Conversation transcript, and the questions pill.
-  Done on a "To do for you" row.
+  Done and Dismiss on a "To do for you" row.
 - Dashboard filters: All, PRs, Decisions, and Other in the Inbox; All,
   Needs you, Working, Watching, and Done in Conversations and a
   repository's Conversations tab; and Pinned in the same control in all three.
@@ -101,9 +101,10 @@ how the dashboard groups and acts on its rows.
   content. No other person and no agent sees or changes it. The
   Conversation waits on the assignee alone; its shared status does not
   change.
-- Done is the only way to close a "To do for you" item, and it marks the
-  To-do done. It starts no Turn: the agent sees the change in its next
-  Turn. It cannot be dismissed, and Snooze works as on any row.
+- Done or Dismiss closes a "To do for you" item: Done marks the To-do
+  done, and Dismiss drops it. Neither starts a Turn: the agent sees the
+  change in its next Turn. Snooze works as on any row, and a snooze that
+  resolves on an Event marks the To-do done.
 - When the agent closes, drops, or removes the To-do, or gives it to
   itself or a child agent, its item closes. A To-do that goes to another
   person takes its item along. A To-do that opens again gets a new item.
