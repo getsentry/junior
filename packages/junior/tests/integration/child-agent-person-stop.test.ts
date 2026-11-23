@@ -1,5 +1,6 @@
 import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
 import { stopConversation } from "@/chat/conversations/stop";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
@@ -85,6 +86,10 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
       const harness = await createHarness();
       try {
         const taskId = await spawn(harness, `call-${kind}`, { kind });
+        const [parentMessage] = (
+          (await getConversationWorkState({ conversationId: taskId }))
+            ?.messages ?? []
+        ).flatMap((input) => readParentMessage(input) ?? []);
         await changeTodos(getSqlExecutor(), {
           change: {
             add: [
@@ -122,11 +127,24 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
         }
         expect(harness.runs).toHaveLength(when === "runs" ? 1 : 0);
 
-        const stopped = (
-          await mailboxTexts(harness, slackParentConversationId)
-        ).filter((text) => text.includes('status="stopped"'));
-        expect(stopped).toHaveLength(1);
-        expect(stopped[0]).toContain(`conversation_id="${taskId}"`);
+        // The parent runs the result as the agent that gave the work.
+        expect(
+          (
+            await getConversationWorkState({
+              conversationId: slackParentConversationId,
+            })
+          )?.messages
+            .filter((input) => input.input.text.includes('status="stopped"'))
+            .map((input) => ({
+              authorId: input.input.authorId,
+              text: input.input.text,
+            })),
+        ).toEqual([
+          {
+            authorId: resultAuthorId(parentMessage!.actor),
+            text: expect.stringContaining(`conversation_id="${taskId}"`),
+          },
+        ]);
         expect(
           (await listTodos(getSqlExecutor(), slackParentConversationId)).map(
             (todo) => todo.status,
