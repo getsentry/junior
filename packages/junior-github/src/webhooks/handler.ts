@@ -24,7 +24,6 @@ import {
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
   recordGitHubPullRequestConversations,
-  recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
 } from "../pull-request-outcomes/store.js";
 import {
@@ -33,7 +32,6 @@ import {
 } from "./issue-outcome.js";
 import {
   normalizeGitHubPullRequestConversations,
-  normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
@@ -243,10 +241,6 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestConversations({ body, botEmail })
           : undefined;
-      const pullRequestLinkedIssues =
-        eventName === "pull_request"
-          ? normalizeGitHubPullRequestLinkedIssues({ body, botEmail })
-          : undefined;
       if (pullRequestOutcome) {
         const recordedOutcome = await applyGitHubPullRequestOutcome({
           annotations: args.annotations,
@@ -333,12 +327,6 @@ export function createGitHubWebhookRoute(args: {
       if (pullRequestActivity) {
         await args.codeChanges.recordActivity(pullRequestActivity);
       }
-      const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
-        ? await recordGitHubPullRequestLinkedIssues(
-            args.db,
-            pullRequestLinkedIssues,
-          )
-        : false;
 
       const checkSuitePublishTargets =
         eventName === "check_suite"
@@ -497,7 +485,6 @@ export function createGitHubWebhookRoute(args: {
         !issueOutcome &&
         !recordedIssueConversations &&
         !recordedPullRequestConversations &&
-        !recordedPullRequestLinkedIssues &&
         events.length === 0
       ) {
         return new Response("Ignored", { status: 202 });
