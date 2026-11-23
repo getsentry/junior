@@ -36,7 +36,7 @@ describe("searchConversations", () => {
     await closeDb();
   });
 
-  it("returns bounded summary details with dashboard and best-effort Slack links", async () => {
+  it("returns bounded summary details with a dashboard link, else a best-effort Slack link", async () => {
     const conversationId = "slack:CARCHIVE:1700000000.100000";
     await getConversationStore().recordActivity({
       conversationId,
@@ -70,12 +70,6 @@ describe("searchConversations", () => {
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink:
-          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-      }),
-    });
 
     const tool = createSearchConversationsTool({
       channels,
@@ -107,8 +101,6 @@ describe("searchConversations", () => {
               url: "https://github.com/getsentry/junior/pull/1805",
             },
           ],
-          permalink:
-            "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
           status: "idle",
           summary: "The launch decision uses a blue rollout.",
           title: "Launch decision",
@@ -116,6 +108,25 @@ describe("searchConversations", () => {
         },
       ],
     });
+
+    // Without the dashboard, the Slack thread is the link.
+    setDashboardConversationLinkOptions(undefined);
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+      }),
+    });
+    const resultWithPermalink = await executeTool(tool, {
+      query: "launch decision",
+    });
+    expect(resultWithPermalink.conversations[0]).toMatchObject({
+      permalink:
+        "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+    });
+    expect(resultWithPermalink.conversations[0]).not.toHaveProperty(
+      "dashboard_url",
+    );
 
     queueSlackApiResponse("chat.getPermalink", {
       body: slackError({ error: "missing_scope" }),
@@ -159,6 +170,9 @@ describe("searchConversations", () => {
       }),
     ]);
 
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
     const publicTool = createSearchConversationsTool({
       conversationId: "local:test:current",
     });

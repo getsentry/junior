@@ -4,6 +4,7 @@ import {
   getConversationEventStore,
   getConversationStore,
 } from "@/chat/db";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
@@ -24,6 +25,7 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 
 describe("searchConversationMessages", () => {
   afterEach(async () => {
+    setDashboardConversationLinkOptions(undefined);
     await closeDb();
   });
 
@@ -113,6 +115,18 @@ describe("searchConversationMessages", () => {
         }),
       ],
     });
+
+    // With the dashboard, its link replaces the Slack thread link.
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    const withDashboard = await executeTool(tool, {
+      query: "launch checklist",
+    });
+    expect(withDashboard.matches[0]).toMatchObject({
+      dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent("slack:CARCHIVE:1700000000.100000")}`,
+    });
+    expect(withDashboard.matches[0]).not.toHaveProperty("permalink");
 
     await expect(
       executeTool(tool, {
