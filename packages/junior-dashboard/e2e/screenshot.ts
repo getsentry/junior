@@ -42,16 +42,14 @@ const SCREENSHOT_STYLE = [
 // the dashboard URL, such as the MCP settings, show this origin instead.
 const SCREENSHOT_ORIGIN = "http://127.0.0.1:3000";
 
-// Settle passes to try for one in which the page starts no request.
-const MAX_SETTLE_PASSES = 5;
+// The page has this long to go still before a shot fails. Every wait in
+// settle shares it.
+const SETTLE_TIMEOUT_MS = 5_000;
 
 // Frames in a row with no DOM change or scroll before the page counts as
 // still. React commits, chart resizes, and scroll restores land within a
 // frame or two of the change that causes them.
 const QUIET_FRAMES = 3;
-
-// A page that keeps changing for this long fails the shot.
-const QUIET_TIMEOUT_MS = 10_000;
 
 type ScreenshotOptions = {
   clip?: {
@@ -169,50 +167,61 @@ async function boxOf(target: Locator) {
 /**
  * Wait until the page is done: no request in flight, every font, image, and
  * first video frame loaded, and no DOM change or scroll for a few frames.
- * A page that does not get there fails the test here, not later as a
- * Frameshift change on an unrelated pull request.
+ * A page that does not get there within a few seconds fails the test here,
+ * not later as a Frameshift change on an unrelated pull request.
  */
 async function settle(page: Page) {
-  for (let pass = 1; pass <= MAX_SETTLE_PASSES; pass += 1) {
-    const started: string[] = [];
-    const onRequest = (request: Request) => started.push(request.url());
-    page.on("request", onRequest);
-    try {
-      await page.waitForLoadState("networkidle");
-      await loadAssets(page);
-      await waitForQuiet(page);
-    } finally {
-      page.off("request", onRequest);
-    }
+  const deadline = Date.now() + SETTLE_TIMEOUT_MS;
+  const remaining = () => Math.max(deadline - Date.now(), 1);
+  const pending = new Set<string>();
+  let started = 0;
+  const onStart = (request: Request) => {
+    pending.add(request.url());
+    started += 1;
+  };
+  const onEnd = (request: Request) => pending.delete(request.url());
+  page.on("request", onStart);
+  page.on("requestfinished", onEnd);
+  page.on("requestfailed", onEnd);
+  try {
     // A commit can start a fetch, such as a list that loads when it first
     // shows. Wait again for what that fetch renders.
-    if (started.length === 0) return;
-    if (pass === MAX_SETTLE_PASSES) {
-      throw new Error(
-        `The page kept starting requests before the shot: ${started.join(", ")}`,
-      );
-    }
+    do {
+      started = 0;
+      await page
+        .waitForLoadState("networkidle", { timeout: remaining() })
+        .catch(() => {
+          throw new Error(
+            `Requests were still in flight after ${SETTLE_TIMEOUT_MS}ms: ${[...pending].join(", ") || "unknown"}`,
+          );
+        });
+      await loadAssets(page, remaining());
+      await waitForQuiet(page, remaining());
+    } while (started > 0);
+  } finally {
+    page.off("request", onStart);
+    page.off("requestfinished", onEnd);
+    page.off("requestfailed", onEnd);
   }
 }
 
-async function loadAssets(page: Page) {
-  await page.evaluate(async () => {
-    // fonts.ready only waits for faces the page has already requested. A
-    // late web font swap changes text width and layout, so load every face.
-    await Promise.allSettled([...document.fonts].map((font) => font.load()));
-    await document.fonts.ready;
-    // Full-page captures include offscreen images. Start lazy loads before
-    // decoding, and let failed images render their fallback in the capture.
-    await Promise.allSettled(
-      [...document.images].map((image) => {
-        image.loading = "eager";
-        return image.decode();
-      }),
-    );
-    // A video without its first frame is an empty box. Stop waiting after
-    // a few seconds, as the browser may load only the metadata.
-    await Promise.race([
-      Promise.allSettled(
+async function loadAssets(page: Page, timeout: number) {
+  const loaded = await page.evaluate(async (timeout) => {
+    const assets = (async () => {
+      // fonts.ready only waits for faces the page has already requested. A
+      // late web font swap changes text width and layout, so load every face.
+      await Promise.allSettled([...document.fonts].map((font) => font.load()));
+      await document.fonts.ready;
+      // Full-page captures include offscreen images. Start lazy loads before
+      // decoding, and let failed images render their fallback in the capture.
+      await Promise.allSettled(
+        [...document.images].map((image) => {
+          image.loading = "eager";
+          return image.decode();
+        }),
+      );
+      // A video without its first frame is an empty box.
+      await Promise.allSettled(
         [...document.querySelectorAll("video")]
           .filter(
             (video) =>
@@ -226,17 +235,28 @@ async function loadAssets(page: Page) {
                 video.addEventListener("error", resolve, { once: true });
               }),
           ),
+      );
+      return true;
+    })();
+    return Promise.race([
+      assets,
+      new Promise<false>((resolve) =>
+        setTimeout(() => resolve(false), timeout),
       ),
-      new Promise((resolve) => setTimeout(resolve, 5_000)),
     ]);
-  });
+  }, timeout);
+  if (!loaded) {
+    throw new Error(
+      `Fonts, images, or videos were still loading after ${SETTLE_TIMEOUT_MS}ms.`,
+    );
+  }
 }
 
 /**
  * Wait for frames in a row with no DOM change and no scroll. Throws with the
  * element that kept changing, so the spec can wait for what moves it.
  */
-async function waitForQuiet(page: Page) {
+async function waitForQuiet(page: Page, timeout: number) {
   const busy = await page.evaluate(
     ({ frames, timeout }) =>
       new Promise<string | null>((resolve) => {
@@ -274,11 +294,11 @@ async function waitForQuiet(page: Page) {
         };
         requestAnimationFrame(frame);
       }),
-    { frames: QUIET_FRAMES, timeout: QUIET_TIMEOUT_MS },
+    { frames: QUIET_FRAMES, timeout },
   );
   if (busy) {
     throw new Error(
-      `The page kept changing for ${QUIET_TIMEOUT_MS}ms before the shot. Last change: ${busy}`,
+      `The page was still changing after ${SETTLE_TIMEOUT_MS}ms. Last change: ${busy}`,
     );
   }
 }
