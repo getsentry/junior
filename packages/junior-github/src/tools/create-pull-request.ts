@@ -226,6 +226,15 @@ function nonEmptyString(value: string | undefined, name: string): string {
   return value.trim();
 }
 
+function runtimeId(value: string | undefined, name: string): string {
+  if (!value?.trim()) {
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn. No change to the call can fix this.`,
+    );
+  }
+  return value.trim();
+}
+
 function createPullRequestState(
   value: unknown,
 ): CreatePullRequestState | undefined {
@@ -650,11 +659,8 @@ export function createGitHubPullRequestTool(
         ...githubText,
         ...people,
       });
-      const conversationId = nonEmptyString(
-        ctx.conversationId,
-        "conversationId",
-      );
-      const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
+      const conversationId = runtimeId(ctx.conversationId, "conversationId");
+      const toolCallId = runtimeId(options?.toolCallId, "toolCallId");
       const key = `createPullRequest:${conversationId}:${toolCallId}`;
       const attempt = await ctx.state.withLock(
         `${key}:lock`,

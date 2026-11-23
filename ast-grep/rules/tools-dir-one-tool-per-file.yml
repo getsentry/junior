@@ -1,7 +1,7 @@
 # A `tools` directory holds only model-facing tools, one tool per file:
 # `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Helpers, schemas, and
-# shared types go in a module outside `tools`. `policies/tool-design.md` owns
-# the layout.
+# shared types go in a module outside `tools`. The `build-tools` repo skill
+# explains the layout.
 id: tools-dir-one-tool-per-file
 language: TypeScript
 severity: error
