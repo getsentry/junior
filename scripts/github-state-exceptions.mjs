@@ -28,25 +28,7 @@ export const githubStateExceptions = {
   "junior_code_changes.title":
     "Too expensive to derive: search matches code changes by title.",
 
-  "junior_github_issues.issue_id":
-    "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer.",
-  "junior_github_issues.repository_id":
-    "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer.",
-  "junior_github_issues.repository_full_name":
-    "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer.",
-  "junior_github_issues.number":
-    "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer.",
   "junior_github_issues.state": "Mirror awaiting cleanup: nothing reads it.",
-  "junior_github_issues.state_reason":
-    "Mirror awaiting cleanup: nothing reads it.",
-  "junior_github_issues.conversation_ids":
-    "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer.",
-  "junior_github_issues.opened_at":
-    "Mirror awaiting cleanup: nothing reads it.",
-  "junior_github_issues.closed_at":
-    "Mirror awaiting cleanup: nothing reads it.",
-  "junior_github_issues.updated_at":
-    "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer.",
 
   "junior_github_pull_request_issues.pull_request_id":
     "Mirror awaiting cleanup: nothing reads it.",
