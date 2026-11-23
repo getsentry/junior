@@ -12,6 +12,7 @@ import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
 import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
+import { pushConversationInboxItemsNow } from "@/chat/notifications/inbox-item-push";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
@@ -457,8 +458,11 @@ async function routeParsedMessage(args: {
   }
 
   // A mention in the thread attaches a detached Conversation again.
-  if (route === "mention") {
-    await resumeConversationDelivery(conversationId);
+  if (
+    route === "mention" &&
+    (await resumeConversationDelivery(conversationId))
+  ) {
+    await pushConversationInboxItemsNow(conversationId);
   }
 
   // Keep non-mention thread messages as Conversation history without waking a

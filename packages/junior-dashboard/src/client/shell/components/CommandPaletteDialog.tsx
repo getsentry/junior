@@ -1,6 +1,9 @@
 import type {
   AutomationListItem,
   InboxItemPayload,
+  SearchAutomation,
+  SearchInboxItem,
+  SearchSource,
 } from "@sentry/junior/api/schema";
 import { cn, dashboardCountClass } from "../../styles";
 import {
@@ -41,6 +44,7 @@ import {
   automationSelectPath,
 } from "../../pages/automations/newAutomation";
 import { useInboxItemsData } from "../../inbox/queries";
+import { useSearchData } from "../../search";
 import { inboxViewPath } from "../../inbox/inboxModel";
 import { inboxRowPath } from "../../inbox/inboxItemFormat";
 import type { Conversation } from "../../types";
@@ -49,6 +53,7 @@ import { navItemIcon } from "../../components/layout/navIcons";
 import {
   pluginPageGroupForPath,
   repositoryIdForPath,
+  directorySearchSources,
   useDirectoryPaletteItems,
 } from "../../components/paletteDirectories";
 import type { PaletteItem } from "../../components/paletteItem";
@@ -80,6 +85,11 @@ type PageRow = {
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
+// The groups that match on the server with one read for each query.
+const PALETTE_SEARCH_SOURCES: readonly SearchSource[] = [
+  "inboxItems",
+  "automations",
+];
 
 /**
  * The command palette's dialog and rows. It loads with the first open, so
@@ -118,20 +128,19 @@ function CommandPaletteBody(props: {
   // no request. The server search only reaches conversations outside it.
   const feed = useConversationsData();
   const searched = useConversationsData(search);
-  // The Inbox's own list, so the palette reads its cache.
+  // The pages' own lists, so the palette reads their cache for the recent
+  // rows before the viewer types.
   const inbox = useInboxItemsData({ forViewer: true, sort: "waiting" });
-  // The server matches body text too, which the cached list cannot.
-  const inboxSearched = useInboxItemsData({
-    enabled: Boolean(search),
-    forViewer: true,
-    q: search,
-  });
   const automations = useAutomationsData(true, AUTOMATION_LIST_SEARCH);
-  // The list holds the first 100, and the server matches instructions too.
-  const automationsSearched = useAutomationsData(
-    Boolean(search),
-    new URLSearchParams({ pageSize: "20", q: search }).toString(),
+  // Typed text finds Inbox items, Automations, and Memories on the server.
+  const searchSources = useMemo(
+    () => [
+      ...PALETTE_SEARCH_SOURCES,
+      ...directorySearchSources(props.navItems),
+    ],
+    [props.navItems],
   );
+  const sourcesSearched = useSearchData(search, searchSources);
   const viewer = useDashboardCoreData().data?.me.user;
   const navPages = useMemo(
     () =>
@@ -152,6 +161,14 @@ function CommandPaletteBody(props: {
   // A generic plugin page's rows lead on it, as a directory's do.
   const activeGroup =
     props.activeGroup ?? pluginPageGroupForPath(props.navItems, pathname);
+  // Hide server rows until they match the typed text, so stale or
+  // placeholder rows never show for the wrong query.
+  const searchedCurrent =
+    Boolean(search) && query.trim() === search && !searched.isPlaceholderData;
+  const sourcesSearchedCurrent =
+    Boolean(search) &&
+    query.trim() === search &&
+    !sourcesSearched.isPlaceholderData;
   const directories = useDirectoryPaletteItems({
     activeGroup,
     conversationId: props.currentConversationId,
@@ -159,20 +176,9 @@ function CommandPaletteBody(props: {
     pathname,
     query: query.trim(),
     search,
+    searched: sourcesSearchedCurrent ? sourcesSearched.data : undefined,
   });
   const list = useRef<HTMLDivElement>(null);
-  // Hide server rows until they match the typed text, so stale or
-  // placeholder rows never show for the wrong query.
-  const searchedCurrent =
-    Boolean(search) && query.trim() === search && !searched.isPlaceholderData;
-  const inboxSearchedCurrent =
-    Boolean(search) &&
-    query.trim() === search &&
-    !inboxSearched.query.isPlaceholderData;
-  const automationsSearchedCurrent =
-    Boolean(search) &&
-    query.trim() === search &&
-    !automationsSearched.isPlaceholderData;
   const repositorySearchedCurrent =
     Boolean(search) &&
     query.trim() === search &&
@@ -183,14 +189,16 @@ function CommandPaletteBody(props: {
         actions: props.actions,
         activeGroup,
         automations: automations.data?.automations ?? [],
-        automationsSearched: automationsSearchedCurrent
-          ? (automationsSearched.data?.automations ?? [])
+        automationsSearched: sourcesSearchedCurrent
+          ? (sourcesSearched.data?.automations ?? [])
           : [],
         currentConversationId: props.currentConversationId,
         directories: directories.items,
         feed: buildConversations(feed.data?.conversations ?? []),
         inbox: inbox.items,
-        inboxSearched: inboxSearchedCurrent ? inboxSearched.items : [],
+        inboxSearched: sourcesSearchedCurrent
+          ? (sourcesSearched.data?.inboxItems ?? [])
+          : [],
         navItems: props.navItems,
         navPages,
         query: query.trim(),
@@ -203,12 +211,8 @@ function CommandPaletteBody(props: {
       }),
     [
       automations.data?.automations,
-      automationsSearched.data?.automations,
-      automationsSearchedCurrent,
       feed.data?.conversations,
       inbox.items,
-      inboxSearched.items,
-      inboxSearchedCurrent,
       directories.items,
       navPages,
       activeGroup,
@@ -220,6 +224,8 @@ function CommandPaletteBody(props: {
       repositorySearchedCurrent,
       searched.data?.conversations,
       searchedCurrent,
+      sourcesSearched.data,
+      sourcesSearchedCurrent,
     ],
   );
   // cmdk keeps the highlight on its row when rows load above it, but scrolls
@@ -237,12 +243,9 @@ function CommandPaletteBody(props: {
   // them can still match.
   const searching =
     query.trim() !== search ||
-    [
-      searched,
-      inboxSearched.query,
-      automationsSearched,
-      repositorySearched,
-    ].some((read) => read.isFetching) ||
+    [searched, sourcesSearched, repositorySearched].some(
+      (read) => read.isFetching,
+    ) ||
     directories.fetching;
 
   return (
@@ -304,15 +307,15 @@ function paletteItems(input: {
   actions: PaletteAction[];
   activeGroup?: string;
   automations: AutomationListItem[];
-  /** Server matches on title, instruction, skill, and resource. */
-  automationsSearched: AutomationListItem[];
+  /** Server matches on title, task, and trigger text, best first. */
+  automationsSearched: SearchAutomation[];
   currentConversationId?: string;
   /** Directory rows, already matched and ranked. */
   directories: PaletteItem[];
   feed: Conversation[];
   inbox: InboxItemPayload[];
-  /** Server matches on title and body. */
-  inboxSearched: InboxItemPayload[];
+  /** Server matches on title and body text, open ones first. */
+  inboxSearched: SearchInboxItem[];
   navItems: DashboardHeaderNavItem[];
   /** Pages outside the nav items, which list once the viewer types. */
   navPages: PalettePage[];
@@ -370,10 +373,6 @@ function paletteItems(input: {
     score: 0,
   });
   const query = input.query || undefined;
-  const inbox = input.inbox.map((item) => inboxItem(item, query));
-  const automations = input.automations.map((automation) =>
-    automationItem(automation, query),
-  );
   // The page's rows lead, under its group's name. A tab names its rows;
   // a directory's are its group.
   const lead = (
@@ -401,9 +400,13 @@ function paletteItems(input: {
       .map((conversation) => conversationItem(conversation, "Recent"));
     return lead(
       {
-        Automations: automations.slice(0, RECENT_LIMIT),
+        Automations: input.automations
+          .slice(0, RECENT_LIMIT)
+          .map((automation) => automationItem(automation)),
         Conversations: recent,
-        Inbox: inbox.slice(0, RECENT_LIMIT),
+        Inbox: input.inbox
+          .slice(0, RECENT_LIMIT)
+          .map((item) => inboxItem(item)),
       },
       [recent, input.actions.map(actionItem), pages.map(pageItem)],
     );
@@ -446,29 +449,16 @@ function paletteItems(input: {
     .map((conversation) =>
       conversationItem(conversation, "More conversations", query),
     );
-  // Title matches in the cached list rank first; server matches on other
-  // text, or past the list, follow.
-  const withServerMatches = (local: PaletteItem[], server: PaletteItem[]) =>
-    [
-      ...local,
-      ...server.filter((row) => !local.some((item) => item.id === row.id)),
-    ].slice(0, MORE_LIMIT);
-  // Closed matches open in Done, after the open ones.
-  const matchedInbox = withServerMatches(
-    ranked(inbox),
-    input.inboxSearched
-      .filter((item) => item.status === "open")
-      .map((item) => inboxItem(item, query)),
-  );
+  // The server ranks its matches. Closed matches open in Done, after the
+  // open ones.
+  const matchedInbox = input.inboxSearched
+    .filter((item) => item.status === "open")
+    .map((item) => inboxItem(item, query));
   const matchedDone = input.inboxSearched
     .filter((item) => item.status !== "open")
-    .slice(0, MORE_LIMIT)
     .map((item) => doneItem(item, query));
-  const matchedAutomations = withServerMatches(
-    ranked(automations),
-    input.automationsSearched.map((automation) =>
-      automationItem(automation, query),
-    ),
+  const matchedAutomations = input.automationsSearched.map((automation) =>
+    automationItem(automation, query),
   );
   const pagesFirst =
     (matchedPages[0]?.score ?? 0) > (conversations[0]?.score ?? 0);
@@ -490,7 +480,9 @@ function paletteItems(input: {
   );
 }
 
-function inboxItem(item: InboxItemPayload, query?: string): PaletteItem {
+type PaletteInboxItem = Pick<InboxItemPayload, "id" | "status" | "title">;
+
+function inboxItem(item: PaletteInboxItem, query?: string): PaletteItem {
   const match = query ? quickOpenMatch(item.title, query) : undefined;
   return {
     group: "Inbox",
@@ -503,7 +495,7 @@ function inboxItem(item: InboxItemPayload, query?: string): PaletteItem {
   };
 }
 
-function doneItem(item: InboxItemPayload, query?: string): PaletteItem {
+function doneItem(item: PaletteInboxItem, query?: string): PaletteItem {
   const match = query ? quickOpenMatch(item.title, query) : undefined;
   return {
     group: "Done",
@@ -518,7 +510,7 @@ function doneItem(item: InboxItemPayload, query?: string): PaletteItem {
 }
 
 function automationItem(
-  automation: AutomationListItem,
+  automation: Pick<AutomationListItem, "id" | "kind" | "status" | "title">,
   query?: string,
 ): PaletteItem {
   const match = query ? quickOpenMatch(automation.title, query) : undefined;

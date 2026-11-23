@@ -48,6 +48,12 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   their snooze of that item, it pushes to them once more. Everyone items
   and other notices do not push. When the item closes, its push goes away
   on every device.
+- When Slack shows the item in a card, Slack asks first. The push waits 5
+  minutes and goes only to a User who is away in Slack then. An answer, a
+  dismiss, or a reply in that time closes the item, so nothing pushes. An
+  item in a Conversation with no Slack thread, or one that is attached to
+  or detached from Slack after the item opens, counts as already waited:
+  it pushes at once if it has not pushed yet.
 
 ## Gaps
 

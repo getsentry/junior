@@ -373,6 +373,16 @@ WHERE setdatabase = 0
         `  junior-github: up to date (${githubMigrationCount} migrations)`,
         `Database is up to date (${totalMigrationCount} migrations).`,
       ]);
+
+      // A higher role default comes back down to the constant.
+      await fixture.sql.query(
+        "ALTER ROLE CURRENT_USER SET jit_above_cost = 20000000",
+      );
+      lines.length = 0;
+      await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
+      expect(lines.at(-1)).toBe(
+        "Set jit_above_cost to 10000000 for the app's role.",
+      );
     } finally {
       await fixture.sql.query("ALTER ROLE CURRENT_USER RESET jit_above_cost");
       await fixture.close();

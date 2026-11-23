@@ -5,10 +5,12 @@ import { juniorInboxItemDeliveries } from "@/db/schema";
 
 /**
  * Why a delivery sent nothing. `taken`: the User took the item themselves,
- * so they already know about it.
+ * so they already know about it. `slack_active`: the User was active in
+ * Slack after its card posted, so Slack's own notification reached them.
  */
 export type InboxItemDeliverySkipReason =
   | NotificationPause
+  | "slack_active"
   | "snoozed"
   | "taken";
 
@@ -62,6 +64,48 @@ export async function claimInboxItemPush(
     .onConflictDoNothing()
     .returning({ itemId: juniorInboxItemDeliveries.itemId });
   return inserted.length > 0;
+}
+
+/**
+ * Record that a Slack card shows an item to these Users, once per User.
+ * Return when each of them first got a card, so their wait for a push
+ * starts then, also after a later show of the item.
+ */
+export async function recordInboxItemSlackCard(
+  db: JuniorDatabase,
+  input: { itemId: string; nowMs: number; userIds: readonly string[] },
+): Promise<Map<string, number>> {
+  if (input.userIds.length === 0) return new Map();
+  const now = new Date(input.nowMs);
+  await db
+    .insert(juniorInboxItemDeliveries)
+    .values(
+      input.userIds.map((userId) => ({
+        channel: "slack" as const,
+        createdAt: now,
+        event: "created" as const,
+        itemId: input.itemId,
+        status: "sent" as const,
+        updatedAt: now,
+        userId,
+      })),
+    )
+    .onConflictDoNothing();
+  const rows = await db
+    .select({
+      createdAt: juniorInboxItemDeliveries.createdAt,
+      userId: juniorInboxItemDeliveries.userId,
+    })
+    .from(juniorInboxItemDeliveries)
+    .where(
+      and(
+        eq(juniorInboxItemDeliveries.itemId, input.itemId),
+        eq(juniorInboxItemDeliveries.channel, "slack"),
+        eq(juniorInboxItemDeliveries.event, "created"),
+        inArray(juniorInboxItemDeliveries.userId, [...input.userIds]),
+      ),
+    );
+  return new Map(rows.map((row) => [row.userId, row.createdAt.getTime()]));
 }
 
 /**

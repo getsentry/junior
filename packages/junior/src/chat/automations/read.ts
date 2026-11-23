@@ -184,6 +184,22 @@ function taskDisplayTitle(
   return fallbackShortTitle(instruction, fallback);
 }
 
+/**
+ * The title that the Automations list shows for a row of
+ * `viewerAutomationCollection`: its own, or else one from its task.
+ */
+export function collectionRowTitle(row: {
+  kind: "event" | "scheduled";
+  task: unknown;
+  title: string | null;
+}): string {
+  return taskDisplayTitle(
+    row.title ?? undefined,
+    automationTaskDescription(automationTaskSchema.parse(row.task)),
+    `Untitled ${row.kind} automation`,
+  );
+}
+
 async function destinationDetails(
   destinations: SlackDestination[],
 ): Promise<Map<string, DestinationDetails>> {
@@ -711,14 +727,7 @@ export async function readViewerAutomationRuns(
     automationId: string;
   }> = [];
   for (const task of taskList) {
-    automationTitles.set(
-      `${task.kind}:${task.id}`,
-      taskDisplayTitle(
-        task.title ?? undefined,
-        automationTaskDescription(automationTaskSchema.parse(task.task)),
-        `Untitled ${task.kind} automation`,
-      ),
-    );
+    automationTitles.set(`${task.kind}:${task.id}`, collectionRowTitle(task));
     automations.push({ kind: task.kind, automationId: task.id });
   }
   for (const task of deletedScheduled) {

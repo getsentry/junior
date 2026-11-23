@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
 import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
+import { mockSearchRows } from "../search-fixture";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -424,6 +425,21 @@ export async function mockInboxItems(
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
   const closedNow: MockItem[] = [];
+  // A search finds snoozed and closed items too, as on the server.
+  await mockSearchRows(page, {
+    inboxItems: () =>
+      [...open, ...closedNow, ...archived].map((i) => ({
+        body: i.body,
+        id: i.id,
+        status:
+          i.status === "open"
+            ? "open"
+            : i.status === "dismissed"
+              ? "dismissed"
+              : "done",
+        title: i.title,
+      })),
+  });
   await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
