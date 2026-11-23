@@ -1,4 +1,5 @@
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
+import { parsePath } from "react-router";
 import {
   Check,
   CircleHelp,
@@ -77,13 +78,13 @@ function filterSearch(search: string) {
  * hide stays on screen once the `item` link leaves the URL.
  */
 export function withoutFilters(path: string): string {
-  const [pathname, search = ""] = path.split("?", 2);
+  const { pathname = "/", search = "" } = parsePath(path);
   const params = new URLSearchParams(search);
   for (const param of [TYPE_PARAM, STATE_PARAM, PINNED_PARAM]) {
     params.delete(param);
   }
   const rest = params.toString();
-  return rest ? `${pathname}?${rest}` : (pathname ?? path);
+  return rest ? `${pathname}?${rest}` : pathname;
 }
 
 /**

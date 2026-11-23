@@ -26,7 +26,7 @@ import { useDebouncedValue } from "../../debouncedValue";
 import { useWaitingConversations } from "../../inbox/queries";
 import { CodeActivityChart } from "./CodeActivityChart";
 import { CodeChangeRow } from "./CodeChangeRow";
-import { repositoryActivity } from "./RepositorySections";
+import { codeActivity } from "./RepositorySections";
 import { getDashboardTimeZone } from "../../time";
 
 const PAGE_SIZE = 25;
@@ -117,7 +117,7 @@ export function RepositoryChangesTab(props: {
     <>
       <CodeActivityChart
         bucketUnit={timeRangeBucketUnit(props.range)}
-        days={repositoryActivity(props.data, props.range)}
+        days={codeActivity(props.data, props.range)}
         range={props.range}
       />
       <section aria-label="Changes" className="grid gap-4">

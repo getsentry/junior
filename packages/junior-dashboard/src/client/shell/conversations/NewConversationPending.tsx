@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, type ReactNode } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
 import type { ConversationTranscript } from "../../types";
-import { INBOX_VIEW_LABELS, inboxViewOfPath } from "../../inbox/inboxModel";
+import { returnPathLabel } from "../../components/layout/paneRows";
 import { useInboxReturnPath } from "../../inbox/inboxListState";
 import {
   ChatLayout,
@@ -136,9 +136,8 @@ export function NewConversationPending(props: {
   // mobile does not flash the composer header before the route changes.
   // Back waits, like the header actions: the composer holds the sent text
   // until the create is accepted.
-  const returnView = inboxViewOfPath(useInboxReturnPath());
   useRegisterMobileHeaderBack(
-    `Back to ${INBOX_VIEW_LABELS[returnView]}`,
+    `Back to ${returnPathLabel(useInboxReturnPath())}`,
     undefined,
     PENDING_TITLE,
   );
