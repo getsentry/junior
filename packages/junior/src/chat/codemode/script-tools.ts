@@ -10,15 +10,11 @@ import {
   type CodemodeJsonSchema,
 } from "@earendil-works/pi-codemode";
 import { effectiveToolExposure } from "@/chat/tool-exposure";
-import type { AnyToolDefinition } from "@/chat/tool-support/definition";
+import type {
+  AnyToolDefinition,
+  ToolExposure,
+} from "@/chat/tool-support/definition";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { estimateTextTokens } from "@/chat/services/token-estimate";
-
-/**
- * Estimated tokens that the tool declarations may use in the description.
- * Pi's coding agent uses the same default.
- */
-const DECLARATION_BUDGET_TOKENS = 3_000;
 
 /** Fields of the shared tool result envelope. They say nothing about one tool. */
 const ENVELOPE_FIELDS = new Set<string>(juniorToolOutputSchema.keyof().options);
@@ -71,60 +67,37 @@ function renderDeclaration(name: string, tool: AnyToolDefinition): string {
 /**
  * Tell the script which tools it may call, for the `<script-tools>` system
  * prompt section. Direct tools are only named: the model already has their
- * input schemas. The other tools are declared within the token budget,
- * cheapest first, so that the most tools fit. The others stay callable. The
- * model finds their input with `searchTools`. Script-only tools come first,
- * because `searchTools` does not find them. The same tools give the same
- * text, so the section is not sent again while the tools stay the same.
+ * input schemas. Only script-only tools are declared, because `searchTools`
+ * does not find them. Deferred tools are not declared, like in Pi's coding
+ * agent: the model gets their input schemas from `searchTools`, and scripts
+ * can filter `ALL_TOOLS`. The same tools give the same text, so the section
+ * is not sent again while the tools stay the same.
  */
 export function renderScriptTools(
   tools: Record<string, AnyToolDefinition>,
 ): string {
-  const directNames = Object.entries(tools)
-    .filter(([, tool]) => effectiveToolExposure(tool) === "direct")
-    .map(([name]) => name)
-    .sort((a, b) => a.localeCompare(b));
-  const entries = Object.entries(tools)
-    .filter(([, tool]) => effectiveToolExposure(tool) !== "direct")
-    .map(([name, tool]) => {
-      const text = renderDeclaration(name, tool);
-      return {
-        cost: estimateTextTokens(text),
-        name,
-        scriptOnly: effectiveToolExposure(tool) === "codemode",
-        text,
-      };
-    })
-    .sort(
-      (a, b) =>
-        Number(b.scriptOnly) - Number(a.scriptOnly) ||
-        a.cost - b.cost ||
-        a.name.localeCompare(b.name),
-    );
-  let remaining = DECLARATION_BUDGET_TOKENS;
-  const shown: typeof entries = [];
-  for (const entry of entries) {
-    if (entry.cost > remaining) {
-      continue;
-    }
-    remaining -= entry.cost;
-    shown.push(entry);
-  }
-  shown.sort((a, b) => a.name.localeCompare(b.name));
-  const omitted = entries.length - shown.length;
+  const named = (exposure: ToolExposure) =>
+    Object.entries(tools)
+      .filter(([, tool]) => effectiveToolExposure(tool) === exposure)
+      .sort(([a], [b]) => a.localeCompare(b));
+  const directNames = named("direct").map(([name]) => name);
+  const declarations = named("codemode").map(([name, tool]) =>
+    renderDeclaration(name, tool),
+  );
+  const deferredCount = named("deferred").length;
   return [
     ...(directNames.length > 0
       ? [
           `These tools from your tool list can also be called as \`tools.<name>(args)\`, with the same input: ${directNames.join(", ")}.`,
         ]
       : []),
-    ...(shown.length > 0
-      ? ["declare const tools: {", ...shown.map((entry) => entry.text), "};"]
+    ...(declarations.length > 0
+      ? ["declare const tools: {", ...declarations, "};"]
       : []),
     // The catalog tools are `modelOnly`. Models still call them from scripts.
-    ...(omitted > 0
+    ...(deferredCount > 0
       ? [
-          `${omitted} more tools are not declared here. To find one, call ${SEARCH_TOOLS_NAME} directly before the script. Then call each result as \`tools.<tool_name>(args)\`, with its input_schema. ${PARAMS_PREVIEW_HINT} A script cannot call ${SEARCH_TOOLS_NAME} or ${EXECUTE_TOOL_NAME}.`,
+          `Scripts can also call ${deferredCount} tools that are not listed here. To get the input_schema of one, call ${SEARCH_TOOLS_NAME} directly before the script. Then call it as \`tools.<tool_name>(args)\`. ${PARAMS_PREVIEW_HINT} In a script, \`ALL_TOOLS\` lists \`{ name, description }\` for every tool. Filter it; do not print all of it. A script cannot call ${SEARCH_TOOLS_NAME} or ${EXECUTE_TOOL_NAME}.`,
         ]
       : []),
     // MCP tools are not script tools. Only `callMcpTool` reaches them.
