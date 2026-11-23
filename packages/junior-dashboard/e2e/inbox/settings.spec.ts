@@ -403,6 +403,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const sections = page.getByRole("navigation", { name: "Settings" });
     const section = (name: string) =>
       sections.getByRole("link", { exact: true, name });
+    // Scroll up with the wheel, as a reader does. Reader input releases a
+    // followed link at once. A script scroll in the frame that a late read
+    // grows the page looks like layout, so the link scrolls back.
+    const wheelToTop = async (heading: string) => {
+      await page.getByRole("heading", { exact: true, name: heading }).hover();
+      await page.mouse.wheel(0, -100_000);
+    };
 
     await expect(section("General")).toHaveAttribute(
       "aria-current",
@@ -418,7 +425,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(section("General")).not.toHaveAttribute("aria-current");
 
     // Scrolling back up moves the mark to the section in view.
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await wheelToTop("Identities");
     await expect(section("General")).toHaveAttribute(
       "aria-current",
       "location",
@@ -455,7 +462,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "aria-current",
       "location",
     );
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await wheelToTop("How they got here");
     await expect(memorySection("Activity")).toHaveAttribute(
       "aria-current",
       "location",
