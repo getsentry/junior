@@ -1,67 +1,27 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
-import { useEffect, useSyncExternalStore } from "react";
+import { useEffect } from "react";
 import { Bot, Rows2, Rows3 } from "lucide-react";
 
 import { useDashboardCoreData } from "../api";
 import { ActorAvatar } from "../components/ActorAvatar";
-import {
-  PreferenceToggle,
-  type PreferenceChoice,
-} from "../components/PreferenceToggle";
+import { browserChoice } from "../browserChoice";
+import type { BrowserPreference } from "../components/PreferenceToggle";
 import { participantName } from "../components/ParticipantAvatarStack";
 import type { Conversation } from "../types";
 
 /** How roomy the dashboard is. Comfortable adds who takes part to rows. */
 type ConversationDensity = "comfortable" | "compact";
 
-const DENSITY_STORAGE_KEY = "junior:density";
-const DENSITY_CHANGE_EVENT = "junior:density-change";
-
-function readDensity(): ConversationDensity {
-  try {
-    return window.localStorage.getItem(DENSITY_STORAGE_KEY) === "comfortable"
-      ? "comfortable"
-      : "compact";
-  } catch {
-    return "compact";
-  }
-}
-
-function subscribeDensity(onChange: () => void): () => void {
-  window.addEventListener(DENSITY_CHANGE_EVENT, onChange);
-  window.addEventListener("storage", onChange);
-  return () => {
-    window.removeEventListener(DENSITY_CHANGE_EVENT, onChange);
-    window.removeEventListener("storage", onChange);
-  };
-}
-
-function saveDensity(density: ConversationDensity): void {
-  try {
-    window.localStorage.setItem(DENSITY_STORAGE_KEY, density);
-  } catch {
-    // Storage is blocked, so the dashboard stays compact.
-    return;
-  }
-  window.dispatchEvent(new Event(DENSITY_CHANGE_EVENT));
-}
-
 /**
  * The viewer's density, kept in this browser. Rows and the
  * transcript follow it: components read it here, and CSS reads the root's
  * `data-density` through the `comfortable:` variant.
  */
-export function useConversationDensity(): [
-  ConversationDensity,
-  (density: ConversationDensity) => void,
-] {
-  const density = useSyncExternalStore(
-    subscribeDensity,
-    readDensity,
-    () => "compact" as const,
-  );
-  return [density, saveDensity];
-}
+export const useConversationDensity = browserChoice<ConversationDensity>(
+  "junior:density",
+  ["comfortable"],
+  "compact",
+);
 
 /** Mirror the density on the root, for the `comfortable:` CSS variant. */
 export function useDensityRoot(): void {
@@ -76,26 +36,15 @@ export function useDensityRoot(): void {
   }, [density]);
 }
 
-const densityChoices = [
-  { Icon: Rows3, label: "Compact", value: "compact" },
-  { Icon: Rows2, label: "Comfortable", value: "comfortable" },
-] as const satisfies ReadonlyArray<PreferenceChoice<ConversationDensity>>;
-
-/** Choose the dashboard density, next to the theme choice. */
-export function DensitySwitcher(props: { className?: string; menu?: boolean }) {
-  const [density, setDensity] = useConversationDensity();
-  return (
-    <PreferenceToggle<ConversationDensity>
-      choices={densityChoices}
-      className={props.className}
-      itemLabel={(item) => `${item.label} density`}
-      menu={props.menu}
-      label="Density"
-      onChange={setDensity}
-      value={density}
-    />
-  );
-}
+/** This browser's dashboard density: compact or comfortable. */
+export const densityPreference: BrowserPreference<ConversationDensity> = {
+  choices: [
+    { Icon: Rows3, label: "Compact", value: "compact" },
+    { Icon: Rows2, label: "Comfortable", value: "comfortable" },
+  ],
+  label: "Density",
+  useChoice: useConversationDensity,
+};
 
 function personKey(person: ActorIdentity): string {
   return (

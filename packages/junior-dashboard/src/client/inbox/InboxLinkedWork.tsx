@@ -6,6 +6,7 @@ import { FittingIcons } from "../conversations/ConversationMeta";
 import { linkStatusLabel } from "../conversations/ConversationLinkedWork";
 import {
   MessageObjectsProvider,
+  usePlainLinks,
   useResolvedObject,
 } from "../display-text/DisplayText";
 import {
@@ -149,7 +150,8 @@ export type WorkLineObject = {
  * icon in its status color, its title, then its short name. Work saved
  * with no title shows its icon and short name. A repo name gives way
  * before the title does. The title truncates next, then the short name, so
- * the line stays in its column. The tooltip names both in full.
+ * the line stays in its column. The tooltip names both in full. Plain links
+ * show no icon.
  */
 export function WorkLine(props: {
   href?: string | undefined;
@@ -157,6 +159,7 @@ export function WorkLine(props: {
   work: WorkLineObject;
 }) {
   const { work } = props;
+  const plain = usePlainLinks();
   const tone = work.objectType
     ? objectPresentation({ objectType: work.objectType, status: work.status })
         .tone
@@ -168,7 +171,7 @@ export function WorkLine(props: {
   const content = (
     <>
       <span className="flex shrink-0" data-status-tone={tone}>
-        {work.objectType ? (
+        {work.objectType && !plain ? (
           <ObjectIcon
             objectType={work.objectType}
             size={14}
@@ -312,17 +315,20 @@ function shortRef(object: { key: string; label: string }): string {
 
 // A quiet chip: the short name in the status color, with the title on
 // hover and in the chip's name. Work whose label repeats its title, such
-// as a web page, has no short name, so it shows its title.
+// as a web page, has no short name, so it shows its title. Plain links
+// show the title with no status color.
 function WorkChip(props: { work: Annotation }) {
   const { work } = props;
-  const tone = work.objectType
-    ? objectPresentation({ objectType: work.objectType, status: work.status })
-        .tone
-    : undefined;
+  const plain = usePlainLinks();
+  const tone =
+    work.objectType && !plain
+      ? objectPresentation({ objectType: work.objectType, status: work.status })
+          .tone
+      : undefined;
   const name = work.title ?? work.label;
   const ref = shortRef(work);
   const toneClass = tone ? objectToneClass[tone] : "text-dashboard-text-muted";
-  const titled = !repeatsTitle(ref, name);
+  const titled = !plain && !repeatsTitle(ref, name);
   const content = (
     <>
       {titled ? <span className="sr-only">{name} </span> : null}

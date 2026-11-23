@@ -23,40 +23,50 @@ export type PreferenceChoice<T extends string> = {
   value: T;
 };
 
+/** One browser preference that a `PreferenceToggle` picks. */
+export type BrowserPreference<T extends string> = {
+  choices: readonly PreferenceChoice<T>[];
+  /**
+   * Name of the preference, such as "Theme". Each button is named by its
+   * choice, then this name, such as "Light theme".
+   */
+  label: string;
+  useChoice(): readonly [T, (value: T) => void];
+};
+
 /** Label one browser preference and pick its value from icon buttons. */
 export function PreferenceToggle<T extends string>(props: {
-  choices: readonly PreferenceChoice<T>[];
   className?: string | undefined;
-  /** Accessible name of each button, such as "Light theme". */
-  itemLabel(choice: PreferenceChoice<T>): string;
-  label: string;
   /**
    * Render the choices as menu radio items, so arrow keys reach them inside
    * a dropdown menu.
    */
   menu?: boolean | undefined;
-  onChange(value: T): void;
-  value: T;
+  preference: BrowserPreference<T>;
 }) {
+  const { choices, label } = props.preference;
+  const [value, onChange] = props.preference.useChoice();
+  const itemLabel = (choice: PreferenceChoice<T>) =>
+    `${choice.label} ${label.toLowerCase()}`;
   return (
     <div
       className={cn("flex items-center justify-between gap-3", props.className)}
     >
       <span className="font-sans text-sm font-semibold text-dashboard-text">
-        {props.label}
+        {label}
       </span>
       {props.menu ? (
         <DropdownMenuRadioGroup
-          aria-label={props.label}
+          aria-label={label}
           className="flex items-center gap-0.5 rounded-lg border border-dashboard-border p-0.5"
-          onValueChange={(next: T) => props.onChange(next)}
-          value={props.value}
+          onValueChange={(next: T) => onChange(next)}
+          value={value}
         >
-          {props.choices.map((choice) =>
+          {choices.map((choice) =>
             choiceWithTooltip(
               choice,
               <DropdownMenuRadioItem
-                aria-label={props.itemLabel(choice)}
+                aria-label={itemLabel(choice)}
                 className={menuRadioItemClass}
                 value={choice.value}
               >
@@ -67,18 +77,18 @@ export function PreferenceToggle<T extends string>(props: {
         </DropdownMenuRadioGroup>
       ) : (
         <ToggleGroup
-          aria-label={props.label}
+          aria-label={label}
           className="gap-0.5 rounded-lg border border-dashboard-border p-0.5"
           onValueChange={([next]) => {
-            if (next) props.onChange(next);
+            if (next) onChange(next);
           }}
-          value={[props.value]}
+          value={[value]}
         >
-          {props.choices.map((choice) =>
+          {choices.map((choice) =>
             choiceWithTooltip(
               choice,
               <ToggleGroupItem
-                aria-label={props.itemLabel(choice)}
+                aria-label={itemLabel(choice)}
                 value={choice.value}
               >
                 <choice.Icon aria-hidden="true" size={14} strokeWidth={2} />

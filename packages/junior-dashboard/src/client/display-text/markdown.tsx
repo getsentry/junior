@@ -17,6 +17,7 @@ import {
   useTranscriptSearch,
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
+import { usePlainLinks } from "./linkMode";
 import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
 import { SameTabLink } from "../components/SameTabLink";
 import { objectUrlKey } from "./knownObjects";
@@ -26,8 +27,7 @@ import {
   mediaThumbnail,
   ObjectLinkPreview,
   ObjectThumbnailLink,
-  ObjectTitleLink,
-  PersonLink,
+  ObjectTextLink,
   useKnownObject,
 } from "./ObjectLinks";
 import {
@@ -52,10 +52,11 @@ import {
  * Outside document mode, a bare URL in running text shows as a plain link
  * with the object title, or a chip for a person. The first bare URL alone in
  * a top-level paragraph shows the full card, or only the thumbnail of a
- * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
- * earlier text of the same message already shows. Inline mode shows links
- * only with `chips`, outside a link or a button. With `paragraphs` too, it
- * keeps the text's paragraphs, line breaks, and lists.
+ * video or image page, unless the browser chose plain links. `shownCardUrls`
+ * lists the `objectUrlKey` of cards that earlier text of the same message
+ * already shows. Inline mode shows links only with `chips`, outside a link
+ * or a button. With `paragraphs` too, it keeps the text's paragraphs, line
+ * breaks, and lists.
  */
 export function MarkdownText(props: {
   chat?: boolean | undefined;
@@ -457,10 +458,12 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const objectUrl =
     typeof props.objectUrl === "string" ? props.objectUrl : undefined;
   const known = useKnownObject(objectUrl);
-  if (objectUrl && known.card && !known.linkOnly) {
+  // Plain links show a URL alone on its line as titled link text too.
+  const plain = usePlainLinks();
+  if (objectUrl && !plain && known.card && !known.linkOnly) {
     return <StandaloneObject card={known.card} href={objectUrl} />;
   }
-  if (objectUrl && resolvableUrl(objectUrl)) {
+  if (objectUrl && !plain && resolvableUrl(objectUrl)) {
     return (
       <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
         {props.children}
@@ -607,12 +610,7 @@ function ObjectAnchor(props: {
 }) {
   const { bare, children, ...link } = props;
   const className = useAnchorClass();
-  if (bare && link.card.objectType === "person") {
-    return <PersonLink {...link} />;
-  }
-  if (bare) {
-    return <ObjectTitleLink {...link} />;
-  }
+  if (bare) return <ObjectTextLink {...link} />;
   return (
     <ObjectLinkPreview {...link} className={className}>
       {children}

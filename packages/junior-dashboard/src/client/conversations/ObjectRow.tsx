@@ -10,6 +10,7 @@ import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { StatusChip } from "../components/StatusChip";
 import { SameTabLink } from "../components/SameTabLink";
+import { ObjectTextLink, usePlainLinks } from "../display-text/DisplayText";
 import { ObjectAttachAction } from "./ObjectAttach";
 import { ObjectCard, webPageMeta } from "./ObjectCard";
 import { ObjectImage } from "./ObjectImage";
@@ -19,7 +20,8 @@ import { useSavedObject } from "./savedObjects";
  * Show an object inside a reply as a compact row, like a Thread card: icon,
  * title over its reference, state, and up to two thumbnails. The whole row
  * opens the source. A reply with several objects stays short; the link
- * preview of an object chip still shows the full card.
+ * preview of an object chip still shows the full card. Plain links show
+ * only the link text.
  */
 export function ObjectRow(props: {
   card: OwnedObjectAnnotation;
@@ -27,6 +29,14 @@ export function ObjectRow(props: {
 }) {
   const { card } = props;
   const previews = useSavedObject(card).previewImages;
+  const plain = usePlainLinks();
+  if (plain && card.url) {
+    return (
+      <p className="m-0 min-w-0">
+        <ObjectTextLink card={card} href={card.url} />
+      </p>
+    );
+  }
   // An automation has its own card with its prompt and schedule, and a
   // chart, a trace, or a dashboard is only worth showing as its picture.
   if (

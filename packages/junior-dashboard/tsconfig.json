@@ -52,6 +52,7 @@
     "e2e/person-cards.spec.ts",
     "e2e/lead-home.spec.ts",
     "e2e/pick-option.ts",
+    "e2e/plain-links.spec.ts",
     "e2e/push-notification.ts",
     "e2e/question-card-snooze.spec.ts",
     "e2e/question-cards.spec.ts",

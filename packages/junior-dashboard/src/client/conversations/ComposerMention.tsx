@@ -12,6 +12,7 @@ import {
 import { PersonCard } from "../components/PersonCard";
 import { Button } from "../components/ui/button";
 import { HoverPreview } from "../components/ui/hover-preview";
+import { usePlainLinks } from "../display-text/DisplayText";
 import { post } from "../http";
 import { personFromActor } from "../person";
 import { mentionName } from "./composerMentionToken";
@@ -35,7 +36,8 @@ export const ComposerConversationContext = createContext<
 /**
  * A person mentioned in the composer: their photo and name. Hover, focus,
  * or a tap shows their person card, which can Invite them. A person whose
- * name the composer does not know shows their Slack id and no card.
+ * name the composer does not know shows their Slack id and no card. Plain
+ * links show no photo.
  */
 export function ComposerMention(props: {
   person: Partial<MentionablePerson> & { slackUserId: string };
@@ -43,10 +45,10 @@ export function ComposerMention(props: {
   const { person } = props;
   const conversation = useContext(ComposerConversationContext);
   const card = personFromActor(person);
+  const photo = usePlainLinks() ? undefined : person.avatarUrl;
   const chip = (
     <>
-      {person.avatarUrl ? <MentionPhoto src={person.avatarUrl} /> : null}@
-      {mentionName(person)}
+      {photo ? <MentionPhoto src={photo} /> : null}@{mentionName(person)}
     </>
   );
   const chipProps = {

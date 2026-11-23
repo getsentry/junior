@@ -15,9 +15,10 @@ import { cn, dashboardInteractiveTextClass } from "../styles";
 import type { Identity } from "../types";
 import type { DashboardHeaderNavItem } from "./layout/DashboardHeader";
 import { navItemIcon } from "./layout/navIcons";
-import { LinkModeSwitcher } from "./LinkModeSwitcher";
-import { NavLayoutSwitcher } from "./NavLayoutSwitcher";
-import { ThemeSwitcher } from "./ThemeSwitcher";
+import { linkModePreference } from "../display-text/DisplayText";
+import { navLayoutPreference } from "../navLayout";
+import { themePreference } from "../theme";
+import { PreferenceToggle } from "./PreferenceToggle";
 import { Avatar, AvatarFallback, AvatarImage } from "./ui/avatar";
 import {
   DropdownMenu,
@@ -288,8 +289,11 @@ export function ProfileMenu({
         >
           Log out
         </button>
-        <ThemeSwitcher className="px-3 py-2" />
-        <LinkModeSwitcher className="px-3 py-2" />
+        <PreferenceToggle className="px-3 py-2" preference={themePreference} />
+        <PreferenceToggle
+          className="px-3 py-2"
+          preference={linkModePreference}
+        />
       </nav>
     );
   }
@@ -413,9 +417,9 @@ export function ProfileMenu({
         {identityBlock}
         <DropdownMenuSeparator />
         <div className="grid gap-1 px-2 py-1.5">
-          <ThemeSwitcher menu />
-          <NavLayoutSwitcher menu />
-          <LinkModeSwitcher menu />
+          <PreferenceToggle menu preference={themePreference} />
+          <PreferenceToggle menu preference={navLayoutPreference} />
+          <PreferenceToggle menu preference={linkModePreference} />
         </div>
         <DropdownMenuSeparator />
         {menuLinks}

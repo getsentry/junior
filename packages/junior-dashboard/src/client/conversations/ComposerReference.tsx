@@ -1,5 +1,6 @@
 import { Bot, Brain, FileText, MessageSquare } from "lucide-react";
 
+import { usePlainLinks } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { codeChangeTone } from "./ConversationMeta";
 import { ConversationStateIcon } from "./ConversationStateIcon";
@@ -69,10 +70,12 @@ export function referenceName(reference: ComposerReference): string {
 /**
  * A Conversation, Task, memory, file, pull request, or channel in the
  * composer: its icon and name, cut off with an ellipsis at about 14rem. A
- * pull request shows `repo#123`. The full name is its tooltip.
+ * pull request shows `repo#123`. The full name is its tooltip. Plain links
+ * show no icon.
  */
 export function ComposerReferenceChip(props: { reference: ComposerReference }) {
   const { reference } = props;
+  const plain = usePlainLinks();
   const fullName = referenceName(reference);
   const name =
     reference.kind === "code_change"
@@ -84,7 +87,9 @@ export function ComposerReferenceChip(props: { reference: ComposerReference }) {
       data-reference={reference.kind}
       title={fullName}
     >
-      <ReferenceIcon className="self-center" reference={reference} />
+      {plain ? null : (
+        <ReferenceIcon className="self-center" reference={reference} />
+      )}
       <span className="min-w-0 truncate">{name}</span>
     </span>
   );

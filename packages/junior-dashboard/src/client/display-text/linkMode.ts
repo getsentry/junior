@@ -1,57 +1,43 @@
-import { useSyncExternalStore } from "react";
+import { Link, Sparkles } from "lucide-react";
+import { createContext, useContext } from "react";
+
+import { browserChoice } from "../browserChoice";
+import type { BrowserPreference } from "../components/PreferenceToggle";
 
 /**
- * How display text shows links. `rich` shows people with their photo, and a
- * card or thumbnail for a URL alone on its line. `plain` shows every link as
- * titled link text. Both keep the hover card.
+ * How links and references show. `rich` shows people with their photo,
+ * objects with their icon, and a card or thumbnail for a URL alone on its
+ * line. `plain` shows every link as text with its title and every person as
+ * `@Name`. Both keep the hover card.
  */
-export type LinkMode = "plain" | "rich";
+type LinkMode = "plain" | "rich";
 
-const STORAGE_KEY = "junior:links:mode";
-const CHANGE_EVENT = "junior:links-mode";
+const useLinkModeChoice = browserChoice<LinkMode>(
+  "junior:links:mode",
+  ["plain"],
+  "rich",
+);
 
-function readLinkMode(): LinkMode {
-  try {
-    return window.localStorage.getItem(STORAGE_KEY) === "plain"
-      ? "plain"
-      : "rich";
-  } catch {
-    return "rich";
-  }
-}
+/** This browser's link mode: rich or plain. */
+export const linkModePreference: BrowserPreference<LinkMode> = {
+  choices: [
+    { Icon: Sparkles, label: "Rich", value: "rich" },
+    { Icon: Link, label: "Plain", value: "plain" },
+  ],
+  label: "Links",
+  useChoice: useLinkModeChoice,
+};
 
-function subscribe(onChange: () => void): () => void {
-  window.addEventListener(CHANGE_EVENT, onChange);
-  window.addEventListener("storage", onChange);
-  return () => {
-    window.removeEventListener(CHANGE_EVENT, onChange);
-    window.removeEventListener("storage", onChange);
-  };
-}
+const RichLinks = createContext(false);
 
-function saveLinkMode(mode: LinkMode): void {
-  try {
-    if (mode === "rich") window.localStorage.removeItem(STORAGE_KEY);
-    else window.localStorage.setItem(STORAGE_KEY, mode);
-  } catch {
-    // Storage is blocked, so links stay rich.
-    return;
-  }
-  window.dispatchEvent(new Event(CHANGE_EVENT));
-}
+/**
+ * Keep rich links below, whatever this browser chose. An Inbox item card
+ * keeps its links as they are.
+ */
+export const RichLinksProvider = RichLinks.Provider;
 
-/** Read and update this browser's link mode. */
-export function useLinkModeChoice(): [LinkMode, (mode: LinkMode) => void] {
-  // Server renders have no browser storage, so they show rich links.
-  const mode = useSyncExternalStore<LinkMode>(
-    subscribe,
-    readLinkMode,
-    () => "rich",
-  );
-  return [mode, saveLinkMode];
-}
-
-/** Tell whether this browser shows every link as plain link text. */
+/** Tell whether links here show as plain text. */
 export function usePlainLinks(): boolean {
-  return useLinkModeChoice()[0] === "plain";
+  const rich = useContext(RichLinks);
+  return useLinkModeChoice()[0] === "plain" && !rich;
 }

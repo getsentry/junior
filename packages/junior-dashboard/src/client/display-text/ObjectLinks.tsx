@@ -250,19 +250,21 @@ export function ObjectThumbnailLink(props: {
 }
 
 /**
- * Show a bare URL to a person in running text as a GitHub-style mention:
- * the photo, then `@Name`. A person with a People page gets the person card;
- * another account, such as a GitHub account, previews its own card.
+ * Show an object as link text alone: any object but a person as its title,
+ * and a person as a GitHub-style mention: the photo, then `@Name`. A person
+ * with a People page gets the person card; another account, such as a GitHub
+ * account, previews its own card.
  */
-export function PersonLink(props: {
+export function ObjectTextLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
   live?: boolean;
   reserveHeight?: boolean;
 }) {
   const { card } = props;
-  const facts = card.facts?.type === "person" ? card.facts : undefined;
   const className = useAnchorClass("person");
+  if (card.objectType !== "person") return <ObjectTitleLink {...props} />;
+  const facts = card.facts?.type === "person" ? card.facts : undefined;
   const person = {
     avatarUrl: facts?.avatarUrl,
     email: facts?.email,
