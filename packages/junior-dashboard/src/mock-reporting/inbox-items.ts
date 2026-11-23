@@ -370,5 +370,6 @@ export function readMockInboxItemCounts(nowMs: number) {
     snoozed: seeds(nowMs).filter(
       (seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id),
     ).length,
+    todos: needsViewer.filter((item) => item.todoId !== undefined).length,
   };
 }

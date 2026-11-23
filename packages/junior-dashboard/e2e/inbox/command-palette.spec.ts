@@ -4,8 +4,10 @@ import type { Page } from "@playwright/test";
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { expandRow, mockInboxItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
-import { mobile, screenshot } from "../screenshot";
+import { waitForSettingsReads } from "../harness";
+import { desktop, mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
+import { expectRequestBudget } from "../request-budget";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -246,7 +248,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // that the Automations, System, Memories, and Settings areas list.
     for (const name of [
       "Snoozed",
-      "Pull requests",
+      "Code",
       "Settings",
       "My profile",
       "Automation runs",
@@ -262,12 +264,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-palette-pages", { lightTheme: true });
 
     await input.fill("API Tokens");
+    const settingsRead = waitForSettingsReads(page);
     await input.press("Enter");
     await expect(palette).toHaveCount(0);
     await expect(page).toHaveURL(/\/settings#api-tokens$/);
     await expect(
       page.getByRole("heading", { name: "API Tokens" }),
     ).toBeVisible();
+    await settingsRead;
   });
 
   test("sends feedback from the command palette", async ({
@@ -488,13 +492,122 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
+  test("finds To-dos, with closed ones under Done, and opens their Conversation", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(dashboard.baseURL);
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    await palette.getByRole("combobox").fill("dashboard");
+    const group = (name: string) =>
+      palette.getByRole("group", { exact: true, name }).getByRole("option");
+    await expect(group("To-dos")).toHaveText([
+      /Fix the failing dashboard checks/,
+      /Review the dashboard plan before editing/,
+    ]);
+    await expect(group("Done")).toHaveText([/Port the old dashboard theme/]);
+    await expect(group("Done")).toContainText("To-do");
+    for (const view of [desktop, mobile]) {
+      await page.setViewportSize({ height: view.height, width: view.width });
+      await group("To-dos").first().hover();
+      await expect(group("To-dos").first()).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await screenshot(page, "inbox-palette-todos", {
+        lightTheme: true,
+        view: view.name,
+      });
+    }
+
+    await pickOption(group("To-dos").first());
+    await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
+    await expect(
+      page.getByRole("heading", { name: "Dashboard QA edge cases" }),
+    ).toBeVisible();
+  });
+
+  test("finds Inbox items, Automations, and Memories with one search for each typed query", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 800, width: 1280 });
+    await mockInboxItems(page);
+    await mockLandingAutomationApis(page);
+    await page.goto(dashboard.baseURL);
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    await expect(palette.getByRole("group").first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const group = (name: string) =>
+      palette.getByRole("group", { exact: true, name }).getByRole("option");
+    const listSearches: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        url.searchParams.has("q") &&
+        [
+          "/api/automations",
+          "/api/inbox-items",
+          "/api/user-pages/memory/memories",
+        ].includes(url.pathname)
+      )
+        listSearches.push(url.pathname);
+    });
+
+    await expectRequestBudget(
+      page,
+      async () => {
+        // A half-typed word finds the text with a word that it starts: a
+        // title match first, then a match in an instruction.
+        await palette.getByRole("combobox").fill("revie");
+        await expect(group("Automations")).toHaveText([
+          /Fair Source PR review/,
+          /Post-merge cleanup/,
+        ]);
+      },
+      { requests: 6, serialRounds: 2 },
+    );
+
+    expect(listSearches).toEqual([]);
+    await expect(group("Memories")).toHaveText([
+      /Start incident reviews with the customer impact/,
+    ]);
+    await expect(group("Inbox")).toHaveCount(3);
+    await expect(group("To-dos")).toHaveText([
+      /Review the dashboard plan before editing/,
+    ]);
+    await expect(group("Done")).toHaveText([
+      /Review the initech license entry/,
+      /Read the review feedback/,
+    ]);
+    // Conversations lead the list, so show the server-matched groups.
+    // A resize resets the scroll, so each size gets its own shot.
+    const shot = async (view: typeof desktop | typeof mobile) => {
+      await page.setViewportSize({ height: view.height, width: view.width });
+      // Highlight the row, since the palette keeps the highlight in view.
+      await group("Memories").first().hover();
+      await expect(group("Memories").first()).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await screenshot(page, "inbox-palette-search", {
+        lightTheme: true,
+        view: view.name,
+      });
+    };
+    await shot(desktop);
+    await shot(mobile);
+  });
+
   test("waits for every server search before it says nothing matches", async ({
     page,
     dashboard,
   }) => {
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/user-pages/memory/memories?q=*", async (route) => {
+    await page.route(/\/api\/search\?/, async (route) => {
       await released;
       await route.fallback();
     });
@@ -505,15 +618,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       response.url().includes("/api/conversations?q="),
     );
     await palette.getByRole("combobox").fill("zzqx nothing");
-    // The conversation search has answered; Memories still reads.
+    // The conversation search has answered; `/api/search` still reads.
     await conversationsSearched;
     await expect(palette.getByText("Searching…")).toBeVisible();
     await expect(palette.getByText("No matches.")).toHaveCount(0);
-    // The mock memories ignore the text, so the server's matches then show.
     release();
-    await expect(
-      palette.getByRole("group", { name: "Memories" }).getByRole("option"),
-    ).not.toHaveCount(0);
+    await expect(palette.getByText("No matches.")).toBeVisible();
     await expect(palette.getByText("Searching…")).toHaveCount(0);
   });
 

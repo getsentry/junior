@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
+import { latestSnapshots } from "./lib/drizzle-snapshots.mjs";
 
 /**
  * Money unit check. Postgres stores every money value as whole micro-USD:
@@ -54,6 +55,8 @@ export const NAME_ALLOWLIST = {
   ],
   // The Drizzle name of the old Brief cost column in COLUMN_ALLOWLIST.
   cost_usd: ["packages/junior/src/db/schema/conversation-briefs.ts"],
+  // A Postgres planner setting, not an amount.
+  jit_above_cost: ["packages/junior/src/cli/upgrade.ts"],
 };
 
 /**
@@ -108,29 +111,15 @@ export function checkSource(filePath, text) {
 /** Check every package's latest snapshot and production source. */
 export function run({ root, files }) {
   const errors = [];
+  for (const { packageName, snapshotPath, snapshot } of latestSnapshots(root)) {
+    if (EXCLUDED_PACKAGES.has(packageName)) continue;
+    errors.push(...checkSnapshotColumns(snapshotPath, snapshot));
+  }
   const packages = fs
     .readdirSync(path.join(root, "packages"))
     .filter((name) => !EXCLUDED_PACKAGES.has(name))
     .sort();
   for (const name of packages) {
-    const meta = path.join("packages", name, "migrations", "meta");
-    const journalPath = path.join(root, meta, "_journal.json");
-    if (fs.existsSync(journalPath)) {
-      const journal = JSON.parse(fs.readFileSync(journalPath, "utf8"));
-      const last = journal.entries.at(-1);
-      if (last) {
-        const snapshotPath = path.join(
-          meta,
-          `${String(last.idx).padStart(4, "0")}_snapshot.json`,
-        );
-        errors.push(
-          ...checkSnapshotColumns(
-            snapshotPath,
-            JSON.parse(fs.readFileSync(path.join(root, snapshotPath), "utf8")),
-          ),
-        );
-      }
-    }
     const sourceFiles = files.filter(
       (filePath) =>
         filePath.startsWith(`packages/${name}/src/`) &&

@@ -45,6 +45,8 @@ new RuleTester({
         `renderTag("task", {}, lines);`,
         `renderEmptyTag(name, {});`,
         `openingTag("runtime-turn-context");`,
+        // The AGENTS.md wrapper keeps the Codex tag name.
+        `renderTag("INSTRUCTIONS", {}, lines);`,
       ].join("\n"),
       filename,
       options,
@@ -53,12 +55,24 @@ new RuleTester({
       // A writer passes its own attributes parameter on.
       code: [
         allWritten,
-        "function renderUntrustedTag(name, attrs, text) {",
+        "function renderDataTag(name, attrs, text) {",
         "  return renderTag(name, attrs, [text]);",
         "}",
       ].join("\n"),
       filename,
       options,
+    },
+    // A provider ID and a time follow the attribute naming rules.
+    {
+      code: `renderTag("thread-context", { "slack.channel_id": c, sent_at: t }, lines);`,
+      filename,
+      options: [
+        {
+          baseline: {
+            [FILE]: { "thread-context": ["slack.channel_id", "sent_at"] },
+          },
+        },
+      ],
     },
     // A file with no entry may write tags without attributes.
     {
@@ -110,6 +124,26 @@ new RuleTester({
       options,
       errors: [{ messageId: "literalAttributes" }],
     },
+    // Tag names are kebab-case, also through a module constant.
+    {
+      code: `${allWritten}\nrenderTag("agentResult", {}, lines);`,
+      filename,
+      options,
+      errors: [{ messageId: "tagName" }],
+    },
+    {
+      code: `${allWritten}\nconst TODO_TAG = "todo_delta";\nrenderEmptyTag(TODO_TAG, {});`,
+      filename,
+      options,
+      errors: [{ messageId: "tagName" }],
+    },
+    // Attribute names are snake_case, and times are not `ts` or epoch ms.
+    ...["sentAt", "ts", "sent_ms"].map((attribute) => ({
+      code: `${allWritten}\nrenderTag("agent-result", { ${attribute}: t }, lines);`,
+      filename,
+      options,
+      errors: [{ messageId: "attributeName" }, { messageId: "newAttribute" }],
+    })),
   ],
 });
 

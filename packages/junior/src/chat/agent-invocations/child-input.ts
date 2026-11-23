@@ -8,12 +8,12 @@ import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { isPersonStopTurnId } from "./ids";
-import { isFromStoredParent } from "./parent-message";
+import { readChildOfStoredParent } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
-  AGENT_REPLY_EVENT_TYPE,
+  isAgentUpdateEventType,
 } from "./result-event-type";
 import type { ChildAgentSender } from "./types";
 
@@ -37,14 +37,15 @@ export function childAgentInput(
   ) {
     return undefined;
   }
-  switch (metadata.event.eventType) {
-    case AGENT_MESSAGE_EVENT_TYPE:
-      return { kind: "message", senderId: metadata.event.identifier };
-    case AGENT_REPLY_EVENT_TYPE:
-      return { kind: "reply", senderId: metadata.event.identifier };
-    default:
-      return undefined;
+  if (metadata.event.eventType === AGENT_MESSAGE_EVENT_TYPE) {
+    return { kind: "message", senderId: metadata.event.identifier };
   }
+  // A Watch delivers the same agent update from a Conversation that is not
+  // a child agent. It names its Watch, and a child's update does not.
+  return isAgentUpdateEventType(metadata.event.eventType) &&
+    metadata.event.subscriptionId === undefined
+    ? { kind: "reply", senderId: metadata.event.identifier }
+    : undefined;
 }
 
 /**
@@ -65,12 +66,12 @@ export async function isDroppedChildInput(
   }
   const parentMessage = readParentMessage(message);
   if (parentMessage) {
-    if (!(await isFromStoredParent(message, parentMessage))) {
+    // One read checks the sender and gives the stop.
+    const child = await readChildOfStoredParent(message, parentMessage);
+    if (!child) {
       return true;
     }
-    const stoppedAtMs = await getConversationStoppedAtMs(
-      message.conversationId,
-    );
+    const stoppedAtMs = child.stoppedAt?.getTime();
     return stoppedAtMs !== undefined && message.receivedAtMs <= stoppedAtMs;
   }
   const input = childAgentInput(message);

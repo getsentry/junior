@@ -10,6 +10,7 @@ import { useSheet } from "../../../components/ui/useSheet";
 import {
   MobileHeaderActionsSlot,
   MobileHeaderTagsSlot,
+  MobileHeaderTitleSlot,
   MobileSecondaryNavigationSlot,
   useMobileHeaderBack,
   useRegisterOpenMobileNavigation,
@@ -131,11 +132,12 @@ export function DashboardHeader(props: {
         )}
         {conversationMode ? (
           <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
+            <MobileHeaderTitleSlot />
             {mobileTitle ? (
               <h1
                 className={cn(
                   fadeOverflowClass,
-                  "m-0 text-left font-display text-sm font-medium text-dashboard-text",
+                  "m-0 hidden text-left font-display text-sm font-medium text-dashboard-text peer-empty/title:block",
                 )}
                 ref={fadeWhenOverflowing}
               >

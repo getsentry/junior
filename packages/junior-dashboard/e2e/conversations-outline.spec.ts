@@ -74,6 +74,13 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   expect(await scrollbarHidden(transcript)).toBe(false);
   await expect(outline).toHaveAttribute("data-side", "left");
   await expect(outline.locator("button[data-in-view]")).toHaveCount(0);
+  // The list scrolls to the active item once the transcript marks it. A
+  // hover before that scroll lands on another item.
+  const active = outline.getByRole("button", {
+    name: "Transcript message 1992 with",
+  });
+  await expect(active).toHaveAttribute("aria-current", "location");
+  await expect(active).toBeInViewport();
 
   const item = outline.getByRole("button", {
     name: "Transcript message 1234 with",
@@ -212,7 +219,10 @@ test("shows a far message at once while its page loads", async ({
 
   // The stand-in takes the pointer from the rows below it, and the wheel
   // dismisses it.
-  mock.holdReads = new Promise(() => {});
+  let landNextReads = () => {};
+  mock.holdReads = new Promise((resolve) => {
+    landNextReads = resolve;
+  });
   await outline
     .getByRole("button", { name: "Transcript message 800 with" })
     .click();
@@ -220,6 +230,8 @@ test("shows a far message at once while its page loads", async ({
   await nextStandIn.hover();
   await page.mouse.wheel(0, -400);
   await expect(nextStandIn).toHaveCount(0);
+  landNextReads();
+  await mock.pageReadsLanded();
 });
 
 test("holds read events, so a near jump reads only the events it lacks", async ({

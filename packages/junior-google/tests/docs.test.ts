@@ -128,6 +128,40 @@ describe("Google Docs Markdown", () => {
       ).text,
     ).toBe("a\n\nb");
   });
+
+  it("reads quotes, escapes, item continuations, task items, and tables as Markdown does", () => {
+    const converted = convertMarkdown(
+      [
+        "> quoted *text*",
+        "> more",
+        "",
+        "\\*not em\\* and a_b_c",
+        "",
+        "- one",
+        "",
+        "  still one",
+        "    - deep",
+        "- [x] done",
+        "- [ ] todo",
+        "",
+        "| a | b |",
+        "|---|---|",
+      ].join("\n"),
+    );
+
+    expect(converted.text).toBe(
+      [
+        "quoted text more",
+        "*not em* and a_b_c",
+        "one still one",
+        "\tdeep",
+        "[x] done",
+        "[ ] todo",
+        "| a | b | |---|---|",
+      ].join("\n"),
+    );
+    expect(converted.textStyles).toEqual([{ end: 11, italic: true, start: 7 }]);
+  });
 });
 
 describe("Google Docs write tools", () => {

@@ -365,6 +365,7 @@ test("opens at new messages after earlier pages were cached", async ({
   await expect.poll(() => pageRequests).toContain("?before=160");
   expect(new Set(pageRequests).size).toBe(pageRequests.length);
   releaseNewer();
+  await mock.pageReadsLanded();
 });
 
 test("jumps to the latest page without the newer pages", async ({
@@ -414,6 +415,7 @@ test("jumps to the latest page without the newer pages", async ({
   await expect(transcript.getByText("Transcript message 159 ")).toBeAttached();
   expect(pageRequests.slice(2)).toEqual(["?before=160"]);
   releaseNewer();
+  await mock.pageReadsLanded();
 });
 
 test("opens far behind at the read position and loads newer pages after it", async ({

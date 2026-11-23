@@ -145,6 +145,14 @@ test.describe("new UI", { tag: "@new" }, () => {
       .locator("[data-inbox-head]")
       .click({ button: "right" });
     await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    // A stack's open card opens it anywhere too.
+    await stack.getByRole("link", { name: rollout.title }).click();
+    const asks = stack.getByRole("region", { name: /: asks$/ });
+    await expect(asks).toBeVisible();
+    await asks.click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
     // A lone item row, out of any stack, has no Conversation menu.
     await page.keyboard.press("Escape");
     await rowOf(page, other)

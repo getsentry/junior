@@ -14,7 +14,7 @@ const slackCanvasReadOutputSchema = juniorToolOutputSchema
   .extend({
     canvas_id: z.string().optional(),
     title: z.string().optional(),
-    permalink: z.string().optional(),
+    url: z.string().optional(),
     mimetype: z.string().optional(),
     filetype: z.string().optional(),
     original_byte_length: z.number().int().nonnegative().optional(),
@@ -94,7 +94,7 @@ export function createSlackCanvasReadTool() {
       return {
         canvas_id: result.canvasId,
         title: result.title,
-        permalink: result.permalink,
+        url: result.permalink,
         mimetype: result.mimetype,
         filetype: result.filetype,
         original_byte_length: result.byteLength,

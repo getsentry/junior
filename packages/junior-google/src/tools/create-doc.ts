@@ -73,7 +73,7 @@ export const createGoogleDocTool = definePluginTool({
     const requester = await requesterEmail(ctx);
     if (!requester) {
       throw new PluginToolInputError(
-        "The requester's email is unknown, so the Doc cannot be handed to them.",
+        "The requester's email is unknown, so the Doc cannot be handed to them. No change to the call can fix this.",
       );
     }
     requireAllowedEmails([requester], ctx.allowedDomains);

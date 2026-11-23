@@ -39,14 +39,14 @@ import {
   useConversationDensity,
   useDensityRoot,
 } from "../conversations/conversationDensity";
-import { useArea } from "../areas";
+import { areaForPath } from "../areas";
 import { useSidebarFits } from "../conversations/conversationSidebarLayout";
 import {
   AREA_PAGE_PARAM,
   AreaSidebar,
   areaListsPages,
 } from "../components/layout/AreaSidebar";
-import { paneRowForPath } from "../components/layout/paneRows";
+import { isCodePath, paneRowForPath } from "../components/layout/paneRows";
 import { useNewAutomationAction } from "../pages/automations/newAutomation";
 import { InboxDataProvider, useInboxData } from "../inbox/inboxData";
 import { InboxNav } from "../inbox/InboxNav";
@@ -57,11 +57,7 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "../format";
-import {
-  conversationPath,
-  isNewConversationPath,
-  COMPOSER_PATH,
-} from "../conversations/conversationRoutes";
+import { conversationPath } from "../conversations/conversationRoutes";
 import { useLead } from "../lead/Lead";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -86,16 +82,12 @@ import {
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
+import { conversationIdFromPath, inboxMobileHeader } from "./inboxMobileHeader";
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
 import { InboxRedirect } from "../inbox/InboxRedirect";
 import { LinkedSnooze } from "../inbox/LinkedSnooze";
 import { InboxListProvider, useInboxReturnPath } from "../inbox/inboxListState";
-import {
-  INBOX_VIEW_LABELS,
-  inboxViewOfPath,
-  parseInboxView,
-} from "../inbox/inboxModel";
 import { useInboxTabCount } from "../inbox/inboxTabIcon";
 import { cn } from "../styles";
 import { ComfortableDensityContext, UiShellContext } from "../uiShell";
@@ -111,7 +103,7 @@ const RepositoryPage = lazy(() =>
   })),
 );
 const CodePage = lazy(() =>
-  import("../pages/code/CodePage").then((module) => ({
+  import("./pages/code/CodePage").then((module) => ({
     default: module.CodePage,
   })),
 );
@@ -223,34 +215,6 @@ function ShellInboxData(props: { children: ReactNode }) {
   );
 }
 
-/**
- * Where the phone header's Back goes on an Inbox page, and its title: a
- * Conversation and the composer go back to the list, and a list goes back
- * to the entries.
- */
-function inboxMobileHeader(
-  pathname: string,
-  search: string,
-  returnPath: string,
-): { backLabel?: string; backTo?: string; title?: string } {
-  const back = (to: string) => ({
-    backLabel: `Back to ${INBOX_VIEW_LABELS[inboxViewOfPath(to)]}`,
-    backTo: to,
-  });
-  if (pathname === COMPOSER_PATH)
-    return { ...back(returnPath), title: "New conversation" };
-  if (conversationIdFromPath(pathname)) return back(returnPath);
-  const view = new URLSearchParams(search).get("view");
-  // A list's Back goes to the entries, which "/" shows on a phone.
-  if (pathname === "/" && view !== null)
-    return {
-      backLabel: "Back to the Inbox entries",
-      backTo: "/",
-      title: INBOX_VIEW_LABELS[parseInboxView(view)],
-    };
-  return {};
-}
-
 function Shell() {
   const location = useLocation();
   const inboxReturnPath = useInboxReturnPath();
@@ -326,7 +290,7 @@ function Shell() {
   // back to it.
   // An area of sections on one page, such as Settings, opens that page.
   const sidebarFits = useSidebarFits();
-  const area = useArea(
+  const area = areaForPath(
     location.pathname,
     { primary: primaryNavItems, profile: profileNavItems },
     paneRowForPath(location, primaryNavItems, undefined) !== undefined,
@@ -433,10 +397,12 @@ function Shell() {
           }
         >
           <InboxDashboardChrome
-            // Conversation pages and the Automations list put these in
-            // their own header.
+            // Conversation pages, the Automations list, and Code put these
+            // in their own header.
             desktopControls={
-              workspace || location.pathname === "/automations" ? undefined : (
+              workspace ||
+              location.pathname === "/automations" ||
+              isCodePath(location.pathname) ? undefined : (
                 <PaneCollapsedControls />
               )
             }
@@ -867,18 +833,6 @@ function Shell() {
       </PaneNavProvider>
     </DashboardChromeProvider>
   );
-}
-
-/** Read the selected conversation id from a workspace detail path. */
-function conversationIdFromPath(pathname: string): string | undefined {
-  if (isNewConversationPath(pathname)) return undefined;
-  const match = pathname.match(/^\/conversations\/([^/]+)$/);
-  if (!match?.[1]) return undefined;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
 }
 
 function LegacyAutomationsRedirect() {

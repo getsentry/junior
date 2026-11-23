@@ -213,7 +213,8 @@ test("the answer line names the person who answered", async ({
   const answeredBy = ask.getByRole("link", { name: "Dashboard User" });
   await expect(ask).toContainText("Answered by");
   await answeredBy.hover();
-  await expect(personCard(page, "Dashboard User")).toBeVisible();
+  // The card's activity comes from its read.
+  await expect(personCard(page, "Dashboard User")).toContainText("Last active");
 });
 
 test.describe("on a touch screen", () => {

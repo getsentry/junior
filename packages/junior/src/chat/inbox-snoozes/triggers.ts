@@ -13,6 +13,7 @@ import {
   TODO_INBOX_ITEM_KEY_PREFIX,
 } from "@/chat/inbox-items/access";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
+import { pushInboxSnoozeWakes } from "@/chat/notifications/inbox-item-push";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { setTodoStatusByUser } from "@/chat/todos/store";
 import type { JuniorDatabase } from "@/db/db";
@@ -71,8 +72,8 @@ async function resolvedTodos(
  * To-do of a To-do item done for the person who snoozed it, so the agent
  * sees the change in its next `<todo-delta>`. A `wake` trigger ends the
  * snooze, which records `reason`. When one Event fires both on a snooze,
- * `resolve` wins. A snooze that already ended ignores the Event. Returns
- * the number of items woken.
+ * `resolve` wins. A snooze that already ended ignores the Event. Each
+ * woken snooze pushes to its User. Returns the number of items woken.
  */
 async function fireTriggers(
   db: JuniorDatabase,
@@ -87,10 +88,10 @@ async function fireTriggers(
       namespace: event.namespace,
     })
   ).filter((trigger) => eventMatches(trigger.match ?? undefined, event.data));
-  const resolving = new Set(
+  const resolving = new Map(
     triggers
       .filter((trigger) => trigger.outcome === "resolve")
-      .map((trigger) => trigger.snoozeId),
+      .map((trigger) => [trigger.snoozeId, trigger]),
   );
   const waking = new Set(
     triggers
@@ -100,29 +101,11 @@ async function fireTriggers(
   if (resolving.size === 0 && waking.size === 0) {
     return 0;
   }
-  const { todos, woken } = await db.transaction(async (tx) => {
-    const resolved = await settleInboxSnoozes(tx, {
-      snoozeIds: [...resolving],
-      state: "cancelled",
-    });
-    const todos = await resolvedTodos(tx, resolved);
-    const todoItemIds = new Set(todos.map((todo) => todo.inboxItemId));
-    await dismissOpenInboxItems(tx, {
-      ids: resolved
-        .map((row) => row.inboxItemId)
-        .filter((id) => !todoItemIds.has(id)),
-      nowMs,
-      reason: "A snooze trigger resolved it.",
-    });
-    const wokenItems = await settleInboxSnoozes(tx, {
-      reason,
-      snoozeIds: [...waking],
-      state: "woken",
-    });
-    return { todos, woken: wokenItems.length };
-  });
-  // A To-do changes under its own lock, after the snoozes commit. Its
-  // change closes its item (`syncTodoInboxItems`).
+  // A To-do changes under its own lock, so it cannot join the snooze
+  // transaction. It changes first: if it fails, the snooze stays, so a
+  // redelivered Event fires it again. A repeat finds the To-do closed and
+  // changes nothing. Its change closes its item (`syncTodoInboxItems`).
+  const todos = await resolvedTodos(db, [...resolving.values()]);
   await mapBounded(todos, (todo) =>
     setTodoStatusByUser(getSqlExecutor(), {
       assignedOnly: true,
@@ -133,7 +116,29 @@ async function fireTriggers(
       userId: todo.userId,
     }),
   );
-  return woken;
+  const todoItemIds = new Set(todos.map((todo) => todo.inboxItemId));
+  const woken = await db.transaction(async (tx) => {
+    const resolved = await settleInboxSnoozes(tx, {
+      snoozeIds: [...resolving.keys()],
+      state: "cancelled",
+    });
+    await dismissOpenInboxItems(tx, {
+      ids: resolved
+        .map((row) => row.inboxItemId)
+        .filter((id) => !todoItemIds.has(id)),
+      nowMs,
+      reason: "A snooze trigger resolved it.",
+    });
+    return await settleInboxSnoozes(tx, {
+      reason,
+      snoozeIds: [...waking],
+      state: "woken",
+    });
+  });
+  // Only the caller whose update woke a snooze gets it back, so each wake
+  // pushes once. A resolved item closed, so it pushes nothing.
+  await pushInboxSnoozeWakes(woken);
+  return woken.length;
 }
 
 /** Fire the snooze triggers that one published Event matches. */

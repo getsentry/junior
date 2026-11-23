@@ -1,6 +1,6 @@
 import {
-  AGENT_REPLY_EVENT_TYPE,
   isAgentInvocationResultEventType,
+  isAgentUpdateEventType,
   messageCardText,
 } from "@sentry/junior/api/schema";
 import type {
@@ -22,19 +22,21 @@ import { memoryRecallContent } from "./turnContext";
 
 /**
  * True for the parent Event message that delivers agent invocation results
- * or a child's `reply`. Core writes `subagent_ended` before it sends the
+ * or a child's agent update. Core writes `subagent_ended` before it sends the
  * result, so the Thread card or Task line already shows the outcome. The
  * transcript keeps this message only for the memories its Turn recalled,
- * folded into activity.
+ * folded into activity. An agent update that a Watch delivered has no card,
+ * so it stays.
  */
 export function isAgentInvocationResultMessage(
-  message: Pick<TranscriptViewMessage, "eventType" | "role">,
+  message: Pick<TranscriptViewMessage, "eventType" | "eventWatchId" | "role">,
 ): boolean {
   return (
     message.role === "user" &&
     message.eventType !== undefined &&
     (isAgentInvocationResultEventType(message.eventType) ||
-      message.eventType === AGENT_REPLY_EVENT_TYPE)
+      (isAgentUpdateEventType(message.eventType) &&
+        message.eventWatchId === undefined))
   );
 }
 

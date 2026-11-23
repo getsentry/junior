@@ -74,6 +74,7 @@ test("opens links outside the loaded rows from the page around them", async ({
   );
   await expect(page).not.toHaveURL(/[?&](turn|event)=/);
   await expect(linked).toBeHidden();
+  await mock.pageReadsLanded();
 });
 
 test("opens a Message link at the start of its reply", async ({

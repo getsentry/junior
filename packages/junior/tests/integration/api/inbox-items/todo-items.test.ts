@@ -4,10 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inboxItemCountSchema, inboxItemListSchema } from "@/api/schema";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import {
-  getInboxItem,
-  waitingConversationIdsQuery,
-} from "@/chat/inbox-items/store";
+import { getInboxItem } from "@/chat/inbox-items/store";
+import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { setTodoStatusByUser } from "@/chat/todos/store";
 import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
@@ -115,10 +113,15 @@ describe("To-dos for a person in the Inbox", () => {
       }),
     );
     expect(await asAna.items()).toHaveLength(1);
-    // It counts as Needs you and in the tab count, and the Conversation
-    // waits on Ana.
+    // It counts as Needs you, as a To-do, and in the tab count, and the
+    // Conversation waits on Ana.
     expect(await asAna.count()).toEqual(
-      expect.objectContaining({ decisions: 0, needsViewer: 1, snoozed: 0 }),
+      expect.objectContaining({
+        decisions: 0,
+        needsViewer: 1,
+        snoozed: 0,
+        todos: 1,
+      }),
     );
     expect(
       (await waitingConversationIdsQuery(getDb(), ana.id)).map(

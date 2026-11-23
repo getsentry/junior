@@ -63,8 +63,7 @@ describe("Slack public search", () => {
           channel_id: "C123",
           channel_name: "announcements",
           content: "Project Gizmo shipped.",
-          permalink:
-            "https://example.slack.com/archives/C123/p1784000000000100",
+          url: "https://example.slack.com/archives/C123/p1784000000000100",
         },
       ],
       files: [],
@@ -231,11 +230,11 @@ describe("Slack public search", () => {
       users: [{ user_id: "U9", user_name: "ada" }],
     });
     expect(result.files[0]).not.toHaveProperty("title");
-    expect(result.files[0]).not.toHaveProperty("permalink");
+    expect(result.files[0]).not.toHaveProperty("url");
     expect(result.channels[0]).not.toHaveProperty("topic");
     expect(result.channels[0]).not.toHaveProperty("is_private");
     expect(result.users[0]).not.toHaveProperty("title");
-    expect(result.users[0]).not.toHaveProperty("permalink");
+    expect(result.users[0]).not.toHaveProperty("url");
   });
 
   it("searches files and users when those content types are requested", async () => {
@@ -284,7 +283,7 @@ describe("Slack public search", () => {
           filetype: "pdf",
           user_id: "U9",
           channel_id: "C123",
-          permalink: "https://example.slack.com/files/U9/F123/gizmo.pdf",
+          url: "https://example.slack.com/files/U9/F123/gizmo.pdf",
         },
       ],
       users: [

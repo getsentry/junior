@@ -182,7 +182,8 @@ describe("Vercel deployment", () => {
         { toolCallId: "deployment-missing-project" },
       ),
     ).rejects.toMatchObject({
-      message: "Vercel project lookup failed with HTTP 404",
+      message:
+        "Vercel project lookup failed with HTTP 404. Check project, and set team when the project belongs to a team.",
       name: "PluginToolInputError",
     });
   });

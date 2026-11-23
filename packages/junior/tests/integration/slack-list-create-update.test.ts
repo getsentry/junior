@@ -50,7 +50,7 @@ describe("slack list create/update tools", () => {
 
     expect(first).toMatchObject({
       list_id: "LIST_ABC",
-      permalink: "https://example.invalid/files/LIST_ABC",
+      url: "https://example.invalid/files/LIST_ABC",
     });
     expect(second).toMatchObject({
       list_id: "LIST_ABC",

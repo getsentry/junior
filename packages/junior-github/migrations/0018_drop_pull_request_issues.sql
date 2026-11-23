@@ -1,0 +1,1 @@
+DROP TABLE "junior_github_pull_request_issues" CASCADE;

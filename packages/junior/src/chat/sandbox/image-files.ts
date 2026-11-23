@@ -23,7 +23,9 @@ export async function readSandboxImage(
     throw new SandboxFileNotFoundError(targetPath);
   }
   if (data.byteLength === 0) {
-    throw new ToolInputError(`image file is empty: ${targetPath}`);
+    throw new ToolInputError(
+      `image file is empty: ${targetPath}. Write the image first.`,
+    );
   }
   if (data.byteLength > maxBytes) {
     throw new ToolInputError(
@@ -33,7 +35,7 @@ export async function readSandboxImage(
   const mimeType = detectImageMediaType(data);
   if (!mimeType) {
     throw new ToolInputError(
-      `not a readable image: ${targetPath} exists, but its content is not PNG, JPEG, GIF, or WebP data`,
+      `not a readable image: ${targetPath} exists, but its content is not PNG, JPEG, GIF, or WebP data. Pass the path of a PNG, JPEG, GIF, or WebP file.`,
     );
   }
   return { data, mimeType };

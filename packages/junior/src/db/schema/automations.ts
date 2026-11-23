@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
   check,
@@ -12,6 +12,28 @@ import { juniorAutomationRuns } from "./automation-runs";
 import { juniorIdentities } from "./identities";
 import type { EventAutomationRecord } from "@/chat/event-automations/types";
 import type { ScheduledAutomationRecord } from "@/chat/scheduled-automations/types";
+
+/**
+ * The words of an Automation for search: its title, ranked above its task
+ * and, for an event Automation, its trigger. The `simple` config keeps each
+ * word as typed, so a prefix of it matches.
+ */
+export function automationSearchDocument(table: {
+  identifier: AnyPgColumn;
+  instruction: AnyPgColumn;
+  kind: AnyPgColumn;
+  namespace: AnyPgColumn;
+  record: AnyPgColumn;
+  skill: AnyPgColumn;
+  title: AnyPgColumn;
+}): SQL {
+  return sql`(setweight(to_tsvector('simple', coalesce(${table.title}, '')), 'A') || setweight(to_tsvector('simple', coalesce(${table.instruction}, '') || ' ' || coalesce(${table.skill}, '') || ' ' || case when ${table.kind} = 'event' then coalesce(${table.identifier}, '') || ' ' || coalesce(${table.record}->'trigger'->>'label', '') || ' ' || coalesce(${table.namespace}, '') else '' end), 'B'))`;
+}
+
+/** The lowercase title of an Automation, for typo-tolerant search. */
+export function automationFuzzyTitle(table: { title: AnyPgColumn }): SQL {
+  return sql`lower(coalesce(${table.title}, ''))`;
+}
 
 /**
  * One row per Automation of either kind. `record` holds the fields that have
@@ -122,6 +144,12 @@ export const juniorAutomations = pgTable(
       .where(sql`${table.status} <> 'deleted' AND ${table.skill} IS NOT NULL`),
     index("junior_automations_match_idx")
       .on(table.namespace, table.identifier, table.createdAtMs, table.id)
+      .where(sql`${table.status} <> 'deleted'`),
+    index("junior_automations_search_idx")
+      .using("gin", automationSearchDocument(table))
+      .where(sql`${table.status} <> 'deleted'`),
+    index("junior_automations_title_trgm_idx")
+      .using("gin", sql`${automationFuzzyTitle(table)} gin_trgm_ops`)
       .where(sql`${table.status} <> 'deleted'`),
   ],
 );

@@ -35,10 +35,9 @@ enum Route: Hashable {
 @MainActor
 @Observable
 final class AppModel {
-  /// The app's OAuth client: the URL of its Client ID Metadata Document,
-  /// which names the app and lists its loopback redirect URI.
-  static let oauthClientID =
-    "https://raw.githubusercontent.com/getsentry/junior/refs/heads/gricha/ios-app/apps/ios/oauth-client.json"
+  /// The app's OAuth client ID. Junior knows this client (`JUNIOR_IOS_CLIENT`
+  /// in `packages/junior/src/api/mcp/oauth/client-metadata.ts`).
+  static let oauthClientID = "https://junior.sentry.dev/clients/ios"
 
   private(set) var server: JuniorServer
   private(set) var client: MCPClient
@@ -61,12 +60,18 @@ final class AppModel {
   var focusSearch = false
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
+  /// Open the rename prompt on arrival (`?rename=1`).
+  var openRename = false
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
 
   /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0
   private(set) var inboxItemsVersion = 0
+  /// The latest title that a rename from a list saved. `savedTitleVersion`
+  /// bumps with each one, so the open Conversation shows it at once.
+  private(set) var savedTitle: SavedTitle?
+  private(set) var savedTitleVersion = 0
 
   /// A pinned "now" for deterministic screenshots (`-JuniorFixedNow`).
   let fixedNow: Date?
@@ -190,6 +195,7 @@ final class AppModel {
     // `?drawer=1` opens the navigation drawer over the page (screenshots).
     drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
+    openRename = components.queryItems?.contains { $0.name == "rename" } == true
   }
 
   func go(_ place: Place) {
@@ -263,6 +269,12 @@ final class AppModel {
 
   func noteInput() {
     lastInput = Date()
+  }
+
+  /// Tell the open Conversation about a title that a list saved.
+  func didRename(_ saved: SavedTitle) {
+    savedTitle = saved
+    savedTitleVersion += 1
   }
 
   /// Tell screens that data changed after a local write.

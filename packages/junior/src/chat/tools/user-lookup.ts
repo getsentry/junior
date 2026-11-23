@@ -84,7 +84,7 @@ export function createUserLookupTool(
           looksLikeEmail(query)
         ) {
           throw new ToolInputError(
-            `No Slack user found with email address ${query}.`,
+            `No Slack user found with email address ${query}. Check the email, or search by name.`,
           );
         }
         return result;

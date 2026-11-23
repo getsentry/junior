@@ -49,11 +49,6 @@ export const NAV_PAGES = {
     label: INBOX_VIEW_LABELS.conversations,
     to: inboxViewPath("conversations"),
   },
-  prs: {
-    access: "account",
-    label: INBOX_VIEW_LABELS.prs,
-    to: inboxViewPath("prs"),
-  },
   decisions: {
     access: "account",
     label: INBOX_VIEW_LABELS.decisions,
