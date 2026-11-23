@@ -50,6 +50,8 @@ Do not list behaviors. The verification map in
 - [Inbox](./inbox.md): work that waits for a person.
 - [Inbox stacks](./inbox-stacks.md): the Inbox rows in the dashboard, one
   stack for each root Conversation.
+- [Lead](./lead.md): a person's own Conversation that finds, starts, and
+  steers their other work.
 - [Prompts](./prompts.md): what the model reads in each Turn, and who wrote
   each part.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
