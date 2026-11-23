@@ -36,7 +36,7 @@ export async function pinFirstRepositoryConversation(page: Page) {
 
 /** Open the Conversations tab of the getsentry/junior repository. */
 export async function openRepositoryConversations(page: Page, baseURL: string) {
-  await page.goto(`${baseURL}/code`);
+  await page.goto(`${baseURL}/code?scope=all`);
   await page
     .getByRole("link", { name: "getsentry/junior", exact: true })
     .click();

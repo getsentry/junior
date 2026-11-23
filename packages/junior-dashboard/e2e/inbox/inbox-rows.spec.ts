@@ -123,8 +123,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(fyi).toHaveAttribute("title", "FYI");
     await expect(fyi).toHaveText("FYI");
 
-    // Pull requests mark their asks the same way.
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    // The PRs filter marks its asks the same way.
+    await page.goto(`${dashboard.baseURL}/?type=prs`);
     await expect(
       page
         .getByRole("listitem")

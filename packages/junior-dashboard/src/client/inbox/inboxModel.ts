@@ -2,6 +2,7 @@ import type {
   AutomationListItem,
   InboxItemPayload,
 } from "@sentry/junior/api/schema";
+import { parsePath } from "react-router";
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import type { Conversation } from "../types";
@@ -18,14 +19,13 @@ import {
 /**
  * The Inbox entries in the pane, as in Google Inbox. Each one names a list
  * in the main area: the Inbox, Snoozed, Done, Conversations, then the asks
- * by type.
+ * by type. The viewer's pull requests are in Code.
  */
 export type InboxView =
   | "conversations"
   | "decisions"
   | "done"
   | "inbox"
-  | "prs"
   | "snoozed";
 
 const INBOX_VIEWS: readonly InboxView[] = [
@@ -33,7 +33,6 @@ const INBOX_VIEWS: readonly InboxView[] = [
   "decisions",
   "done",
   "inbox",
-  "prs",
   "snoozed",
 ];
 
@@ -43,7 +42,6 @@ export const INBOX_VIEW_LABELS: Record<InboxView, string> = {
   decisions: "Decisions",
   done: "Done",
   inbox: "Inbox",
-  prs: "Pull requests",
   snoozed: "Snoozed",
 };
 
@@ -54,18 +52,24 @@ export function parseInboxView(value: string | null): InboxView {
 
 /** Read the entry of a list path, such as the return path of a Back. */
 export function inboxViewOfPath(path: string): InboxView {
-  return parseInboxView(new URLSearchParams(path.split("?")[1]).get("view"));
+  return parseInboxView(
+    new URLSearchParams(parsePath(path).search).get("view"),
+  );
 }
 
-/** The list path of an entry, with one item's row expanded when given. */
+/**
+ * The list path of an entry, with one item's row expanded when given, and
+ * its snooze dialog open when `snooze` is set.
+ */
 export function inboxViewPath(
   view: InboxView,
-  options: { itemId?: string } = {},
+  options: { itemId?: string; snooze?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
   // Phones show the entries at `/`, so an item link names its entry.
   if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
+  if (options.itemId && options.snooze) params.set("snooze", "1");
   const search = params.toString();
   return search ? `/?${search}` : "/";
 }
@@ -483,7 +487,7 @@ export function linkedRowOf(
         ? linkedId
         : undefined;
     if (!open) return undefined;
-    if (view === "prs" || view === "decisions") return open.id;
+    if (view === "decisions") return open.id;
     if (view !== "inbox") return `conversation:${open.rootConversationId}`;
     if (open.kind === "notice") return `fyi:${open.id}`;
     return linkedInboxRowKey(open, rows);

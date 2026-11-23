@@ -248,7 +248,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // that the Automations, System, Memories, and Settings areas list.
     for (const name of [
       "Snoozed",
-      "Pull requests",
+      "Code",
       "Settings",
       "My profile",
       "Automation runs",
