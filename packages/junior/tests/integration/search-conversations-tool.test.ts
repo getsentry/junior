@@ -91,7 +91,6 @@ describe("searchConversations", () => {
           channel_id: "CARCHIVE",
           channel_name: "archive",
           conversation_id: conversationId,
-          dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
           excerpt: expect.stringContaining("**launch**"),
           kind: "root",
           links: [
@@ -105,6 +104,7 @@ describe("searchConversations", () => {
           summary: "The launch decision uses a blue rollout.",
           title: "Launch decision",
           updated_at: expect.any(String),
+          url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
         },
       ],
     });
@@ -117,26 +117,20 @@ describe("searchConversations", () => {
           "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
       }),
     });
-    const resultWithPermalink = await executeTool(tool, {
+    const resultWithThreadUrl = await executeTool(tool, {
       query: "launch decision",
     });
-    expect(resultWithPermalink.conversations[0]).toMatchObject({
-      permalink:
-        "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+    expect(resultWithThreadUrl.conversations[0]).toMatchObject({
+      url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
     });
-    expect(resultWithPermalink.conversations[0]).not.toHaveProperty(
-      "dashboard_url",
-    );
 
     queueSlackApiResponse("chat.getPermalink", {
       body: slackError({ error: "missing_scope" }),
     });
-    const resultWithoutPermalink = await executeTool(tool, {
+    const resultWithoutUrl = await executeTool(tool, {
       query: "launch decision",
     });
-    expect(resultWithoutPermalink.conversations[0]).not.toHaveProperty(
-      "permalink",
-    );
+    expect(resultWithoutUrl.conversations[0]).not.toHaveProperty("url");
 
     // A child agent gives the Slack channel and thread of its root.
     const childId = "agent:launch-child";
@@ -164,8 +158,7 @@ describe("searchConversations", () => {
         channel_name: "archive",
         conversation_id: childId,
         kind: "thread",
-        permalink:
-          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+        url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
         root_conversation_id: conversationId,
       }),
     ]);
@@ -187,11 +180,10 @@ describe("searchConversations", () => {
     });
     expect(publicResult.conversations[0]).toMatchObject({
       conversation_id: conversationId,
-      dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
+      url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
     });
     expect(publicResult.conversations[0]).not.toHaveProperty("channel_id");
     expect(publicResult.conversations[0]).not.toHaveProperty("channel_name");
-    expect(publicResult.conversations[0]).not.toHaveProperty("permalink");
   });
 
   it("embeds summaries again after a model change, so search finds them by meaning", async () => {

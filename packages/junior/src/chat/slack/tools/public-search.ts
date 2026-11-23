@@ -53,7 +53,7 @@ const searchMessageSchema = z.object({
     .boolean()
     .optional()
     .describe("Whether the author is a bot."),
-  permalink: z.string().url().describe("Message permalink."),
+  url: z.string().url().describe("Link to the message."),
 });
 
 /** Canonical public-search file result. */
@@ -66,7 +66,7 @@ const searchFileSchema = z.object({
   user_name: z.string().min(1).optional().describe("Uploader user name."),
   channel_id: z.string().min(1).optional().describe("Channel ID."),
   channel_name: z.string().min(1).optional().describe("Channel name."),
-  permalink: z.string().url().optional().describe("File permalink."),
+  url: z.string().url().optional().describe("Link to the file."),
   content: z
     .string()
     .min(1)
@@ -85,7 +85,7 @@ const searchChannelSchema = z.object({
   is_member: z.boolean().optional().describe("Whether the bot is a member."),
   topic: z.string().min(1).optional().describe("Channel topic."),
   purpose: z.string().min(1).optional().describe("Channel purpose."),
-  permalink: z.string().url().optional().describe("Channel permalink."),
+  url: z.string().url().optional().describe("Link to the channel."),
 });
 
 /** Canonical public-search user result. */
@@ -95,7 +95,7 @@ const searchUserSchema = z.object({
   real_name: z.string().min(1).optional().describe("Real name."),
   display_name: z.string().min(1).optional().describe("Display name."),
   title: z.string().min(1).optional().describe("Profile title."),
-  permalink: z.string().url().optional().describe("Profile permalink."),
+  url: z.string().url().optional().describe("Link to the profile."),
 });
 
 const publicSearchOutputSchema = juniorToolOutputSchema.extend({
@@ -170,7 +170,7 @@ const slackSearchMessageWireSchema = z
     channel_id: value.channel_id,
     message_ts: value.message_ts,
     content: value.content,
-    permalink: value.permalink,
+    url: value.permalink,
     ...(value.author_name ? { author_name: value.author_name } : undefined),
     ...(value.author_user_id
       ? { author_user_id: value.author_user_id }
@@ -222,7 +222,7 @@ const slackSearchFileWireSchema = z
       ...(value.channel_name
         ? { channel_name: value.channel_name }
         : undefined),
-      ...(value.permalink ? { permalink: value.permalink } : undefined),
+      ...(value.permalink ? { url: value.permalink } : undefined),
       ...((value.content ?? value.preview)
         ? { content: value.content ?? value.preview }
         : undefined),
@@ -267,7 +267,7 @@ const slackSearchChannelWireSchema = z
         : undefined),
       ...(value.topic ? { topic: value.topic } : undefined),
       ...(value.purpose ? { purpose: value.purpose } : undefined),
-      ...(value.permalink ? { permalink: value.permalink } : undefined),
+      ...(value.permalink ? { url: value.permalink } : undefined),
     };
   });
 
@@ -299,7 +299,7 @@ const slackSearchUserWireSchema = z
         ? { display_name: value.display_name }
         : undefined),
       ...(value.title ? { title: value.title } : undefined),
-      ...(value.permalink ? { permalink: value.permalink } : undefined),
+      ...(value.permalink ? { url: value.permalink } : undefined),
     };
   });
 

@@ -63,11 +63,11 @@ async function isFirstRequest(
 }
 
 function toRelatedConversation(result: SummarizedResult): RelatedConversation {
-  const dashboardUrl = getDashboardConversationLink(result.conversationId);
+  const url = getDashboardConversationLink(result.conversationId);
   return {
     ...(result.channelName ? { channelName: result.channelName } : undefined),
     conversationId: result.conversationId,
-    ...(dashboardUrl ? { dashboardUrl } : undefined),
+    ...(url ? { url } : undefined),
     // A failed Turn waits for input, so its agent is idle.
     status: result.status === "failed" ? "idle" : result.status,
     summary: result.summary,

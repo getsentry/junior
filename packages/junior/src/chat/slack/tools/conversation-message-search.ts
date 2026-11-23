@@ -30,20 +30,11 @@ const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
         channel_id: z.string().min(1),
         channel_name: z.string().min(1).optional(),
         conversation_id: z.string().min(1),
-        dashboard_url: z
-          .string()
-          .url()
-          .optional()
-          .describe("Link to the conversation."),
         excerpt: z.string(),
         message_id: z.string().min(1),
         message_role: z.enum(["assistant", "user"]),
         message_timestamp: z.string().datetime(),
-        permalink: z
-          .string()
-          .url()
-          .optional()
-          .describe("Slack thread link. Only set when dashboard_url is not."),
+        url: z.string().url().optional().describe("Link to the conversation."),
         thread_ts: z.string().min(1),
       })
       .strict(),
@@ -195,16 +186,13 @@ export function createSlackConversationMessageSearchTool(
               "Stored Slack conversation search returned an invalid destination",
             );
           }
-          // Link the Junior dashboard. The Slack thread is only a fallback.
-          const dashboardUrl = getDashboardConversationLink(
-            match.conversationId,
-          );
-          const permalink = dashboardUrl
-            ? undefined
-            : await getSlackMessagePermalink({
-                channelId: reference.channelId,
-                messageTs: reference.threadTs,
-              });
+          // Link the dashboard. The Slack thread is only a fallback.
+          const url =
+            getDashboardConversationLink(match.conversationId) ??
+            (await getSlackMessagePermalink({
+              channelId: reference.channelId,
+              messageTs: reference.threadTs,
+            }));
           return {
             conversation_id: match.conversationId,
             thread_ts: reference.threadTs,
@@ -216,8 +204,7 @@ export function createSlackConversationMessageSearchTool(
             ...(match.channelName
               ? { channel_name: match.channelName }
               : undefined),
-            ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
-            ...(permalink ? { permalink } : undefined),
+            ...(url ? { url } : undefined),
           };
         }),
       );

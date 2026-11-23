@@ -78,16 +78,7 @@ const conversationMatchSchema = z
       .describe("Top linked resources, such as pull requests"),
     channel_id: z.string().min(1).optional(),
     channel_name: z.string().min(1).optional(),
-    dashboard_url: z
-      .string()
-      .url()
-      .optional()
-      .describe("Link to the conversation."),
-    permalink: z
-      .string()
-      .url()
-      .optional()
-      .describe("Slack thread link. Only set when dashboard_url is not."),
+    url: z.string().url().optional().describe("Link to the conversation."),
     archived: z
       .literal(true)
       .optional()
@@ -109,10 +100,9 @@ async function conversationMatch(
   channels: ConversationSearchChannelPort | undefined,
 ): Promise<ConversationMatch> {
   const dashboardUrl = getDashboardConversationLink(match.conversationId);
-  // Link the Junior dashboard. The Slack thread is only a fallback, so the
-  // model does not pick it over the dashboard.
+  // Link the dashboard. The provider thread is only a fallback.
   const channelFields = channels
-    ? await channels.describeMatch(match, { includePermalink: !dashboardUrl })
+    ? await channels.describeMatch(match, { includeUrl: !dashboardUrl })
     : undefined;
   return {
     conversation_id: match.conversationId,
@@ -130,7 +120,7 @@ async function conversationMatch(
     ...(match.excerpt ? { excerpt: match.excerpt } : undefined),
     ...(match.links.length > 0 ? { links: match.links } : undefined),
     ...channelFields,
-    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(dashboardUrl ? { url: dashboardUrl } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
     ...(match.transcriptPurged
       ? { transcript_purged: true as const }

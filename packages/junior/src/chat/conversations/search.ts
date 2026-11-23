@@ -89,16 +89,16 @@ export interface ConversationSearchResult {
 export interface ConversationSearchChannelPort {
   channelFilterSchema: z.ZodString;
   /**
-   * Describe the provider channel of a match. Only `includePermalink` asks
-   * for a provider link: a dashboard link is the default Conversation link.
+   * Describe the provider channel of a match. `includeUrl` asks for the
+   * provider thread link, for when there is no dashboard link.
    */
   describeMatch(
     match: ConversationSearchResult,
-    options: { includePermalink: boolean },
+    options: { includeUrl: boolean },
   ): Promise<{
     channel_id?: string;
     channel_name?: string;
-    permalink?: string;
+    url?: string;
   }>;
   resolveChannel(input: string): Promise<string>;
 }
