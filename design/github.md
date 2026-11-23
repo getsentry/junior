@@ -102,6 +102,9 @@ also wake a Conversation or run an Event automation.
 - `Ready to merge` waits for every check, not only the required ones, and
   does not know stacks (`github#ready-to-merge`, `github#stack`). This
   breaks "a Junior PR that a person can merge gets one `Ready to merge`".
+- A Junior push to an approved PR closes its `Ready to merge`, and a new
+  one comes when the checks pass (`github#ready-to-merge`). This breaks
+  "It asks for each step once".
 - When GitHub dismisses an approval after a Junior push, nobody is asked
   for a fresh review, so the PR waits and nobody hears
   (`github#push-after-approval`). This breaks "asks for a fresh review
