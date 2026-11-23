@@ -97,7 +97,7 @@ async function runDatabaseMigrations(
       ? `Database is up to date (${migrationCount(scanned)}).`
       : `Applied ${migrationCount(migrated)} (${scanned} total).`,
   );
-  await raiseJitThreshold(context.sqlExecutor, io);
+  await setJitThreshold(context.sqlExecutor, io);
 }
 
 // Postgres JIT-compiles a plan whose cost is above `jit_above_cost`
@@ -109,8 +109,9 @@ async function runDatabaseMigrations(
 const JIT_ABOVE_COST = 10_000_000;
 
 // The role default applies to new connections of the app's role, so pooled
-// connections pick it up when they reconnect.
-async function raiseJitThreshold(
+// connections pick it up when they reconnect. JIT_ABOVE_COST is the source
+// of truth: a change to it moves the role default up or down.
+async function setJitThreshold(
   sqlExecutor: JuniorSqlExecutor,
   io: UpgradeIo,
 ): Promise<void> {
@@ -128,7 +129,7 @@ SELECT coalesce(
   current_setting('jit_above_cost')
 ) AS cost
 `);
-  if (Number(row?.cost) >= JIT_ABOVE_COST) return;
+  if (Number(row?.cost) === JIT_ABOVE_COST) return;
   await sqlExecutor.query(
     `ALTER ROLE CURRENT_USER SET jit_above_cost = ${JIT_ABOVE_COST}`,
   );
