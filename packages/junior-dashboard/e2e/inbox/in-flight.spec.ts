@@ -1,3 +1,4 @@
+import { waitForOutlineRead } from "../harness";
 import { mockInboxItems, rowHead } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -45,8 +46,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(pinned).toBeVisible();
     await screenshot(page, "inbox-in-flight", { view: "desktop" });
 
+    const outlineRead = waitForOutlineRead(
+      page,
+      "slack:CQA123:1770003600.000200",
+    );
     await inFlight.getByRole("link", { name: new RegExp(checkout) }).click();
     await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
+    await outlineRead;
   });
 
   test("In flight shows every pin past five running Conversations, and Show all lists the rest", async ({
