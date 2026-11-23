@@ -7,6 +7,7 @@ import {
   mockDashboardApis,
   routeConversationVersion,
   withRequestedMailbox,
+  waitForOutlineRead,
 } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -62,6 +63,13 @@ test("reveals a closed tool result in transcript search", async ({
       }),
     })
     .first();
+  // Opening the tool rows is reading them, so the page saves the read
+  // position.
+  const readSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname.endsWith("/read-position"),
+  );
   await activity.locator(':scope > [data-slot="collapsible-trigger"]').click();
   await toolRow.focus();
   await page.keyboard.press("Enter");
@@ -82,6 +90,7 @@ test("reveals a closed tool result in transcript search", async ({
   await expect(toolResult).toBeVisible();
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
+  await readSaved;
 });
 
 test("inspects all reporting events and steps through event details", async ({
@@ -521,12 +530,17 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(linkedEntry).toBeFocused();
   await linkedEntry.click();
   await expect(linked).toBeVisible();
+  const outlineRead = waitForOutlineRead(
+    page,
+    "slack:CQA123:1770003600.000200",
+  );
   await page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(linked).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]event=/);
+  await outlineRead;
 });
 
 test("mounts only the event log rows near the viewport", async ({
@@ -583,13 +597,16 @@ test("mounts only the event log rows near the viewport", async ({
   expect(await mounted.count()).toBeLessThan(80);
 
   // Arrow keys move past the end of the mounted range and mount the rows
-  // they reach. The row that holds the reader's place can stay mounted
-  // further down, so find the first gap from the top.
-  const seqs = await mounted.evaluateAll((rows) =>
-    rows.map((row) => Number(row.getAttribute("data-event-seq"))),
+  // they reach. The row that held the reader's place before the scroll
+  // stays mounted further down until the next render, which may or may not
+  // have come yet. So target the first unmounted row from the top.
+  const seqs = new Set(
+    await mounted.evaluateAll((rows) =>
+      rows.map((row) => Number(row.getAttribute("data-event-seq"))),
+    ),
   );
-  const target = seqs.findIndex((seq, index) => seq !== index + 1) + 1;
-  expect(target).toBeGreaterThan(1);
+  let target = 1;
+  while (seqs.has(target)) target += 1;
   await expect(entry(target)).not.toBeAttached();
   await entry(1).focus();
   for (let seq = 2; seq <= target; seq++) {
@@ -747,7 +764,7 @@ for (const width of [1440, 390]) {
 }
 
 for (const view of [desktop, mobile]) {
-  test(`docks a tall question above the message box (${view.name})`, async ({
+  test(`shows a tall question in the transcript, above the message box (${view.name})`, async ({
     page,
     dashboard,
   }) => {
@@ -799,15 +816,15 @@ for (const view of [desktop, mobile]) {
       dismissed
         ? { ...item, closedAt: report.lastSeenAt, status: "dismissed" }
         : item;
-    await page.route(`**/api/review-items/${item.id}`, (route) =>
+    await page.route(`**/api/inbox-items/${item.id}`, (route) =>
       route.fulfill({ json: current() }),
     );
-    await page.route(`**/api/review-items/${item.id}/actions`, (route) => {
+    await page.route(`**/api/inbox-items/${item.id}/actions`, (route) => {
       dismissed = true;
       return route.fulfill({ json: current() });
     });
     // The Conversation also lists the open item above the message box.
-    await page.route(`**/api/review-items?*`, (route) =>
+    await page.route(`**/api/inbox-items?*`, (route) =>
       route.fulfill({ json: { items: dismissed ? [] : [item] } }),
     );
     report.events = [
@@ -829,7 +846,7 @@ for (const view of [desktop, mobile]) {
           calls: [
             {
               input: { kind: "action", title: item.title },
-              name: "addReviewItem",
+              name: "addInboxItem",
               output: JSON.stringify({ item: { id: item.id } }),
               status: "completed",
               toolCallId: "review-1",
@@ -847,30 +864,28 @@ for (const view of [desktop, mobile]) {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(conversationId)}`,
     );
 
-    // The form scrolls inside the dock, so its title and question stay in
-    // view, and the message box and queued messages stay below it.
-    const question = page.getByRole("region", {
-      name: `Question: ${item.title}`,
-    });
+    // The question shows in its card in the transcript. Nothing docks, so
+    // the message box and the queued messages stay below the transcript.
+    const record = page.getByRole("region", { name: `Asked ${item.title}` });
+    await expect(record).toContainText("Waiting on you");
+    const question = record.getByRole("region", { name: "Question" });
+    await expect(question).toContainText(item.request.question);
     await expect(
-      question.getByRole("radiogroup", { name: "Owner" }),
+      record.getByRole("radiogroup", { name: "Owner" }),
     ).toBeAttached();
     await expect(
-      question.getByRole("heading", { name: item.title }),
-    ).toBeInViewport();
+      page.getByRole("region", { name: `Question: ${item.title}` }),
+    ).toHaveCount(0);
     const composer = page.getByLabel("Continue this conversation");
     const queue = page.getByRole("button", { name: /queued messages/ });
     await expect(composer).toBeInViewport();
     await expect(queue).toBeVisible();
-    const record = page.getByRole("region", { name: `Asked ${item.title}` });
-    await expect(record).toContainText("Waiting on you");
     await screenshot(page, "conversation-question-form", {
       view: view.name,
     });
 
-    // Esc dismisses the question, and its record says so.
-    await question.getByRole("heading", { name: item.title }).click();
-    await page.keyboard.press("Escape");
+    // Dismiss closes the question, and its record says so.
+    await record.getByRole("button", { name: "Dismiss", exact: true }).click();
     await expect(question).toHaveCount(0);
     await expect(record).toContainText("Dismissed");
     await screenshot(page, "conversation-question-dismissed", {
@@ -883,7 +898,7 @@ test("opens the event log from the sidebar row menu", async ({
   page,
   dashboard,
 }) => {
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
   const row = page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Closed issue summary/ });

@@ -172,7 +172,7 @@ const INLINE_DEFINITION_CONSTRUCTORS = new Set(["zodTool"]);
 // Built by each run from its planned tool exposure, after `createTools`.
 // Their descriptions list the tools of the run.
 const EXPOSURE_BUILT_TOOL_NAMES = ["codemode", "searchTools"];
-const REGISTRY_PATH = "packages/junior/src/chat/tools/registry.ts";
+const REGISTRY_PATH = "packages/junior/src/chat/tool-support/registry.ts";
 
 /**
  * Read the run-built slot names from the source of the static tool registry

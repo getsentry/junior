@@ -110,7 +110,9 @@ export const gitHubGetIssueTool = definePluginTool({
       const message = `GitHub issue lookup failed with HTTP ${response.status}`;
       // Missing issue/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
       if (response.status === 404) {
-        throw new PluginToolInputError(message);
+        throw new PluginToolInputError(
+          `${message}. Check repo and issue. If they are correct, the GitHub App cannot see the repository.`,
+        );
       }
       throw new Error(message);
     }

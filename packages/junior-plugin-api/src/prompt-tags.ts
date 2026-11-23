@@ -3,7 +3,17 @@
  * plugins build every prompt tag here, so all tags fence untrusted text the
  * same way, and code reads stored history back with the same rules. Lint
  * rules ban tag literals, tag regexes, and entity escapes elsewhere.
- * `policies/prompt-markers.md` in getsentry/junior owns the tag rules.
+ *
+ * Escape by the kind of text:
+ * - Runtime IDs, enums, handles, and times use only `[A-Za-z0-9._:@/#+-]`,
+ *   so they need no escaping. Any other attribute value is free text.
+ * - Free text in an attribute, such as a name or a title: `&`, `<`, `>`, and
+ *   `"`.
+ * - The body of a person's text or untrusted text: `&`, `<`, and `>`. This
+ *   also turns copies of our tags into plain text. Quotes stay as written.
+ * - A JSON body: `<`, `>`, and `&` as `\u003c`, `\u003e`, and `\u0026`.
+ * - Raw text, such as the system prompt, a skill, or `AGENTS.md`: only its
+ *   closing tag.
  */
 
 /** Attribute values of one tag. An undefined or empty value is left out. */

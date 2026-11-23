@@ -82,25 +82,25 @@ export interface WebMessageInput {
   kind: "web_message";
   /** Files that the person added to the message. */
   files?: FileInput[];
-  /** After the post, the person steers the queued message into the running turn. */
-  steer?: boolean;
+  /** Send it to the person's Lead, which `GET /api/lead` finds or makes. */
+  lead?: boolean;
   text: string;
 }
 
 /**
  * A person's answer or dismiss in the Inbox, through
- * `POST /api/review-items/:id/actions`. The fixture first links `item` to the
- * web Conversation and assigns it to the person, as `addReviewItem` would.
+ * `POST /api/inbox-items/:id/actions`. The fixture first links `item` to the
+ * web Conversation and assigns it to the person, as `addInboxItem` would.
  */
-export interface ReviewItemActionInput {
-  kind: "review_item_action";
+export interface InboxItemActionInput {
+  kind: "inbox_item_action";
   action: "submit" | "dismiss";
   item: InboxItem;
   /** The answer, by field id. */
   values?: Record<string, string[]>;
 }
 
-/** An open item that a `ReviewItemActionInput` acts on. */
+/** An open item that a `InboxItemActionInput` acts on. */
 export interface InboxItem {
   body: string;
   /** Without a request, the item is a notice. */
@@ -153,7 +153,7 @@ export type AutomationInput = HeartbeatInput | GitHubWebhookInput;
 
 export type Input =
   | MessageInput
-  | ReviewItemActionInput
+  | InboxItemActionInput
   | AutomationInput
   | CompleteAuthInput
   | AppHomeUnlinkInput;
@@ -231,22 +231,22 @@ export function appHomeUnlink(
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { files?: FileInput[]; steer?: boolean } = {},
+  options: { files?: FileInput[]; lead?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }
 
-/** Answer a Review item from the dashboard, by field id. */
-export function reviewItemAnswer(
+/** Answer an Inbox item from the dashboard, by field id. */
+export function inboxItemAnswer(
   item: InboxItem,
   values: Record<string, string[]>,
-): ReviewItemActionInput {
-  return { kind: "review_item_action", action: "submit", item, values };
+): InboxItemActionInput {
+  return { kind: "inbox_item_action", action: "submit", item, values };
 }
 
-/** Dismiss a Review item from the dashboard. */
-export function reviewItemDismiss(item: InboxItem): ReviewItemActionInput {
-  return { kind: "review_item_action", action: "dismiss", item };
+/** Dismiss an Inbox item from the dashboard. */
+export function inboxItemDismiss(item: InboxItem): InboxItemActionInput {
+  return { kind: "inbox_item_action", action: "dismiss", item };
 }
 
 /** A file for `files`. A string is the text of the file. */

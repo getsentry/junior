@@ -5,7 +5,6 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { conversationWatchesReportSchema } from "@/api/schema";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import {
   createTimerWatch,
@@ -21,6 +20,8 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../../../fixtures/agent-invocations";
+import { spawnChildWithoutAgentInvocation } from "../../../fixtures/child-without-agent-invocation";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 const NOW_MS = Date.now();
 
@@ -72,15 +73,18 @@ describe("conversation watches API", () => {
   it("returns the watches of the Conversation and of its child agents", async () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
-    await prepareSlackParentConversation();
-    const reviewer = await createAgentInvocation(
-      {
-        ...slackInvocationInput,
+    const { conversationStore } = await prepareSlackParentConversation();
+    const reviewer = {
+      childConversationId: await spawnChildWithoutAgentInvocation({
+        actor: slackInvocationInput.actor,
         agentName: "reviewer",
+        conversationStore,
         idempotencyKey: "watches-reviewer",
-      },
-      NOW_MS,
-    );
+        nowMs: NOW_MS,
+        parentConversationId: slackParentConversationId,
+        queue: createConversationWorkQueueTestAdapter(),
+      }),
+    };
     await createWatch(
       {
         conversationId: slackParentConversationId,
@@ -209,7 +213,9 @@ describe("conversation watches API", () => {
         namespace: "slack",
         resourceType: "channel",
       },
-      { nowMs: NOW_MS },
+      // The timer reads the test clock, which restarts for each test, so
+      // NOW_MS can be before or after it. Create the event Watch after it.
+      { nowMs: timer.createdAtMs + 1_000 },
     );
     const other = await createWatch(
       {

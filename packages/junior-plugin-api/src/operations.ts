@@ -16,7 +16,8 @@ import type {
   PluginConversationEventStats,
 } from "./conversation-events";
 import type { CodeChangePublisher } from "./code";
-import type { PluginConversationReviewItems } from "./review-items";
+import type { PluginConversationChanges } from "./conversation-changes";
+import type { PluginConversationInboxItems } from "./inbox-items";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -34,13 +35,15 @@ export interface HeartbeatHookContext extends PluginContext {
   annotations: PluginConversationAnnotations;
   /** Junior's native code index, as from a plugin route. */
   codeChanges: CodeChangePublisher;
+  /** Annotation and Inbox item changes in one write, as from a plugin route. */
+  conversationChanges: PluginConversationChanges;
   /** Host embedder bound to the configured embedding model. */
   embedder: PluginEmbedder;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   nowMs: number;
-  /** Review items in the Inbox, as from a plugin route. */
-  reviewItems: PluginConversationReviewItems;
+  /** Inbox items, as from a plugin route. */
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
 }
 
@@ -201,10 +204,12 @@ export interface RouteRegistrationHookContext extends PluginContext {
   annotations: PluginConversationAnnotations;
   /** Provider-neutral write boundary for Junior's native code index. */
   codeChanges: CodeChangePublisher;
+  /** Annotation and Inbox item changes that readers must see together. */
+  conversationChanges: PluginConversationChanges;
   /** Core-owned delivery boundary for provider webhook events. */
   events: EventPublisher;
-  /** Review items in the Inbox that the plugin adds and closes from its events. */
-  reviewItems: PluginConversationReviewItems;
+  /** Inbox items that the plugin adds and closes from its events. */
+  inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;
   users: {

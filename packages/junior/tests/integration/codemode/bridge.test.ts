@@ -17,8 +17,8 @@ import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { createTools } from "@/chat/tools";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 import { createToolPipeline } from "@/chat/tool-support/pi-tool-adapter";
 import { mswServer } from "../../msw/server";
@@ -103,6 +103,7 @@ function pipelineFor(
 
 function turnCount() {
   return createResumeState({
+    historySeqs: [],
     checkpoint: { resumed: false, sliceId: 1 },
     conversationId: CONVERSATION_ID,
     destination: DESTINATION,

@@ -5,7 +5,7 @@ import { turnEvents } from "@/chat/events/store";
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const listedResourceWatchSchema = z
   .object({

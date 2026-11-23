@@ -195,13 +195,13 @@ describe("conversation report event projection", () => {
       text: "audit the repo",
       meta: { agentInvocationId: "invocation-1" },
     });
-    // Each Review item change keeps its own record, so the dashboard shows
+    // Each Inbox item change keeps its own record, so the dashboard shows
     // what the message did, not the item's current state.
     const answer = event(3, {
       type: "message",
       messageId: "answer-1",
       role: "user",
-      text: "Alice answered review item item-1.",
+      text: "Alice answered inbox item item-1.",
       meta: {
         reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
       },
@@ -247,7 +247,7 @@ describe("conversation report event projection", () => {
           messageId: "answer-1",
           role: "user",
           reviewItemChanges: [{ kind: "submitted", reviewItemId: "item-1" }],
-          text: "Alice answered review item item-1.",
+          text: "Alice answered inbox item item-1.",
         },
       },
     ]);
@@ -747,6 +747,46 @@ describe("conversation report event projection", () => {
     expect(JSON.stringify(projected)).not.toContain("AAAA");
   });
 
+  it("projects the Conversation that startConversation started only to authorized viewers", () => {
+    const details = {
+      conversation_id: "local:web:started",
+      subscribable: {
+        identifier: "local:web:started",
+        label: "Conversation Changelog",
+        namespace: "junior",
+        supported_events: ["agent.update"],
+        type: "conversation",
+      },
+    };
+    const events = [
+      event(1, {
+        type: "tool_result",
+        toolCallId: "call-1",
+        toolName: "startConversation",
+        content: [{ type: "text", text: JSON.stringify(details) }],
+        details,
+        isError: false,
+        timestamp: 1_000,
+      }),
+    ];
+    const call = (canExposePayload: boolean) => {
+      const [projected] = projectConversationReportEventPage({
+        canExposePayload,
+        events,
+      });
+      return projected?.data.type === "tool_calls"
+        ? projected.data.calls[0]
+        : undefined;
+    };
+
+    expect(call(true)?.startedConversationId).toBe("local:web:started");
+    expect(call(false)).toEqual({
+      toolCallId: "call-1",
+      name: "startConversation",
+      status: "completed",
+    });
+  });
+
   it("projects dashboard source with visible message metadata", () => {
     const [projected] = projectConversationReportEventPage({
       canExposePayload: true,
@@ -757,6 +797,7 @@ describe("conversation report event projection", () => {
           role: "user",
           text: "event details",
           meta: {
+            eventIdentifier: "getsentry/junior#42",
             eventNamespace: "github",
             eventType: "pull_request.merged",
             trustedSummary: "David merged PR #42.",
@@ -774,6 +815,7 @@ describe("conversation report event projection", () => {
       source: "web",
       eventType: "pull_request.merged",
       eventNamespace: "github",
+      eventIdentifier: "getsentry/junior#42",
       trustedSummary: "David merged PR #42.",
       text: "event details",
     });

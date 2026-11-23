@@ -5,8 +5,8 @@ import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { createOperationKey } from "@/chat/tools/idempotency";
-import type { ToolState } from "@/chat/tools/types";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
+import type { ToolState } from "@/chat/tool-support/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 /**
@@ -52,7 +52,7 @@ export function createSlackCanvasCreateTool(
       });
       const cached = state.getOperationResult<{
         canvas_id: string;
-        permalink: string;
+        url: string | undefined;
         summary: string;
       }>(operationKey);
       if (cached) {
@@ -69,7 +69,7 @@ export function createSlackCanvasCreateTool(
       });
       const response = {
         canvas_id: created.canvasId,
-        permalink: created.permalink,
+        url: created.permalink,
         summary: `Created canvas ${created.canvasId}`,
       };
       state.setOperationResult(operationKey, response);

@@ -1,4 +1,5 @@
 import { Buffer } from "node:buffer";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { setTimeout as realSetTimeout } from "node:timers";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSlackSource, type Destination } from "@sentry/junior-plugin-api";
@@ -14,7 +15,8 @@ const { agentMode, compactionState, counters, sessionLogState } = vi.hoisted(
       value: "providerRetry",
     },
     compactionState: {
-      checkpointTurnStartMessageIndex: undefined as number | undefined,
+      checkpointPromptSaved: undefined as boolean | undefined,
+      checkpointTurnMessages: "",
       nextProviderContextChars: 0,
       nextProviderContextText: "",
       preflightContextText: "",
@@ -270,12 +272,24 @@ vi.mock("@earendil-works/pi-agent-core", async (importOriginal) => {
           return {};
         }
         // The compaction checkpoint is the resume point if this slice stops.
-        compactionState.checkpointTurnStartMessageIndex = (
-          await turnSessionState.getTurnRecord(
-            "conversation-active-compaction",
-            "turn-active-compaction",
-          )
-        )?.turnStartMessageIndex;
+        const compacted = (await turnSessionState.getTurnRecord(
+          "conversation-active-compaction",
+          "turn-active-compaction",
+        ))!;
+        const { loadTurnStart } =
+          await import("@/chat/conversations/turn-lifecycle");
+        const { savedTurnMessages } =
+          await import("@/chat/task-execution/turn-membership");
+        compactionState.checkpointPromptSaved = compacted.promptSaved;
+        compactionState.checkpointTurnMessages = JSON.stringify(
+          savedTurnMessages(
+            compacted,
+            await loadTurnStart(
+              "conversation-active-compaction",
+              "turn-active-compaction",
+            ),
+          ),
+        );
         compactionState.nextProviderContextText = JSON.stringify(
           this.state.messages,
         );
@@ -621,7 +635,7 @@ vi.mock("@/chat/runtime/dev-agent-trace", () => ({
 }));
 
 vi.mock("@/chat/sandbox/sandbox", () => ({
-  createSandbox: () => ({
+  createSandbox: vi.fn(() => ({
     captureRepositoryInstructions: async () => {
       if (repositoryState.available && repositoryState.readFailure) {
         throw repositoryState.readFailure;
@@ -660,7 +674,7 @@ vi.mock("@/chat/sandbox/sandbox", () => ({
         ? { id: "sandbox-test", profileHash: "hash-test" }
         : undefined,
     close: vi.fn(),
-  }),
+  })),
 }));
 
 vi.mock("@/chat/plugins/catalog-runtime", () => ({
@@ -679,11 +693,32 @@ vi.mock("@/chat/skills", async (importOriginal) => ({
 
 import { executeAgentRun } from "@/chat/agent";
 import { SandboxCallTimeoutError } from "@/chat/sandbox/errors";
+import { createSandbox } from "@/chat/sandbox/sandbox";
 import { getConversationStore } from "@/chat/db";
 import { getPausedTurnRequest } from "@/chat/task-execution/turn-wake";
 import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import * as turnSessionState from "@/chat/task-execution/turn-cursor";
+import { recordTurnStart } from "../../fixtures/turn-start";
+import {
+  commitMessages,
+  loadConversationProjection,
+} from "@/chat/conversations/projection";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import { savedTurnMessages } from "@/chat/task-execution/turn-membership";
+import type { AgentHistory } from "@/chat/agent/types";
+
+/** Commit an earlier Turn, then start `turnId` after it. */
+async function committedEarlierTurn(
+  conversationId: string,
+  turnId: string,
+  messages: PiMessage[],
+): Promise<AgentHistory> {
+  await commitMessages({ conversationId, messages });
+  await recordTurnStart(conversationId, turnId);
+  const projection = await loadConversationProjection({ conversationId });
+  return { messages: projection.messages, seqs: projection.seqs };
+}
 
 function finalReply(outcome: Awaited<ReturnType<typeof executeAgentRun>>) {
   if (outcome.status !== "completed") {
@@ -724,7 +759,8 @@ describe("agent run continuation", () => {
     counters.abortCalls = 0;
     counters.continueCalls = 0;
     counters.promptCalls = 0;
-    compactionState.checkpointTurnStartMessageIndex = undefined;
+    compactionState.checkpointPromptSaved = undefined;
+    compactionState.checkpointTurnMessages = "";
     compactionState.nextProviderContextChars = 0;
     compactionState.nextProviderContextText = "";
     compactionState.preflightContextText = "";
@@ -732,6 +768,7 @@ describe("agent run continuation", () => {
     repositoryState.availableAtBoundary = false;
     repositoryState.available = false;
     repositoryState.readFailure = undefined;
+    vi.mocked(createSandbox).mockClear();
     sessionLogState.failToolExecutionAppend = false;
     sessionLogState.toolExecutionAppendCalls = 0;
     process.env["JUNIOR_STATE_ADAPTER"] = "memory";
@@ -747,6 +784,27 @@ describe("agent run continuation", () => {
 
   it("continues the user's request when active compaction writes a wrong summary", async () => {
     agentMode.value = "activeCompaction";
+    const earlierTurn = await committedEarlierTurn(
+      "conversation-active-compaction",
+      "turn-active-compaction",
+      [
+        {
+          role: "user",
+          content: [{ type: "text", text: "previous question" }],
+          timestamp: 1,
+        },
+        {
+          role: "assistant",
+          content: [{ type: "text", text: "previous answer" }],
+          api: "responses",
+          provider: "openai",
+          model: "gpt-5.3",
+          usage: TEST_USAGE,
+          stopReason: "stop",
+          timestamp: 2,
+        },
+      ] satisfies PiMessage[],
+    );
 
     const result = finalReply(
       await executeAgentRun({
@@ -755,23 +813,7 @@ describe("agent run continuation", () => {
         instruction: {
           text: "Make a large generated-file edit.",
         },
-        history: [
-          {
-            role: "user",
-            content: [{ type: "text", text: "previous question" }],
-            timestamp: 1,
-          },
-          {
-            role: "assistant",
-            content: [{ type: "text", text: "previous answer" }],
-            api: "responses",
-            provider: "openai",
-            model: "gpt-5.3",
-            usage: TEST_USAGE,
-            stopReason: "stop",
-            timestamp: 2,
-          },
-        ] satisfies PiMessage[],
+        history: earlierTurn,
         source: TEST_SOURCE,
         destination: TEST_DESTINATION,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -780,7 +822,12 @@ describe("agent run continuation", () => {
 
     expect(result.text).toBe("Finished the requested edit.");
     expect(compactionState.summaryCalls).toBe(1);
-    expect(compactionState.checkpointTurnStartMessageIndex).toBe(0);
+    // A resume from the compaction checkpoint keeps the request in this Turn
+    // and does not add it again.
+    expect(compactionState.checkpointPromptSaved).toBe(true);
+    expect(compactionState.checkpointTurnMessages).toContain(
+      "Make a large generated-file edit.",
+    );
     expect(compactionState.nextProviderContextChars).toBeLessThan(20_000);
     expect(compactionState.nextProviderContextText).toContain(
       "Make a large generated-file edit.",
@@ -823,7 +870,7 @@ describe("agent run continuation", () => {
         instruction: {
           text: currentInstruction,
         },
-        history: priorMessages,
+        history: committedHistory(priorMessages),
         source: TEST_SOURCE,
         destination: TEST_DESTINATION,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -865,6 +912,10 @@ describe("agent run continuation", () => {
 
     expect(reply.text).toBe("Recovered.");
     expect(reply.diagnostics.outcome).toBe("success");
+    // A new Turn may replace a sandbox session near the provider's cap.
+    expect(createSandbox).toHaveBeenCalledWith(
+      expect.objectContaining({ rotateOldSession: true }),
+    );
     expect(reply.diagnostics.toolResultCount).toBe(1);
     expect(reply.diagnostics.usage).toMatchObject({
       inputTokens: 16,
@@ -1016,7 +1067,11 @@ describe("agent run continuation", () => {
         instruction: {
           text: "help me",
         },
-        history: priorMessages,
+        history: await committedEarlierTurn(
+          "slack:C123:1712345.0001",
+          "turn-steering",
+          priorMessages,
+        ),
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },
@@ -1055,8 +1110,17 @@ describe("agent run continuation", () => {
       "slack:C123:1712345.0001",
       "turn-steering",
     );
-    // Two earlier messages and the capability sections come first.
-    expect(sessionRecord?.turnStartMessageIndex).toBe(3);
+    // The prompt and the steering belong to the Turn, the earlier Turn does
+    // not.
+    const turnMessages = JSON.stringify(
+      savedTurnMessages(
+        sessionRecord!,
+        await loadTurnStart("slack:C123:1712345.0001", "turn-steering"),
+      ),
+    );
+    expect(turnMessages).toContain("help me");
+    expect(turnMessages).toContain("actually do the other thing");
+    expect(turnMessages).not.toContain("previous question");
     const serializedMessages = JSON.stringify(sessionRecord?.piMessages);
     expect(serializedMessages).toContain("previous question");
     expect(serializedMessages).toContain("help me");
@@ -1339,6 +1403,7 @@ describe("agent run continuation", () => {
         },
       },
     ] as PiMessage[];
+    await recordTurnStart(conversationId, turnId);
     await turnSessionState.upsertTurnRecord({
       conversationId,
       turnId: turnId,
@@ -1347,7 +1412,7 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       piMessages: messages,
-      turnStartMessageIndex: 0,
+      promptSaved: true,
       resumeReason: "yield",
       errorMessage: "Agent turn yielded at a safe boundary",
     });
@@ -1372,6 +1437,10 @@ describe("agent run continuation", () => {
     expect(result.text).toBe(confirmation);
     expect(delivered).toEqual([{ text: confirmation }]);
     expect(counters.continueCalls).toBe(2);
+    // A resumed Turn keeps its session and its unpushed work.
+    expect(createSandbox).toHaveBeenCalledWith(
+      expect.objectContaining({ rotateOldSession: false }),
+    );
   });
 
   it("keeps steered messages when yielding after steering drain", async () => {
@@ -1497,6 +1566,7 @@ describe("agent run continuation", () => {
       content: [{ type: "text", text: renderCurrentInstruction("help me") }],
       timestamp: 5,
     } satisfies PiMessage;
+    await recordTurnStart(conversationId, sessionId);
     await turnSessionState.upsertTurnRecord({
       conversationId,
       turnId: sessionId,
@@ -1505,7 +1575,6 @@ describe("agent run continuation", () => {
       destination: TEST_DESTINATION,
       source: TEST_SOURCE,
       piMessages: [checkpointedPrompt],
-      turnStartMessageIndex: 0,
     });
 
     const reply = finalReply(
@@ -1513,7 +1582,7 @@ describe("agent run continuation", () => {
         conversationId,
         turnId: sessionId,
         instruction: { text: "help me" },
-        history: [checkpointedPrompt],
+        history: committedHistory([checkpointedPrompt]),
         destination: TEST_DESTINATION,
         source: TEST_SOURCE,
         actor: { platform: "slack", teamId: "T123", userId: "U123" },

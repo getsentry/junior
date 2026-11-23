@@ -1,10 +1,12 @@
 import type { GitHubStatusIncident } from "../github-status.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
   PluginConversationAnnotations,
-  PluginConversationReviewItems,
+  PluginConversationChanges,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginRoute,
   EventInput,
@@ -12,25 +14,17 @@ import type {
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
-import {
-  recordGitHubIssueConversations,
-  recordGitHubIssueOutcome,
-} from "../issue-outcomes/store.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
   recordGitHubPullRequestConversations,
-  recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
 } from "../pull-request-outcomes/store.js";
-import {
-  normalizeGitHubIssueConversations,
-  normalizeGitHubIssueOutcome,
-} from "./issue-outcome.js";
+import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
 import {
   normalizeGitHubPullRequestConversations,
-  normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
@@ -150,6 +144,7 @@ export function createGitHubWebhookRoute(args: {
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   codeChanges: CodeChangePublisher;
+  conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
@@ -168,6 +163,8 @@ export function createGitHubWebhookRoute(args: {
   loadPullRequestConflictHistory?(
     pullRequest: GitHubPullRequestRef,
   ): Promise<unknown>;
+  /** Read the title parts of a pull request title in its repository. */
+  loadTitleParts?: LoadGitHubTitleParts;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -176,8 +173,10 @@ export function createGitHubWebhookRoute(args: {
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
   /** Logins from the `trustedAuthors` plugin option. */
   trustedAuthors?: readonly string[];
   webhookSecret(): string | undefined;
@@ -223,30 +222,22 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestOutcome({ body, botEmail })
           : undefined;
-      const issueOutcome =
+      const closedIssue =
         eventName === "issues"
-          ? normalizeGitHubIssueOutcome({ body, botEmail })
-          : undefined;
-      const issueConversations =
-        eventName === "issues"
-          ? normalizeGitHubIssueConversations({ body, botEmail })
+          ? normalizeGitHubClosedIssue({ body, botEmail })
           : undefined;
       const pullRequestConversations =
         eventName === "pull_request"
           ? normalizeGitHubPullRequestConversations({ body, botEmail })
           : undefined;
-      const pullRequestLinkedIssues =
-        eventName === "pull_request"
-          ? normalizeGitHubPullRequestLinkedIssues({ body, botEmail })
-          : undefined;
       if (pullRequestOutcome) {
         const recordedOutcome = await applyGitHubPullRequestOutcome({
           annotations: args.annotations,
           codeChanges: args.codeChanges,
+          conversationChanges: args.conversationChanges,
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
-          reviewItems: args.reviewItems,
         });
         if (
           recordedOutcome.applied &&
@@ -276,28 +267,21 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (issueOutcome) {
-        const recordedOutcome = await recordGitHubIssueOutcome(
-          args.db,
-          issueOutcome,
-        );
-        if (recordedOutcome.applied && issueOutcome.state === "closed") {
-          await updateGitHubAnnotations({
-            annotations: args.annotations,
-            conversationIds: recordedOutcome.conversationIds,
-            log: args.log,
-            update: {
-              repo: issueOutcome.repositoryFullName,
-              number: issueOutcome.number,
-              objectType: "task",
-              status: "closed",
-            },
-          });
-        }
+      if (closedIssue) {
+        await updateGitHubAnnotations({
+          annotations: args.annotations,
+          conversationIds: closedIssue.conversationIds,
+          // A person can edit the footer, so it cannot add a card.
+          existingOnly: true,
+          log: args.log,
+          update: {
+            repo: closedIssue.repositoryFullName,
+            number: closedIssue.number,
+            objectType: "task",
+            status: "closed",
+          },
+        });
       }
-      const recordedIssueConversations = issueConversations
-        ? await recordGitHubIssueConversations(args.db, issueConversations)
-        : false;
       const recordedPullRequestConversations = pullRequestConversations
         ? await recordGitHubPullRequestConversations(
             args.db,
@@ -325,12 +309,6 @@ export function createGitHubWebhookRoute(args: {
       if (pullRequestActivity) {
         await args.codeChanges.recordActivity(pullRequestActivity);
       }
-      const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
-        ? await recordGitHubPullRequestLinkedIssues(
-            args.db,
-            pullRequestLinkedIssues,
-          )
-        : false;
 
       const checkSuitePublishTargets =
         eventName === "check_suite"
@@ -359,6 +337,8 @@ export function createGitHubWebhookRoute(args: {
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
               privateKeyEnv: args.privateKeyEnv,
+              responses: args.state,
+              tokens: args.tokens,
             })
           : undefined;
       const hasMatch = args.events.hasMatch;
@@ -434,10 +414,11 @@ export function createGitHubWebhookRoute(args: {
           events,
           hasMatch,
           loadConflictHistory: args.loadPullRequestConflictHistory,
+          loadTitleParts: args.loadTitleParts,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
-          reviewItems: args.reviewItems,
+          inboxItems: args.inboxItems,
         })),
       );
       for (const event of events) {
@@ -453,29 +434,29 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
+      const env = {
+        appIdEnv: args.appIdEnv,
+        installationIdEnv: args.installationIdEnv,
+        privateKeyEnv: args.privateKeyEnv,
+        responses: args.state,
+        tokens: args.tokens,
+      };
       await syncGitHubPullRequestActions({
         botEmail,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
-        reviewItems: args.reviewItems,
+        inboxItems: args.inboxItems,
+        state: args.state,
         targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({
         body,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         eventName,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
@@ -483,10 +464,8 @@ export function createGitHubWebhookRoute(args: {
       });
       if (
         !pullRequestOutcome &&
-        !issueOutcome &&
-        !recordedIssueConversations &&
+        !closedIssue &&
         !recordedPullRequestConversations &&
-        !recordedPullRequestLinkedIssues &&
         events.length === 0
       ) {
         return new Response("Ignored", { status: 202 });

@@ -262,6 +262,8 @@ export function renderTaskInput(args: {
   externalText?: string | undefined;
   externalTextMaxLength?: number;
   trustedSummaryMaxLength?: number;
+  /** A rendered `<agent-result>` that the Event delivers. */
+  agentResult?: string | undefined;
 }): string {
   const instructions = args.instructions?.trim() ?? "";
   if (!instructions && !args.skill) {
@@ -350,6 +352,7 @@ export function renderTaskInput(args: {
         externalText && clip(externalText, args.externalTextMaxLength),
         args.source,
       ),
+      ...(args.agentResult ? [args.agentResult] : []),
     ],
   );
 }

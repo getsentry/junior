@@ -39,7 +39,7 @@ describe("sidebarThreads", () => {
   ];
 
   it("caps direct Threads and keeps nested Threads under their parent", () => {
-    const result = sidebarThreads(threads, { expanded: false });
+    const result = sidebarThreads({ threads }, { expanded: false });
     expect(rows(result)).toEqual([
       ["b", 0],
       ["c", 0],
@@ -51,12 +51,14 @@ describe("sidebarThreads", () => {
 
   it("shows the chain to an open Thread past the cap", () => {
     const result = sidebarThreads(
-      [
-        thread("b", 10),
-        thread("c", 8),
-        thread("e", 6),
-        thread("a", 1, [thread("a1", 2)]),
-      ],
+      {
+        threads: [
+          thread("b", 10),
+          thread("c", 8),
+          thread("e", 6),
+          thread("a", 1, [thread("a1", 2)]),
+        ],
+      },
       { expanded: false, selectedId: "a1" },
     );
     expect(rows(result)).toEqual([
@@ -69,8 +71,18 @@ describe("sidebarThreads", () => {
     expect(result.hiddenCount).toBe(0);
   });
 
+  it("shows the Threads that the feed left out only once all loaded show", () => {
+    const root = { omittedThreadCount: 7, threads };
+    expect(sidebarThreads(root, { expanded: false }).omittedCount).toBe(0);
+    expect(sidebarThreads(root, { expanded: true }).omittedCount).toBe(7);
+    // The open Thread past the sidebar cap leaves no loaded Thread hidden.
+    expect(
+      sidebarThreads(root, { expanded: false, selectedId: "d" }).omittedCount,
+    ).toBe(7);
+  });
+
   it("shows every Thread when expanded", () => {
-    const result = sidebarThreads(threads, { expanded: true });
+    const result = sidebarThreads({ threads }, { expanded: true });
     expect(rows(result)).toEqual([
       ["b", 0],
       ["c", 0],

@@ -10,7 +10,11 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "../test";
-import { routeConversationVersion, withRequestedMailbox } from "../harness";
+import {
+  routeConversationVersion,
+  withRequestedMailbox,
+  waitForOutlineRead,
+} from "../harness";
 import { screenshot } from "../screenshot";
 import { mockChartPng } from "../../src/mock-reporting/chart-png";
 
@@ -621,13 +625,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Send", exact: true }).click();
     // Junior is idle and the queue is empty, so the send goes straight to the
     // transcript and stays in place until history has it. Its local image shows
-    // before the server stores it.
+    // before the server stores it. Thinking shows from the send, before the
+    // Turn starts.
     await expect(transcript.getByText(web.text)).toBeVisible();
     await expect(
       transcript.getByRole("img", { name: "handoff.png" }),
     ).toBeVisible();
     await expect(pending).toBeHidden();
-    await expect(thinking).toBeHidden();
+    await expect(thinking).toBeVisible();
 
     // History does not have the first send yet, so its Turn can start first.
     // A send now waits in the queue instead of the transcript tail.
@@ -681,8 +686,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       check();
     }, web.text);
 
-    // Accept arrives before any read sees the input. Keep the row, without claiming
-    // that a Turn has started just because the Conversation is now active.
+    // Accept arrives before any read sees the input. Keep the row and the
+    // thinking row.
     active = true;
     historyHeld = new Promise<void>((resolve) => {
       releaseHistory = resolve;
@@ -692,7 +697,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeAccept);
     await expect(transcript.getByText(web.text)).toBeVisible();
     await expect(pending).toBeHidden();
-    await expect(thinking).toBeHidden();
+    await expect(thinking).toBeVisible();
     releaseHistory();
     historyHeld = undefined;
     // The mailbox copy does not pull the message back into the queue.
@@ -701,7 +706,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeQueued + 1);
     await expect(transcript.getByText(web.text)).toBeVisible();
     await expect(pending).toBeHidden();
-    await expect(thinking).toBeHidden();
+    await expect(thinking).toBeVisible();
 
     // The mailbox can empty before the slower history read returns. Publish both
     // together, and do not hide the web message in the meantime. A read that is
@@ -716,7 +721,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeCommit);
     await expect(transcript.getByText(web.text)).toBeVisible();
-    await expect(thinking).toBeHidden();
+    await expect(thinking).toBeVisible();
     releaseHistory();
     historyHeld = undefined;
     await expect(thinking).toBeVisible();
@@ -892,11 +897,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
     // The pending view follows the saved choice, as the page does.
     await expect(details).toBeHidden();
+    // The new Conversation's page reads its outline.
+    const outlineRead = waitForOutlineRead(page, createdConversationId);
     releaseCreate?.();
     await expect(page).toHaveURL(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
     );
     await expect(transcript.getByText("Check the deploy")).toBeVisible();
     await expect(details).toBeHidden();
+    await outlineRead;
   });
 });

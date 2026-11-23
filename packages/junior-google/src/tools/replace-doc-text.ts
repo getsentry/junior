@@ -12,9 +12,9 @@ import {
   requireRevision,
   revisionAfterUpdate,
   revisionIdSchema,
-} from "./doc-edits";
-import { googleFileRequest } from "./files";
-import type { GoogleToolContext } from "./shared";
+} from "../docs/edits";
+import { googleFileRequest } from "../drive/files";
+import type { GoogleToolContext } from "../google-api";
 
 const inputSchema = z
   .object({
@@ -101,7 +101,7 @@ export const replaceGoogleDocTextTool = definePluginTool({
     const tabId = tabs[0]?.tabProperties.tabId;
     if (!tabId) {
       throw new PluginToolInputError(
-        `Google did not return the tabs of "${doc.title}", so the text was not replaced.`,
+        `Google did not return the tabs of "${doc.title}", so the text was not replaced. No change to the call can fix this.`,
       );
     }
     const reply = await batchUpdateDoc(

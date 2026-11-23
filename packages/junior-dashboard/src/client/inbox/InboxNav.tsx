@@ -1,6 +1,13 @@
+import { Ellipsis } from "lucide-react";
 import { useCallback, useId } from "react";
 import { Link } from "react-router";
 
+import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+} from "../components/ui/dropdown-menu";
 import { useConversationActionToasts } from "../conversations/conversationActionToasts";
 import { conversationPath } from "../conversations/conversationRoutes";
 import {
@@ -11,11 +18,18 @@ import {
   PinnedConversationOrder,
   usePinnedRowDrag,
 } from "../conversations/PinnedConversationOrder";
+import {
+  ROW_ACTION_BUTTON_CLASS,
+  ROW_ACTIONS_FADE_CLASS,
+  ROW_ACTIONS_REVEAL_CLASS,
+} from "../conversations/sidebarRowActions";
+import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { useReorderPinnedConversations } from "../conversations/useReorderPinnedConversations";
 import { cn, dashboardCountClass } from "../styles";
 import type { Conversation } from "../types";
 import { useInboxData } from "./inboxData";
 import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
+import { inboxViewPath } from "./inboxModel";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
@@ -26,32 +40,81 @@ function InFlightRow(props: {
 }) {
   const { conversation } = props;
   const drag = usePinnedRowDrag(conversation.id);
+  const actions = useInboxRowActions(conversation, {
+    selected: props.selected,
+  });
   return (
-    <li
-      className={cn("list-none", drag?.dragging && "opacity-40")}
-      onKeyDown={drag?.onKeyDown}
-      ref={drag?.setNodeRef}
-      {...drag?.listeners}
-    >
-      <Link
-        aria-current={props.selected ? "page" : undefined}
-        aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
-        className={paneEntryClass(props.selected, props.phone)}
-        draggable={drag ? false : undefined}
-        to={conversationPath(conversation.id)}
+    <ContextMenu onOpenChange={actions.onMenuOpenChange}>
+      <ContextMenuTrigger
+        className={cn(
+          "group relative list-none [--row-actions-width:1.25rem]",
+          drag?.dragging && "opacity-40",
+        )}
+        onKeyDown={drag?.onKeyDown}
+        ref={drag?.setNodeRef}
+        render={<li />}
+        {...drag?.listeners}
       >
-        <ConversationStateIcon
-          className="justify-self-center"
-          state={conversationDisplayState(conversation)}
-        />
-        <span
-          className={cn(fadeOverflowClass, "text-dashboard-text")}
-          ref={fadeWhenOverflowing}
+        <Link
+          aria-current={props.selected ? "page" : undefined}
+          aria-keyshortcuts={drag ? "Alt+ArrowUp Alt+ArrowDown" : undefined}
+          className={cn(
+            paneEntryClass(props.selected ? "page" : undefined, props.phone),
+            // Phones always show the `⋯`, so the title stops before it.
+            "max-sm:pr-10",
+            // The row shows which Conversation its open menu acts on.
+            !props.selected &&
+              "group-data-popup-open:bg-dashboard-fill-hover group-has-data-popup-open:bg-dashboard-fill-hover",
+            // A long press opens the row menu, not the iOS link callout.
+            "[-webkit-touch-callout:none]",
+          )}
+          draggable={drag ? false : undefined}
+          to={conversationPath(conversation.id)}
         >
-          {conversation.displayTitle}
-        </span>
-      </Link>
-    </li>
+          <ConversationStateIcon
+            className="justify-self-center"
+            state={conversationDisplayState(conversation)}
+          />
+          <span
+            className={cn(
+              fadeOverflowClass,
+              ROW_ACTIONS_FADE_CLASS,
+              // The same fade while the `⋯` menu is open. Tailwind needs the
+              // whole class written out.
+              "sm:group-has-data-popup-open:[mask-image:linear-gradient(to_left,transparent_var(--row-actions-width),black_calc(var(--row-actions-width)+2rem))]",
+              "text-dashboard-text",
+            )}
+            ref={fadeWhenOverflowing}
+          >
+            {conversation.displayTitle}
+          </span>
+        </Link>
+        <DropdownMenu modal={false} onOpenChange={actions.onMenuOpenChange}>
+          <DropdownMenuTrigger
+            render={
+              <button
+                aria-label={`Open menu for ${actions.title}`}
+                className={cn(
+                  ROW_ACTION_BUTTON_CLASS,
+                  ROW_ACTIONS_REVEAL_CLASS,
+                  "absolute top-1/2 right-1 -translate-y-1/2 border-0 bg-transparent p-0",
+                  // The `⋯` stays while its menu is open.
+                  "sm:data-popup-open:pointer-events-auto sm:data-popup-open:opacity-100",
+                )}
+                type="button"
+              >
+                <Ellipsis aria-hidden="true" size={16} />
+              </button>
+            }
+          />
+          <DropdownMenuContent align="end" className="w-56">
+            {actions.rows}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ContextMenuTrigger>
+      {actions.menu}
+      {actions.dialogs}
+    </ContextMenu>
   );
 }
 
@@ -69,7 +132,7 @@ export function InboxNav(props: {
   const data = useInboxData();
   // On a phone the entries are a screen of their own, so Back from what
   // they open returns here.
-  useInboxReturnHere(props.phone ? "/" : undefined);
+  useInboxReturnHere(props.phone ? inboxViewPath("inbox") : undefined);
   const reorderPins = useReorderPinnedConversations();
   const { showActionError } = useConversationActionToasts();
   const onReorderError = useCallback(

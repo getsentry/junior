@@ -7,7 +7,6 @@ import {
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
-  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 
@@ -16,7 +15,10 @@ const githubPullRequestOutcomeInputSchema = z
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
-    /** When omitted, the stored draft state does not change. */
+    /**
+     * Written to Junior's code index only. When omitted, the stored draft
+     * state does not change.
+     */
     draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
@@ -47,35 +49,13 @@ export type GitHubPullRequestConversationsInput = z.output<
   typeof githubPullRequestConversationsInputSchema
 >;
 
-const githubPullRequestLinkedIssuesInputSchema = z
-  .object({
-    linkedIssues: z
-      .array(
-        z
-          .object({
-            number: z.number().int().positive(),
-            repositoryFullName: z.string().min(1),
-          })
-          .strict(),
-      )
-      .min(1),
-    pullRequestId: z.string().min(1),
-  })
-  .strict();
-
-export type GitHubPullRequestLinkedIssuesInput = z.output<
-  typeof githubPullRequestLinkedIssuesInputSchema
->;
-
 /** Select mutable lifecycle fields while excluding transient ownership inputs. */
 function projectionValues(input: GitHubPullRequestOutcomeInput) {
   return {
-    closedAt: input.closedAt ?? null,
     ...(input.commitComposition
       ? { commitComposition: input.commitComposition }
       : undefined),
-    ...(input.draft !== undefined ? { draft: input.draft } : undefined),
-    mergedAt: input.mergedAt ?? null,
+    finishedAt: input.mergedAt ?? input.closedAt ?? null,
     number: input.number,
     openedAt: input.openedAt,
     repositoryFullName: input.repositoryFullName,
@@ -196,9 +176,8 @@ export async function listGitHubFinishedWork(
   );
   const rows = await db
     .select({
-      closedAt: juniorGitHubPullRequests.closedAt,
       conversationIds: juniorGitHubPullRequests.conversationIds,
-      mergedAt: juniorGitHubPullRequests.mergedAt,
+      finishedAt: juniorGitHubPullRequests.finishedAt,
     })
     .from(juniorGitHubPullRequests)
     .where(
@@ -210,7 +189,7 @@ export async function listGitHubFinishedWork(
   const candidates = new Set(conversationIds);
   const finishedAtById = new Map<string, Date>();
   for (const row of rows) {
-    const finishedAt = row.mergedAt ?? row.closedAt;
+    const { finishedAt } = row;
     if (!finishedAt) continue;
     for (const conversationId of row.conversationIds) {
       if (!candidates.has(conversationId)) continue;
@@ -238,7 +217,6 @@ export async function listGitHubStaleOpenPullRequests(
   before: Date,
 ): Promise<
   Array<{
-    draft: boolean;
     number: number;
     repositoryFullName: string;
     repositoryId: string;
@@ -247,7 +225,6 @@ export async function listGitHubStaleOpenPullRequests(
   const t = juniorGitHubPullRequests;
   return await db
     .select({
-      draft: t.draft,
       number: t.number,
       repositoryFullName: t.repositoryFullName,
       repositoryId: t.repositoryId,
@@ -316,45 +293,6 @@ export async function recordGitHubPullRequestConversations(
     )
     .returning({ pullRequestId: juniorGitHubPullRequests.pullRequestId });
   return updated.length > 0;
-}
-
-/** Link an existing Junior-owned PR to tracked issues across repositories. */
-export async function recordGitHubPullRequestLinkedIssues(
-  db: GitHubDb,
-  input: GitHubPullRequestLinkedIssuesInput,
-): Promise<boolean> {
-  const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
-  const list = (values: Array<string | number>) =>
-    sql.join(
-      values.map((value) => sql`${value}`),
-      sql`, `,
-    );
-  // One insert for every issue. It inserts nothing when the PR row is gone.
-  const issues = sql`unnest(
-    ARRAY[${list(association.linkedIssues.map((issue) => issue.repositoryFullName))}]::text[],
-    ARRAY[${list(association.linkedIssues.map((issue) => issue.number))}]::integer[]
-  ) AS issue(repository_full_name, number)`;
-  const inserted = await db
-    .insert(juniorGitHubPullRequestIssues)
-    .select(
-      db
-        .select({
-          pullRequestId: juniorGitHubPullRequests.pullRequestId,
-          issueRepositoryFullName:
-            sql<string>`lower(issue.repository_full_name)`.as(
-              "issue_repository_full_name",
-            ),
-          issueNumber: sql<number>`issue.number`.as("issue_number"),
-        })
-        .from(juniorGitHubPullRequests)
-        .crossJoin(issues)
-        .where(
-          eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
-        ),
-    )
-    .onConflictDoNothing()
-    .returning({ issueNumber: juniorGitHubPullRequestIssues.issueNumber });
-  return inserted.length > 0;
 }
 
 /** Match one pull request row by repository name, in any case, and number. */

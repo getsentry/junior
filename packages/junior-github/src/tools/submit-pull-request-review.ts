@@ -75,7 +75,9 @@ interface Result extends PluginToolOutput {
 function throwReviewError(status: number, body: unknown): never {
   const message = `GitHub pull request review failed with HTTP ${status}: ${githubErrorMessage(body)}`;
   if (status === 404 || status === 422) {
-    throw new PluginToolInputError(message);
+    throw new PluginToolInputError(
+      `${message}. Check repo and pull_request, and fix any field that GitHub names.`,
+    );
   }
   throw new Error(message);
 }

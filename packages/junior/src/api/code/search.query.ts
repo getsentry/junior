@@ -1,14 +1,6 @@
-import {
-  and,
-  asc,
-  desc,
-  eq,
-  exists,
-  inArray,
-  isNotNull,
-  sql,
-} from "drizzle-orm";
+import { and, asc, desc, eq, exists, inArray, sql } from "drizzle-orm";
 import { alias, union } from "drizzle-orm/pg-core";
+import { codeChangeUrl, linkedCodeProviders } from "@/chat/code/links";
 import { getDb } from "@/chat/db";
 import { listedConversation } from "@/chat/conversations/sql/listed";
 import {
@@ -53,7 +45,9 @@ export async function readCodeChangeSearchFromSql(
         0,
         CODE_CHANGE_SEARCH_TERMS,
       );
-  if (terms.length === 0) return [];
+  // A menu entry links to the change, so skip providers with no links.
+  const providers = linkedCodeProviders();
+  if (terms.length === 0 || providers.length === 0) return [];
   // The terms hold only letters and digits, so they cannot add tsquery
   // syntax.
   const everyTerm = terms.map((term) => `${term}:*`).join(" & ");
@@ -122,17 +116,19 @@ export async function readCodeChangeSearchFromSql(
     .select({
       draft: juniorCodeChanges.draft,
       number: juniorCodeChanges.number,
+      provider: juniorCodeChanges.provider,
       repository: juniorCodeRepositories.name,
       state: juniorCodeChanges.state,
       title: juniorCodeChanges.title,
-      url: juniorCodeChanges.url,
     })
     .from(juniorCodeChanges)
     .innerJoin(
       juniorCodeRepositories,
       eq(juniorCodeRepositories.id, juniorCodeChanges.repositoryId),
     )
-    .where(and(matches, isNotNull(juniorCodeChanges.url), visible))
+    .where(
+      and(matches, inArray(juniorCodeChanges.provider, providers), visible),
+    )
     .orderBy(
       ...(number
         ? [desc(sql`${juniorCodeChanges.number}::text = ${number}`)]
@@ -143,5 +139,8 @@ export async function readCodeChangeSearchFromSql(
       asc(juniorCodeChanges.id),
     )
     .limit(CODE_CHANGE_SEARCH_LIMIT);
-  return rows.flatMap((row) => (row.url ? [{ ...row, url: row.url }] : []));
+  return rows.flatMap(({ provider, ...row }) => {
+    const url = codeChangeUrl({ ...row, provider });
+    return url ? [{ ...row, url }] : [];
+  });
 }

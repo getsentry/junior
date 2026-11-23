@@ -496,7 +496,7 @@ export const pluginEventsSchema = z
       .optional(),
     /**
      * The resource that one web page shows, the inverse of `resourceUrl`, so
-     * a link such as a Review item's subject can name an Event resource.
+     * a link such as an Inbox item's subject can name an Event resource.
      * Returns undefined when no resource type of the source has the page.
      */
     resourceForUrl: z

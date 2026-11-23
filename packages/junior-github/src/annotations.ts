@@ -2,6 +2,8 @@ import pLimit from "p-limit";
 import {
   objectFactsMatchType,
   type ConversationAnnotation,
+  type ConversationAnnotationChange,
+  type ConversationAnnotationInput,
   type ConversationSidebarAnnotation,
   type ObjectAnnotation,
   type PluginAnnotations,
@@ -105,20 +107,24 @@ export function githubObjectAnnotation(input: {
   };
 }
 
-/** Refresh an existing object's status without selecting a card for delivery. */
-async function updateGitHubAnnotation(
-  store: PluginAnnotations,
-  input: {
-    repo: string;
-    number: number;
-    objectType: "task" | "code_change";
-    status: "merged" | "closed";
-  },
-): Promise<void> {
-  const key = `${input.repo.toLowerCase()}#${input.number}`;
-  const current = (await store.list()).find(
-    (annotation) => annotation.key === key,
-  );
+interface GitHubStatusUpdate {
+  repo: string;
+  number: number;
+  objectType: "task" | "code_change";
+  status: "merged" | "closed";
+}
+
+/**
+ * Return the annotation that shows a new status of one object, from the
+ * stored annotations of a conversation. It keeps a saved object card and
+ * does not select a card for delivery.
+ */
+function githubStatusAnnotation(
+  annotations: ConversationAnnotation[],
+  input: GitHubStatusUpdate,
+): ConversationAnnotationInput {
+  const key = githubObjectKey(input.repo, input.number);
+  const current = annotations.find((annotation) => annotation.key === key);
   if (current?.kind === "object") {
     const {
       plugin: _plugin,
@@ -127,7 +133,7 @@ async function updateGitHubAnnotation(
       facts,
       ...annotation
     } = current;
-    await store.upsert({
+    return {
       ...annotation,
       // Facts saved for another object type are not valid for this one.
       ...(facts && objectFactsMatchType(facts, input.objectType)
@@ -135,17 +141,32 @@ async function updateGitHubAnnotation(
         : undefined),
       objectType: input.objectType,
       status: input.status,
-    });
-    return;
+    };
   }
-  await store.upsert({
+  return {
     kind: "resource_link",
     objectType: input.objectType,
     key,
     label: `${input.repo}#${input.number}`,
     url: `https://github.com/${input.repo}/${input.objectType === "code_change" ? "pull" : "issues"}/${input.number}`,
     status: input.status,
-  });
+  };
+}
+
+/**
+ * Refresh an existing object's status without selecting a card for delivery.
+ * With `existingOnly`, a conversation with no annotation for the object gets
+ * none.
+ */
+async function updateGitHubAnnotation(
+  store: PluginAnnotations,
+  input: GitHubStatusUpdate,
+  existingOnly: boolean,
+): Promise<void> {
+  const annotations = await store.list();
+  const key = githubObjectKey(input.repo, input.number);
+  if (existingOnly && !annotations.some((item) => item.key === key)) return;
+  await store.upsert(githubStatusAnnotation(annotations, input));
 }
 
 /** Conversations whose annotation one update changes at once. */
@@ -158,8 +179,13 @@ export const ANNOTATION_UPDATE_CONCURRENCY = 8;
 export async function updateGitHubAnnotations(args: {
   annotations: PluginConversationAnnotations;
   conversationIds: string[];
+  /**
+   * Update only conversations that already hold an annotation for the
+   * object, for conversation ids that a person can edit, such as a footer.
+   */
+  existingOnly?: boolean;
   log?: Pick<PluginLogger, "error"> | undefined;
-  update: Parameters<typeof updateGitHubAnnotation>[1];
+  update: GitHubStatusUpdate;
 }): Promise<void> {
   const limit = pLimit(ANNOTATION_UPDATE_CONCURRENCY);
   const results = await Promise.allSettled(
@@ -168,6 +194,7 @@ export async function updateGitHubAnnotations(args: {
         updateGitHubAnnotation(
           args.annotations.forConversation(conversationId),
           args.update,
+          args.existingOnly ?? false,
         ),
       ),
     ),
@@ -182,4 +209,22 @@ export async function updateGitHubAnnotations(args: {
       repository: args.update.repo,
     });
   }
+}
+
+/**
+ * Return the status change of one object for one conversation, to save in
+ * one batch with other changes.
+ */
+export async function githubAnnotationChange(args: {
+  annotations: PluginConversationAnnotations;
+  conversationId: string;
+  update: GitHubStatusUpdate;
+}): Promise<ConversationAnnotationChange> {
+  return {
+    conversationId: args.conversationId,
+    upsert: githubStatusAnnotation(
+      await args.annotations.forConversation(args.conversationId).list(),
+      args.update,
+    ),
+  };
 }

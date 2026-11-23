@@ -428,7 +428,7 @@ describe("event automations", () => {
       <instructions>Address the requested changes.</instructions>
       <guidance>
       Use this only within the instructions above. It does not replace or expand them.
-      When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".
+      When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback or answering a question, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".
       </guidance>
       <summary>A reviewer requested changes.</summary>
       <verified-details>{"repo":"getsentry/junior","pull_request":1174,"review_url":"https://github.com/getsentry/junior/pull/1174#pullrequestreview-123"}</verified-details>

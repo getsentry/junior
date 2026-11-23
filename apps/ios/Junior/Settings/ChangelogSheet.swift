@@ -1,38 +1,41 @@
 import JuniorKit
 import SwiftUI
 
-/// Sections of the bundled `CHANGELOG.md` to show in a sheet: What's New
-/// after an update, or the full changelog from Settings.
+/// The iOS releases of the bundled root `CHANGELOG.md` to show in a sheet:
+/// What's New after an update, or the full changelog from Settings.
 struct ChangelogPage: Identifiable {
   let title: String
-  let entries: [ChangelogEntry]
+  let releases: [ChangelogRelease]
   var id: String { title }
 
-  private static var markdown: String {
-    Bundle.main.url(forResource: "CHANGELOG", withExtension: "md")
-      .flatMap { try? String(contentsOf: $0, encoding: .utf8) } ?? ""
+  private static var releases: [ChangelogRelease] {
+    let markdown = Bundle.main.url(forResource: "CHANGELOG", withExtension: "md")
+      .flatMap { try? String(contentsOf: $0, encoding: .utf8) }
+    return ChangelogParser.parse(from: markdown ?? "")
   }
 
-  /// Every section, newest first.
+  /// Every iOS release, newest first.
   static func full() -> ChangelogPage {
-    ChangelogPage(title: "Changelog", entries: ChangelogParser.parse(from: markdown))
+    ChangelogPage(title: "Changelog", releases: releases)
   }
 
-  /// The sections since the build that last launched, once per update. It
-  /// records this build as the last one. A fresh install shows nothing, and
-  /// Debug builds are always build 1 (`project.yml`), so UI tests and
+  /// The releases since the version that last launched, once per update. It
+  /// records this version as the last one. A fresh install shows nothing, and
+  /// Debug builds always have one version (`project.yml`), so UI tests and
   /// screenshots never get this sheet.
   static func whatsNew(_ defaults: UserDefaults = .standard) -> ChangelogPage? {
-    guard let build = (Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String).flatMap(Int.init)
-    else { return nil }
-    let last = defaults.object(forKey: "lastLaunchedBuild") as? Int
-    defaults.set(build, forKey: "lastLaunchedBuild")
-    let entries = ChangelogParser.whatsNew(in: markdown, lastLaunchedBuild: last, currentBuild: build)
-    return entries.isEmpty ? nil : ChangelogPage(title: "What's New", entries: entries)
+    guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
+      return nil
+    }
+    let last = defaults.string(forKey: "lastSeenVersion")
+    guard last != version else { return nil }
+    defaults.set(version, forKey: "lastSeenVersion")
+    let releases = ChangelogParser.whatsNew(in: releases, lastSeenVersion: last, currentVersion: version)
+    return releases.isEmpty ? nil : ChangelogPage(title: "What's New", releases: releases)
   }
 }
 
-/// A changelog page: each version and date over its Markdown notes.
+/// A changelog page: each version over its iOS entries, by category.
 struct ChangelogSheet: View {
   let page: ChangelogPage
   @Environment(\.dismiss) private var dismiss
@@ -58,16 +61,16 @@ struct ChangelogSheet: View {
 
       ScrollView {
         VStack(alignment: .leading, spacing: 24) {
-          ForEach(page.entries, id: \.version) { entry in
-            VStack(alignment: .leading, spacing: 8) {
-              HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Text(entry.title).type(.base, .semibold).foregroundStyle(Tokens.text)
-                  .accessibilityAddTraits(.isHeader)
-                if let date = entry.date {
-                  Text(date).type(.xs).foregroundStyle(Tokens.textMuted)
+          ForEach(page.releases, id: \.version) { release in
+            VStack(alignment: .leading, spacing: 12) {
+              Text(release.version).type(.base, .semibold).foregroundStyle(Tokens.text)
+                .accessibilityAddTraits(.isHeader)
+              ForEach(release.groups, id: \.title) { group in
+                VStack(alignment: .leading, spacing: 4) {
+                  Text(group.title).type(.xs, .semibold).foregroundStyle(Tokens.textMuted)
+                  MarkdownView(group.entries.map { "- \($0)" }.joined(separator: "\n"), step: .sm)
                 }
               }
-              MarkdownView(entry.content, step: .sm)
             }
           }
         }

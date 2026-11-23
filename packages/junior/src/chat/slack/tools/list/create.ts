@@ -2,8 +2,8 @@ import { createTodoList } from "@/chat/slack/tool-support/list/api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { createOperationKey } from "@/chat/tools/idempotency";
-import type { ToolState } from "@/chat/tools/types";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
+import type { ToolState } from "@/chat/tool-support/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 export const slackListCreateToolDefinition = zodToolDefinition({
@@ -30,7 +30,7 @@ export function createSlackListCreateTool(state: ToolState) {
       const operationKey = createOperationKey("slackListCreate", { name });
       const cached = state.getOperationResult<{
         list_id: string;
-        permalink: string;
+        url: string | undefined;
         column_map: unknown;
       }>(operationKey);
       if (cached) {
@@ -43,7 +43,7 @@ export function createSlackListCreateTool(state: ToolState) {
       const list = await createTodoList(name);
       const response = {
         list_id: list.listId,
-        permalink: list.permalink,
+        url: list.permalink,
         column_map: list.listColumnMap,
       };
       state.setOperationResult(operationKey, response);

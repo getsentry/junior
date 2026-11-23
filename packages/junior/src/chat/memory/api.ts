@@ -11,6 +11,8 @@ import {
   type PluginRouteApp,
   type User,
 } from "@sentry/junior-plugin-api";
+import { contentVersion, contentVersionHeaders } from "@/api/content-version";
+import { CONTENT_VERSION_HEADER } from "@/api/schema/response";
 import type { MemoryDb } from "./store";
 import {
   archiveMemory,
@@ -354,12 +356,16 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
             viewer,
           });
           if (!body) return json({ error: "Conversation not found." }, 404);
+          // The dashboard reads this again on each change of the
+          // Conversation, and most reads find it unchanged.
+          const version = contentVersion(body);
+          const headers = contentVersionHeaders(version);
+          if (request.headers.get(CONTENT_VERSION_HEADER) === version) {
+            return new Response(null, { headers, status: 304 });
+          }
           return request.method === "HEAD"
-            ? new Response(null, {
-                headers: { "cache-control": "no-store" },
-                status: 200,
-              })
-            : json(body);
+            ? new Response(null, { headers, status: 200 })
+            : Response.json(body, { headers });
         }
 
         if (isCollection && isRead) {

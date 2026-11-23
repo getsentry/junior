@@ -8,7 +8,7 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { insertReviewItem } from "@/chat/review-items/store";
+import { insertInboxItem } from "@/chat/inbox-items/store";
 import { mswServer } from "../msw/server";
 import type { ConversationFixture } from "./conversation";
 
@@ -56,7 +56,7 @@ export async function addItem(
   ownerConversationId = conversationId,
   linkedConversationIds: string[] = [],
 ): Promise<string> {
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -153,7 +153,7 @@ export async function addPullRequestItem(
   assignees: User[],
   title: string,
 ): Promise<string> {
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -181,13 +181,45 @@ export async function addPullRequestItem(
   return item!.id;
 }
 
+/** Add an open action item for Everyone. Anyone in the workspace can act. */
+export async function addEveryoneItem(
+  conversationId: string,
+  title: string,
+): Promise<string> {
+  const item = await insertInboxItem(getDb(), {
+    owner: { id: conversationId, kind: "conversation" },
+    assignedToEveryone: true,
+    assigneeUserIds: [],
+    body: title,
+    conversationIds: [conversationId],
+    dedupeKey: title,
+    kind: "action",
+    nowMs: Date.now(),
+    request: {
+      fields: [
+        {
+          id: "decision",
+          kind: "choice",
+          label: "Decision",
+          options: [{ label: "Approve" }, { label: "Reject" }],
+        },
+      ],
+      question: title,
+    },
+    tenant: { provider: "slack", providerTenantId: "T123" },
+    title,
+    visibility: "public",
+  });
+  return item!.id;
+}
+
 /** Add an open notice for these Users. A notice waits on nobody. */
 export async function addNotice(
   conversationId: string,
   assignees: User[],
   title: string,
 ): Promise<string> {
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -219,12 +251,16 @@ export function api(fixture: ConversationFixture, viewer: User) {
       method,
     });
   return {
+    /** Read one API path as JSON. */
+    json,
     /** Read one API path, with these request headers. */
     request: (path: string, headers?: Record<string, string>) =>
       app.request(`http://localhost/api${path}`, { headers }),
     /** Snooze a row until this time. */
     snooze: (subject: InboxSnoozeSubjectBody, wakeAtMs: number) =>
       snoozes("POST", { ...subject, wakeAt: new Date(wakeAtMs).toISOString() }),
+    /** Post this snooze body as it is, such as `untilClosed`. */
+    postSnooze: (body: unknown) => snoozes("POST", body),
     /** The Events of a page that the viewer names for a snooze. */
     resource: (url: string) =>
       app.request(
@@ -249,41 +285,64 @@ export function api(fixture: ConversationFixture, viewer: User) {
     /** The subject of each item in the viewer's Inbox. */
     subjects: async () =>
       (
-        (await json("/review-items?for=viewer")) as {
+        (await json("/inbox-items?for=viewer")) as {
           items: { subject?: unknown }[];
         }
       ).items.map((item) => item.subject),
     unsnooze: (subject: InboxSnoozeSubjectBody) => snoozes("DELETE", subject),
+    /** Why each item in the viewer's Inbox woke, by title. */
+    wakes: async () =>
+      Object.fromEntries(
+        (
+          (await json("/inbox-items?for=viewer")) as {
+            items: { title: string; wake?: unknown }[];
+          }
+        ).items.map((item) => [item.title, item.wake]),
+      ),
+    /** Open these items, so they no longer say why they woke. */
+    openWoken: (inboxItemIds: string[]) =>
+      app.request("http://localhost/api/inbox/snoozes/wakes", {
+        body: JSON.stringify({ inboxItemIds }),
+        headers: { "content-type": "application/json" },
+        method: "DELETE",
+      }),
+    /** Take, answer, or dismiss an item. */
+    act: (inboxItemId: string, body: unknown) =>
+      app.request(`http://localhost/api/inbox-items/${inboxItemId}/actions`, {
+        body: JSON.stringify(body),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      }),
     /** What Snoozed shows: its count and its item titles. */
     snoozed: async () => ({
       count: (
-        (await json("/review-items/count?include=snoozed")) as {
+        (await json("/inbox-items/count?include=snoozed")) as {
           snoozed: number;
         }
       ).snoozed,
       items: (
-        (await json("/review-items?for=viewer&snoozed=true")) as {
+        (await json("/inbox-items?for=viewer&snoozed=true")) as {
           items: { title: string }[];
         }
       ).items.map((item) => item.title),
     }),
     /** Every Inbox number: the badge, the waiting list and the Inbox list. */
     inbox: async () => ({
-      count: ((await json("/review-items/count")) as { needsViewer: number })
+      count: ((await json("/inbox-items/count")) as { needsViewer: number })
         .needsViewer,
       inbox: (
-        (await json("/review-items?for=viewer")) as {
+        (await json("/inbox-items?for=viewer")) as {
           items: { title: string }[];
         }
       ).items.map((item) => item.title),
       waiting: (
-        (await json("/review-items/waiting-conversations")) as {
+        (await json("/inbox-items/waiting-conversations")) as {
           conversations: { conversationId: string }[];
         }
       ).conversations.map((row) => row.conversationId),
     }),
     versions: async () =>
-      ((await json("/versions")) as { reviewItems: string }).reviewItems,
+      ((await json("/versions")) as { inboxItems: string }).inboxItems,
   };
 }
 
