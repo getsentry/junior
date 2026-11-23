@@ -42,11 +42,14 @@ export async function pauseConversationDelivery(
   return rows.length > 0;
 }
 
-/** Deliver a root's Event Turn replies to its Location again. */
+/**
+ * Deliver a root's Event Turn replies to its Location again. Returns false
+ * when Delivery was not paused or the root does not exist.
+ */
 export async function resumeConversationDelivery(
   conversationId: string,
-): Promise<void> {
-  await getSqlExecutor()
+): Promise<boolean> {
+  const rows = await getSqlExecutor()
     .db()
     .update(juniorConversations)
     .set({ deliveryPausedAt: null, detailVersion: nextDetailVersion })
@@ -55,7 +58,9 @@ export async function resumeConversationDelivery(
         rootConversation(conversationId),
         isNotNull(juniorConversations.deliveryPausedAt),
       ),
-    );
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  return rows.length > 0;
 }
 
 /**

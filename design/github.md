@@ -7,8 +7,11 @@ also wake a Conversation or run an Event automation.
 
 ## Intent
 
-- Junior carries its PR to the requester's review without asking
-  ([Attention](./attention.md)).
+- Junior carries its PR to the requester's review without asking. For a PR,
+  the next steps are review and merge, and Junior asks for a review only
+  when the required checks pass.
+- Junior owns the upkeep of its PRs, such as merge conflicts, failed
+  checks, and review feedback. It does that work and tells nobody.
 - Changes reach the code only through a PR, never a direct push to the
   default branch.
 - Junior never approves or merges a PR. A person merges it.
@@ -50,6 +53,8 @@ also wake a Conversation or run an Event automation.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When it is approved and can merge,
   the requester gets a "Ready to merge" Inbox item.
+- An issue that Junior opens for a person's review is an action for that
+  person. It closes when the issue closes or when they respond on it.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 
@@ -57,7 +62,11 @@ also wake a Conversation or run an Event automation.
 
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
-  only when the required checks pass" (Attention).
+  only when the required checks pass".
+- Some asks are only a Slack message: a draft PR that waits for the
+  requester's review, and a decision on a watched issue. They add no Inbox
+  item. This breaks "there is one way to ask a person"
+  ([Inbox](./inbox.md)).
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior
   images".
