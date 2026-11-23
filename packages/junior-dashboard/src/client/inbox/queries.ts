@@ -380,6 +380,10 @@ function changeCounts(
           ),
           decisions: Math.max(0, count.decisions + (item.request ? by : 0)),
           needsViewer: Math.max(0, count.needsViewer + by),
+          todos: Math.max(
+            0,
+            count.todos + (item.todoId === undefined ? 0 : by),
+          ),
         },
         "contentVersion",
       ),
