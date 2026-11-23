@@ -9,9 +9,8 @@ import {
   vi,
 } from "vitest";
 import type { ToolDefinition } from "@/core/tool";
-import type { UserMessage } from "@earendil-works/pi-ai";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { fragment } from "@/core/prompt/layout";
+import { fragment, type FragmentMessage } from "@/core/prompt/layout";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { cancelTurn, claimTurn } from "@/core/turn/state";
@@ -49,9 +48,9 @@ import {
   type TurnEngine,
 } from "../fixtures/turn-engine";
 
-/** A fragment message with context authority. */
-function contextNote(text: string): UserMessage {
-  return { role: "user", content: [{ type: "text", text }], timestamp: 0 };
+/** A fragment message with context authority. Core sets its timestamp. */
+function contextNote(text: string): FragmentMessage {
+  return { role: "user", content: [{ type: "text", text }] };
 }
 
 // A lease that has expired by the next statement.
@@ -510,10 +509,13 @@ describe("advanceTurn with a test step", () => {
     const inputId = await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "Three." });
 
+    const [unread] = await findUnreadInputs(engine.engineCtx, turnId);
+    const stepStart = Date.now();
     await engine.advance({
       ...stepWith([reply]),
       prompt: promptAroundInputs(),
     });
+    const stepEnd = Date.now();
 
     await expect(engine.loadHistory()).resolves.toEqual([
       userText("Before the inputs."),
@@ -536,6 +538,13 @@ describe("advanceTurn with a test step", () => {
       expect.objectContaining({ provenance: { authority: "context" } }),
       expect.anything(),
     ]);
+    // Both fragment messages get the one time of the step, and the input
+    // keeps its send time.
+    const [before, input, after] = events;
+    expect(before?.createdAtMs).toBeGreaterThanOrEqual(stepStart);
+    expect(before?.createdAtMs).toBeLessThanOrEqual(stepEnd);
+    expect(after?.createdAtMs).toBe(before?.createdAtMs);
+    expect(input?.createdAtMs).toBe(unread?.sentAt.getTime());
   });
 
   it("writes a step's fragment messages once when its message is delivered again", async () => {

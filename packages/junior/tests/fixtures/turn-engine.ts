@@ -3,7 +3,7 @@
 // the AI emulator for the model requests. Each test gets its own queue, so
 // tests read its messages instead of a worker's.
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
+import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
 import * as z from "zod";
@@ -16,6 +16,7 @@ import {
   definePromptLayout,
   inputs,
   type Fragment,
+  type FragmentMessage,
   type InputPrompt,
   type PromptLayout,
 } from "@/core/prompt/layout";
@@ -198,7 +199,6 @@ function inputMessage(input: UnreadInput): InputPrompt {
     message: {
       role: "user",
       content: [{ type: "text", text: String(input.payload["text"]) }],
-      timestamp: input.sentAt.getTime(),
     },
     provenance: instructionProvenanceFor(ACTOR),
   };
@@ -255,7 +255,7 @@ export function testInputs() {
 
 /** The test layout: a short system prompt, and `messages` after the history. */
 export function testPrompt(
-  messages: Fragment<Message | Message[]>[] = [testInputs()],
+  messages: Fragment<FragmentMessage | FragmentMessage[]>[] = [testInputs()],
 ): PromptLayout {
   return definePromptLayout({
     systemPrompt: [{ name: "identity", text: "You are Junior." }],

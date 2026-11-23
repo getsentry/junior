@@ -1,4 +1,3 @@
-import type { UserMessage } from "@earendil-works/pi-ai";
 import { eq, sql } from "drizzle-orm";
 import {
   afterEach,
@@ -10,7 +9,7 @@ import {
   vi,
 } from "vitest";
 import type { EngineContext } from "@/core/engine-context";
-import { fragment, loader } from "@/core/prompt/layout";
+import { fragment, type FragmentMessage, loader } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
@@ -243,11 +242,7 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
       testInputs(),
       fragment("memory", {
         loader: memory,
-        format: (text): UserMessage => ({
-          role: "user",
-          content: text,
-          timestamp: 0,
-        }),
+        format: (text): FragmentMessage => ({ role: "user", content: text }),
       }),
     ]);
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
