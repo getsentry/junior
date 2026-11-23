@@ -1160,8 +1160,15 @@
     {
       "idx": 165,
       "version": "7",
-      "when": 1795453739045,
-      "tag": "0165_todo_search_indexes",
+      "when": 1795454807296,
+      "tag": "0165_drop_legacy_archive_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1795458616136,
+      "tag": "0166_todo_search_indexes",
       "breakpoints": true
     }
   ]
