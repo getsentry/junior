@@ -190,6 +190,11 @@ async function loadWithTimeout(
   values: LoadedValues,
   signal: AbortSignal,
 ): Promise<{ status: LoaderDiagnostics["status"]; error?: unknown }> {
+  // A load that waited for a fan-out slot does not start after the step
+  // stopped. assemblePrompt throws the abort reason and reads no status.
+  if (signal.aborted) {
+    return { status: "timed_out" };
+  }
   const controller = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   let stopStep = () => {};
