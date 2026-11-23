@@ -290,7 +290,9 @@ export const gitHubGetPullRequestTool = definePluginTool({
       const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
       // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
       if (response.status === 404) {
-        throw new PluginToolInputError(message);
+        throw new PluginToolInputError(
+          `${message}. Check repo and pull_request. If they are correct, the GitHub App cannot see the repository.`,
+        );
       }
       throw new Error(message);
     }

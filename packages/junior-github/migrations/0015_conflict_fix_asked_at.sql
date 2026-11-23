@@ -1,0 +1,1 @@
+ALTER TABLE "junior_github_pull_requests" ADD COLUMN "conflict_fix_asked_at" timestamp with time zone;

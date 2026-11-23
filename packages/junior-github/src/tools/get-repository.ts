@@ -62,7 +62,7 @@ export const gitHubGetRepositoryTool = definePluginTool({
     });
     if (!response.ok) {
       throw new PluginToolInputError(
-        `GitHub repository lookup failed with HTTP ${response.status}`,
+        `GitHub repository lookup failed with HTTP ${response.status}. Check repo. If it is correct, the GitHub App cannot see the repository.`,
       );
     }
     const providerResult = z

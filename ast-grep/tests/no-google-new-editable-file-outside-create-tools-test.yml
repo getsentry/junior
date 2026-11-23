@@ -1,0 +1,5 @@
+id: no-google-new-editable-file-outside-create-tools
+valid:
+  - "const file = await requireEditableFile(ctx, input.document, 'document');"
+invalid:
+  - "const file = newEditableFile({ fileId }, title);"

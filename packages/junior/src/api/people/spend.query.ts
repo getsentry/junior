@@ -12,7 +12,7 @@ import {
   normalizeEmail,
   turnMetricColumns,
   verifiedActorWhere,
-} from "./shared";
+} from "./person-report";
 
 const SEVEN_DAY_OFFSET = 6;
 const THIRTY_DAY_OFFSET = 29;
@@ -25,7 +25,7 @@ function spendWindow(nowMs: number) {
   sevenDayStart.setUTCDate(sevenDayStart.getUTCDate() - SEVEN_DAY_OFFSET);
   const thirtyDayStart = new Date(currentDay);
   thirtyDayStart.setUTCDate(thirtyDayStart.getUTCDate() - THIRTY_DAY_OFFSET);
-  return { end, sevenDayStart, thirtyDayStart };
+  return { currentDay, end, sevenDayStart, thirtyDayStart };
 }
 
 /** Match the viewer's own Turn cost rows in the spend window. */
@@ -99,7 +99,7 @@ export async function readPersonalSpendFromSql(
   email: string,
   nowMs = Date.now(),
 ): Promise<PersonalSpendReport> {
-  const { end, sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
+  const { currentDay, sevenDayStart, thirtyDayStart } = spendWindow(nowMs);
   const rows = await personalSpendDaysQuery(email, nowMs);
 
   const sevenDayStartDate = sevenDayStart.toISOString().slice(0, 10);
@@ -118,7 +118,9 @@ export async function readPersonalSpendFromSql(
     sevenDaysUsd: microUsdToUsd(sevenDaysMicroUsd),
     source: "conversation_index",
     thirtyDaysUsd: microUsdToUsd(thirtyDaysMicroUsd),
-    windowEnd: end.toISOString(),
+    // The window's last UTC day, as other day windows report it. The read
+    // time would change the body, and its revalidation token, on each read.
+    windowEnd: currentDay.toISOString(),
     windowStart: thirtyDayStart.toISOString(),
   };
 }

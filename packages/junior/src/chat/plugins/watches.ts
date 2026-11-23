@@ -9,7 +9,7 @@ import { RESOURCE_SUBSCRIPTION_DEFAULT_TTL_MS } from "@/chat/events/tool-support
 
 /**
  * Let a plugin create Watches for one Conversation on its own resources,
- * from a tool or from the answer to one of its review desk items.
+ * from a tool or from the answer to one of its Inbox items.
  */
 export function createPluginWatches(
   plugin: PluginRegistration,
@@ -67,7 +67,7 @@ export function createPluginWatches(
 
 /**
  * Let a plugin read and create the Watches of one Conversation outside a
- * tool call, such as when a person answers one of its review desk items.
+ * tool call, such as when a person answers one of its Inbox items.
  */
 export function createPluginConversationWatches(
   plugin: PluginRegistration,

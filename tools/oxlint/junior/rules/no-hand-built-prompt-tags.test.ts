@@ -16,7 +16,7 @@ new RuleTester({
     // Placeholders, prose mentions, and Slack syntax are not tags.
     `program.argument("<id>", "Memory id");`,
     `const usage = "--port <port>";`,
-    "const note = `A \\`<review-item-answer id>\\` is an answer.`;",
+    "const note = `A \\`<inbox-item-answer id>\\` is an answer.`;",
     "const link = `<${url}|${label}>`;",
     "const mention = `<@${userId}>`;",
     `const prompt = "Return the summary inside " + tags + " tags.";`,
@@ -25,7 +25,7 @@ new RuleTester({
   ],
   invalid: [
     { code: `const close = "</agent-result>";`, errors: handBuiltTag },
-    { code: `const close = "&lt;/plan-delta>";`, errors: handBuiltTag },
+    { code: `const close = "&lt;/todo-delta>";`, errors: handBuiltTag },
     { code: `const close = "</INSTRUCTIONS>";`, errors: handBuiltTag },
     {
       code: `const block = ["<runtime>", ...lines, "</runtime>"];`,

@@ -20,7 +20,7 @@ import {
   PERSON_CARD_RECENT_LIMIT,
   type PersonCardReport,
 } from "../schema/person";
-import { normalizeEmail, verifiedActorWhere } from "./shared";
+import { normalizeEmail, verifiedActorWhere } from "./person-report";
 
 // The card finds the last Turn and the recent Conversations in the last
 // month. It reads a bounded range of the (actor Identity, time) index of the

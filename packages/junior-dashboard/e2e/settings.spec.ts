@@ -6,6 +6,7 @@ import {
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../src/service-worker";
+import { waitForSettingsReads } from "./harness";
 import { screenshot } from "./screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-reporting/fixtures";
 
@@ -82,7 +83,8 @@ test("saves notification working hours and the Slack schedule choice", async ({
   await expect(saturday).toHaveAttribute("aria-pressed", "true");
 });
 
-test("turns on push notifications from a one-time tip", async ({
+// The tip follows a home create, which only the inbox shell has.
+test("turns on push notifications from a one-time tip @new", async ({
   page,
   dashboard,
 }) => {
@@ -223,8 +225,12 @@ test("opens a tapped notification that the app did not open", async ({
   await saveTappedNotification("/settings", 0);
   await page.reload();
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
-  await page.reload();
+  // Wait from the commit of the new document, so a Settings read from the
+  // page before the reload does not count.
+  await page.reload({ waitUntil: "commit" });
+  const settingsRead = waitForSettingsReads(page);
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
+  await settingsRead;
 });
 
 test("shows a push notification that has no tag", async ({
@@ -235,7 +241,10 @@ test("shows a push notification that has no tag", async ({
   // renotify without a tag, so the worker must still show the notification.
   // The push opens "/", so stay on another page: there the worker alerts.
   await page.context().grantPermissions(["notifications"]);
+  const settingsRead = waitForSettingsReads(page);
   await page.goto(`${dashboard.baseURL}/settings`);
+  // A skip ends the test, so the page reads must be done first.
+  await settingsRead;
   test.skip(
     (await page.evaluate(() => Notification.permission)) !== "granted",
     "Chromium headless shell denies notifications. CI runs Chrome.",
@@ -312,7 +321,7 @@ test("turns on composer autocorrect for this browser", async ({
   dashboard,
 }) => {
   await page.goto(dashboard.baseURL);
-  const composer = page.locator('[aria-placeholder="Message Junior…"]');
+  const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
   await expect(composer).toHaveAttribute("spellcheck", "false");
@@ -477,9 +486,14 @@ test("opens an old Settings page as its section and keeps the query", async ({
     page.getByRole("heading", { exact: true, name: "API Tokens" }),
   ).toBeInViewport();
 
+  // The page reads the viewer's connections.
+  const connectionsRead = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/connections",
+  );
   await page.goto(`${dashboard.baseURL}/settings/connections`);
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
   await expect(
     page.getByRole("heading", { exact: true, name: "Identities" }),
   ).toBeInViewport();
+  await connectionsRead;
 });

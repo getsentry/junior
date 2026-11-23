@@ -240,9 +240,8 @@ async function prepareLocalChatRun(
 ) {
   defaultStateAdapterForLocalChat();
   await configureLocalChatPlugins(pluginSet);
-  const { setBriefsConfig, setEventEmbeddingsConfig } =
-    await import("@/chat/briefs/registration");
-  setBriefsConfig({ enabled: true });
+  const { setEventEmbeddingsConfig } =
+    await import("@/chat/conversations/event-embedding-config");
   setEventEmbeddingsConfig({ enabled: true });
   const { runLocalAgentTurn } = await import("@/chat/local/runner");
   const { startLocalOAuthCallbackServer } =
@@ -256,7 +255,7 @@ async function prepareLocalChatRun(
     await import("@/chat/agent-invocations/result");
   const { createConversationTurnWorker } =
     await import("@/chat/task-execution/conversation-turn");
-  const { skipInputAfterConversationStop } =
+  const { resumeForPersonInput } =
     await import("@/chat/conversations/session-stop");
   const { createLocalConversationWork } =
     await import("@/chat/local/conversation-work");
@@ -267,8 +266,7 @@ async function prepareLocalChatRun(
     if (!agentRunner) {
       throw new Error("Local agent runner is not ready");
     }
-    const childWorker = createChildConversationWorker(agentRunner, {
-      queue: localConversationWork.queue,
+    const childWorker = createChildConversationWorker({
       runTurn: createConversationTurnWorker(
         agentRunner,
         undefined,
@@ -279,10 +277,11 @@ async function prepareLocalChatRun(
       queue: localConversationWork.queue,
       // The local queue carries only child Conversation work.
       run: async (context) => {
-        const stopped = await skipInputAfterConversationStop(context);
-        return "skipped" in stopped
-          ? stopped.skipped
-          : await childWorker(stopped.context);
+        await resumeForPersonInput(
+          context.conversationId,
+          context.attempt.messages,
+        );
+        return await childWorker(context);
       },
     });
   });

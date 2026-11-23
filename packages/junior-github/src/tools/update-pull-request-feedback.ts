@@ -14,6 +14,17 @@ import {
   REMOVE_REVIEW_REACTION,
   REVIEW_REACTIONS,
 } from "../graphql-documents.js";
+import {
+  FEEDBACK_REACTION_CONTENTS,
+  type FeedbackStatus,
+  graphqlReactionContent,
+  type PullRequestCommentRef,
+  pullRequestCommentPath,
+  pullRequestCommentReactionsPath,
+  pullRequestFeedbackReactionContent,
+  pullRequestReviewPath,
+  REST_REACTION_CONTENT,
+} from "../pull-request-feedback.js";
 import { loadLatestReviews } from "../pull-request-reviews.js";
 import { botUserIdFromEmail } from "../webhooks/ownership.js";
 import {
@@ -23,37 +34,6 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
-
-/**
- * GitHub has reactions but no feedback state. This tool maps each state to a
- * reaction and keeps at most one state reaction that Junior owns. It does not
- * change reactions from other users.
- */
-const STATUS_TO_REACTION_CONTENT = {
-  reviewing: "eyes",
-  addressed: "+1",
-  declined: "-1",
-} as const;
-const FEEDBACK_REACTION_CONTENTS = new Set<string>(
-  Object.values(STATUS_TO_REACTION_CONTENT),
-);
-type FeedbackStatus = keyof typeof STATUS_TO_REACTION_CONTENT;
-type FeedbackOutcome = Exclude<FeedbackStatus, "reviewing">;
-type PullRequestCommentKind = "conversation" | "review";
-
-// A review body has no REST reactions endpoint, so it uses GraphQL, which
-// names the same reactions differently.
-const GRAPHQL_REACTION_CONTENT: Record<string, string> = {
-  eyes: "EYES",
-  "+1": "THUMBS_UP",
-  "-1": "THUMBS_DOWN",
-};
-const REST_REACTION_CONTENT = new Map(
-  Object.entries(GRAPHQL_REACTION_CONTENT).map(([rest, graphql]) => [
-    graphql,
-    rest,
-  ]),
-);
 
 const inputSchema = z
   .object({
@@ -85,6 +65,8 @@ const inputSchema = z
   })
   .strict();
 
+type FeedbackOutcome = Exclude<FeedbackStatus, "reviewing">;
+
 const outputSchema = pluginToolOutputSchema.extend({
   target: z.literal("updatePullRequestFeedback"),
   repo: z.string(),
@@ -96,34 +78,6 @@ interface Result extends PluginToolOutput {
   repo: string;
   comment_id: number;
   status: FeedbackOutcome;
-}
-
-interface PullRequestCommentRef {
-  owner: string;
-  name: string;
-  commentKind: PullRequestCommentKind;
-  commentId: number;
-}
-
-function pullRequestCommentPath(input: PullRequestCommentRef): string {
-  // Conversation comments live under the issues endpoint; inline review
-  // comments live under the pulls endpoint. GitHub has no shared path.
-  const segment = input.commentKind === "conversation" ? "issues" : "pulls";
-  return `/repos/${encodeURIComponent(input.owner)}/${encodeURIComponent(input.name)}/${segment}/comments/${input.commentId}`;
-}
-
-/** Build the GitHub API path for one pull request comment's reactions. */
-export function pullRequestCommentReactionsPath(
-  input: PullRequestCommentRef,
-): string {
-  return `${pullRequestCommentPath(input)}/reactions`;
-}
-
-/** Return the GitHub reaction for one feedback state. */
-export function pullRequestFeedbackReactionContent(
-  status: FeedbackStatus,
-): (typeof STATUS_TO_REACTION_CONTENT)[FeedbackStatus] {
-  return STATUS_TO_REACTION_CONTENT[status];
 }
 
 const reactionSchema = z.object({
@@ -147,7 +101,11 @@ async function commentParentNumber(
   const commentPayload = commentResponse.body;
   if (!commentResponse.ok) {
     const message = `GitHub comment lookup failed with HTTP ${commentResponse.status}: ${githubErrorMessage(commentPayload)}`;
-    if (commentResponse.status === 404) throw new PluginToolInputError(message);
+    if (commentResponse.status === 404) {
+      throw new PluginToolInputError(
+        `${message}. Check repo, comment_id, and comment_kind.`,
+      );
+    }
     throw new Error(message);
   }
   const comment = z
@@ -203,24 +161,9 @@ async function assertBotAuthoredPullRequest(
     pull.data.user?.id !== input.botUserId
   ) {
     throw new PluginToolInputError(
-      "This bot can only set feedback status on comments on pull requests it authored.",
+      "This bot can only set feedback status on comments on pull requests it authored. Do not call this tool for this pull request.",
     );
   }
-}
-
-/** Build the GitHub API path for one pull request review. */
-export function pullRequestReviewPath(input: {
-  owner: string;
-  name: string;
-  pullRequest: number;
-  reviewId: number;
-}): string {
-  return `${repoPath(input)}/pulls/${input.pullRequest}/reviews/${input.reviewId}`;
-}
-
-/** Return the GraphQL name of one REST reaction content. */
-export function graphqlReactionContent(content: string): string {
-  return GRAPHQL_REACTION_CONTENT[content] ?? content;
 }
 
 const reviewReactionsSchema = z.object({
@@ -263,7 +206,7 @@ async function commentReactions(
   const parentNumber = await commentParentNumber(egress, input);
   if (parentNumber !== String(input.pullRequest)) {
     throw new PluginToolInputError(
-      `GitHub comment ${input.commentId} is not on pull request ${input.pullRequest}.`,
+      `GitHub comment ${input.commentId} is not on pull request ${input.pullRequest}. Set pull_request to the pull request that has the comment.`,
     );
   }
   const path = pullRequestCommentReactionsPath(input);
@@ -316,7 +259,11 @@ async function reviewBodyReactions(
   });
   if (!reviewResponse.ok) {
     const message = `GitHub review lookup failed with HTTP ${reviewResponse.status}: ${githubErrorMessage(reviewResponse.body)}`;
-    if (reviewResponse.status === 404) throw new PluginToolInputError(message);
+    if (reviewResponse.status === 404) {
+      throw new PluginToolInputError(
+        `${message}. Check repo, pull_request, and comment_id.`,
+      );
+    }
     throw new Error(message);
   }
   const review = z
@@ -470,7 +417,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
-          "Invalid GitHub updatePullRequestFeedback input.",
+          "Invalid GitHub updatePullRequestFeedback input. Check the arguments against the tool schema and call it again.",
           { cause: parsedInput.error },
         );
       }

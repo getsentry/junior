@@ -3,6 +3,7 @@ import {
   AgentDepthLimitError,
   AgentInvocationLimitError,
   AgentNameInUseError,
+  AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
 import {
   agentNameSchema,
@@ -22,10 +23,8 @@ import {
 } from "@/chat/services/short-title";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-
-export const SPAWN_AGENT_TOOL_NAME = "spawnAgent";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z
@@ -132,7 +131,9 @@ export function createSpawnAgentTool(
     ...spawnAgentToolDefinition,
     execute: async (input, options) => {
       if (!options.toolCallId) {
-        throw new ToolInputError("spawnAgent requires an active tool call ID");
+        throw new ToolInputError(
+          "spawnAgent requires an active tool call ID. No change to the call can fix this.",
+        );
       }
       const title = await resolveTaskTitle({
         completeText,
@@ -170,6 +171,12 @@ export function createSpawnAgentTool(
         if (error instanceof AgentInvocationLimitError) {
           throw new ToolInputError(
             `${error.message}. Wait for active children to finish before spawning more.`,
+            { cause: error },
+          );
+        }
+        if (error instanceof AgentStoppedError) {
+          throw new ToolInputError(
+            `${error.message}. Do not start more work. End this turn.`,
             { cause: error },
           );
         }

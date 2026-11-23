@@ -25,7 +25,7 @@ table documents its attributes and how to read them. Paths are under
 | `app.credential.provider`           | auth provider                | auth logs                   |
 | `app.task.id` / `app.task.run.id`   | automation / one run         | task lifecycle logs         |
 | `app.dispatch.id`                   | agent dispatch               | task and dispatch logs      |
-| `app.review_item.id`                | Review item                  | review desk, delivery logs  |
+| `app.inbox_item.id`                | Inbox item                  | Inbox, delivery logs  |
 | `app.turn.id` / `app.turn.step_seq` | core Turn / one of its steps | `queue.*` spans             |
 | `vcs.change.id`                     | Code change number           | code change record spans    |
 
@@ -74,19 +74,20 @@ attributes. Nested logs and spans inherit them.
 | Core tool call skipped or failed     | `app.tool_call.outcome` on `gen_ai.execute_tool` (`completed`, `failed`, `aborted`, `not_found`, `invalid_arguments`, `replay_skipped`, `truncated`, `dangling_skipped`) | `core/turn/step.ts` |
 | Model called an unknown tool name    | `app.tool_name_miss.suggestion_count` on `gen_ai.execute_tool` (`executeTool`, `codemode`)           | `chat/tool-support/tool-name-suggestions.ts`                    |
 | Code Mode script slow or failed      | `app.codemode.*` on `gen_ai.execute_tool` (`codemode`), nested `gen_ai.execute_tool` spans           | `chat/codemode/telemetry.ts`                                    |
-| Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tools/search-tools-rerank.ts`                             |
+| Tool search found the wrong tools    | `app.tool_search.*` on `gen_ai.execute_tool` (`searchTools`), `tool_search.rerank.failed`            | `chat/tool-support/catalog-search-rerank.ts`                    |
 | History search slow or missed      | `app.event_search.*` on `gen_ai.execute_tool` (`searchConversationEvents`)                           | `chat/conversations/event-search.ts`                            |
 | History search results crowded      | `app.event_search.{result,top5}.<kind>.count`, `app.event_search.{result,top5}.current_turn.count`   | `chat/conversations/event-search.ts`                            |
 | Conversation search lost meaning    | span `conversation_embeddings.backfill`, `app.conversation_embeddings.backfill.*`                    | `chat/conversations/embedding-backfill.ts`                      |
+| Related conversations missing/noisy | span `plugin.hook userPrompt` (`related-conversations`), `app.related-conversations.*`, `related_conversations_provider_failed`, `plugin.user_prompt.hook.failed` | `chat/related-conversations/find.ts` |
 | History search index behind         | span `event_search.backfill`, `app.event_search.backfill.*`                                          | `chat/conversations/event-search-backfill.ts`                   |
 | Tool calls ran one at a time         | `app.tool_batch.*` on `gen_ai.invoke_agent`, `app.sandbox.bash.wait_ms` on `bash`                    | `chat/agent/tool-batch.ts`                                      |
 | Automation did not run or post       | `scheduled_automation.*`, `scheduled_automations.heartbeat.*`, `automation.blocked_notice.failed`    | `chat/scheduled-automations/`                                   |
 | Paused Turn did not resume           | `agent.dispatch.lost_lease`, span `turn.state.finish`, `app.turn.checkpoint.rejected`                | `chat/task-execution/`                                          |
-| Review item change not delivered     | `review_item.*`, span `review_item.deliver`                                                          | `chat/review-items/`                                            |
+| Inbox item change not delivered     | `inbox_item.*`, span `inbox_item.deliver`                                                          | `chat/inbox-items/`                                            |
 | Auth parked or resume failed         | `sandbox.egress.credential.*`, `oauth.*`, `agent.continue.*`, `mcp.oauth_callback.failed`            | `chat/oauth-flow.ts`, `handlers/`                               |
 | Egress denied, challenged, or missed | `sandbox.egress.policy.denied`, `sandbox.egress.challenged`, `sandbox.egress.auth_signal.missing`    | `chat/sandbox/sandbox.ts`                                       |
 | Skill or plugin missing              | `startup.discovery.completed`, `plugin.*`, `skill.*`, span `plugin.hook`                             | `chat/plugins/`                                                 |
-| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `packages/junior-memory`                                        |
+| Memory recall slow, empty, or noisy  | `app.memory.recall.*` on `plugin.hook` (`userPrompt`), span `gen_ai.rerank`                          | `chat/memory/`                                                  |
 | Prompt history read slow             | span `plugin.prompt_history.load`, `app.prompt_history.{row,context}.count`                          | `chat/plugins/prompt-history.ts`                                |
 | Attachment or web search failure     | `attachment.*`, `image.attachment.*`, `conversation.image.*`, `gen_ai.execute_tool` (`webSearch`)    | `chat/slack/vision-context.ts`                                  |
 | Slow first use of a large Slack file | span `attachment.store` (`file.size`, `app.attachment.source.provider`)                              | `chat/attachments/download.ts`                                  |
@@ -96,6 +97,7 @@ attributes. Nested logs and spans inherit them.
 | Cache miss after a provider switch   | `app.ai.gateway.*` routing (provider, attempts, affinity) on `gen_ai.chat`                           | `chat/pi/gateway-routing-attributes.ts`                         |
 | Cache warmup cost or misses          | spans `cache_warming.warmup`, `cache_warming.backfill`, `app.cache_warming.*`                        | `chat/cache-warming/warmup.ts`                                  |
 | Idle period with no warmup           | `cache_warming.snapshot.*` log and metrics, `app.cache_warming.snapshot_*` on `cache_warming.warmup` | `chat/cache-warming/warmup.ts`                                  |
+| Idle period outcomes or breaker      | metrics `cache_warming.idle_period.saved_usd` (`app.cache_warming.idle_outcome`), `cache_warming.breaker` (`app.cache_warming.breaker_event`) | `chat/cache-warming/savings.ts`, `chat/cache-warming/request.ts` |
 | Slow or failed context compaction    | span `agent.context_compaction`, `app.compaction.*`, `app.turn.compaction_wait_ms` on `chat.turn`    | `chat/services/context-compaction-*.ts`                         |
 | Thread context too big or missing    | `app.thread_context.*` on `chat.reply` or `chat.turn`                                                | `chat/conversations/thread-context.ts`                          |
 | Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
@@ -105,6 +107,7 @@ attributes. Nested logs and spans inherit them.
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
+| Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |
 
 ## Trace Shape
 
@@ -124,6 +127,14 @@ attributes. Nested logs and spans inherit them.
   without it ran on a WebSocket client. `db.query.text` keeps placeholders.
 - Server spans and errors keep no URL query strings, fragments, request
   bodies, or credential headers. Sandbox egress paths show `<token>`.
+- A reviewed `gen_ai.execute_tool` span has `app.guardian.decision`,
+  `app.guardian.risk_level`, `app.guardian.rule` (the block rule, or `none`),
+  and `app.guardian.user_consent` (the user authorization level). Sentry's
+  data scrubber hides a key that contains `auth`.
+- `guardian.action_review` has `app.guardian.proposal.chars` (the proposal
+  JSON that the size limit counts) and, when a review's model call aborts,
+  `app.guardian.review.aborted_by` (`timeout` or `run`). The span covers one
+  batch, so a Code Mode batch of several actions keeps the last value.
 - `gen_ai.transcription` has the AI Gateway generation id in
   `gen_ai.response.id`. It and `ai.transcription.failed` keep no signed URL
   and no transcript text.
@@ -228,5 +239,6 @@ sort=-timestamp
 | `SENTRY_RELEASE`            | Sentry release           | `<Junior version>+<VERCEL_GIT_COMMIT_SHA>`          |
 | `SENTRY_ENABLE_LOGS`        | structured logs          | true when `SENTRY_DSN` or `SENTRY_SPOTLIGHT` is set |
 | `SENTRY_TRACES_SAMPLE_RATE` | traces                   | `1`                                                 |
-| `SENTRY_ORG_SLUG`           | Slack footer trace links | unset                                               |
+| `SENTRY_ORG_SLUG`           | Slack footer trace links, System page cache health | unset                                               |
+| `SENTRY_READ_TOKEN`         | System page cache health reads of the `SENTRY_DSN` project | unset                                     |
 | `JUNIOR_LOG_FORMAT`         | console format           | compact unless `structured`                         |

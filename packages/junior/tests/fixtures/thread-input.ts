@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { createWebSource } from "@sentry/junior-plugin-api";
-import {
-  completeAgentInvocation,
-  getActiveAgentInvocationForConversation,
-} from "@/chat/agent-invocations/store";
-import { createAndEnqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { createSlackSource, createWebSource } from "@sentry/junior-plugin-api";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
+import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { assertRunConsistency, type AgentRun } from "@/chat/agent/types";
-import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
-import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
+import {
+  completedAgentRun,
+  type AgentRunOutcome,
+} from "@/chat/runtime/agent-run-outcome";
+import { buildTurnResult } from "@/chat/services/turn-result";
+import type { TurnAnswer } from "@/chat/turn-answer";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
+import { openConversationProjection } from "@/chat/conversations/projection";
 import { persistThreadStateById } from "@/chat/runtime/thread-state";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
@@ -20,12 +22,12 @@ import {
   prepareSlackParentConversation,
   slackDestination,
   slackInvocationInput,
+  slackParentConversationId,
 } from "./agent-invocations";
 import { webTestActor } from "./conversation";
 import { createConversationWorkHarness } from "./conversation-work";
 import { createWebAuthorization } from "@/chat/conversations/web-authorization";
 import type { ConversationPendingAuthState } from "@/chat/state/conversation";
-import { expect } from "vitest";
 
 /** Compose production Conversation work with a Slack root. */
 export async function createHarness() {
@@ -34,14 +36,13 @@ export async function createHarness() {
   // left running can still write that Conversation, so each test has its own.
   const agentName = `researcher-${randomUUID().slice(0, 8)}`;
   // Integration tests do not run the agent. The runner checks each run as
-  // the agent does first, reads it, and stops it. The test finishes each
-  // Agent invocation itself, or ends its runs with `onInvocationRun`.
+  // the agent does first, reads it, and stops it, unless the test ends its
+  // runs with `onRun`.
   const runs: AgentRun[] = [];
   // A Conversation has one open Turn. Any other open Turn seen when a run
   // starts lands here.
   const otherOpenTurns: string[] = [];
-  let onInvocationRun: (() => Promise<never>) | undefined;
-  let onPersonRun: ((run: AgentRun) => Promise<AgentRunOutcome>) | undefined;
+  let onRun: ((run: AgentRun) => Promise<AgentRunOutcome>) | undefined;
   const work = await createConversationWorkHarness({
     run: async (run) => {
       assertRunConsistency(
@@ -59,11 +60,8 @@ export async function createHarness() {
           )
           .map((turn) => turn.turnId),
       );
-      if (run.agentInvocationId && onInvocationRun) {
-        await onInvocationRun();
-      }
-      if (!run.agentInvocationId && onPersonRun) {
-        return await onPersonRun(run);
+      if (onRun) {
+        return await onRun(run);
       }
       throw new Error("stop after reading the run");
     },
@@ -100,16 +98,12 @@ export async function createHarness() {
         await process(conversationId);
       }
     },
-    /** Run `fn` in each later Agent invocation run. It ends the run. */
-    onInvocationRun: (fn: () => Promise<never>) => {
-      onInvocationRun = fn;
-    },
     /**
-     * Run `fn` in each later run on the Conversation loop. The run ends as
-     * `fn` returns or throws.
+     * Run `fn` in each later run. The run ends as `fn` returns or throws.
+     * Undefined restores the default runner.
      */
-    onPersonRun: (fn: (run: AgentRun) => Promise<AgentRunOutcome>) => {
-      onPersonRun = fn;
+    onRun: (fn: ((run: AgentRun) => Promise<AgentRunOutcome>) | undefined) => {
+      onRun = fn;
     },
     otherOpenTurns,
     process,
@@ -123,7 +117,7 @@ export type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 // The checkpoint fields of a run's input: its history, then its instruction.
 function runInputCheckpoint(run: AgentRun) {
-  const history = run.history ?? [];
+  const history = run.history?.messages ?? [];
   return {
     actor: run.actor!,
     conversationId: run.conversationId,
@@ -138,8 +132,11 @@ function runInputCheckpoint(run: AgentRun) {
     sliceId: 1,
     source: run.source!,
     surface: run.surface,
+    // As the agent does, the input keeps its author, such as a parent agent.
+    ...(run.instruction.provenance
+      ? { trailingMessageProvenance: [run.instruction.provenance] }
+      : undefined),
     turnId: run.turnId,
-    turnStartMessageIndex: history.length,
   };
 }
 
@@ -170,43 +167,48 @@ export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
   };
 }
 
-/** Finish the open Agent invocation of a child, then report its result. */
-export async function finishInvocation(
-  harness: Harness,
-  childConversationId: string,
-) {
-  const invocation =
-    await getActiveAgentInvocationForConversation(childConversationId);
-  if (!invocation) throw new Error("Expected an open Agent invocation");
-  // A Turn that ended without a `reply` saves no result text.
-  await completeAgentInvocation({
-    invocationId: invocation.invocationId,
-    result: "",
-    status: "completed",
-  });
-  await expect(harness.process(childConversationId)).resolves.toMatchObject({
-    status: "completed",
-  });
+/**
+ * End a run's Turn with `answer`, as the agent does when it calls `reply` or
+ * `noReply`, and save the Turn's completed record.
+ */
+export async function finishRun(
+  run: AgentRun,
+  answer: TurnAnswer = { noReply: {} },
+): Promise<AgentRunOutcome> {
+  const input = runInputCheckpoint(run);
+  await saveTurnCheckpoint({ ...input, mode: "running" });
+  await run.durability?.onInputCommitted?.();
+  await saveTurnCheckpoint({ ...input, mode: "completed" });
+  return completedAgentRun(
+    buildTurnResult({
+      answer,
+      generatedFileCount: 0,
+      modelId: "test-model",
+      newMessages: [],
+      reasoningLevel: "medium",
+      shouldTrace: false,
+      toolCalls: [],
+      userInput: run.instruction.text,
+    }),
+  );
 }
 
 /** Start a named child agent, a Thread unless `kind` says otherwise. */
 export async function startThread(
   harness: Harness,
   idempotencyKey: string,
-  input: Partial<
-    Pick<
-      CreateAgentInvocationInput,
-      "destination" | "kind" | "parentConversationId"
-    >
-  > = {},
+  input: { kind?: "task" | "thread"; parentConversationId?: string } = {},
 ) {
-  const created = await createAndEnqueueAgentInvocation(
+  const created = await spawnChildAgent(
     {
       ...slackInvocationInput,
       kind: "thread",
       ...input,
       agentName: harness.agentName,
-      idempotencyKey,
+      // The key names the child's Conversation, so each harness has its own.
+      idempotencyKey: `${idempotencyKey}:${harness.agentName}`,
+      parentToolCallId: idempotencyKey,
+      parentTurnId: idempotencyKey,
     },
     {
       conversationStore: harness.conversationStore,
@@ -215,6 +217,48 @@ export async function startThread(
     },
   );
   return created.childConversationId;
+}
+
+/** Start a Thread and end its parent task's Turn without a `reply`. */
+export async function startFinishedThread(
+  harness: Harness,
+  idempotencyKey = "thread-spawn",
+): Promise<string> {
+  const threadId = await startThread(harness, idempotencyKey);
+  harness.onRun(finishRun);
+  await harness.drain(threadId);
+  harness.onRun(undefined);
+  return threadId;
+}
+
+/** The Run of the shared Slack parent Turn that spawns and messages children. */
+export function slackParentRun(overrides: Partial<AgentRun> = {}): AgentRun {
+  return {
+    actor: slackInvocationInput.actor,
+    conversationId: slackParentConversationId,
+    destination: slackDestination,
+    instruction: { text: "Coordinate the work." },
+    source: createSlackSource({
+      channelId: "C123",
+      teamId: "T123",
+      threadTs: "1712345.0001",
+      visibility: "public",
+    }),
+    turnId: "parent-turn",
+    ...overrides,
+  };
+}
+
+export async function spawnThread(harness: Harness, toolCallId: string) {
+  const { childConversationId } = await bindSpawnAgent(slackParentRun(), {
+    conversationStore: harness.conversationStore,
+    queue: harness.queue,
+    state: harness.state,
+  })!(
+    { kind: "thread", name: harness.agentName, task: "Check the deploy." },
+    { toolCallId },
+  );
+  return childConversationId;
 }
 
 export async function sendPersonMessage(
@@ -312,11 +356,16 @@ export async function savePersonTurn(
       label: "GitHub",
     });
   }
+  // The Turn's prompt follows the Thread's committed history, such as its
+  // parent's task.
+  const history = (
+    await openConversationProjection({ conversationId: threadId })
+  ).messages;
   const turn = {
     conversationId: threadId,
     turnId,
     sliceId: 1,
-    messages: personPausedPrompt,
+    messages: [...history, ...personPausedPrompt],
     destination: slackDestination,
     source: createWebSource(threadId, "public"),
     actor: webTestActor,

@@ -17,6 +17,7 @@ catalog:
   "@vitest/coverage-v8": 4.1.12
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.4
+  p-limit: ^7.3.3
   tsdown: 0.23.7
   typescript: 7.0.2
   vitest: ^4.1.12
@@ -63,7 +64,7 @@ minimumReleaseAgeExclude:
   - "@sentry/server-runtime-injection@11.14.0"
   - "@sentry/server-utils@11.14.0"
   # Sentry publishes @sentry/api, so a new release is trusted.
-  - "@sentry/api@2.3.0"
+  - "@sentry/api@2.16.0"
   - "@earendil-works/pi-agent-core"
   - "@earendil-works/pi-ai"
   - sentry

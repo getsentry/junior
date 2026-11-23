@@ -470,7 +470,7 @@ function formatSourceLines(source: Source): string[] {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return [`- source.kind: ${source.kind}`];
   }
 }
@@ -783,8 +783,8 @@ type TurnContextPromptInput = {
   askerTimezone?: string | undefined;
   includeSessionContext?: boolean;
   conversationNotes?: string[];
-  /** From `renderPlanDelta`: plan changes that others made. */
-  planDelta?: string | null;
+  /** From `renderTodoDelta` or `renderTodosReview`. */
+  todos?: string | null;
   disabledTools?: DisabledToolPromptContext[];
   pluginPromptContributions?: PluginPromptContributionContext[];
   /** Text the current actor saved to change how Junior replies to them. */
@@ -842,6 +842,10 @@ const STATIC_SYSTEM_PROMPTS: Record<
     local: buildStaticSystemPrompt("local", "conversation"),
     slack: buildStaticSystemPrompt("slack", "conversation"),
   },
+  lead: {
+    local: buildStaticSystemPrompt("local", "lead"),
+    slack: buildStaticSystemPrompt("slack", "lead"),
+  },
   thread: {
     local: buildStaticSystemPrompt("local", "thread"),
     slack: buildStaticSystemPrompt("slack", "thread"),
@@ -885,7 +889,7 @@ export function buildTurnContextPrompt(
     !includeSessionContext &&
     !pluginPromptContributions &&
     !conversationNotes &&
-    !params.planDelta &&
+    !params.todos &&
     !disabledTools &&
     !userCustomization &&
     !askerTimezone &&
@@ -897,7 +901,7 @@ export function buildTurnContextPrompt(
   const runtimeSections = [
     pluginPromptContributions,
     conversationNotes,
-    params.planDelta,
+    params.todos,
     disabledTools,
     userCustomization,
     askerTimezone,

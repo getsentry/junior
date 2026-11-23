@@ -22,7 +22,7 @@ export function personFromActor(
   return { avatarUrl: actor.avatarUrl, email: actor.email, name };
 }
 
-/** Return the person of a User record, such as a Review item assignee. */
+/** Return the person of a User record, such as an Inbox item assignee. */
 export function personFromUser(user: {
   avatarUrl?: string | undefined;
   displayName?: string | undefined;

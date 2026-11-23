@@ -1,39 +1,31 @@
 /**
- * Pause notice for the consecutive automated-turn limit.
+ * Stop and notice for the consecutive automated-turn limit.
  *
- * Best-effort: a failed post must not fail the Turn or re-enable event wakes.
- * The consecutive-turn limit claims the notice slot before this post. Clear that
- * claim when the post fails or is skipped so a later paused wake can try again.
+ * The notice is best-effort: a failed post must not fail the Turn or undo the
+ * stop.
  */
+import { isPersonInput } from "@/chat/conversations/kind-behavior";
+import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import { getConversationStore } from "@/chat/db";
 import { logException, logWarn } from "@/chat/logging";
 import {
   buildAutomatedTurnLimitResponse,
-  clearAutomatedTurnLimitNoticeClaim,
   type AutomatedTurnLimitUpdate,
 } from "@/chat/services/automated-turn-limit";
+import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { Source } from "@sentry/junior-plugin-api";
 import { resolveSlackReplyTarget, sendSlackReply } from "@/chat/slack/reply";
 
-async function releaseFailedNoticeClaim(args: {
-  conversationId: string;
-  nowMs?: number | undefined;
-}): Promise<void> {
-  try {
-    await clearAutomatedTurnLimitNoticeClaim(args);
-  } catch (error) {
-    logException(error, "automated_turn_limit.notice.claim_clear_failed");
-  }
-}
-
-/** Post the pause notice for one Conversation Location when known. */
-export async function postAutomatedTurnLimitNoticeForConversation(args: {
+/**
+ * Post the stop notice to the Conversation Location when known. A child
+ * agent posts none: its parent sees it as stopped in `listAgents`.
+ */
+async function postAutomatedTurnLimitNotice(args: {
   conversationId: string;
   maxTurns: number;
-  nowMs?: number | undefined;
-  /** Source of the Turn that hit the limit, when a Turn posts the notice. */
+  /** Source of the Turn that hit the limit. */
   source?: Source | undefined;
-}): Promise<boolean> {
+}): Promise<void> {
   try {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
@@ -57,11 +49,7 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
             ? "unsupported_location"
             : "delivery_paused",
       });
-      await releaseFailedNoticeClaim({
-        conversationId: args.conversationId,
-        nowMs: args.nowMs,
-      });
-      return false;
+      return;
     }
     await sendSlackReply({
       // The Location is the only Slack channel this path knows.
@@ -75,34 +63,43 @@ export async function postAutomatedTurnLimitNoticeForConversation(args: {
         maxTurns: args.maxTurns,
       }),
     });
-    return true;
   } catch (error) {
     logException(error, "automated_turn_limit.notice.failed", {
       conversationId: args.conversationId,
     });
-    await releaseFailedNoticeClaim({
-      conversationId: args.conversationId,
-      nowMs: args.nowMs,
-    });
-    return false;
   }
 }
 
-/** Post the pause notice after a finished Turn hits the limit. */
-export async function maybePostAutomatedTurnLimitNotice(args: {
+/**
+ * Stop the Conversation tree after a finished Turn reaches the automated-turn
+ * limit, then post the notice. Person input that already waits ends the loop
+ * by itself, so then nothing stops.
+ */
+export async function stopAtAutomatedTurnLimit(args: {
   conversationId: string;
   maxTurns: number;
-  nowMs?: number;
   source?: Source;
   update: AutomatedTurnLimitUpdate | undefined;
 }): Promise<void> {
-  if (!args.update?.shouldPostNotice) {
+  if (!args.update?.reached) {
     return;
   }
-  await postAutomatedTurnLimitNoticeForConversation({
+  const pending =
+    (await getConversationWorkState({ conversationId: args.conversationId }))
+      ?.messages ?? [];
+  if (pending.some((message) => isPersonInput(message.source))) {
+    return;
+  }
+  const nowMs = Date.now();
+  await stopConversationAndChildAgents({
+    conversationId: args.conversationId,
+    finishedRunOf: args.conversationId,
+    nowMs,
+    stoppedAtMs: nowMs,
+  });
+  await postAutomatedTurnLimitNotice({
     conversationId: args.conversationId,
     maxTurns: args.maxTurns,
-    nowMs: args.nowMs,
     source: args.source,
   });
 }

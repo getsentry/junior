@@ -12,6 +12,7 @@ import type {
   PluginGrant,
   PluginProviderAccount,
   ResolveOAuthAccountHookContext,
+  SearchUsersHookContext,
 } from "./credentials";
 import type {
   HeartbeatHookContext,
@@ -39,7 +40,7 @@ import type {
   WorkspacePrepareHookContext,
   WorkspaceFinalize,
 } from "./tools";
-import type { ReviewItemAnsweredHookContext } from "./review-items";
+import type { InboxItemAnsweredHookContext } from "./inbox-items";
 import type {
   PromptMessage,
   SystemPromptContext,
@@ -156,7 +157,7 @@ export interface PluginHooks {
    * plugin added. Junior calls it again when the person retries after a
    * failure, so it must be safe to repeat.
    */
-  reviewItemAnswered?(ctx: ReviewItemAnsweredHookContext): Promise<void> | void;
+  inboxItemAnswered?(ctx: InboxItemAnsweredHookContext): Promise<void> | void;
   heartbeat?(
     ctx: HeartbeatHookContext,
   ): Promise<HeartbeatResult | void> | HeartbeatResult | void;
@@ -191,6 +192,14 @@ export interface PluginHooks {
     | Promise<PluginProviderAccount | undefined>
     | PluginProviderAccount
     | undefined;
+  /**
+   * Return the provider accounts that match a person search. Return only
+   * close matches, such as an exact login, so the agent can choose between
+   * them. `userLookup` links each account to a known person.
+   */
+  searchUsers?(
+    ctx: SearchUsersHookContext,
+  ): Promise<PluginProviderAccount[]> | PluginProviderAccount[];
   routes?(ctx: RouteRegistrationHookContext): PluginRoute[];
   sandboxPrepare?(ctx: SandboxPrepareHookContext): Promise<void> | void;
   workspacePrepare?(

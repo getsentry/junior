@@ -66,6 +66,7 @@
   "rules": {
     "preserve-caught-error": "error",
     "unicorn/no-array-for-each": "error",
+    "junior/no-record-type-guard": "error",
     "junior/zod-namespace-import": "error",
     "react/rules-of-hooks": "error",
     "react/exhaustive-deps": "error",
@@ -167,7 +168,7 @@
       }
     },
     {
-      "files": ["src/client/inbox/**", "src/client/review-desk/**"],
+      "files": ["src/client/shell/**", "src/client/inbox/**"],
       "rules": {
         "radius/no-large-radius": "error"
       }
@@ -185,7 +186,6 @@
         "src/client/components/ProfileMenu.tsx",
         "src/client/components/layout/DashboardHeader.tsx",
         "src/client/components/layout/NavRail.tsx",
-        "src/client/conversations/HomeSummary.tsx",
         "src/client/pages/automations/AutomationsPageLayout.tsx",
         "src/client/pages/code/RepositoryPage.tsx",
         "src/client/primaryNav.ts"
@@ -216,7 +216,7 @@
     {
       "files": [
         "src/client/conversations/ConversationSectionList.tsx",
-        "src/client/inbox/conversations/ConversationSectionList.tsx"
+        "src/client/shell/conversations/ConversationSectionList.tsx"
       ],
       "rules": {
         "no-restricted-imports": "off"

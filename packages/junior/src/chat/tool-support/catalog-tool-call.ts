@@ -1,16 +1,53 @@
 import { Value } from "@sinclair/typebox/value";
+import * as z from "zod";
+import { nestedArgumentsErrorMap } from "@/chat/tool-support/dispatcher-envelope";
 import type { TSchema } from "@sinclair/typebox";
 import {
   isTypeBoxInputSchema,
   type AnyToolDefinition,
-} from "@/chat/tools/definition";
-import { executeToolInputSchema } from "@/chat/tools/execute-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { parseToolInput } from "@/chat/tool-support/zod-tool";
 import {
   findToolNameHint,
+  renderToolNameHint,
   ToolNameMissError,
 } from "@/chat/tool-support/tool-name-suggestions";
+
+export const EXECUTE_TOOL_NAME = "executeTool";
+const MISSING_TOOL_NAME_ERROR = "executeTool requires a catalog tool_name";
+
+/** Input envelope of `executeTool`, which the dispatcher parses before it runs the catalog tool. */
+export const executeToolInputSchema = z
+  .object(
+    {
+      tool_name: z
+        .string({ error: MISSING_TOOL_NAME_ERROR })
+        .min(1, { error: MISSING_TOOL_NAME_ERROR })
+        .describe(
+          "Exact catalog tool_name, from searchTools or as named by a skill, tool result, or error.",
+        ),
+      arguments: z
+        .record(z.string(), z.unknown(), {
+          error: "executeTool arguments must be an object when provided",
+        })
+        .describe(
+          'Arguments matching the selected catalog tool schema, for example { "query": "..." }.',
+        )
+        .optional(),
+      // `intent` keeps one envelope with callMcpTool. Catalog tool auth
+      // prompts use the user's message as the reason, so it is dropped.
+      intent: z
+        .string()
+        .min(1)
+        .describe(
+          "Optional short purpose of this call. It is not passed to the catalog tool.",
+        )
+        .optional(),
+    },
+    { error: nestedArgumentsErrorMap(EXECUTE_TOOL_NAME) },
+  )
+  .strict();
 
 export interface CatalogToolCall {
   arguments: Record<string, unknown>;
@@ -37,9 +74,16 @@ export function resolveCatalogToolCall(
   );
   const definition = catalogTools[toolName];
   if (!definition) {
+    // Say the next call, not only the rule: a model that gets only "Did you
+    // mean" can give up instead of calling again with the suggested name.
+    const hint = findToolNameHint(toolName, catalogTools);
+    const hintText = renderToolNameHint(hint);
+    const next = hintText
+      ? `${hintText} Call executeTool again with the exact name as tool_name.`
+      : "Call searchTools to find its exact name.";
     throw new ToolNameMissError(
-      `executeTool can only call catalog tools returned by searchTools: ${toolName}.`,
-      findToolNameHint(toolName, catalogTools),
+      `\`${toolName}\` is not a catalog tool. ${next}`,
+      hint,
     );
   }
   return { arguments: args, definition, toolName };
@@ -66,7 +110,7 @@ export function prepareCatalogToolCall(
   }
   if (!prepared || typeof prepared !== "object" || Array.isArray(prepared)) {
     throw new ToolInputError(
-      `${dispatcherName} arguments must prepare to an object for ${call.toolName}.`,
+      `${dispatcherName} arguments must prepare to an object for ${call.toolName}. Pass arguments as a JSON object.`,
     );
   }
   return {

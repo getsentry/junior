@@ -230,6 +230,74 @@ export const PULL_REQUEST_CONFLICT_HISTORY = githubGraphql(`
   }
 `);
 
+/**
+ * Read what decides the requester's next action on one pull request: its
+ * state, merge state, review requests, latest reviews, head commit, and
+ * latest comments and review requests. A review comment reply is a review,
+ * so `reviews` holds it too.
+ */
+export const PULL_REQUEST_NEXT_ACTION = githubGraphql(`
+  query PullRequestNextAction($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        autoMergeRequest { enabledAt }
+        headRefOid
+        isDraft
+        mergeStateStatus
+        state
+        title
+        url
+        reviewRequests(first: 100) {
+          nodes { requestedReviewer { __typename ... on User { login } } }
+        }
+        reviews(last: 100) {
+          pageInfo { hasPreviousPage startCursor }
+          nodes { ...NextActionReview }
+        }
+        commits(last: 1) { nodes { commit { committedDate } } }
+        timelineItems(last: 100, itemTypes: [ISSUE_COMMENT, REVIEW_REQUESTED_EVENT]) {
+          nodes {
+            __typename
+            ... on IssueComment { createdAt author { __typename login } }
+            ... on ReviewRequestedEvent {
+              createdAt
+              requestedReviewer { __typename ... on User { login } }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  fragment NextActionReview on PullRequestReview {
+    state
+    submittedAt
+    author { __typename login }
+    commit { oid }
+  }
+`);
+
+/** Read the page of a pull request's reviews before `before`. */
+export const PULL_REQUEST_REVIEWS_BEFORE = githubGraphql(`
+  query PullRequestReviewsBefore($owner: String!, $name: String!, $number: Int!, $before: String!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) {
+        reviews(last: 100, before: $before) {
+          pageInfo { hasPreviousPage startCursor }
+          nodes { ...NextActionReview }
+        }
+      }
+    }
+  }
+
+  fragment NextActionReview on PullRequestReview {
+    state
+    submittedAt
+    author { __typename login }
+    commit { oid }
+  }
+`);
+
 // The lifecycle query for one pull request. `pullRequestLifecycles` repeats
 // its `pullRequest` field and `$number` variable for each pull request.
 const PULL_REQUEST_LIFECYCLE = githubGraphql(`

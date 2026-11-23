@@ -1,4 +1,9 @@
-import type { TextReplacement } from "@/chat/tools/sandbox/text-edits";
+import {
+  missingFileResult,
+  sliceFileContent,
+} from "@/chat/tool-support/text-range-result";
+import { editFile } from "@/chat/sandbox/edit-file";
+import type { TextReplacement } from "@/chat/tool-support/text-edits";
 import fs from "node:fs/promises";
 import {
   getTracePropagationHeaders,
@@ -44,6 +49,7 @@ import {
   type RepositoryInstructions,
 } from "@/chat/repository-instructions";
 import { createSandboxRuntime } from "@/chat/sandbox/session";
+import type { SandboxToolExecutors } from "@/chat/sandbox/tool-executors";
 import {
   isHostFileMissingError,
   resolveHostDataPath,
@@ -58,17 +64,12 @@ import {
 } from "@/chat/sandbox/workspace";
 import type { SkillMetadata } from "@/chat/skills";
 import type { Workspace } from "@/chat/workspaces/types";
-import { editFile } from "@/chat/tools/sandbox/edit-file";
 import {
   isMissingPathError,
   positiveInteger,
   resolveWorkspacePath,
-} from "@/chat/tools/sandbox/file-utils";
-import {
-  missingFileResult,
-  sliceFileContent,
-} from "@/chat/tools/sandbox/read-file";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 
 // Policies: policies/security.md and policies/observability.md.
@@ -95,6 +96,8 @@ export interface SandboxAccess {
 
 export interface SandboxOptions {
   sandboxRef?: SandboxRef | undefined;
+  /** Replace a session near the provider's cap. See `SandboxRuntimeOptions`. */
+  rotateOldSession?: boolean | undefined;
   workspace?: Workspace | undefined;
   skills: SkillMetadata[];
   referenceFiles: string[];
@@ -121,6 +124,21 @@ export interface SandboxOptions {
 interface SandboxToolCallContext {
   readonly signal?: AbortSignal | undefined;
   fileSystem(): Promise<SandboxFileSystem>;
+  /** Record the session that this call runs on. */
+  useSession(tools: SandboxToolExecutors): Promise<void>;
+  /** True when this call runs on a new sandbox without the earlier state. */
+  readonly sandboxReplaced: boolean;
+}
+
+const SANDBOX_REPLACED_NOTICE =
+  "This call ran in a new sandbox. Files, local commits, and other state from earlier calls are gone, so check the checkout, such as HEAD and the branch, before you act.";
+
+/** Add the replaced-sandbox notice to a structured sandbox tool result. */
+function withSandboxReplacedNotice(result: { details: object }) {
+  return makeStructuredToolOutput({
+    ...result.details,
+    sandbox_notice: SANDBOX_REPLACED_NOTICE,
+  });
 }
 
 /** Create the safe expected tool error for an unavailable sandbox operation. */
@@ -264,6 +282,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   let activeWorkspace = options.workspace;
   const runtime = createSandboxRuntime({
     sandboxRef: options.sandboxRef,
+    rotateOldSession: options.rotateOldSession,
     workspace: options.workspace,
     skills: options.skills,
     referenceFiles: options.referenceFiles,
@@ -291,17 +310,28 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     signal?: AbortSignal,
   ): SandboxToolCallContext => {
     let fileSystemPromise: Promise<SandboxFileSystem> | undefined;
+    let sandboxReplaced = false;
 
-    return {
+    const context: SandboxToolCallContext = {
       signal,
       fileSystem() {
         signal?.throwIfAborted();
-        return (fileSystemPromise ??= runtime.tools(signal).then(({ fs }) => {
-          signal?.throwIfAborted();
-          return bindSandboxFileSystem(fs, signal);
-        }));
+        return (fileSystemPromise ??= runtime
+          .tools(signal)
+          .then(async (tools) => {
+            signal?.throwIfAborted();
+            await context.useSession(tools);
+            return bindSandboxFileSystem(tools.fs, signal);
+          }));
+      },
+      async useSession(tools) {
+        sandboxReplaced = await runtime.recordToolSession(tools);
+      },
+      get sandboxReplaced() {
+        return sandboxReplaced;
       },
     };
+    return context;
   };
 
   const withSandboxSpan = <T>(
@@ -337,11 +367,11 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
     });
   };
 
-  const executeBashTool = async <T>(
+  const executeBashTool = async (
     rawInput: Record<string, unknown>,
     command: string,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const env = parseEnv(rawInput["env"]);
     const cwd =
       typeof rawInput["cwd"] === "string"
@@ -363,6 +393,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       if (bashTurn.waited) {
         tools = await runtime.tools(context.signal);
       }
+      await context.useSession(tools);
       const { bash: executeBash, sessionId: activeSessionId } = tools;
       await clearEgressSignals(activeSessionId);
       const result = await withSandboxToolSpan(
@@ -451,19 +482,21 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         ...(permissionDenied
           ? { permission_denied: permissionDenied }
           : undefined),
-      }) as T;
+      });
     } finally {
       bashTurn.release();
     }
   };
 
-  const executeReadFileTool = async <T>(
+  const executeReadFileTool = async (
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
-      throw new ToolInputError("path is required");
+      throw new ToolInputError(
+        "path is required. Set path to a file path in the sandbox.",
+      );
     }
     const offset = positiveInteger(rawInput["offset"]);
     const limit = positiveInteger(rawInput["limit"]);
@@ -490,7 +523,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
             path: filePath,
             offset,
             limit,
-          }) as T;
+          });
         } catch (error) {
           if (!isHostFileMissingError(error)) {
             throw error;
@@ -541,16 +574,18 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
     );
 
-    return result as T;
+    return result;
   };
 
-  const executeWriteFileTool = async <T>(
+  const executeWriteFileTool = async (
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
-      throw new ToolInputError("path is required");
+      throw new ToolInputError(
+        "path is required. Set path to a file path in the sandbox.",
+      );
     }
 
     const workspacePath = resolveWorkspacePath(filePath);
@@ -585,19 +620,23 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       target: filePath,
       path: filePath,
       bytes_written: Buffer.byteLength(content, "utf8"),
-    }) as T;
+    });
   };
 
-  const executeEditFileTool = async <T>(
+  const executeEditFileTool = async (
     rawInput: Record<string, unknown>,
     context: SandboxToolCallContext,
-  ): Promise<T> => {
+  ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
-      throw new ToolInputError("path is required");
+      throw new ToolInputError(
+        "path is required. Set path to a file path in the sandbox.",
+      );
     }
     if (!Array.isArray(rawInput["edits"])) {
-      throw new ToolInputError("edits is required");
+      throw new ToolInputError(
+        "edits is required. Set edits to a list of { old_text, new_text } replacements.",
+      );
     }
 
     logSandboxBootRequest("tool.editFile", {
@@ -622,7 +661,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
       },
     );
 
-    return result as T;
+    return result;
   };
 
   const execute = async <T>(params: SandboxToolCall): Promise<T> => {
@@ -635,25 +674,31 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
     if (params.toolName === "bash") {
       if (!bashCommand) {
-        throw new ToolInputError("command is required");
+        throw new ToolInputError(
+          "command is required. Set command to the shell command to run.",
+        );
       }
     }
 
+    const finish = (result: { details: object }): T =>
+      (context.sandboxReplaced
+        ? withSandboxReplacedNotice(result)
+        : result) as T;
     try {
       if (bashCommand !== undefined) {
-        return await executeBashTool(rawInput, bashCommand, context);
+        return finish(await executeBashTool(rawInput, bashCommand, context));
       }
 
       if (params.toolName === "readFile") {
-        return await executeReadFileTool(rawInput, context);
+        return finish(await executeReadFileTool(rawInput, context));
       }
 
       if (params.toolName === "editFile") {
-        return await executeEditFileTool(rawInput, context);
+        return finish(await executeEditFileTool(rawInput, context));
       }
 
       if (params.toolName === "writeFile") {
-        return await executeWriteFileTool(rawInput, context);
+        return finish(await executeWriteFileTool(rawInput, context));
       }
     } catch (error) {
       params.signal?.throwIfAborted();
@@ -668,6 +713,15 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         throw new ToolInputError(
           `The sandbox command stream was interrupted during ${params.toolName}, so the operation did not complete reliably. It may have produced side effects; inspect the workspace or retry only if it is safe.`,
           { cause: error },
+        );
+      }
+      if (context.sandboxReplaced && error instanceof ToolInputError) {
+        // A failed call is the only report that the old files are gone.
+        throw new ToolInputError(
+          `${error.message} ${SANDBOX_REPLACED_NOTICE}`,
+          {
+            cause: error,
+          },
         );
       }
       throw error;
@@ -705,7 +759,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         async (sandbox) => {
           if (!sandbox.createPreview) {
             throw new ToolInputError(
-              "This sandbox provider cannot create previews.",
+              "This sandbox provider cannot create previews. No change to the call can fix this; continue without a preview.",
             );
           }
           return await sandbox.createPreview(port);

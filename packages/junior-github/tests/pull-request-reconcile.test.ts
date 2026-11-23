@@ -170,7 +170,7 @@ describe("daily reconcile of open pull requests", () => {
         repositoryFullName: "getsentry/junior",
         updatedAt: new Date(now - 3 * day),
       });
-    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+    await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       assigneeIdentityIds: ["identity-jane"],
       body: "Pull request 949 has merge conflicts.",
       dedupeKey: "merge-conflict:getsentry/junior#949",
@@ -180,7 +180,7 @@ describe("daily reconcile of open pull requests", () => {
 
   it("records closes that GitHub did not deliver, once a day", async () => {
     await noticeFor949();
-    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+    await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       assigneeIdentityIds: ["identity-jane"],
       body: "GitHub asks you to review #949.",
       dedupeKey: "pull-request-action:getsentry/junior#949",
@@ -202,14 +202,12 @@ describe("daily reconcile of open pull requests", () => {
       .select()
       .from(juniorGitHubPullRequests)
       .orderBy(juniorGitHubPullRequests.number);
-    expect(
-      rows.map((row) => [row.number, row.state, row.mergedAt, row.closedAt]),
-    ).toEqual([
-      [946, "merged", new Date(now - day), new Date(now - day)],
-      [947, "open", null, null],
-      [949, "closed_unmerged", null, new Date(now - day)],
-      [950, "open", null, null],
-      [951, "open", null, null],
+    expect(rows.map((row) => [row.number, row.state, row.finishedAt])).toEqual([
+      [946, "merged", new Date(now - day)],
+      [947, "open", null],
+      [949, "closed_unmerged", new Date(now - day)],
+      [950, "open", null],
+      [951, "open", null],
     ]);
     // An open pull request keeps its state and gets its current title.
     expect(
@@ -244,16 +242,10 @@ describe("daily reconcile of open pull requests", () => {
     expect(queries[1]?.sort()).toEqual([947, 950, 951]);
   });
 
-  it("writes a draft state that changed on GitHub", async () => {
+  it("writes the current draft state to the code index", async () => {
     drafts = new Set([947]);
     await h.heartbeat(now);
 
-    const [row] = await fixture
-      .db()
-      .select()
-      .from(juniorGitHubPullRequests)
-      .where(eq(juniorGitHubPullRequests.number, 947));
-    expect(row).toMatchObject({ draft: true, state: "open" });
     expect(
       h.codeChanges.map((change) => [
         change.number,
@@ -376,10 +368,10 @@ describe("daily reconcile of open pull requests", () => {
 
   it("keeps a close open for the next reconcile when its notice close fails", async () => {
     await noticeFor949();
-    const desk = h.reviewItems.forConversation("slack:C1:1.0");
-    vi.spyOn(h.reviewItems, "forConversation").mockReturnValueOnce({
+    const desk = h.inboxItems.forConversation("slack:C1:1.0");
+    vi.spyOn(h.inboxItems, "forConversation").mockReturnValueOnce({
       ...desk,
-      close: () => Promise.reject(new Error("The review desk is down")),
+      close: () => Promise.reject(new Error("The Inbox is down")),
     });
     await h.heartbeat(now);
     const state949 = async () =>

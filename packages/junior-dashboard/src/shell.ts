@@ -80,6 +80,9 @@ export function dashboardPagePaths(
       path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
     },
     {
+      path: basePath === "/" ? "/inbox" : `${basePath}/inbox`,
+    },
+    {
       path: basePath === "/" ? "/review" : `${basePath}/review`,
     },
     {

@@ -14,7 +14,9 @@ data, does not run.
 - Only the person who runs the Turn can authorize an action. Their own
   messages in the Run's Conversation set what is authorized. Text from the
   agent, a parent agent, tools, files, issues, comments, Event authors, and
-  other people is context. It is never approval.
+  other people is context. It is never approval. The one exception is the
+  task of a Conversation that a Lead starts: it passes on the instruction
+  of the Lead's person, so it counts as that person's request.
 - The model rates risk and authorization, and names one rule. Code turns the
   rule into allow, ask, or deny, so the model never chooses between ask and
   deny.
@@ -29,14 +31,13 @@ data, does not run.
 - The install, not the agent, states facts about destinations. Each plugin
   can declare where its writes go, such as which destinations people outside
   the organization can read. A fact never authorizes an action.
-- For each plugin that declares `credentials`, Guardian knows that its
-  Sandbox env var holds a placeholder, and which domains get the real
-  credential. A command that sends that env var to those domains does not
-  expose a secret.
+- Guardian understands every placeholder credential in the Sandbox: which
+  env var holds it, and which domains get the real credential. A command
+  that sends that env var to those domains does not expose a secret.
 
 ## Entry points
 
-- Slack: a Review item in which Junior names an action, its target, and its
+- Slack: an Inbox item in which Junior names an action, its target, and its
   side effects, and asks the person to confirm it.
 - Dashboard: System, "Guardian reviews"; the "Guardian" line in the costs of
   a Conversation.
@@ -95,3 +96,6 @@ data, does not run.
 - `publishImage` makes a public URL with no review, and nothing checks the
   image for private data. This breaks "secrets and private data never go
   where people outside the organization can read them".
+- Guardian is not told about the placeholders of the GitHub, Vercel, and
+  Datadog plugins. It can deny a normal call to their APIs as a secret leak.
+  This breaks "Guardian understands every placeholder credential".

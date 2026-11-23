@@ -10,7 +10,7 @@ import {
   USER_INPUT_NOTE,
   type UserInputAnswer,
   type UserInputRequest,
-} from "@/chat/tools/runtime/user-input-request";
+} from "@/chat/inbox-items/user-input-request";
 
 const FIELD_BLOCK_ID_PREFIX = "field:";
 const OTHER_BLOCK_ID = "other";

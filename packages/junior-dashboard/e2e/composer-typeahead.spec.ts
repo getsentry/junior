@@ -1,5 +1,6 @@
-import type { Page } from "@playwright/test";
+import type { Locator, Page, Request } from "@playwright/test";
 
+import { pasteText } from "./paste-text";
 import { expect, test } from "./test";
 
 const PUBLIC_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
@@ -14,6 +15,33 @@ async function openComposer(page: Page, baseURL: string, id: string) {
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.click();
   return composer;
+}
+
+// Type a mention and wait until the person's row can be inserted. Until
+// the search for the full text answers, the menu shows the rows of the
+// earlier search, and Enter or Tab on them inserts nothing.
+async function typeMention(composer: Locator, text: string, person: RegExp) {
+  await composer.pressSequentially(text);
+  const mentions = composer.page().getByRole("listbox", { name: "Mentions" });
+  await expect(mentions.getByRole("option", { name: person })).toBeVisible();
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+}
+
+// Hold people searches. The returned function answers them and waits for
+// their responses.
+async function holdSearches(page: Page) {
+  const held: Request[] = [];
+  let release = () => {};
+  const released = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/people/search?*", async (route) => {
+    held.push(route.request());
+    await released;
+    await route.fallback();
+  });
+  return async () => {
+    release();
+    await Promise.all(held.map((request) => request.response()));
+  };
 }
 
 test("text typed before the editor loads stays in the editor", async ({
@@ -71,7 +99,8 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   );
 
   await composer.pressSequentially("Hi @c");
-  const people = page.getByRole("listbox", { name: "People" });
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+  const people = mentions.getByRole("group", { name: "People" });
   await expect(people.getByRole("option")).toHaveText([
     /Casey Nguyen/,
     /Avery Chen/,
@@ -79,18 +108,22 @@ test("@ suggests people and sends the mention as a Slack token", async ({
   await expect(
     people.getByRole("option", { name: /Casey Nguyen/ }),
   ).toHaveAttribute("aria-selected", "true");
+  // The Conversations below People come from a slower search.
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
 
   // Arrows move the choice and wrap. Escape closes the menu.
   await composer.press("ArrowDown");
   await expect(
     people.getByRole("option", { name: /Avery Chen/ }),
   ).toHaveAttribute("aria-selected", "true");
-  await composer.press("ArrowDown");
-  await expect(
-    people.getByRole("option", { name: /Casey Nguyen/ }),
-  ).toHaveAttribute("aria-selected", "true");
+  await composer.press("ArrowUp");
+  await composer.press("ArrowUp");
+  await expect(mentions.getByRole("option").last()).toHaveAttribute(
+    "aria-selected",
+    "true",
+  );
   await composer.press("Escape");
-  await expect(people).toBeHidden();
+  await expect(mentions).toBeHidden();
 
   // The menu stays closed until the caret leaves that reference.
   await composer.pressSequentially("h");
@@ -123,19 +156,22 @@ test("an earlier row cannot be inserted while the next search loads", async ({
     PUBLIC_CONVERSATION_ID,
   );
   await composer.pressSequentially("@av");
-  const people = page.getByRole("listbox", { name: "People" });
-  await expect(people.getByRole("option")).toHaveText([/Avery Chen/]);
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+  await expect(
+    mentions.getByRole("group", { name: "People" }).getByRole("option"),
+  ).toHaveText([/Avery Chen/]);
 
   // The next search does not answer yet. Only the API knows whether it
   // matches Avery, by a name the menu may not show.
-  await page.route("**/api/people/search?*", () => {});
+  const answer = await holdSearches(page);
   await composer.pressSequentially("e");
-  await expect(people).toHaveAttribute("aria-busy", "true");
+  await expect(mentions).toHaveAttribute("aria-busy", "true");
   // Neither inserts the earlier row nor sends the half-typed mention.
   await composer.press("Tab");
   await composer.press("Enter");
   await expect(composer.locator("[data-mention]")).toHaveCount(0);
   await expect(composer).toHaveText("@ave");
+  await answer();
 });
 
 test("Enter and Tab wait while the first people search loads", async ({
@@ -150,7 +186,7 @@ test("Enter and Tab wait while the first people search loads", async ({
     await route.fallback();
   });
   // The first search does not answer yet, so there are no rows.
-  await page.route("**/api/people/search?*", () => {});
+  const answer = await holdSearches(page);
   const composer = await openComposer(
     page,
     dashboard.baseURL,
@@ -164,6 +200,7 @@ test("Enter and Tab wait while the first people search loads", async ({
   await expect(composer).toBeFocused();
   await expect(composer).toHaveText("@ca");
   expect(sent).toEqual([]);
+  await answer();
 });
 
 test("a person without a People page still has a card with Invite", async ({
@@ -175,8 +212,7 @@ test("a person without a People page still has a card with Invite", async ({
     dashboard.baseURL,
     PUBLIC_CONVERSATION_ID,
   );
-  await composer.pressSequentially("@sam");
-  await expect(page.getByRole("option", { name: /Sam Ortiz/ })).toBeVisible();
+  await typeMention(composer, "@sam", /Sam Ortiz/);
   await composer.press("Tab");
   await composer.locator("[data-mention='U234']").hover();
   const card = page.getByRole("dialog", { name: "Sam Ortiz" });
@@ -199,17 +235,7 @@ test("a pasted Slack mention becomes a mention", async ({
   await expect
     .poll(() => page.evaluate(() => window.getSelection()?.anchorOffset))
     .toBe(3);
-  await page.evaluate(() => {
-    const data = new DataTransfer();
-    data.setData("text/plain", " <@U456>");
-    document.activeElement?.dispatchEvent(
-      new ClipboardEvent("paste", {
-        bubbles: true,
-        cancelable: true,
-        clipboardData: data,
-      }),
-    );
-  });
+  await pasteText(page, " <@U456>");
   await expect(composer.locator("[data-mention='U456']")).toHaveText("@U456");
   // The caret stays after the mention, not at the end of the line.
   await composer.pressSequentially("!");
@@ -230,10 +256,7 @@ test("Invite subscribes a mentioned person to a public conversation", async ({
     dashboard.baseURL,
     PUBLIC_CONVERSATION_ID,
   );
-  await composer.pressSequentially("@case");
-  await expect(
-    page.getByRole("option", { name: /Casey Nguyen/ }),
-  ).toBeVisible();
+  await typeMention(composer, "@case", /Casey Nguyen/);
   await composer.press("Tab");
   await composer.locator("[data-mention='U456']").click();
 
@@ -264,10 +287,7 @@ test("Invite says when the person is already a participant", async ({
     dashboard.baseURL,
     PUBLIC_CONVERSATION_ID,
   );
-  await composer.pressSequentially("@case");
-  await expect(
-    page.getByRole("option", { name: /Casey Nguyen/ }),
-  ).toBeVisible();
+  await typeMention(composer, "@case", /Casey Nguyen/);
   await composer.press("Tab");
   await composer.locator("[data-mention='U456']").click();
 
@@ -285,8 +305,7 @@ test("a person who is not a User has a card without Invite", async ({
     dashboard.baseURL,
     PUBLIC_CONVERSATION_ID,
   );
-  await composer.pressSequentially("@rile");
-  await expect(page.getByRole("option", { name: /Riley Park/ })).toBeVisible();
+  await typeMention(composer, "@rile", /Riley Park/);
   await composer.press("Tab");
   await composer.locator("[data-mention='U345']").hover();
 
@@ -325,10 +344,7 @@ for (const [name, change] of [
       dashboard.baseURL,
       PARTICIPANT_CONVERSATION_ID,
     );
-    await composer.pressSequentially("@case");
-    await expect(
-      page.getByRole("option", { name: /Casey Nguyen/ }),
-    ).toBeVisible();
+    await typeMention(composer, "@case", /Casey Nguyen/);
     await composer.press("Enter");
     await composer.locator("[data-mention='U456']").click();
     const card = page.getByRole("dialog", { name: "Casey Nguyen" });

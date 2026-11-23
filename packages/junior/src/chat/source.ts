@@ -37,7 +37,7 @@ export function normalizeSessionSource(
     value.kind === "scheduled_automation" ||
     value.kind === "event_automation" ||
     value.kind === "plugin_dispatch" ||
-    value.kind === "agent_invocation"
+    value.kind === "parent_message"
   ) {
     return undefined;
   }

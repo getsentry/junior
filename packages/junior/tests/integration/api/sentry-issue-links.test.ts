@@ -41,6 +41,32 @@ const ISSUE = {
   userCount: 56,
 };
 
+// A user feedback is an issue in the feedback category.
+const FEEDBACK = {
+  assignedTo: null,
+  count: "1",
+  culprit: "user",
+  id: "7890",
+  issueCategory: "feedback",
+  lastSeen: "2026-07-01T11:00:00Z",
+  level: "info",
+  metadata: {
+    contact_email: "reporter@example.com",
+    message: "The footer says use -f to refresh, but -f is --fields.",
+    name: "Rita Reporter",
+    summary: "Wrong refresh flag in footer",
+    title: "User Feedback: Wrong refresh flag in footer",
+    value: "The footer says use -f to refresh, but -f is --fields.",
+  },
+  priority: "medium",
+  project: { id: "12", slug: "cli" },
+  shortId: "CLI-516",
+  status: "ignored",
+  substatus: "archived_forever",
+  title: "User Feedback: Wrong refresh flag in footer",
+  userCount: 1,
+};
+
 // Each org's region API host, as `links.regionUrl` names it.
 const REGION_URLS: Record<string, string> = {
   "acme-eu": "https://de.sentry.io",
@@ -63,15 +89,17 @@ function fakeSentry(allowed: string[]) {
     const token = request.headers.get("authorization") ?? "none";
     issueHosts.push(`${host} ${params["org"]}`);
     reads.push(`${token} ${params["org"]}/${params["issueId"]}`);
+    const issue = [ISSUE, FEEDBACK].find((item) =>
+      [item.id, item.shortId].includes(String(params["issueId"])),
+    );
     const known =
-      REGION_URLS[String(params["org"])] === `https://${host}` &&
-      [ISSUE.id, ISSUE.shortId].includes(String(params["issueId"]));
+      REGION_URLS[String(params["org"])] === `https://${host}` && issue;
     if (!known) return new HttpResponse(null, { status: 404 });
     const canRead =
       token === `Bearer ${ORG_READ_TOKEN}` ||
       allowed.some((name) => token === `Bearer ${name}-token`);
     return canRead
-      ? HttpResponse.json(ISSUE)
+      ? HttpResponse.json(issue)
       : new HttpResponse(null, { status: 403 });
   };
   mswServer.use(
@@ -205,6 +233,50 @@ describe("Sentry issue link cards", () => {
     expect(reads.every((read) => /sentry\/(4567|JUNIOR-3ZK)$/.test(read))).toBe(
       true,
     );
+  });
+
+  it("shows a feedback card for every feedback URL form", async () => {
+    fakeSentry(["alice"]);
+    const alice = testViewer("alice@example.com");
+    await connectSentry(alice, "alice");
+    const url =
+      "https://sentry.sentry.io/feedback/?referrer=slack&feedbackSlug=cli%3A7890&project=12";
+    const urls = [
+      url,
+      "https://sentry.sentry.io/issues/feedback/?feedbackSlug=cli:7890",
+      "https://sentry.io/organizations/sentry/feedback/?feedbackSlug=cli:7890",
+      "https://sentry.sentry.io/issues/7890/",
+    ];
+    // A feedback page that names no feedback claims no card.
+    const others = [
+      "https://sentry.sentry.io/feedback/",
+      "https://sentry.sentry.io/feedback/?feedbackSlug=7890",
+    ];
+
+    const { body, objects } = await readCards(alice, [...urls, ...others]);
+
+    expect(objects.map((card) => card.url)).toEqual(urls);
+    expect(objects[0]?.object).toEqual({
+      kind: "object",
+      objectType: "task",
+      plugin: "sentry",
+      key: "sentry/7890",
+      label: "CLI-516",
+      title: "Wrong refresh flag in footer",
+      url,
+      displayType: "User feedback",
+      status: "spam",
+      facts: {
+        type: "task",
+        summary: "The footer says use -f to refresh, but -f is --fields.",
+        assignees: [],
+        project: "cli",
+      },
+    });
+    // The card never names who sent the feedback.
+    for (const text of ["Rita", "reporter@example.com"]) {
+      expect(body).not.toContain(text);
+    }
   });
 
   it("shows nothing of an issue to a viewer whose Sentry account cannot open it", async () => {

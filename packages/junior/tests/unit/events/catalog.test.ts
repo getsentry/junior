@@ -12,7 +12,7 @@ import {
   registeredEventAutomationTriggerSchema,
   requireEventAutomationTrigger,
 } from "@/chat/event-automations/tool-support";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   WORKSPACE_SNAPSHOT_FAILED_EVENT,
   WORKSPACE_SNAPSHOT_READY_EVENT,

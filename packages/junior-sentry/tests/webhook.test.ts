@@ -58,6 +58,48 @@ function metricAlertBody(action = "critical") {
   };
 }
 
+// A metric monitor firing sent by a workflow's webhook action, shaped like
+// Sentry's `send_alert_webhook_v2` payload. Most event fields are left out.
+function eventAlertBody(
+  occurrence: {
+    alertId?: number | null;
+    priority?: number;
+    type?: number;
+  } = {},
+) {
+  return {
+    action: "triggered",
+    data: {
+      event: {
+        event_id: "0b7f2c4e0e9f4c6b9f8f1c2d3e4a5b6c",
+        issue_id: "7513266780",
+        issue_url:
+          "https://sentry.io/api/0/organizations/sentry/issues/7513266780/",
+        occurrence: {
+          evidenceData: {
+            alertId: occurrence.alertId ?? null,
+            detectorId: 123,
+            value: 512,
+          },
+          id: "5d1f0ab4c6e34a6e8f0c2b1a9d8e7f60",
+          issueTitle: "API error volume",
+          priority: occurrence.priority ?? 75,
+          subtitle:
+            "Critical: count() of errors in the last 15 minutes above 400",
+          type: occurrence.type ?? 8001,
+        },
+        project: 1,
+        title: "API error volume",
+        url: "https://sentry.io/api/0/projects/sentry/Backend/events/0b7f2c4e0e9f4c6b9f8f1c2d3e4a5b6c/",
+        web_url:
+          "https://sentry.sentry.io/issues/7513266780/events/0b7f2c4e0e9f4c6b9f8f1c2d3e4a5b6c/",
+      },
+      triggered_rule: "Send to Junior",
+    },
+    installation: { uuid: "24b397fc-a86e-43ef-9297-949e21b82480" },
+  };
+}
+
 function signedRawRequest(
   rawBody: string,
   options: {
@@ -119,6 +161,7 @@ describe("Sentry webhook events", () => {
         body: metricAlertBody(action),
         hookResource: "metric_alert",
       })),
+      { body: eventAlertBody({ alertId: 7 }), hookResource: "event_alert" },
     ];
     const events = deliveries.flatMap((delivery) =>
       normalizeSentryEvents(delivery),
@@ -283,6 +326,63 @@ describe("Sentry webhook events", () => {
         untrustedText: expect.any(String),
       },
     ]);
+  });
+
+  it("normalizes a metric monitor firing sent as an issue alert", () => {
+    expect(
+      normalizeSentryEvents({
+        body: eventAlertBody(),
+        hookResource: "event_alert",
+        hookTimestamp: "1785976800",
+      }),
+    ).toEqual([
+      {
+        data: {
+          projects: ["backend"],
+          alertRuleId: "10000000123",
+          url: "https://sentry.sentry.io/issues/7513266780/events/0b7f2c4e0e9f4c6b9f8f1c2d3e4a5b6c/",
+        },
+        eventKey:
+          "sentry:metric-alert:sentry/10000000123:occurrence:5d1f0ab4c6e34a6e8f0c2b1a9d8e7f60:metric_alert.critical",
+        eventType: "metric_alert.critical",
+        identifier: "metric-alert:sentry/10000000123",
+        objectType: "item",
+        occurredAtMs: 1_785_976_800_000,
+        trustedSummary: "Sentry metric alert sentry/10000000123 is critical.",
+        untrustedText: [
+          "API error volume",
+          "Critical: count() of errors in the last 15 minutes above 400",
+        ].join("\n"),
+      },
+      expect.objectContaining({
+        eventType: "metric_alert.critical",
+        identifier: "sentry/backend",
+      }),
+    ]);
+  });
+
+  it("uses the legacy alert rule id and the warning state of a monitor firing", () => {
+    const [event] = normalizeSentryEvents({
+      body: eventAlertBody({ alertId: 7, priority: 50 }),
+      hookResource: "event_alert",
+    });
+
+    expect(event).toMatchObject({
+      data: { alertRuleId: "7" },
+      eventType: "metric_alert.warning",
+      identifier: "metric-alert:sentry/7",
+    });
+  });
+
+  it("ignores issue alerts that are not metric monitor firings", () => {
+    for (const body of [
+      eventAlertBody({ type: 1 }),
+      eventAlertBody({ priority: 25 }),
+    ]) {
+      expect(
+        normalizeSentryEvents({ body, hookResource: "event_alert" }),
+      ).toEqual([]);
+    }
   });
 
   it("leaves out alert rule projects that do not fit in event data", () => {

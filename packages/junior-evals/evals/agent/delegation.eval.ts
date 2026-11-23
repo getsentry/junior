@@ -14,17 +14,17 @@ function spawnInput(call: ToolCall): SpawnInput {
   return (call.input as SpawnInput | undefined) ?? {};
 }
 
-type PlanInput = {
+type TodosInput = {
   add?: Array<{ assignee?: string | null }> | null;
   update?: Array<{ assignee?: string | null }> | null;
 };
 
-/** Assignees that `updatePlan` calls set on new or changed items. */
-function planAssignees(calls: ToolCall[]): string[] {
+/** Assignees that `updateTodos` calls set on new or changed To-dos. */
+function todoAssignees(calls: ToolCall[]): string[] {
   return calls.flatMap((call) => {
-    const input = (call.input as PlanInput | undefined) ?? {};
-    return [...(input.add ?? []), ...(input.update ?? [])].flatMap((item) =>
-      item.assignee ? [item.assignee] : [],
+    const input = (call.input as TodosInput | undefined) ?? {};
+    return [...(input.add ?? []), ...(input.update ?? [])].flatMap((todo) =>
+      todo.assignee ? [todo.assignee] : [],
     );
   });
 }
@@ -55,7 +55,7 @@ describe("Implicit Delegation", () => {
     expect(spawned.map((call) => spawnInput(call).fork)).not.toContain(true);
   });
 
-  test("when a request queues more work for a child agent, keep that work on the plan with the child as assignee", async ({
+  test("when a request queues more work for a child agent, keep that work on a To-do with the child as assignee", async ({
     agent,
   }) => {
     const { run } = await agent({ limits: { maxToolCallsPerTurn: 6 } });
@@ -67,14 +67,14 @@ describe("Implicit Delegation", () => {
     );
 
     expect(completedToolCalls("spawnAgent", conversation)).not.toEqual([]);
-    // The checklist waits on the first task. Only the plan keeps it if
+    // The checklist waits on the first task. Only a To-do keeps it if
     // history is compacted before the result arrives.
     expect(
-      planAssignees(completedToolCalls("updatePlan", conversation)),
+      todoAssignees(completedToolCalls("updateTodos", conversation)),
     ).toEqual(expect.arrayContaining([expect.not.stringMatching(/^self$/i)]));
   });
 
-  test("when a multi-step request finishes in this Turn, keep it off the plan", async ({
+  test("when a multi-step request finishes in this Turn, add no To-dos", async ({
     run,
   }) => {
     const index = "https://example.com/runbooks";
@@ -90,8 +90,8 @@ describe("Implicit Delegation", () => {
       ),
     );
 
-    // The plan holds only work that outlives the Turn.
-    expect(completedToolCalls("updatePlan", conversation)).toEqual([]);
+    // To-dos hold only work that outlives the Turn.
+    expect(completedToolCalls("updateTodos", conversation)).toEqual([]);
     expect(conversation.replies).toHaveLength(1);
   });
 

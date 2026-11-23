@@ -10,8 +10,8 @@ import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import type { PiMessage } from "@/chat/pi/messages";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { createTools } from "@/chat/tools";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 
 const ROOT_TURN_TOOLS = turnBehavior({
@@ -69,6 +69,7 @@ describe("codemode tool", () => {
       },
     );
     const resume = createResumeState({
+      historySeqs: [],
       checkpoint: { resumed: false, sliceId: 1 },
       conversationId: CONVERSATION_ID,
       destination: DESTINATION,

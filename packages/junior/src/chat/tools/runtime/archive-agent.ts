@@ -1,18 +1,12 @@
 import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
-import {
-  getLatestAgentInvocationForConversation,
-  listOpenAgentInvocations,
-} from "@/chat/agent-invocations/store";
 import { readLastParentMessageAtMs } from "@/chat/agent-invocations/parent-message";
 import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-
-export const ARCHIVE_AGENT_TOOL_NAME = "archiveAgent";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const archiveAgentOutputSchema = juniorToolOutputSchema.extend({
   conversation_id: z.string().min(1).describe("Archived Thread ID"),
@@ -91,28 +85,17 @@ export function createArchiveAgentTool(conversationId: string) {
       const working =
         child.execution.status === "pending" ||
         child.execution.status === "running" ||
-        child.execution.status === "paused" ||
-        (await listOpenAgentInvocations(childConversationId)).some(
-          (row) => row.childConversationId === childConversationId,
-        );
+        child.execution.status === "paused";
       if (working) {
         throw new ToolInputError(
           `${childConversationId} is working. Leave it, or wait until it is idle.`,
         );
       }
       // A person who messaged the Thread since this conversation last gave
-      // it work took it over, so only people archive it from then on. The
-      // invocation's creation time never moves; its update time does, for
-      // example when its result reaches the parent's mailbox.
+      // it work took it over, so only people archive it from then on.
       const personMessageAt =
         await readLastPersonMessageAtMs(childConversationId);
-      // A child that no Agent invocation names got its work as parent
-      // messages.
-      const latest =
-        await getLatestAgentInvocationForConversation(childConversationId);
-      const lastWorkAt = latest
-        ? latest.createdAtMs
-        : await readLastParentMessageAtMs(childConversationId);
+      const lastWorkAt = await readLastParentMessageAtMs(childConversationId);
       if (
         personMessageAt !== undefined &&
         personMessageAt > (lastWorkAt ?? 0)

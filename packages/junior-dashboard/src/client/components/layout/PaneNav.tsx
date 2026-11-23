@@ -29,16 +29,16 @@ import {
   FOCUS_REPLY_STATE,
   COMPOSER_PATH,
 } from "../../conversations/conversationRoutes";
-import { useInboxConversationOrigin } from "../../review-desk/inboxListState";
+import { useInboxConversationOrigin } from "../../inbox/inboxListState";
 import { cn } from "../../styles";
 import {
   COMMAND_PALETTE_LABEL,
   COMMAND_PALETTE_SHORTCUT,
-} from "../../inbox/components/CommandPalette";
+} from "../../shell/components/CommandPalette";
 import { JuniorLogo } from "../JuniorLogo";
 import { PaneLinksContext } from "./SecondaryNavigation";
 import { toolbarControlBoxClass } from "../ui/button";
-import type { DashboardHeaderNavItem } from "../../inbox/components/layout/DashboardHeader";
+import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
 import {
   isInboxView,
   isOldAutomationsPath,
@@ -133,6 +133,8 @@ function usePaneNav(): PaneNavValue {
  */
 export function PaneNavProvider(props: {
   children: ReactNode;
+  /** The Lead's id has not loaded, so a Conversation may be the Lead. */
+  leadPending: boolean;
   navItems: DashboardHeaderNavItem[];
   onOpenChange(open: boolean): void;
   onSearch(): void;
@@ -152,7 +154,12 @@ export function PaneNavProvider(props: {
   // search, and (through `scroll`) its list position.
   const [lastRow, setLastRow] = useState<PaneRow>("inbox");
   const origin = useInboxConversationOrigin();
-  const row = paneRowForPath(location, props.navItems, origin);
+  // Until the Lead's id loads, a Conversation is no row's place yet: it may
+  // be the Lead, and Conversations would then reopen it.
+  const row =
+    props.leadPending && location.pathname.startsWith("/conversations/")
+      ? undefined
+      : paneRowForPath(location, props.navItems, origin);
   const here = `${location.pathname}${location.search}`;
   const [rowPaths, setRowPaths] = useState<Partial<Record<PaneRow, string>>>(
     {},

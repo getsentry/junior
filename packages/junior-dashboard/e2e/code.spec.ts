@@ -1,4 +1,8 @@
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import {
+  openRepositoryConversations,
+  pinFirstRepositoryConversation,
+} from "./repositoryConversations";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
 
@@ -136,4 +140,22 @@ test("counts every change in the state tabs and loads each state", async ({
   await expect(
     page.getByText("Last activity 10d ago · opened 12d ago"),
   ).toBeVisible();
+});
+
+test("the repository Conversations tab lists pins in their own section", async ({
+  page,
+  dashboard,
+}) => {
+  await pinFirstRepositoryConversation(page);
+  const list = await openRepositoryConversations(page, dashboard.baseURL);
+  const pins = list.getByRole("region", { name: /^Pinned/ });
+  await expect(
+    pins.getByRole("link", { name: /Pinned conversation/ }),
+  ).toBeVisible();
+  await expect(
+    pins.getByRole("link", { name: /Unpinned conversation/ }),
+  ).toHaveCount(0);
+  await expect(
+    page.getByRole("navigation", { name: "Conversations to show" }),
+  ).toHaveCount(0);
 });

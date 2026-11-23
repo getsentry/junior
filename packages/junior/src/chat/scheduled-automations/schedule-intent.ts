@@ -352,12 +352,12 @@ export function compileScheduleIntent(args: {
     });
     if (nextRunAtMs === undefined) {
       throw new ScheduleIntentError(
-        "The requested local date or time does not exist in that timezone.",
+        "The requested local date or time does not exist in that timezone. Choose another local time.",
       );
     }
     if (nextRunAtMs <= args.nowMs) {
       throw new ScheduleIntentError(
-        "The requested one-off schedule must be in the future.",
+        "The requested one-off schedule must be in the future. Set a time after now.",
       );
     }
     return {
@@ -402,7 +402,7 @@ export function compileScheduleIntent(args: {
   });
   if (nextRunAtMs === undefined) {
     throw new ScheduleIntentError(
-      "The recurring schedule has no valid future occurrence.",
+      "The recurring schedule has no valid future occurrence. Change the schedule so that it runs at least once after now.",
     );
   }
   const materializedRecurrence = args.intent.startDate

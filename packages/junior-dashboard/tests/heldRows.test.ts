@@ -1,34 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { heldRows, rowPlaces } from "../src/client/review-desk/heldRows";
-import type { ConversationRow } from "../src/client/review-desk/inboxData";
-import type { Conversation } from "../src/client/types";
+import { heldRows, rowPlaces } from "../src/client/inbox/heldRows";
+import type { ConversationRow } from "../src/client/inbox/inboxData";
 
-function row(
-  conversationId: string,
-  time: string,
-  pinnedAt?: string,
-): ConversationRow {
-  return pinnedAt
-    ? {
-        conversation: {
-          cumulativeDurationMs: 0,
-          displayTitle: conversationId,
-          id: conversationId,
-          isParticipant: true,
-          kind: "root",
-          lastProgressAt: time,
-          lastSeenAt: time,
-          pinnedAt,
-          startedAt: time,
-          status: "done",
-          turnActive: false,
-          surface: "internal",
-        } satisfies Conversation,
-        conversationId,
-        time,
-      }
-    : { conversationId, time };
+function row(conversationId: string, time: string): ConversationRow {
+  return { conversationId, time };
 }
 
 const shown = (rows: readonly ConversationRow[]) =>
@@ -61,11 +37,5 @@ describe("heldRows", () => {
       "b@2",
       "d@0",
     ]);
-  });
-
-  it("shows a pin at once, where the latest order puts it", () => {
-    const held = rowPlaces([row("a", "3"), row("b", "2")]);
-    const latest = [row("b", "2", "9"), row("a", "3")];
-    expect(shown(heldRows(latest, held))).toEqual(["b@2", "a@3"]);
   });
 });

@@ -1,37 +1,27 @@
-import {
-  isBriefsEnabled,
-  isEventEmbeddingsEnabled,
-} from "@/chat/briefs/registration";
 import { backfillCacheWarmingGaps } from "@/chat/cache-warming/backfill";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding-backfill";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { runEventSearchBackfill } from "@/chat/conversations/event-search-backfill";
 import { runSavingsRefillSlice } from "@/chat/cache-warming/savings-refill";
+import { syncAutomationAlerts } from "@/chat/automations/alert-items";
+import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
+import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
 import {
   createPluginEventPublisher,
   getRegistrations,
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
-import type { ShowReviewItem } from "@/chat/review-items/changes";
+import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { mapBounded } from "@/chat/fan-out";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
 import type { IdentityDispatcher } from "./identity";
-import {
-  listPendingAgentInvocationMailboxAppends,
-  listPendingAgentInvocationResults,
-} from "@/chat/agent-invocations/store";
-import {
-  createEndStoppedChildWork,
-  enqueueAgentInvocationResult,
-} from "@/chat/agent-invocations/result";
-import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
-import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { createEndStoppedChildWork } from "@/chat/agent-invocations/result";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -48,7 +38,6 @@ import {
 const DEFAULT_PLUGIN_LIMIT = 25;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
 const DISPATCH_MAILBOX_APPEND_LIMIT = 100;
-const AGENT_INVOCATION_MAILBOX_APPEND_LIMIT = 100;
 async function runWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -77,7 +66,7 @@ async function runPluginHeartbeats(args: {
   events: AppEventPublisher;
   limit?: number;
   nowMs: number;
-  showReviewItem?: ShowReviewItem | undefined;
+  showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   let count = 0;
   /* oxlint-disable no-await-in-loop -- Plugin dispatches take the shared pending-append index lock, which does not wait. */
@@ -101,7 +90,7 @@ async function runPluginHeartbeats(args: {
               events: createPluginEventPublisher(plugin, args.events),
               plugin,
               nowMs: args.nowMs,
-              showReviewItem: args.showReviewItem,
+              showInboxItem: args.showInboxItem,
             }),
           ),
         ),
@@ -168,85 +157,6 @@ export async function recoverPendingDispatchMailboxAppends(args: {
   /* oxlint-enable no-await-in-loop */
 }
 
-/**
- * Run `work` for each item. Items for one mailbox run one at a time in list
- * order, so its appends keep that order. Different mailboxes run at once.
- */
-async function runPerMailbox<T>(
-  items: readonly T[],
-  mailboxOf: (item: T) => string,
-  work: (item: T) => Promise<void>,
-): Promise<void> {
-  const byMailbox = new Map<string, T[]>();
-  for (const item of items) {
-    const mailbox = mailboxOf(item);
-    byMailbox.set(mailbox, [...(byMailbox.get(mailbox) ?? []), item]);
-  }
-  await mapBounded([...byMailbox.values()], async (group) => {
-    /* oxlint-disable no-await-in-loop -- Appends to one mailbox keep the order of the list. */
-    for (const item of group) {
-      await work(item);
-    }
-    /* oxlint-enable no-await-in-loop */
-  });
-}
-
-/** Repair invocation creation that stopped before its idempotent mailbox append. */
-export async function recoverPendingAgentInvocationMailboxAppends(args: {
-  conversationWorkQueue: ConversationWorkQueue;
-  nowMs: number;
-}): Promise<void> {
-  const invocations = await listPendingAgentInvocationMailboxAppends(
-    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
-  );
-  // The list is in creation order, and each append goes to the child.
-  await runPerMailbox(
-    invocations,
-    (invocation) => invocation.childConversationId,
-    async (invocation) => {
-      try {
-        await enqueueAgentInvocation(invocation, {
-          nowMs: args.nowMs,
-          queue: args.conversationWorkQueue,
-        });
-      } catch (error) {
-        logException(error, "agent.invocation.mailbox.append_recovery.failed", {
-          "app.agent.invocation_id": invocation.invocationId,
-        });
-      }
-    },
-  );
-}
-
-/** Repair terminal agent invocation results that never reached their parent. */
-export async function recoverPendingAgentInvocationResults(args: {
-  conversationWorkQueue: ConversationWorkQueue;
-  nowMs: number;
-}): Promise<void> {
-  const invocations = await listPendingAgentInvocationResults(
-    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
-  );
-  // The list is in the order that the invocations ended, and each result
-  // goes to the parent.
-  await runPerMailbox(
-    invocations,
-    (invocation) => invocation.parentConversationId,
-    async (invocation) => {
-      try {
-        await recordSubagentEnded(invocation);
-        await enqueueAgentInvocationResult(invocation, {
-          nowMs: args.nowMs,
-          queue: args.conversationWorkQueue,
-        });
-      } catch (error) {
-        logException(error, "agent.invocation.result.recovery.failed", {
-          "app.agent.invocation_id": invocation.invocationId,
-        });
-      }
-    },
-  );
-}
-
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue | undefined;
@@ -254,12 +164,10 @@ export async function runHeartbeat(args: {
   /** The app's event publisher. */
   events: AppEventPublisher;
   nowMs: number;
-  /** Shows a Review item that a plugin heartbeat changed. */
-  showReviewItem?: ShowReviewItem | undefined;
+  /** Shows an Inbox item that a plugin heartbeat changed. */
+  showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
-  // Runs before result recovery, so an invocation that this ends is sent to
-  // its parent in the same heartbeat.
   const endStoppedChildWork = createEndStoppedChildWork({ queue });
   await recoverConversationWork({
     beforeWorkStops: async (conversationId, inboundMessageIds) => {
@@ -270,14 +178,6 @@ export async function runHeartbeat(args: {
     queue,
   });
   await recoverPendingDispatchMailboxAppends({
-    conversationWorkQueue: queue,
-    nowMs: args.nowMs,
-  });
-  await recoverPendingAgentInvocationMailboxAppends({
-    conversationWorkQueue: queue,
-    nowMs: args.nowMs,
-  });
-  await recoverPendingAgentInvocationResults({
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });
@@ -295,6 +195,21 @@ export async function runHeartbeat(args: {
     logException(error, "scheduled_automations.heartbeat.failed");
   }
   try {
+    const woke = await runInboxSnoozeTimers(getDb(), args.nowMs);
+    if (woke > 0) {
+      logInfo("inbox_snoozes.heartbeat.woken", {
+        "app.inbox_snooze.count": woke,
+      });
+    }
+  } catch (error) {
+    logException(error, "inbox_snoozes.heartbeat.failed");
+  }
+  try {
+    await syncAutomationAlerts(getDb(), args.nowMs);
+  } catch (error) {
+    logException(error, "automation_alerts.heartbeat.failed");
+  }
+  try {
     await runTimerWatchHeartbeat({ nowMs: args.nowMs, queue });
   } catch (error) {
     // Timer claims expire for retry; a failure must not block plugin heartbeats.
@@ -305,7 +220,7 @@ export async function runHeartbeat(args: {
     dispatchForIdentity: args.dispatchForIdentity,
     events: args.events,
     nowMs: args.nowMs,
-    showReviewItem: args.showReviewItem,
+    showInboxItem: args.showInboxItem,
   });
   try {
     // Last, so a long first run does not delay the work above.
@@ -318,28 +233,25 @@ export async function runHeartbeat(args: {
   } catch (error) {
     logException(error, "cache_warming.savings_refill.failed");
   }
-  // The Brief task writes these vectors, so the backfill runs only with it.
-  if (isBriefsEnabled()) {
-    try {
-      await runConversationEmbeddingBackfill(
-        createConversationEmbedder({
-          // One batch embeds the Briefs of many Conversations, so no one
-          // Conversation pays. The cost stays on the span.
-          cost: { owner: "none" },
-          operation: "conversation_embedding",
-        }),
-      );
-    } catch (error) {
-      // The claim expires, and a later heartbeat tries again.
-      logException(error, "conversation_embeddings.backfill.failed");
-    }
+  try {
+    await runConversationEmbeddingBackfill(
+      createConversationEmbedder({
+        // One batch embeds the metadata of many Conversations, so no one
+        // Conversation pays. The cost stays on the span.
+        cost: { owner: "none" },
+        operation: "conversation_embedding",
+      }),
+    );
+  } catch (error) {
+    // The claim expires, and a later heartbeat tries again.
+    logException(error, "conversation_embeddings.backfill.failed");
   }
   try {
     await runEventSearchBackfill({
       ...(isEventEmbeddingsEnabled()
         ? {
             embedder: createConversationEmbedder({
-              // The cost stays on the span, like the Brief backfill above.
+              // The cost stays on the span, like the embedding backfill above.
               cost: { owner: "none" },
               operation: "conversation_embedding",
             }),

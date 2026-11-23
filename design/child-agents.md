@@ -9,9 +9,9 @@ child chooses to report reaches the parent.
 
 - One execution path runs every Conversation. A child agent has no path of
   its own, so a fix to that path applies to every kind.
-- A parent wakes only for a report: a `reply`, a blocked report, or a
-  failure. A child owns its Watch work, so the parent does not steer each
-  Event.
+- A parent wakes only when a child messages it. A `reply`, a
+  `messageAgent` message, a blocked report, and a failure are all messages.
+  A child owns its Watch work, so the parent does not steer each Event.
 - Work never runs with the access of another party. A child, its parent,
   and a grandchild never borrow the authority of a different Actor.
 - A parent can plan around its child agents. It knows which ones still
@@ -35,7 +35,7 @@ child chooses to report reaches the parent.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. A person's Turn in a Thread
   cannot start or message child agents.
-- A child agent never asks a person. It has no Review desk and does not
+- A child agent never asks a person. It has no Inbox and does not
   wait for a sign-in. Missing access is a blocked report to its parent.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.
@@ -45,7 +45,11 @@ child chooses to report reaches the parent.
   and only the text of a `reply` leaves it.
 - One stop stops the whole tree below it. When a parent stops a child, it
   gets no result. When a person stops a child, its parent gets `stopped`.
-  New work from the parent, or a person's input, ends the stop.
+  New work from the parent, or a person's input, ends the stop. While
+  stopped, a Conversation keeps its Watches and saves automated input as
+  skipped Messages that start no Turn. Only a stop holds input.
+- A stopped parent gives no new work. Its message to a child becomes a note
+  that the child sees when it next runs, and it cannot start a child.
 - A parent never waits forever, and never sees a running child as done.
   Each result names the siblings that did not report yet. A Task that fails,
   or still has no answer after one reminder, tells its parent `failed`. A
@@ -72,5 +76,5 @@ child chooses to report reaches the parent.
   come. This breaks "a parent never waits forever".
 - A parent does not archive its child agents when their work is done. This
   breaks "a parent manages the lifecycle of its child agents".
-- For some child messages, Junior reads the sender from the message id.
-  This breaks "a message id is an opaque key".
+- A parent cannot archive a Task. Only a Thread can be archived. This
+  breaks "a parent manages the lifecycle of its child agents".

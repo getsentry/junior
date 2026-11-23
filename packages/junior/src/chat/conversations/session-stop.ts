@@ -1,72 +1,38 @@
 import { mapBounded } from "@/chat/fan-out";
 import type { StateAdapter } from "chat";
-import { and, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, lt, lte, or, sql } from "drizzle-orm";
 import { toStoredConversationMessage } from "@/chat/conversations/messages";
-import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
+import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
 import { instructionForInputs } from "@/chat/agent/prompt";
+import type { ConversationStore } from "@/chat/conversations/store";
 import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import {
   eventBatchMessageMeta,
-  isEventMailboxMetadata,
   renderEventBatchInputs,
 } from "@/chat/events/notification";
-import { cancelSubscriptions } from "@/chat/events/store";
-import { getEventBatchDelayMs } from "@/chat/task-execution/mailbox-turn";
-import { eventReviewItemInputs } from "@/chat/review-items/prompt-input";
+import { eventInboxItemInputs } from "@/chat/inbox-items/prompt-input";
 import { normalizeConversationText } from "@/chat/services/conversation-memory";
-import type { InboundMessage } from "@/chat/task-execution/store";
-import type {
-  ConversationWorkerContext,
-  ConversationWorkerResult,
-} from "@/chat/task-execution/worker";
+import {
+  appendAndEnqueueInboundMessage,
+  stopConversationWork,
+  takePendingEventMessages,
+  type AppendAndEnqueueInboundMessageResult,
+  type InboundMessage,
+} from "@/chat/task-execution/store";
+import type { StopConversationWorkResult } from "@/chat/task-execution/state";
+import { cancelSignInWait } from "@/chat/task-execution/turn-cancel";
 import { juniorConversations } from "@/db/schema";
+import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import {
   conversationSubtree,
   conversationSubtreeColumns,
 } from "@/chat/conversations/sql/subtree";
 
-/** Skip reason on the Message that saves Events for a stopped Conversation. */
+/** Skip reason on the Message that saves input a stopped Conversation holds. */
 const STOPPED_CONVERSATION_SKIP_REASON = "stopped conversation";
-
-/**
- * Stop each Conversation until a person sends it input or its parent gives
- * it new work. With `cancelWatches`, an agent stopped them, so their Watches
- * end first: a Watch delivers under its lock, so every Event of a cancelled
- * Watch was received before the stop. A Conversation that already stopped
- * later keeps that stop, so a retried or cascaded stop does not move it back.
- */
-export async function markConversationsStopped(
-  conversationIds: readonly string[],
-  options: {
-    cancelWatches: boolean;
-    nowMs?: number;
-    state?: StateAdapter | undefined;
-  },
-): Promise<void> {
-  if (conversationIds.length === 0) {
-    return;
-  }
-  if (options.cancelWatches) {
-    await mapBounded(conversationIds, (conversationId) =>
-      cancelSubscriptions({ conversationId, state: options.state }),
-    );
-  }
-  const stoppedAt = new Date(options.nowMs ?? Date.now());
-  await getSqlExecutor()
-    .db()
-    .update(juniorConversations)
-    .set({ stoppedAt, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        inArray(juniorConversations.conversationId, [...conversationIds]),
-        or(
-          isNull(juniorConversations.stoppedAt),
-          lt(juniorConversations.stoppedAt, stoppedAt),
-        ),
-      ),
-    );
-}
 
 /** Return when a Conversation stopped, or undefined when it is not stopped. */
 export async function getConversationStoppedAtMs(
@@ -82,149 +48,232 @@ export async function getConversationStoppedAtMs(
 }
 
 /**
- * End the stop of a Conversation and of the child agents below it, for new
- * work sent at `sentAtMs`. Nothing changes for work sent at or before the
- * stop, so the input that a stop drops does not undo it.
- * Only Conversations that stopped no later than this Conversation change, so
- * a later stop of one child agent stays in effect.
+ * The hold rule: a Conversation holds automated input only while it is
+ * stopped. Status and failure do not hold input.
  */
-export async function resumeStoppedConversationTree(
+async function isHeld(conversationId: string): Promise<boolean> {
+  return (await getConversationStoppedAtMs(conversationId)) !== undefined;
+}
+
+/**
+ * Accept automated input, such as a Watch Event, a message from another
+ * agent, or a child result. This is the only place that holds input. It
+ * checks the hold under the mailbox lock, so it cannot race a stop: held
+ * input is saved as a skipped Message and never reaches `pending`, and the
+ * stop holds input that was appended before it.
+ */
+export async function enqueueAutomatedInput(
+  args: Parameters<typeof appendAndEnqueueInboundMessage>[0],
+): Promise<AppendAndEnqueueInboundMessageResult | { status: "held" }> {
+  if (args.message.source !== "event") {
+    throw new Error("Automated input must be an Event");
+  }
+  let held = false;
+  const result = await appendAndEnqueueInboundMessage({
+    ...args,
+    renderText: async (inboundMessageIds, messageSenders) => {
+      const text = args.renderText
+        ? await args.renderText(inboundMessageIds, messageSenders)
+        : args.message.input.text;
+      if (text === undefined || !(await isHeld(args.message.conversationId))) {
+        return text;
+      }
+      // Save before the mailbox records the id, so a retry after a failed
+      // save holds the input again.
+      await saveHeldInput(args.message.conversationId, [
+        { ...args.message, input: { ...args.message.input, text } },
+      ]);
+      held = true;
+      return undefined;
+    },
+  });
+  return held ? { status: "held" } : result;
+}
+
+/**
+ * Stop each Conversation of a tree until a person sends it input or its
+ * parent gives it new work. Every stop path ends here: a person's stop,
+ * `stopAgent`, and the automated-turn limit. It writes the stop in one
+ * transaction with row locks, holds the automated input that already waits
+ * in each mailbox, ends a Turn that waits for sign-in, and asks each running
+ * Turn to stop. Each Turn it ends records one cancelled `turn_completed`.
+ * Watches stay, and each Conversation that this stop starts reports
+ * `conversation.stopped` to them. A Conversation that already stopped later
+ * keeps that stop, so a retried or cascaded stop does not move it back.
+ */
+export async function stopConversationTree(
+  conversationIds: readonly string[],
+  options: {
+    conversationStore?: ConversationStore | undefined;
+    /**
+     * A Conversation whose Turn already finished and stops itself, as the
+     * automated-turn limit does. Its run gets no stop request, so the stop
+     * cannot cancel its finished Turn or the next one in the same run.
+     */
+    finishedRunOf?: string;
+    nowMs?: number;
+    /** Run once the running Turn's stop is saved. */
+    onStopSaved?: () => void;
+    /** Delivers each new stop to the Watches on its Conversation. */
+    queue?: ConversationWorkQueue | undefined;
+    /** Stop only person input sent at or before this time. */
+    sentAtOrBeforeMs?: number;
+    state?: StateAdapter | undefined;
+    stoppedAtMs: number;
+  },
+): Promise<StopConversationWorkResult[]> {
+  if (conversationIds.length === 0) {
+    return [];
+  }
+  const stoppedAt = new Date(options.stoppedAtMs);
+  const reported = await getSqlExecutor().transaction(async () => {
+    // The executor's transaction nests as a savepoint inside a caller's
+    // lock. A Drizzle transaction would commit the caller's.
+    const tx = getDb();
+    // Lock in id order, as `resumeConversationTree` does, so a stop and a
+    // resume of overlapping trees cannot deadlock.
+    const locked = await tx
+      .select({
+        conversationId: juniorConversations.conversationId,
+        stoppedAt: juniorConversations.stoppedAt,
+      })
+      .from(juniorConversations)
+      .where(inArray(juniorConversations.conversationId, [...conversationIds]))
+      .orderBy(asc(juniorConversations.conversationId))
+      .for("update");
+    await tx
+      .update(juniorConversations)
+      .set({ stoppedAt, detailVersion: nextDetailVersion })
+      .where(
+        and(
+          inArray(juniorConversations.conversationId, [...conversationIds]),
+          or(
+            isNull(juniorConversations.stoppedAt),
+            lt(juniorConversations.stoppedAt, stoppedAt),
+          ),
+        ),
+      );
+    // A Conversation that was running reports this stop. A retry of a stop
+    // that failed before its report finds its own stop time and reports it
+    // again; the Event key holds the stop time, so it delivers once. A later
+    // stop of a stopped Conversation reports nothing.
+    return locked.flatMap((row) =>
+      !row.stoppedAt || row.stoppedAt.getTime() === stoppedAt.getTime()
+        ? [row.conversationId]
+        : [],
+    );
+  });
+  const queue = options.queue ?? getVercelConversationWorkQueue();
+  await mapBounded(reported, (conversationId) =>
+    publishConversationStatus(
+      conversationId,
+      { type: "stopped", stoppedAtMs: stoppedAt.getTime() },
+      { nowMs: stoppedAt.getTime(), queue, state: options.state },
+    ),
+  );
+  return await mapBounded(conversationIds, async (conversationId) => {
+    const pending = await takePendingEventMessages({
+      conversationId,
+      conversationStore: options.conversationStore,
+      nowMs: options.nowMs,
+      state: options.state,
+    });
+    if (pending.length > 0) {
+      await saveHeldInput(conversationId, pending);
+    }
+    await cancelSignInWait(conversationId);
+    if (conversationId === options.finishedRunOf) {
+      return { status: "no_work" };
+    }
+    return await stopConversationWork({
+      conversationId,
+      conversationStore: options.conversationStore,
+      nowMs: options.nowMs,
+      onStopSaved: options.onStopSaved,
+      sentAtOrBeforeMs: options.sentAtOrBeforeMs,
+      state: options.state,
+    });
+  });
+}
+
+/**
+ * End the stop of a Conversation and of the child agents below it, for new
+ * work sent at `sentAtMs`: a person's input, or new work from its parent.
+ * Nothing changes for work sent at or before the stop, so the input that a
+ * stop drops does not undo it. Only Conversations that stopped no later than
+ * this Conversation change, so a later stop of one child agent stays.
+ */
+export async function resumeConversationTree(
   conversationId: string,
   sentAtMs: number,
 ): Promise<void> {
-  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
-  if (stoppedAtMs === undefined || sentAtMs <= stoppedAtMs) {
-    return;
-  }
-  await getSqlExecutor()
-    .db()
-    .update(juniorConversations)
-    .set({ stoppedAt: null, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        inArray(
-          juniorConversations.conversationId,
-          sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`,
+  const subtree = sql`(select ${conversationSubtreeColumns.conversationId} from ${conversationSubtree([conversationId])})`;
+  await getSqlExecutor().transaction(async () => {
+    // The executor's transaction nests as a savepoint inside a caller's
+    // lock. A Drizzle transaction would commit the caller's.
+    const tx = getDb();
+    const rows = await tx
+      .select({
+        conversationId: juniorConversations.conversationId,
+        stoppedAt: juniorConversations.stoppedAt,
+      })
+      .from(juniorConversations)
+      .where(inArray(juniorConversations.conversationId, subtree))
+      .orderBy(asc(juniorConversations.conversationId))
+      .for("update");
+    const stoppedAt = rows.find(
+      (row) => row.conversationId === conversationId,
+    )?.stoppedAt;
+    if (!stoppedAt || sentAtMs <= stoppedAt.getTime()) {
+      return;
+    }
+    await tx
+      .update(juniorConversations)
+      .set({ stoppedAt: null, detailVersion: nextDetailVersion })
+      .where(
+        and(
+          inArray(juniorConversations.conversationId, subtree),
+          lte(juniorConversations.stoppedAt, stoppedAt),
         ),
-        lte(juniorConversations.stoppedAt, new Date(stoppedAtMs)),
-      ),
-    );
+      );
+  });
 }
 
 /**
- * Apply a session stop to automated input. Input from a person always runs.
- * When a person sent it after the stop, the Conversation and its child agents
- * stop no more. Input from a parent tool call also runs. While the
- * Conversation is stopped, its Watch Events are saved as one Message and
- * start no Turn, and other Events received at or before the stop are
- * dropped. Returns the work to run, with only the Events that are left, or
- * the finished result when nothing is left.
+ * Resume a stopped Conversation when a person sent input after the stop.
+ * Known gap: input sent before the stop but received after it still runs,
+ * and the Conversation stays stopped.
  */
-export async function skipInputAfterConversationStop(
-  context: ConversationWorkerContext,
-): Promise<
-  { context: ConversationWorkerContext } | { skipped: ConversationWorkerResult }
-> {
-  const messages = context.attempt.messages;
+export async function resumeForPersonInput(
+  conversationId: string,
+  messages: readonly InboundMessage[],
+): Promise<void> {
   const personInput = messages.filter((message) =>
     isPersonInput(message.source),
   );
-  if (personInput.length > 0) {
-    // The batch can still hold input that the stop cancels. Only input sent
-    // after the stop ends it. A Slack stop takes its time from Slack, so this
-    // compares the time each message was sent, not when Junior received it.
-    // Known gap: input sent before the stop but received after it still runs,
-    // and the Conversation stays stopped.
-    await resumeStoppedConversationTree(
-      context.conversationId,
-      Math.max(...personInput.map((message) => message.createdAtMs)),
-    );
-    return { context };
+  if (personInput.length === 0) {
+    return;
   }
-  if (messages.length === 0 || !messages.every(isEventInput)) {
-    return { context };
-  }
-  const stoppedAtMs = await getConversationStoppedAtMs(context.conversationId);
-  if (stoppedAtMs === undefined) {
-    return { context };
-  }
-  const saved = messages.filter(isWatchEvent);
-  const live = messages.filter(
-    (message) => !isSkippedAfterConversationStop(message, stoppedAtMs),
-  );
-  if (live.length > 0 && saved.length > 0) {
-    // Events of all Watches debounce in one batch. Wait out the window of the
-    // whole batch and of the Events that run before any Event is saved, so a
-    // later attempt does not save the Events again.
-    const delayMs = Math.max(
-      getEventBatchDelayMs(messages),
-      getEventBatchDelayMs(live),
-    );
-    if (delayMs > 0) {
-      return { skipped: { status: "deferred", delayMs } };
-    }
-  }
-  if (saved.length > 0) {
-    await saveStoppedConversationEvents(context.conversationId, saved);
-  }
-  if (live.length === messages.length) {
-    return { context };
-  }
-  if (live.length > 0) {
-    // The ack of the attempt still covers the saved and dropped Events.
-    return {
-      context: { ...context, attempt: { ...context.attempt, messages: live } },
-    };
-  }
-  await context.attempt.ack();
-  return { skipped: { status: "completed" } };
-}
-
-/**
- * Return whether a session stop at `stoppedAtMs` keeps one Event from
- * starting a Turn: a Watch Event is saved, and another Event received at or
- * before the stop is dropped. Input from a person is never skipped.
- */
-export function isSkippedAfterConversationStop(
-  message: InboundMessage,
-  stoppedAtMs: number | undefined,
-): boolean {
-  return (
-    stoppedAtMs !== undefined &&
-    isEventInput(message) &&
-    (isWatchEvent(message) || message.receivedAtMs <= stoppedAtMs)
-  );
-}
-
-function isEventInput(message: InboundMessage): boolean {
-  return (
-    message.source === "event" && isEventMailboxMetadata(message.input.metadata)
-  );
-}
-
-/** Return whether a Watch delivered this input. Agent input has none. */
-export function isWatchEvent(message: InboundMessage): boolean {
-  const metadata = message.input.metadata;
-  return (
-    isEventMailboxMetadata(metadata) &&
-    metadata.event.subscriptionId !== undefined
+  // A Slack stop takes its time from Slack, so this compares the time each
+  // message was sent, not when Junior received it.
+  await resumeConversationTree(
+    conversationId,
+    Math.max(...personInput.map((message) => message.createdAtMs)),
   );
 }
 
 /**
- * Save Events as the one Message that a Turn would save for them. The append
- * is idempotent by Message id, so a retried batch saves nothing new. The
- * Message takes the id of the first saved Event, so when an ack is lost and
- * the retry carries more Events to save, the extra Events are deduplicated
- * away.
+ * Save held input as one skipped Message, the Message that a Turn would save
+ * for it, so the next Turn reads it. The append is idempotent by Message id,
+ * and the Message takes the id of the first input.
  */
-async function saveStoppedConversationEvents(
+export async function saveHeldInput(
   conversationId: string,
   messages: readonly InboundMessage[],
 ): Promise<void> {
   const first = messages[0]!;
   const { text } = instructionForInputs(
-    renderEventBatchInputs(messages, await eventReviewItemInputs(messages)),
+    renderEventBatchInputs(messages, await eventInboxItemInputs(messages)),
   );
   const stored = toStoredConversationMessage({
     id: first.inboundMessageId,

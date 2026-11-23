@@ -4,14 +4,11 @@
  * always readable. Other Conversations are readable when they are public or
  * at the same Destination as the current one.
  */
-import {
-  canAccessConversation,
-  readConversationAccessFromSql,
-} from "@/api/conversations/access";
+import { canReadConversation } from "@/api/conversations/access";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { getConversationStore, getDb } from "@/chat/db";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 /**
  * Throw a repairable tool error unless the active context may read the event
@@ -23,30 +20,18 @@ export async function assertCanReadConversationEvents(
   conversationId: string,
 ): Promise<void> {
   const notAccessible = new ToolInputError(
-    `Conversation events are not accessible: ${conversationId}`,
+    `Conversation events are not accessible: ${conversationId}. Check conversation_id, or use searchConversations to find a Conversation that you can read.`,
   );
-  const [access, target] = await Promise.all([
-    readConversationAccessFromSql(getDb(), [
-      context.conversationId,
-      conversationId,
-    ]),
+  const [readable, target] = await Promise.all([
+    canReadConversation(getDb(), context.conversationId, conversationId),
     getConversationStore().get({ conversationId }),
   ]);
-  const targetAccess = access.get(conversationId);
-  if (
-    !target ||
-    !targetAccess ||
-    !canAccessConversation({
-      // A requester that is not stored yet reaches only public targets.
-      requester: access.get(context.conversationId) ?? { visibility: null },
-      target: targetAccess,
-    })
-  ) {
+  if (!readable || !target) {
     throw notAccessible;
   }
   if (target.transcriptPurgedAtMs !== undefined) {
     throw new ToolInputError(
-      `Conversation transcript was purged: ${conversationId}`,
+      `Conversation transcript was purged: ${conversationId}. No change to the call can fix this.`,
     );
   }
 }

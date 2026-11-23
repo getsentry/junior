@@ -1,0 +1,16 @@
+{
+  "item": {
+    "id": "qa-rollout",
+    "kind": "action",
+    "status": "open",
+    "title": "Approve the payments-v42 rollout",
+    "body": "The canary error rate is flat for 30 minutes.",
+    "question": "Roll out payments-v42 to every region?",
+    "assignees": ["Dashboard User"],
+    "canAct": true,
+    "conversationIds": ["internal:question-qa"],
+    "createdAt": "2026-08-07T11:34:00.000Z",
+    "updatedAt": "2026-08-07T11:34:00.000Z",
+    "url": "http://127.0.0.1:4317/inbox?item=qa-rollout"
+  }
+}
