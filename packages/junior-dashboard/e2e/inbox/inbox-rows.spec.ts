@@ -44,7 +44,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await comfortable(page);
     // The Inbox stacks this Conversation's asks. Its Conversation row, with
     // every ask, shows in Conversations.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
@@ -74,7 +74,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // The Inbox stacks this Conversation's asks. Its Conversation row, with
     // every ask, shows in Conversations.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
@@ -115,7 +115,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // An FYI says so in words too. To do leaves it out, so Conversations
     // shows it.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const fyi = page
       .getByRole("listitem")
       .filter({ hasText: "Package release and self-update" })
@@ -124,7 +124,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(fyi).toHaveText("FYI");
 
     // The PRs filter marks its asks the same way.
-    await page.goto(`${dashboard.baseURL}/?type=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
     await expect(
       page
         .getByRole("listitem")
@@ -174,7 +174,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fulfill({ json: feed, response });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const summary = page
       .getByRole("region", { name: "Conversations" })
       .getByRole("listitem")
@@ -199,7 +199,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await comfortable(page);
     // In the Inbox, its two asks stack as rows; Conversations keeps the
     // Conversation row and its summary.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Package release and self-update" })
@@ -234,7 +234,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = sentaurRow(page);
     await row.scrollIntoViewIfNeeded();
     await expect.poll(() => slots(row)).toEqual(SLOTS);
@@ -249,7 +249,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Compact rows clamp it to one line. A new page has no comfortable
     // density script.
     const compact = await page.context().newPage();
-    await compact.goto(`${dashboard.baseURL}/?view=conversations`);
+    await compact.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await compact.evaluate(() =>
       localStorage.setItem("junior:density", "compact"),
     );
@@ -282,7 +282,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const title = (text: string) =>
       page
         .locator("li[data-inbox-row] [data-inbox-head]")
@@ -336,7 +336,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
       if (!moved) baseline = true;
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     const title = (text: string) => inFlight.getByText(text, { exact: true });
     await expect(title(CHECKOUT)).toBeVisible();
@@ -354,7 +354,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = sentaurRow(page);
     await row.scrollIntoViewIfNeeded();
     const meta = row.locator('[data-inbox-slot="meta"]').first();
@@ -379,7 +379,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [rollout] });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const title = "Investigate checkout latency";
     const row = page
       .getByRole("region", { exact: true, name: "Conversations" })
@@ -405,7 +405,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(menu).toHaveCount(0);
     await head.click({ button: "right" });
     await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
   });
 
   test("an ask shown on an image card expands its row, as its pill would", async ({
@@ -415,7 +417,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await comfortable(page);
     // The Inbox stacks this Conversation's asks. Its Conversation row, with
     // every ask, shows in Conversations.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .getByRole("region", { name: "Conversations" })
       .locator("li[data-inbox-row]")
@@ -423,7 +425,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .first();
     await row.locator('[data-image-tile="work"] button[data-ask-pill]').click();
     await expect(row).toHaveAttribute("data-expanded", "true");
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
   });
 
   test("one cap and one ranking cover every kind of linked work", async ({
@@ -431,7 +435,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await comfortable(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = sentaurRow(page);
     await row.scrollIntoViewIfNeeded();
     const work = row.getByRole("group", { name: "Linked work" });
@@ -515,7 +519,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     // The Inbox stacks this Conversation's asks. Its Conversation row, with
     // every ask, shows in Conversations.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .getByRole("region", { name: "Conversations" })
       .locator("li[data-inbox-row]")
@@ -580,7 +584,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         (value) => localStorage.setItem("junior:density", value),
         density,
       );
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const row = page
         .locator("[data-inbox-row]")
         .filter({ hasText: "Package release and self-update" })
@@ -607,7 +611,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [rollout, license] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const head = rowHead(todo, rollout.title);
     const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
@@ -632,7 +636,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const alert = automationAlert("event-1", "Closed issue summary");
     const actions = await mockInboxItems(page, { open: [alert, license] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const head = rowHead(todo, alert.title);
     await head.hover();
@@ -677,7 +681,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       }),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, alert.title));
     await expect(todo.getByRole("button", { name: "Pause" })).toBeVisible();

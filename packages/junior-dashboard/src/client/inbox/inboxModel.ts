@@ -66,12 +66,12 @@ export function inboxViewPath(
   options: { itemId?: string; snooze?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
-  // Phones show the entries at `/`, so an item link names its entry.
+  // Phones show the entries at `/inbox`, so an item link names its entry.
   if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
   if (options.itemId && options.snooze) params.set("snooze", "1");
   const search = params.toString();
-  return search ? `/?${search}` : "/";
+  return search ? `/inbox?${search}` : "/inbox";
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */

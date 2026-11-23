@@ -36,7 +36,7 @@ also wake a Conversation or run an Event automation.
 - A user's linked GitHub account is used for attribution. In the
   dashboard, it also limits which PR and issue cards the user sees.
 - Code opens on Mine. Mine lists each of your open PRs once, with the Inbox
-  asks that name it. Old Pull requests links open Mine.
+  asks that name it.
 - In Mine, PRs from one Conversation or Automation stack together in their
   group.
 - Every PR names its Work owner. Junior refuses to open a PR that names
@@ -61,6 +61,10 @@ also wake a Conversation or run an Event automation.
   the requester gets a "Ready to merge" Inbox item.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
+- GitHub is the source of truth for GitHub state. Junior reads that state
+  from GitHub through a cache, and the cache keeps the last good value for
+  when GitHub is down. Junior does not copy GitHub state into its tables,
+  unless the value is too expensive to get from GitHub.
 
 ## Gaps
 

@@ -19,13 +19,13 @@ export function inboxItemPath(id: string): string {
 /**
  * Return the new UI's Inbox route that expands one item's row: Done for a
  * closed item. The route names the entry, because phones show the entries
- * at `/`.
+ * at `/inbox`.
  */
 export function inboxRowPath(
   item: Pick<InboxItemPayload, "id" | "status">,
 ): string {
   const view = item.status === "open" ? "inbox" : "done";
-  return `/?view=${view}&item=${encodeURIComponent(item.id)}`;
+  return `/inbox?view=${view}&item=${encodeURIComponent(item.id)}`;
 }
 
 /**

@@ -60,20 +60,21 @@ import {
 } from "../../components/layout/PaneNav";
 import {
   isOldAutomationsPath,
-  isOldPullRequestsPath,
-  oldPullRequestsTarget,
   returnPathLabel,
 } from "../../components/layout/paneRows";
 import { HomeSummary } from "./HomeSummary";
 
 /**
- * The Inbox: its entries in the pane, and in the main area the list of the
- * selected entry, one Conversation, or the composer that "+" opens. Phones
- * show one of these at a time: the entries, a list, then a Conversation.
+ * The Inbox: its entries in the pane, and in the main area the Lead, the
+ * list of the selected entry, one Conversation, or the composer that "+"
+ * opens. Phones show one of these at a time: the entries, a list, then a
+ * Conversation.
  */
 export function ConversationWorkspace(props: {
   /** The selected Conversation's data, from the shell. */
   detail: ConversationData;
+  /** The viewer's Lead, which home shows. */
+  leadId?: string | undefined;
 }) {
   // Home reports an archive that started on a conversation page. Do it here,
   // not in a list, because the list can be hidden.
@@ -82,12 +83,14 @@ export function ConversationWorkspace(props: {
   const sidebarFits = useSidebarFits();
   const location = useLocation();
   const [searchParams] = useSearchParams();
-  // "+" opens the composer in the main area; "/" is the Inbox list.
+  // "+" opens the composer in the main area; `/inbox` is the Inbox list.
   const composing = location.pathname === COMPOSER_PATH;
   const params = useParams();
   const navigate = useNavigate();
   const navigationType = useNavigationType();
-  const selectedId = params["conversationId"];
+  const selectedId = params["conversationId"] ?? props.leadId;
+  // The Lead is home, so it has no list to go back to.
+  const leadHome = props.leadId !== undefined;
   const home = !selectedId;
   const { conversations, feed, pendingArchiveUpdates } =
     useInboxConversations();
@@ -243,7 +246,8 @@ export function ConversationWorkspace(props: {
       </div>
     </main>
   );
-  // On a phone, "/" lists the entries; each opens its list on its own page.
+  // On a phone, `/inbox` lists the entries; each opens its list on its own
+  // page.
   const listPane =
     !sidebarFits && !searchParams.has("view") ? (
       <section aria-label="Inbox" className="relative h-full min-h-0">
@@ -266,7 +270,7 @@ export function ConversationWorkspace(props: {
   // menu or dialog, a docked question, or a text box. It runs first, in
   // the capture phase, because a focused tooltip stops Esc from bubbling.
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || leadHome) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape" || event.defaultPrevented) return;
       const target = event.target instanceof Element ? event.target : null;
@@ -281,14 +285,11 @@ export function ConversationWorkspace(props: {
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [navigate, returnPath, selectedId]);
+  }, [leadHome, navigate, returnPath, selectedId]);
 
   // The Automations bundle became its own page.
   if (isOldAutomationsPath(location))
     return <Navigate replace to="/automations" />;
-  // Pull requests moved to Code, which opens on the viewer's own.
-  if (isOldPullRequestsPath(location))
-    return <Navigate replace to={oldPullRequestsTarget(location.search)} />;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
@@ -335,7 +336,7 @@ export function ConversationWorkspace(props: {
                     sidebarToggle={
                       <span className="flex items-center gap-1">
                         <PaneCollapsedControls />
-                        <BackToList />
+                        {leadHome ? null : <BackToList />}
                       </span>
                     }
                   />

@@ -1,5 +1,7 @@
 import { Hono } from "hono";
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { CodeChangeInput } from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
@@ -29,6 +31,11 @@ function viewerApi(email: string) {
 }
 
 describe("people code API", () => {
+  // The GitHub plugin builds the code links.
+  beforeEach(async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+  });
+
   test("attributes code changes through conversation actors", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
@@ -81,12 +88,10 @@ describe("people code API", () => {
         repository: {
           name: "getsentry/junior",
           providerId: "repository-1",
-          url: "https://github.com/getsentry/junior",
         },
         state: "merged",
         title: "Alice change",
         updatedAt: new Date("2026-08-22T12:00:00.000Z"),
-        url: "https://github.com/getsentry/junior/pull/11",
       } satisfies CodeChangeInput;
       const bobChange = {
         conversationIds: ["slack:C1:bob"],
@@ -96,12 +101,10 @@ describe("people code API", () => {
         repository: {
           name: "getsentry/junior",
           providerId: "repository-1",
-          url: "https://github.com/getsentry/junior",
         },
         state: "open",
         title: "Bob change",
         updatedAt: new Date("2026-08-21T12:00:00.000Z"),
-        url: "https://github.com/getsentry/junior/pull/12",
       } satisfies CodeChangeInput;
       const aliceStaleChange = {
         conversationIds: ["slack:C1:alice"],
@@ -111,12 +114,10 @@ describe("people code API", () => {
         repository: {
           name: "getsentry/junior",
           providerId: "repository-1",
-          url: "https://github.com/getsentry/junior",
         },
         state: "open",
         title: "Alice stale change",
         updatedAt: new Date("2026-05-01T12:00:00.000Z"),
-        url: "https://github.com/getsentry/junior/pull/10",
       } satisfies CodeChangeInput;
       // Updated last, but opened after the stale change's latest activity.
       const aliceFreshChange = {
@@ -127,7 +128,6 @@ describe("people code API", () => {
         providerId: "change-alice-fresh",
         title: "Alice fresh change",
         updatedAt: new Date("2026-08-24T08:00:00.000Z"),
-        url: "https://github.com/getsentry/junior/pull/13",
       } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", aliceChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceStaleChange);
@@ -287,12 +287,10 @@ describe("people code API", () => {
           repository: {
             name: "getsentry/junior",
             providerId: "repository-1",
-            url: "https://github.com/getsentry/junior",
           },
           state: "open",
           title: `Change ${number}`,
           updatedAt: new Date(nowMs - number * 60_000),
-          url: `https://github.com/getsentry/junior/pull/${number}`,
         }) satisfies CodeChangeInput;
       await recordCodeChange(
         fixture.sql.db(),
@@ -309,7 +307,9 @@ describe("people code API", () => {
         "github",
         change(3, "agent-dispatch:sweep-run"),
       );
-      const stacks = async (api: { request(url: string): Promise<Response> }) =>
+      const stacks = async (api: {
+        request(url: string): Response | Promise<Response>;
+      }) =>
         Object.fromEntries(
           codePersonReportSchema
             .parse(

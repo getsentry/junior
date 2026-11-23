@@ -30,7 +30,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     // An archived Thread drops out of the list.
     await expect(
@@ -149,7 +149,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await holdArchives(page);
     const threadUrl = `${dashboard.baseURL}/conversations/${encodeURIComponent(THREAD_ID)}`;
     const threadArchiveUrl = `${dashboard.baseURL}/api/conversations/${encodeURIComponent(THREAD_ID)}/archive`;
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     const threadRow = list.getByRole("link", {
       name: /Check pinned row order/,
@@ -183,7 +183,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       })
       .getByRole("button", { name: "Archive" })
       .click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     await expect
       .poll(() => archiveCalls)
       .toEqual([
@@ -240,7 +242,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     const archive = await holdArchives(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     const threadRow = list.getByRole("link", {
       name: /Check pinned row order/,
@@ -262,7 +264,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("button", { name: "Archive" })
       .click();
     await expect.poll(() => archive.calls.length).toBe(1);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     // The nested row hides at once. Its parent Thread stays.
     await expect(nestedRow).toHaveCount(0);
     await expect(threadRow).toBeVisible();
@@ -287,7 +291,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   test("archives a Thread from its list row", async ({ page, dashboard }) => {
     const archive = await holdArchives(page);
     await page.setViewportSize({ height: 900, width: 1440 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = conversationsList(page);
     const threadRow = list.getByRole("link", {
       name: /Check pinned row order/,
@@ -319,7 +323,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(threadRow).toHaveCount(0);
     await expect(nestedRow).toHaveCount(0);
     // The list stays open.
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     await archive.release();
   });
 

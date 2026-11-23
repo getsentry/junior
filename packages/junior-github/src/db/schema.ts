@@ -35,48 +35,6 @@ export type GitHubPullRequestCommitComposition = z.output<
   typeof githubPullRequestCommitCompositionSchema
 >;
 
-export const githubIssueStateSchema = z.enum(["closed", "open"]);
-
-export type GitHubIssueState = z.output<typeof githubIssueStateSchema>;
-
-export const githubIssueStateReasonSchema = z.enum([
-  "completed",
-  "duplicate",
-  "not_planned",
-  "reopened",
-]);
-
-export type GitHubIssueStateReason = z.output<
-  typeof githubIssueStateReasonSchema
->;
-
-/** Current provider projection for issues classified as Junior-owned. */
-export const juniorGitHubIssues = pgTable(
-  "junior_github_issues",
-  {
-    issueId: text("issue_id").primaryKey(),
-    repositoryId: text("repository_id").notNull(),
-    repositoryFullName: text("repository_full_name").notNull(),
-    number: integer("number").notNull(),
-    state: text("state").$type<GitHubIssueState>().notNull(),
-    stateReason: text("state_reason").$type<GitHubIssueStateReason>(),
-    conversationIds: text("conversation_ids")
-      .array()
-      .notNull()
-      .default(sql`ARRAY[]::text[]`),
-    openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
-    closedAt: timestamp("closed_at", { withTimezone: true }),
-    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
-  },
-  (table) => [
-    index("junior_github_issues_opened_at_idx").on(table.openedAt),
-    index("junior_github_issues_closed_at_idx").on(table.closedAt),
-    index("junior_github_issues_open_idx")
-      .on(table.issueId)
-      .where(sql`${table.state} = 'open'`),
-  ],
-);
-
 /** A merge conflict fix that Junior started: the event it published. */
 export interface GitHubConflictFix {
   atMs: number;
@@ -159,29 +117,6 @@ export const juniorGitHubPullRequests = pgTable(
   ],
 );
 
-/** Many-to-many links between tracked pull requests and tracked issues. */
-export const juniorGitHubPullRequestIssues = pgTable(
-  "junior_github_pull_request_issues",
-  {
-    pullRequestId: text("pull_request_id")
-      .notNull()
-      .references(() => juniorGitHubPullRequests.pullRequestId, {
-        onDelete: "cascade",
-      }),
-    issueRepositoryFullName: text("issue_repository_full_name").notNull(),
-    issueNumber: integer("issue_number").notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [
-        table.pullRequestId,
-        table.issueRepositoryFullName,
-        table.issueNumber,
-      ],
-    }),
-  ],
-);
-
 /**
  * People who asked Junior to open or update a pull request. Each row links
  * the pull request to the Junior identity that acted. The user and any linked
@@ -211,8 +146,6 @@ export const juniorGitHubPullRequestRequesters = pgTable(
 );
 
 export const githubSqlSchema = {
-  juniorGitHubIssues,
-  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 };
