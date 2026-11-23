@@ -6,6 +6,7 @@ export * from "./images";
 export * from "./object-links";
 export * from "./annotations";
 export * from "./code";
+export * from "./conversation-changes";
 export * from "./conversation-events";
 export * from "./schemas";
 export * from "./cache";
