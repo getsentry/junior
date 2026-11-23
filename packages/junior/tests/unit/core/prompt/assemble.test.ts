@@ -1,5 +1,6 @@
 import type { Message, UserMessage } from "@earendil-works/pi-ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { assemblePrompt } from "@/core/prompt/assemble";
 import {
   definePromptLayout,
@@ -508,6 +509,49 @@ describe("assemblePrompt", () => {
     await expect(result).rejects.toBe(stopped);
     expect(loadSignal?.aborted).toBe(true);
     expect(loadSignal?.reason).toBe(stopped);
+  });
+
+  it("starts no queued load after the step's signal aborts", async () => {
+    const step = new AbortController();
+    const stopped = new Error("The Turn was cancelled or taken over");
+    // Each running load holds a fan-out slot until the step aborts.
+    let running = 0;
+    const blocking = Array.from({ length: FAN_OUT_CONCURRENCY }, (_, index) =>
+      loader(
+        `blocking-${index}`,
+        (ctx, signal) => {
+          running += 1;
+          if (running === FAN_OUT_CONCURRENCY) {
+            step.abort(stopped);
+          }
+          return waitForAbort(ctx, signal);
+        },
+        { timeoutMs: 60_000 },
+      ),
+    );
+    const queuedLoad = vi.fn(() => Promise.resolve("Queued"));
+    const queued = loader("queued", queuedLoad, {
+      timeoutMs: 60_000,
+      optional: true,
+    });
+    const layout = definePromptLayout({
+      systemPrompt: [],
+      messages: withInputs([
+        ...blocking.map((source) =>
+          fragment(source.label, {
+            loader: source,
+            format: () => skip("unused"),
+          }),
+        ),
+        fragment("queued", { loader: queued, format: () => skip("unused") }),
+      ]),
+    });
+
+    await expect(
+      assemblePrompt(layout, CTX, { signal: step.signal }),
+    ).rejects.toBe(stopped);
+    expect(running).toBe(FAN_OUT_CONCURRENCY);
+    expect(queuedLoad).not.toHaveBeenCalled();
   });
 
   it("builds the layout of the `definePromptLayout` example", async () => {
