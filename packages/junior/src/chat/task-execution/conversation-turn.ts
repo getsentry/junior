@@ -22,6 +22,7 @@ import {
 } from "@/chat/agent-invocations/parent-message";
 import { recordChildAgentEnded } from "@/chat/agent-invocations/markers";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
+import { isChildAgentEvent } from "@/chat/agent-invocations/child-input";
 import {
   hydrateConversationMessages,
   persistConversationMessages,
@@ -230,6 +231,7 @@ export function createConversationTurnWorker(
     let fromParent =
       resolved.kind === "mailbox" &&
       resolved.batch.every((entry) => readParentMessage(entry.message));
+    let fromChildAgent = false;
     let authorIdentityId: string | undefined;
     let webInputMessages: ConversationMessage[] = [];
 
@@ -260,6 +262,7 @@ export function createConversationTurnWorker(
         resolved.batch,
         fromParent,
       ));
+      fromChildAgent = isChildAgentEvent(eventMeta);
       attachments = resolved.batch.flatMap((entry) =>
         readMessageAttachments(entry.message.input.attachments),
       );
@@ -294,6 +297,7 @@ export function createConversationTurnWorker(
       }
       savedMessageIsEvent = isEventConversationMessage(userMessage);
       fromParent = isParentMessageAuthor(userMessage.author);
+      fromChildAgent = isChildAgentEvent(userMessage.meta);
       // Resume has no new input. Restore Source and Actor from the Turn.
       // TODO(dcramer): Remove the saved Message fallback after no deployed Turn
       // cursor can omit Source or Actor.
@@ -631,7 +635,9 @@ export function createConversationTurnWorker(
             return await completeCancelledTurn();
           }
           const childTurn = await childAgentTurnOptions({
+            actor,
             conversationId: context.conversationId,
+            fromChildAgent,
             fromParent,
           });
           const history = await loadConversationProjection({

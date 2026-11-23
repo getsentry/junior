@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { getSqlExecutor } from "@/chat/db";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
+import type { ConversationMessageMeta } from "@/chat/state/conversation";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { isPersonStopTurnId } from "./ids";
@@ -26,25 +27,48 @@ type ChildAgentInput = {
   senderId: string;
 };
 
+function childAgentInputKind(
+  namespace: string | undefined,
+  eventType: string | undefined,
+): ChildAgentInput["kind"] | undefined {
+  if (namespace !== AGENT_INVOCATION_EVENT_NAMESPACE) {
+    return undefined;
+  }
+  switch (eventType) {
+    case AGENT_MESSAGE_EVENT_TYPE:
+      return "message";
+    case AGENT_REPLY_EVENT_TYPE:
+      return "reply";
+    default:
+      return undefined;
+  }
+}
+
 /** Read the child that one reply or message Event names. */
 export function childAgentInput(
   message: InboundMessage,
 ): ChildAgentInput | undefined {
   const metadata = message.input.metadata;
-  if (
-    !isEventMailboxMetadata(metadata) ||
-    metadata.event.namespace !== AGENT_INVOCATION_EVENT_NAMESPACE
-  ) {
+  if (!isEventMailboxMetadata(metadata)) {
     return undefined;
   }
-  switch (metadata.event.eventType) {
-    case AGENT_MESSAGE_EVENT_TYPE:
-      return { kind: "message", senderId: metadata.event.identifier };
-    case AGENT_REPLY_EVENT_TYPE:
-      return { kind: "reply", senderId: metadata.event.identifier };
-    default:
-      return undefined;
-  }
+  const kind = childAgentInputKind(
+    metadata.event.namespace,
+    metadata.event.eventType,
+  );
+  return kind ? { kind, senderId: metadata.event.identifier } : undefined;
+}
+
+/**
+ * Whether the saved Event fields of a Turn's input Message name a child
+ * agent's reply or message. A new and a resumed Turn read the same fields.
+ */
+export function isChildAgentEvent(
+  meta:
+    | Pick<ConversationMessageMeta, "eventNamespace" | "eventType">
+    | undefined,
+): boolean {
+  return Boolean(childAgentInputKind(meta?.eventNamespace, meta?.eventType));
 }
 
 /**

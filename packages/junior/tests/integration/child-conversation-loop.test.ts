@@ -14,12 +14,16 @@ import { createWatch, listWatches } from "@/chat/events/store";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import { stopAtAutomatedTurnLimit } from "@/chat/slack/automated-turn-limit-notice";
 import { createEventInboundMessage } from "@/chat/events/notification";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { juniorConversations } from "@/db/schema";
+import { eq } from "drizzle-orm";
 import {
   appendAndEnqueueInboundMessage,
   CONVERSATION_WORK_MAX_RETRIES,
   getConversationWorkState,
 } from "@/chat/task-execution/store";
+import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
@@ -34,11 +38,13 @@ import {
 } from "../fixtures/conversation";
 import { runHeartbeatAfterLeasesExpire } from "../fixtures/conversation-work";
 import {
+  commitRunInput,
   createHarness,
   finishRun,
   sendPersonMessage,
   startThread,
   type Harness,
+  yieldRun,
 } from "../fixtures/thread-input";
 
 /** Start a child whose spawn Turn has ended, so it has no open work. */
@@ -146,6 +152,77 @@ describe("child Turns on the Conversation loop", () => {
         conversationId: childId,
       });
       expect(run.credentialContext).toEqual({ actor: EVENT_SYSTEM_ACTOR });
+    } finally {
+      await harness.close();
+    }
+  });
+
+  // A helper's result is data from the helper, not the person's instruction.
+  // The Turn runs as the person, but the result does not count as a
+  // message from them, also after the Turn resumes.
+  it("runs a helper result as context, not as the person's instruction", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const threadId = await startIdleChild(harness, "thread");
+      const lastMessageAt = async () =>
+        (
+          await getDb()
+            .select({ at: juniorConversations.lastMessageAt })
+            .from(juniorConversations)
+            .where(eq(juniorConversations.conversationId, threadId))
+        )[0]?.at;
+      const lastMessageBefore = await lastMessageAt();
+      const latestInstructionBefore =
+        await getConversationEventStore().loadLatestInstruction(threadId);
+      // The first run takes the result and yields. The next run resumes
+      // that Turn and ends it without a reply.
+      harness.onRun(async (run) => {
+        const resumed =
+          harness.runs.filter((earlier) => earlier.turnId === run.turnId)
+            .length > 1;
+        if (!run.instruction.text.includes("Helper fact.") || resumed) {
+          return await finishRun(run);
+        }
+        await commitRunInput(run);
+        return await yieldRun(run);
+      });
+      await sendHelperReply(harness, await createHelper(harness, threadId));
+      await harness.drain(threadId);
+
+      const resultRuns = harness.runs.filter(
+        (run) =>
+          run.conversationId === threadId && run.source?.kind === "event",
+      );
+      expect(resultRuns).toHaveLength(2);
+      for (const run of resultRuns) {
+        expect(run).toMatchObject({
+          actor: slackInvocationInput.actor,
+          instruction: {
+            provenance: {
+              authority: "context",
+              actor: slackInvocationInput.actor,
+            },
+          },
+        });
+      }
+      // Compaction keeps the parent's task as the last instruction.
+      await expect(
+        getConversationEventStore().loadLatestInstruction(threadId),
+      ).resolves.toEqual(latestInstructionBefore);
+      // The dashboard and the Inbox see no new message.
+      await expect(lastMessageAt()).resolves.toEqual(lastMessageBefore);
+      // No person used the Thread, so its parent can archive it.
+      const archive = createArchiveAgentTool(slackParentConversationId);
+      await expect(
+        archive.execute!(
+          archive.prepareArguments({
+            apply_to_children: true,
+            conversation_id: threadId,
+          }),
+          {},
+        ),
+      ).resolves.toMatchObject({ conversation_id: threadId });
     } finally {
       await harness.close();
     }
