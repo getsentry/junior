@@ -68,16 +68,13 @@ export async function scheduleGitHubConflictCheck(args: {
   repositoryFullName: string;
   state: PluginState;
 }): Promise<boolean> {
-  const open = await listGitHubRepositoriesWithOpenPullRequests(
+  // The heartbeat claims the stored name. The webhook can use another case.
+  const [stored] = await listGitHubRepositoriesWithOpenPullRequests(
     args.codeChanges,
     args.repositoryFullName,
   );
-  if (open.length === 0) return false;
-  await args.state.setIfNotExists(
-    pushKey(args.repositoryFullName),
-    args.dueAtMs,
-    CHECK_TTL_MS,
-  );
+  if (!stored) return false;
+  await args.state.setIfNotExists(pushKey(stored), args.dueAtMs, CHECK_TTL_MS);
   return true;
 }
 

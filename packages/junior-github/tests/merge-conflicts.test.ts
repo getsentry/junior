@@ -433,6 +433,17 @@ describe("merge conflict check on webhook events", () => {
       expect(searches).toHaveLength(2);
     });
 
+    it("checks after a push that names the repository in another case", async () => {
+      await deliver(
+        "push-1",
+        pushRequest("refs/heads/main", "GetSentry/Junior"),
+      );
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toEqual([
+        "repo:getsentry/junior is:pr is:open author:app/sentry-junior",
+      ]);
+    });
+
     it("does not check after a push to another branch", async () => {
       await deliver("push-1", pushRequest("refs/heads/feat/other"));
       await heartbeat(pushedAt + 10 * minute);
