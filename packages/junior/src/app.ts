@@ -28,10 +28,7 @@ import {
   setExperimentalFeatures,
   type ExperimentalFeaturesConfig,
 } from "@/chat/experimental";
-import {
-  setBriefsConfig,
-  setEventEmbeddingsConfig,
-} from "@/chat/briefs/registration";
+import { setEventEmbeddingsConfig } from "@/chat/conversations/event-embedding-config";
 import {
   getSandboxResourceConfig,
   setSandboxResourceConfig,
@@ -47,6 +44,10 @@ import {
   validatePlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import {
+  setMemoryConfig,
+  type MemoryOptions,
+} from "@/chat/memory/registration";
 import { readObjectLinkTypes } from "@/api/objects/resolve";
 import type { PluginCatalogConfig } from "@/chat/plugins/types";
 import {
@@ -79,14 +80,13 @@ import {
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 import {
   consumeConversationQueueMessage,
-  conversationWorkQueueConsumer,
   createVercelConversationWorkCallback,
-  registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
 import type {
   ConversationQueueMessage,
@@ -97,8 +97,6 @@ import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
-  pluginTaskQueueConsumer,
-  registerVercelPluginTaskDevConsumer,
   sendVercelPluginTask,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
@@ -106,21 +104,9 @@ import {
   processPluginTask,
   type SendPluginTask,
 } from "@/chat/plugins/task-runner";
-import {
-  cacheWarmupQueueConsumer,
-  createVercelCacheWarmupCallback,
-  registerVercelCacheWarmupDevConsumer,
-} from "@/chat/cache-warming/queue";
-import {
-  createVercelWorkspaceSnapshotJobCallback,
-  registerVercelWorkspaceSnapshotJobDevConsumer,
-  workspaceSnapshotJobQueueConsumer,
-} from "@/chat/sandbox/snapshot/job-callback";
-import {
-  backgroundCompactionQueueConsumer,
-  createVercelBackgroundCompactionCallback,
-  registerVercelBackgroundCompactionDevConsumer,
-} from "@/chat/services/background-compaction-callback";
+import { createVercelCacheWarmupCallback } from "@/chat/cache-warming/queue";
+import { createVercelWorkspaceSnapshotJobCallback } from "@/chat/sandbox/snapshot/job-callback";
+import { createVercelBackgroundCompactionCallback } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
 import {
   vercelBackgroundCompactionQueue,
@@ -128,18 +114,11 @@ import {
   type BackgroundCompactionQueue,
 } from "@/chat/services/background-compaction-queue";
 import {
-  getQueueProvider,
-  type QueueConsumer,
-  type QueueWorker,
-} from "@/chat/queue/provider";
-import { closeDb } from "@/chat/db";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
-import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
   getProductionSlackAdapter,
 } from "@/chat/app/production";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
@@ -191,17 +170,13 @@ export type {
   JuniorPluginSetOptions,
 } from "./plugins";
 export type { JuniorDashboardOptions } from "./dashboard-routes";
+export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
    * Name Junior uses for itself, such as its Slack bot username. Defaults to
    * `JUNIOR_BOT_NAME`, then `junior`.
    */
   botName?: string;
-  /**
-   * Generate a durable Brief after each completed Turn. This costs one
-   * default-model call per completed Turn. Disabled by default.
-   */
-  briefs?: { enabled?: boolean };
   /**
    * Embed the searchable events of a Conversation after each completed Turn,
    * so `searchConversationEvents` also matches its history by meaning. This
@@ -227,6 +202,8 @@ export interface JuniorAppOptions extends BotModelConfig {
   experimental?: ExperimentalFeaturesConfig;
   /** Turn and conversation limits. Unset limits keep their defaults. */
   limits?: RuntimeLimits;
+  /** Long-term Memory settings. Memory is always on. */
+  memory?: MemoryOptions;
   /** Slack-specific overrides applied after env parsing. */
   slack?: {
     /** Slack emoji shown while Junior is processing. Defaults to `eyes`. */
@@ -470,56 +447,8 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   }
 }
 
-/** A Hono app from `createApp()` that can also run its queue consumers. */
-export type JuniorApp = Hono & {
-  /**
-   * Pull this app's queue messages in this process until `close()`.
-   *
-   * Only for a queue provider whose consumers pull messages, such as the
-   * local BullMQ queue. The dev server runs it in its own worker process, so
-   * the Nitro process only sends messages. `close()` also closes the database
-   * and state connections of this process.
-   */
-  startQueueWorker(): Promise<QueueWorker>;
-};
-
-async function startQueueWorker(
-  consumers: QueueConsumer[],
-  backgroundWork: Set<Promise<unknown>>,
-): Promise<QueueWorker> {
-  const provider = getQueueProvider();
-  if (!provider.startWorker) {
-    throw new Error(
-      `The ${provider.messagingSystem} queue provider has no queue worker`,
-    );
-  }
-  const worker = await provider.startWorker(consumers);
-  return {
-    // Try every step, so one failure does not leave the other resources open.
-    close: async () => {
-      try {
-        await worker.close();
-      } finally {
-        // A job can end before the work it started with `waitUntil`, such
-        // as title work. Let that work finish before its connections close.
-        while (backgroundWork.size > 0) {
-          // oxlint-disable-next-line no-await-in-loop -- Work that finishes can start more work, so check again until none is left.
-          await Promise.allSettled(backgroundWork);
-        }
-        try {
-          await disconnectStateAdapter();
-        } finally {
-          await closeDb();
-        }
-      }
-    },
-  };
-}
-
 /** Create a Hono app with all Junior routes. */
-export async function createApp(
-  options?: JuniorAppOptions,
-): Promise<JuniorApp> {
+export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
@@ -544,10 +473,10 @@ export async function createApp(
   const previousConfigDefaults = getConfigDefaults();
   const previousSandboxResources = getSandboxResourceConfig();
   const previousExperimentalFeatures = getExperimentalFeatures();
-  const previousBriefsConfig = setBriefsConfig(options?.briefs);
   const previousEventEmbeddingsConfig = setEventEmbeddingsConfig(
     options?.eventEmbeddings,
   );
+  const previousMemoryConfig = setMemoryConfig(options?.memory);
   const previousDashboardLinkOptions =
     setDashboardConversationLinkOptions(dashboard);
   let previousTrustConfig: TrustConfig | undefined;
@@ -559,8 +488,8 @@ export async function createApp(
     restoreChatRuntimeConfig(previousRuntimeConfig);
     setSandboxResourceConfig(previousSandboxResources);
     setExperimentalFeatures(previousExperimentalFeatures);
-    setBriefsConfig(previousBriefsConfig);
     setEventEmbeddingsConfig(previousEventEmbeddingsConfig);
+    setMemoryConfig(previousMemoryConfig);
     setDashboardConversationLinkOptions(previousDashboardLinkOptions);
   };
   let pluginRoutes: PluginRouteRegistration[] = [];
@@ -626,7 +555,7 @@ export async function createApp(
     pluginRoutes = getPluginRoutes({
       dispatchForIdentity,
       events,
-      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
@@ -673,9 +602,6 @@ export async function createApp(
     sandbox: { tracePropagation },
     visionContext: { attachmentStorage },
   };
-  // Background work that Conversation work starts. A queue worker waits for
-  // it before it closes its connections.
-  const backgroundWork = new Set<Promise<unknown>>();
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = (): ConversationWorkCallbackOptions => {
     conversationWorkOptions ??=
@@ -685,13 +611,7 @@ export async function createApp(
         queue: conversationWorkQueue,
         sendPluginTask,
         services: runtimeServiceOverrides,
-        waitUntil: (task) => {
-          backgroundWork.add(task);
-          void task
-            .finally(() => backgroundWork.delete(task))
-            .catch(() => undefined);
-          waitUntil(task);
-        },
+        waitUntil,
       });
     return conversationWorkOptions;
   };
@@ -876,14 +796,7 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env["NODE_ENV"] === "development") {
-    registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
-    registerVercelPluginTaskDevConsumer();
-    registerVercelWorkspaceSnapshotJobDevConsumer();
-    registerVercelCacheWarmupDevConsumer();
-    registerVercelBackgroundCompactionDevConsumer();
-  }
-  app.post("/api/internal/agent/continue", (c) => {
+  app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
     );
@@ -920,7 +833,7 @@ export async function createApp(
       conversationWorkQueue,
       dispatchForIdentity,
       events,
-      showReviewItem: createSlackReviewItemShow(getProductionSlackAdapter),
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
   });
 
@@ -942,17 +855,5 @@ export async function createApp(
     });
   });
 
-  return Object.assign(app, {
-    startQueueWorker: () =>
-      startQueueWorker(
-        [
-          conversationWorkQueueConsumer(getConversationWorkOptions()),
-          pluginTaskQueueConsumer(),
-          workspaceSnapshotJobQueueConsumer(),
-          cacheWarmupQueueConsumer(),
-          backgroundCompactionQueueConsumer(),
-        ],
-        backgroundWork,
-      ),
-  });
+  return app;
 }

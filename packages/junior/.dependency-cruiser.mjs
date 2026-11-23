@@ -50,12 +50,12 @@ export default {
       },
     },
     {
-      name: "no-review-items-to-slack",
+      name: "no-inbox-items-to-slack",
       comment:
-        "Review item code is provider-neutral. App setup injects Slack cards and mentions.",
+        "Inbox item code is provider-neutral. App setup injects Slack cards and mentions.",
       severity: "error",
       from: {
-        path: "^src/chat/(review-items/|tools/review-items\\.ts$)",
+        path: "^src/chat/(inbox-items/|tools/inbox-items\\.ts$)",
       },
       to: {
         path: "^src/chat/slack/",

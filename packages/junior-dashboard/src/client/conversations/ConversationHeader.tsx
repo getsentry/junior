@@ -14,7 +14,15 @@ import {
   HeaderIconButton,
   TranscriptSearchToggle,
 } from "./ConversationHeaderActions";
-import type { ConversationMenu } from "./conversationMenuItems";
+import {
+  isConversationParticipant,
+  type ConversationMenu,
+} from "./conversationMenuItems";
+import {
+  EditableConversationTitle,
+  MobileEditableConversationTitle,
+  type ConversationTitleEdit,
+} from "./EditableConversationTitle";
 import { ChildAgentTags } from "./ChildAgentTags";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
@@ -25,7 +33,7 @@ import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
 /**
  * Keep the conversation title and frequently used controls in the header.
- * Run facts and the Brief live in Conversation details.
+ * Run facts and the summary live in Conversation details.
  */
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
@@ -50,6 +58,8 @@ export function ConversationHeader(props: {
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
+  /** Renames the Conversation in place. Only participants get it. */
+  rename?: ConversationTitleEdit | undefined;
   search: string;
   searchMatch: TranscriptSearchMatch;
   sidebarToggle?: ReactNode | undefined;
@@ -113,8 +123,15 @@ export function ConversationHeader(props: {
     />
   );
 
+  const rename = isConversationParticipant(props.menu)
+    ? props.rename
+    : undefined;
+  const titleText = <span className="min-w-0 truncate">{props.title}</span>;
+  const titleClass =
+    "font-display text-base font-medium leading-6 tracking-tight";
+
   const title =
-    props.view === "raw" ? (
+    props.view === "raw" && !rename?.editing ? (
       // Event log is a debug view reached from the `⋯` menu. The title leads
       // back to the Conversation.
       <>
@@ -142,15 +159,27 @@ export function ConversationHeader(props: {
       <h2
         aria-current="page"
         className={cn(
-          "m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight",
+          "m-0 flex min-w-0",
+          titleClass,
           // The title names the Conversation, so it keeps its width and the
           // tags after it truncate first. A long title still leaves them room.
           !props.agentTree &&
             Boolean(props.contextTags) &&
             "md:max-w-[70%] md:shrink-0",
+          rename?.editing && "min-w-1/2 flex-1",
         )}
       >
-        {props.title}
+        {rename ? (
+          <EditableConversationTitle
+            {...rename}
+            className={titleClass}
+            title={props.title}
+          >
+            {titleText}
+          </EditableConversationTitle>
+        ) : (
+          titleText
+        )}
       </h2>
     );
 
@@ -175,6 +204,11 @@ export function ConversationHeader(props: {
           ) : null}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
+      {rename ? (
+        <MobileEditableConversationTitle {...rename} title={props.title}>
+          {titleText}
+        </MobileEditableConversationTitle>
+      ) : null}
       {props.contextTags || props.linkedWork ? (
         <MobileHeaderTagsPortal>
           {/* One row. Tags keep their width; the slot scrolls. */}

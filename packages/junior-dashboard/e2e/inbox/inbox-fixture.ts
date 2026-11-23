@@ -1,7 +1,8 @@
-/** Review items and an API mock shared by the Inbox e2e specs. */
+/** Inbox items and an API mock shared by the Inbox e2e specs. */
 import type { Locator, Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
+import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -10,7 +11,7 @@ export const viewer = {
 };
 
 const base = {
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
@@ -30,7 +31,7 @@ export const conversationId = "slack:CQA123:1770003600.000200";
 // messages before it and a new one after it.
 export const rollout = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
@@ -119,7 +120,7 @@ const dismissedNotice = {
 // The agent added this item in the Conversation, so a message there closes it.
 export const migration = {
   ...license,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
@@ -129,31 +130,13 @@ export const migration = {
 };
 
 // The Events of a GitHub pull request subject, as the API lists them.
-export const pullRequestResource = {
-  events: [
-    "pull_request.checks.failed",
-    "pull_request.checks.passed",
-    "pull_request.checks.recovered",
-    "pull_request.comment.created",
-    "pull_request.opened",
-    "pull_request.ready_for_review",
-    "pull_request.review.approved",
-    "pull_request.review.changes_requested",
-    "pull_request.review.commented",
-    "pull_request.review_comment.created",
-    "pull_request.merged",
-    "pull_request.closed_unmerged",
-    "pull_request.merge_conflict",
-  ],
-  namespace: "github",
-  resourceType: "pull_request",
-};
+export const pullRequestResource = PULL_REQUEST_RESOURCE;
 
 // The GitHub plugin's ask for a Junior pull request: an action item with no
 // question. The mock Conversation has the object annotation for the same URL.
 export const prMerge = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "**Retry checkout writes after lock timeouts** is approved, and GitHub says that it can merge.",
   conversationIds: [conversationId],
@@ -173,7 +156,7 @@ export const prMerge = {
 // A second GitHub ask, so pull requests group by state.
 export const prReview = {
   ...prMerge,
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   body: "GitHub asks you to review **Pin the release train**.",
   conversationIds: [],
@@ -202,7 +185,7 @@ const pinPullRequest = {
 // The GitHub plugin's review ask, as it writes it: the URL alone on a line.
 export const pinReview = {
   ...base,
-  addedByConversationId: releaseConversationId,
+  owner: { id: releaseConversationId, kind: "conversation" },
   rootConversationId: releaseConversationId,
   body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
   conversationIds: [releaseConversationId],
@@ -225,7 +208,7 @@ export const pinChecks = {
 // A notice in the same Conversation about nothing that an ask names.
 export const releaseNotes = {
   ...base,
-  addedByConversationId: releaseConversationId,
+  owner: { id: releaseConversationId, kind: "conversation" },
   rootConversationId: releaseConversationId,
   body: "Release notes for 0.288.0 are drafted in the release PR.",
   conversationIds: [releaseConversationId],
@@ -238,7 +221,7 @@ export const releaseNotes = {
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
 export const digest = {
   ...base,
-  addedByConversationId: "scheduler:daily-ops-digest",
+  owner: { id: "scheduler:daily-ops-digest", kind: "conversation" },
   rootConversationId: "scheduler:daily-ops-digest",
   assignedToEveryone: true,
   assignees: [],
@@ -253,7 +236,7 @@ export const digest = {
 // takes it.
 export const grab = {
   ...base,
-  addedByConversationId: "slack:CGRAB:1770003600.000300",
+  owner: { id: "slack:CGRAB:1770003600.000300", kind: "conversation" },
   rootConversationId: "slack:CGRAB:1770003600.000300",
   assignedToEveryone: true,
   assignees: [],
@@ -275,6 +258,46 @@ export const grab = {
   title: "Cover the Friday deploy",
 };
 
+/**
+ * The alert of an Automation that needs its creator: an Inbox item that the
+ * Automation owns, with no Conversation.
+ */
+export function automationAlert(automationId: string, title: string) {
+  return {
+    ...base,
+    body: "Blocked: GitHub access expired. Fix the problem, then resume it.",
+    createdAt: "2026-08-07T11:00:00.000Z",
+    id: `alert-${automationId}`,
+    owner: { id: automationId, kind: "automation" },
+    // An Automation's item has no root Conversation. JSON drops the key.
+    rootConversationId: undefined,
+    title,
+  };
+}
+
+/**
+ * The alert of a scheduled Automation whose last run failed, with the steps
+ * that core takes: Run again and Pause.
+ */
+export function failedRunAlert(automationId: string, title: string) {
+  return {
+    ...automationAlert(automationId, title),
+    body: "Last run failed.",
+    id: `alert-run-${automationId}`,
+    request: {
+      question: "Last run failed.",
+      fields: [
+        {
+          id: "step",
+          kind: "choice",
+          label: "Next step",
+          options: [{ label: "Run again" }, { label: "Pause" }],
+        },
+      ],
+    },
+  };
+}
+
 /** The fields of an item that the mock reads or changes. */
 type MockItem = Omit<typeof license, "status"> & {
   status: string;
@@ -289,7 +312,7 @@ type MockItem = Omit<typeof license, "status"> & {
  * `now`, which is the test's clock. The versions token moves with them, as
  * on the server.
  */
-export async function mockReviewItems(
+export async function mockInboxItems(
   page: Page,
   options: {
     /**
@@ -307,7 +330,10 @@ export async function mockReviewItems(
     open?: unknown[];
     pageSize?: number;
     /** Snoozes that exist before the page loads. */
-    snoozes?: { conversationId: string; untilMs: number }[];
+    snoozes?: ({ untilMs: number } & (
+      | { conversationId: string; inboxItemId?: string }
+      | { inboxItemId: string }
+    ))[];
   } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
@@ -323,24 +349,24 @@ export async function mockReviewItems(
   const inRow = (
     conversationId: string,
     item: {
-      addedByConversationId: string;
       conversationIds: readonly string[];
-      rootConversationId: string;
+      owner: { id: string };
+      rootConversationId?: string;
     },
   ) =>
     item.rootConversationId === conversationId ||
-    item.addedByConversationId === conversationId ||
+    item.owner.id === conversationId ||
     item.conversationIds.includes(conversationId);
   /** The open items of a snooze subject: one item, or a row's items. */
   const itemsOf = (subject: {
-    conversationId: string;
-    reviewItemId?: string;
+    conversationId?: string;
+    inboxItemId?: string;
   }) =>
     open
       .filter((i) =>
-        subject.reviewItemId
-          ? i.id === subject.reviewItemId
-          : inRow(subject.conversationId, i),
+        subject.inboxItemId
+          ? i.id === subject.inboxItemId
+          : inRow(subject.conversationId!, i),
       )
       .map((i) => i.id);
   /**
@@ -368,12 +394,12 @@ export async function mockReviewItems(
     const body = request.postDataJSON();
     if (request.method() === "POST") {
       // One snooze per open item that it hides; it replaces the last one.
-      const reviewItemIds = itemsOf(body);
+      const inboxItemIds = itemsOf(body);
       // A snooze with no time waits for its Event.
       const untilMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
-      for (const id of reviewItemIds) snoozes.set(id, untilMs);
+      for (const id of inboxItemIds) snoozes.set(id, untilMs);
       snoozeChanges++;
-      return route.fulfill({ json: { reviewItemIds }, status: 201 });
+      return route.fulfill({ json: { inboxItemIds }, status: 201 });
     }
     if (request.method() === "DELETE") {
       // Without an item, every snooze in the row wakes.
@@ -390,7 +416,7 @@ export async function mockReviewItems(
     return route.fulfill({
       json: {
         ...versions,
-        reviewItems: `${versions.reviewItems}:${snoozeChanges}:${sleeping}`,
+        inboxItems: `${versions.inboxItems}:${snoozeChanges}:${sleeping}`,
       },
       response,
     });
@@ -398,9 +424,9 @@ export async function mockReviewItems(
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
   const closedNow: MockItem[] = [];
-  await page.route("**/api/review-items**", async (route) => {
+  await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/api\/review-items/, "");
+    const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
       const sleeping = await snoozedRows();
@@ -422,15 +448,14 @@ export async function mockReviewItems(
           ).length,
           // One per Conversation row, as Snoozed lists them.
           snoozed: new Set(
-            open
-              .filter((i) => asleep(sleeping, i))
-              .map((i) => i.addedByConversationId),
+            open.filter((i) => asleep(sleeping, i)).map((i) => i.owner.id),
           ).size,
         },
       });
     }
     if (path === "" || path === "/") {
       const linked = url.searchParams.get("conversationId");
+      const owner = url.searchParams.get("owner");
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       // A status list has only closed items, newest closed first. A search
       // matches title or body, and also finds closed items after the open.
@@ -449,6 +474,7 @@ export async function mockReviewItems(
       ).filter(
         (i) =>
           (!linked || i.conversationIds.includes(linked)) &&
+          (!owner || i.owner.kind === owner) &&
           `${i.title}\n${i.body}`.toLowerCase().includes(q) &&
           (snoozedOnly
             ? asleep(sleeping, i)
@@ -576,15 +602,15 @@ export function rowHead(scope: Page | Locator, title: string) {
 
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
- * row's Open action.
+ * row's Open action: on hover on a Conversation row, or on the open card
+ * of an item row.
  */
 export async function openRow(head: Locator) {
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  const open = row.getByRole("link", { name: "Open conversation" }).first();
   await head.hover();
-  await head
-    .locator("xpath=ancestor::*[@data-inbox-row][1]")
-    .getByRole("link", { name: "Open conversation" })
-    .first()
-    .click();
+  if (!(await open.isVisible())) await expandRow(head);
+  await open.click();
 }
 
 /**

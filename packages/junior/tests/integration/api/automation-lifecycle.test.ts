@@ -10,7 +10,7 @@ import {
   saveScheduledAutomation,
 } from "@/chat/scheduled-automations/tasks";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { getReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { setupAutomationEditApi as setup } from "../../fixtures/automation-edit-api";
 
 describe("Automation lifecycle API", () => {
@@ -95,8 +95,8 @@ describe("Automation lifecycle API", () => {
           await (await app.request(`${url}/versions`)).json(),
         ).toMatchObject({ versions: [{ version: 1 }] });
         // A run of the Automation asked a person something.
-        const item = await insertReviewItem(getDb(), {
-          addedByConversationId: "slack:T123:U123:edit",
+        const item = await insertInboxItem(getDb(), {
+          owner: { id: "slack:T123:U123:edit", kind: "conversation" },
           assignedToEveryone: false,
           assigneeUserIds: [],
           automationId: id,
@@ -123,7 +123,7 @@ describe("Automation lifecycle API", () => {
         ).toBe(204);
         expect((await app.request(`${url}/edit`)).status).toBe(404);
         // No run can act on the question now, so it closes. The row stays.
-        expect(await getReviewItem(getDb(), item!.id)).toMatchObject({
+        expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
           closeReason: "Automation deleted",
           status: "dismissed",
         });

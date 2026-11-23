@@ -116,7 +116,7 @@ export const noBroadQueryInvalidationRule = defineRule({
     },
     messages: {
       broadKey:
-        "`{{method}}` with this key refreshes every read under a broad prefix. Write the mutation response into the cache with `setQueryData`, or pass a key factory call (such as `reviewItemListQueryKey(filters)`) or `exact: true`. See policies/performance.md.",
+        "`{{method}}` with this key refreshes every read under a broad prefix. Write the mutation response into the cache with `setQueryData`, or pass a key factory call (such as `inboxItemListQueryKey(filters)`) or `exact: true`. See policies/performance.md.",
       noKey:
         "`{{method}}` without a `queryKey` refreshes every query in the cache. Pass a key factory call or `exact: true`. See policies/performance.md.",
     },

@@ -8,9 +8,9 @@ import {
   createSlackSource,
   defineJuniorPlugin,
 } from "@sentry/junior-plugin-api";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { readSlackActionToken } from "@/chat/slack/action-token";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { createApp } from "@/app";
 
@@ -107,7 +107,7 @@ describe("Slack tool registration", () => {
     vi.restoreAllMocks();
   });
 
-  it("lists only plugins that can verify identity accounts", () => {
+  it("lists only plugins that can verify or search identity accounts", () => {
     setPlugins([
       eventPlugin(),
       defineJuniorPlugin({
@@ -120,12 +120,22 @@ describe("Slack tool registration", () => {
           resolveOAuthAccount: () => ({ id: "account-1" }),
         },
       }),
+      defineJuniorPlugin({
+        manifest: {
+          name: "search-test",
+          displayName: "Search test",
+          description: "Searches test accounts",
+        },
+        hooks: {
+          searchUsers: () => [],
+        },
+      }),
     ]);
 
     const tools = createTools([], {}, ctx("D12345"));
     expect(tools["userLookup"]?.inputSchema).toMatchObject({
       properties: {
-        provider: { enum: ["slack", "identity-test"] },
+        provider: { enum: ["slack", "identity-test", "search-test"] },
       },
     });
   });
@@ -275,7 +285,7 @@ describe("Slack tool registration", () => {
       },
       {
         actor: slackActor,
-        source: { kind: "agent_invocation" as const },
+        source: { kind: "parent_message" as const },
       },
     ];
 
@@ -292,7 +302,7 @@ describe("Slack tool registration", () => {
       expect(modelView(tools)).toBe(modelView(messageTurn));
       expect(tools["createAutomation"]?.disabledReason).toBeDefined();
       expect(tools["addReaction"]?.disabledReason).toBeDefined();
-      expect(tools["addReviewItem"]?.disabledReason).toBeUndefined();
+      expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
     }
     expect(messageTurn["createAutomation"]?.disabledReason).toBeUndefined();
     expect(messageTurn).toHaveProperty("loadSkill");
@@ -341,8 +351,8 @@ describe("Slack tool registration", () => {
 
   it("loads the tool that asks a person in every root Turn", () => {
     const tools = createTools([], {}, ctx());
-    expect(tools["addReviewItem"]?.exposure).not.toBe("deferred");
-    expect(tools["addReviewItem"]?.disabledReason).toBeUndefined();
+    expect(tools["addInboxItem"]?.exposure).not.toBe("deferred");
+    expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
 
     // An Agent invocation reports the need to its parent.
     const childTools = createTools(
@@ -357,7 +367,7 @@ describe("Slack tool registration", () => {
         }).tools,
       },
     );
-    expect(childTools["addReviewItem"]?.disabledReason).toContain(
+    expect(childTools["addInboxItem"]?.disabledReason).toContain(
       "reportBlocked",
     );
   });

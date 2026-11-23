@@ -6,9 +6,10 @@ import {
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import { updateTimerIndex, type TimerIndex } from "@/chat/events/timer-index";
 import { mapBounded } from "@/chat/fan-out";
-import { dismissOpenReviewItems } from "@/chat/review-items/store";
+import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { JuniorDatabase } from "@/db/db";
+import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
 import {
   listFiringInboxSnoozeTriggers,
   settleInboxSnoozes,
@@ -32,12 +33,14 @@ type SnoozeEvent = Pick<Event, "eventType" | "namespace"> & {
 /**
  * Fire the snooze triggers that one Event matches. A `resolve` trigger
  * dismisses the item and cancels its snooze; a `wake` trigger ends the
- * snooze. When one Event fires both on a snooze, `resolve` wins. A snooze
- * that already ended ignores the Event. Returns the number of items woken.
+ * snooze, which records `reason`. When one Event fires both on a snooze,
+ * `resolve` wins. A snooze that already ended ignores the Event. Returns
+ * the number of items woken.
  */
 async function fireTriggers(
   db: JuniorDatabase,
   event: SnoozeEvent,
+  reason: InboxSnoozeWakeReason,
   nowMs: number,
 ): Promise<number> {
   const triggers = (
@@ -65,12 +68,13 @@ async function fireTriggers(
       snoozeIds: [...resolving],
       state: "cancelled",
     });
-    await dismissOpenReviewItems(tx, {
+    await dismissOpenInboxItems(tx, {
       ids: resolvedItemIds,
       nowMs,
       reason: "A snooze trigger resolved it.",
     });
     const wokenItemIds = await settleInboxSnoozes(tx, {
+      reason,
       snoozeIds: [...waking],
       state: "woken",
     });
@@ -90,6 +94,12 @@ export async function fireInboxSnoozeTriggers(
       data: event.data,
       eventType: event.eventType,
       identifiers: [event.identifier],
+      namespace: event.namespace,
+    },
+    {
+      eventType: event.eventType,
+      identifier: event.identifier,
+      kind: "event",
       namespace: event.namespace,
     },
     nowMs,
@@ -177,6 +187,7 @@ export async function runInboxSnoozeTimers(
       identifiers: timerIds,
       namespace: CORE_EVENT_NAMESPACE,
     },
+    { kind: "time" },
     nowMs,
   );
   await mapBounded(timerIds, (id) =>

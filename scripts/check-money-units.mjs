@@ -1,6 +1,5 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
 
 /**
  * Money unit check. Postgres stores every money value as whole micro-USD:
@@ -108,24 +107,8 @@ export function checkSource(filePath, text) {
   return errors;
 }
 
-function listFiles(root, directory) {
-  const absolute = path.join(root, directory);
-  if (!fs.existsSync(absolute)) return [];
-  return fs
-    .readdirSync(absolute, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile() && SOURCE_FILE.test(entry.name))
-    .map((entry) =>
-      path
-        .relative(root, path.join(entry.parentPath, entry.name))
-        .split(path.sep)
-        .join("/"),
-    )
-    .filter((filePath) => !TEST_FILE.test(filePath))
-    .sort();
-}
-
 /** Check every package's latest snapshot and production source. */
-export function checkMoneyUnits(root) {
+export function run({ root, files }) {
   const errors = [];
   const packages = fs
     .readdirSync(path.join(root, "packages"))
@@ -150,10 +133,13 @@ export function checkMoneyUnits(root) {
         );
       }
     }
-    for (const filePath of listFiles(
-      root,
-      path.join("packages", name, "src"),
-    )) {
+    const sourceFiles = files.filter(
+      (filePath) =>
+        filePath.startsWith(`packages/${name}/src/`) &&
+        SOURCE_FILE.test(filePath) &&
+        !TEST_FILE.test(filePath),
+    );
+    for (const filePath of sourceFiles) {
       errors.push(
         ...checkSource(
           filePath,
@@ -163,19 +149,4 @@ export function checkMoneyUnits(root) {
     }
   }
   return errors;
-}
-
-function main() {
-  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-  const errors = checkMoneyUnits(root);
-  if (errors.length === 0) {
-    console.log("Money unit check passed.");
-    return;
-  }
-  console.error(["Money unit check failed:", ...errors].join("\n"));
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
 }

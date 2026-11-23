@@ -2,6 +2,7 @@ import {
   CircleCheck,
   CircleHelp,
   Eye,
+  GitMerge,
   Info,
   Stamp,
   type LucideIcon,
@@ -16,6 +17,8 @@ const ASK_ICONS: Record<string, LucideIcon> = {
   Approval: Stamp,
   FYI: Info,
   Question: CircleHelp,
+  // A code change row's state pill; its item is a Question by kind.
+  "Merge conflict": GitMerge,
   "Ready to merge": CircleCheck,
   "Review requested": Eye,
 };

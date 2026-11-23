@@ -1,4 +1,4 @@
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type { SlackSource } from "@sentry/junior-plugin-api";
 import type { SlackActor } from "@/chat/actor";
 import {

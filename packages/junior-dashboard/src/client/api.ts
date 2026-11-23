@@ -21,6 +21,7 @@ import {
   codeOverviewReportSchema,
   codePersonReportSchema,
   codeRepositoryReportSchema,
+  cacheHealthReportSchema,
   cacheWarmingSavingsReportSchema,
   statsReportSchema,
 } from "@sentry/junior/api/schema";
@@ -59,7 +60,7 @@ import {
 } from "../api/schema";
 import { usePinOrderSaving } from "./conversations/useReorderPinnedConversations";
 import { fetchDashboardJson } from "./http";
-import { readRevalidated } from "./revalidation";
+import { readRevalidated, revalidatedJsonQuery } from "./revalidation";
 import { readResponseJson } from "./sentry";
 import { useInboxUi } from "./uiShell";
 import type { DashboardCoreData, SystemPluginsData } from "./types";
@@ -533,12 +534,10 @@ export function usePersonalSpendData(enabled: boolean) {
   return useQuery({
     enabled,
     queryKey: ["dashboard", "personal-spend"],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        personalSpendReportSchema,
-        "/api/people/me/spend",
-        signal,
-      ),
+    queryFn: revalidatedJsonQuery(
+      personalSpendReportSchema,
+      "/api/people/me/spend",
+    ),
     retry: false,
     staleTime: 0,
   });
@@ -657,6 +656,24 @@ export function useCacheWarmingSavings(days: number) {
       fetchDashboardJson(
         cacheWarmingSavingsReportSchema,
         `/api/cache-warming/savings?days=${days}`,
+        signal,
+      ),
+    placeholderData: keepPreviousData,
+    retry: false,
+  });
+}
+
+/**
+ * Fetch the cache health of the last 24 hours or 7 days. The server reads it
+ * from Sentry and shares one answer between page loads for a minute.
+ */
+export function useCacheHealth(window: "24h" | "7d") {
+  return useQuery({
+    queryKey: ["dashboard", "cache-warming", "health", window],
+    queryFn: ({ signal }) =>
+      fetchDashboardJson(
+        cacheHealthReportSchema,
+        `/api/cache-warming/health?window=${window}`,
         signal,
       ),
     placeholderData: keepPreviousData,

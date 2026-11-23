@@ -7,7 +7,7 @@ import type {
 import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
-} from "../tools/footer.js";
+} from "../conversation-footer.js";
 import { botLoginFromEmail, isBotLogin } from "./ownership.js";
 
 const canonicalIssueOutcomeSchema = z

@@ -1,8 +1,8 @@
 import { createContext, use, useSyncExternalStore } from "react";
 
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
-import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
+import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
 import { cn } from "../styles";
 import type { TranscriptListRow } from "./transcriptListRows";
 
@@ -18,7 +18,7 @@ export type TranscriptAnswerLink = {
 };
 
 /**
- * Link each answer row to the row that asked its Review item. An answer is a
+ * Link each answer row to the row that asked its Inbox item. An answer is a
  * `submitted` change on a person's message. An Event message only relays a
  * change from somewhere else, so it is not an answer.
  */
@@ -31,7 +31,7 @@ export function transcriptAnswerLinks(
     if (row.kind !== "entry") continue;
     const { entry } = row;
     if (entry.kind === "tool") {
-      const itemId = reviewItemIdFromToolCall(entry.part);
+      const itemId = inboxItemIdFromToolCall(entry.part);
       if (itemId !== undefined) askIndexes.set(itemId, index);
       continue;
     }
@@ -154,7 +154,7 @@ export function useAnswerInView(itemId: string): boolean {
  * page loads the history around the row when it is not loaded.
  */
 export const TranscriptShowQuestion = createContext<
-  ((item: ReviewItemPayload) => void) | undefined
+  ((item: InboxItemPayload) => void) | undefined
 >(undefined);
 
 // Lanes sit inside the avatar column (1.5rem, 2rem from md), so each line

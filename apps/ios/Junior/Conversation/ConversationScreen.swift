@@ -8,7 +8,9 @@ struct ConversationScreen: View {
   @State private var model: ConversationModel
   @State private var showDetails = false
   @State private var shareURL: URL?
+  @State private var renaming: MCPConversation?
   @State private var atBottom = true
+  @State private var width: CGFloat = 0
 
   init(conversationId: String) {
     _model = State(initialValue: ConversationModel(conversationId: conversationId))
@@ -22,6 +24,13 @@ struct ConversationScreen: View {
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
+    .inspector(isPresented: Binding(get: { showDetails && detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .background(Tokens.bgElevated)
+        .inspectorColumnWidth(min: 300, ideal: 340, max: 400)
+    }
+    // Measured around the panel, so opening it does not change where it shows.
+    .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { width = $0 }
     .task { await model.open(app) }
     .task(id: app.isActive) {
       // Follow every 2s while a Turn runs or messages wait, and every 15s
@@ -37,17 +46,33 @@ struct ConversationScreen: View {
         app.openDetails = false
         showDetails = true
       }
-    }
-    .sheet(isPresented: $showDetails) {
-      if let state = model.state {
-        ConversationDetailsSheet(state: state)
-          .presentationDetents([.fraction(0.85), .large])
-          .presentationDragIndicator(.visible)
-          .presentationBackground(Tokens.bgElevated)
+      if loaded, app.openRename {
+        app.openRename = false
+        renaming = model.conversation
       }
+    }
+    .sheet(isPresented: Binding(get: { showDetails && !detailsBeside }, set: { showDetails = $0 })) {
+      details
+        .presentationDetents([.fraction(0.85), .large])
+        .presentationDragIndicator(.visible)
+        .presentationBackground(Tokens.bgElevated)
     }
     .sheet(item: $shareURL) { url in
       ShareSheet(items: [url]).presentationDetents([.medium])
+    }
+    .onChange(of: app.savedTitleVersion) { model.state = model.state?.applying(app.savedTitle) }
+    .renameAlert($renaming) { _, title in
+      Task { await model.write("renameConversation", ["title": .string(title)], as: RenameResult.self, app: app) }
+    }
+  }
+
+  /// Room for the details panel beside a transcript at least 400pt wide;
+  /// narrower screens get the sheet.
+  private var detailsBeside: Bool { width >= 720 }
+
+  @ViewBuilder private var details: some View {
+    if let state = model.state {
+      ConversationDetailsSheet(state: state) { showDetails = false }
     }
   }
 
@@ -83,6 +108,7 @@ struct ConversationScreen: View {
             Task { await model.write("pinConversation", ["pinned": .bool(!pinned)], as: PinResult.self, app: app) }
           }
         }
+        Button("Rename", systemImage: "pencil") { renaming = conversation }
         Button("Unfollow", systemImage: "bell.slash") {
           Task {
             if await model.write(
@@ -157,6 +183,7 @@ struct ConversationScreen: View {
           }
           .padding(.horizontal, 16)
           .padding(.top, 12)
+          .readableWidth()
         }
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
@@ -183,6 +210,7 @@ struct ConversationScreen: View {
 }
 
 private struct PinResult: Decodable, Sendable { var pinnedAt: Timestamp? }
+private struct RenameResult: Decodable, Sendable { var title: String }
 private struct ArchiveResult: Decodable, Sendable { var archivedAt: Timestamp? }
 private struct SubscriptionResult: Decodable, Sendable { var subscribed: Bool }
 

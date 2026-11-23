@@ -11,7 +11,7 @@ import type {
 } from "@earendil-works/pi-ai/compat";
 import { completeText } from "@/chat/core-model";
 import type { CacheRetention, ThinkingLevel } from "@/chat/pi/sdk";
-import { captureMessage } from "@/chat/sentry";
+import { captureMessage, metrics } from "@/chat/sentry";
 import { getStateAdapter, getStateValues } from "@/chat/state/adapter";
 import {
   MINUTE_MS,
@@ -23,6 +23,12 @@ export const KEY_PREFIX = "junior:cache_warming";
 // While warming is on, the recorder sets this retention on agent requests, so
 // Pi's PI_CACHE_RETENTION does not change them. The cost model and the warmup
 // timing use the TTL of this retention (`CACHE_TTL_MS`).
+//
+// The 1h retention costs more on Anthropic: Opus writes cost $8/MTok for 1h
+// and $5/MTok for 5 minutes. A 1h write on every call costs more than it
+// saves. A 1h write of the whole prefix when a Conversation goes idle costs
+// $8/MTok of prefix. An hour of 5-minute warmups costs about $2.6/MTok (12
+// warmups at $0.22), so that write never wins either.
 export const CACHE_RETENTION: CacheRetention = "short";
 // A refreshed prefix reads almost all of the stored prefix from the cache.
 const REFRESHED_READ_FRACTION = 0.9;
@@ -46,6 +52,15 @@ const breakerOutcomesKey = (provider: string) =>
 const breakerOpenKey = (provider: string) =>
   `${KEY_PREFIX}:breaker:${provider}:open`;
 const providerOf = (modelId: string) => modelId.split("/")[0] ?? "";
+// The System page counts breaker changes from this metric. A breaker that
+// closes when its pause ends records nothing.
+const countBreakerEvent = (provider: string, event: "opened" | "closed") =>
+  metrics.count("cache_warming.breaker", 1, {
+    attributes: {
+      "app.cache_warming.breaker_event": event,
+      "app.cache_warming.provider": provider,
+    },
+  });
 
 /** One model request of an agent run, as the provider received it. */
 export interface ModelRequest {
@@ -202,8 +217,10 @@ export async function closeBreaker(
   provider: string,
 ): Promise<boolean> {
   if (!Object.hasOwn(CACHE_TTL_MS, provider)) return false;
+  const open = (await state.get<boolean>(breakerOpenKey(provider))) === true;
   await state.delete(breakerOutcomesKey(provider));
   await state.delete(breakerOpenKey(provider));
+  if (open) countBreakerEvent(provider, "closed");
   return true;
 }
 
@@ -234,6 +251,7 @@ async function countOutcome(
     ))
   ) {
     await state.delete(breakerOutcomesKey(provider));
+    countBreakerEvent(provider, "opened");
     captureMessage("Cache warming stopped: too many warmups missed the cache", {
       level: "error",
       fingerprint: ["cache_warming.breaker.opened", provider],

@@ -3,10 +3,13 @@ import {
   pluginToolOutputSchema,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { googleFileRequest, parseFileReference } from "./files";
-import { readRequesterFile } from "./file-access";
-import type { GoogleToolContext } from "./shared";
-import { presentationReferenceSchema, slideObjectIdSchema } from "./slides";
+import { googleFileRequest, parseFileReference } from "../drive/files";
+import { readRequesterFile } from "../drive/file-access";
+import type { GoogleToolContext } from "../google-api";
+import {
+  presentationReferenceSchema,
+  slideObjectIdSchema,
+} from "../slides/presentation";
 
 const inputSchema = z
   .object({

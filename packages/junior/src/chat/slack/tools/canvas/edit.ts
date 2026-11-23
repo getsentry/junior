@@ -10,16 +10,16 @@ import { normalizeCanvasMarkdown } from "@/chat/slack/tool-support/canvas/markdo
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { createOperationKey } from "@/chat/tools/idempotency";
-import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
+import { normalizeToLf } from "@/chat/sandbox/file-utils";
 import {
   buildCompactDiff,
   prepareTextReplacementArguments,
   validateAndApplyTextEdits,
   type TextReplacement,
-} from "@/chat/tools/sandbox/text-edits";
-import type { ToolState } from "@/chat/tools/types";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+} from "@/chat/tool-support/text-edits";
+import type { ToolState } from "@/chat/tool-support/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 function prepareCanvasEditArguments(input: unknown): {
@@ -43,7 +43,7 @@ const slackCanvasEditOutputSchema = juniorToolOutputSchema
   .extend({
     canvas_id: z.string().optional(),
     title: z.string().optional(),
-    permalink: z.string().optional(),
+    url: z.string().optional(),
     diff: z.string().optional(),
     first_changed_line: z.number().int().positive().optional(),
     replacements: z.number().int().nonnegative().optional(),
@@ -123,7 +123,7 @@ export function createSlackCanvasEditTool(state: ToolState) {
       const response = {
         canvas_id: target.canvasId,
         title: current.title,
-        permalink: current.permalink,
+        url: current.permalink,
         diff: diff.diff,
         first_changed_line: diff.firstChangedLine,
         replacements: edits.length,

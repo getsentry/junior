@@ -44,7 +44,7 @@ function formattedDate(value: string): string {
 }
 
 function memoryHref(memoryId: string): string {
-  return `/api/plugins/memory/memories/${encodeURIComponent(memoryId)}`;
+  return `/api/memory/memories/${encodeURIComponent(memoryId)}`;
 }
 
 /** Project one viewer-visible memory API record into the dashboard details model. */

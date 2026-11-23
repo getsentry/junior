@@ -4,10 +4,10 @@ import type {
   IssueCredentialHookContext,
 } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
+import { googlePlugin } from "../src/index";
 import { getGoogleAccount, saveGoogleAccount } from "../src/store";
-import { newEditableFile } from "../src/tools/editable-file";
-import { googleApiRequest } from "../src/tools/shared";
+import { newEditableFile } from "../src/drive/editable-file";
+import { googleApiRequest } from "../src/google-api";
 import {
   ACCOUNT_EMAIL,
   ADMIN_EMAIL,

@@ -6,15 +6,15 @@ import {
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { normalizeToLf } from "@/chat/tools/sandbox/file-utils";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { normalizeToLf } from "@/chat/sandbox/file-utils";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 const slackCanvasReadOutputSchema = juniorToolOutputSchema
   .extend({
     canvas_id: z.string().optional(),
     title: z.string().optional(),
-    permalink: z.string().optional(),
+    url: z.string().optional(),
     mimetype: z.string().optional(),
     filetype: z.string().optional(),
     original_byte_length: z.number().int().nonnegative().optional(),
@@ -94,7 +94,7 @@ export function createSlackCanvasReadTool() {
       return {
         canvas_id: result.canvasId,
         title: result.title,
-        permalink: result.permalink,
+        url: result.permalink,
         mimetype: result.mimetype,
         filetype: result.filetype,
         original_byte_length: result.byteLength,

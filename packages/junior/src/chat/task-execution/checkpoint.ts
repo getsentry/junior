@@ -100,11 +100,12 @@ interface TurnCheckpointWrite {
   dispatchOutcome?: AgentDispatchOutcome | undefined;
   source?: Source | undefined;
   surface?: AgentTurnSurface | undefined;
-  turnStartMessageIndex?: number | undefined;
   /** Tool calls charged to this turn; survives history replacement. */
   cumulativeToolCallCount?: number | undefined;
   /** The turn limit already blocked one step; survives history replacement. */
   turnLimitWrappedUp?: boolean | undefined;
+  /** This slice added the Turn's prompt to the saved messages. */
+  promptSaved?: boolean | undefined;
   /** Times recovery resumed this turn after a lost worker; survives later writes. */
   lostWorkerResumeCount?: number | undefined;
   trailingMessageProvenance?: ConversationMessageProvenance[] | undefined;
@@ -234,11 +235,10 @@ function sharedWrite(
       source: args.source,
       surface: args.surface ?? latest?.surface,
       traceContext: latest?.traceContext ?? traceContext,
-      turnStartMessageIndex:
-        args.turnStartMessageIndex ?? latest?.turnStartMessageIndex,
       cumulativeToolCallCount:
         args.cumulativeToolCallCount ?? latest?.cumulativeToolCallCount,
       turnLimitWrappedUp: args.turnLimitWrappedUp ?? latest?.turnLimitWrappedUp,
+      promptSaved: args.promptSaved,
       lostWorkerResumeCount:
         args.lostWorkerResumeCount ?? latest?.lostWorkerResumeCount,
     }),
@@ -302,6 +302,10 @@ async function savePaused(
     const latest = await getTurnRecord(args.conversationId, args.turnId);
     // Committed history stays whole. A trimmed copy is a branch of it, and
     // the resumed turn adds its prompt after the tail.
+    const keepsMessages =
+      args.reason === "yield" ||
+      args.beforePrompt === true ||
+      continuableMessages(args.messages).length > 0;
     const messages =
       args.reason === "yield" || args.beforePrompt
         ? [...args.messages]
@@ -330,6 +334,9 @@ async function savePaused(
         errorMessage: args.errorMessage,
       }),
       piMessages: messages,
+      // The stored boundary keeps its own prompt flag. The flag in `args`
+      // describes messages that this save does not store.
+      ...(keepsMessages ? undefined : { promptSaved: undefined }),
       resumeReason: args.reason,
     };
 

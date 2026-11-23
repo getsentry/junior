@@ -1,11 +1,10 @@
 /**
  * What an idle period waits for besides a person: a timer, a child agent, a
- * Review item, or another Watch. Junior reads it once, when an idle period
+ * Inbox item, or another Watch. Junior reads it once, when an idle period
  * starts, not on each warmup.
  */
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import { listChildAgents } from "@/chat/agent-invocations/list";
-import { NON_TERMINAL_AGENT_INVOCATION_STATUSES } from "@/chat/agent-invocations/store";
 import { listWatches, type Watch } from "@/chat/events/store";
 import type { WaitingOn } from "./model";
 
@@ -24,10 +23,14 @@ export function earliestTimerDueIdleMs(
   return dueIdleMs <= maxDueIdleMs ? dueIdleMs : undefined;
 }
 
-// Whether the Turn called `addReviewItem` after its last user message. A
+// A Turn that started before Review items became Inbox items has the old
+// tool name in its history.
+const ADD_INBOX_ITEM_TOOL_NAMES = new Set(["addInboxItem", "addReviewItem"]);
+
+// Whether the Turn called `addInboxItem` after its last user message. A
 // message that steers the Turn is a user message too, so only the calls
 // after it count. Calls inside `codemode` or `executeTool` do not count.
-function askedReviewItem(
+function askedInboxItem(
   messages: Context["messages"],
   final: AssistantMessage,
 ): boolean {
@@ -36,7 +39,8 @@ function askedReviewItem(
     if (
       message.role === "assistant" &&
       message.content.some(
-        (part) => part.type === "toolCall" && part.name === "addReviewItem",
+        (part) =>
+          part.type === "toolCall" && ADD_INBOX_ITEM_TOOL_NAMES.has(part.name),
       )
     ) {
       return true;
@@ -51,7 +55,7 @@ function askedReviewItem(
  * `createPullRequest` add. A child agent that still runs comes first: its
  * result starts a Turn without a person. When `idleNeedsPendingWork`, as in
  * an Automation run, only a child agent or a Watch can start a later Turn, so
- * a Review item does not count.
+ * an Inbox item does not count.
  */
 export async function readPendingWork(
   conversationId: string,
@@ -63,19 +67,13 @@ export async function readPendingWork(
     listWatches({ conversationId }),
     listChildAgents(conversationId),
   ]);
-  if (
-    children.some((child) =>
-      (NON_TERMINAL_AGENT_INVOCATION_STATUSES as readonly string[]).includes(
-        child.status,
-      ),
-    )
-  ) {
+  if (children.some((child) => child.status === "running")) {
     return { watches, waitingOn: "child" };
   }
   if (idleNeedsPendingWork) {
     return watches.length > 0 ? { watches, waitingOn: "watch" } : { watches };
   }
-  return askedReviewItem(messages, final)
+  return askedInboxItem(messages, final)
     ? { watches, waitingOn: "review" }
     : { watches };
 }

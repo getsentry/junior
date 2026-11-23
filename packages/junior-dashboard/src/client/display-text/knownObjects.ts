@@ -4,7 +4,7 @@ import {
   type OwnedObjectAnnotation,
 } from "@sentry/junior/api/schema";
 
-import { MARKDOWN_FENCE, parseMarkdownBlocks } from "./codeBlocks";
+import { markdownFences, parseMarkdownBlocks } from "./codeBlocks";
 import { slackLinksToMarkdown } from "./links";
 
 /** Saved objects that display text can show for a link, by `objectUrlKey`. */
@@ -107,10 +107,10 @@ export function splitStandaloneUrls(text: string): {
     if (kept.length > 0) parts.push(kept.join("\n\n").trim());
   };
   let cursor = 0;
-  for (const fence of text.matchAll(MARKDOWN_FENCE)) {
-    keepProse(text.slice(cursor, fence.index));
-    parts.push(fence[0]);
-    cursor = fence.index + fence[0].length;
+  for (const { end, start } of markdownFences(text)) {
+    keepProse(text.slice(cursor, start));
+    parts.push(text.slice(start, end));
+    cursor = end;
   }
   keepProse(text.slice(cursor));
   return { prose: parts.join("\n\n"), urls };
@@ -137,9 +137,9 @@ export function withoutStandaloneUrl(text: string, url: string): string {
       .trim();
   const parts: string[] = [];
   let cursor = 0;
-  for (const fence of text.matchAll(MARKDOWN_FENCE)) {
-    parts.push(dropUrl(text.slice(cursor, fence.index)), fence[0]);
-    cursor = fence.index + fence[0].length;
+  for (const { end, start } of markdownFences(text)) {
+    parts.push(dropUrl(text.slice(cursor, start)), text.slice(start, end));
+    cursor = end;
   }
   parts.push(dropUrl(text.slice(cursor)));
   return parts.filter(Boolean).join("\n\n");

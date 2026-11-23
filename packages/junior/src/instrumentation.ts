@@ -16,14 +16,16 @@ export {
 } from "@/chat/sentry-route-name";
 
 // Junior records its own gen_ai spans with usage and cost. These SDK spans
-// would duplicate them, and Pi reads provider streams itself, so they have no
-// usage. Remove this filter after getsentry/sentry-javascript#25869.
+// would duplicate them, and the provider ones have no usage because Pi reads
+// provider streams itself. Remove this filter after
+// getsentry/sentry-javascript#25869.
 const MANUAL_GEN_AI_INTEGRATIONS = new Set([
   "Anthropic_AI",
   "Google_GenAI",
   "Groq",
   "Mistral",
   "OpenAI",
+  "PiAi",
   "TogetherAI",
   "VercelAI",
 ]);
@@ -143,7 +145,13 @@ export function initSentry(): void {
     beforeSendSpan: scrubPrivateSentrySpan,
     integrations: (defaultIntegrations) =>
       defaultIntegrations.filter(
-        (integration) => !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name),
+        (integration) =>
+          !MANUAL_GEN_AI_INTEGRATIONS.has(integration.name) &&
+          // Dedupe drops an error event that matches the previous one, after
+          // `captureException` has returned its id. A failed Turn shows that
+          // id to the person as its reference, so each capture must send its
+          // event. Sentry still groups the events into one issue.
+          integration.name !== "Dedupe",
       ),
   });
 

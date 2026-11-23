@@ -2,7 +2,7 @@
 
 A person's attention is the scarcest thing Junior spends. Junior asks for it
 only when the person gets an answer, a result, or a step that only they can
-take. All other work happens with no message, Review item, push, or count.
+take. All other work happens with no message, Inbox item, push, or count.
 This is a core principle of how the agent works, and every system follows
 it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 
@@ -30,42 +30,39 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 ## Entry points
 
 - Every Conversation: the agent's reply and its questions.
-- Slack: a reply in the thread of the request, and a Review item card.
-- Dashboard: Inbox, the Inbox count in the tab, "Needs you", and push
-  notifications.
+- Slack: a reply in the thread of the request, and an Inbox item card.
+- Dashboard: Inbox, the Inbox count in the tab, "Needs you", and a push.
 - GitHub: a review request on a pull request that Junior opened.
 
 ## Rules
 
-- An Event about work that Junior owns starts a Turn for the agent, not a
+- An Event about work that Junior owns starts a Turn for the agent, not an
   ask for attention. When the agent finishes that work, it ends the Turn with
   no reply. An Automation posts what its instruction asks for.
 - When Junior stops upkeep that it owns, such as fixes on a pull request
   that nobody works on, it tells nobody.
-- When Junior is blocked, it says what the person must do. "Junior stopped"
-  with nothing to do takes attention and gives nothing back.
-- Junior asks a person only with a Review item
+- Junior asks a person only with an Inbox item
   ([Inbox](./inbox.md)).
+- A push goes to each User assigned to an open item, once per item: an
+  action, or a reply notice for its starter. Everyone items and other
+  notices do not push. When the item closes, its push goes away on every
+  device.
 
 ## Gaps
 
-- When Junior stops fixing a merge conflict on its pull request, after 2
-  days with no activity by a person or after 3 fixes, it adds a
-  `Merge conflict` notice for the requester in Slack and the Inbox. No agent
-  runs for it. This breaks "Junior owns the upkeep of its own work" and
-  "when Junior stops upkeep that it owns, it tells nobody".
-- Junior counts its own merges and force pushes for requested work as
-  merge conflict fixes. So the fix limit can stop fixes on a pull request
-  that people still work on. This breaks "Junior owns the upkeep of its own
-  work".
 - An agent or a plugin can add a notice that names no next step, and the
-  Inbox shows it in FYI. This breaks "anything that takes attention names what the person gets or must
-  do".
+  Inbox shows it in FYI. This breaks "anything that takes attention names
+  what the person gets or must do".
 - Some asks are only a Slack message: a draft pull request that waits for
-  the requester's review, a decision on a watched issue, and a blocked
-  Automation. They add no Review item, so the Inbox does not show them. This
-  breaks "Junior asks a person only with a Review item" and "Slack and the
-  dashboard ask for attention for the same things".
-- In a dashboard Conversation, a Turn that ends with a question card and no
-  reply sends no push. In Slack, the same card shows in the thread. This
+  the requester's review, and a decision on a watched issue. They add no
+  Inbox item. This breaks "Junior asks a person only with an Inbox item"
+  and "Slack and the dashboard ask for attention for the same things".
+- An Automation alert shows only in the dashboard Inbox. Slack shows no
+  card for it. For a blocked Automation, Slack gets a DM with no card. For a
+  failed run or a trigger that is not available, Slack gets nothing. This
   breaks "Slack and the dashboard ask for attention for the same things".
+- When automatic updates stop at the limit of automated Turns in a row, the
+  notice that asks the person to send a message is a plain Slack reply,
+  with no Inbox item. A dashboard Conversation gets nothing. This breaks
+  "Junior asks a person only with an Inbox item" and "Slack and the
+  dashboard ask for attention for the same things".

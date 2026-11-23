@@ -1,4 +1,4 @@
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 
 import { withRequestedMailbox } from "./harness";
 
@@ -39,6 +39,7 @@ export async function mockReadPositionConversation(
     turnActive: false,
     surface: "internal",
   };
+  const pageReads: Request[] = [];
   const state = {
     conversationId,
     eventCount: input.eventCount,
@@ -66,6 +67,9 @@ export async function mockReadPositionConversation(
     servesUnreadPage: false,
     /** The query of each detail request. */
     detailRequests: [] as string[],
+    /** Wait for the response of each events page read so far. */
+    pageReadsLanded: () =>
+      Promise.all(pageReads.map((request) => request.response())),
     reported: [] as number[],
   };
   let stored = input.lastReadSeq;
@@ -168,6 +172,7 @@ export async function mockReadPositionConversation(
   await page.route(
     `**/api/conversations/${conversationId}/events?*`,
     async (route) => {
+      pageReads.push(route.request());
       const query = new URL(route.request().url()).searchParams;
       const after = query.get("after");
       const turn = query.get("turn");

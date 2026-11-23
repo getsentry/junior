@@ -72,7 +72,7 @@ import { runWithWorkspaceTeamId } from "@/chat/slack/workspace-context";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
+import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import { SlackEventPersistenceError } from "./slack-event-persistence-error";
 import { createSlackActor, parseActorUserId } from "@/chat/actor";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
@@ -80,7 +80,7 @@ import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-ident
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
@@ -492,12 +492,12 @@ async function routeParsedMessage(args: {
   // when an open item can match, so most replies need no profile lookup.
   const closeAnswered = async () => {
     if (message.author.isBot === true) return;
-    await closeReviewItemsAnsweredByReply({
+    await closeInboxItemsAnsweredByReply({
       ...(route === "subscribed" ? { canAnswer: isAuthorTrusted } : undefined),
       conversationId,
       delivery: {
         queue: args.queue,
-        show: createSlackReviewItemShow(() => args.adapter),
+        show: createInboxItemShow(() => args.adapter),
       },
       resolveUser: async () => {
         const teamId = args.installation.teamId;

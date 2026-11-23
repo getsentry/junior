@@ -1,5 +1,5 @@
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
-import { reviewItemSchema } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
+import { inboxItemSchema } from "@sentry/junior/api/schema";
 import { useQueryClient, type QueryClient } from "@tanstack/react-query";
 import pLimit from "p-limit";
 import {
@@ -18,9 +18,9 @@ import { useToastManager } from "../components/ui/toast";
 import { post } from "../http";
 import { fyiCount } from "./inboxModel";
 import {
-  invalidateReviewItemCollections,
-  reviewItemActionsInFlight,
-  reviewItemQueryKey,
+  invalidateInboxItemCollections,
+  inboxItemActionsInFlight,
+  inboxItemQueryKey,
 } from "./queries";
 
 const UNDO_MS = 6_000;
@@ -30,15 +30,15 @@ const SWEEP_REQUESTS = 8;
 /** Close swept items, refresh the inbox, and return the ids that stay open. */
 async function commitSweep(
   queryClient: QueryClient,
-  items: ReviewItemPayload[],
+  items: InboxItemPayload[],
 ): Promise<string[]> {
   const limit = pLimit(SWEEP_REQUESTS);
   const results = await Promise.allSettled(
     items.map((item) =>
       limit(() =>
         post(
-          reviewItemSchema,
-          `/api/review-items/${encodeURIComponent(item.id)}/actions`,
+          inboxItemSchema,
+          `/api/inbox-items/${encodeURIComponent(item.id)}/actions`,
           { action: "dismiss" },
         ),
       ),
@@ -48,19 +48,19 @@ async function commitSweep(
   for (const [index, result] of results.entries()) {
     const id = items[index]!.id;
     if (result.status === "fulfilled") {
-      queryClient.setQueryData(reviewItemQueryKey(id), result.value);
+      queryClient.setQueryData(inboxItemQueryKey(id), result.value);
       continue;
     }
     kept.push(id);
     void queryClient.invalidateQueries({
       exact: true,
-      queryKey: reviewItemQueryKey(id),
+      queryKey: inboxItemQueryKey(id),
     });
   }
   // A read while an action is in flight would show its item again. The
   // last action to settle reads the lists.
-  if (reviewItemActionsInFlight(queryClient) === 0)
-    await invalidateReviewItemCollections(queryClient);
+  if (inboxItemActionsInFlight(queryClient) === 0)
+    await invalidateInboxItemCollections(queryClient);
   return kept;
 }
 
@@ -79,7 +79,7 @@ function unsweep(
 
 type InboxSweeper = {
   isSwept(id: string): boolean;
-  sweep(items: ReviewItemPayload[]): void;
+  sweep(items: InboxItemPayload[]): void;
 };
 
 const InboxSweepContext = createContext<InboxSweeper | null>(null);
@@ -113,7 +113,7 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
   const [swept, setSwept] = useState<ReadonlySet<string>>(() => new Set());
   // The items of each sweep whose toast still shows, by toast id. Each
   // sweep gets its own toast, so Undo takes back only its own items.
-  const pending = useRef(new Map<string, ReviewItemPayload[]>());
+  const pending = useRef(new Map<string, InboxItemPayload[]>());
   const sweeps = useRef(0);
 
   useEffect(() => {
@@ -127,7 +127,7 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
   }, [queryClient]);
 
   const sweep = useCallback(
-    (items: ReviewItemPayload[]) => {
+    (items: InboxItemPayload[]) => {
       const manager = toasts.current;
       if (items.length === 0 || !manager) return;
       const { add, close } = manager;
@@ -139,7 +139,7 @@ export function InboxSweepProvider(props: { children: ReactNode }) {
       // Items that did not close come back in their places, so the inbox
       // shows what is still open on the server. Retry hides them again and
       // closes them at once: the viewer already chose to dismiss them.
-      const settle = (closing: ReviewItemPayload[]) =>
+      const settle = (closing: InboxItemPayload[]) =>
         void commitSweep(queryClient, closing).then((kept) => {
           const failed = closing.filter((item) => kept.includes(item.id));
           if (failed.length === 0) return;

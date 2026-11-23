@@ -11,11 +11,11 @@
  *   message arrived after it finished
  * - the root and every child conversation are idle
  * - nothing in the tree needs a person: no conversation in it has
- *   `needs_input` status, no open Plan item in it is assigned to a person,
- *   and no open Review item linked to it waits on a person
+ *   `needs_input` status, and no open To-do in it is assigned to a person
  * - no participant pinned it or turned auto-archive off for it
  * - the root and every child conversation had no activity during the grace
- *   period
+ *   period. A stopped conversation counts from its stop, since the input
+ *   that it holds still adds Messages
  *
  * A user can also archive all of their done conversations once, from
  * Settings. That run uses the same checks and grace period, does not need
@@ -49,17 +49,14 @@ import {
   isConversationWorkDone,
   listConversationWork,
 } from "@/chat/plugins/unfinished-work";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import { conversationStatusSql } from "@/chat/conversations/sql/status";
-import { isOpenPlanItemStatus, PLAN_ITEM_STATUSES } from "@/chat/plan/types";
-import { reviewItemNeedsSomeone } from "@/chat/review-items/access";
+import { OPEN_TODO_STATUSES } from "@/chat/todos/types";
 import {
   juniorConversationParticipants,
   juniorConversations,
-  juniorPlanItems,
-  juniorReviewItemConversations,
-  juniorReviewItems,
+  juniorTodos,
   juniorUsers,
 } from "@/db/schema";
 import { AUTO_ARCHIVE_DEFAULT_GRACE_HOURS } from "@/db/schema/users";
@@ -98,7 +95,9 @@ function runCutoff(run: ArchiveRun): Date {
 /**
  * True when the participant row's root and every child conversation are idle
  * and had no activity after the cutoff. Child activity does not move the
- * root's `lastActivityAt`, so the whole tree is checked.
+ * root's `lastActivityAt`, so the whole tree is checked. A stopped
+ * conversation counts from its stop: held input still saves Messages, which
+ * would keep it from ever being quiet.
  */
 function treeIsQuiet(run: ArchiveRun) {
   const active = getDb()
@@ -118,33 +117,34 @@ function treeIsQuiet(run: ArchiveRun) {
         ),
         or(
           ne(juniorConversations.executionStatus, "idle"),
-          gt(juniorConversations.lastActivityAt, runCutoff(run)),
+          gt(
+            sql`coalesce(${juniorConversations.stoppedAt}, ${juniorConversations.lastActivityAt})`,
+            runCutoff(run),
+          ),
         ),
       ),
     );
   return sql`not exists (${active})`;
 }
 
-const OPEN_PLAN_ITEM_STATUSES = PLAN_ITEM_STATUSES.filter(isOpenPlanItemStatus);
-
 /**
  * True when nothing in the participant row's tree needs a person. No
- * conversation in it has `needs_input` status: an open action Review item
+ * conversation in it has `needs_input` status: an open action Inbox item
  * that it added, a sign-in wait, or work that waits on its starter, such
- * as an answer that the starter has not read. No open Plan item in it is
+ * as an answer that the starter has not read. No open To-do in it is
  * assigned to a person. Archive applies to everyone, so input that waits
  * on anyone keeps the tree. An archived child counts for nothing, as in
  * the tree state.
  */
 function treeNeedsNoOne() {
   const assignedToPerson = getDb()
-    .select({ id: juniorPlanItems.id })
-    .from(juniorPlanItems)
+    .select({ id: juniorTodos.id })
+    .from(juniorTodos)
     .where(
       and(
-        eq(juniorPlanItems.conversationId, juniorConversations.conversationId),
-        isNotNull(juniorPlanItems.assigneeUserId),
-        inArray(juniorPlanItems.status, OPEN_PLAN_ITEM_STATUSES),
+        eq(juniorTodos.conversationId, juniorConversations.conversationId),
+        isNotNull(juniorTodos.assigneeUserId),
+        inArray(juniorTodos.status, OPEN_TODO_STATUSES),
       ),
     );
   const needing = getDb()
@@ -175,42 +175,6 @@ function treeNeedsNoOne() {
 }
 
 /**
- * True when no open Review item on the participant row's root or a child
- * conversation needs a person. Archive applies to everyone, so a
- * conversation that waits on anyone must stay in the feed.
- */
-function notWaitingOnAnyone() {
-  const linked = alias(juniorConversations, "linked_conversation");
-  const waiting = getDb()
-    .select({ itemId: juniorReviewItemConversations.itemId })
-    .from(juniorReviewItemConversations)
-    .innerJoin(
-      juniorReviewItems,
-      eq(juniorReviewItems.id, juniorReviewItemConversations.itemId),
-    )
-    .innerJoin(
-      linked,
-      eq(linked.conversationId, juniorReviewItemConversations.conversationId),
-    )
-    .where(
-      and(
-        reviewItemNeedsSomeone(),
-        or(
-          eq(
-            linked.conversationId,
-            juniorConversationParticipants.rootConversationId,
-          ),
-          eq(
-            linked.rootConversationId,
-            juniorConversationParticipants.rootConversationId,
-          ),
-        ),
-      ),
-    );
-  return sql`not exists (${waiting})`;
-}
-
-/**
  * True when no subscribed participant of the row's root pinned it or turned
  * auto-archive off for it. Archive applies to everyone, so one person's run
  * must not undo another person's pin or manual restore. A person who
@@ -234,10 +198,13 @@ function noParticipantKeepsRoot() {
   return sql`not exists (${keeping})`;
 }
 
-/** True when the participant row's root is not archived. */
-function rootIsUnarchived() {
+/**
+ * True when the participant row's root is not archived and is not a Lead.
+ * The Lead is the dashboard home, not a feed row, so it is never archived.
+ */
+function rootIsArchivable() {
   const root = alias(juniorConversations, "archive_root");
-  const unarchived = getDb()
+  const eligible = getDb()
     .select({ conversationId: root.conversationId })
     .from(root)
     .where(
@@ -247,14 +214,15 @@ function rootIsUnarchived() {
           juniorConversationParticipants.rootConversationId,
         ),
         isNull(root.archivedAt),
+        or(isNull(root.kind), ne(root.kind, "lead")),
       ),
     );
-  return sql`exists (${unarchived})`;
+  return sql`exists (${eligible})`;
 }
 
 /**
  * Conditions that a participant row must meet when it is selected and again
- * when it is archived, so new activity, a new run, a new Review item, or a
+ * when it is archived, so new activity, a new run, a new Inbox item, or a
  * changed setting wins over a stale read.
  */
 function archivableRow(run: ArchiveRun) {
@@ -263,7 +231,7 @@ function archivableRow(run: ArchiveRun) {
     // A person who unsubscribed left the conversation to the others.
     // Contract: `subscription.ts`.
     isNull(juniorConversationParticipants.unsubscribedAt),
-    rootIsUnarchived(),
+    rootIsArchivable(),
     // A pin keeps the conversation in the feed on purpose.
     noParticipantKeepsRoot(),
     // The user's own message or a root activity snapshot sets
@@ -276,7 +244,6 @@ function archivableRow(run: ArchiveRun) {
       : undefined,
     treeIsQuiet(run),
     treeNeedsNoOne(),
-    notWaitingOnAnyone(),
   );
 }
 
@@ -379,18 +346,12 @@ async function archiveRoots(
         archivableRow(run),
       ),
     );
-  const updated = await getDb()
-    .update(juniorConversations)
-    .set({ archivedAt: run.now, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        inArray(juniorConversations.conversationId, rootConversationIds),
-        isNull(juniorConversations.archivedAt),
-        sql`exists (${archivable})`,
-      ),
-    )
-    .returning({ conversationId: juniorConversations.conversationId });
-  return updated.length;
+  return await setArchivedAt(
+    getDb(),
+    rootConversationIds,
+    run.now,
+    and(isNull(juniorConversations.archivedAt), sql`exists (${archivable})`),
+  );
 }
 
 /** Archive every done conversation of one user and count the rows. */
@@ -430,7 +391,7 @@ async function selectAutoArchiveUsers() {
       and(
         eq(juniorConversationParticipants.userId, juniorUsers.id),
         eq(juniorConversationParticipants.autoArchive, true),
-        rootIsUnarchived(),
+        rootIsArchivable(),
       ),
     );
   return await getDb()
