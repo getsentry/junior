@@ -347,6 +347,7 @@ WHERE table_name = 'junior_github_pull_requests'
           },
         }),
       ]);
+      await fixture.sql.query("ALTER ROLE CURRENT_USER RESET jit_above_cost");
 
       await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
       expect(lines).toEqual([
@@ -354,7 +355,15 @@ WHERE table_name = 'junior_github_pull_requests'
         `  junior: applied ${coreMigrationCount} migrations (${coreMigrationCount} total)`,
         `  junior-github: applied ${githubMigrationCount} migrations (${githubMigrationCount} total)`,
         `Applied ${totalMigrationCount} migrations (${totalMigrationCount} total).`,
+        "Set jit_above_cost to 10000000 for the app's role.",
       ]);
+      const [roleSetting] = await fixture.sql.query<{ setconfig: string[] }>(`
+SELECT setconfig
+FROM pg_db_role_setting
+WHERE setdatabase = 0
+  AND setrole = (SELECT oid FROM pg_roles WHERE rolname = current_user)
+`);
+      expect(roleSetting?.setconfig).toContain("jit_above_cost=10000000");
 
       lines.length = 0;
       await runUpgrade({ info: (line) => lines.push(line) }, { pluginSet });
@@ -365,6 +374,7 @@ WHERE table_name = 'junior_github_pull_requests'
         `Database is up to date (${totalMigrationCount} migrations).`,
       ]);
     } finally {
+      await fixture.sql.query("ALTER ROLE CURRENT_USER RESET jit_above_cost");
       await fixture.close();
     }
   }, 15_000);
