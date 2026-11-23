@@ -31,6 +31,24 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: /Roll out payments-v42/,
     });
     await expect(pinned).toBeVisible();
+    // A right-click on an In flight row opens its Conversation menu.
+    const menu = page.getByRole("menu");
+    await pinned.click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Unpin" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    // On hover, its `⋯` opens the same menu.
+    await pinned.hover();
+    await inFlight
+      .getByRole("button", {
+        name: /^Open menu for Roll out payments-v42/,
+      })
+      .click();
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
 
     // The Inbox lists what needs the viewer. A pinned or running
     // Conversation shows only in In flight.
