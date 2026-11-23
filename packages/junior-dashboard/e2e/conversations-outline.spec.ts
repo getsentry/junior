@@ -74,6 +74,13 @@ test("jumps to a far message from the outline", async ({ page, dashboard }) => {
   expect(await scrollbarHidden(transcript)).toBe(false);
   await expect(outline).toHaveAttribute("data-side", "left");
   await expect(outline.locator("button[data-in-view]")).toHaveCount(0);
+  // The list scrolls to the active item once the transcript marks it. A
+  // hover before that scroll lands on another item.
+  const active = outline.getByRole("button", {
+    name: "Transcript message 1992 with",
+  });
+  await expect(active).toHaveAttribute("aria-current", "location");
+  await expect(active).toBeInViewport();
 
   const item = outline.getByRole("button", {
     name: "Transcript message 1234 with",

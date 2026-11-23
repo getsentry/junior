@@ -28,6 +28,18 @@ export function readBaseline(): PromptTagAttributeBaseline {
 const BASELINE = readBaseline();
 // Baseline key for the attributes of a tag whose name code computes.
 const COMPUTED_TAG = "*";
+// A tag names one input kind in kebab-case, such as `agent-result`.
+const TAG_NAME = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+// `AGENTS.md` keeps Codex's model-visible wrapper.
+const CODEX_TAGS = new Set(["INSTRUCTIONS"]);
+// An attribute is snake_case, or `<provider>.<field>` for a provider ID such
+// as `slack.user_id`.
+const ATTRIBUTE_NAME = /^[a-z][a-z0-9_]*$|^[a-z]+\.[a-z][a-z0-9_]*$/;
+
+// A time is ISO 8601 in a `*_at` key, never a bare `ts` or epoch milliseconds.
+function isAttributeName(name: string): boolean {
+  return ATTRIBUTE_NAME.test(name) && name !== "ts" && !name.endsWith("_ms");
+}
 
 // Index of the attributes argument of each tag writer.
 const WRITERS = new Map([
@@ -111,7 +123,8 @@ function attributeNames(node: ESTree.ObjectExpression) {
  * body; the attributes that remain are listed by file and tag in
  * prompt-tag-attributes.json, with `*` for a tag name that code computes. A
  * new attribute fails, and a listed attribute that the file no longer writes
- * fails, so the list only shrinks.
+ * fails, so the list only shrinks. Every literal tag name and attribute name
+ * must also follow the naming rules above.
  */
 export const promptTagAttributesRule = defineRule({
   meta: {
@@ -127,6 +140,10 @@ export const promptTagAttributesRule = defineRule({
         "This file no longer writes `{{attribute}}` on `{{tag}}`. Remove it from tools/oxlint/junior/prompt-tag-attributes.json.",
       literalAttributes:
         "Pass prompt tag attributes as an object literal with literal names, so the attribute ratchet can check them.",
+      tagName:
+        "Name the tag `{{tag}}` in kebab-case, such as `agent-result`. The tag names the input kind.",
+      attributeName:
+        "Name the attribute `{{attribute}}` in snake_case, or `<provider>.<field>` for a provider ID such as `slack.user_id`. Write a time as ISO 8601 UTC in a `*_at` key, not `ts` or epoch milliseconds.",
     },
     schema: [
       {
@@ -153,15 +170,7 @@ export const promptTagAttributesRule = defineRule({
       },
       CallExpression(node) {
         const index = WRITERS.get(writerName(node) ?? "");
-        const attributes =
-          index === undefined ? undefined : node.arguments[index];
-        if (attributes === undefined) return;
-        if (attributes.type !== "ObjectExpression") {
-          if (attributes.type === "Identifier" && insideWriter(node)) return;
-          context.report({ node: attributes, messageId: "literalAttributes" });
-          return;
-        }
-        if (attributes.properties.length === 0) return;
+        if (index === undefined) return;
         const nameNode = node.arguments[0];
         constants ??= program ? stringConstants(program) : new Map();
         const tag =
@@ -170,6 +179,26 @@ export const promptTagAttributesRule = defineRule({
             ? constants.get(nameNode.name)
             : undefined) ??
           COMPUTED_TAG;
+        if (
+          nameNode &&
+          tag !== COMPUTED_TAG &&
+          !TAG_NAME.test(tag) &&
+          !CODEX_TAGS.has(tag)
+        ) {
+          context.report({
+            node: nameNode,
+            messageId: "tagName",
+            data: { tag },
+          });
+        }
+        const attributes = node.arguments[index];
+        if (attributes === undefined) return;
+        if (attributes.type !== "ObjectExpression") {
+          if (attributes.type === "Identifier" && insideWriter(node)) return;
+          context.report({ node: attributes, messageId: "literalAttributes" });
+          return;
+        }
+        if (attributes.properties.length === 0) return;
         const names = attributeNames(attributes);
         if (names === undefined) {
           context.report({ node: attributes, messageId: "literalAttributes" });
@@ -179,6 +208,13 @@ export const promptTagAttributesRule = defineRule({
         used.set(tag, tagUsed);
         for (const attribute of names) {
           tagUsed.add(attribute);
+          if (!isAttributeName(attribute)) {
+            context.report({
+              node: attributes,
+              messageId: "attributeName",
+              data: { attribute },
+            });
+          }
           if (!allowed[tag]?.includes(attribute)) {
             context.report({
               node: attributes,

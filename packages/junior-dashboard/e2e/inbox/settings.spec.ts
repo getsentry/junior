@@ -1,10 +1,10 @@
 import { expect, test } from "../test";
 import {
-  DASHBOARD_SERVICE_WORKER_PATH,
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../../src/service-worker";
 import { waitForOutlineRead, waitForSettingsReads } from "../harness";
+import { showPlainTextPush } from "../push-notification";
 import { screenshot } from "../screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../../src/mock-reporting/fixtures";
 
@@ -257,37 +257,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       (await page.evaluate(() => Notification.permission)) !== "granted",
       "Chromium headless shell denies notifications. CI runs Chrome.",
     );
-    const cdp = await page.context().newCDPSession(page);
-    const registrationId = new Promise<string>((resolve) => {
-      cdp.on("ServiceWorker.workerVersionUpdated", ({ versions }) => {
-        const active = versions.find(
-          (version) => version.status === "activated",
-        );
-        if (active) resolve(active.registrationId);
-      });
-    });
-    await cdp.send("ServiceWorker.enable");
-    await page.evaluate(async (path) => {
-      await navigator.serviceWorker.register(path, { scope: "/" });
-      await navigator.serviceWorker.ready;
-    }, DASHBOARD_SERVICE_WORKER_PATH);
-
-    await cdp.send("ServiceWorker.deliverPushMessage", {
-      data: "Test push message from DevTools.",
-      origin: new URL(dashboard.baseURL).origin,
-      registrationId: await registrationId,
-    });
-
-    await expect
-      .poll(() =>
-        page.evaluate(async () => {
-          const registration = await navigator.serviceWorker.ready;
-          return (await registration.getNotifications()).map(
-            (notification) => notification.title,
-          );
-        }),
-      )
-      .toEqual(["Junior"]);
+    expect(await showPlainTextPush(page)).toEqual(["Junior"]);
   });
 
   test("follows the system theme until the user picks one", async ({
@@ -433,6 +403,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const sections = page.getByRole("navigation", { name: "Settings" });
     const section = (name: string) =>
       sections.getByRole("link", { exact: true, name });
+    // Scroll up with the wheel, as a reader does. Reader input releases a
+    // followed link at once. A script scroll in the frame that a late read
+    // grows the page looks like layout, so the link scrolls back.
+    const wheelToTop = async (heading: string) => {
+      await page.getByRole("heading", { exact: true, name: heading }).hover();
+      await page.mouse.wheel(0, -100_000);
+    };
 
     await expect(section("General")).toHaveAttribute(
       "aria-current",
@@ -448,7 +425,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(section("General")).not.toHaveAttribute("aria-current");
 
     // Scrolling back up moves the mark to the section in view.
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await wheelToTop("Identities");
     await expect(section("General")).toHaveAttribute(
       "aria-current",
       "location",
@@ -485,7 +462,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "aria-current",
       "location",
     );
-    await page.evaluate(() => window.scrollTo(0, 0));
+    await wheelToTop("How they got here");
     await expect(memorySection("Activity")).toHaveAttribute(
       "aria-current",
       "location",

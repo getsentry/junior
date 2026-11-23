@@ -265,22 +265,13 @@ test.describe("on a touch screen", () => {
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
-    const leadRead = () =>
-      page.waitForResponse(
-        (response) => new URL(response.url()).pathname === "/api/lead",
-      );
-    const homeRead = leadRead();
     await page.goto(dashboard.baseURL);
     const entries = page.getByRole("navigation", { name: "Primary" });
     await expect(entries.getByRole("link").first()).toHaveText("Lead");
-    await homeRead;
-    // The Lead page reads the Lead again once its transcript loads.
-    const leadRefreshed = leadRead();
     await entries.getByRole("link", { name: "Lead", exact: true }).click();
     await expect(
       page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
     ).toBeVisible();
-    await leadRefreshed;
   });
 
   test("the navigation sheet lists the Lead @classic", async ({

@@ -107,4 +107,20 @@ describe("getRepository", () => {
       name: "PluginToolInputError",
     });
   });
+
+  it("reports other lookup failures as system errors", async () => {
+    const { tool } = toolContext([
+      { body: { message: "Server Error" }, status: 503 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior" },
+        { toolCallId: "failed-repository" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub repository lookup failed with HTTP 503",
+      name: "Error",
+    });
+  });
 });
