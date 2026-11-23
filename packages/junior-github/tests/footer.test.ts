@@ -2,7 +2,6 @@ import { afterEach, describe, expect, it } from "vitest";
 import {
   appendGitHubFooter,
   githubConversationIds,
-  githubLinkedIssues,
 } from "../src/conversation-footer.js";
 
 const originalEnv = { ...process.env };
@@ -67,18 +66,5 @@ describe("GitHub conversation footer", () => {
     );
 
     expect(githubConversationIds(footer)).toEqual([conversationId]);
-  });
-
-  it("reads same- and cross-repo linked issues", () => {
-    expect(
-      githubLinkedIssues(
-        "Fixes #12 and closes getsentry/other#34.\nAlso mentions #12 again and #9.",
-        "getsentry/junior",
-      ),
-    ).toEqual([
-      { number: 9, repositoryFullName: "getsentry/junior" },
-      { number: 12, repositoryFullName: "getsentry/junior" },
-      { number: 34, repositoryFullName: "getsentry/other" },
-    ]);
   });
 });

@@ -11,7 +11,6 @@
       "title": "Too expensive to derive: search matches code changes by title."
     },
     "junior_github_issues": "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer, and nothing reads the rest.",
-    "junior_github_pull_request_issues": "Mirror awaiting cleanup: nothing reads it.",
     "junior_github_pull_request_requesters": "Junior-owned: the people who asked Junior for the pull request, and where they asked.",
     "junior_github_pull_requests": {
       "pull_request_id": "Junior-owned: the key of the facts that Junior records for its pull request.",

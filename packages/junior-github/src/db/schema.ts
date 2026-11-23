@@ -159,29 +159,6 @@ export const juniorGitHubPullRequests = pgTable(
   ],
 );
 
-/** Many-to-many links between tracked pull requests and tracked issues. */
-export const juniorGitHubPullRequestIssues = pgTable(
-  "junior_github_pull_request_issues",
-  {
-    pullRequestId: text("pull_request_id")
-      .notNull()
-      .references(() => juniorGitHubPullRequests.pullRequestId, {
-        onDelete: "cascade",
-      }),
-    issueRepositoryFullName: text("issue_repository_full_name").notNull(),
-    issueNumber: integer("issue_number").notNull(),
-  },
-  (table) => [
-    primaryKey({
-      columns: [
-        table.pullRequestId,
-        table.issueRepositoryFullName,
-        table.issueNumber,
-      ],
-    }),
-  ],
-);
-
 /**
  * People who asked Junior to open or update a pull request. Each row links
  * the pull request to the Junior identity that acted. The user and any linked
@@ -212,7 +189,6 @@ export const juniorGitHubPullRequestRequesters = pgTable(
 
 export const githubSqlSchema = {
   juniorGitHubIssues,
-  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 };
