@@ -5,7 +5,7 @@ import type { JuniorSqlDatabase } from "@/db/db";
 
 /** What the host gives core: database, queue, and config values. */
 export interface EngineContext {
-  db: JuniorSqlDatabase;
+  executor: JuniorSqlDatabase;
   queue: QueueProvider;
   /** Names the invocation that holds a Turn's lease. */
   owner: string;

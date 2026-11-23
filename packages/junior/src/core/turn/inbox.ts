@@ -37,10 +37,10 @@ export type TurnInput = {
  * Conversation. Undefined when no such input exists.
  */
 export async function findInputTurn(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   args: { conversationId: string; idempotencyKey: string },
 ): Promise<Turn | undefined> {
-  const [turn] = await engineCtx.db
+  const [turn] = await executor
     .db()
     .select({ turnId: juniorTurns.id, state: juniorTurns.state })
     .from(juniorTurnInbox)
@@ -81,10 +81,10 @@ export function inputEventKey(inputId: string): string {
 
 /** Finds the inputs of a Turn that the history has not read, oldest first. */
 export async function findUnreadInputs(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   turnId: string,
 ): Promise<UnreadInput[]> {
-  const db = engineCtx.db.db();
+  const db = executor.db();
   const readEvent = db
     .select({ one: sql`1` })
     .from(juniorConversationEvents)
@@ -119,13 +119,13 @@ export async function findUnreadInputs(
  * The first attempt keeps its time. It does not mark the inputs read.
  */
 export async function markInputsAttempted(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   inputIds: string[],
 ): Promise<void> {
   if (inputIds.length === 0) {
     return;
   }
-  await engineCtx.db
+  await executor
     .db()
     .update(juniorTurnInbox)
     .set({ attemptedAt: sql`coalesce(${juniorTurnInbox.attemptedAt}, now())` })

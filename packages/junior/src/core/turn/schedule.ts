@@ -45,10 +45,10 @@ type Placement = ScheduleResult & { publish: boolean };
 // Not exported: scheduleInput is the only writer, so every input row is
 // written under the Conversation lock.
 async function addInput(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   input: TurnInput & { turnId: string },
 ): Promise<void> {
-  await engineCtx.db
+  await executor
     .db()
     .insert(juniorTurnInbox)
     .values({ ...input, id: randomUUID() });
@@ -68,11 +68,11 @@ function assignTurn(
 }
 
 async function placeInput(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   input: IncomingTurnInput,
 ): Promise<Placement> {
   const { source, ...inboxInput } = input;
-  const existing = await findInputTurn(engineCtx, input);
+  const existing = await findInputTurn({ executor }, input);
   if (existing) {
     // The source retries after a publish that failed after the commit. The
     // Turn then waits queued with no message, so publish it again. A second
@@ -84,20 +84,23 @@ async function placeInput(
     };
   }
   const choice = assignTurn(
-    await findOpenTurn(engineCtx, input.conversationId),
+    await findOpenTurn({ executor }, input.conversationId),
   );
   if ("join" in choice) {
     const { turnId } = choice.join;
-    await addInput(engineCtx, { ...inboxInput, turnId });
+    await addInput({ executor }, { ...inboxInput, turnId });
     return { turnId, created: false, publish: false };
   }
-  const turn = await createTurn(engineCtx, {
-    conversationId: input.conversationId,
-    actorIdentityId: input.actorIdentityId,
-    source,
-    priority: choice.create.priority,
-  });
-  await addInput(engineCtx, { ...inboxInput, turnId: turn.turnId });
+  const turn = await createTurn(
+    { executor },
+    {
+      conversationId: input.conversationId,
+      actorIdentityId: input.actorIdentityId,
+      source,
+      priority: choice.create.priority,
+    },
+  );
+  await addInput({ executor }, { ...inboxInput, turnId: turn.turnId });
   return { turnId: turn.turnId, created: true, publish: true };
 }
 
@@ -108,16 +111,16 @@ async function placeInput(
  * and a publish error reaches the caller with the input already stored.
  */
 export async function scheduleInput(
-  engineCtx: Pick<EngineContext, "db" | "queue">,
+  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   input: IncomingTurnInput,
 ): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
-    engineCtx.db,
+    executor,
     input.conversationId,
-    () => placeInput(engineCtx, input),
+    () => placeInput({ executor }, input),
   );
   if (placement.publish) {
-    await publishTurnStep(engineCtx, placement.turnId);
+    await publishTurnStep({ queue }, placement.turnId);
   }
   return { turnId: placement.turnId, created: placement.created };
 }
@@ -125,11 +128,11 @@ export async function scheduleInput(
 // Not exported, like addInput: only reconcileTurn moves inputs, under the
 // Conversation lock. A row keeps its id and idempotency key.
 async function moveInputs(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   inputIds: string[],
   turnId: string,
 ): Promise<void> {
-  await engineCtx.db
+  await executor
     .db()
     .update(juniorTurnInbox)
     .set({ turnId })
@@ -142,10 +145,10 @@ async function moveInputs(
  * the inputs that an attempt claimed it with.
  */
 async function moveLeftovers(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   ended: TurnRecord,
 ): Promise<void> {
-  const leftovers = (await findUnreadInputs(engineCtx, ended.turnId)).filter(
+  const leftovers = (await findUnreadInputs({ executor }, ended.turnId)).filter(
     (input) => input.attemptedAt === null,
   );
   const [first] = leftovers;
@@ -153,19 +156,22 @@ async function moveLeftovers(
     return;
   }
   const choice = assignTurn(
-    await findOpenTurn(engineCtx, ended.conversationId),
+    await findOpenTurn({ executor }, ended.conversationId),
   );
   const target =
     "join" in choice
       ? choice.join
-      : await createTurn(engineCtx, {
-          conversationId: ended.conversationId,
-          actorIdentityId: first.actorIdentityId,
-          source: ended.source,
-          priority: choice.create.priority,
-        });
+      : await createTurn(
+          { executor },
+          {
+            conversationId: ended.conversationId,
+            actorIdentityId: first.actorIdentityId,
+            source: ended.source,
+            priority: choice.create.priority,
+          },
+        );
   await moveInputs(
-    engineCtx,
+    { executor },
     leftovers.map((input) => input.inputId),
     target.turnId,
   );
@@ -180,30 +186,33 @@ async function moveLeftovers(
  * own commit.
  */
 export async function reconcileTurn(
-  engineCtx: Pick<EngineContext, "db" | "queue">,
+  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   turnId: string,
 ): Promise<void> {
-  const turn = await findTurn(engineCtx, turnId);
+  const turn = await findTurn({ executor }, turnId);
   if (!turn) {
     return;
   }
-  await publishDelivery(engineCtx, {
-    conversationId: turn.conversationId,
-    turnId,
-  });
+  await publishDelivery(
+    { queue },
+    {
+      conversationId: turn.conversationId,
+      turnId,
+    },
+  );
   const openTurn = await withConversationEventLock(
-    engineCtx.db,
+    executor,
     turn.conversationId,
     async () => {
       if (turn.state === "failed") {
-        await moveLeftovers(engineCtx, turn);
+        await moveLeftovers({ executor }, turn);
       }
-      return findOpenTurn(engineCtx, turn.conversationId);
+      return findOpenTurn({ executor }, turn.conversationId);
     },
   );
   // A Turn that a step commit continued is the queued open Turn, so this also
   // sends its next step. A running Turn has a worker, so it needs no message.
   if (openTurn?.state === "queued") {
-    await publishTurnStep(engineCtx, openTurn.turnId);
+    await publishTurnStep({ queue }, openTurn.turnId);
   }
 }

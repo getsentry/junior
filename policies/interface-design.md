@@ -48,8 +48,9 @@ function names are part of the interface.
   own it.
 - Do not use a one-field service options object. Pass the service.
 - When the host chooses all the edges of an engine, the engine takes them as
-  one context object, such as core's `EngineContext`. Each function names only
-  the fields that it uses, with `Pick`.
+  one context object, such as core's `EngineContext`. Each function
+  destructures only the fields that it uses in its parameters, typed with
+  `Pick`.
 - Do not add a factory, wrapper, alias, or helper that only forwards
   arguments or hides parameter threading. Call the owner directly, unless the
   layer enforces a rule, translates an edge, or owns a lifecycle change.

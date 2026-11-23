@@ -115,7 +115,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
   const stepMessages: string[] = [];
   let markerSeen = false;
   const engineCtx: EngineContext = {
-    db: fixture.sql,
+    executor: fixture.sql,
     queue: getQueueProvider(),
     owner: "worker-a",
     leaseMs: LEASE_MS,
