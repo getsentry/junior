@@ -53,6 +53,7 @@ import { navItemIcon } from "../../components/layout/navIcons";
 import {
   pluginPageGroupForPath,
   repositoryIdForPath,
+  directorySearchSources,
   useDirectoryPaletteItems,
 } from "../../components/paletteDirectories";
 import type { PaletteItem } from "../../components/paletteItem";
@@ -131,8 +132,15 @@ function CommandPaletteBody(props: {
   // rows before the viewer types.
   const inbox = useInboxItemsData({ forViewer: true, sort: "waiting" });
   const automations = useAutomationsData(true, AUTOMATION_LIST_SEARCH);
-  // Typed text finds Inbox items and Automations on the server.
-  const sourcesSearched = useSearchData(search, PALETTE_SEARCH_SOURCES);
+  // Typed text finds Inbox items, Automations, and Memories on the server.
+  const searchSources = useMemo(
+    () => [
+      ...PALETTE_SEARCH_SOURCES,
+      ...directorySearchSources(props.navItems),
+    ],
+    [props.navItems],
+  );
+  const sourcesSearched = useSearchData(search, searchSources);
   const viewer = useDashboardCoreData().data?.me.user;
   const navPages = useMemo(
     () =>
@@ -153,15 +161,6 @@ function CommandPaletteBody(props: {
   // A generic plugin page's rows lead on it, as a directory's do.
   const activeGroup =
     props.activeGroup ?? pluginPageGroupForPath(props.navItems, pathname);
-  const directories = useDirectoryPaletteItems({
-    activeGroup,
-    conversationId: props.currentConversationId,
-    navItems: props.navItems,
-    pathname,
-    query: query.trim(),
-    search,
-  });
-  const list = useRef<HTMLDivElement>(null);
   // Hide server rows until they match the typed text, so stale or
   // placeholder rows never show for the wrong query.
   const searchedCurrent =
@@ -170,6 +169,16 @@ function CommandPaletteBody(props: {
     Boolean(search) &&
     query.trim() === search &&
     !sourcesSearched.isPlaceholderData;
+  const directories = useDirectoryPaletteItems({
+    activeGroup,
+    conversationId: props.currentConversationId,
+    navItems: props.navItems,
+    pathname,
+    query: query.trim(),
+    search,
+    searched: sourcesSearchedCurrent ? sourcesSearched.data : undefined,
+  });
+  const list = useRef<HTMLDivElement>(null);
   const repositorySearchedCurrent =
     Boolean(search) &&
     query.trim() === search &&

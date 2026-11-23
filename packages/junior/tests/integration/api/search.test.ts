@@ -1,3 +1,5 @@
+import { randomUUID } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi } from "@/api";
@@ -6,12 +8,17 @@ import { searchReportSchema } from "@/api/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import { reembedMemories } from "@/chat/memory/reembed";
+import { memoryDb } from "@/chat/memory/store";
+import { createPluginEmbedder } from "@/chat/plugins/model";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import {
   fallbackShortTitle,
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
+import { juniorMemoryMemories } from "@/db/schema/memory";
+import { mockEmbeddings } from "../../fixtures/retrieval-models";
 import { expectResponseBudget } from "../../fixtures/response-budget";
 import {
   expectNoFullScan,
@@ -24,6 +31,9 @@ const VIEWER = { email: "ana@example.com", slackUserId: "UANA" };
 const OTHER = { email: "bob@example.com", slackUserId: "UBOB" };
 // The longest title that the add tool takes.
 const INBOX_ITEM_TITLE_MAX_LENGTH = 200;
+// Vectors of a stored size that the exact search reads.
+const MEMORY_VECTOR = [1, ...Array<number>(1_535).fill(0)];
+const UNRELATED_VECTOR = [0, 1, ...Array<number>(1_534).fill(0)];
 
 /** Store a person with a Slack account in `T123`, and return their User. */
 async function person(args: { email: string; slackUserId: string }) {
@@ -134,6 +144,41 @@ async function automation(args: {
     title: args.title,
     updatedAtMs: nowMs,
   });
+}
+
+type MemoryRow = typeof juniorMemoryMemories.$inferInsert;
+
+/** Store an active public memory with a vector, then apply `changes`. */
+async function memory(
+  id: string,
+  content: string,
+  changes: Partial<MemoryRow> = {},
+) {
+  const db = memoryDb(getDb());
+  const nowMs = Date.now();
+  await db.insert(juniorMemoryMemories).values({
+    content,
+    createdAtMs: nowMs,
+    id,
+    kind: "knowledge",
+    observedAtMs: nowMs,
+    scope: "public",
+    scopeKey: "public",
+    sourceKey: "slack:T123:C123:1718800000.000000",
+    sourcePlatform: "slack",
+    subjectType: "general",
+  });
+  await reembedMemories({
+    batchSize: 10,
+    db,
+    embedder: createPluginEmbedder("memory"),
+  });
+  if (Object.keys(changes).length > 0) {
+    await db
+      .update(juniorMemoryMemories)
+      .set(changes)
+      .where(eq(juniorMemoryMemories.id, id));
+  }
 }
 
 describe("search API", () => {
@@ -308,6 +353,46 @@ describe("search API", () => {
     ).toEqual(["sched_viewer_triage"]);
   });
 
+  it("finds only the active public memories that the Memories page shows", async () => {
+    // A typed prefix gets a vector far from every memory, so words alone
+    // match it.
+    mockEmbeddings((text) =>
+      text === "relea" ? UNRELATED_VECTOR : MEMORY_VECTOR,
+    );
+    const viewer = await person(VIEWER);
+    const other = await person(OTHER);
+    const pastMs = Date.now() - 60_000;
+    await memory("memory-visible", "Release notes go in the changelog.");
+    await memory("memory-private", "Release notes are private.", {
+      scope: "private",
+      scopeKey: viewer.id,
+    });
+    await memory("memory-other-user", "Release notes of another User.", {
+      scope: "private",
+      scopeKey: other.id,
+    });
+    await memory("memory-archived", "Release notes were archived.", {
+      archiveReason: "user_removed",
+      archivedAtMs: pastMs,
+    });
+    await memory("memory-superseded", "Release notes were replaced.", {
+      supersededAtMs: pastMs,
+      supersededById: "memory-visible",
+    });
+    await memory("memory-expired", "Release notes expired.", {
+      expiresAtMs: pastMs,
+    });
+    const search = signedIn(viewer);
+    const ids = async (q: string) =>
+      (await report(search(q, "memories"))).memories?.map(({ id }) => id);
+
+    // A half-typed word matches the words that it starts.
+    expect(await ids("relea")).toEqual(["memory-visible"]);
+    // Every stored vector is the query vector, so the vector leg alone
+    // finds a memory with no matching word, and still hides the others.
+    expect(await ids("zebra")).toEqual(["memory-visible"]);
+  });
+
   it("reads every source at once from its index, within a size budget", async () => {
     const viewer = await person(VIEWER);
     await inboxItem({
@@ -323,29 +408,35 @@ describe("search API", () => {
       title: `Deploy ${"x".repeat(SHORT_TITLE_MAX_LENGTH - 7)}`,
       visibility: "private",
     });
+    mockEmbeddings(() => MEMORY_VECTOR);
+    // As long as a stored id: a UUID.
+    await memory(randomUUID(), `Deploy ${"x".repeat(1_000)}`);
     const search = signedIn(viewer);
+    const sources = "inboxItems,automations,memories";
 
     const response = await expectResponseBudget(
       () =>
         expectNoFullScan(() =>
-          expectSqlBudget(() => search("deploy"), {
-            statements: 2,
+          expectSqlBudget(() => search("deploy", sources), {
+            statements: 4,
             serialRounds: 1,
           }),
         ),
-      { automations: 155, inboxItems: 272 },
+      { automations: 155, inboxItems: 272, memories: 176 },
     );
 
     const found = await report(response);
     expect(found.automations).toHaveLength(1);
     expect(found.inboxItems).toHaveLength(1);
+    expect(found.memories).toHaveLength(1);
     // Text with no letters or digits matches nothing and reads nothing.
-    const punctuation = await measureSql(() => search("&|!"));
+    const punctuation = await measureSql(() => search("&|!", sources));
     expect(punctuation.sql.statements).toBe(0);
     expect(await report(punctuation.result)).toEqual({
       automations: [],
       inboxItems: [],
+      memories: [],
     });
-    expect((await search("deploy", "inboxItems,memories")).status).toBe(400);
+    expect((await search("deploy", "inboxItems,todos")).status).toBe(400);
   });
 });

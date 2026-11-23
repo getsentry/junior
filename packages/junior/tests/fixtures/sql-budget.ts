@@ -216,6 +216,8 @@ const BIG_TABLES = [
   "junior_conversation_briefs",
   "junior_conversation_metrics",
   "junior_inbox_items",
+  "junior_memory_embeddings",
+  "junior_memory_memories",
 ];
 
 /**

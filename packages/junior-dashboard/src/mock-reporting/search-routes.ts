@@ -6,7 +6,10 @@ import { NOW_MS, readMockAutomationList } from "./fixtures";
 import { readMockInboxItems } from "./inbox-items";
 import { mockSearchReport } from "./search";
 
-/** Mount the mock `/api/search` route over the mock Inbox and Automations. */
+/**
+ * Mount the mock `/api/search` route over the mock Inbox and Automations.
+ * The mock server holds no memories, so e2e specs mock them.
+ */
 export function registerMockSearchRoutes(
   app: Hono<{ Variables: JuniorApiVariables }>,
 ): void {
@@ -18,6 +21,7 @@ export function registerMockSearchRoutes(
           ...readMockInboxItems(NOW_MS, {}),
           ...readMockInboxItems(NOW_MS, { closed: true }),
         ],
+        memories: [],
       },
       new URL(c.req.url).searchParams,
     );

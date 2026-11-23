@@ -497,6 +497,7 @@ export { searchQuerySchema, searchReportSchema } from "./schema/search";
 export type {
   SearchAutomation,
   SearchInboxItem,
+  SearchMemory,
   SearchReport,
   SearchSource,
 } from "./schema/search";

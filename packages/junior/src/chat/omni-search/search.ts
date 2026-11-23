@@ -7,18 +7,23 @@ import {
   searchInboxItemsForUser,
   type InboxItemSearchMatch,
 } from "@/chat/inbox-items/search";
+import {
+  searchPublicMemories,
+  type MemorySearchMatch,
+} from "@/chat/memory/search";
 import { parseTypedQuery } from "@/search/typed-query";
 
 // One menu group. More rows do not help a person who is still typing.
 const OMNI_SEARCH_SOURCE_LIMIT = 8;
 
 /** A kind of record that one search finds. */
-export type OmniSearchSource = "automations" | "inboxItems";
+export type OmniSearchSource = "automations" | "inboxItems" | "memories";
 
 /** The matches of each source that a search named, best first. */
 export type OmniSearchResults = {
   automations?: AutomationSearchMatch[];
   inboxItems?: InboxItemSearchMatch[];
+  memories?: MemorySearchMatch[];
 };
 
 /**
@@ -34,7 +39,7 @@ export async function omniSearch(input: {
 }): Promise<OmniSearchResults> {
   const query = parseTypedQuery(input.text);
   const wants = (source: OmniSearchSource) => input.sources.includes(source);
-  const [automations, inboxItems] = await Promise.all([
+  const [automations, inboxItems, memories] = await Promise.all([
     query && wants("automations")
       ? searchAutomationsForViewer(
           input.viewer,
@@ -45,9 +50,13 @@ export async function omniSearch(input: {
     query && wants("inboxItems")
       ? searchInboxItemsForUser(input.viewer, query, OMNI_SEARCH_SOURCE_LIMIT)
       : [],
+    query && wants("memories")
+      ? searchPublicMemories(input.text, OMNI_SEARCH_SOURCE_LIMIT)
+      : [],
   ]);
   return {
     ...(wants("automations") ? { automations } : undefined),
     ...(wants("inboxItems") ? { inboxItems } : undefined),
+    ...(wants("memories") ? { memories } : undefined),
   };
 }

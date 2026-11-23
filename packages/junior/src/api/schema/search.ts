@@ -1,7 +1,7 @@
 import * as z from "zod";
 
 /** The sources that `/api/search` can search. */
-const SEARCH_SOURCES = ["inboxItems", "automations"] as const;
+const SEARCH_SOURCES = ["inboxItems", "automations", "memories"] as const;
 
 /** One source of `/api/search`. */
 export type SearchSource = (typeof SEARCH_SOURCES)[number];
@@ -39,14 +39,24 @@ export const searchAutomationSchema = z
   })
   .strict();
 
+/** A memory that matches a search, its text cut to one menu row. */
+export const searchMemorySchema = z
+  .object({
+    id: z.string().min(1),
+    title: z.string(),
+  })
+  .strict();
+
 /** One group of matches for each source that the search named. */
 export const searchReportSchema = z
   .object({
     automations: z.array(searchAutomationSchema).optional(),
     inboxItems: z.array(searchInboxItemSchema).optional(),
+    memories: z.array(searchMemorySchema).optional(),
   })
   .strict();
 
 export type SearchAutomation = z.infer<typeof searchAutomationSchema>;
 export type SearchInboxItem = z.infer<typeof searchInboxItemSchema>;
+export type SearchMemory = z.infer<typeof searchMemorySchema>;
 export type SearchReport = z.infer<typeof searchReportSchema>;

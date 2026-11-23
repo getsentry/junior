@@ -2,6 +2,7 @@ import {
   searchQuerySchema,
   type AutomationListItem,
   type SearchInboxItem,
+  type SearchMemory,
   type SearchReport,
 } from "@sentry/junior/api/schema";
 
@@ -62,6 +63,7 @@ export function mockSearchReport(
   rows: {
     automations: readonly AutomationListItem[];
     inboxItems: readonly (SearchInboxItem & { body: string })[];
+    memories: readonly SearchMemory[];
   },
   params: URLSearchParams,
 ): SearchReport | undefined {
@@ -85,6 +87,9 @@ export function mockSearchReport(
             (item) => item.status === "open",
           ).map(({ id, status, title }) => ({ id, status, title })),
         }
+      : undefined),
+    ...(sources.includes("memories")
+      ? { memories: matches(rows.memories, q, (memory) => memory.title) }
       : undefined),
   };
 }

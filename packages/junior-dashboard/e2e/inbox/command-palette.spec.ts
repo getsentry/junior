@@ -492,7 +492,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
-  test("finds Inbox items and Automations with one search for each typed query", async ({
+  test("finds Inbox items, Automations, and Memories with one search for each typed query", async ({
     page,
     dashboard,
   }) => {
@@ -511,7 +511,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       const url = new URL(request.url());
       if (
         url.searchParams.has("q") &&
-        ["/api/automations", "/api/inbox-items"].includes(url.pathname)
+        [
+          "/api/automations",
+          "/api/inbox-items",
+          "/api/user-pages/memory/memories",
+        ].includes(url.pathname)
       )
         listSearches.push(url.pathname);
     });
@@ -527,10 +531,13 @@ test.describe("new UI", { tag: "@new" }, () => {
           /Post-merge cleanup/,
         ]);
       },
-      { requests: 8, serialRounds: 2 },
+      { requests: 6, serialRounds: 2 },
     );
 
     expect(listSearches).toEqual([]);
+    await expect(group("Memories")).toHaveText([
+      /Start incident reviews with the customer impact/,
+    ]);
     await expect(group("Inbox")).toHaveCount(3);
     await expect(group("Done")).toHaveAccessibleName(
       /Review the initech license entry/,
@@ -540,8 +547,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     const shot = async (view: typeof desktop | typeof mobile) => {
       await page.setViewportSize({ height: view.height, width: view.width });
       // Highlight the row, since the palette keeps the highlight in view.
-      await group("Automations").first().hover();
-      await expect(group("Automations").first()).toHaveAttribute(
+      await group("Memories").first().hover();
+      await expect(group("Memories").first()).toHaveAttribute(
         "aria-selected",
         "true",
       );
@@ -560,7 +567,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/user-pages/memory/memories?q=*", async (route) => {
+    await page.route(/\/api\/search\?/, async (route) => {
       await released;
       await route.fallback();
     });
@@ -571,15 +578,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       response.url().includes("/api/conversations?q="),
     );
     await palette.getByRole("combobox").fill("zzqx nothing");
-    // The conversation search has answered; Memories still reads.
+    // The conversation search has answered; `/api/search` still reads.
     await conversationsSearched;
     await expect(palette.getByText("Searching…")).toBeVisible();
     await expect(palette.getByText("No matches.")).toHaveCount(0);
-    // The mock memories ignore the text, so the server's matches then show.
     release();
-    await expect(
-      palette.getByRole("group", { name: "Memories" }).getByRole("option"),
-    ).not.toHaveCount(0);
+    await expect(palette.getByText("No matches.")).toBeVisible();
     await expect(palette.getByText("Searching…")).toHaveCount(0);
   });
 

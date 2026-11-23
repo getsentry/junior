@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 import type {
   AutomationListItem,
   SearchInboxItem,
+  SearchMemory,
 } from "@sentry/junior/api/schema";
 
 import { mockSearchReport } from "../src/mock-reporting/search";
@@ -10,6 +11,7 @@ import { mockSearchReport } from "../src/mock-reporting/search";
 type SearchRows = {
   automations?: () => readonly AutomationListItem[];
   inboxItems?: () => readonly (SearchInboxItem & { body: string })[];
+  memories?: () => readonly SearchMemory[];
 };
 
 // One route for each page, so the mocked Inbox and Automations of one test
@@ -38,6 +40,7 @@ export async function mockSearchRows(
       {
         automations: mocked.automations?.() ?? [],
         inboxItems: mocked.inboxItems?.() ?? [],
+        memories: mocked.memories?.() ?? [],
       },
       new URL(route.request().url()).searchParams,
     );
@@ -49,6 +52,9 @@ export async function mockSearchRows(
           : undefined),
         ...(mocked.inboxItems && report?.inboxItems
           ? { inboxItems: report.inboxItems }
+          : undefined),
+        ...(mocked.memories && report?.memories
+          ? { memories: report.memories }
           : undefined),
       },
       response,
