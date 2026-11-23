@@ -1,5 +1,6 @@
 import type { AssistantMessage, Context, Message } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
+import type { ModelSettings } from "@/core/model/client";
 import type { ToolDefinition } from "@/core/tool";
 import { runStep, type StepInput } from "@/core/turn/step";
 import {
@@ -21,14 +22,26 @@ function tool(
   };
 }
 
+const MODEL: ModelSettings = {
+  id: "test-model",
+  reasoning: "none",
+  privacy: "private",
+};
+
+/** A step whose model request is the history, with no new messages. */
 function stepInput(
-  overrides: Partial<StepInput> & Pick<StepInput, "messages">,
-): StepInput {
+  overrides: Partial<StepInput<string>> & Pick<StepInput<string>, "history">,
+): StepInput<string> {
   return {
-    systemPrompt: "You are Junior.",
+    request: () =>
+      Promise.resolve({
+        systemPrompt: "You are Junior.",
+        messages: overrides.history,
+        model: MODEL,
+        newMessages: [],
+      }),
     tools: [],
     client: fakeModelClient([]),
-    model: { id: "test-model", reasoning: "none", privacy: "private" },
     session: "conversation-1",
     replay: false,
     skipDanglingToolCalls: false,
@@ -53,9 +66,9 @@ describe("runStep", () => {
       execute: () => Promise.resolve({ content: [] }),
     });
 
-    const result = await runStep(
+    const { result } = await runStep(
       stepInput({
-        messages: [user],
+        history: [user],
         tools: [lookup],
         client: fakeModelClient([
           {
@@ -90,15 +103,15 @@ describe("runStep", () => {
         }),
     });
 
-    const modelStep = await runStep(
+    const { result: modelStep } = await runStep(
       stepInput({
-        messages: [user],
+        history: [user],
         tools: [lookup],
         client: fakeModelClient([{ type: "message", message: reply }]),
       }),
     );
-    const toolStep = await runStep(
-      stepInput({ messages: [user, reply], tools: [lookup] }),
+    const { result: toolStep } = await runStep(
+      stepInput({ history: [user, reply], tools: [lookup] }),
     );
 
     expect(modelStep).toEqual({ outcome: "continue", messages: [reply] });
@@ -113,6 +126,53 @@ describe("runStep", () => {
           isError: false,
         },
       ],
+    });
+  });
+
+  it("builds the model request only for a model step, and returns its new messages", async () => {
+    const reply = replyWithCalls("lookup");
+    const lookup = tool("lookup", {
+      replay: "safe",
+      execute: () => Promise.resolve({ content: [] }),
+    });
+    const note: Message = { role: "user", content: "a note", timestamp: 0 };
+    const requests: Context[] = [];
+    let built = 0;
+    const request = () => {
+      built += 1;
+      return Promise.resolve({
+        systemPrompt: "You are Junior.",
+        messages: [user, note],
+        model: MODEL,
+        newMessages: ["note"],
+      });
+    };
+
+    const modelStep = await runStep(
+      stepInput({
+        history: [user],
+        request,
+        client: fakeModelClient([
+          {
+            type: "message",
+            message: reply,
+            onRequest: (context) => {
+              requests.push(context);
+            },
+          },
+        ]),
+      }),
+    );
+    const toolStep = await runStep(
+      stepInput({ history: [user, reply], tools: [lookup], request }),
+    );
+
+    expect(built).toBe(1);
+    expect(requests[0]?.messages).toEqual([user, note]);
+    expect(modelStep.newMessages).toEqual(["note"]);
+    expect(toolStep).toMatchObject({
+      result: { outcome: "continue" },
+      newMessages: [],
     });
   });
 
@@ -137,9 +197,9 @@ describe("runStep", () => {
       },
     };
 
-    const result = await runStep(
+    const { result } = await runStep(
       stepInput({
-        messages: [user, replyWithCalls("broken", "missing", "search")],
+        history: [user, replyWithCalls("broken", "missing", "search")],
         tools: [broken, search],
       }),
     );
@@ -176,7 +236,7 @@ describe("runStep", () => {
 
     await runStep(
       stepInput({
-        messages: [user, replyWithCalls("first", "second")],
+        history: [user, replyWithCalls("first", "second")],
         tools: [
           tool("first", { replay: "safe", execute }),
           tool("second", { replay: "safe", execute }),
@@ -201,15 +261,15 @@ describe("runStep", () => {
       execute: () => Promise.resolve({ content: [] }),
     });
 
-    const alone = await runStep(
+    const { result: alone } = await runStep(
       stepInput({
-        messages: [user, replyWithCalls("sign_in")],
+        history: [user, replyWithCalls("sign_in")],
         tools: [signIn],
       }),
     );
-    const mixed = await runStep(
+    const { result: mixed } = await runStep(
       stepInput({
-        messages: [user, replyWithCalls("sign_in", "lookup")],
+        history: [user, replyWithCalls("sign_in", "lookup")],
         tools: [signIn, lookup],
       }),
     );
@@ -238,9 +298,9 @@ describe("runStep", () => {
       timestamp: 0,
     };
 
-    const result = await runStep(
+    const { result } = await runStep(
       stepInput({
-        messages: [user, replyWithCalls("read", "send", "done"), saved],
+        history: [user, replyWithCalls("read", "send", "done"), saved],
         tools,
         replay: true,
       }),
@@ -276,12 +336,12 @@ describe("runStep", () => {
       stopReason: "length",
     });
 
-    const toolStep = await runStep(
-      stepInput({ messages: [user, cutOffCalls], tools: [send] }),
+    const { result: toolStep } = await runStep(
+      stepInput({ history: [user, cutOffCalls], tools: [send] }),
     );
-    const modelStep = await runStep(
+    const { result: modelStep } = await runStep(
       stepInput({
-        messages: [user],
+        history: [user],
         client: fakeModelClient([{ type: "message", message: cutOffText }]),
       }),
     );
@@ -299,9 +359,9 @@ describe("runStep", () => {
       type: "error",
       errorMessage: "overloaded",
     });
-    const result = await runStep(
+    const { result } = await runStep(
       stepInput({
-        messages: [user],
+        history: [user],
         client: fakeModelClient([{ type: "message", message: failure }]),
       }),
     );
@@ -327,7 +387,7 @@ describe("runStep", () => {
 
     const modelStep = runStep(
       stepInput({
-        messages: [user],
+        history: [user],
         signal: duringModel.signal,
         client: fakeModelClient([
           {
@@ -341,7 +401,7 @@ describe("runStep", () => {
     );
     const toolStep = runStep(
       stepInput({
-        messages: [user, replyWithCalls("slow")],
+        history: [user, replyWithCalls("slow")],
         tools: [slow],
         signal: duringTools.signal,
       }),

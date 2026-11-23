@@ -10,7 +10,12 @@ import {
 } from "vitest";
 import type { ToolDefinition } from "@/core/tool";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { fragment, type FragmentMessage } from "@/core/prompt/layout";
+import {
+  fragment,
+  loader,
+  skip,
+  type FragmentMessage,
+} from "@/core/prompt/layout";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { cancelTurn, claimTurn } from "@/core/turn/state";
@@ -576,10 +581,23 @@ describe("advanceTurn with a test step", () => {
       prompt,
     });
     const inputId = await engine.addTestInput("Also send it to Sam.");
+    const load = vi.fn(() => Promise.resolve("Thomas likes short replies."));
+    const memory = loader("memory", load, { timeoutMs: 1_000 });
+    const modelSettings = vi.fn(() => Promise.resolve(MODEL));
 
-    await engine.advance({ ...stepWith([], [sendTool(executed)]), prompt });
+    await engine.advance({
+      ...stepWith([], [sendTool(executed)]),
+      prompt: testPrompt([
+        fragment("memory", { loader: memory, format: () => skip("unused") }),
+        testInputs(),
+      ]),
+      modelSettings,
+    });
 
     expect(executed).toEqual(["call-1"]);
+    // A tool step builds no prompt and reads no model settings.
+    expect(load).not.toHaveBeenCalled();
+    expect(modelSettings).not.toHaveBeenCalled();
     await expect(engine.loadHistory()).resolves.toEqual([
       userText("Before the inputs."),
       userText("How many Turns?"),
@@ -692,8 +710,6 @@ describe("advanceTurn with a test step", () => {
 
   it("queues the Turn again when the invocation throws, so the retry runs the step at once", async () => {
     await engine.addTestInput("How many Turns?");
-    const executed: string[] = [];
-    await engine.advance(stepWith([sendCallReply()]));
     const failure = new Error("The model settings could not be read");
 
     await expect(
@@ -702,25 +718,25 @@ describe("advanceTurn with a test step", () => {
 
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "queued",
-      stepSeq: 1,
+      stepSeq: 0,
       attempts: 1,
       leaseOwner: null,
       leaseExpiresAt: null,
     });
+    const reply = sendCallReply();
     const retry = vi.fn(() => Promise.resolve(MODEL));
-    await engine.advance({
-      ...stepWith([], [sendTool(executed)]),
-      modelSettings: retry,
-    });
+    await engine.advance({ ...stepWith([reply]), modelSettings: retry });
     expect(retry).toHaveBeenCalledWith(
-      expect.objectContaining({ stepSeq: 1, attempts: 2 }),
+      expect.objectContaining({ stepSeq: 0, attempts: 2 }),
     );
-    // The retry is a replay, so it skips the tool that must not run twice.
-    expect(executed).toEqual([]);
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "queued",
-      stepSeq: 2,
+      stepSeq: 1,
     });
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+    ]);
   });
 
   it("fails the Turn when every try of a step throws, and runs it no more", async () => {
