@@ -104,6 +104,10 @@ describe("Event automation credentials", () => {
 
     expect(completedToolCalls("createAutomation", conversation)).toEqual([]);
     expect(completedToolCalls("deleteAutomation", conversation)).toEqual([]);
+    // Alice is not in the Conversation and did not ask, so nothing asks her.
+    expect(
+      conversation.toolCalls.filter((call) => call.name === "addInboxItem"),
+    ).toEqual([]);
     expect(
       conversation.toolCalls.filter(
         (call) =>
