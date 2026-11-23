@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import { apiErrorSchema, leadSchema } from "@sentry/junior/api/schema";
+import { readMockConversationAllEvents } from "./fixtures";
 import { MOCK_LEAD_WATCHED_CONVERSATION_IDS } from "./lead-transcript";
 import { createMockLead } from "./sends";
 
@@ -24,6 +25,8 @@ export function createMockLeadRoutes(): Hono<{
     });
     return jsonResponse(leadSchema, {
       conversationId,
+      lastSeq:
+        readMockConversationAllEvents(conversationId)?.events.at(-1)?.seq ?? -1,
       watchedConversationIds: MOCK_LEAD_WATCHED_CONVERSATION_IDS,
     });
   });
