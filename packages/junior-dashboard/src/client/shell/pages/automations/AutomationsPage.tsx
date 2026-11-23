@@ -3,6 +3,7 @@ import { Link, useLocation, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
   type AutomationListItem,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { useAutomationPagesData } from "../../../api";
 import { Button, buttonVariants } from "../../../components/ui/button";
@@ -21,7 +22,6 @@ import { HeaderBar } from "../../../components/layout/HeaderBar";
 import { usePaneRowScroll } from "../../../components/layout/PaneNav";
 import { useDocumentTitle } from "../../../documentTitle";
 import { InboxAutomationRow } from "../../../inbox/InboxAutomationRow";
-import type { useAutomationAlerts } from "../../../inbox/automationAlerts";
 import { useInboxData } from "../../../inbox/inboxData";
 import { InboxEmptyState, InboxSection } from "../../../inbox/InboxSection";
 import {
@@ -32,13 +32,42 @@ import {
   useInboxFocus,
 } from "../../../inbox/inboxFocus";
 import { timeGroups } from "../../../inbox/inboxModel";
-import { scrollPages } from "../../../inbox/inboxQueries";
+import {
+  scrollPages,
+  useAutomationAttentionData,
+} from "../../../inbox/inboxQueries";
 import { PageEnd } from "../../../inbox/PageEnd";
+import { useInboxItemAction, useInboxItemsData } from "../../../inbox/queries";
+import { RowDismissButton } from "../../../inbox/RowDismissButton";
+import { RowSnoozeButton } from "../../../inbox/RowSnoozeDismiss";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationScopeTabs, automationScopeOf } from "./AutomationScopeTabs";
 import { NAV_PAGES } from "../../../navPages";
 
+/** An Automation in To do, with its alert. */
+type TodoAlert = { alert: InboxItemPayload; automation: AutomationListItem };
+
 const EMPTY: AutomationListItem[] = [];
+const NO_ALERTS: TodoAlert[] = [];
+
+/**
+ * The Automations whose open alert waits on the viewer, in the Inbox's
+ * order. An alert waits for its Automation to load, and shows in the other
+ * groups until then.
+ */
+function todoAlerts(
+  alerts: readonly InboxItemPayload[],
+  automations: readonly AutomationListItem[],
+): TodoAlert[] {
+  const byId = new Map(
+    automations.map((automation) => [automation.id, automation]),
+  );
+  return alerts.flatMap((alert) => {
+    const automation =
+      alert.owner.kind === "automation" ? byId.get(alert.owner.id) : undefined;
+    return automation ? [{ alert, automation }] : [];
+  });
+}
 
 // One page of rows. More load as the list scrolls.
 const LANDING_PAGE_SIZE = "50";
@@ -50,7 +79,7 @@ const LANDING_FILTERS = ["type", "state", "creator", "destination"] as const;
 
 /**
  * Landing page for Automations, in the Inbox's style: To do first, the
- * viewer's Automations that need attention as the Inbox lists them, then
+ * viewer's Automations whose alerts wait in the Inbox's To do, then
  * the rest by latest run, grouped as Today, This week, and Earlier. Mine
  * shows the viewer's own; All shows every visible one. Each card shows
  * recent runs and the next run, and opens in place for more, so the page
@@ -100,10 +129,25 @@ export function AutomationsPage(props: { enabled: boolean }) {
   const list = pages.first;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const filtered = LANDING_FILTERS.some((key) => searchParams.has(key));
-  // To do is the Inbox's own list, so its count matches the Automations
-  // row. Filters narrow the whole list instead.
+  // To do holds the viewer's open alerts that are not snoozed, as the
+  // Inbox's To do does. Filters narrow the whole list instead.
   const inbox = useInboxData();
-  const todo = filtered ? EMPTY : inbox.todoAutomations;
+  const alerts = useInboxItemsData({
+    automationAlerts: true,
+    enabled: props.enabled && !filtered,
+    forViewer: true,
+    sort: "waiting",
+  });
+  const attention = useAutomationAttentionData(props.enabled);
+  const todo = filtered
+    ? NO_ALERTS
+    : todoAlerts(
+        alerts.items.filter(
+          (alert) => alert.status === "open" && !inbox.snoozes.hides(alert),
+        ),
+        attention.data?.automations ?? EMPTY,
+      );
+  const dismiss = useInboxItemAction({ optimistic: true });
   const automations = pages.automations;
   const loading = !list && !query.error;
   const scroll = usePaneRowScroll("automations", Boolean(list));
@@ -193,8 +237,16 @@ export function AutomationsPage(props: { enabled: boolean }) {
               <InboxFocusProvider focus={focus.focus}>
                 <InboxPreviewGate>
                   <AutomationGroups
-                    alerts={inbox.alerts}
                     automations={automations}
+                    onDismiss={(alert) =>
+                      dismiss.mutate({
+                        body: { action: "dismiss" },
+                        id: alert.id,
+                      })
+                    }
+                    onSnooze={(alert, untilMs) =>
+                      void inbox.snoozes.snoozeItem(alert, untilMs)
+                    }
                     expanded={expanded}
                     onExpand={setExpanded}
                     search={location.search}
@@ -226,18 +278,19 @@ export function AutomationsPage(props: { enabled: boolean }) {
  * results or the URL change.
  */
 const AutomationGroups = memo(function AutomationGroups(props: {
-  /** Puts To do alerts away, as the Inbox does. */
-  alerts: ReturnType<typeof useAutomationAlerts>;
   automations: AutomationListItem[];
   /** The card open in place, if any. */
   expanded?: string;
+  onDismiss(alert: InboxItemPayload): void;
   onExpand(id: string | undefined): void;
+  /** Snoozes the alert, as the Inbox does. */
+  onSnooze(alert: InboxItemPayload, untilMs: number): void;
   search: string;
-  todo: AutomationListItem[];
+  todo: TodoAlert[];
 }) {
   const [collapsed, setCollapsed] = useState<Record<string, boolean>>({});
   const [snoozeId, setSnoozeId] = useState<string>();
-  const todoIds = new Set(props.todo.map((automation) => automation.id));
+  const todoIds = new Set(props.todo.map(({ automation }) => automation.id));
   // The server orders rows by latest activity, so groups keep its order.
   const rest = props.automations.filter(
     (automation) => !todoIds.has(automation.id),
@@ -255,23 +308,26 @@ const AutomationGroups = memo(function AutomationGroups(props: {
         label="To do"
         onToggle={() => toggle("todo")}
       >
-        {props.todo.map((automation) => (
+        {props.todo.map(({ alert, automation }) => (
           <InboxAutomationRow
             automation={automation}
             expanded={props.expanded === automation.id}
             key={automation.id}
             onToggle={() => toggleRow(automation.id)}
-            putAway={{
-              menuOpen: snoozeId === automation.id,
-              onDismiss: () => props.alerts.dismiss(automation),
-              onMenu: (open) => setSnoozeId(open ? automation.id : undefined),
-              onSnooze: (untilMs) => {
-                props.alerts.snooze(automation, untilMs);
-                setSnoozeId(undefined);
-              },
-            }}
             rowKey={automation.id}
-          />
+          >
+            <RowDismissButton onClick={() => props.onDismiss(alert)} />
+            <RowSnoozeButton
+              onOpenChange={(open) =>
+                setSnoozeId(open ? automation.id : undefined)
+              }
+              onSnooze={(untilMs) => {
+                props.onSnooze(alert, untilMs);
+                setSnoozeId(undefined);
+              }}
+              open={snoozeId === automation.id}
+            />
+          </InboxAutomationRow>
         ))}
       </InboxSection>
       {timeGroups(rest, activityAt, Date.now()).map((group) => (

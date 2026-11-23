@@ -71,6 +71,15 @@ describe("transcript blocks", () => {
     ).toMatchObject([{ fenced: false }]);
   });
 
+  it("reads a tilde fence and leaves a fence after a list marker in the prose", () => {
+    expect(parseMarkdownBlocks("~~~python\nimport os\n~~~")).toMatchObject([
+      { code: "import os\n", fenced: true, language: "python" },
+    ]);
+    expect(parseMarkdownBlocks("- ```js\n  a\n  ```")).toMatchObject([
+      { fenced: false },
+    ]);
+  });
+
   it("keeps an explicit text fence plain", () => {
     expect(
       parseMarkdownBlocks("```text\nconst total = 1;\n```")[0],

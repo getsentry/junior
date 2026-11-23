@@ -13,7 +13,7 @@ import {
 import type { EventAutomation } from "@/chat/event-automations/types";
 import type { EventRegistrationInput } from "@/chat/events/catalog";
 import type { SlackBotId } from "@/chat/slack/ids";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 /** Core-owned event namespace for Slack Events. Not a plugin publisher. */
 export const SLACK_EVENT_NAMESPACE = "slack";
@@ -122,7 +122,7 @@ export function requireSlackChannelMessageScope(
   const channelId = automation.destination.channelId;
   if (!CHANNEL_ID_PATTERN.test(channelId)) {
     throw new ToolInputError(
-      "A Slack channel-message automation works only in a channel, not in a DM.",
+      "A Slack channel-message automation works only in a channel, not in a DM. Create it from the Slack channel to watch.",
     );
   }
   const { identifier, match } = automation.trigger;

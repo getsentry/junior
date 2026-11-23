@@ -4,7 +4,7 @@ import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
   githubLinkedIssues,
-} from "../tools/footer.js";
+} from "../conversation-footer.js";
 import type {
   GitHubPullRequestConversationsInput,
   GitHubPullRequestLinkedIssuesInput,

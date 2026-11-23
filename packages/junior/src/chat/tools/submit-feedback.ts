@@ -4,7 +4,7 @@ import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import * as Sentry from "@/chat/sentry";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const submitFeedbackInputSchema = z.object({
   message: z

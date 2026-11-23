@@ -1,8 +1,8 @@
 /**
- * Resume on the stopped merge conflict item (`policy.ts`). It counts as
- * activity by a person, so the fix count starts again, and it starts a fix
- * at once, through the same `pull_request.merge_conflict` event as a fix
- * that the policy allows.
+ * Resume on the merge conflict item of a fix that did not land
+ * (`policy.ts`). It counts as activity by a person, so the fix count starts
+ * again, and it starts a fix at once, through the same
+ * `pull_request.merge_conflict` event as a fix that the policy allows.
  */
 import type {
   EventPublisher,
@@ -60,10 +60,11 @@ export async function resumeGitHubConflictFixes(args: {
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
     .returning({ pullRequestId: t.pullRequestId });
   if (resumed.length === 0) return;
+  // Core closed the item, so an undo also lets the policy ask again.
   const undo = () =>
     args.db
       .update(t)
-      .set({ conflictFixesResumedAt: row.resumedAt })
+      .set({ conflictFixAskedAt: null, conflictFixesResumedAt: row.resumedAt })
       .where(
         and(pullRequestRow(args.ref), eq(t.conflictFixesResumedAt, resumedAt)),
       );

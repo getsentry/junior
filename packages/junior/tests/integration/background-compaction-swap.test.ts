@@ -9,6 +9,13 @@ import type { PiMessage } from "@/chat/pi/messages";
 import { buildTurnContextPrompt } from "@/chat/prompt";
 import { renderCompactionSummary } from "@/chat/services/context-compaction";
 import { compactWithPreparedSummary } from "@/chat/services/context-compaction-swap";
+import { compactOnIdle } from "@/chat/cache-warming/idle-compaction";
+import { getAgentBackgroundCompactionMarkTokens } from "@/chat/services/context-budget";
+import {
+  completeConversationWork,
+  requestConversationWork,
+  startConversationWork,
+} from "@/chat/task-execution/store";
 import { closeConversationFixture } from "../fixtures/conversation";
 
 const MODEL_ID = "openai/gpt-5.4";
@@ -761,6 +768,49 @@ describe("background compaction swap", () => {
 
     expect(result.compacted).toBe(false);
     expect(summarize).not.toHaveBeenCalled();
+    expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
+      committed.historyVersion + 1,
+    );
+  });
+});
+
+describe("compaction on idle", () => {
+  afterEach(closeConversationFixture);
+
+  it("swaps the summary in only while no Run holds or waits for the Conversation", async () => {
+    const conversationId = "local:web:swap-idle";
+    const committed = await prepareSummary(conversationId, firstTurn);
+    const idle = {
+      conversationId,
+      modelId: MODEL_ID,
+      prefixTokens: getAgentBackgroundCompactionMarkTokens(MODEL_ID),
+      requestOverheadTokens: 0,
+      choose: () => ({
+        choice: "compact" as const,
+        costs: { compact: 0, stop: 0, warm: 0 },
+      }),
+    };
+    // The person returns: their work waits, then a Run takes the lease
+    // before it reads history.
+    await requestConversationWork({
+      conversationId,
+      destination: { platform: "local", conversationId },
+    });
+    expect((await compactOnIdle(idle))?.outcome).toBe("busy");
+    const lease = await startConversationWork({ conversationId });
+    if (lease.status !== "acquired") throw new Error("Expected work lease");
+
+    expect((await compactOnIdle(idle))?.outcome).toBe("busy");
+    const events = getConversationEventStore();
+    expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
+      committed.historyVersion,
+    );
+
+    await completeConversationWork({
+      conversationId,
+      leaseToken: lease.leaseToken,
+    });
+    expect((await compactOnIdle(idle))?.outcome).toBe("applied");
     expect(await events.loadCurrentHistoryVersion(conversationId)).toBe(
       committed.historyVersion + 1,
     );

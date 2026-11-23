@@ -1,10 +1,6 @@
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import * as z from "zod";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-export {
-  missingFileResult,
-  sliceFileContent,
-} from "@/chat/tool-support/text-range-result";
 
 export const readFileToolDefinition = zodToolDefinition({
   description:

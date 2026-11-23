@@ -33,7 +33,7 @@ export function signedRequest(input: {
 }
 
 /** Plugin state in memory, with expiry. */
-function memoryState(): PluginState {
+export function memoryState(): PluginState {
   const stored = new Map<string, { expiresAtMs: number; value: unknown }>();
   const live = (key: string) => {
     const entry = stored.get(key);
@@ -81,7 +81,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     closedNotices: [] as string[],
     codeChanges: [] as CodeChangeInput[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
-    /** Review items added. A change to an open item adds none. */
+    /** Inbox items added. A change to an open item adds none. */
     notices: [] as Array<{
       conversationId: string;
       notice: PluginReviewNotice;
@@ -102,7 +102,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
   /** Inbox and publish calls that fail before one succeeds. */
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
-  /** Dedupe keys of the open review items. */
+  /** Dedupe keys of the open inbox items. */
   const openNotices = new Set<string>();
   const events: EventPublisher = {
     async hasMatch(candidates) {
@@ -122,7 +122,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       recorded.published.push(event);
     },
   };
-  const reviewItems: HeartbeatHookContext["reviewItems"] = {
+  const inboxItems: HeartbeatHookContext["inboxItems"] = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
@@ -136,8 +136,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
           recorded.notices.push({ conversationId, notice });
         },
         async close(input) {
-          if (!openNotices.delete(input.dedupeKey)) return;
+          if (!openNotices.delete(input.dedupeKey)) return false;
           recorded.closedNotices.push(input.dedupeKey);
+          return true;
         },
       };
     },
@@ -149,7 +150,11 @@ export function createPluginHarness(fixture: GitHubFixture) {
   };
 
   async function deliver(request: Request): Promise<void> {
+    const unused = () => {
+      throw new Error("GitHub webhooks do not dispatch agents");
+    };
     const [route] = githubPlugin().hooks!.routes!({
+      agent: { dispatchForIdentity: unused },
       annotations: {
         forConversation() {
           return {
@@ -171,7 +176,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       events,
       log: { error() {}, info() {}, warn() {} },
       plugin: { name: "github" },
-      reviewItems,
+      inboxItems,
       state,
       users: {
         async readIdentity() {
@@ -179,6 +184,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
         },
       },
     });
+    if (!route) throw new Error("The GitHub plugin has no webhook route");
     const response = await route.handler(request);
     expect(response.status).toBe(202);
   }
@@ -188,7 +194,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       throw new Error("The GitHub heartbeat does not use this");
     };
     await githubPlugin().hooks!.heartbeat!({
-      agent: { dispatch: unused, get: unused },
+      agent: { dispatch: unused, dispatchForIdentity: unused, get: unused },
       annotations: {
         forConversation(conversationId) {
           return {
@@ -220,7 +226,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       },
       nowMs,
       plugin: { name: "github" },
-      reviewItems,
+      inboxItems,
       state,
     });
   }
@@ -237,14 +243,14 @@ export function createPluginHarness(fixture: GitHubFixture) {
     nowMs: number;
   }): Promise<void> {
     expect(openNotices.delete(input.dedupeKey)).toBe(true);
-    await githubPlugin().hooks!.reviewItemAnswered!({
+    await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,
       db: fixture.db(),
       events,
       log: { error() {}, info() {}, warn() {} },
       plugin: { name: "github" },
-      reviewItems,
+      inboxItems,
       state,
       watches: {
         canSubscribe: true,
@@ -273,14 +279,20 @@ export function createPluginHarness(fixture: GitHubFixture) {
     });
   }
 
+  /** A person's Dismiss: core closes the item and tells the plugin nothing. */
+  const dismiss = (dedupeKey: string) => {
+    openNotices.delete(dedupeKey);
+  };
+
   return {
     ...recorded,
     answer,
     deliver,
+    dismiss,
     events,
     failures,
     heartbeat,
-    reviewItems,
+    inboxItems,
     watches,
   };
 }

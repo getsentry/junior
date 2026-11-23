@@ -23,6 +23,7 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/chat/logging", () => ({
   logWarn: mocks.logWarn,
+  setSpanAttributes: vi.fn(),
 }));
 
 const proposal: ToolActionProposal = {

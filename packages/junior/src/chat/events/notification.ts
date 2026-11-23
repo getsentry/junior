@@ -1,9 +1,6 @@
 import { objectTypeSchema, type ObjectType } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { botConfig } from "@/chat/config";
-import { logInfo } from "@/chat/logging";
-import { admitAutomatedTurn } from "@/chat/services/automated-turn-limit";
-import { postAutomatedTurnLimitNoticeForConversation } from "@/chat/slack/automated-turn-limit-notice";
+import { enqueueAutomatedInput } from "@/chat/conversations/session-stop";
 import {
   renderTaskBatchInput,
   renderTaskInput,
@@ -16,11 +13,11 @@ import type {
 } from "@/chat/state/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import type { RuntimeInstructionInput } from "@/chat/agent/types";
-import {
-  appendAndEnqueueInboundMessage,
-  type AppendAndEnqueueInboundMessageResult,
-  type InboundMessage,
+import type {
+  AppendAndEnqueueInboundMessageResult,
+  InboundMessage,
 } from "@/chat/task-execution/store";
+import type { StateAdapter } from "chat";
 import type { Watch } from "@/chat/events/store";
 import { eventGuidance } from "@/chat/events/catalog";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
@@ -33,6 +30,7 @@ import {
 } from "@/chat/credentials/context";
 import { verifyTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { addConversationNote } from "@/chat/conversations/notes";
+import { eventInboundMessageId } from "@/chat/events/inbound-message-id";
 
 export const EVENT_WAIT_MS = 30_000;
 
@@ -130,6 +128,8 @@ export type EventMailboxMetadata = {
     objectType?: ObjectType | undefined;
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
+    /** What an agent update says happened, such as `completed`. */
+    status?: string;
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
@@ -166,7 +166,8 @@ export function isEventMailboxMetadata(
     (fields["objectType"] === undefined ||
       objectTypeSchema.safeParse(fields["objectType"]).success) &&
     (fields["trustedSummary"] === undefined ||
-      typeof fields["trustedSummary"] === "string")
+      typeof fields["trustedSummary"] === "string") &&
+    (fields["status"] === undefined || typeof fields["status"] === "string")
   );
 }
 
@@ -227,7 +228,7 @@ function readEventTaskFacts(
  * with one group per Watch, so shared instructions appear once. Entries
  * without task facts, such as child agent results, keep their own text as
  * their own inputs after the task. `rendered` replaces the input of an entry
- * by inbound message id, such as a person change to a Review item.
+ * by inbound message id, such as a person change to an Inbox item.
  */
 export function renderEventBatchInputs(
   messages: readonly InboundMessage[],
@@ -320,7 +321,7 @@ function messageEvent(message: InboundMessage): ConversationMessageEvent[] {
 /**
  * Return the saved Message fields for the Event inputs of one Turn.
  *
- * A person change to a Review item is not one of the Message's own Events:
+ * A person change to an Inbox item is not one of the Message's own Events:
  * its record goes to `reviewItemChanges`, and the dashboard shows it as a
  * change row. The Message's own Event is its first Watch Event, the
  * kind the task message counts, or else its first other input, such as an
@@ -332,9 +333,12 @@ export function eventBatchMessageMeta(
   messages: readonly InboundMessage[],
 ): Pick<
   ConversationMessageMeta,
+  | "eventIdentifier"
   | "eventNamespace"
   | "eventObjectType"
+  | "eventStatus"
   | "eventType"
+  | "eventWatchId"
   | "events"
   | "reviewItemChanges"
   | "trustedSummary"
@@ -356,7 +360,14 @@ export function eventBatchMessageMeta(
   return {
     eventType: metadata.event.eventType,
     eventNamespace: metadata.event.namespace,
+    eventIdentifier: metadata.event.identifier,
     eventObjectType: metadata.event.objectType,
+    ...(metadata.event.status
+      ? { eventStatus: metadata.event.status }
+      : undefined),
+    ...(metadata.event.subscriptionId
+      ? { eventWatchId: metadata.event.subscriptionId }
+      : undefined),
     ...(metadata.event.trustedSummary
       ? { trustedSummary: metadata.event.trustedSummary }
       : undefined),
@@ -392,6 +403,8 @@ export function createEventInboundMessage(input: {
   /** Core's decision for the Event author. */
   author?: AuthorTrust;
   receivedAtMs?: number;
+  /** What an agent update says happened. */
+  status?: string;
 }): InboundMessage {
   const metadata: EventMailboxMetadata = {
     kind: "event",
@@ -407,12 +420,16 @@ export function createEventInboundMessage(input: {
       subscriptionId: input.subscription.id,
       trustedSummary: input.event.trustedSummary,
       objectType: input.event.objectType,
+      ...(input.status ? { status: input.status } : undefined),
     },
   };
   return {
     conversationId: input.subscription.conversationId,
     createdAtMs: input.event.occurredAtMs,
-    inboundMessageId: `event:${input.subscription.id}:${input.event.eventKey}`,
+    inboundMessageId: eventInboundMessageId(
+      input.subscription.id,
+      input.event.eventKey,
+    ),
     delivery: "defer",
     source: "event",
     receivedAtMs: input.receivedAtMs ?? Date.now(),
@@ -447,8 +464,7 @@ export async function addQuietEventNote(args: {
  * Enqueue a event as normal conversation mailbox input.
  *
  * The watch only names the conversation. Destination stays on the conversation
- * and is applied when the worker runs. After too many automated Turns with no
- * user Turn, later wakes stay quiet until a user message clears the pause.
+ * and is applied when the worker runs. A stopped Conversation holds the Event.
  */
 export async function enqueueEventNotification(args: {
   /** Core's decision for the Event author. */
@@ -460,36 +476,8 @@ export async function enqueueEventNotification(args: {
   people?: readonly string[] | undefined;
   queue: ConversationWorkQueue;
   subscription: Watch;
-  state?: Parameters<typeof appendAndEnqueueInboundMessage>[0]["state"];
-}): Promise<AppendAndEnqueueInboundMessageResult | { status: "paused" }> {
-  const maxTurns = botConfig.maxConsecutiveAutomatedTurns;
-  const decision = await admitAutomatedTurn({
-    conversationId: args.subscription.conversationId,
-    maxTurns,
-    nowMs: args.event.occurredAtMs,
-    state: args.state,
-  });
-  if (decision.status === "paused") {
-    logInfo("events.automated_turn_limit.paused", {
-      conversationId: args.subscription.conversationId,
-      "app.automated_turn_limit.consecutive":
-        decision.consecutiveAutomatedTurns,
-      "app.automated_turn_limit.max": maxTurns,
-      "app.event.event_type": args.event.eventType,
-      "app.event.namespace": args.event.namespace,
-    });
-    if (decision.shouldPostNotice) {
-      // Safety net when the Turn that hit the limit could not post a notice.
-      await postAutomatedTurnLimitNoticeForConversation({
-        conversationId: args.subscription.conversationId,
-        maxTurns,
-        nowMs: args.event.occurredAtMs,
-      });
-    }
-    // Do not enqueue a Turn. Terminal watches may still complete after this.
-    return { status: "paused" };
-  }
-
+  state?: StateAdapter | undefined;
+}): Promise<AppendAndEnqueueInboundMessageResult | { status: "held" }> {
   const task = eventTaskFacts(
     args.subscription,
     args.event,
@@ -497,7 +485,7 @@ export async function enqueueEventNotification(args: {
     args.doneBy,
     args.author,
   );
-  return await appendAndEnqueueInboundMessage({
+  return await enqueueAutomatedInput({
     message: createEventInboundMessage({
       author: args.author,
       event: args.event,

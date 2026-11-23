@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useSearchParams } from "react-router";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
 import { LoadMorePagination } from "../components/Pagination";
@@ -10,15 +10,19 @@ import { useDocumentTitle } from "../documentTitle";
 import { pathWithSearch, useDebouncedSearchParam } from "../searchParams";
 import { cn } from "../styles";
 import { InboxSidebar, type InboxGroupKey } from "./InboxSidebar";
-import { ReviewItemDetails } from "./ReviewItemDetails";
-import { ReviewItemView } from "./ReviewItemView";
+import { InboxItemDetails } from "./InboxItemDetails";
+import { InboxItemView } from "./InboxItemView";
 import {
-  useBlockedAutomationsData,
   useLinkedConversationTitles,
-  useReviewItemData,
-  useReviewItemsData,
+  useInboxItemData,
+  useInboxItemsData,
 } from "./queries";
-import { inboxGroups, nextInboxItem, reviewItemPath } from "./reviewItemFormat";
+import {
+  inboxGroups,
+  itemConversationId,
+  nextInboxItem,
+  inboxItemPath,
+} from "./inboxItemFormat";
 
 const shellClass =
   "grid h-full min-h-0 w-full overflow-hidden bg-dashboard-bg md:grid-cols-[20rem_minmax(0,1fr)]";
@@ -44,7 +48,7 @@ export function InboxLoading() {
     <div className={shellClass}>
       <aside
         aria-busy="true"
-        aria-label="Loading review items"
+        aria-label="Loading inbox items"
         className="grid content-start gap-2 border-r border-dashboard-border bg-dashboard-surface-panel px-5 py-3"
       >
         <Skeleton className="h-5 w-16" />
@@ -61,7 +65,7 @@ export function InboxLoading() {
 }
 
 /**
- * Render the inbox: Review items that the viewer can see in a sidebar, and
+ * Render the inbox: Inbox items that the viewer can see in a sidebar, and
  * one selected item with the end of its Conversation, where the viewer
  * decides it. Details show beside the item, or in a sheet on small screens.
  */
@@ -73,12 +77,7 @@ export function InboxPage() {
     items: list,
     moreArchived,
     query: items,
-  } = useReviewItemsData({ forViewer: true, q });
-  const showBlocked = !q;
-  const blocked = useBlockedAutomationsData(showBlocked);
-  const blockedAutomations = showBlocked
-    ? (blocked.data?.automations ?? [])
-    : [];
+  } = useInboxItemsData({ forViewer: true, q });
   const groups = useMemo(() => inboxGroups(list), [list]);
   // A search lists every match in one list. Later pages add open items, so
   // keep open matches before archived ones.
@@ -111,7 +110,7 @@ export function InboxPage() {
   const selectedId = itemParam ?? open[0]?.id;
   const listed = list.find((item) => item.id === selectedId);
   // A link can select an item that is not in the current view.
-  const direct = useReviewItemData(listed ? undefined : selectedId);
+  const direct = useInboxItemData(listed ? undefined : selectedId);
   const selected = listed ?? direct.data;
   const nextItem = selected ? nextInboxItem(groups, selected) : undefined;
 
@@ -124,15 +123,16 @@ export function InboxPage() {
     const shown = selected ? [...rows, selected] : rows;
     return [
       ...new Set(
-        shown
-          .filter((item) => !item.automationId)
-          .map((item) => item.addedByConversationId),
+        shown.flatMap((item) => {
+          const conversationId = itemConversationId(item);
+          return conversationId && !item.automationId ? [conversationId] : [];
+        }),
       ),
     ];
   }, [collapsed, groups, results, selected]);
   const sourceTitles = useLinkedConversationTitles(sourceIds);
-  const sourceTitle = (item: ReviewItemPayload) =>
-    sourceTitles[sourceIds.indexOf(item.addedByConversationId)];
+  const sourceTitle = (item: InboxItemPayload) =>
+    sourceTitles[sourceIds.indexOf(itemConversationId(item) ?? "")];
 
   const panelFits = useDetailsPanel();
   const [detailsChoice, setDetailsChoice] = useState<boolean>();
@@ -141,8 +141,7 @@ export function InboxPage() {
   const listParams = new URLSearchParams(searchParams);
   listParams.delete("item");
   const loaded = Boolean(items.data);
-  const empty =
-    loaded && !q && open.length === 0 && blockedAutomations.length === 0;
+  const empty = loaded && !q && open.length === 0;
 
   return (
     <div className={shellClass}>
@@ -153,7 +152,6 @@ export function InboxPage() {
         )}
       >
         <InboxSidebar
-          blocked={blockedAutomations}
           collapsed={collapsed}
           error={Boolean(items.error && !items.data)}
           footer={
@@ -196,7 +194,7 @@ export function InboxPage() {
         />
       </div>
       <section
-        aria-label="Selected review item"
+        aria-label="Selected inbox item"
         className={cn(
           "grid min-h-0 grid-rows-[minmax(0,1fr)] overflow-hidden",
           !itemParam && "max-md:hidden",
@@ -205,7 +203,7 @@ export function InboxPage() {
       >
         {selected ? (
           <>
-            <ReviewItemView
+            <InboxItemView
               backTo={pathWithSearch("/inbox", listParams)}
               detailsOpen={detailsOpen}
               item={selected}
@@ -217,7 +215,7 @@ export function InboxPage() {
                   ? {
                       title: nextItem.title,
                       to: pathWithSearch(
-                        reviewItemPath(nextItem.id),
+                        inboxItemPath(nextItem.id),
                         listParams,
                       ),
                     }
@@ -227,14 +225,14 @@ export function InboxPage() {
               sourceTitle={sourceTitle(selected)}
             />
             {detailsOpen ? (
-              <ReviewItemDetails
+              <InboxItemDetails
                 item={selected}
                 onClose={() => setDetailsChoice(false)}
               />
             ) : null}
           </>
         ) : direct.error ? (
-          <InlineError className="p-7">Review item not found.</InlineError>
+          <InlineError className="p-7">Inbox item not found.</InlineError>
         ) : empty ? (
           <InboxEmpty />
         ) : null}

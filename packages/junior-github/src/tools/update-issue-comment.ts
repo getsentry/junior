@@ -74,7 +74,11 @@ export function createGitHubUpdateIssueCommentTool(
       });
       if (!lookup.ok) {
         const message = `GitHub issue comment lookup failed with HTTP ${lookup.status}: ${githubErrorMessage(lookup.body)}`;
-        if (lookup.status === 404) throw new PluginToolInputError(message);
+        if (lookup.status === 404) {
+          throw new PluginToolInputError(
+            `${message}. Check repo and comment_id.`,
+          );
+        }
         throw new Error(message);
       }
       const author = z
@@ -82,7 +86,7 @@ export function createGitHubUpdateIssueCommentTool(
         .safeParse(lookup.body);
       if (!author.success || author.data.user?.id !== botUserId) {
         throw new PluginToolInputError(
-          "This bot can only edit issue comments it posted.",
+          "This bot can only edit issue comments it posted. Post a new comment instead.",
         );
       }
 
@@ -95,7 +99,9 @@ export function createGitHubUpdateIssueCommentTool(
       if (!response.ok) {
         const message = `GitHub issue comment update failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
         if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
+          throw new PluginToolInputError(
+            `${message}. Check repo and comment_id, and fix any field that GitHub names.`,
+          );
         }
         throw new Error(message);
       }

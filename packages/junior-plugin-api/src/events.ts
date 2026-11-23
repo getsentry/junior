@@ -458,6 +458,12 @@ export const pluginEventDeclarationSchema = z
       .min(1)
       .max(EVENT_GUIDANCE_MAX_LENGTH)
       .optional(),
+    /**
+     * How an Event of this type reads after the name of its resource, such
+     * as `is merged` or `gets a new comment`. People read it in a sentence,
+     * such as "When getsentry/junior#12 is merged".
+     */
+    phrase: z.string().trim().min(1).max(80).optional(),
   })
   .strict();
 
@@ -490,7 +496,7 @@ export const pluginEventsSchema = z
       .optional(),
     /**
      * The resource that one web page shows, the inverse of `resourceUrl`, so
-     * a link such as a Review item's subject can name an Event resource.
+     * a link such as an Inbox item's subject can name an Event resource.
      * Returns undefined when no resource type of the source has the page.
      */
     resourceForUrl: z

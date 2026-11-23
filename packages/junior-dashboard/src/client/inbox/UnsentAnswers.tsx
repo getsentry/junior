@@ -9,7 +9,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import {
   AlertDialog,
@@ -20,7 +20,7 @@ import {
   AlertDialogFooter,
   AlertDialogTitle,
 } from "../components/ui/alert-dialog";
-import { reviewItemTitleText } from "./reviewItemFormat";
+import { itemConversationId, inboxItemTitleText } from "./inboxItemFormat";
 
 type UnsentAnswers = {
   conversationId: string;
@@ -56,14 +56,11 @@ export function UnsentAnswersProvider(props: {
 /**
  * Report that the answer form of an item has unsent answers. It counts only
  * when a message from the viewer closes the item. This follows
- * `closeReviewItemsAnsweredByReply`: an open action item that the agent
+ * `closeInboxItemsAnsweredByReply`: an open action item that the agent
  * added in this Conversation, not assigned to Everyone, that the viewer can
  * act on. Outside a Conversation it does nothing.
  */
-export function useReportUnsentAnswer(
-  item: ReviewItemPayload,
-  unsent: boolean,
-) {
+export function useReportUnsentAnswer(item: InboxItemPayload, unsent: boolean) {
   const context = useContext(UnsentAnswersContext);
   const key = useId();
   const closesOnReply =
@@ -71,8 +68,8 @@ export function useReportUnsentAnswer(
     item.status === "open" &&
     item.canAct &&
     !item.assignedToEveryone &&
-    item.addedByConversationId === context?.conversationId;
-  const title = reviewItemTitleText(item);
+    itemConversationId(item) === context?.conversationId;
+  const title = inboxItemTitleText(item);
   useEffect(() => {
     if (!context || !closesOnReply || !unsent) return;
     context.titles.set(key, title);
@@ -127,11 +124,11 @@ export function useConfirmUnsentAnswers() {
               <strong className="font-medium text-dashboard-text">
                 {titles[0]}
               </strong>{" "}
-              are not sent. This message closes that review item, and the
-              answers are lost.
+              are not sent. This message closes that inbox item, and the answers
+              are lost.
             </>
           ) : (
-            `Your answers to ${titles.length} review items are not sent. This message closes those items, and the answers are lost.`
+            `Your answers to ${titles.length} inbox items are not sent. This message closes those items, and the answers are lost.`
           )}
         </AlertDialogDescription>
         <AlertDialogFooter>

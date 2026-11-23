@@ -10,8 +10,8 @@ vi.mock("node:dns/promises", () => ({
   },
 }));
 
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { assertPublicUrl } from "@/chat/tools/web/network";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { assertPublicUrl } from "@/chat/tool-support/web/network";
 
 describe("network URL guards", () => {
   beforeEach(() => {
@@ -23,7 +23,7 @@ describe("network URL guards", () => {
       assertPublicUrl("http://[::ffff:127.0.0.1]/"),
     ).rejects.toMatchObject({
       name: "ToolInputError",
-      message: "Private IPv6 addresses are blocked",
+      message: "Private IPv6 addresses are blocked. Use a public URL.",
     });
   });
 
@@ -40,7 +40,7 @@ describe("network URL guards", () => {
       assertPublicUrl("https://example.com/path"),
     ).rejects.toMatchObject({
       name: "ToolInputError",
-      message: "Resolved to a private IPv6 address",
+      message: "Resolved to a private IPv6 address. Use a public URL.",
     });
   });
 });

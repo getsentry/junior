@@ -108,7 +108,8 @@ function sourceDirectories(root) {
     .filter((directory) => fs.existsSync(path.join(root, directory)));
 }
 
-function main() {
+/** Check that production source adds no type assertions. */
+export function run() {
   const baseline = JSON.parse(
     fs.readFileSync(path.join(REPO_ROOT, BASELINE_PATH), "utf8"),
   );
@@ -118,20 +119,9 @@ function main() {
     ).filter(([filePath]) => isCheckedFile(filePath)),
   );
   const errors = checkTypeAssertions(counts, baseline);
-  if (errors.length === 0) {
-    console.log("Production source adds no type assertions.");
-    return;
-  }
-  console.error(
-    [
-      "Type assertion check failed:",
-      ...errors,
-      `Fix the code. Do not hide the assertion in a helper, and do not add or raise entries in ${BASELINE_PATH}, to pass. When you move a file, move its entry.`,
-    ].join("\n"),
-  );
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  if (errors.length === 0) return [];
+  return [
+    ...errors,
+    `Fix the code. Do not hide the assertion in a helper, and do not add or raise entries in ${BASELINE_PATH}, to pass. When you move a file, move its entry.`,
+  ];
 }

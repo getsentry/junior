@@ -48,6 +48,18 @@ release is ready. If Junior reports this unsupported database state:
 
 Fresh databases without Junior tables do not require the bridge release.
 
+## Memory plugin databases
+
+Through 0.310.0, Memory was the `@sentry/junior-memory` plugin. A later
+`junior upgrade` keeps the Memory tables and data of a database that ran
+every plugin migration. It stops with an error on a database that ran only
+some of them. Run `pnpm exec junior upgrade` with `@sentry/junior@0.310.0` and
+`@sentry/junior-memory@0.310.0` first, then upgrade again.
+
+A database that ran the plugin can roll back to 0.310.0. A database that a
+later version created cannot roll back to 0.310.0 or earlier: the plugin
+migrations of 0.310.0 fail on its Memory tables. See [Memory](/operate/memory/).
+
 ## Native agent-history migration
 
 When upgrading from a release that writes `agent_step` conversation events,
@@ -64,8 +76,7 @@ An already-current database reports its migrations as existing:
 Checking database migrations...
   junior: up to date (8 migrations)
   junior-github: up to date (4 migrations)
-  junior-memory: up to date (6 migrations)
-Database is up to date (18 migrations).
+Database is up to date (12 migrations).
 ```
 
 ## Failure behavior

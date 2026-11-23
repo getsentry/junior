@@ -2,18 +2,16 @@ import type { User } from "@sentry/junior-plugin-api";
 import { eq, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import type { JuniorDatabase } from "@/db/db";
-import { reviewItemsNeedingUserVersionQuery } from "@/chat/review-items/store";
+import { inboxItemsNeedingUserVersionQuery } from "@/chat/inbox-items/store";
 import { juniorUsers } from "@/db/schema";
-import { conversationVersionQuery } from "./conversations/detail-etag";
+import { conversationVersionsQuery } from "./conversations/detail-etag";
 import { conversationFeedVersionQuery } from "./conversations/list";
 import { personalSpendVersionQuery } from "./people/spend.query";
 import type { Versions } from "./schema/versions";
 
 /**
  * Build a JSON object of each Conversation's tree token by id, with no entry
- * for a missing one. Each id is its own key lookup in the same statement.
- * Pairs join with `||`, because `jsonb_build_object` takes at most 100
- * arguments.
+ * for a missing one. The tokens come from one grouped pass over all the ids.
  */
 function conversationDetailsVersionQuery(
   db: JuniorDatabase,
@@ -23,13 +21,15 @@ function conversationDetailsVersionQuery(
   if (conversationIds.length === 0) {
     return sql<Record<string, string>>`'{}'::jsonb`;
   }
-  const pairs = conversationIds.map(
-    (conversationId) =>
-      sql`jsonb_build_object(${conversationId}::text, (${conversationVersionQuery(db, conversationId, viewerId)}))`,
+  const versions = conversationVersionsQuery(db, conversationIds, viewerId).as(
+    "conversation_versions",
   );
-  return sql<
-    Record<string, string>
-  >`jsonb_strip_nulls(${sql.join(pairs, sql` || `)})`;
+  const byId = db
+    .select({
+      byId: sql`coalesce(jsonb_object_agg(${versions.conversationId}, ${versions.version}), '{}'::jsonb)`,
+    })
+    .from(versions);
+  return sql<Record<string, string>>`(${byId})`;
 }
 
 /**
@@ -51,7 +51,7 @@ export async function readVersions(
         viewer.id,
       ),
       conversations: sql<string>`(${conversationFeedVersionQuery(db, viewer.id)})`,
-      reviewItems: sql<string>`(${reviewItemsNeedingUserVersionQuery(db, viewer.id)})`,
+      inboxItems: sql<string>`(${inboxItemsNeedingUserVersionQuery(db, viewer.id)})`,
       spend: sql<string>`(${personalSpendVersionQuery(db, viewer.email, Date.now())})`,
     })
     // The viewer's row anchors the one-row select.

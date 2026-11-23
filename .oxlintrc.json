@@ -109,6 +109,7 @@
     "anti-slop/no-unsafe-dictionary-type": "off",
     "anti-slop/require-safety-comment-for-type-assertion": "off",
     "junior/no-read-only-object-annotations": "error",
+    "junior/no-record-type-guard": "error",
     "junior/zod-namespace-import": "error"
   },
   "overrides": [
@@ -128,6 +129,7 @@
       "files": ["packages/*/src/**/*.ts"],
       "rules": {
         "junior/no-raw-sql-queries": "error",
+        "junior/no-regex-markdown": "error",
         "junior/no-regex-url-parsing": "error",
         "junior/no-value-switch": "error"
       }
@@ -151,7 +153,7 @@
     },
     {
       "files": [
-        "packages/junior/src/chat/cache-warming/warmup.ts",
+        "packages/junior/src/chat/cache-warming/recorder.ts",
         "packages/junior/src/chat/pi/traced-stream.ts",
         "packages/junior/src/chat/sandbox/egress/vercel.ts"
       ],
@@ -348,7 +350,7 @@
         "packages/junior/tests/component/sandbox/snapshot/resolve.test.ts",
         "packages/junior/tests/component/runtime/agent-run-mcp-progressive-loading.test.ts",
         "packages/junior/tests/component/runtime/agent-run-sandbox.test.ts",
-        "packages/junior/tests/component/briefs/conversation-brief-task.test.ts",
+        "packages/junior/tests/component/conversations/metadata-task.test.ts",
         "packages/junior/tests/component/memory-plugin-storage.test.ts",
         "packages/junior/tests/component/plugins/plugin-registry.test.ts",
         "packages/junior/tests/component/task-execution/conversation-index-redis.test.ts",

@@ -9,7 +9,7 @@ import { IdleText, lastActivity } from "../conversations/codeChangeIdle";
 import { cn } from "../styles";
 import { inboxCardClass } from "./inboxRowStyles";
 import type { InboxFeedPages } from "./inboxData";
-import type { InboxBundle } from "./reviewItemFormat";
+import type { InboxBundle } from "./inboxItemFormat";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 /** One open code change, with the pull request asks that name it. */
@@ -69,8 +69,7 @@ export function pullRequestSections(
   const attached = new Set(rows.flatMap((row) => row.items));
   const loose = itemRows.filter((row) => !attached.has(row));
   // An ask that waits on the viewer puts its change in Waiting on you, also
-  // a draft, so the pile matches its count (`waitingPullRequestCount`)
-  // before the viewer's changes load.
+  // a draft.
   const waiting = rows
     .filter((row) => row.items.some((item) => item.needsYou))
     .sort((a, b) => waitedSince(a) - waitedSince(b));
@@ -98,25 +97,6 @@ export function pullRequestSections(
       label: "Drafts",
     },
   ].filter((section) => section.changes.length + section.items.length > 0);
-}
-
-/**
- * Count the entries under Waiting on you: one per pull request with an ask
- * that waits on the viewer, and one per such ask that names no pull request.
- * It needs only the asks, so the badge counts before the viewer's changes
- * load. Two asks for one pull request that is not the viewer's open change
- * show as two rows there, but count once.
- */
-export function waitingPullRequestCount(
-  itemRows: readonly InboxBundle[],
-): number {
-  return new Set(
-    itemRows
-      .filter((row) => row.needsYou)
-      .map((row) =>
-        row.newest.subject?.url ? sameUrl(row.newest.subject.url) : row.key,
-      ),
-  ).size;
 }
 
 /**

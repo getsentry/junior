@@ -1,32 +1,27 @@
 import type { ReactNode } from "react";
 import { Link } from "react-router";
-import type {
-  AutomationListItem,
-  ReviewItemPayload,
-} from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { InlineError } from "../components/InlineError";
 import { SearchInput } from "../components/SearchInput";
 import { ScrollArea } from "../components/ui/scroll-area";
 import { Skeleton } from "../components/ui/skeleton";
 import { ConversationSectionHeading } from "../conversations/ConversationSectionHeading";
-import { automationPath } from "../format";
 import { pathWithSearch } from "../searchParams";
 import { cn } from "../styles";
-import { reviewItemPath, reviewItemStatusLabel } from "./reviewItemFormat";
+import { inboxItemPath, inboxItemStatusLabel } from "./inboxItemFormat";
 import { formatRelativeTime } from "../time";
-import { reviewItemTitleText } from "./reviewItemFormat";
+import { inboxItemTitleText } from "./inboxItemFormat";
 
 /** A sidebar group key. The page owns which groups are collapsed. */
-export type InboxGroupKey = "blocked" | "fyi" | "needs-you";
+export type InboxGroupKey = "fyi" | "needs-you";
 
-type Dot = "accent" | "muted" | "warning" | "closed";
+type Dot = "accent" | "muted" | "closed";
 
 const dotClass: Record<Dot, string> = {
   accent: "bg-dashboard-accent",
   closed: "border border-dashboard-text-faint",
   muted: "bg-dashboard-text-faint",
-  warning: "bg-amber-300",
 };
 
 const rowClass =
@@ -110,7 +105,7 @@ function InboxRowsLoading() {
       className="grid gap-0.5"
       role="status"
     >
-      <span className="sr-only">Loading review items</span>
+      <span className="sr-only">Loading inbox items</span>
       <Skeleton className="mb-1 ml-3 mt-1.5 h-2.5 w-16" />
       {[0, 1, 2, 3, 4].map((row) => (
         <div className="grid gap-1 rounded-lg px-3 py-2" key={row}>
@@ -123,46 +118,44 @@ function InboxRowsLoading() {
 }
 
 /**
- * List the inbox: open items that need the viewer, notices, and blocked
- * Automations, each in a group that collapses. A search shows one list of
+ * List the inbox: open items that need the viewer and notices, each in a
+ * group that collapses. A search shows one list of
  * open and archived matches instead.
  */
 export function InboxSidebar(props: {
-  blocked: AutomationListItem[];
   collapsed: ReadonlySet<InboxGroupKey>;
   /** Shown under the groups, such as an empty state or load more. */
   footer?: ReactNode;
   error: boolean;
-  fyi: ReviewItemPayload[];
+  fyi: InboxItemPayload[];
   loading: boolean;
-  needsYou: ReviewItemPayload[];
+  needsYou: InboxItemPayload[];
   onSearchChange(value: string): void;
   onToggle(key: InboxGroupKey): void;
   /** Search matches in API order. Set while a search is active. */
-  results?: ReviewItemPayload[];
+  results?: InboxItemPayload[];
   search: string;
   searchParams: URLSearchParams;
   selectedId?: string;
   /** False while small screens show the list instead of the selected item. */
   selectedShown: boolean;
   /** The title of the Conversation that added an item, when it is known. */
-  sourceTitle(item: ReviewItemPayload): string | undefined;
+  sourceTitle(item: InboxItemPayload): string | undefined;
 }) {
   const groups = [
     { items: props.needsYou, key: "needs-you", label: "Needs you" },
     { items: props.fyi, key: "fyi", label: "FYI" },
   ] as const;
-  const shown = [
-    ...groups.map((group) => group.items.length),
-    props.blocked.length,
-  ];
   const firstKey = (index: number) =>
-    shown.slice(0, index).every((count) => count === 0);
-  const itemRow = (item: ReviewItemPayload) => {
+    groups.slice(0, index).every((group) => group.items.length === 0);
+  const itemRow = (item: InboxItemPayload) => {
     const open = item.status === "open";
-    const source = item.automationId ? "Automation" : props.sourceTitle(item);
+    const source =
+      item.automationId || item.owner.kind === "automation"
+        ? "Automation"
+        : props.sourceTitle(item);
     const meta = [
-      open ? undefined : reviewItemStatusLabel(item),
+      open ? undefined : inboxItemStatusLabel(item),
       source,
       formatRelativeTime(open ? item.createdAt : item.closedAt),
     ];
@@ -178,8 +171,8 @@ export function InboxSidebar(props: {
               ? "always"
               : "wide"
         }
-        title={reviewItemTitleText(item)}
-        to={pathWithSearch(reviewItemPath(item.id), props.searchParams)}
+        title={inboxItemTitleText(item)}
+        to={pathWithSearch(inboxItemPath(item.id), props.searchParams)}
       />
     );
   };
@@ -193,7 +186,7 @@ export function InboxSidebar(props: {
       </div>
       <div className="px-4 pb-2">
         <SearchInput
-          label="Search review items"
+          label="Search inbox items"
           onChange={props.onSearchChange}
           placeholder="Search items…"
           size="compact"
@@ -202,12 +195,12 @@ export function InboxSidebar(props: {
       </div>
       <ScrollArea>
         <nav
-          aria-label="Review items"
+          aria-label="Inbox items"
           className="px-3 pb-[max(0.5rem,env(safe-area-inset-bottom))]"
         >
           {props.error ? (
             <InlineError className="px-3 py-2">
-              Could not load review items.
+              Could not load inbox items.
             </InlineError>
           ) : props.loading ? (
             <InboxRowsLoading />
@@ -237,23 +230,6 @@ export function InboxSidebar(props: {
                   {group.items.map(itemRow)}
                 </InboxGroup>
               ))}
-              <InboxGroup
-                collapsed={props.collapsed.has("blocked")}
-                count={props.blocked.length}
-                first={firstKey(2)}
-                label="Blocked automations"
-                onToggle={() => props.onToggle("blocked")}
-              >
-                {props.blocked.map((automation) => (
-                  <InboxRow
-                    dot="warning"
-                    key={automation.id}
-                    meta={automation.statusReason ?? "Blocked"}
-                    title={automation.title}
-                    to={automationPath(automation.id)}
-                  />
-                ))}
-              </InboxGroup>
               {props.footer}
             </>
           )}

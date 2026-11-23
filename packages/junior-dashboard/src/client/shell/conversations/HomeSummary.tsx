@@ -38,7 +38,7 @@ function rollingMerges(days: CodeActivityDay[]) {
 
 /**
  * Show the viewer's last 7 days under the home composer: merges, open code
- * changes, and Review items that wait on them. Counts only code changes that
+ * changes, and Inbox items that wait on them. Counts only code changes that
  * Junior opened in Conversations that the viewer started.
  */
 export function HomeSummary() {

@@ -258,3 +258,27 @@ export function canAccessConversation(args: {
   // Missing or unknown visibility is private.
   return target.visibility === "public";
 }
+
+/**
+ * Whether work in `requesterConversationId` may read `conversationId`, by
+ * `canAccessConversation`. A missing target is not readable. A requester that
+ * is not stored yet reaches only public targets.
+ */
+export async function canReadConversation(
+  db: JuniorDatabase,
+  requesterConversationId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const access = await readConversationAccessFromSql(db, [
+    requesterConversationId,
+    conversationId,
+  ]);
+  const target = access.get(conversationId);
+  return (
+    target !== undefined &&
+    canAccessConversation({
+      requester: access.get(requesterConversationId) ?? { visibility: null },
+      target,
+    })
+  );
+}

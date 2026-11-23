@@ -25,9 +25,26 @@ function pageSegment(url: URL, page: string): string | undefined {
   return match ? decodeURIComponent(match[1]!) : undefined;
 }
 
-// The live cards of mock pull requests that conflict with main, so their
-// asks in the Inbox say "Merge conflict".
+// The live cards of mock pull requests. Those that conflict with main make
+// their asks in the Inbox say "Merge conflict".
 const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
+  "https://github.com/getsentry/junior/pull/3052": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/junior#3052",
+    label: "getsentry/junior#3052",
+    title: "feat(dashboard): Tabs in the dashboard sidebar",
+    displayType: "Pull request",
+    status: "open",
+    facts: {
+      type: "code_change",
+      author: "junior",
+      sourceBranch: "feat/sidebar-tabs",
+      targetBranch: "main",
+      mergeable: true,
+    },
+    plugin: "github",
+  },
   "https://github.com/getsentry/junior/pull/2188": {
     kind: "object",
     objectType: "code_change",
@@ -578,7 +595,7 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   // Match the API: a private Conversation resolves only for a participant.
   if (detail && (detail.visibility !== "private" || detail.isParticipant)) {
     const object = conversationObjectCard({
-      brief: detail.brief?.content.summary,
+      description: detail.summary,
       participants: detail.participants ?? [],
       summary: detail,
       url: href,

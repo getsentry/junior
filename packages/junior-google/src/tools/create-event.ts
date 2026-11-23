@@ -9,56 +9,18 @@ import {
   emailListSchema,
   googleApiError,
   googleApiRequest,
-  MAX_EVENT_MS,
-  ownEventOutputFields,
-  ownEventResult,
-  ownEventSchema,
   requireAllowedEmails,
   timeZoneSchema,
   withRequester,
   type GoogleToolContext,
-} from "./shared";
-
-const repeatSchema = z
-  .object({
-    frequency: z
-      .enum(["weekdays", "weekly", "monthly"])
-      .describe(
-        "`weekdays` repeats Monday to Friday. `weekly` repeats on the start's weekday. `monthly` repeats on the start's day of the month.",
-      ),
-    interval: z
-      .number()
-      .int()
-      .min(1)
-      .max(12)
-      .default(1)
-      .describe(
-        "Repeat every N weeks or months. 2 with `weekly` means every other week. Ignored for `weekdays`.",
-      ),
-    count: z
-      .number()
-      .int()
-      .min(2)
-      .max(200)
-      .optional()
-      .describe("Number of occurrences. Omit when the series has no end."),
-  })
-  .strict();
-
-type Repeat = z.infer<typeof repeatSchema>;
-
-/** Build the Google recurrence rule for a repeating event. Exported for tests. */
-export function recurrenceRule(repeat: Repeat): string {
-  const parts =
-    repeat.frequency === "weekdays"
-      ? ["FREQ=WEEKLY", "BYDAY=MO,TU,WE,TH,FR"]
-      : [
-          `FREQ=${repeat.frequency === "weekly" ? "WEEKLY" : "MONTHLY"}`,
-          ...(repeat.interval > 1 ? [`INTERVAL=${repeat.interval}`] : []),
-        ];
-  if (repeat.count) parts.push(`COUNT=${repeat.count}`);
-  return `RRULE:${parts.join(";")}`;
-}
+} from "../google-api";
+import { repeatSchema, recurrenceRule } from "../calendar/recurrence";
+import {
+  MAX_EVENT_MS,
+  ownEventOutputFields,
+  ownEventResult,
+  ownEventSchema,
+} from "../calendar/events";
 
 const inputSchema = z
   .object({
@@ -114,7 +76,7 @@ const outputSchema = pluginToolOutputSchema.extend({
  * Google accepts client ids in base32hex (`a-v`, `0-9`). Hex is a subset, so a
  * retried tool call maps to the same event instead of a duplicate invite.
  */
-export function calendarEventId(toolCallId: string | undefined): string {
+function calendarEventId(toolCallId: string | undefined): string {
   return createHash("sha256")
     .update(`junior-google:${toolCallId ?? randomUUID()}`)
     .digest("hex")
@@ -150,7 +112,9 @@ export const createCalendarEventTool = definePluginTool({
       throw new PluginToolInputError("end must be after start.");
     }
     if (endMs - startMs > MAX_EVENT_MS) {
-      throw new PluginToolInputError("Events can be at most 8 hours long.");
+      throw new PluginToolInputError(
+        "Events can be at most 8 hours long. Set end at most 8 hours after start.",
+      );
     }
     const attendees = await withRequester(ctx, input.attendees);
     const required = new Set(attendees);

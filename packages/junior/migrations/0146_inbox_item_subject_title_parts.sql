@@ -1,0 +1,1 @@
+ALTER TABLE "junior_inbox_items" ADD COLUMN "subject_title_parts" jsonb;

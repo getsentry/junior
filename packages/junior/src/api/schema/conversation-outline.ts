@@ -21,7 +21,7 @@ export const conversationOutlineSchema = z
           createdAt: z.string().datetime(),
           /** Identity id of the author. Detail `authors` maps it to the person. */
           actorIdentityId: z.string().min(1).optional(),
-          /** Agent invocation whose input this is. An agent wrote it. */
+          /** Set on input that an earlier release's agent wrote. */
           agentInvocationId: z.string().min(1).optional(),
           text: z.string().min(1),
           /** The last Junior text before the next item. */

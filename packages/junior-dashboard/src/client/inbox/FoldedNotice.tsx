@@ -1,7 +1,7 @@
 import { ChevronRight } from "lucide-react";
 import type {
-  ReviewItemActionBody,
-  ReviewItemPayload,
+  InboxItemActionBody,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import {
@@ -13,18 +13,18 @@ import { ClampedDisplayText } from "../display-text/DisplayText";
 import { dashboardDisclosureChevronClass } from "../styles";
 import { AskKindIcon } from "./askKind";
 import { foldedNoticeLabel } from "./inboxModel";
-import { ReviewItemActions } from "./ReviewItemActions";
-import { ReviewItemObjects } from "./ReviewItemObjects";
-import { reviewItemText } from "./reviewItemFormat";
+import { InboxItemActions } from "./InboxItemActions";
+import { InboxItemObjects } from "./InboxItemObjects";
+import { itemConversationId, inboxItemText } from "./inboxItemFormat";
 
 /**
  * A notice about the item's subject, as one quiet line in the item's card.
  * It opens to the notice's text and its own Dismiss. `onAction` takes the
- * Dismiss in place of its own action, as `ReviewItemActions` says.
+ * Dismiss in place of its own action, as `InboxItemActions` says.
  */
 export function FoldedNotice(props: {
-  notice: ReviewItemPayload;
-  onAction?(body: ReviewItemActionBody): Promise<void>;
+  notice: InboxItemPayload;
+  onAction?(body: InboxItemActionBody): Promise<void>;
 }) {
   const { notice } = props;
   return (
@@ -43,15 +43,16 @@ export function FoldedNotice(props: {
         />
       </CollapsibleTrigger>
       <CollapsibleContent className="grid min-w-0 gap-2 pt-2 pl-5">
-        <ReviewItemObjects conversationId={notice.addedByConversationId}>
+        <InboxItemObjects conversationId={itemConversationId(notice)}>
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
             label={notice.title}
             lines={4}
-            text={reviewItemText(notice)}
+            mentions={notice.mentions}
+            text={inboxItemText(notice)}
           />
-        </ReviewItemObjects>
-        <ReviewItemActions item={notice} onAction={props.onAction} />
+        </InboxItemObjects>
+        <InboxItemActions item={notice} onAction={props.onAction} />
       </CollapsibleContent>
     </Collapsible>
   );

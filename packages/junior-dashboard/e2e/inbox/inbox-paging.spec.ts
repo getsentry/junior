@@ -4,7 +4,7 @@ import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
   answered,
   license,
-  mockReviewItems,
+  mockInboxItems,
   mockViewerCodeChanges,
   prMerge,
   prReady,
@@ -19,7 +19,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [prReview, prMerge, prReady],
       pageSize: 1,
     });
@@ -28,7 +28,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const cursors: string[] = [];
     page.on("request", (request) => {
       const cursor = new URL(request.url()).searchParams.get("cursor");
-      if (request.url().includes("/api/review-items?") && cursor)
+      if (request.url().includes("/api/inbox-items?") && cursor)
         cursors.push(cursor);
     });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
@@ -55,7 +55,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [] });
+    await mockInboxItems(page, { open: [] });
     // The server lists the longest idle first, so the freshest come last.
     await mockViewerCodeChanges(page, [
       ...Array.from({ length: 100 }, (_, index) => ({
@@ -82,7 +82,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // The ask for #91 is on the second page of asks.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [prMerge, { ...prReview, createdAt: "2026-08-01T00:00:00.000Z" }],
       pageSize: 1,
     });
@@ -112,18 +112,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [license] });
+    await mockInboxItems(page, { open: [license] });
     const todo = page.getByRole("region", { name: "To do" });
     const row = todo.getByRole("link", { name: new RegExp(license.title) });
     // A failed count leaves the badge without a number, not To do empty.
-    await page.route("**/api/review-items/count**", (route) =>
+    await page.route("**/api/inbox-items/count**", (route) =>
       route.fulfill({ json: { error: "Failed" }, status: 500 }),
     );
     await page.goto(`${dashboard.baseURL}/`);
     await expect(row).toBeVisible();
     // A count that never answers does the same.
-    await page.unroute("**/api/review-items/count**");
-    await page.route("**/api/review-items/count**", () => undefined);
+    await page.unroute("**/api/inbox-items/count**");
+    await page.route("**/api/inbox-items/count**", () => undefined);
     await page.reload();
     await expect(row).toBeVisible();
   });
@@ -132,14 +132,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [prReview, prMerge, prReady],
       pageSize: 1,
     });
     // No code changes, so the asks are the whole list and its end shows.
     await mockViewerCodeChanges(page, []);
     let attempts = 0;
-    await page.route(/\/api\/review-items\?.*cursor=1(?:&|$)/, (route) => {
+    await page.route(/\/api\/inbox-items\?.*cursor=1(?:&|$)/, (route) => {
       attempts += 1;
       return attempts === 1
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
@@ -172,14 +172,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     // and its end stays out of view.
     const asks = Array.from({ length: 30 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
       id: `item-todo-${index}`,
       title: `Approve rollout step ${index}`,
     }));
-    await mockReviewItems(page, { open: asks, pageSize: 10 });
+    await mockInboxItems(page, { open: asks, pageSize: 10 });
     await page.goto(`${dashboard.baseURL}/`);
     const rows = page
       .getByRole("region", { name: "To do" })
@@ -196,7 +199,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   function askBehindNotices() {
     const notices = Array.from({ length: 30 }, (_, index) => ({
       ...prReady,
-      addedByConversationId: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CNOTE:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - (60 - index) * 3_600_000).toISOString(),
@@ -206,7 +212,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     }));
     const ask = {
       ...license,
-      addedByConversationId: "slack:CASK:1770000000.000100",
+      owner: { id: "slack:CASK:1770000000.000100", kind: "conversation" },
       rootConversationId: "slack:CASK:1770000000.000100",
       conversationIds: [],
       createdAt: new Date(NOW_MS - 60_000).toISOString(),
@@ -214,9 +220,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     return { ask, notices };
   }
 
-  /** Later pages of the Review item list never load. */
-  async function holdLaterReviewItemPages(page: Page) {
-    await page.route(/\/api\/review-items\?.*cursor=/, () => undefined);
+  /** Later pages of the Inbox item list never load. */
+  async function holdLaterInboxItemPages(page: Page) {
+    await page.route(/\/api\/inbox-items\?.*cursor=/, () => undefined);
   }
 
   test("To do's first page holds the new ask behind older notices", async ({
@@ -224,8 +230,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const { ask, notices } = askBehindNotices();
-    await mockReviewItems(page, { open: [...notices, ask], pageSize: 25 });
-    await holdLaterReviewItemPages(page);
+    await mockInboxItems(page, { open: [...notices, ask], pageSize: 25 });
+    await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const rows = page
       .getByRole("region", { name: "To do" })
@@ -239,8 +245,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const { ask, notices } = askBehindNotices();
-    await mockReviewItems(page, { open: [...notices, ask], pageSize: 25 });
-    await holdLaterReviewItemPages(page);
+    await mockInboxItems(page, { open: [...notices, ask], pageSize: 25 });
+    await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await todo.getByRole("button", { name: /^To do/ }).click();
@@ -251,7 +257,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const reads: string[] = [];
     page.on("request", (request) => {
       const url = request.url();
-      if (/\/api\/review-items\?/.test(url) && !url.includes("cursor="))
+      if (/\/api\/inbox-items\?/.test(url) && !url.includes("cursor="))
         reads.push(url);
     });
     await page.reload();
@@ -276,16 +282,19 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const asks = Array.from({ length: 30 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CTODO:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
       id: `item-todo-${index}`,
       title: `Approve rollout step ${index}`,
     }));
-    await mockReviewItems(page, { open: asks, pageSize: 10 });
+    await mockInboxItems(page, { open: asks, pageSize: 10 });
     // The count only feeds the badge, so its failure cannot stop To do.
-    await page.route("**/api/review-items/count**", (route) =>
+    await page.route("**/api/inbox-items/count**", (route) =>
       route.fulfill({ json: { error: "Count failed" }, status: 500 }),
     );
     await page.route(/\/api\/automations\?scope=attention/, (route) =>
@@ -306,9 +315,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     let fail = true;
-    await page.route(/\/api\/review-items\?.*status=done/, async (route) => {
+    await page.route(/\/api\/inbox-items\?.*status=done/, async (route) => {
       if (!fail) return route.fallback();
       fail = false;
       return route.fulfill({ json: { error: "Read failed" }, status: 500 });
@@ -328,7 +337,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     // Each ask is in its own Conversation, and only the first page loads.
     const decisions = Array.from({ length: 12 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CCOUNT:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),
@@ -341,28 +353,29 @@ test.describe("new UI", { tag: "@new" }, () => {
     }));
     const asleep = decisions.at(-1)!;
     // A row on a later page sleeps until tomorrow.
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [...decisions, ...prs],
       pageSize: 2,
       snoozes: [
         {
-          conversationId: asleep.addedByConversationId,
+          conversationId: asleep.owner.id,
           untilMs: NOW_MS + 86_400_000,
         },
       ],
     });
-    await holdLaterReviewItemPages(page);
+    await holdLaterInboxItemPages(page);
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
+    const filters = page.getByRole("navigation", { name: "Asks to show" });
     await expect(
       page.getByRole("region", { name: "To do" }).locator("[data-inbox-row]"),
     ).toHaveCount(2);
     // The server counts every page, and leaves out the snoozed row.
-    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+    await expect(filters.getByRole("link", { name: /^Decisions/ })).toHaveText(
       /^Decisions\s*11$/,
     );
-    await expect(nav.getByRole("link", { name: /^Pull requests/ })).toHaveText(
-      /^Pull requests\s*2$/,
+    await expect(filters.getByRole("link", { name: /^PRs/ })).toHaveText(
+      /^PRs\s*2$/,
     );
     await expect(nav.getByRole("link", { name: /^Snoozed/ })).toHaveText(
       /^Snoozed\s*1$/,
@@ -374,18 +387,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const decisions = questionsByPage();
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: decisions,
       pageSize: 2,
     });
-    await holdLaterReviewItemPages(page);
+    await holdLaterInboxItemPages(page);
     const linked = decisions[5]!;
     await page.goto(`${dashboard.baseURL}/?item=${linked.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(rowHead(todo, linked.title)).toBeVisible();
     const nav = page.getByRole("navigation", { name: "Primary" });
-    await expect(nav.getByRole("link", { name: /^Decisions/ })).toHaveText(
+    const filters = page.getByRole("navigation", { name: "Asks to show" });
+    await expect(filters.getByRole("link", { name: /^Decisions/ })).toHaveText(
       /^Decisions\s*12$/,
     );
     await expect(
@@ -397,7 +411,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { automations: () => 3, open: [license] });
+    await mockInboxItems(page, { automations: () => 3, open: [license] });
     await page.route(/\/api\/automations\?scope=attention/, (route) =>
       route.fulfill({ json: { error: "Automations failed" }, status: 500 }),
     );
@@ -413,7 +427,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { automations: () => 0, open: [] });
+    await mockInboxItems(page, { automations: () => 0, open: [] });
     let olderReads = 0;
     await page.route(/\/api\/conversations(\?|$)/, async (route) => {
       if (new URL(route.request().url()).searchParams.has("cursor")) {
@@ -438,7 +452,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("list", { name: "In flight" })).toHaveCount(0);
     expect(olderReads).toBe(0);
 
-    // Conversations still lists them.
+    // Conversations still lists them. Their summaries read the cards of
+    // their links.
+    const cardsRead = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/objects",
+    );
     await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await expect(
       page
@@ -446,13 +464,65 @@ test.describe("new UI", { tag: "@new" }, () => {
         .locator("[data-inbox-row]")
         .first(),
     ).toBeVisible();
+    await cardsRead;
+  });
+
+  test("a Conversations state filter pages on before it says none match", async ({
+    dashboard,
+    page,
+  }) => {
+    // The first page holds no running Conversation; the next page does.
+    let releaseOlder = () => {};
+    const olderHeld = new Promise<void>((resolve) => {
+      releaseOlder = resolve;
+    });
+    await page.route(/\/api\/conversations(\?|$)/, async (route) => {
+      const url = new URL(route.request().url());
+      const older = url.searchParams.has("cursor");
+      // Both pages split the mock's first page.
+      url.searchParams.delete("cursor");
+      const body = await (await route.fetch({ url: url.toString() })).json();
+      const running = (conversation: {
+        treeState?: string;
+        turnActive?: boolean;
+      }) =>
+        conversation.treeState === "working" ||
+        Boolean(conversation.turnActive);
+      if (older) await olderHeld;
+      await route.fulfill({
+        json: {
+          ...body,
+          conversations: body.conversations.filter(
+            (conversation: { treeState?: string; turnActive?: boolean }) =>
+              older ? running(conversation) : !running(conversation),
+          ),
+          nextCursor: older ? undefined : "older",
+        },
+      });
+    });
+    const older = page.waitForRequest((request) =>
+      /\/api\/conversations\?.*cursor=/.test(request.url()),
+    );
+    await page.goto(`${dashboard.baseURL}/?view=conversations&state=working`);
+    const list = page.getByRole("region", {
+      exact: true,
+      name: "Conversations",
+    });
+    await older;
+    await expect(list.getByText("No conversations match")).toHaveCount(0);
+    releaseOlder();
+    await expect(rowHead(list, "Investigate checkout latency")).toBeVisible();
+    await expect(list.getByText("No conversations match")).toHaveCount(0);
   });
 
   /** Twelve questions, each in its own Conversation, two to a page. */
   function questionsByPage() {
     return Array.from({ length: 12 }, (_, index) => ({
       ...license,
-      addedByConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
+      owner: {
+        id: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
+        kind: "conversation",
+      },
       rootConversationId: `slack:CPAGE:17700${String(index).padStart(5, "0")}.000100`,
       conversationIds: [],
       createdAt: new Date(NOW_MS - index * 60_000).toISOString(),

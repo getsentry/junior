@@ -1143,7 +1143,7 @@
       "listed": false
     }
   ],
-  "reviewItems": [
+  "inboxItems": [
     {
       "id": "qa-ready-2201",
       "kind": "action",

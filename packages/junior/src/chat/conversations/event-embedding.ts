@@ -15,16 +15,17 @@ import type {
   PluginRegistration,
   PluginTaskContext,
 } from "@sentry/junior-plugin-api";
-import { refreshEmbeddings } from "@sentry/junior-plugin-api/embeddings";
-import { and, desc, eq, inArray, isNull, lt, sql } from "drizzle-orm";
+import { refreshEmbeddings } from "@/db/embeddings";
+import { and, desc, eq, inArray, isNull, lt, or, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversationEventEmbeddings,
+  juniorConversationEventLexemes,
   juniorConversationEvents,
 } from "@/db/schema";
 import { getDb } from "@/chat/db";
 import { createConversationEmbedder } from "./embedding";
-import { storeConversationEventLexemes } from "./event-lexemes";
+import { seqIn, storeConversationEventLexemes } from "./event-lexemes";
 import {
   eventSearchTextSql,
   SEARCHABLE_EVENT_TYPES,
@@ -60,15 +61,21 @@ export async function embedConversationEvents(
 ): Promise<number> {
   const events = juniorConversationEvents;
   const embeddings = juniorConversationEventEmbeddings;
-  const text = sql<string>`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
+  const lexemes = juniorConversationEventLexemes;
+  const text = sql<
+    string | null
+  >`left(${eventSearchTextSql()}, ${MAX_EMBEDDED_CHARS})`;
   const refresh = await refreshEmbeddings<{ seq: number; text: string }>({
     batchSize: EMBEDDING_BATCH_SIZE,
     deadlineMs: limits.deadlineMs,
     embedder,
     maxItems: limits.maxEvents ?? MAX_EVENTS_PER_RUN,
-    listMissing: async ({ after, limit }) =>
-      await db
-        .select({ seq: events.seq, text })
+    listMissing: async ({ after, limit }) => {
+      // Find the seqs first, so Postgres reads the text of only this page.
+      // In one query, it reads the text of every event in the Conversation,
+      // embedded or not, before it applies the limit.
+      const missing = await db
+        .select({ seq: events.seq })
         .from(events)
         .leftJoin(
           embeddings,
@@ -79,18 +86,47 @@ export async function embedConversationEvents(
             eq(embeddings.model, embedder.model),
           ),
         )
+        .leftJoin(
+          lexemes,
+          and(
+            eq(lexemes.conversationId, events.conversationId),
+            eq(lexemes.seq, events.seq),
+          ),
+        )
         .where(
           and(
             eq(events.conversationId, conversationId),
             inArray(events.type, [...SEARCHABLE_EVENT_TYPES]),
             isNull(embeddings.seq),
-            // Text of only whitespace, such as newlines, has nothing to embed.
-            sql`${eventSearchTextSql()} ~ '[^[:space:]]'`,
+            // An event without text never gets a vector, so it would stay
+            // missing and be read again on every run. Its stored lexemes are
+            // empty, so skip it, as the heartbeat backfill does. Text of only
+            // stopwords also has empty lexemes and gets no vector. An event
+            // without stored lexemes yet is read until a run stores them.
+            or(isNull(lexemes.seq), sql`length(${lexemes.lexemes}) > 0`),
             after ? lt(events.seq, after.seq) : undefined,
           ),
         )
         .orderBy(desc(events.seq))
-        .limit(limit),
+        .limit(limit);
+      if (missing.length === 0) return [];
+      const texts = await db
+        .select({ seq: events.seq, text })
+        .from(events)
+        .where(
+          and(
+            eq(events.conversationId, conversationId),
+            seqIn(missing.map((row) => row.seq)),
+          ),
+        );
+      const textBySeq = new Map(texts.map((row) => [row.seq, row.text]));
+      // An event without text stays in the page with empty text, so the
+      // next page starts after it. `refreshEmbeddings` skips it.
+      return missing.map(({ seq }) => ({
+        seq,
+        text: textBySeq.get(seq) ?? "",
+      }));
+    },
     write: async (rows, batch) => {
       await db
         .insert(embeddings)

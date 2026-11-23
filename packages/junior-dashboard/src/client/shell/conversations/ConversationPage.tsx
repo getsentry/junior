@@ -13,7 +13,7 @@ import {
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
   ConversationFeed,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "../../conversations/queries";
@@ -28,7 +28,6 @@ import { usePinConversation } from "../../conversations/usePinConversation";
 import { useConversationSubscription } from "../../conversations/useConversationSubscription";
 import { useConversationDelivery } from "../../conversations/useConversationDelivery";
 import { useRenameConversation } from "../../conversations/useRenameConversation";
-import { RenameConversationDialog } from "../../conversations/RenameConversationDialog";
 import {
   conversationIsResponding,
   isChildConversation,
@@ -46,11 +45,20 @@ import {
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  parseTranscriptRowHash,
   readOpenEventLog,
   readReplyFocus,
   turnStartedEventSeq,
 } from "../../conversations/conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
+import { eventDetailsTrigger, turnContextTrigger } from "./panelTriggers";
+import { useLeadPageKind } from "../../lead/Lead";
+import {
+  LEAD_REPLY_PLACEHOLDER,
+  LeadFirstRun,
+  useLeadFirstRun,
+} from "../../lead/LeadFirstRun";
+import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
 import { ConversationPageDock } from "../../conversations/ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
@@ -87,8 +95,11 @@ import {
   ConversationStateIcon,
   conversationDisplayState,
 } from "../../conversations/ConversationStateIcon";
-import { useReviewItemData } from "../../inbox/queries";
-import { reviewItemIdFromToolCall } from "../../inbox/reviewItemFormat";
+import { useInboxItemData } from "../../inbox/queries";
+import {
+  itemConversationId,
+  inboxItemIdFromToolCall,
+} from "../../inbox/inboxItemFormat";
 import { conversationContextTags } from "../../conversations/ConversationContextTags";
 import { conversationLinks } from "../../conversations/ConversationLinkedWork";
 import {
@@ -161,7 +172,8 @@ export function ConversationPage(props: {
   sidebarToggle?: ReactNode;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
-  const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
+  const replyRef =
+    useRef<Pick<ConversationComposerHandle, "appendText" | "focus">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
@@ -212,7 +224,7 @@ export function ConversationPage(props: {
   // The transcript mounts only rows near the viewport. The rows of the last
   // memory or outline jump stay mounted, so the jump finds its row.
   const [revealSeq, setRevealSeq] = useState<number>();
-  // The docked question whose transcript row shows, and the Turn that
+  // The question whose transcript card shows, and the Turn that
   // asked it, so a row outside the loaded pages can load.
   const [askReveal, setAskReveal] = useState<
     TranscriptAskReveal & { turnId?: string }
@@ -231,12 +243,17 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
+  const { known: kindKnown, lead } = useLeadPageKind(
+    props.conversationId,
+    props.detail.data,
+  );
   const showDetails =
     detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
   // Zen mode hides details without changing the choice, so leaving it
   // brings them back.
   const zen = useZenMode();
-  const detailsShown = showDetails && !zen.active;
+  // A Lead has no details: it is private and never archives.
+  const detailsShown = showDetails && !zen.active && kindKnown && !lead;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -248,6 +265,8 @@ export function ConversationPage(props: {
   // A sidebar row menu opens the event log with navigation state. The page
   // can be open already, so each new navigation asks once.
   const location = useLocation();
+  // A `#event-<seq>` link shows the transcript row that holds that event.
+  const linkedRowSeq = parseTranscriptRowHash(location.hash);
   const eventLogRequested = readOpenEventLog(location.state);
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     eventOpen || eventLogRequested ? "raw" : "rich",
@@ -273,7 +292,7 @@ export function ConversationPage(props: {
   // A link at open shows its row, so the transcript does not open at the
   // latest message or the read position, unless the link fails first.
   const [startAtLink, setStartAtLink] = useState(
-    () => readConversationLink(searchParams) !== undefined,
+    () => readConversationLink(searchParams, location.hash) !== undefined,
   );
   const detail = props.detail;
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
@@ -287,7 +306,7 @@ export function ConversationPage(props: {
   // the page around it until the reader jumps to the latest. A link at open
   // starts there, so the first render reads no other page.
   const [linkStart, setLinkStart] = useState(() => {
-    const link = readConversationLink(searchParams);
+    const link = readConversationLink(searchParams, location.hash);
     return link && unheldLinkStart(detail.data?.events, link);
   });
   const showLatestPage = useCallback(() => {
@@ -425,6 +444,14 @@ export function ConversationPage(props: {
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
+  const leadFirstRun = useLeadFirstRun(
+    lead &&
+      transcriptShown &&
+      !history.hasPreviousPage &&
+      transcript?.events.length === 0 &&
+      detail.inlineMessages.length === 0,
+    replyRef,
+  );
   useEffect(() => {
     if (transcriptShown) recordTranscriptShown();
   }, [conversationId, transcriptShown]);
@@ -490,14 +517,13 @@ export function ConversationPage(props: {
     return Boolean(start);
   });
   const showQuestion = useCallback(
-    (item: ReviewItemPayload, arrived: boolean) =>
+    (item: InboxItemPayload) =>
       setAskReveal((current) => ({
-        arrived,
         itemId: item.id,
         // A child Conversation can add an item to this one. Its Turn is not
         // in this transcript.
         turnId:
-          item.addedByConversationId === conversationId
+          itemConversationId(item) === conversationId
             ? item.addedByTurnId
             : undefined,
         version: (current?.version ?? 0) + 1,
@@ -505,29 +531,28 @@ export function ConversationPage(props: {
     [conversationId],
   );
   // A question that the reader moves to can sit outside the loaded rows.
-  // Then the transcript opens at the page around its Turn, like a link. A
-  // question that arrives by itself is at the latest, so it needs no page.
+  // Then the transcript opens at the page around its Turn, like a link.
   const openAskTurn = useEffectEvent((itemId: string, turnId: string) => {
     const held = history.data?.events.some(
       (event) =>
         event.data.type === "tool_calls" &&
         event.data.calls.some(
-          (call) => reviewItemIdFromToolCall(call) === itemId,
+          (call) => inboxItemIdFromToolCall(call) === itemId,
         ),
     );
     if (!held) openLink({ turn: turnId });
   });
   useEffect(() => {
-    if (askReveal?.turnId && !askReveal.arrived) {
+    if (askReveal?.turnId) {
       openAskTurn(askReveal.itemId, askReveal.turnId);
     }
   }, [askReveal]);
   // An Inbox link names the ask it opens for. Its record shows like a
   // question the reader moves to, once, and the link drops the param.
   const askLinkId = searchParams.get(CONVERSATION_ASK_PARAM) ?? undefined;
-  const askLink = useReviewItemData(askLinkId).data;
-  const showAskLink = useEffectEvent((item: ReviewItemPayload) => {
-    showQuestion(item, false);
+  const askLink = useInboxItemData(askLinkId).data;
+  const showAskLink = useEffectEvent((item: InboxItemPayload) => {
+    showQuestion(item);
     setSearchParams(
       (params) => {
         params.delete(CONVERSATION_ASK_PARAM);
@@ -545,8 +570,10 @@ export function ConversationPage(props: {
       openLink({ event: selectedEventSeq });
     } else if (linkedMessageId !== undefined) {
       openLink({ message: linkedMessageId });
+    } else if (linkedRowSeq !== undefined) {
+      openLink({ event: linkedRowSeq });
     }
-  }, [linkedMessageId, linkedTurnId, selectedEventSeq]);
+  }, [linkedMessageId, linkedRowSeq, linkedTurnId, selectedEventSeq]);
   // Replace a found Turn link with a link to its first event.
   const linkedTurnSeq = linkedTurnId
     ? turnStartedEventSeq(transcript?.events, linkedTurnId)
@@ -610,19 +637,12 @@ export function ConversationPage(props: {
   );
 
   const closeEventDetails = () => {
-    const trigger = pageRef.current?.querySelector<HTMLButtonElement>(
-      `[data-event-seq="${selectedEventSeq}"] button`,
-    );
+    const trigger = eventDetailsTrigger(pageRef.current, selectedEventSeq);
     setSelectedEventSeq(undefined);
     trigger?.focus({ preventScroll: true });
   };
   const closeTurnContext = () => {
-    // A message can have one context control per layout. Focus the visible one.
-    const trigger = [
-      ...(pageRef.current?.querySelectorAll<HTMLButtonElement>(
-        `[data-turn-context-id="${CSS.escape(turnContext?.id ?? "")}"]`,
-      ) ?? []),
-    ].find((button) => button.getClientRects().length > 0);
+    const trigger = turnContextTrigger(pageRef.current, turnContext?.id);
     setTurnContext(undefined);
     trigger?.focus({ preventScroll: true });
   };
@@ -699,10 +719,15 @@ export function ConversationPage(props: {
         <ChatLayout
           header={
             <ConversationHeader
+              lead={kindKnown ? lead : undefined}
               agentTree={conversationDetail?.agentTree}
               autoArchive={conversationDetail?.autoArchive}
-              brief={conversationDetail?.brief}
-              contextTags={conversationContextTags(conversation)}
+              summary={conversationDetail?.summary}
+              summaryMentions={conversationDetail?.summaryMentions}
+              contextTags={conversationContextTags(
+                conversation,
+                conversationDetail?.annotations,
+              )}
               cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               errors={[
@@ -783,6 +808,11 @@ export function ConversationPage(props: {
               }}
               onSearchChange={setSearch}
               onViewChange={onViewChange}
+              rename={{
+                editing: renaming,
+                onEditingChange: setRenaming,
+                onSave: (next) => rename.mutate(next),
+              }}
               privacy={
                 <ConversationPrivacyChip
                   visibility={conversation?.visibility}
@@ -806,7 +836,7 @@ export function ConversationPage(props: {
             />
           }
           overlay={
-            view === "rich" && !transcriptPending && outlineEvents ? (
+            view === "rich" && !lead && !transcriptPending && outlineEvents ? (
               <ConversationOutline
                 conversation={conversationDetail}
                 conversationId={conversationId}
@@ -824,7 +854,9 @@ export function ConversationPage(props: {
           }
           scroll={
             <TranscriptColumn full={view === "raw"}>
-              {transcriptPending ? (
+              {leadFirstRun.shown ? (
+                <LeadFirstRun onTry={leadFirstRun.prefill} />
+              ) : transcriptPending ? (
                 view === "raw" ? (
                   <ConversationEventLogLoading />
                 ) : (
@@ -835,7 +867,11 @@ export function ConversationPage(props: {
                   {detail.error.message}
                 </Card>
               ) : (
-                <>
+                <LeadPageScope
+                  lastSeq={detail.data?.events.at(-1)?.seq}
+                  lead={lead}
+                  prefill={leadFirstRun.prefill}
+                >
                   {detail.error ? (
                     <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
                       Transcript refresh failed. Showing the latest available
@@ -863,6 +899,13 @@ export function ConversationPage(props: {
                       onShowQuestion={showQuestion}
                       revealAsk={askReveal}
                       linkedMessageId={linkedMessageId}
+                      linkedRowSeq={
+                        // A link past the last event shows the row that its
+                        // read lands on.
+                        linkStart && "event" in linkStart
+                          ? (aroundHistory?.shownSeq ?? linkedRowSeq)
+                          : linkedRowSeq
+                      }
                       revealSeq={revealSeq}
                       responding={
                         !detail.error &&
@@ -882,7 +925,7 @@ export function ConversationPage(props: {
                       view={view}
                     />
                   </ConversationCatchUpContext>
-                </>
+                </LeadPageScope>
               )}
             </TranscriptColumn>
           }
@@ -901,7 +944,7 @@ export function ConversationPage(props: {
                   live={live}
                   onFocusRequestDone={setReplyFocusDoneKey}
                   onPinRequest={requestPin}
-                  onShowQuestion={showQuestion}
+                  placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
                   ref={replyRef}
                 />
               </div>
@@ -942,13 +985,6 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-      {renaming ? (
-        <RenameConversationDialog
-          onClose={() => setRenaming(false)}
-          onSave={(next) => rename.mutate(next)}
-          title={title}
-        />
-      ) : null}
       {continueInSlackOpen ? (
         <ContinueInSlackDialog
           conversationId={conversationId}

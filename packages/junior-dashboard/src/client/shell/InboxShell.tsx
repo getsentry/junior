@@ -58,9 +58,11 @@ import {
   conversationDisplayTitle,
 } from "../format";
 import {
+  conversationPath,
   isNewConversationPath,
   COMPOSER_PATH,
 } from "../conversations/conversationRoutes";
+import { useLead } from "../lead/Lead";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
 import { ConversationWorkspaceLoading } from "./conversations/ConversationWorkspaceLoading";
@@ -87,6 +89,7 @@ import {
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
 import { InboxRedirect } from "../inbox/InboxRedirect";
+import { LinkedSnooze } from "../inbox/LinkedSnooze";
 import { InboxListProvider, useInboxReturnPath } from "../inbox/inboxListState";
 import {
   INBOX_VIEW_LABELS,
@@ -298,8 +301,11 @@ function Shell() {
   // To do's own count, so the header and the tab match its cards.
   const inboxCount = useInboxData().todoCount;
   useInboxTabCount(inboxCount);
+  const lead = useLead(loggedIn);
+  const leadId = lead.data?.conversationId;
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
+    leadPath: leadId ? conversationPath(leadId) : undefined,
     loading,
     loggedIn,
     pathname: location.pathname,
@@ -359,6 +365,9 @@ function Shell() {
   return (
     <DashboardChromeProvider>
       <PaneNavProvider
+        // Without embedded bootstrap data, the viewer is unknown at first, so
+        // the Lead may still be coming.
+        leadPending={loading || (loggedIn && lead.isPending)}
         navItems={primaryNavItems}
         onOpenChange={setPaneOpen}
         onSearch={openCommandPalette}
@@ -847,6 +856,7 @@ function Shell() {
               <Route element={<Navigate replace to="/" />} path="*" />
             </TracedRoutes>
           )}
+          <LinkedSnooze />
           <span
             aria-hidden="true"
             className="pointer-events-none fixed inset-0 z-50 block opacity-[0.018]"

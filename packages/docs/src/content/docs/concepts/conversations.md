@@ -25,13 +25,13 @@ Each conversation has one status. It comes from what Junior runs, never from the
 
 | Status        | Meaning                                                                                                     |
 | ------------- | ----------------------------------------------------------------------------------------------------------- |
-| `needs_input` | It waits on a person: an open action Review item that it added, a sign-in, or its starter (see below).      |
+| `needs_input` | It waits on a person: an open action Inbox item that it added, a sign-in, or its starter (see below).      |
 | `working`     | A turn runs or waits to start.                                                                              |
 | `done`        | Anything else, such as a finished answer that its starter read, a stopped conversation, or an idle one.     |
 
 It waits on its starter, the person who started it, when its latest turn failed, its Brief outcome is `partial` or `blocked`, or the starter has not read its latest answer. An answer counts as read once Junior posts it in Slack, once the starter sends a later message, or once the starter reads it in the dashboard. A running turn is `working`, not waiting on its starter.
 
-When more than one applies, the first in the table wins, so a conversation with an open action Review item reads `needs_input` while a turn runs. Archive does not change the status.
+When more than one applies, the first in the table wins, so a conversation with an open action Inbox item reads `needs_input` while a turn runs. Archive does not change the status.
 
 ## Viewer State
 
@@ -41,7 +41,7 @@ The **viewer state** covers the conversation and all of its child agents, and it
 
 | Viewer state | Icon          | Meaning                                                                                                        |
 | ----------- | ------------- | -------------------------------------------------------------------------------------------------------------- |
-| `needs_you` | Question mark | A conversation in the tree waits on you: a Review item for you or for everyone, or a sign-in that you must do. |
+| `needs_you` | Question mark | A conversation in the tree waits on you: an Inbox item for you or for everyone, or a sign-in that you must do. |
 | `working`   | Spinner       | A turn runs or waits to start anywhere in the tree.                                                            |
 | `done`      | None          | Anything else.                                                                                                 |
 
@@ -57,7 +57,7 @@ A separate `watching` flag is true when a conversation in the tree watches for a
 - Keep one task per thread. Start a new thread when the goal changes.
 - Use public channels for shareable work and DMs for private work.
 
-Messages are processed in order. A new mention can steer active work at the next safe point. Other messages wait for the current turn to finish.
+Messages are processed in order. A new message from a person is a new instruction, and it steers active work at the next safe point. Other input, such as Events, waits for the current turn to finish.
 
 ## Visibility
 

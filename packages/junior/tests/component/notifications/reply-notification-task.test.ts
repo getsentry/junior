@@ -1,4 +1,6 @@
-import { createECDH, randomBytes, randomUUID } from "node:crypto";
+import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
+import { createRequire } from "node:module";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import webPush from "web-push";
@@ -9,16 +11,22 @@ import {
   resolveViewerUser,
   type JuniorApiVariables,
 } from "@/api";
+import { createConversationRoutes } from "@/api/conversations/routes";
+import type { JuniorApiEnv } from "@/api/route";
 import { notificationSettingsSchema } from "@/api/schema";
+import { createMemoryAttachmentStorage } from "@/chat/attachments/memory";
 import { createSlackActor } from "@/chat/actor";
+import { CONVERSATION_METADATA_TASK } from "@/chat/conversations/metadata/task";
 import { webActorFromUser } from "@/chat/conversations/web-input";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
+  getDb,
   getSqlExecutor,
 } from "@/chat/db";
+import { recordConversationParticipant } from "@/chat/conversations/sql/participants";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import type { PiMessage } from "@/chat/pi/messages";
 import {
@@ -27,6 +35,9 @@ import {
 } from "@/chat/plugins/task-runner";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
+import { getInboxItem } from "@/chat/inbox-items/store";
+import { juniorInboxItems } from "@/db/schema";
+import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { dndInfoOk } from "../../fixtures/slack/factories/api";
 import {
   getCapturedSlackApiCalls,
@@ -57,8 +68,18 @@ function browserSubscription(device: string) {
   };
 }
 
-/** Call the notification API as the signed-in dashboard user. */
-async function viewerApi() {
+// web-push encrypts with http_ece. The test reads the payload with it.
+const ece = createRequire(createRequire(import.meta.url).resolve("web-push"))(
+  "http_ece",
+) as {
+  decrypt(
+    body: Buffer,
+    params: { authSecret: Buffer; privateKey: ECDH; version: "aes128gcm" },
+  ): Buffer;
+};
+
+/** The Junior API as the signed-in dashboard user. */
+async function viewerApp() {
   const viewer = await resolveViewerUser(EMAIL);
   const app = new Hono<{ Variables: JuniorApiVariables }>();
   app.use("*", async (context, next) => {
@@ -66,6 +87,70 @@ async function viewerApi() {
     await next();
   });
   app.route("/", createJuniorApi());
+  return app;
+}
+
+/** The Conversation routes as the viewer, with a test work queue. */
+async function viewerMessagesApp() {
+  const viewer = await resolveViewerUser(EMAIL);
+  const app = new Hono<JuniorApiEnv>();
+  app.use("*", async (context, next) => {
+    context.set("viewer", viewer!);
+    await next();
+  });
+  app.route(
+    "/api/conversations",
+    createConversationRoutes({
+      attachmentStorage: createMemoryAttachmentStorage(),
+      queue: createConversationWorkQueueTestAdapter(),
+      waitUntil: () => undefined,
+    }),
+  );
+  return app;
+}
+
+/** Post a message as the viewer, as the dashboard composer does. */
+async function postFollowUp(conversationId: string, idempotencyKey: string) {
+  const response = await (
+    await viewerMessagesApp()
+  ).request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/messages`,
+    {
+      method: "POST",
+      body: JSON.stringify({ idempotencyKey, message: "Why?" }),
+      headers: { "content-type": "application/json" },
+    },
+  );
+  expect(response.status).toBe(200);
+}
+
+/** Report the viewer's read position, as the dashboard does. */
+async function readConversation(conversationId: string, lastReadSeq: number) {
+  const app = await viewerApp();
+  const response = await app.request(
+    `http://localhost/api/conversations/${encodeURIComponent(conversationId)}/read-position`,
+    {
+      method: "PUT",
+      body: JSON.stringify({ lastReadSeq }),
+      headers: { "content-type": "application/json" },
+    },
+  );
+  expect(response.status).toBe(200);
+}
+
+/** The reply notices of one Conversation, oldest first. */
+async function replyNotices(conversationId: string) {
+  const rows = await getDb()
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
+    .where(eq(juniorInboxItems.dedupeKey, `reply:${conversationId}`))
+    .orderBy(juniorInboxItems.createdAt);
+  return await Promise.all(rows.map((row) => getInboxItem(getDb(), row.id)));
+}
+
+/** Call the notification API as the signed-in dashboard user. */
+async function viewerApi() {
+  const app = await viewerApp();
   return async (method: string, path: string, body?: unknown, status = 200) => {
     const response = await app.request(`http://localhost${path}`, {
       method,
@@ -90,8 +175,19 @@ async function viewerApi() {
 async function completeDashboardTurn(
   reply: string,
   stored: { text: string } | null = { text: reply },
+  {
+    beforeTasks,
+    conversationId = `local:web:${randomUUID()}`,
+    earlierReplies = [],
+    turnId = "turn-1",
+  }: {
+    /** Runs after the reply is stored, before its tasks run. */
+    beforeTasks?: (conversationId: string) => Promise<void>;
+    conversationId?: string;
+    earlierReplies?: string[];
+    turnId?: string;
+  } = {},
 ): Promise<string[]> {
-  const conversationId = `local:web:${randomUUID()}`;
   const source = createWebSource(conversationId, "private");
   const destination = { platform: "local" as const, conversationId };
   await getConversationStore().recordActivity({
@@ -109,8 +205,13 @@ async function completeDashboardTurn(
     actor: webActorFromUser({ ...user, displayName: "Alice Example" }),
     conversationId,
     destination,
-    piMessages: [
-      { role: "user", content: "Is the deploy done?", timestamp: 1 },
+    // A later Turn's history holds the Turns before it.
+    piMessages: [...earlierReplies, reply].flatMap((text, index) => [
+      {
+        role: "user",
+        content: "Is the deploy done?",
+        timestamp: 2 * index + 1,
+      },
       {
         role: "assistant",
         api: "openai-responses",
@@ -118,15 +219,15 @@ async function completeDashboardTurn(
         model: "test-model",
         usage: {},
         stopReason: "stop",
-        content: [{ type: "text", text: reply }],
-        timestamp: 2,
+        content: [{ type: "text", text }],
+        timestamp: 2 * index + 2,
       },
-    ] as PiMessage[],
+    ]) as PiMessage[],
     sliceId: 1,
     source,
     state: "completed",
     surface: "internal",
-    turnId: "turn-1",
+    turnId,
   });
   if (stored) {
     await getConversationEventStore().append(conversationId, [
@@ -134,17 +235,20 @@ async function completeDashboardTurn(
         createdAtMs: Date.now(),
         data: {
           type: "message",
-          messageId: "turn-1:assistant:1",
+          messageId: `${turnId}:assistant:1`,
           role: "assistant",
           text: stored.text,
         },
       },
     ]);
   }
+  await beforeTasks?.(conversationId);
   const scheduled: string[] = [];
   await scheduleSessionCompletedPluginTasks(
-    { conversationId, sessionId: "turn-1" },
+    { conversationId, sessionId: turnId },
     async (message) => {
+      // The Conversation metadata task is out of scope here.
+      if (message.plugin === CONVERSATION_METADATA_TASK.plugin) return;
       scheduled.push(`${message.plugin}.${message.name}`);
       await processPluginTask(message);
     },
@@ -224,6 +328,7 @@ describe("reply notification task", () => {
       completeDashboardTurn("The deploy finished."),
     ).resolves.toEqual([
       "event-search.indexEvents",
+      "memory.processSession",
       "notifications.notifyReply",
     ]);
 
@@ -237,6 +342,150 @@ describe("reply notification task", () => {
     // A Turn with no reply notifies nobody.
     await completeDashboardTurn("Nothing to send.", null);
     expect(pushes).toHaveLength(1);
+  });
+
+  it("turns dashboard replies into one notice for the starter, and closes it when they read the latest", async () => {
+    const ecdh = createECDH("prime256v1");
+    ecdh.generateKeys();
+    const auth = randomBytes(16);
+    const decrypted: Record<string, unknown>[] = [];
+    mswServer.use(
+      http.post(`${PUSH_ORIGIN}/keyed-phone`, async ({ request }) => {
+        const body = Buffer.from(await request.arrayBuffer());
+        const plain = ece.decrypt(body, {
+          authSecret: auth,
+          privateKey: ecdh,
+          version: "aes128gcm",
+        });
+        decrypted.push(JSON.parse(plain.toString("utf8")));
+        return new HttpResponse(null, { status: 201 });
+      }),
+    );
+    const api = await viewerApi();
+    await api("POST", "/api/notifications/subscriptions", {
+      endpoint: `${PUSH_ORIGIN}/keyed-phone`,
+      expirationTime: null,
+      keys: {
+        auth: auth.toString("base64url"),
+        p256dh: ecdh.getPublicKey().toString("base64url"),
+      },
+    });
+    await api("PUT", "/api/notifications/schedule", {
+      workingHoursOnly: false,
+      days: [],
+      start: "09:00",
+      end: "18:00",
+    });
+    const user = await resolveViewerUser(EMAIL);
+    const conversationId = `local:web:${randomUUID()}`;
+
+    await completeDashboardTurn("The deploy started.", undefined, {
+      conversationId,
+    });
+    // The starter takes part in the private Conversation, so they can read it.
+    await recordConversationParticipant(getSqlExecutor(), {
+      actorIdentityId: (await resolveActorIdentityId(
+        getSqlExecutor(),
+        webActorFromUser({ ...user!, displayName: "Alice Example" }),
+      ))!,
+      atMs: Date.now(),
+      conversationId,
+    });
+    const [notice] = await replyNotices(conversationId);
+    expect(notice).toMatchObject({
+      assignees: [expect.objectContaining({ userId: user!.id })],
+      body: "The deploy started.",
+      kind: "notice",
+      status: "open",
+      title: "Deploy status",
+    });
+    expect(decrypted).toEqual([
+      {
+        body: "The deploy started.",
+        tag: notice!.id,
+        title: "Deploy status",
+        url: expect.stringContaining(encodeURIComponent(conversationId)),
+      },
+    ]);
+
+    // The next reply replaces the notice's content and pushes again.
+    await completeDashboardTurn("The deploy finished.", undefined, {
+      conversationId,
+      earlierReplies: ["The deploy started."],
+      turnId: "turn-2",
+    });
+    expect(await replyNotices(conversationId)).toEqual([
+      expect.objectContaining({
+        body: "The deploy finished.",
+        id: notice!.id,
+        status: "open",
+      }),
+    ]);
+    expect(decrypted[1]).toMatchObject({
+      body: "The deploy finished.",
+      tag: notice!.id,
+    });
+
+    // A read that stops before the latest reply leaves the notice open.
+    await readConversation(conversationId, 0);
+    expect((await replyNotices(conversationId))[0]?.status).toBe("open");
+    await readConversation(conversationId, Number.MAX_SAFE_INTEGER);
+    expect((await replyNotices(conversationId))[0]).toMatchObject({
+      closeReason: "Read",
+      status: "done",
+    });
+
+    // A reply after the read is a new notice. Its push closes the old one.
+    await completeDashboardTurn("The deploy rolled back.", undefined, {
+      conversationId,
+      earlierReplies: ["The deploy started.", "The deploy finished."],
+      turnId: "turn-3",
+    });
+    const notices = await replyNotices(conversationId);
+    expect(notices.map((item) => item?.status)).toEqual(["done", "open"]);
+    expect(decrypted[2]).toMatchObject({
+      close: [notice!.id],
+      tag: notices[1]!.id,
+    });
+
+    // A follow-up from the starter means they saw the reply.
+    await postFollowUp(conversationId, "follow-up");
+    expect((await replyNotices(conversationId))[1]?.status).toBe("done");
+
+    // A starter who reads the reply before its task runs gets no notice and
+    // no push.
+    await completeDashboardTurn("A bad migration.", undefined, {
+      beforeTasks: (id) => readConversation(id, Number.MAX_SAFE_INTEGER),
+      conversationId,
+      earlierReplies: [
+        "The deploy started.",
+        "The deploy finished.",
+        "The deploy rolled back.",
+      ],
+      turnId: "turn-4",
+    });
+    expect(
+      (await replyNotices(conversationId)).map((item) => item?.status),
+    ).toEqual(["done", "done"]);
+    expect(decrypted).toHaveLength(3);
+
+    // A follow-up that waits as pending, with no event yet, still means the
+    // starter saw the reply.
+    await completeDashboardTurn("It ran twice.", undefined, {
+      beforeTasks: (id) => postFollowUp(id, "follow-up-2"),
+      conversationId,
+      earlierReplies: [
+        "The deploy started.",
+        "The deploy finished.",
+        "The deploy rolled back.",
+        "A bad migration.",
+      ],
+      turnId: "turn-5",
+    });
+    expect(
+      (await replyNotices(conversationId)).map((item) => item?.status),
+    ).toEqual(["done", "done"]);
+    expect(decrypted).toHaveLength(3);
   });
 
   it("does not push outside the user's working hours", async () => {
