@@ -173,13 +173,15 @@ async function boxOf(target: Locator) {
 async function settle(page: Page) {
   const deadline = Date.now() + SETTLE_TIMEOUT_MS;
   const remaining = () => Math.max(deadline - Date.now(), 1);
-  const pending = new Set<string>();
-  let started = 0;
+  const pending = new Set<Request>();
+  let started: Request[] = [];
   const onStart = (request: Request) => {
-    pending.add(request.url());
-    started += 1;
+    pending.add(request);
+    started.push(request);
   };
-  const onEnd = (request: Request) => pending.delete(request.url());
+  const onEnd = (request: Request) => pending.delete(request);
+  const urls = (requests: Iterable<Request>) =>
+    [...requests].map((request) => request.url()).join(", ") || "unknown";
   page.on("request", onStart);
   page.on("requestfinished", onEnd);
   page.on("requestfailed", onEnd);
@@ -187,17 +189,22 @@ async function settle(page: Page) {
     // A commit can start a fetch, such as a list that loads when it first
     // shows. Wait again for what that fetch renders.
     do {
-      started = 0;
+      if (started.length > 0 && Date.now() >= deadline) {
+        throw new Error(
+          `The page kept starting requests for ${SETTLE_TIMEOUT_MS}ms: ${urls(started)}`,
+        );
+      }
+      started = [];
       await page
         .waitForLoadState("networkidle", { timeout: remaining() })
         .catch(() => {
           throw new Error(
-            `Requests were still in flight after ${SETTLE_TIMEOUT_MS}ms: ${[...pending].join(", ") || "unknown"}`,
+            `Requests were still in flight after ${SETTLE_TIMEOUT_MS}ms: ${urls(pending)}`,
           );
         });
       await loadAssets(page, remaining());
       await waitForQuiet(page, remaining());
-    } while (started > 0);
+    } while (started.length > 0);
   } finally {
     page.off("request", onStart);
     page.off("requestfinished", onEnd);
@@ -220,7 +227,9 @@ async function loadAssets(page: Page, timeout: number) {
           return image.decode();
         }),
       );
-      // A video without its first frame is an empty box.
+      // A video without its first frame is an empty box. With
+      // preload="metadata" the browser may never load that frame, so ask
+      // for the full load, as with the lazy images above.
       await Promise.allSettled(
         [...document.querySelectorAll("video")]
           .filter(
@@ -231,6 +240,7 @@ async function loadAssets(page: Page, timeout: number) {
           .map(
             (video) =>
               new Promise((resolve) => {
+                video.preload = "auto";
                 video.addEventListener("loadeddata", resolve, { once: true });
                 video.addEventListener("error", resolve, { once: true });
               }),
