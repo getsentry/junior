@@ -120,8 +120,7 @@ describe("conversation work queue consumer", () => {
       state: fixture.state,
     });
 
-    // The Vercel local-dev consumer runs inside the sender's async context.
-    // Here that sender's request deadline passed an hour ago.
+    // Deliver inside another request whose deadline passed an hour ago.
     await runWithTurnRequestDeadline(
       () =>
         consumer.handler(

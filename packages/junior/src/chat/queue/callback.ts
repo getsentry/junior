@@ -32,7 +32,7 @@ export interface QueueCallbackOptions<Message> {
   visibilityTimeoutSeconds?: number;
 }
 
-/** Build the HTTP callback and local-dev consumer for one signed queue. */
+/** Build the HTTP callback and queue consumer for one signed queue. */
 export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   const consume = async (
     message: Message,
@@ -69,9 +69,9 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
         `Queue message verification unavailable: ${checked.reason}`,
       );
     }
-    // Each provider call is its own host request. The Vercel local-dev
-    // consumer runs inside the sender's async context, so without a new
-    // deadline every call inherits the sender's spent deadline.
+    // Each delivery is its own host request. A new deadline keeps a delivery
+    // that runs inside another request's async context from inheriting that
+    // request's spent deadline.
     await runWithNewTurnRequestDeadline(() =>
       consume(checked.message, metadata),
     );
@@ -108,11 +108,5 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
     consume,
     consumer,
     create: () => getQueueProvider().createCallback(consumer),
-    registerDev: () => {
-      if (process.env["NODE_ENV"] !== "development") {
-        return undefined;
-      }
-      return getQueueProvider().registerDevConsumer?.(consumer);
-    },
   };
 }
