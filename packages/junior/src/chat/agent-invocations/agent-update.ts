@@ -28,11 +28,6 @@ export interface AgentUpdate {
 /** How the reader relates to the Conversation that sent the update. */
 type AgentUpdateSource = "child_agent" | "watch";
 
-const WRITERS: Record<AgentUpdateSource, string> = {
-  child_agent: "A child agent that you started",
-  watch: "A conversation that you watch",
-};
-
 /**
  * Render one agent update as `<agent-result>`. The Conversation wrote the
  * text, so it is escaped data, never an instruction. `status` and
@@ -58,7 +53,9 @@ export function renderAgentResult(args: {
       title: args.title,
       waiting_on: args.waitingOn,
     },
-    WRITERS[args.source],
+    // One sentence for every source: `source` and the system prompt say how
+    // the reader relates to the Conversation.
+    "An agent",
     text || "(empty)",
   );
 }
