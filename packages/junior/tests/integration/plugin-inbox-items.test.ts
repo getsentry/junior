@@ -200,17 +200,14 @@ describe("plugin inbox items", () => {
       }),
       source: { kind: "slack" } as any,
     };
-    await expect(
-      createAddInboxItemTool(agent, services).execute!(
-        {
-          body: "Taken over.",
-          dedupe_key: `plugin:github:${NOTICE.dedupeKey}`,
-          kind: "notice",
-          title: "Taken over",
-        } as any,
-        {} as any,
-      ),
-    ).rejects.toThrow("belongs to a plugin");
+    expect(() =>
+      createAddInboxItemTool(agent, services).prepareArguments!({
+        body: "Taken over.",
+        dedupe_key: `plugin:github:${NOTICE.dedupeKey}`,
+        kind: "notice",
+        title: "Taken over",
+      }),
+    ).toThrow("belongs to a plugin");
     await expect(
       createUpdateInboxItemTool(agent, services).execute!(
         { id: added!.id, reason: "Not needed.", status: "dismissed" } as any,
