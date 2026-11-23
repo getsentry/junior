@@ -46,10 +46,9 @@ browser.
    ```
 
    A shot is `name|dashboard path|theme`. The app opens the path like the web
-   router does. `?drawer=1` opens the drawer; `?details=1` and `?rename=1`
-   open a Conversation's details and rename prompt, and `?q=` searches the
-   Conversations list. UI tests call `POST /__reset` on the mock server
-   first, so writes do not carry over.
+   router does. `?drawer=1` opens the drawer, `?details=1` and `?rename=1`
+   a Conversation's details and rename prompt, and `?q=` searches the list.
+   UI tests call `POST /__reset` first, so writes do not carry over.
 
 4. Run UI tests, one suite or test at a time:
 
