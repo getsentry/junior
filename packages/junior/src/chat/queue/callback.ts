@@ -12,7 +12,6 @@ import {
 import type { QueueRejectReason, QueueVerifyResult } from "./sign";
 
 export interface QueueCallbackOptions<Message> {
-  consumerGroup: string;
   /** Use `null` when durable state already owns the attempt limit. */
   maxDeliveries: number | null;
   onRejected(
@@ -27,7 +26,6 @@ export interface QueueCallbackOptions<Message> {
    * Use for kill switches that must not depend on signing secrets.
    */
   skip?: (metadata: QueueMessageMetadata) => boolean;
-  topic: string;
   verify(value: unknown): QueueVerifyResult<Message>;
   visibilityTimeoutSeconds?: number;
 }
@@ -96,10 +94,8 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   };
 
   const consumer: QueueConsumer = {
-    consumerGroup: options.consumerGroup,
     handler,
     retry,
-    topic: options.topic,
     visibilityTimeoutSeconds: options.visibilityTimeoutSeconds,
   };
 

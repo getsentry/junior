@@ -1,11 +1,9 @@
-import { getChatConfig } from "@/chat/config";
-import { bullmqQueueProvider } from "@/chat/queue/bullmq";
 import { vercelQueueProvider } from "@/chat/queue/vercel";
 
-// Module overview: the one place that chooses a queue provider.
+// Module overview: the one place that names the queue provider.
 //
 // Queue code calls `getQueueProvider()` and uses only this contract.
-// Provider modules, such as `vercel.ts` and `bullmq.ts`, implement it. Only this module
+// Provider modules, such as `vercel.ts`, implement it. Only this module
 // imports a provider module.
 
 /** Delivery facts that a queue provider passes with each message. */
@@ -40,14 +38,12 @@ export interface QueueSendResult {
 
 /** One consumer of one topic. */
 export interface QueueConsumer {
-  consumerGroup: string;
   handler(payload: unknown, metadata: QueueMessageMetadata): Promise<void>;
   /** Return a directive to stop retries, or `undefined` to retry. */
   retry(
     error: unknown,
     metadata: QueueMessageMetadata,
   ): QueueRetryDirective | undefined;
-  topic: string;
   /** Wait this many seconds before a message that is in flight is sent again. */
   visibilityTimeoutSeconds?: number | undefined;
 }
@@ -65,22 +61,9 @@ export interface QueueProvider {
   createCallback(
     consumer: QueueConsumer,
   ): (request: Request) => Promise<Response>;
-  /**
-   * Pull messages for these consumers in this process until `close()`.
-   * Only providers whose consumers pull messages implement it.
-   */
-  startWorker?(consumers: QueueConsumer[]): Promise<QueueWorker>;
-}
-
-/** Consumers that pull messages in one process. */
-export interface QueueWorker {
-  /** Stop taking messages, wait for running ones, and release connections. */
-  close(): Promise<void>;
 }
 
 /** Return the queue provider for this deployment. */
 export function getQueueProvider(): QueueProvider {
-  return getChatConfig().queue.provider === "bullmq"
-    ? bullmqQueueProvider
-    : vercelQueueProvider;
+  return vercelQueueProvider;
 }
