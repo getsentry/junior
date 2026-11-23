@@ -1,13 +1,21 @@
-import {
-  QueueClient,
-  handleCallback,
-  registerDevConsumer,
-} from "@vercel/queue";
+import { QueueClient, registerDevConsumer } from "@vercel/queue";
+import { getChatConfig } from "@/chat/config";
 import type { QueueConsumer, QueueProvider } from "@/chat/queue/provider";
 
 type QueueClientOptions = ConstructorParameters<typeof QueueClient>[0];
 
 function defaultQueueClientOptions(): QueueClientOptions {
+  const { queue } = getChatConfig();
+  const apiUrl = queue.provider === "vercel" ? queue.apiUrl : undefined;
+  if (apiUrl) {
+    // A local queue server does not check tokens. Any token skips the Vercel
+    // OIDC lookup, which fails outside Vercel.
+    return {
+      deploymentId: null,
+      resolveBaseUrl: () => new URL(apiUrl),
+      token: "local",
+    };
+  }
   if (process.env["VERCEL_DEPLOYMENT_ID"]?.trim()) {
     return {};
   }
@@ -40,8 +48,10 @@ export const vercelQueueProvider: QueueProvider = {
     );
     return messageId ? { messageId } : {};
   },
+  // Use the same client as `send`. The SDK's top-level `handleCallback` uses a
+  // default client that ignores these options.
   createCallback: (consumer) =>
-    handleCallback(consumer.handler, {
+    getVercelQueueClient().handleCallback(consumer.handler, {
       retry: consumer.retry,
       ...visibility(consumer),
     }),

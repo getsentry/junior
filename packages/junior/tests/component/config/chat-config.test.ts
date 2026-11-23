@@ -279,6 +279,19 @@ describe("chat config", () => {
     });
   });
 
+  it("reads a Vercel Queues API URL for a local queue server", async () => {
+    process.env["JUNIOR_QUEUE_API_URL"] = "http://127.0.0.1:3100";
+    expect((await loadConfig()).getChatConfig().queue).toEqual({
+      provider: "vercel",
+      apiUrl: "http://127.0.0.1:3100",
+    });
+
+    process.env["JUNIOR_QUEUE_API_URL"] = "localhost:3100";
+    await expect(loadConfig()).rejects.toThrow(
+      "JUNIOR_QUEUE_API_URL must be an http or https URL",
+    );
+  });
+
   it("throws when the BullMQ queue has no Redis URL", async () => {
     process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
 
