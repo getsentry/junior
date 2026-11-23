@@ -41,6 +41,28 @@ import { mockFeedMedia } from "./feed-media";
 import { mockQuestionConversations } from "./question-conversations";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
 
+/** The body of the mock release pull request, as GitHub returns it. */
+export const PIN_PULL_REQUEST_DESCRIPTION = [
+  "The release train read the latest payments build on each run, so a late merge could ship without review.",
+  "",
+  "## Changes",
+  "",
+  "- Pin the release train to payments 4.2.",
+  "- Read the pin from the release manifest, not from the branch head.",
+  "- Fail the train when the manifest and the lockfile disagree.",
+  "- Log the pinned version on each run.",
+  "",
+  "## Testing",
+  "",
+  "- Ran the train against a fork with a newer payments build. It kept 4.2.",
+  "- Changed the lockfile by hand. The train stopped with a clear error.",
+  "- Checked the run log for the pinned version.",
+  "",
+  "## Rollout",
+  "",
+  "Merge after the 4.2 deploy is done. The next train picks up the pin. To roll back, revert this PR; the train reads the branch head again.",
+].join("\n");
+
 /** Fixed current time for mock reports and browser tests. */
 export const NOW = "2026-08-07T12:00:00.000Z";
 /** Milliseconds for {@link NOW}. */
@@ -1566,26 +1588,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         url: "https://github.com/getsentry/payments/pull/91",
         // A long body, so its hover card at the bottom of the reply must
         // scroll when "More details" opens.
-        description: [
-          "The release train read the latest payments build on each run, so a late merge could ship without review.",
-          "",
-          "## Changes",
-          "",
-          "- Pin the release train to payments 4.2.",
-          "- Read the pin from the release manifest, not from the branch head.",
-          "- Fail the train when the manifest and the lockfile disagree.",
-          "- Log the pinned version on each run.",
-          "",
-          "## Testing",
-          "",
-          "- Ran the train against a fork with a newer payments build. It kept 4.2.",
-          "- Changed the lockfile by hand. The train stopped with a clear error.",
-          "- Checked the run log for the pinned version.",
-          "",
-          "## Rollout",
-          "",
-          "Merge after the 4.2 deploy is done. The next train picks up the pin. To roll back, revert this PR; the train reads the branch head again.",
-        ].join("\n"),
+        description: PIN_PULL_REQUEST_DESCRIPTION,
         // The API names description images by Junior image paths.
         previewImages: ["payments-91-before", "payments-91-after"].map(
           (id) => ({

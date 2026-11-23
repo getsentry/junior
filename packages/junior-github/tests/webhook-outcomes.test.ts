@@ -4032,7 +4032,16 @@ describe("GitHub-owned pull request outcomes", () => {
     const key = "getsentry/junior#946";
     const conversationId = "slack:C123:1712345.0001";
     let chip: ConversationAnnotationInput = {
-      facts: { sourceBranch: "feat/preview", type: "code_change" },
+      // A size, merge state and reviewers from before someone else's push.
+      facts: {
+        additions: 12,
+        changedFiles: 2,
+        deletions: 3,
+        mergeable: true,
+        reviewers: ["octocat"],
+        sourceBranch: "feat/preview",
+        type: "code_change",
+      },
       key,
       kind: "object",
       label: key,
@@ -4111,6 +4120,8 @@ describe("GitHub-owned pull request outcomes", () => {
           ),
         ),
       );
+      // Cards read the size, merge state and reviewers live, so the saved
+      // card does not keep the old ones.
       expect(chip.kind === "object" && chip.facts).toEqual({
         previewImageUrls: [artifact],
         sourceBranch: "feat/preview",

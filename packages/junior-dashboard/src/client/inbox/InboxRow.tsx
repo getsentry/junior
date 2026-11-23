@@ -21,7 +21,6 @@ import type {
   InboxItemPayload,
   InboxSnoozeWake,
 } from "@sentry/junior/api/schema";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
@@ -34,7 +33,6 @@ import {
   ConversationCast,
   useConversationDensity,
 } from "../conversations/conversationDensity";
-import { codeChangeSize } from "../codeChangeSize";
 import { ChangeSize } from "../components/ChangeSize";
 import { FittingIcons } from "../conversations/ConversationMeta";
 import { usePrefetchConversation } from "../conversations/conversationPrefetch";
@@ -59,6 +57,7 @@ import {
   CodeChangeSubtitle,
   CodeChangeTitle,
 } from "./CodeChangeTitle";
+import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -175,8 +174,6 @@ type InboxRowProps = {
   itemTitle?: string;
   /** The second line of a row for one item (`itemRowSubtitle`). */
   itemSubtitle?: string;
-  /** The size of the code change that a row for one item is about. */
-  itemSize?: CodeChangeSize | undefined;
   /** A row for one code change item leads with the change's title. */
   itemHead?: CodeChangeHead | undefined;
   /** Takes an ask's answer, Take, or Dismiss in place of its own action. */
@@ -494,6 +491,10 @@ function InboxRowBody(
   const comfortable = density === "comfortable";
   const openItems =
     bundle?.items.filter((item) => item.status === "open") ?? [];
+  // A row for one item shows the live size of the code change it is about.
+  const itemSize = useCodeChangeFacts(
+    props.itemTitle ? bundle?.newest.subject : undefined,
+  );
   const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
   const asks = props.itemTitle ? [] : askPills(openItems, annotations);
@@ -666,7 +667,7 @@ function InboxRowBody(
                     <CodeChangeSubtitle
                       expanded={props.expanded}
                       head={props.itemHead}
-                      size={props.itemSize}
+                      size={itemSize}
                       subtitle={props.itemSubtitle}
                     />
                   </>
@@ -682,7 +683,7 @@ function InboxRowBody(
                       <span className={lineClass} ref={fadeWhenOverflowing}>
                         {props.itemTitle ?? props.title}
                       </span>
-                      <ChangeSize size={props.itemSize} />
+                      <ChangeSize size={itemSize} />
                     </span>
                   </span>
                 )}
@@ -860,7 +861,6 @@ function InboxRowBody(
                 ) : undefined
               }
               rowActions={inlineActions ? rowActions(props, true) : undefined}
-              sizeShown={codeChangeSize(props.itemSize) !== undefined}
               take={props.take}
               wake={item.wake}
             />

@@ -17,6 +17,7 @@ import {
   readMockPeopleProfile,
 } from "./fixtures";
 import { mockCodeChangeCard } from "./code-change-search";
+import { PIN_PULL_REQUEST_DESCRIPTION } from "./fixtures";
 
 // Return the decoded segment after `/{page}/`, on any host: mocks have no
 // configured dashboard origin.
@@ -70,9 +71,13 @@ const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
     title: "Pin the release train to payments 4.2",
     displayType: "Pull request",
     status: "open",
+    description: PIN_PULL_REQUEST_DESCRIPTION,
     facts: {
       type: "code_change",
+      additions: 48,
       author: "junior",
+      changedFiles: 3,
+      deletions: 9,
       sourceBranch: "release/pin-payments-4.2",
       targetBranch: "main",
       mergeable: false,
