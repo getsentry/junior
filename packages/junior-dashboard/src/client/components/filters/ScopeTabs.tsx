@@ -11,6 +11,8 @@ export type ScopeTab = {
   iconOnlyOnPhone?: boolean;
   label: string;
   on: boolean;
+  /** The page the tab opens, when it is not the list's own page. */
+  path?: string;
   search: string;
 };
 
@@ -31,14 +33,18 @@ export function ScopeTabs(props: { label: string; tabs: readonly ScopeTab[] }) {
           <Link
             aria-current={tab.on ? "page" : undefined}
             className={cn(
-              "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 font-sans max-md:px-1.5 text-xs font-medium whitespace-nowrap no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
+              "flex h-8 shrink-0 items-center gap-1.5 rounded-md px-3 font-sans max-md:gap-1 max-md:px-1 text-xs font-medium whitespace-nowrap no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70",
               tab.on
                 ? "bg-dashboard-surface-active text-dashboard-text"
                 : "text-dashboard-text-muted hover:bg-dashboard-fill-hover hover:text-dashboard-text",
             )}
             key={tab.label}
             replace
-            to={{ search: tab.search }}
+            to={
+              tab.path === undefined
+                ? { search: tab.search }
+                : { pathname: tab.path, search: tab.search }
+            }
           >
             {Icon ? (
               <Icon

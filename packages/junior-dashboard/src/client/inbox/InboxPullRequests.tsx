@@ -18,7 +18,7 @@ export type PullRequestChangeRow = {
   items: InboxBundle[];
 };
 
-/** One group of the Pull requests view. */
+/** One group of Code · Mine. */
 export type PullRequestSection = {
   changes: PullRequestChangeRow[];
   /** The pile starts collapsed until the viewer opens it. */
@@ -100,10 +100,11 @@ export function pullRequestSections(
 }
 
 /**
- * Read the Pull requests view: every open code change of the viewer, from
- * their person Code overview, grouped with the pull request asks. The pages
- * of both load one after another only while the view is open, so each ask
- * finds its change wherever the list is scrolled.
+ * Read Code · Mine: every open code change of the viewer, from their person
+ * Code overview, grouped with the pull request asks, and the first page of
+ * that overview for their numbers. The pages of both load one after another
+ * only while Mine is open, so each ask finds its change wherever the list
+ * is scrolled.
  */
 export function usePullRequestSections(
   itemRows: readonly InboxBundle[],
@@ -130,8 +131,10 @@ export function usePullRequestSections(
   const changes = pages.flatMap((page) => page.changes);
   const nowMs = pages[0] ? Date.parse(pages[0].generatedAt) : Date.now();
   return {
+    error: code.isError && !pages[0],
     loading: enabled && Boolean(email) && code.isPending,
     nowMs,
+    report: pages[0],
     sections: pullRequestSections(changes, itemRows),
   };
 }

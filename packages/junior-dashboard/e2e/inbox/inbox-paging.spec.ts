@@ -31,7 +31,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       if (request.url().includes("/api/inbox-items?") && cursor)
         cursors.push(cursor);
     });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/code`);
     // Each PR is on its own page; the list loads the next as its end shows.
     await expect(
       page.locator("section[aria-label] section[aria-label]"),
@@ -51,7 +51,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(cursors).toEqual(expect.arrayContaining(["1", "2"]));
   });
 
-  test("Pull requests lists every open change, past the first page", async ({
+  test("Code · Mine lists every open change, past the first page", async ({
     dashboard,
     page,
   }) => {
@@ -69,7 +69,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         title: `Fresh change ${index + 1}`,
       })),
     ]);
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/code`);
     const others = page
       .getByRole("region", { name: "Waiting on others" })
       .getByRole("listitem");
@@ -77,7 +77,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(others.first()).toHaveText(/Fresh change/);
   });
 
-  test("Pull requests reads every page of asks, so each finds its change", async ({
+  test("Code · Mine reads every page of asks, so each finds its change", async ({
     dashboard,
     page,
   }) => {
@@ -95,7 +95,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       })),
       { idleDays: 1, number: 91, title: "Pin the release train" },
     ]);
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/code`);
     await expect(
       page
         .getByRole("region", { name: "Waiting on you" })
@@ -145,7 +145,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
         : route.fallback();
     });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/code`);
     const retry = page.getByRole("button", { name: "Try again" });
     await expect(page.getByText("Could not load more.")).toBeVisible();
     // Two frames later, the list has not asked again on its own.

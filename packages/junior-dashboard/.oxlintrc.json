@@ -149,6 +149,7 @@
       "files": ["src/**/*.ts", "src/**/*.tsx"],
       "rules": {
         "junior/no-regex-url-parsing": "error",
+        "junior/no-split-url-query": "error",
         "junior/no-value-switch": "error"
       }
     },

@@ -130,6 +130,18 @@ test.describe("new UI", { tag: "@new" }, () => {
       const filter = (name: string) =>
         filters.getByRole("link", { exact: true, name });
       await expect(filter("All")).toHaveAttribute("aria-current", "page");
+      // All, the default, is at the right edge, after Pinned.
+      await expect(filters.getByRole("link")).toHaveText([
+        /^Done$/,
+        /^Watching$/,
+        /^Working$/,
+        /^Needs you$/,
+        /^Pinned$/,
+        /^All$/,
+      ]);
+      await screenshot(page, "conversation-state-filters", {
+        lightTheme: true,
+      });
 
       // Needs you lists only the rows that wait on the viewer.
       await filter("Needs you").click();

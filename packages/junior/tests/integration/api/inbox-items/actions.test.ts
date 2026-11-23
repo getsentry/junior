@@ -377,6 +377,7 @@ describe("inbox item actions API", () => {
       needsViewer: 1,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     // The Conversations of the action item wait on Ana, but not on Cal.
     expect(
@@ -463,6 +464,7 @@ describe("inbox item actions API", () => {
       needsViewer: 0,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     expect(
       await (await api(fixture, ben).get("/waiting-conversations")).json(),
@@ -523,6 +525,7 @@ describe("inbox item actions API", () => {
       needsViewer: 0,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
   });
 
@@ -788,12 +791,14 @@ describe("inbox item actions API", () => {
       needsViewer: 29,
       codeChanges: 2,
       snoozed: 0,
+      todos: 0,
     });
     expect(await (await api(fixture, ben).get("/count")).json()).toEqual({
       decisions: 0,
       needsViewer: 1,
       codeChanges: 1,
       snoozed: 0,
+      todos: 0,
     });
   });
 
@@ -818,6 +823,7 @@ describe("inbox item actions API", () => {
       needsViewer: 0,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
@@ -892,6 +898,7 @@ describe("inbox item actions API", () => {
       needsViewer: 1,
       codeChanges: 0,
       snoozed: 0,
+      todos: 0,
     });
     expect(
       await (await api(fixture, cal).get("/waiting-conversations")).json(),
