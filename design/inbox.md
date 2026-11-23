@@ -33,19 +33,21 @@ how the dashboard groups and acts on its rows.
 - Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
   the question card in the Conversation transcript, and the questions pill.
   Done and Dismiss on a "To do for you" row.
-- Dashboard filters: All, PRs, Decisions, and Other in the Inbox; All,
-  Needs you, Working, Watching, and Done in Conversations and a
-  repository's Conversations tab; and Pinned in the same control in all three.
+- Dashboard filters: Other, PRs, Decisions, To-dos, Pinned, and All in the
+  Inbox; Done, Watching, Working, Needs you, Pinned, and All in
+  Conversations and a repository's Conversations tab. All, the default, is
+  at the right edge, and the tab order follows the order on screen.
 - Settings: "Show the Inbox count in the tab".
 - MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
 ## Rules
 
 - The Inbox filters its asks by type: PRs (asks about a code
-  change), Decisions (other asks with a form), and Other (the rest, such
-  as To-dos and Resume). Each count holds the asks that wait on the viewer,
-  one per ask. The type counts add up to All, and All is the Inbox count.
-  A type with nothing waiting hides, but All always shows.
+  change), Decisions (other asks with a form), To-dos (the viewer's
+  To-dos), and Other (the rest, such as Resume). Each count holds the asks
+  that wait on the viewer, one per ask. The type counts add up to All, and
+  All is the Inbox count. A type with nothing waiting hides, but All always
+  shows.
 - The Conversation filters use the state that the row shows: Needs you
   when an ask or the tree waits on the viewer, then Working, then
   Watching. Done is the rest.
