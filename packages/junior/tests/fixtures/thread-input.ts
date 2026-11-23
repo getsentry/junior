@@ -116,7 +116,8 @@ export async function createHarness() {
 export type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 // The checkpoint fields of a run's input: its history, then its instruction.
-function runInputCheckpoint(run: AgentRun) {
+/** The first checkpoint of a run's Turn, as the agent saves it. */
+export function runInputCheckpoint(run: AgentRun) {
   const history = run.history?.messages ?? [];
   return {
     actor: run.actor!,

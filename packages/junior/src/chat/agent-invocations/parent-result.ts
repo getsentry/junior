@@ -1,5 +1,4 @@
 import type { Actor } from "@sentry/junior-plugin-api";
-import { isPersonInput } from "@/chat/conversations/kind-behavior";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { listWatches } from "@/chat/events/store";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -31,14 +30,19 @@ export type DeliverToParent = (args: {
 
 /**
  * Return the Actor that a child Turn's result carries to its parent, whose
- * Turn for it runs as that Actor. A person's Turn in a Thread reports as the
- * Event system Actor, so the parent never gets that person's access.
+ * Turn for it runs as that Actor. Only a Turn that agent work started, a
+ * parent message or an Event such as a child result, keeps its Actor. Any
+ * other Turn, such as a person's Turn in a Thread or a saved Turn with no
+ * Source, reports as the Event system Actor, so the parent never gets a
+ * person's access.
  */
 export function parentResultActor(
   actor: Actor,
   source: string | undefined,
 ): Actor {
-  return isPersonInput(source) ? EVENT_SYSTEM_ACTOR : actor;
+  return source === "parent_message" || source === "event"
+    ? actor
+    : EVENT_SYSTEM_ACTOR;
 }
 
 /**
