@@ -12,6 +12,7 @@ const rootTurn = {
   waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
+  quietResult: "none",
   sessionTasks: true,
   relatedConversations: true,
   tools: {
@@ -43,6 +44,7 @@ const agentInThreadTurn = {
   waitsForSignIn: false,
   gated: true,
   failureNotice: "none",
+  quietResult: "none",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -63,6 +65,7 @@ const agentInTaskTurn = {
   promptMode: "child_agent",
   missingAnswerError: "No reply was sent.",
   failureNotice: "parent",
+  quietResult: "parent",
 };
 
 // An Automation run almost never gets an answer, so only pending work keeps
@@ -75,6 +78,7 @@ const automationTurn = {
   waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
+  quietResult: "none",
   sessionTasks: true,
   relatedConversations: false,
   tools: {

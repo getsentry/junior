@@ -54,6 +54,8 @@ child chooses to report reaches the parent.
   Each result names the siblings that did not report yet. A Task that fails,
   or still has no answer after one reminder, tells its parent `failed`. A
   Thread keeps its failure.
+- A Task always sends its parent a result when its work ends, even when its
+  last Turn ends with `noReply`.
 - A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
   levels of child agents can start their own. The default is 1, so a
   root's child can start children. With 0, only a root can.

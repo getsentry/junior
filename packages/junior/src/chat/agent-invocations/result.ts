@@ -19,10 +19,7 @@ import {
   resolveMailboxTurnWork,
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
-import type {
-  DeliverToParent,
-  ParentResult,
-} from "@/chat/task-execution/conversation-turn";
+import type { DeliverToParent, ParentResult } from "./parent-result";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationWorkState,
@@ -232,6 +229,7 @@ export async function enqueueAgentMessageToParent(args: {
 
 const RESULT_SUMMARIES = {
   blocked: "is blocked.",
+  completed: "finished.",
   failed: "failed.",
   reply: "replied.",
   stopped: "was stopped.",
@@ -241,9 +239,9 @@ const RESULT_SUMMARIES = {
  * Append the result of one child agent Turn to its parent mailbox and wake
  * the parent: a `reply`, which the parent reads as a completed
  * `<agent-result>` or, while the child still works, as a message, or a
- * blocked, failed, or stopped result. `sender` names the child, and `actor`
- * is the Actor of the child's Turn; the parent never runs with more
- * authority than it. The key of the result, the `reply` tool call id or the
+ * completed, blocked, failed, or stopped result. `sender` names the child,
+ * and `actor` is the Actor of the child's Turn; the parent never runs with
+ * more authority than it. The key of the result, the `reply` tool call id or the
  * Turn id, keys the message, so a repeat call is safe.
  */
 export async function enqueueChildResultToParent(args: {
@@ -335,6 +333,7 @@ export async function enqueueChildResultToParent(args: {
 
 const PARENT_RESULT_OUTCOMES = {
   blocked: "blocked",
+  completed: "success",
   failed: "error",
   reply: "success",
   stopped: "aborted",

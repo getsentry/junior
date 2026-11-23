@@ -219,6 +219,11 @@ describe("stopping child agents", () => {
 
   it("drops a child's unread reply, also one that arrives late, when its parent stops it", async () => {
     const harness = await createHarness({ run: finishRun });
+    const quietResult = expect.objectContaining({
+      input: expect.objectContaining({
+        text: expect.stringMatching(/^<agent-result [^>]*status="completed"/),
+      }),
+    });
     try {
       const childId = await harness.spawn({
         agentName: "researcher",
@@ -226,7 +231,9 @@ describe("stopping child agents", () => {
         input: "watch deploys",
       });
       await harness.processNext(childId);
-      // A later Turn of the child, such as for a Watch Event, replies.
+      // The task Turn ended the child's work with no answer, so its parent
+      // has a result. A later Turn of the child, such as for a Watch Event,
+      // replies.
       await harness.deliver({
         actor: EVENT_SYSTEM_ACTOR,
         conversationId: childId,
@@ -237,6 +244,7 @@ describe("stopping child agents", () => {
         turnId: "turn_watch-event",
       });
       await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        quietResult,
         expect.objectContaining({
           inboundMessageId: getAgentReplyMessageId(
             childId,
@@ -294,9 +302,15 @@ describe("stopping child agents", () => {
         },
         turnId: "turn_build-event",
       });
-      await expect(harness.mailbox(parentConversationId)).resolves.toHaveLength(
-        1,
-      );
+      await expect(harness.mailbox(parentConversationId)).resolves.toEqual([
+        quietResult,
+        expect.objectContaining({
+          inboundMessageId: getAgentReplyMessageId(
+            watcherId,
+            getTurnReplyKey("turn_build-event", "call-build-reply"),
+          ),
+        }),
+      ]);
       await stopConversation({
         conversationId: watcherId,
         conversationStore: harness.conversationStore,
