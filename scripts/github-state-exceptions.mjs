@@ -48,13 +48,6 @@ export const githubStateExceptions = {
   "junior_github_issues.updated_at":
     "Mirror awaiting cleanup: the close annotation reads the Conversation ids from the issue footer.",
 
-  "junior_github_pull_request_issues.pull_request_id":
-    "Mirror awaiting cleanup: nothing reads it.",
-  "junior_github_pull_request_issues.issue_repository_full_name":
-    "Mirror awaiting cleanup: nothing reads it.",
-  "junior_github_pull_request_issues.issue_number":
-    "Mirror awaiting cleanup: nothing reads it.",
-
   "junior_github_pull_request_requesters.repository_full_name":
     "Junior-owned: the key of the person who asked Junior for the pull request.",
   "junior_github_pull_request_requesters.number":
