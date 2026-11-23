@@ -82,10 +82,14 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
   const views = options.view ? [VIEWS[options.view]] : [desktop, mobile];
 
   for (const view of views) {
-    // The last click or hover of the spec, or a resize that moves the page
-    // under the pointer, leaves a hover state or tooltip on some runs. Move
-    // the pointer off the page, which sends mouseleave.
-    await page.mouse.move(-1, -1);
+    const size = page.viewportSize();
+    if (size?.width !== view.width || size.height !== view.height) {
+      // A resize moves the page under the pointer, so whichever element
+      // lands there shows its hover state or tooltip. Move the pointer off
+      // the page, which sends mouseleave. A spec that shoots a hover state
+      // sets this size first, so its pointer stays.
+      await page.mouse.move(-1, -1);
+    }
     await page.setViewportSize({
       height: view.height,
       width: view.width,
