@@ -456,5 +456,19 @@ describe("inbox item push", () => {
     await addPhone(ana);
     const next = await execute(tools.add, ASK);
     expect(pushes[3]).toMatchObject({ close: [acme], tag: next.item.id });
+
+    // An item with both a created and a wake push closes once.
+    const nextRow = {
+      conversationId: tools.conversationId,
+      inboxItemId: next.item.id,
+    };
+    expect((await asAna.snooze(nextRow, wakeAtMs + 240_000)).status).toBe(201);
+    await heartbeat(wakeAtMs + 240_000);
+    expect(pushes[4]).toMatchObject({ tag: next.item.id });
+    expect((await asAna.act(next.item.id, { action: "dismiss" })).status).toBe(
+      200,
+    );
+    await execute(tools.add, { ...ASK, dedupe_key: "deploy:db" });
+    expect(pushes[5]?.["close"]).toEqual([next.item.id, acme]);
   });
 });
