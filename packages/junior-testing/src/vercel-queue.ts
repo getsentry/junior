@@ -518,11 +518,11 @@ export async function startLocalVercelQueueServer(
   const server = createServer((request, response) => {
     route(request).then(
       (reply) => respond(reply, response),
-      (failure: unknown) =>
-        respond(
-          error(500, failure instanceof Error ? failure.message : "Error"),
-          response,
-        ),
+      (failure: unknown) => {
+        // Keep exception text out of the response. Log it for the developer.
+        console.error("Local Vercel Queues server request failed:", failure);
+        respond(error(500, "Internal server error"), response);
+      },
     );
   });
   await new Promise<void>((resolve, reject) => {
