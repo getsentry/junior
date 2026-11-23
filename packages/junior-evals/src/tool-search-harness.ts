@@ -23,7 +23,7 @@ import { createApp, defineJuniorPlugins } from "@/app";
 import { botConfig } from "@/chat/config";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 
 const CONVERSATION_ID = "local:eval:tool-search";
@@ -41,6 +41,7 @@ interface ToolSearchEvalOutput extends Record<string, JsonValue> {
 }
 
 function trackerTool(description: string, inputSchema: z.ZodTypeAny) {
+  // ast-grep-ignore: tools-defined-in-tools-dir -- a stand-in tool for an eval case, not a product tool
   return definePluginTool({
     annotations: {
       destructiveHint: false,

@@ -11,10 +11,12 @@ function rollout(page: Page) {
 async function answerHold(page: Page) {
   const todo = page.getByRole("region", { name: "To do" });
   await rollout(page).locator('[aria-controls^="inbox-row-"]').first().click();
-  await todo
-    .getByRole("region", { name: "Approve the payments-v42 rollout" })
-    .getByRole("button", { exact: true, name: "Hold" })
-    .click();
+  const card = todo.getByRole("region", {
+    name: "Approve the payments-v42 rollout",
+  });
+  // A click picks the choice, and Send answers.
+  await card.getByRole("button", { exact: true, name: "Hold" }).click();
+  await card.getByRole("button", { exact: true, name: "Send" }).click();
 }
 
 function toasts(page: Page) {
@@ -38,13 +40,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       let release = () => {};
       const held = new Promise<void>((resolve) => (release = resolve));
       // Hold the answer, so the row leaves before the server answers.
-      await page.route(
-        /\/api\/review-items\/[^/]+\/actions$/,
-        async (route) => {
-          await held;
-          await route.fallback();
-        },
-      );
+      await page.route(/\/api\/inbox-items\/[^/]+\/actions$/, async (route) => {
+        await held;
+        await route.fallback();
+      });
       await page.setViewportSize(view);
       await page.goto(`${dashboard.baseURL}/?view=inbox`);
       await answerHold(page);
@@ -57,7 +56,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       // after a reload too.
       const answered = page.waitForResponse(
         (response) =>
-          /\/api\/review-items\/[^/]+\/actions$/.test(response.url()) &&
+          /\/api\/inbox-items\/[^/]+\/actions$/.test(response.url()) &&
           response.request().method() === "POST",
       );
       release();
@@ -66,8 +65,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       const summary = rollout(page).locator('[data-inbox-slot="summary"]');
       await expect(summary).toHaveText("You answered Hold");
       await expect(page.getByText(ask)).toHaveCount(0);
+      // The summaries read the cards of their links.
+      const cardsRead = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === "/api/objects",
+      );
       await page.reload();
       await expect(summary).toHaveText("You answered Hold");
+      await cardsRead;
     });
   }
 
@@ -75,7 +79,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await page.route(/\/api\/review-items\/[^/]+\/actions$/, (route) =>
+    await page.route(/\/api\/inbox-items\/[^/]+\/actions$/, (route) =>
       route.fulfill({ json: { error: "Down." }, status: 503 }),
     );
     await page.goto(`${dashboard.baseURL}/?view=inbox`);

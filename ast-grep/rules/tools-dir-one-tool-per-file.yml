@@ -1,0 +1,38 @@
+# A `tools` directory holds only model-facing tools, one tool per file:
+# `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Helpers, schemas, and
+# shared types go in a module outside `tools`. The `build-tools` repo skill
+# explains the layout.
+id: tools-dir-one-tool-per-file
+language: TypeScript
+severity: error
+message: A file in a tools directory defines one tool. Move each other tool to its own file.
+files:
+  - packages/*/src/**/tools/**/*.ts
+  - apps/**/src/**/tools/**/*.ts
+utils:
+  tool-call:
+    any:
+      - pattern: definePluginTool($$$)
+      - pattern: zodTool($$$)
+      - pattern: $_SERVER.registerTool($$$)
+  holds-tool:
+    any:
+      - matches: tool-call
+      - has:
+          stopBy: end
+          matches: tool-call
+# Two tools always sit under sibling nodes, so the later sibling matches.
+rule:
+  all:
+    - any:
+        - kind: export_statement
+        - kind: lexical_declaration
+        - kind: function_declaration
+        - kind: expression_statement
+        - kind: return_statement
+        - kind: pair
+        - kind: call_expression
+    - matches: holds-tool
+    - follows:
+        stopBy: end
+        matches: holds-tool

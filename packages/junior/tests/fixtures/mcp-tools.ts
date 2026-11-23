@@ -3,7 +3,7 @@ import { createSqlStore } from "@/chat/conversations/sql/store";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { PiMessage } from "@/chat/pi/messages";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { insertReviewItem, type ReviewItem } from "@/chat/review-items/store";
+import { insertInboxItem, type InboxItem } from "@/chat/inbox-items/store";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
 import { juniorConversationParticipants } from "@/db/schema";
 
@@ -119,14 +119,14 @@ export async function appendMcpToolStep(
   );
 }
 
-/** Store one open private action Review item assigned to the named viewer. */
-export async function seedMcpReviewItem(args: {
+/** Store one open private action Inbox item assigned to the named viewer. */
+export async function seedMcpInboxItem(args: {
   conversationId: string;
   email: string;
   title: string;
-}): Promise<ReviewItem> {
+}): Promise<InboxItem> {
   const viewer = await requireViewer(args.email);
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [viewer.id],
@@ -149,7 +149,7 @@ export async function seedMcpReviewItem(args: {
     title: args.title,
     visibility: "private",
   });
-  if (!item) throw new Error(`Review item ${args.title} was not stored`);
+  if (!item) throw new Error(`Inbox item ${args.title} was not stored`);
   return item;
 }
 

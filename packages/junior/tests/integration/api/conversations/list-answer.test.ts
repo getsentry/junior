@@ -2,11 +2,11 @@ import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import { afterEach, describe, expect, it } from "vitest";
 import { createJuniorApi, type JuniorApiVariables } from "@/api";
-import { conversationFeedSchema, reviewItemListSchema } from "@/api/schema";
+import { conversationFeedSchema, inboxItemListSchema } from "@/api/schema";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
-import type { UserInputRequest } from "@/chat/tools/runtime/user-input-request";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import type { UserInputRequest } from "@/chat/inbox-items/user-input-request";
 import { juniorConversationParticipants } from "@/db/schema";
 import {
   closeConversationFixture,
@@ -78,7 +78,7 @@ async function closedItem(input: {
   dedupeKey: string;
   pick?: string;
 }): Promise<void> {
-  const item = await insertReviewItem(getDb(), {
+  const item = await insertInboxItem(getDb(), {
     owner: { id: input.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [input.closedBy.id],
@@ -92,7 +92,7 @@ async function closedItem(input: {
     visibility: "public",
   });
   if (!item) throw new Error(`no item for ${input.dedupeKey}`);
-  await closeReviewItem(getDb(), {
+  await closeInboxItem(getDb(), {
     ...(input.pick
       ? {
           answer: {
@@ -163,8 +163,8 @@ describe("conversation list API viewer answers", () => {
       });
     }
     const read = api(fixture, ana);
-    const closedPage = reviewItemListSchema.parse(
-      await (await read("/review-items?status=done,dismissed")).json(),
+    const closedPage = inboxItemListSchema.parse(
+      await (await read("/inbox-items?status=done,dismissed")).json(),
     );
     expect(closedPage.items).toHaveLength(50);
     expect(closedPage.items.some((item) => item.owner.id === ROLLOUT_ID)).toBe(

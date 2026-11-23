@@ -27,7 +27,7 @@ const releaseSchema = z
   .object({
     created_at: z.string(),
     draft: z.boolean(),
-    html_url: z.string(),
+    url: z.string(),
     id: z.number(),
     name: z.string().nullable(),
     prerelease: z.boolean(),
@@ -75,7 +75,7 @@ function mapRelease(
   return {
     created_at: providerRelease.created_at,
     draft: providerRelease.draft,
-    html_url: providerRelease.html_url,
+    url: providerRelease.html_url,
     id: providerRelease.id,
     name: providerRelease.name,
     prerelease: providerRelease.prerelease,

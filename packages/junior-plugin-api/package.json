@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-plugin-api",
-  "version": "0.310.0",
+  "version": "0.313.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -22,7 +22,11 @@
     "src/object-icons.LICENSE"
   ],
   "dependencies": {
+    "@types/mdast": "catalog:",
     "commander": "^14.0.3",
+    "mdast-util-from-markdown": "catalog:",
+    "mdast-util-gfm": "catalog:",
+    "micromark-extension-gfm": "catalog:",
     "zod": "catalog:"
   },
   "scripts": {

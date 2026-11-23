@@ -49,10 +49,12 @@ import { fetchDashboardJson } from "../http";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
-import type {
-  CustomSnoozeEnd,
-  EventSnooze,
-  SnoozeEvents,
+import { eventSentence, sentenceCase } from "./snoozeSentences";
+import {
+  SOMEDAY,
+  type CustomSnoozeEnd,
+  type EventSnooze,
+  type SnoozeEvents,
 } from "./snoozeChoices";
 
 // Like the composer's `#` menu: a person who types waits for the next key.
@@ -88,7 +90,8 @@ interface CompleteCondition {
  * the subject of the row's items, a pull request that the search finds, or
  * a pasted link to a pull request or issue. Wake shows the items again
  * then; Dismiss dismisses them, for a viewer who can dismiss each one. The
- * time always wakes them.
+ * time always wakes them. Someday snoozes with neither, until the items
+ * close.
  */
 export function SnoozeDialog(props: {
   /** Set when the row can snooze until an Event. */
@@ -237,6 +240,19 @@ export function SnoozeDialog(props: {
         ) : null}
         <FieldError id={`${id}-error`}>{error?.message}</FieldError>
         <DialogFooter className="flex justify-end gap-1">
+          {props.events ? (
+            <Button
+              className="sm:mr-auto"
+              onClick={() => {
+                props.onSnooze(SOMEDAY);
+                sheet.close();
+              }}
+              type="button"
+              variant="ghost"
+            >
+              Someday
+            </Button>
+          ) : null}
           <Button onClick={sheet.close} type="button" variant="ghost">
             Cancel
           </Button>
@@ -535,24 +551,4 @@ function watchedName(watched: Watched, resourceType: string): string {
   const type = resourceType.replaceAll("_", " ");
   if (watched.kind === "subject") return `this ${type}`;
   return watched.reference ? referenceName(watched.reference) : `the ${type}`;
-}
-
-/**
- * An Event as a sentence about the page, such as "When getsentry/junior#12
- * is merged", from the phrase of the Event's source. An Event without one
- * reads as its label on the page.
- */
-function eventSentence(
-  eventType: string,
-  events: SnoozeEvents,
-  name: string,
-): string {
-  const phrase = events.phrases[eventType];
-  return phrase
-    ? `When ${name} ${phrase}`
-    : `${sentenceCase(eventLabel(eventType, events.resourceType))} on ${name}`;
-}
-
-function sentenceCase(text: string): string {
-  return text.charAt(0).toUpperCase() + text.slice(1);
 }

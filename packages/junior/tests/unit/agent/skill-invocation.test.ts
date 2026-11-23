@@ -8,7 +8,7 @@ import type { AgentRun } from "@/chat/agent/types";
 import { agentInstructionProvenance } from "@/chat/conversations/provenance";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import type { SkillMetadata } from "@/chat/skills";
-import { agentInvocationInputText } from "@/chat/agent-invocations/work";
+import { parentTaskText } from "@/chat/agent-invocations/parent-message";
 import { instructionForInputs, turnRequestText } from "@/chat/agent/prompt";
 import { renderTaskBatchInput, renderTaskInput } from "@/chat/task-input";
 
@@ -54,10 +54,7 @@ describe("skillInvocationText", () => {
   });
 
   it("ignores a parent agent task and Watch Event text", () => {
-    const task = agentInvocationInputText({
-      input: "Summarize the repo with $beta.",
-      parentToolCallId: "call-1",
-    });
+    const task = parentTaskText({ text: "Summarize the repo with $beta." });
     expect(task).toContain("$beta");
     expect(
       skillInvocationText(

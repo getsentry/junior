@@ -46,10 +46,10 @@ import {
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { createTools } from "@/chat/tools";
-import { PluginToolDeniedError } from "@/chat/tools/execution/plugin-tool-denied-error";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { createTools } from "@/chat/tool-support/create-tools";
+import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import type {
   SandboxCommandInput,
   SandboxSession,
@@ -147,6 +147,8 @@ function fakeSandbox(
   return {
     sandboxId: "sandbox-agent-hooks",
     sessionId: "session-agent-hooks",
+    keepsFilesAcrossSessions: false,
+    startedAtMs: Date.now(),
     fs: {
       async readFile() {
         return "";
@@ -2132,11 +2134,11 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.slack?.channelCapabilities.canPostToChannel).toBe(false);
   });
 
-  it("exposes Slack context and Actor for an Agent invocation", () => {
+  it("exposes Slack context and Actor for a Parent message", () => {
     const ctx = capturePluginContext({
       turnTools: rootTurnTools,
       conversationId: "agent-invocation:invocation-1",
-      source: { kind: "agent_invocation" },
+      source: { kind: "parent_message" },
       actor: TEST_ACTOR,
       destination: SLACK_DESTINATION,
       location: {
@@ -2149,7 +2151,7 @@ describe("getPluginTools channel resolution", () => {
       workspace: {} as any,
     });
 
-    expect(ctx.source).toEqual({ kind: "agent_invocation" });
+    expect(ctx.source).toEqual({ kind: "parent_message" });
     expect(ctx.actor).toEqual(TEST_ACTOR);
     expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
   });

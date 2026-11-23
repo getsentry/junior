@@ -6,15 +6,12 @@ import {
   conversationCatchUpSchema,
   conversationDetailReportSchema,
 } from "@/api/schema";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import {
   closeDb,
   getConversationEventStore,
   getConversationStore,
-  getDb,
 } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
 import {
   mockTitleModel,
   type TitleModelRequest,
@@ -57,20 +54,6 @@ async function seedConversation(
       data: { messageId: `message-${index}`, role, text, type: "message" },
     })),
   );
-  // The reader stopped after seq 1, so they saw the first Brief only.
-  for (const [throughSeq, summary] of [
-    [1, "Junior opened PR #12 for the login fix."],
-    [3, "A later Brief that the reader has not seen."],
-  ] as const) {
-    await appendConversationBrief(getDb(), {
-      conversationId,
-      turnId: `turn-${throughSeq}`,
-      throughSeq,
-      content: conversationBriefFixture({ summary }),
-      searchText: summary,
-      modelId: "test-model",
-    });
-  }
 }
 
 function postCatchUp(
@@ -93,7 +76,7 @@ describe("conversation catch-up API", () => {
     await closeDb();
   });
 
-  it("summarizes rows after the read position with the Brief the reader saw", async () => {
+  it("summarizes rows after the read position", async () => {
     const conversationId = "local:test:catch-up";
     await seedConversation(conversationId, "public");
     const requests: TitleModelRequest[] = [];
@@ -115,11 +98,9 @@ describe("conversation catch-up API", () => {
     });
     expect(requests).toHaveLength(1);
     const prompt = JSON.stringify(requests[0]!.messages);
-    expect(prompt).toContain("Junior opened PR #12 for the login fix.");
     expect(prompt).toContain("CI failed on Safari.");
     expect(prompt).toContain("I pushed a Safari fix to PR #12.");
     expect(prompt).not.toContain("Please open a PR for the login fix.");
-    expect(prompt).not.toContain("A later Brief that the reader has not seen.");
 
     // The Conversation pays for its catch-up.
     const detail = conversationDetailReportSchema.parse(

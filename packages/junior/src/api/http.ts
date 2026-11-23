@@ -2,7 +2,7 @@ import { HTTPException } from "hono/http-exception";
 import type { ContentfulStatusCode } from "hono/utils/http-status";
 import * as z from "zod";
 import { startSpan } from "@/chat/sentry";
-import { apiErrorSchema } from "./schema/common";
+import { apiErrorSchema } from "./schema/response";
 
 const NO_STORE_HEADERS = { "cache-control": "no-store" } as const;
 

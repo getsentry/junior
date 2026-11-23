@@ -10,11 +10,17 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { routeConversationVersion, withRequestedMailbox } from "./harness";
+import {
+  routeConversationVersion,
+  withRequestedMailbox,
+  waitForOutlineRead,
+} from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
+import { pickOption } from "./pick-option";
 
-test("starts and continues conversations from the dashboard", async ({
+// Classic home sends to the Lead. lead-home.spec.ts covers it.
+test("starts and continues conversations from the dashboard @new", async ({
   page,
   dashboard,
 }) => {
@@ -111,7 +117,7 @@ test("starts and continues conversations from the dashboard", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await page.getByRole("combobox", { name: "Conversation visibility" }).click();
-  await page.getByRole("option", { name: "Private" }).click();
+  await pickOption(page.getByRole("option", { name: "Private" }));
   const startComposer = page.getByLabel("Start a conversation");
   const imageBase64 = mockChartPng.toString("base64");
   // Any file type goes. A file over the per-file cap does not. Build large
@@ -798,7 +804,7 @@ test("hands web and external messages from queue to history without gaps", async
   await expect(pending).toBeHidden();
 });
 
-test("keeps details closed on a home send after the reader closed them", async ({
+test("keeps details closed on a home send after the reader closed them @new", async ({
   page,
   dashboard,
 }) => {
@@ -873,10 +879,13 @@ test("keeps details closed on a home send after the reader closed them", async (
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   // The pending view follows the saved choice, as the page does.
   await expect(details).toBeHidden();
+  // The new Conversation's page reads its outline.
+  const outlineRead = waitForOutlineRead(page, createdConversationId);
   releaseCreate?.();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
   await expect(transcript.getByText("Check the deploy")).toBeVisible();
   await expect(details).toBeHidden();
+  await outlineRead;
 });

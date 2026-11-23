@@ -1,7 +1,8 @@
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
+import { askTypeOf, type AskType, type InboxTypeFilter } from "./inboxFilters";
 import { isCodeChangeItem, isDecisionItem } from "./inboxModel";
-import { itemNeedsViewer } from "./reviewItemFormat";
+import { itemNeedsViewer } from "./inboxItemFormat";
 
 /** The server counts of the items that wait on the viewer, on every page. */
 type WaitingCounts = {
@@ -10,79 +11,74 @@ type WaitingCounts = {
   needsViewer: number;
 };
 
-/** What each page shows now, as the counting rule below counts it. */
-type ShownRows = {
-  /** The question rows that Decisions lists. */
-  decisions: number;
-  /** The entries under Waiting on you in Pull requests. */
-  prs: number;
-  /** The rows in To do. */
-  todo: number;
-};
+/** The counts of the asks in To do: every one, and each type's. */
+export type TodoCounts = Partial<Record<InboxTypeFilter, number>>;
 
 /**
- * Count each Inbox badge from the rows that its page shows, so a badge and
- * its page cannot drift.
+ * Count the asks in To do, and each type's, from the rows that To do
+ * shows, so a badge and its list cannot drift.
  *
- * The counting rule: a badge counts what the viewer can act on now on that
- * page, the way the page shows it, and nothing else.
- *
- * - To do (the Inbox entry, the header, the tab, and the To do heading):
- *   each row in To do. That is one row per ask that waits on the viewer, as
- *   a stack shows a row for each of its asks. An Automation alert is an
- *   ask too.
- * - Decisions: each question row that Decisions lists, also a question for
- *   Everyone.
- * - Pull requests: each entry under Waiting on you, one per pull request.
- *   Waiting on others and Drafts do not count.
+ * The counting rule: a count holds the asks that wait on the viewer and
+ * that To do shows, one per ask, as a stack shows a row for each of its
+ * asks. An Automation alert is an ask too. All is the Inbox badge, the
+ * header, the tab, and the To do heading. Pull requests, Decisions, and
+ * Other split All by `askTypeOf`, so they add up to it.
  *
  * An answered, dismissed, or closed item is in no row, and a snoozed or
  * cleared row is not on the page, so none of them count.
  *
  * The rows hold only the loaded pages. The list loads what waits on the
  * viewer first, so while the last loaded item still waits, more can follow:
- * the server counts those, and each one adds one to the badge until it loads.
- * Returns undefined for a count that is not known yet.
+ * the server counts those, and each one adds one to the counts until it
+ * loads. Returns no count that is not known yet.
  */
 export function inboxCounts(input: {
   /** More pages of open items follow the loaded ones. */
   hasMore: boolean;
   /** Every open item that the list knows, also a linked or held one. */
-  known: readonly ReviewItemPayload[];
+  known: readonly InboxItemPayload[];
   /** The loaded pages of open items, in the list's order: what waits first. */
-  loaded: readonly ReviewItemPayload[] | undefined;
-  rows: ShownRows;
+  loaded: readonly InboxItemPayload[] | undefined;
   server: WaitingCounts | undefined;
-}): Partial<Record<keyof ShownRows, number>> {
-  const { loaded, rows, server } = input;
+  /** The asks that To do shows. */
+  todo: readonly InboxItemPayload[];
+}): TodoCounts {
+  const { loaded, server, todo } = input;
   if (!loaded) return {};
+  const shown = (type: AskType) =>
+    todo.filter((item) => askTypeOf(item) === type).length;
   const last = loaded.at(-1);
-  const complete = !input.hasMore || !last || !itemNeedsViewer(last);
+  if (!input.hasMore || !last || !itemNeedsViewer(last)) {
+    return {
+      all: todo.length,
+      decisions: shown("decisions"),
+      other: shown("other"),
+      prs: shown("prs"),
+    };
+  }
+  if (!server) return {};
+  // The waiting items past the loaded pages that the server counts.
   const waiting = input.known.filter(itemNeedsViewer);
-  // The waiting items past the loaded pages that a page holds.
   const past = (
-    counted: (counts: WaitingCounts) => number,
-    inPage: (item: ReviewItemPayload) => boolean,
-  ) => {
-    if (complete) return 0;
-    if (!server) return undefined;
-    return Math.max(0, counted(server) - waiting.filter(inPage).length);
-  };
-  const add = (shown: number, more: number | undefined) =>
-    more === undefined ? undefined : shown + more;
-  const todoItems = past(
-    (counts) => counts.needsViewer,
-    () => true,
+    counted: number,
+    inCount: (item: InboxItemPayload) => boolean,
+  ) => Math.max(0, counted - waiting.filter(inCount).length);
+  const all = todo.length + past(server.needsViewer, () => true);
+  const prs = shown("prs") + past(server.codeChanges, isCodeChangeItem);
+  // The server counts a question about a pull request in both, so
+  // Decisions takes no more than Pull requests and the Other asks that To
+  // do shows leave. Other keeps at least the asks that To do shows.
+  const decisions = Math.max(
+    shown("decisions"),
+    Math.min(
+      all - prs - shown("other"),
+      shown("decisions") + past(server.decisions, isDecisionItem),
+    ),
   );
   return {
-    decisions: add(
-      rows.decisions,
-      past((counts) => counts.decisions, isDecisionItem),
-    ),
-    prs: add(
-      rows.prs,
-      past((counts) => counts.codeChanges, isCodeChangeItem),
-    ),
-    todo: add(rows.todo, todoItems),
+    all,
+    decisions,
+    other: Math.max(0, all - prs - decisions),
+    prs,
   };
 }

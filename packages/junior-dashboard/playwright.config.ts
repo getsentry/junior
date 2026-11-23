@@ -34,6 +34,10 @@ export default defineConfig<{ ui: DashboardShell }>({
   use: {
     // Dark is the default dashboard theme. Light theme journeys opt in.
     colorScheme: "dark",
+    // Reduced motion stops the dashboard's transitions, animations, and
+    // smooth scrolls, so journeys act on UI that has stopped moving. Specs
+    // do not test motion; visual QA covers it.
+    contextOptions: { reducedMotion: "reduce" },
     launchOptions: {
       // Partial raster repaints only the changed part of a tile, so pixels
       // depend on paint history. Full tile raster keeps screenshots stable.

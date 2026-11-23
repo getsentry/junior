@@ -9,7 +9,7 @@ import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
 import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { getDb } from "@/chat/db";
-import { juniorReviewItems } from "@/db/schema";
+import { juniorInboxItems } from "@/db/schema";
 import {
   createEventAutomation,
   deleteEventAutomation,
@@ -106,7 +106,7 @@ function alertApi(fixture: ConversationFixture, viewer: User) {
     /** The open alerts of an Automation. */
     alerts: async (automationId: string) => {
       const response = await app.request(
-        "http://localhost/api/review-items?owner=automation",
+        "http://localhost/api/inbox-items?owner=automation",
       );
       const { items } = (await response.json()) as { items: Alert[] };
       return items.filter(
@@ -116,27 +116,27 @@ function alertApi(fixture: ConversationFixture, viewer: User) {
     /** The Automations badge count. */
     badge: async () => {
       const response = await app.request(
-        "http://localhost/api/review-items/count?include=automations",
+        "http://localhost/api/inbox-items/count?include=automations",
       );
       return ((await response.json()) as { automations: number }).automations;
     },
     /** The alerts in the viewer's To do, as the Automations page lists them. */
     todoAlerts: async () => {
       const response = await app.request(
-        "http://localhost/api/review-items?for=viewer&owner=automation&sort=waiting",
+        "http://localhost/api/inbox-items?for=viewer&owner=automation&sort=waiting",
       );
       const { items } = (await response.json()) as { items: Alert[] };
       return items.map((item) => item.title);
     },
     item: async (id: string) => {
       const response = await app.request(
-        `http://localhost/api/review-items/${id}`,
+        `http://localhost/api/inbox-items/${id}`,
       );
       return { body: await response.json(), status: response.status };
     },
     /** Pick one step of an alert, such as Run again. */
     step: (id: string, label: string) =>
-      app.request(`http://localhost/api/review-items/${id}/actions`, {
+      app.request(`http://localhost/api/inbox-items/${id}/actions`, {
         body: JSON.stringify({
           action: "submit",
           answer: { values: { step: [label] } },
@@ -145,7 +145,7 @@ function alertApi(fixture: ConversationFixture, viewer: User) {
         method: "POST",
       }),
     dismiss: (id: string) =>
-      app.request(`http://localhost/api/review-items/${id}/actions`, {
+      app.request(`http://localhost/api/inbox-items/${id}/actions`, {
         body: JSON.stringify({ action: "dismiss" }),
         headers: { "content-type": "application/json" },
         method: "POST",
@@ -210,7 +210,7 @@ describe("Automation alerts", () => {
 
     // The creator snoozes it like any other item.
     const snooze = await asCreator.snooze(
-      { reviewItemId: blocked!.id },
+      { inboxItemId: blocked!.id },
       NOW_MS + HOUR_MS,
     );
     expect(snooze.status).toBe(201);
@@ -414,10 +414,10 @@ describe("Automation alerts", () => {
       statusReason: "GitHub access expired.",
     });
     await saveScheduledAutomation(getDb(), task);
-    // Before the cutover, a blocked Automation had no Review item.
+    // Before the cutover, a blocked Automation had no Inbox item.
     await getDb()
-      .delete(juniorReviewItems)
-      .where(eq(juniorReviewItems.ownerId, task.id));
+      .delete(juniorInboxItems)
+      .where(eq(juniorInboxItems.ownerId, task.id));
     expect(await asCreator.alerts(task.id)).toEqual([]);
 
     await heartbeat();

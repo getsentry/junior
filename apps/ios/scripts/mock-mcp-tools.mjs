@@ -14,7 +14,7 @@ export const MCP_SCOPES = [
   "conversations:read",
   "conversations:manage",
   "conversations:write",
-  "review_items:read",
+  "inbox_items:read",
   "automations:read",
 ];
 
@@ -55,6 +55,7 @@ const messageText = {
   max: 32_000,
   description: "Message text.",
 };
+const conversationTitle = { type: "string", trim: true, min: 1, max: 200 };
 const idempotencyKey = {
   type: "string",
   trim: true,
@@ -248,7 +249,7 @@ export function createMockMcpTools({ app, origin }) {
     };
   }
 
-  function mcpReviewItem(item) {
+  function mcpInboxItem(item) {
     return {
       id: item.id,
       kind: item.kind,
@@ -552,6 +553,26 @@ export function createMockMcpTools({ app, origin }) {
       },
     },
     {
+      name: "renameConversation",
+      scope: "conversations:manage",
+      title: "Rename conversation",
+      description:
+        "Rename one of your conversations for everyone in it. Later turns keep the new title. The Slack thread does not change. Returns the stored title.",
+      annotations: MANAGE,
+      input: {
+        conversationId,
+        title: conversationTitle,
+      },
+      async run({ conversationId: id, title }) {
+        const result = await apiJson(
+          "PATCH",
+          `/conversations/${enc(id)}/title`,
+          { title },
+        );
+        return { title: result.title };
+      },
+    },
+    {
       name: "setConversationAutoArchive",
       scope: "conversations:manage",
       title: "Set conversation auto-archive",
@@ -637,8 +658,12 @@ export function createMockMcpTools({ app, origin }) {
         stopped.add(id);
         if (running) droppedPending.add(id);
         return {
+          conversationId: id,
           status: running ? "requested" : "no_work",
-          droppedMessages: running ? pendingMessages.length : 0,
+          stoppedInboundMessageIds: running
+            ? pendingMessages.map((message) => message.messageId)
+            : [],
+          stoppedMessages: [],
         };
       },
     },
@@ -654,7 +679,13 @@ export function createMockMcpTools({ app, origin }) {
         await requireDetail(id);
         const { pendingMessages } = await readPendingWork(id);
         droppedPending.add(id);
-        return { cancelledMessages: pendingMessages.length };
+        return {
+          cancelledCount: pendingMessages.length,
+          cancelledInboundMessageIds: pendingMessages.map(
+            (message) => message.messageId,
+          ),
+          conversationId: id,
+        };
       },
     },
     {
@@ -667,10 +698,7 @@ export function createMockMcpTools({ app, origin }) {
       input: {
         message: messageText,
         title: {
-          type: "string",
-          trim: true,
-          min: 1,
-          max: 200,
+          ...conversationTitle,
           optional: true,
           description:
             "Short title for the conversation. Omit it to generate one from the message.",
@@ -754,11 +782,11 @@ export function createMockMcpTools({ app, origin }) {
       },
     },
     {
-      name: "searchReviewItems",
-      scope: "review_items:read",
-      title: "Search review items",
+      name: "searchInboxItems",
+      scope: "inbox_items:read",
+      title: "Search inbox items",
       description:
-        "Search the open review items that you can see, newest change first. A review item is a question or notice that waits for a person.",
+        "Search the open inbox items that you can see, newest change first. An inbox item is a question or notice that waits for a person.",
       annotations: READ_ONLY,
       input: {
         q: {
@@ -786,7 +814,7 @@ export function createMockMcpTools({ app, origin }) {
       async run({ conversationId: id, limit, q }) {
         const query = new URLSearchParams();
         if (id) query.set("conversationId", id);
-        const list = await apiJson("GET", `/review-items?${query}`);
+        const list = await apiJson("GET", `/inbox-items?${query}`);
         const words = q?.toLowerCase();
         const items = list.items
           .filter(
@@ -797,31 +825,31 @@ export function createMockMcpTools({ app, origin }) {
           )
           .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
         return {
-          items: items.slice(0, limit).map(mcpReviewItem),
+          items: items.slice(0, limit).map(mcpInboxItem),
           truncated: items.length > limit,
         };
       },
     },
     {
-      name: "getReviewItem",
-      scope: "review_items:read",
-      title: "Get review item",
-      description: "Get one review item, open or closed.",
+      name: "getInboxItem",
+      scope: "inbox_items:read",
+      title: "Get inbox item",
+      description: "Get one inbox item, open or closed.",
       annotations: READ_ONLY,
       input: {
         id: {
           type: "string",
           min: 1,
-          description: "Review item id from searchReviewItems.",
+          description: "Inbox item id from searchInboxItems.",
         },
       },
       async run({ id }) {
-        const result = await api("GET", `/review-items/${enc(id)}`);
+        const result = await api("GET", `/inbox-items/${enc(id)}`);
         if (result.status === 404) {
-          throw new ToolError("Review item not found.");
+          throw new ToolError("Inbox item not found.");
         }
         if (!result.ok) throw apiFailure(result);
-        return { item: mcpReviewItem(result.json) };
+        return { item: mcpInboxItem(result.json) };
       },
     },
     {

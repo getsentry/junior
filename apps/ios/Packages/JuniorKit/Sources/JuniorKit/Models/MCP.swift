@@ -209,8 +209,8 @@ public struct AcceptedMessage: Decodable, Sendable {
   public var url: String?
 }
 
-/// One open Review item (`mcpReviewItemSchema`). Answers happen on the web.
-public struct ReviewItem: Decodable, Sendable, Hashable, Identifiable {
+/// One open Inbox item (`mcpInboxItemSchema`). Answers happen on the web.
+public struct InboxItem: Decodable, Sendable, Hashable, Identifiable {
   public struct Subject: Decodable, Sendable, Hashable {
     public var id: String
     public var title: String?
@@ -235,13 +235,13 @@ public struct ReviewItem: Decodable, Sendable, Hashable, Identifiable {
   public var url: String?
 }
 
-public struct ReviewItemList: Decodable, Sendable {
-  public var items: [ReviewItem]
+public struct InboxItemList: Decodable, Sendable {
+  public var items: [InboxItem]
   public var truncated: Bool
 }
 
-public struct ReviewItemResult: Decodable, Sendable {
-  public var item: ReviewItem
+public struct InboxItemResult: Decodable, Sendable {
+  public var item: InboxItem
 }
 
 /// What an Automation runs: an instruction, or a skill with context.

@@ -102,8 +102,25 @@ describe("getRepository", () => {
         { toolCallId: "missing-repository" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub repository lookup failed with HTTP 404",
+      message:
+        "GitHub repository lookup failed with HTTP 404. Check repo. If it is correct, the GitHub App cannot see the repository.",
       name: "PluginToolInputError",
+    });
+  });
+
+  it("reports other lookup failures as system errors", async () => {
+    const { tool } = toolContext([
+      { body: { message: "Server Error" }, status: 503 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior" },
+        { toolCallId: "failed-repository" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub repository lookup failed with HTTP 503",
+      name: "Error",
     });
   });
 });

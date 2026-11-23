@@ -3,15 +3,12 @@ import * as z from "zod";
 import { getConversationStore } from "@/chat/db";
 import { resolveBotSlackTeamId } from "@/chat/events/workspace";
 import { parseSlackTeamId, type SlackTeamId } from "@/chat/slack/ids";
-import {
-  checkSlackChannelReadAccess,
-  joinPublicChannelForRead,
-} from "@/chat/slack/tool-support/channel-access";
+import { checkSlackChannelReadAccess } from "@/chat/slack/tool-support/channel-access";
 import {
   resolveSlackChannelRef,
   slackChannelRefParam,
 } from "@/chat/slack/tool-support/channel-target";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { AutomationDestination } from "./creator";
 import {
   requireToolDestination,
@@ -21,7 +18,7 @@ import {
 
 /** Model-facing Destination of a new or moved Automation. */
 export const automationDestinationParam = slackChannelRefParam.describe(
-  'Slack channel: "current_conversation" (this conversation\'s channel or DM) or a public channel id, mention, or known name, only one the user named. Never a web conversation.',
+  'Slack channel: "current_conversation" (this conversation\'s channel or DM) or a public channel you are in, by id, mention, or known name, only one the user named. Never a web conversation.',
 );
 
 /** A resolved Destination and the visibility that the Automation stores. */
@@ -42,7 +39,11 @@ async function requireDestinationTeamId(
 ): Promise<SlackTeamId> {
   if (context.destination) {
     const teamId = parseSlackTeamId(context.destination.teamId);
-    if (!teamId) throw new ToolInputError("Slack workspace is unavailable.");
+    if (!teamId) {
+      throw new ToolInputError(
+        'The Slack workspace of this Conversation is unknown. Set destination to "current_conversation", or ask from the Slack channel where the automation should deliver.',
+      );
+    }
     return teamId;
   }
   const teamId = parseSlackTeamId(await resolveBotSlackTeamId());
@@ -66,7 +67,8 @@ async function requireDestinationTeamId(
 /**
  * Resolve where a new or moved Automation delivers. "current_conversation"
  * is the channel or DM of this Conversation. A channel reference must name a
- * public Slack channel, and Junior joins it so the Automation can post there.
+ * public Slack channel that Junior is already in. Junior does not join a
+ * channel to deliver an Automation there.
  * A private channel or DM can be a Destination only from there, so a web
  * Conversation can name only a public channel.
  */
@@ -103,12 +105,11 @@ export async function resolveToolDestination(
         : access.error,
     );
   }
+  const name = access.channelName ?? channelName;
   if (access.isMember !== true) {
-    const joined = await joinPublicChannelForRead({
-      targetChannelId: channelId,
-      ...(channelName ? { channelName } : undefined),
-    });
-    if (!joined.ok) throw new ToolInputError(joined.error);
+    throw new ToolInputError(
+      `You are not in ${name ? `#${name}` : "that channel"}. Someone must add you to the channel first.`,
+    );
   }
   const destination: AutomationDestination = {
     platform: "slack",
@@ -116,7 +117,6 @@ export async function resolveToolDestination(
     channelId,
   };
   // Automation access reads visibility from the Destination directory.
-  const name = access.channelName ?? channelName;
   await getConversationStore().recordDestinationVisibility({
     destination,
     ...(name ? { channelName: name } : undefined),

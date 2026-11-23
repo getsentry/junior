@@ -106,6 +106,24 @@ describe("provider retry helpers", () => {
     }
   });
 
+  it("classifies the last attempt of an AI SDK retry", () => {
+    // AI Gateway reports a failed fetch as a 500 response. Only its cause
+    // says that no response came back.
+    const lastError = Object.assign(new Error("Internal server error"), {
+      statusCode: 500,
+      cause: new Error("Cannot connect to API: other side closed"),
+    });
+    const retryError = Object.assign(
+      new Error("Failed after 3 attempts. Last error: Internal server error"),
+      { name: "AI_RetryError", lastError },
+    );
+
+    expect(createProviderError(retryError)).toMatchObject({
+      kind: "network",
+      status: 500,
+    });
+  });
+
   it("uses structured transient signals when the provider message is empty", () => {
     for (const [statusCode, kind] of [
       [503, "server"],

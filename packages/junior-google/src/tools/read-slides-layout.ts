@@ -8,20 +8,23 @@ import {
   googleFileRequest,
   MAX_CONTENT_CHARS,
   parseFileReference,
-} from "./files";
-import { readRequesterFile } from "./file-access";
-import type { GoogleToolContext } from "./shared";
+} from "../drive/files";
+import { readRequesterFile } from "../drive/file-access";
+import type { GoogleToolContext } from "../google-api";
+import { withoutImageSourceUrls } from "../slides/sandbox-images";
 import {
   presentationReferenceSchema,
   presentationUrl,
   slideObjectIdSchema,
-} from "./slides";
+} from "../slides/presentation";
 
 // The whole deck at full detail is often too long for one result, so it
 // returns an outline: element ids, sizes, positions, shape types, and text.
 // It also lists each layout and its placeholders, because createSlide needs a
 // layout id from this deck: a predefined layout is often missing from a
 // custom theme. One slide returns every field, including text and styles.
+// `image(sourceUrl)` only marks an element as an image: the result drops the
+// URL itself.
 const DECK_FIELDS =
   "revisionId,pageSize,layouts(objectId,layoutProperties(displayName,masterObjectId),pageElements(shape(placeholder(type,index)))),slides(objectId,slideProperties(layoutObjectId,isSkipped,notesPage(notesProperties,pageElements(objectId,shape(text(textElements(textRun(content))))))),pageElements(objectId,size,transform,title,description,shape(shapeType,placeholder(type),text(textElements(textRun(content)))),table(rows,columns),image(sourceUrl),line(lineCategory),elementGroup(children(objectId)),sheetsChart(spreadsheetId,chartId)))";
 
@@ -114,7 +117,7 @@ export const readGoogleSlidesLayoutTool = definePluginTool({
     const { revisionId } = revisionSchema.parse(response.body);
     return {
       target: "readGoogleSlidesLayout" as const,
-      content: response.body,
+      content: withoutImageSourceUrls(response.body),
       presentation_id: ref.fileId,
       ...(revisionId ? { revision_id: revisionId } : undefined),
       title: file.name,

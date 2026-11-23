@@ -211,6 +211,9 @@ catalogs:
     '@sentry/starlight-theme':
       specifier: ^0.9.1
       version: 0.9.1
+    '@types/mdast':
+      specifier: ^4.0.4
+      version: 4.0.4
     '@types/node':
       specifier: ^24.19.2
       version: 24.19.2
@@ -223,6 +226,18 @@ catalogs:
     drizzle-orm:
       specifier: ^0.45.4
       version: 0.45.4
+    mdast-util-from-markdown:
+      specifier: ^2.1.0
+      version: 2.1.0
+    mdast-util-gfm:
+      specifier: ^3.1.0
+      version: 3.1.0
+    micromark-extension-gfm:
+      specifier: ^3.0.0
+      version: 3.0.0
+    p-limit:
+      specifier: ^7.3.3
+      version: 7.3.3
     tsdown:
       specifier: 0.23.7
       version: 0.23.7
@@ -296,6 +311,9 @@ importers:
       oxlint-tsgolint:
         specifier: 7.0.2007
         version: 7.0.2007
+      p-limit:
+        specifier: 'catalog:'
+        version: 7.3.3
       publint:
         specifier: ^0.3.21
         version: 0.3.21
@@ -510,12 +528,21 @@ importers:
       just-bash:
         specifier: 3.0.1
         version: 3.0.1
+      mdast-util-from-markdown:
+        specifier: 'catalog:'
+        version: 2.1.0
+      mdast-util-gfm:
+        specifier: 'catalog:'
+        version: 3.1.0
+      micromark-extension-gfm:
+        specifier: 'catalog:'
+        version: 3.0.0
       node-html-markdown:
         specifier: ^2.0.0
         version: 2.0.0
       p-limit:
-        specifier: ^7.3.1
-        version: 7.3.1
+        specifier: 'catalog:'
+        version: 7.3.3
       parse5:
         specifier: ^7.3.0
         version: 7.3.0
@@ -574,9 +601,6 @@ importers:
       '@vitest/coverage-v8':
         specifier: 'catalog:'
         version: 4.1.12(vitest@4.1.12)
-      bullmq:
-        specifier: 6.5.0
-        version: 6.5.0(pg@8.21.0)(redis@5.12.1)
       dependency-cruiser:
         specifier: ^17.4.0
         version: 17.4.0
@@ -589,9 +613,6 @@ importers:
       nitro:
         specifier: 3.0.260522-beta
         version: 3.0.260522-beta(@vercel/blob@2.8.0)(@vercel/functions@3.6.0)(@vercel/queue@0.2.0)(aws4fetch@1.0.20)(drizzle-orm@0.45.4(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(pg@8.21.0))(jiti@2.7.0)
-      redis:
-        specifier: 5.12.1
-        version: 5.12.1
       tsdown:
         specifier: 'catalog:'
         version: 0.23.7(publint@0.3.21)(tsx@4.22.3)(typescript@7.0.2)
@@ -659,7 +680,7 @@ importers:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.6)
       p-limit:
-        specifier: ^7.3.3
+        specifier: 'catalog:'
         version: 7.3.3
       react:
         specifier: ^19.2.6
@@ -847,20 +868,26 @@ importers:
         specifier: ^18.1.2
         version: 18.1.2
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       p-limit:
-        specifier: ^7.3.1
+        specifier: 'catalog:'
         version: 7.3.3
       parse5:
         specifier: ^7.3.0
         version: 7.3.0
+      re2js:
+        specifier: ^1.3.3
+        version: 1.3.3
+      yaml:
+        specifier: ^2.9.0
+        version: 2.9.1
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -869,7 +896,7 @@ importers:
         specifier: workspace:*
         version: file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12)
       '@types/mdast':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
@@ -911,7 +938,7 @@ importers:
         specifier: 'catalog:'
         version: 0.45.4(@types/pg@8.15.6)(pg@8.21.0)
       p-limit:
-        specifier: ^7.3.3
+        specifier: 'catalog:'
         version: 7.3.3
       parse5:
         specifier: ^7.3.0
@@ -999,9 +1026,21 @@ importers:
 
   packages/junior-plugin-api:
     dependencies:
+      '@types/mdast':
+        specifier: 'catalog:'
+        version: 4.0.4
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      mdast-util-from-markdown:
+        specifier: 'catalog:'
+        version: 2.1.0
+      mdast-util-gfm:
+        specifier: 'catalog:'
+        version: 3.1.0
+      micromark-extension-gfm:
+        specifier: 'catalog:'
+        version: 3.0.0
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -1024,13 +1063,13 @@ importers:
         specifier: workspace:*
         version: link:../junior-plugin-api
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       zod:
         specifier: 'catalog:'
@@ -1040,7 +1079,7 @@ importers:
         specifier: workspace:*
         version: file:packages/junior-testing(vitest@4.1.12)
       '@types/mdast':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
@@ -3630,36 +3669,6 @@ packages:
     resolution: {integrity: sha512-mQ2s0pYYiav+tzCDR05Zptem8Ey2v8s11lri5RKGhTtL4COVCvVCk5vtyRYNT+9L8qSfyOqqefF9UtnW8mC5jA==}
     engines: {node: '>= 20.19.0'}
 
-  '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
-    resolution: {integrity: sha512-LCkGo6JDfaBhgST7UpPWgNgLINpcpabaHfyz5OBx75nUYxBsaEPxjnyNjWpeb/xBup/682QnBfRBy2/LvPutZQ==}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4':
-    resolution: {integrity: sha512-zExlW9zUJKZH/tOtVMttwjKa4Xm/3KcNjnE3dPN92uCktwavMxpgCA3MoJK/DOnTWsQgo224OaST27/mPNAf+w==}
-    cpu: [x64]
-    os: [darwin]
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4':
-    resolution: {integrity: sha512-dgX0P/9wGPJeHFBG+ZmhgE6bmtMt7NP5CRBGyyktpopdk/mW4POnrpQsSLtKI1dwpc+pPLuXHDh6vvskyQE/sw==}
-    cpu: [arm64]
-    os: [linux]
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4':
-    resolution: {integrity: sha512-Tg3yX65f5GbtXLkrYEHE5oibZG9epyYWas7FogTTEJeDEF9JlXJzKgXaNhT3UXlTOeA+AfZpYZYZ0uPj7Cfquw==}
-    cpu: [arm]
-    os: [linux]
-
-  '@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4':
-    resolution: {integrity: sha512-8TNXMEjJc3QEy7R/x1INhgiU+XakDAFUzBhaz7+Rbrs8NH5UQeHQxxmzsSBJGyV6I1jW79undiQm8tOI+D+8FQ==}
-    cpu: [x64]
-    os: [linux]
-
-  '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4':
-    resolution: {integrity: sha512-CmCXPQrkbwExx3j946/PtHWHbYJiCRBRDl4BlkRQcJB/YOwQxJRTpoo7aTsortjgoJ1x7opzTSxn7C+ASSLVjQ==}
-    cpu: [x64]
-    os: [win32]
-
   '@mswjs/interceptors@0.41.9':
     resolution: {integrity: sha512-VVPPgHyQ6ShqnrmDWuxjmUIsO9gWyOZFmuOfLd9LfBGQJwZfy0gvv9pbHSJuoFNIYC7ZDX9aoFwowjcdSC4E8w==}
     engines: {node: '>=18'}
@@ -5258,14 +5267,7 @@ packages:
     resolution: {directory: packages/junior, type: directory}
     hasBin: true
     peerDependencies:
-      bullmq: ^6.5.0
       nitro: 3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta
-      redis: ^5.12.1
-    peerDependenciesMeta:
-      bullmq:
-        optional: true
-      redis:
-        optional: true
 
   '@sentry/nitro@11.14.0':
     resolution: {integrity: sha512-3goirhmjqMFsTSijmz24HSUfK52T0E0+hnyZK8twsB/JysNHJnLoOcU9TUxj8YTOZnKxlK6L20TzlLTdpPwm4A==}
@@ -6563,24 +6565,6 @@ packages:
   buffer@5.7.1:
     resolution: {integrity: sha512-EHcyIPBQ4BSGlvjB16k5KgAJ27CIsHY/2JBmCRReo48y9rQ3MaUzWX3KVlBa4U7MyX02HdVj0K7C3WaB3ju7FQ==}
 
-  bullmq@6.5.0:
-    resolution: {integrity: sha512-GDaUfEig2lWHS52aOI0h8f/W0m+5PPmHOJSahAKRMfi82BdL/2EqCuiDmJcNiwgpaZ0KHz7NxC8eNMI3bh8NQg==}
-    engines: {node: '>=14.18.0'}
-    peerDependencies:
-      bullmq-otel: '>=2.0.0'
-      ioredis: '>=5.0.0'
-      pg: '>=8.0.0'
-      redis: '>=5.0.0'
-    peerDependenciesMeta:
-      bullmq-otel:
-        optional: true
-      ioredis:
-        optional: true
-      pg:
-        optional: true
-      redis:
-        optional: true
-
   bundle-name@4.1.1:
     resolution: {integrity: sha512-DdH81/zPLVS11EUgWq3tEu/xn+EzljlMYooDNdzWEnFha3R3NBMpMV1UqYIpjYHV/SgpFKMIX1Oh7o06SjM/oA==}
     engines: {node: '>=18'}
@@ -6858,10 +6842,6 @@ packages:
   cors@2.8.6:
     resolution: {integrity: sha512-tJtZBBHA6vjIAaF6EnIaq6laBBP9aq/Y3ouVJjEfoHbRBcHBAHYcMh/w8LDrk2PvIMMq8gmopa5D4V8RmbrxGw==}
     engines: {node: '>= 0.10'}
-
-  cron-parser@5.10.2:
-    resolution: {integrity: sha512-JfAYMY0LZaWQTuict8PhtF/ksSnq8xefSDmQUnnoqvkPYkU/y3UP0DTWzJKFBz0P1IXsDG8q0vY3zHkoFZOhvw==}
-    engines: {node: '>=18'}
 
   cross-spawn@7.0.6:
     resolution: {integrity: sha512-uV2QOWP2nWzsy2aMp8aRibhi9dlzF5Hgh5SHaB9OiTGEyDTiJJyx0uy51QXdyWbtAHNua4XJzUKca3OzKUd3vA==}
@@ -8923,13 +8903,6 @@ packages:
   ms@2.1.3:
     resolution: {integrity: sha512-6FlzubTLZG3J2a/NVCAleEhjzq5oxgHyaCU9yYXvcLsvoVaHJq/s5xXI6/XXP6tz7R9xAOtHnSO/tXtF3WRTlA==}
 
-  msgpackr-extract@3.0.4:
-    resolution: {integrity: sha512-4kmO/MdyUIkLIvTPr8VHLil4AtoKIoniWPIEk5+CDy0xnWC84azhSFmuJ7PxZdsYtiP5kEeQsORAVIeMgxT+Hw==}
-    hasBin: true
-
-  msgpackr@2.1.2:
-    resolution: {integrity: sha512-JHAdwubWNEadHQsFAib6uXOzKFxY8QOWHu9LCCksOINMC+TjgaKS2Tdrw7dW5SY0LLz8YK2/YqLSi2vigQt05w==}
-
   msw@2.14.6:
     resolution: {integrity: sha512-ALe+N10S72cyx94cMcy3Zs4HhXCj35sgeAL4c+WTvKi0zWnbd8/h0lcFqv0mb2P+aSgAdD7p9HzvA0DiUPxsyg==}
     engines: {node: '>=18'}
@@ -9018,10 +8991,6 @@ packages:
     resolution: {integrity: sha512-KdHvFWZjEKDf0cakgFjebl371GPsISX2oZHcuyKqM7DtogIsHrqKeLTo8wBHxaXRAQlY2PsPlZmfo+9ZCxEREQ==}
     engines: {node: '>=10'}
 
-  node-abort-controller@3.1.1:
-    resolution: {integrity: sha512-AGK2yQKIjRuqnc6VkX2Xj5d+QW8xZ87pa1UK6yA6ouUyuxfHuMP6umE5QK7UmTeOAymo+Zx1Fxiuw9rVx8taHQ==}
-    deprecated: This package is no longer needed on supported Node.js versions. Node.js 16+ includes AbortController and AbortSignal as built-in globals. All Node.js versions requiring this polyfill are end-of-life. Use the built-in globals instead.
-
   node-addon-api@7.1.1:
     resolution: {integrity: sha512-5m3bsyrjFWE1xf7nz7YXdN4udnVtXK6/Yfgn5qnahL6bCkf2yKt4k3nuTKAtT4r3IG8JNR2ncsIMdZuAzJjHQQ==}
 
@@ -9071,10 +9040,6 @@ packages:
   node-fetch@3.3.2:
     resolution: {integrity: sha512-dRB78srN/l6gqWulah9SrxeYnxeddIG30+GOqK/9OlLVyLg3HPnr6SqOWTWOXKRwC2eGYCkZ59NNuSgvSrpgOA==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
-
-  node-gyp-build-optional-packages@5.2.2:
-    resolution: {integrity: sha512-s+w+rBWnpTMwSFbaE0UXsRlg7hU4FjekKU4eyAih5T8nJuNZT1nNsskXpxmeqSK9UzkBl6UgRlnKc8hz8IEqOw==}
-    hasBin: true
 
   node-gyp-build@4.8.4:
     resolution: {integrity: sha512-LA4ZjwlnUblHVgq0oBF3Jl/6h/Nvs5fzBLwdEF4nuxnFdsfajde4WfxtJr3CaiH+F6ewcIB/q4jQ4UzPyid+CQ==}
@@ -9282,10 +9247,6 @@ packages:
   p-limit@3.1.0:
     resolution: {integrity: sha512-TYOanM3wGwNGsZN2cVTYPArw454xnXj5qmWF1bEoAc4+cU/ol7GVh7odevjp1FNHduHc3KZMcFduxU5Xc6uJRQ==}
     engines: {node: '>=10'}
-
-  p-limit@7.3.1:
-    resolution: {integrity: sha512-0trZaiG7Y7kN/Egy9a8j47t9osC0Tch4PaIWd9yGF6bvmlk7muExRvGNYb8sXBwEKMoNKsbNN9P8EefuQekE4Q==}
-    engines: {node: '>=20'}
 
   p-limit@7.3.3:
     resolution: {integrity: sha512-SKgVvDU5TNIxQ4r30U75BNLC6a+6GOEjngrk/ysM5+Zu3oJuk1SC5ApzIzY/7PjCEjoVPMWJ0zho/4QUiEB7TQ==}
@@ -13806,24 +13767,6 @@ snapshots:
       prebuild-install: 7.1.3
     optional: true
 
-  '@msgpackr-extract/msgpackr-extract-darwin-arm64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-darwin-x64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-linux-arm@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-linux-x64@3.0.4':
-    optional: true
-
-  '@msgpackr-extract/msgpackr-extract-win32-x64@3.0.4':
-    optional: true
-
   '@mswjs/interceptors@0.41.9':
     dependencies:
       '@open-draft/deferred-promise': 2.2.0
@@ -14944,6 +14887,8 @@ snapshots:
       micromark-extension-gfm: 3.0.0
       p-limit: 7.3.3
       parse5: 7.3.0
+      re2js: 1.3.3
+      yaml: 2.9.1
       zod: 4.6.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -14992,6 +14937,8 @@ snapshots:
       micromark-extension-gfm: 3.0.0
       p-limit: 7.3.3
       parse5: 7.3.0
+      re2js: 1.3.3
+      yaml: 2.9.1
       zod: 4.6.7
     transitivePeerDependencies:
       - '@aws-sdk/client-rds-data'
@@ -15029,8 +14976,14 @@ snapshots:
 
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     dependencies:
+      '@types/mdast': 4.0.4
       commander: 14.0.3
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       zod: 4.6.7
+    transitivePeerDependencies:
+      - supports-color
 
   '@sentry/junior-testing@file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)':
     dependencies:
@@ -15185,6 +15138,9 @@ snapshots:
       jiti: 2.7.0
       jose: 6.2.4
       just-bash: 3.0.1
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       nitro: 3.0.260522-beta(jiti@2.7.0)
       node-html-markdown: 2.0.0
       p-limit: 7.3.3
@@ -15297,6 +15253,9 @@ snapshots:
       jiti: 2.7.0
       jose: 6.2.4
       just-bash: 3.0.1
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       nitro: 3.0.260522-beta
       node-html-markdown: 2.0.0
       p-limit: 7.3.3
@@ -15409,6 +15368,9 @@ snapshots:
       jiti: 2.7.0
       jose: 6.2.4
       just-bash: 3.0.1
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       node-html-markdown: 2.0.0
       p-limit: 7.3.3
       parse5: 7.3.0
@@ -17167,17 +17129,6 @@ snapshots:
       ieee754: 1.2.1
     optional: true
 
-  bullmq@6.5.0(pg@8.21.0)(redis@5.12.1):
-    dependencies:
-      cron-parser: 5.10.2
-      msgpackr: 2.1.2
-      node-abort-controller: 3.1.1
-      semver: 7.8.5
-      tslib: 2.8.1
-    optionalDependencies:
-      pg: 8.21.0
-      redis: 5.12.1
-
   bundle-name@4.1.1:
     dependencies:
       run-applescript: 7.1.0
@@ -17419,10 +17370,6 @@ snapshots:
     dependencies:
       object-assign: 4.1.1
       vary: 1.1.2
-
-  cron-parser@5.10.2:
-    dependencies:
-      luxon: 3.7.2
 
   cross-spawn@7.0.6:
     dependencies:
@@ -19902,22 +19849,6 @@ snapshots:
 
   ms@2.1.3: {}
 
-  msgpackr-extract@3.0.4:
-    dependencies:
-      node-gyp-build-optional-packages: 5.2.2
-    optionalDependencies:
-      '@msgpackr-extract/msgpackr-extract-darwin-arm64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-darwin-x64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-linux-arm': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-linux-arm64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-linux-x64': 3.0.4
-      '@msgpackr-extract/msgpackr-extract-win32-x64': 3.0.4
-    optional: true
-
-  msgpackr@2.1.2:
-    optionalDependencies:
-      msgpackr-extract: 3.0.4
-
   msw@2.14.6(@types/node@24.19.2)(typescript@7.0.2):
     dependencies:
       '@inquirer/confirm': 6.0.13(@types/node@24.19.2)
@@ -20125,8 +20056,6 @@ snapshots:
       semver: 7.8.5
     optional: true
 
-  node-abort-controller@3.1.1: {}
-
   node-addon-api@7.1.1: {}
 
   node-addon-api@8.8.0:
@@ -20160,11 +20089,6 @@ snapshots:
       data-uri-to-buffer: 4.0.1
       fetch-blob: 3.2.0
       formdata-polyfill: 4.0.10
-
-  node-gyp-build-optional-packages@5.2.2:
-    dependencies:
-      detect-libc: 2.1.2
-    optional: true
 
   node-gyp-build@4.8.4: {}
 
@@ -20422,10 +20346,6 @@ snapshots:
   p-limit@3.1.0:
     dependencies:
       yocto-queue: 0.1.0
-
-  p-limit@7.3.1:
-    dependencies:
-      yocto-queue: 1.2.2
 
   p-limit@7.3.3:
     dependencies:

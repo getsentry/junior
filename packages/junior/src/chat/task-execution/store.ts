@@ -532,6 +532,17 @@ export async function drainConversationMailbox(
   return result.messages;
 }
 
+/** Record the input of the attempt that the lease holder starts. */
+export async function claimConversationAttempt(args: {
+  conversationId: string;
+  inboundMessageIds: readonly string[];
+  leaseToken: string;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<workState.ClaimConversationAttemptResult> {
+  return await workState.claimConversationAttempt(args);
+}
+
 /** Acknowledge leased mailbox entries after the handler accepts responsibility. */
 export async function ackMessages(args: {
   conversationId: string;
@@ -575,6 +586,20 @@ export async function dropPendingMessages(args: {
     await recordExecutionMetadata(args);
   }
   return dropped;
+}
+
+/** Remove and return the pending Event input of a Conversation. */
+export async function takePendingEventMessages(args: {
+  conversationId: string;
+  conversationStore?: ConversationStore;
+  nowMs?: number;
+  state?: StateAdapter | undefined;
+}): Promise<InboundMessage[]> {
+  const taken = await workState.takePendingEventMessages(args);
+  if (taken.length > 0) {
+    await recordExecutionMetadata(args);
+  }
+  return taken;
 }
 
 /** Mark one author's queued web messages as interrupts. */

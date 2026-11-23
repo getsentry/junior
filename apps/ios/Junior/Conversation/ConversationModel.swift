@@ -199,7 +199,7 @@ final class ConversationModel {
 
   /// `cancelQueuedMessages`: drop waiting messages; the Turn continues.
   func cancelQueued(_ app: AppModel) async {
-    struct Cancelled: Decodable, Sendable { var cancelledMessages: Int }
+    struct Cancelled: Decodable, Sendable { var cancelledCount: Int }
     do {
       _ = try await app.call("cancelQueuedMessages", ["conversationId": id], as: Cancelled.self)
       await refresh(app)

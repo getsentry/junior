@@ -8,10 +8,6 @@ import { readConversationDetail } from "@/api/conversations/detail";
 import { readConversationEventPageAfter } from "@/api/conversations/event-page";
 import { getSqlExecutor } from "@/chat/db";
 import {
-  conversationBriefSchema,
-  type ConversationBrief,
-} from "@/chat/briefs/schema";
-import {
   mcpActivity,
   mcpActivitySchema,
   mcpConversation,
@@ -33,26 +29,6 @@ import {
   mcpToolResult,
   type McpToolContext,
 } from "../tool-context";
-
-// The Brief without its activity counts and search keywords.
-const mcpBriefSchema = conversationBriefSchema
-  .omit({ keywords: true, record: true, schemaVersion: true })
-  .extend({ updatedAt: z.string() });
-
-function mcpBrief(
-  brief: ConversationBrief,
-  updatedAt: string,
-): z.output<typeof mcpBriefSchema> {
-  return {
-    summary: brief.summary,
-    intent: brief.intent,
-    outcome: brief.outcome,
-    decisions: brief.decisions,
-    facts: brief.facts,
-    links: brief.links,
-    updatedAt,
-  };
-}
 
 // The newest report events to search for the last Reply. A long tool run
 // can push the Reply out of this window. Then `listConversationMessages`
@@ -103,7 +79,7 @@ async function readMessagesAfter(
 }
 
 /**
- * Register `getConversation`. It returns metadata, the Brief, and the last
+ * Register `getConversation`. It returns metadata, the summary, and the last
  * Reply or the Messages after a cursor, not the whole transcript.
  */
 export function registerGetConversationTool(
@@ -115,7 +91,7 @@ export function registerGetConversationTool(
     {
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, including its summary, the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         after: z
@@ -130,7 +106,6 @@ export function registerGetConversationTool(
       },
       outputSchema: {
         conversation: mcpConversationSchema,
-        brief: mcpBriefSchema.optional(),
         lastReply: mcpMessageSchema
           .optional()
           .describe(
@@ -201,11 +176,6 @@ export function registerGetConversationTool(
       const cursorSeq = newer?.seq ?? detail.events.at(-1)?.seq ?? -1;
       return mcpToolResult({
         conversation: mcpConversation(detail),
-        ...(detail.brief
-          ? {
-              brief: mcpBrief(detail.brief.content, detail.brief.updatedAt),
-            }
-          : undefined),
         ...(lastReply ? { lastReply } : undefined),
         ...(newer ? { messages: newer.messages } : undefined),
         ...(newer?.activity ? { activity: newer.activity } : undefined),

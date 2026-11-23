@@ -13,9 +13,10 @@ const NEW_THROW_GUIDANCE =
   "throw ToolInputError in core or PluginToolInputError in a plugin, with a message that tells the model what to change. " +
   "Keep a plain Error only for a system, config, or integrity failure that the model cannot fix, and add only that line to " +
   `${BASELINE_RELATIVE_PATH} by hand. Do not hide the throw behind a helper or another error construction to pass. ` +
-  "See policies/tool-design.md.";
+  "See the build-tools skill in .agents/skills.";
 
-function isUnderToolsPath(relativePath) {
+/** Return whether a repo-relative path is tool source that the check scans. */
+export function isUnderToolsPath(relativePath) {
   const normalized = relativePath.split(path.sep).join("/");
   if (!normalized.startsWith("packages/") || !normalized.includes("/src/")) {
     return false;
@@ -23,10 +24,12 @@ function isUnderToolsPath(relativePath) {
   if (normalized.endsWith(".d.ts") || normalized.includes("/tests/")) {
     return false;
   }
+  // Tool helpers live in `tool-support/` or a `tool-support.ts` module next
+  // to the tools, so the scan follows them out of `tools/`.
   return (
-    normalized.includes("/src/") &&
-    (normalized.includes("/tools/") ||
-      normalized.startsWith("packages/junior/src/chat/tools/"))
+    normalized.includes("/tools/") ||
+    normalized.includes("/tool-support/") ||
+    normalized.endsWith("/tool-support.ts")
   );
 }
 

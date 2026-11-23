@@ -15,10 +15,10 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { proposalTool } from "@/chat/guardian/gate";
 import type { ToolActionProposal } from "@/chat/guardian/proposal";
 import type { ManagedMcpTool } from "@/chat/mcp/tool-manager";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 
 /**
  * MCP tools come from the provider's server at run time. These are copies of

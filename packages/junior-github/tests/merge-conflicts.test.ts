@@ -169,6 +169,33 @@ describe("merge conflict check on webhook events", () => {
     ]);
   });
 
+  it("reads an unchanged pull request again with its ETag", async () => {
+    const etag = 'W/"pull-946"';
+    const answers: number[] = [];
+    mswServer.use(
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946",
+        ({ request }) => {
+          if (request.headers.get("if-none-match") === etag) {
+            answers.push(304);
+            return new HttpResponse(null, { status: 304 });
+          }
+          answers.push(200);
+          return HttpResponse.json(pullRequest, { headers: { etag } });
+        },
+      ),
+    );
+    await deliver("delivery-1");
+    await deliver("delivery-2");
+    expect(answers).toEqual([200, 304]);
+    // The saved pull request still shows the conflict.
+    expect(conflicts().map((event) => event.eventKey)).toEqual(
+      Array.from({ length: 4 }, () =>
+        expect.stringContaining(":1111111111111111111111111111111111111111"),
+      ),
+    );
+  });
+
   it("publishes no conflict while GitHub calculates mergeability", async () => {
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
@@ -276,6 +303,10 @@ describe("merge conflict check on webhook events", () => {
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/contents/.github/release.yml",
+          () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+        ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { variables } = (await request.json()) as {
             variables: { number?: number; query?: string };
@@ -311,7 +342,7 @@ describe("merge conflict check on webhook events", () => {
                   mergeable: mergeability[number],
                   number,
                   state: "OPEN",
-                  title: `Pull request ${number}`,
+                  title: `fix(conflicts): Pull request ${number}`,
                   url: `https://github.com/getsentry/junior/pull/${number}`,
                 })),
                 pageInfo: { endCursor: null, hasNextPage: false },
@@ -494,6 +525,26 @@ describe("merge conflict check on webhook events", () => {
       // Nothing is left to close.
       await checkAt(pushedAt + day + 2 * hour, "2");
       expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#946"]);
+
+      // The closed item was not dismissed, so when the conflict comes back
+      // and the fix still did not land, Junior asks again.
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + day + 3 * hour, "1");
+      expect(h.notices).toHaveLength(2);
+    });
+
+    it("asks no more after a Dismiss, also after the conflict goes and comes back", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      h.dismiss("merge-conflict:getsentry/junior#946");
+
+      mergeability[946] = "MERGEABLE";
+      await checkAt(pushedAt + day + hour, "1");
+      mergeability[946] = "CONFLICTING";
+      await checkAt(pushedAt + day + 2 * hour, "1");
+      expect(h.closedNotices).toEqual([]);
+      expect(h.notices).toHaveLength(1);
     });
 
     it("publishes no conflict for a draft", async () => {
@@ -611,7 +662,12 @@ describe("merge conflict check on webhook events", () => {
             dedupeKey: "merge-conflict:getsentry/junior#946",
             subject: {
               id: "https://github.com/getsentry/junior/pull/946",
-              title: "Pull request 946 (#946)",
+              title: "fix(conflicts): Pull request 946 (#946)",
+              titleParts: {
+                scope: "conflicts",
+                text: "Pull request 946",
+                type: "Fix",
+              },
               url: "https://github.com/getsentry/junior/pull/946",
             },
             title: "Merge conflict · #946",
@@ -621,6 +677,7 @@ describe("merge conflict check on webhook events", () => {
 
       // A Dismiss tells the plugin nothing. Junior asked once, so it does
       // not ask again, also after activity by a person.
+      h.dismiss("merge-conflict:getsentry/junior#946");
       reviewAt(pushedAt + 2 * day, "User");
       await checkAt(pushedAt + 2 * day + hour, "1");
       expect(h.notices).toHaveLength(1);

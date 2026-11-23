@@ -14,7 +14,7 @@ import {
 import { registerLogRecordSink, type EmittedLogRecord } from "@/chat/logging";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { readSlackAttachmentSource } from "@/chat/slack/attachments";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createTranscribeAudioTool } from "@/chat/tools/transcribe-audio";
 import { juniorAttachments } from "@/db/schema";
 import { filesInfoOk } from "../../fixtures/slack/factories/api";
@@ -405,13 +405,15 @@ describe("transcribeAudio tool", () => {
     await expect(
       tool.execute?.({ attachment_id: elsewhere.id }, {}),
     ).rejects.toThrow(
-      new ToolInputError("Attachment not found in this conversation."),
+      new ToolInputError(
+        "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+      ),
     );
     await expect(
       tool.execute?.({ attachment_id: document.id }, {}),
     ).rejects.toThrow(
       new ToolInputError(
-        "This attachment is application/pdf, not audio or video.",
+        "This attachment is application/pdf, not audio or video. Use loadAttachment to read other files.",
       ),
     );
     expect(files.signed).toEqual([]);

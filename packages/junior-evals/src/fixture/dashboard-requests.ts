@@ -6,16 +6,16 @@ import type { JuniorApiEnv } from "@/api/route";
 import {
   acceptedConversationMessageSchema,
   attachmentUploadSchema,
-  steerConversationPendingMessagesResponseSchema,
+  leadSchema,
 } from "@/api/schema";
-import type { FileInput } from "./inputs";
+import type { FileInput, WebMessageInput } from "./inputs";
 import { VIEWER_HEADER } from "./results";
 
 /**
  * Upload files as the dashboard does before a send, and return the upload
  * ids for the message.
  */
-export async function uploadWebFiles(
+async function uploadWebFiles(
   api: Hono<JuniorApiEnv>,
   message: {
     conversationId?: string;
@@ -82,7 +82,7 @@ export function jsonRequest(viewerEmail: string, body: unknown): RequestInit {
 }
 
 /** Read the accepted message of a web message post, or fail the test. */
-export async function expectAccepted(response: Response) {
+async function expectAccepted(response: Response) {
   if (response.status !== 200) {
     throw new Error(
       `Web message returned ${response.status}: ${await response.text()}`,
@@ -92,42 +92,63 @@ export async function expectAccepted(response: Response) {
 }
 
 /**
- * Steer one queued web message into the running turn, as the steer action in
- * the dashboard queue does.
+/**
+ * Send one message as the dashboard composer does: upload its files and
+ * post it. With no `conversationId`, the post creates the Conversation.
  */
-export async function steerQueuedWebMessage(
+export async function postWebMessage(
   api: Hono<JuniorApiEnv>,
-  args: {
-    conversationId: string;
-    inboundMessageId: string;
+  message: {
+    conversationId?: string | undefined;
+    idempotencyKey: string;
+    input: WebMessageInput;
     viewerEmail: string;
   },
 ): Promise<void> {
-  const response = await api.request(
-    `/api/conversations/${encodeURIComponent(args.conversationId)}/pending-messages/steer`,
-    jsonRequest(args.viewerEmail, {
-      inboundMessageIds: [args.inboundMessageId],
-    }),
+  const { conversationId, idempotencyKey, input, viewerEmail } = message;
+  const uploadIds = input.files?.length
+    ? await uploadWebFiles(api, {
+        ...(conversationId ? { conversationId } : undefined),
+        files: input.files,
+        idempotencyKey,
+        viewerEmail,
+      })
+    : undefined;
+  await expectAccepted(
+    await api.request(
+      conversationId
+        ? `/api/conversations/${encodeURIComponent(conversationId)}/messages`
+        : "/api/conversations",
+      jsonRequest(viewerEmail, {
+        idempotencyKey,
+        message: input.text,
+        ...(uploadIds ? { uploadIds } : undefined),
+      }),
+    ),
   );
+}
+
+/** Find or make the Lead of `viewerEmail`, as the dashboard home does. */
+export async function readLeadConversationId(
+  api: Hono<JuniorApiEnv>,
+  viewerEmail: string,
+): Promise<string> {
+  const response = await api.request("/api/lead", {
+    headers: { [VIEWER_HEADER]: viewerEmail },
+  });
   if (response.status !== 200) {
     throw new Error(
-      `Steer returned ${response.status}: ${await response.text()}`,
+      `Lead returned ${response.status}: ${await response.text()}`,
     );
   }
-  const result = steerConversationPendingMessagesResponseSchema.parse(
-    await response.json(),
-  );
-  // An empty result means Junior read the message before the steer.
-  if (!result.steeredInboundMessageIds.includes(args.inboundMessageId)) {
-    throw new Error("The message left the queue before the steer");
-  }
+  return leadSchema.parse(await response.json()).conversationId;
 }
 
 /**
- * Answer or dismiss one Review item as the person in the Inbox does.
+ * Answer or dismiss one Inbox item as the person in the Inbox does.
  * Junior tells each linked Conversation about the change.
  */
-export async function actOnReviewItem(
+export async function actOnInboxItem(
   api: Hono<JuniorApiEnv>,
   args: {
     action: "submit" | "dismiss";
@@ -137,7 +158,7 @@ export async function actOnReviewItem(
   },
 ): Promise<void> {
   const response = await api.request(
-    `/api/review-items/${encodeURIComponent(args.id)}/actions`,
+    `/api/inbox-items/${encodeURIComponent(args.id)}/actions`,
     jsonRequest(args.viewerEmail, {
       action: args.action,
       ...(args.values ? { answer: { values: args.values } } : undefined),
@@ -145,7 +166,7 @@ export async function actOnReviewItem(
   );
   if (response.status !== 200) {
     throw new Error(
-      `Review item action returned ${response.status}: ${await response.text()}`,
+      `Inbox item action returned ${response.status}: ${await response.text()}`,
     );
   }
 }
