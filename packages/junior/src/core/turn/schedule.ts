@@ -15,6 +15,7 @@ import { inArray } from "drizzle-orm";
 import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { publishDelivery } from "@/core/delivery/queue";
+import type { EngineContext } from "@/core/engine-context";
 import {
   findInputTurn,
   findUnreadInputs,
@@ -28,7 +29,6 @@ import {
   type Turn,
   type TurnRecord,
 } from "@/core/turn/state";
-import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurnInbox } from "@/db/schema";
 
 /**
@@ -45,10 +45,10 @@ type Placement = ScheduleResult & { publish: boolean };
 // Not exported: scheduleInput is the only writer, so every input row is
 // written under the Conversation lock.
 async function addInput(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   input: TurnInput & { turnId: string },
 ): Promise<void> {
-  await executor
+  await engineCtx.db
     .db()
     .insert(juniorTurnInbox)
     .values({ ...input, id: randomUUID() });
@@ -68,11 +68,11 @@ function assignTurn(
 }
 
 async function placeInput(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   input: IncomingTurnInput,
 ): Promise<Placement> {
   const { source, ...inboxInput } = input;
-  const existing = await findInputTurn(executor, input);
+  const existing = await findInputTurn(engineCtx, input);
   if (existing) {
     // The source retries after a publish that failed after the commit. The
     // Turn then waits queued with no message, so publish it again. A second
@@ -83,19 +83,21 @@ async function placeInput(
       publish: existing.state === "queued",
     };
   }
-  const choice = assignTurn(await findOpenTurn(executor, input.conversationId));
+  const choice = assignTurn(
+    await findOpenTurn(engineCtx, input.conversationId),
+  );
   if ("join" in choice) {
     const { turnId } = choice.join;
-    await addInput(executor, { ...inboxInput, turnId });
+    await addInput(engineCtx, { ...inboxInput, turnId });
     return { turnId, created: false, publish: false };
   }
-  const turn = await createTurn(executor, {
+  const turn = await createTurn(engineCtx, {
     conversationId: input.conversationId,
     actorIdentityId: input.actorIdentityId,
     source,
     priority: choice.create.priority,
   });
-  await addInput(executor, { ...inboxInput, turnId: turn.turnId });
+  await addInput(engineCtx, { ...inboxInput, turnId: turn.turnId });
   return { turnId: turn.turnId, created: true, publish: true };
 }
 
@@ -106,16 +108,16 @@ async function placeInput(
  * and a publish error reaches the caller with the input already stored.
  */
 export async function scheduleInput(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db" | "queue">,
   input: IncomingTurnInput,
 ): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
-    executor,
+    engineCtx.db,
     input.conversationId,
-    () => placeInput(executor, input),
+    () => placeInput(engineCtx, input),
   );
   if (placement.publish) {
-    await publishTurnStep(placement.turnId);
+    await publishTurnStep(engineCtx, placement.turnId);
   }
   return { turnId: placement.turnId, created: placement.created };
 }
@@ -123,11 +125,11 @@ export async function scheduleInput(
 // Not exported, like addInput: only reconcileTurn moves inputs, under the
 // Conversation lock. A row keeps its id and idempotency key.
 async function moveInputs(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   inputIds: string[],
   turnId: string,
 ): Promise<void> {
-  await executor
+  await engineCtx.db
     .db()
     .update(juniorTurnInbox)
     .set({ turnId })
@@ -140,28 +142,30 @@ async function moveInputs(
  * the inputs that an attempt claimed it with.
  */
 async function moveLeftovers(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   ended: TurnRecord,
 ): Promise<void> {
-  const leftovers = (await findUnreadInputs(executor, ended.turnId)).filter(
+  const leftovers = (await findUnreadInputs(engineCtx, ended.turnId)).filter(
     (input) => input.attemptedAt === null,
   );
   const [first] = leftovers;
   if (!first) {
     return;
   }
-  const choice = assignTurn(await findOpenTurn(executor, ended.conversationId));
+  const choice = assignTurn(
+    await findOpenTurn(engineCtx, ended.conversationId),
+  );
   const target =
     "join" in choice
       ? choice.join
-      : await createTurn(executor, {
+      : await createTurn(engineCtx, {
           conversationId: ended.conversationId,
           actorIdentityId: first.actorIdentityId,
           source: ended.source,
           priority: choice.create.priority,
         });
   await moveInputs(
-    executor,
+    engineCtx,
     leftovers.map((input) => input.inputId),
     target.turnId,
   );
@@ -176,27 +180,30 @@ async function moveLeftovers(
  * own commit.
  */
 export async function reconcileTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db" | "queue">,
   turnId: string,
 ): Promise<void> {
-  const turn = await findTurn(executor, turnId);
+  const turn = await findTurn(engineCtx, turnId);
   if (!turn) {
     return;
   }
-  await publishDelivery({ conversationId: turn.conversationId, turnId });
+  await publishDelivery(engineCtx, {
+    conversationId: turn.conversationId,
+    turnId,
+  });
   const openTurn = await withConversationEventLock(
-    executor,
+    engineCtx.db,
     turn.conversationId,
     async () => {
       if (turn.state === "failed") {
-        await moveLeftovers(executor, turn);
+        await moveLeftovers(engineCtx, turn);
       }
-      return findOpenTurn(executor, turn.conversationId);
+      return findOpenTurn(engineCtx, turn.conversationId);
     },
   );
   // A Turn that a step commit continued is the queued open Turn, so this also
   // sends its next step. A running Turn has a worker, so it needs no message.
   if (openTurn?.state === "queued") {
-    await publishTurnStep(openTurn.turnId);
+    await publishTurnStep(engineCtx, openTurn.turnId);
   }
 }

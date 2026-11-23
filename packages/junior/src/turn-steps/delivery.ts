@@ -2,7 +2,6 @@
 // delivery messages, with a sender for each Location provider.
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { RetryableDeliveryError } from "@/chat/agent/types";
-import { getSqlExecutor } from "@/chat/db";
 import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
 import { SlackActionError } from "@/chat/slack/client";
 import {
@@ -12,20 +11,18 @@ import {
   type DeliverySenders,
 } from "@/core/delivery/deliver";
 import { createDeliveryConsumer } from "@/core/delivery/queue";
+import type { EngineContext } from "@/core/engine-context";
 
-/**
- * The queue consumer of delivery messages. Build it after `createApp` sets
- * the runtime config, because the visibility timeout reads
- * `functionMaxDurationSeconds`.
- */
-export function deliveryConsumer(args: {
-  getSlackAdapter: () => SlackAdapter;
-}) {
+/** The queue consumer of delivery messages. */
+export function deliveryConsumer(
+  engineCtx: EngineContext,
+  args: { getSlackAdapter: () => SlackAdapter },
+) {
   const senders: DeliverySenders = {
     slack: slackSender(args.getSlackAdapter),
   };
-  return createDeliveryConsumer((message) =>
-    deliverTurn(getSqlExecutor(), message, senders),
+  return createDeliveryConsumer(engineCtx, (message) =>
+    deliverTurn(engineCtx, message, senders),
   );
 }
 

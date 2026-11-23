@@ -14,8 +14,8 @@ import { locationSchema, type Location } from "@/chat/conversations/location";
 import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
 import { logException } from "@/chat/logging";
 import { publishDelivery, type DeliveryMessage } from "@/core/delivery/queue";
+import type { EngineContext } from "@/core/engine-context";
 import { findTurnReplies, replyText } from "@/core/turn/replies";
-import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
   juniorConversations,
@@ -75,22 +75,22 @@ const tryLockResultSchema = z.object({
  * Location delivers, unless its Delivery is paused.
  */
 export async function deliverTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db" | "queue">,
   message: DeliveryMessage,
   senders: DeliverySenders,
 ): Promise<void> {
-  await recordReplies(executor, message);
+  await recordReplies(engineCtx, message);
   while (true) {
     // oxlint-disable-next-line no-await-in-loop -- Rows go out one at a time, in event order.
-    const next = await executor.transaction(() =>
-      sendNextRow(executor, message.conversationId, senders),
+    const next = await engineCtx.db.transaction(() =>
+      sendNextRow(engineCtx, message.conversationId, senders),
     );
     if (next.kind === "idle") {
       return;
     }
     if (next.kind === "later") {
       // oxlint-disable-next-line no-await-in-loop -- The loop ends here.
-      await publishDelivery(message, { delayMs: next.delayMs });
+      await publishDelivery(engineCtx, message, { delayMs: next.delayMs });
       return;
     }
   }
@@ -101,11 +101,11 @@ export async function deliverTurn(
  * the Conversation delivers. Rows that already exist still send.
  */
 function recordReplies(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   message: DeliveryMessage,
 ): Promise<void> {
-  return executor.transaction(async () => {
-    const db = executor.db();
+  return engineCtx.db.transaction(async () => {
+    const db = engineCtx.db.db();
     const [conversation] = await db
       .select({
         kind: juniorConversations.kind,
@@ -132,7 +132,7 @@ function recordReplies(
       return;
     }
     const replies = await findTurnReplies(
-      executor,
+      engineCtx,
       message.conversationId,
       message.turnId,
     );
@@ -167,11 +167,11 @@ type NextRow =
  * rows after it wait.
  */
 async function sendNextRow(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   conversationId: string,
   senders: DeliverySenders,
 ): Promise<NextRow> {
-  const db = executor.db();
+  const db = engineCtx.db.db();
   const lock = tryLockResultSchema.parse(
     await db.execute(
       sql`select pg_try_advisory_xact_lock(hashtext(${`junior:delivery:${conversationId}`})) as locked`,

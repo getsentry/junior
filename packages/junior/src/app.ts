@@ -9,6 +9,7 @@ import {
 } from "@/chat/configuration/defaults";
 import {
   botConfig,
+  getChatConfig,
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
@@ -127,6 +128,7 @@ import {
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
 import { turnStepConsumer } from "@/turn-steps/consumer";
 import { deliveryConsumer } from "@/turn-steps/delivery";
+import { createEngineContext } from "@/turn-steps/engine-context";
 import {
   vercelBackgroundCompactionQueue,
   type BackgroundCompactionMessage,
@@ -879,10 +881,11 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  // Built after resetRuntimeConfig, so the queue visibility timeout uses this
-  // app's functionMaxDurationSeconds.
-  const turnSteps = turnStepConsumer();
-  const deliveries = deliveryConsumer({
+  // Built after resetRuntimeConfig, so the lease and the queue visibility
+  // timeout use this app's functionMaxDurationSeconds.
+  const engineCtx = createEngineContext(getChatConfig());
+  const turnSteps = turnStepConsumer(engineCtx);
+  const deliveries = deliveryConsumer(engineCtx, {
     getSlackAdapter: getProductionSlackAdapter,
   });
   if (process.env["NODE_ENV"] === "development") {

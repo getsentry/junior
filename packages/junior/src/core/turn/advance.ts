@@ -18,6 +18,7 @@ import {
   getProviderErrorAttributes,
 } from "@/chat/services/provider-error";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
+import type { EngineContext } from "@/core/engine-context";
 import type { ModelClient } from "@/core/model/client";
 import { setActiveSpanAttributes } from "@/core/telemetry";
 import {
@@ -43,7 +44,6 @@ import {
   type StepInput,
   type StepResult,
 } from "@/core/turn/step";
-import type { JuniorSqlDatabase } from "@/db/db";
 
 // How often a running step checks that its lease still holds. A cancel or a
 // takeover stops the step's model request and tools within this time.
@@ -73,9 +73,6 @@ type AdvanceTurnOptions = {
     turn: ClaimedTurn,
     inputs: UnreadInput[],
   ) => Promise<PreparedStep & { inputs: InputMessage[] }>;
-  /** Names the invocation that holds the lease. */
-  owner: string;
-  leaseMs: number;
   /**
    * Caps the tries of one step. A commit resets `attempts`, so the cap does
    * not limit the steps of a Turn.
@@ -88,18 +85,14 @@ type AdvanceTurnOptions = {
  * claimed, for example after a duplicate message or when the Turn has ended.
  */
 export async function advanceTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db" | "queue" | "owner" | "leaseMs">,
   message: { turnId: string },
   options: AdvanceTurnOptions,
 ): Promise<void> {
-  const claim = await claimTurn(executor, {
-    turnId: message.turnId,
-    owner: options.owner,
-    leaseMs: options.leaseMs,
-  });
+  const claim = await claimTurn(engineCtx, message.turnId);
   if (!claim) {
     // A crash after a commit can lose what follows it. It is safe to repeat.
-    await reconcileTurn(executor, message.turnId);
+    await reconcileTurn(engineCtx, message.turnId);
     return;
   }
   try {
@@ -109,27 +102,27 @@ export async function advanceTurn(
     // An attempt takes the inputs that are unread when it claims the Turn. A
     // failed Turn drops them, and moves only inputs that came after its last
     // claim.
-    const unread = await findUnreadInputs(executor, claim.turnId);
+    const unread = await findUnreadInputs(engineCtx, claim.turnId);
     await markInputsAttempted(
-      executor,
+      engineCtx,
       unread.map((input) => input.inputId),
     );
     if (claim.attempts > options.maxAttempts) {
       if (
-        await failTurn(executor, claim, "attempts_exhausted", {
+        await failTurn(engineCtx, claim, "attempts_exhausted", {
           failureCode: "agent_run_failed",
         })
       ) {
-        await reconcileTurn(executor, claim.turnId);
+        await reconcileTurn(engineCtx, claim.turnId);
       }
       return;
     }
-    await runClaimedStep(executor, claim, unread, options);
+    await runClaimedStep(engineCtx, claim, unread, options);
   } catch (error) {
     // The queue retries the message. With a live lease, the retry would claim
     // nothing and the Turn would stay running.
     try {
-      await releaseTurn(executor, claim);
+      await releaseTurn(engineCtx, claim);
     } catch (releaseError) {
       // The first error caused the failure, so it reaches the caller. The
       // lease expires, and then a retry can claim the Turn.
@@ -142,13 +135,13 @@ export async function advanceTurn(
 }
 
 async function runClaimedStep(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db" | "queue">,
   claim: ClaimedTurn,
   unread: UnreadInput[],
   { client, prepare }: Pick<AdvanceTurnOptions, "client" | "prepare">,
 ): Promise<void> {
   const events = await createSqlConversationEventStore(
-    executor,
+    engineCtx.db,
   ).loadCurrentHistory(claim.conversationId);
   setActiveSpanAttributes({
     "app.turn.step_seq": claim.stepSeq,
@@ -160,7 +153,7 @@ async function runClaimedStep(
   const stepInputs = hasPendingToolCalls(history) ? [] : unread;
   const { inputs, ...prepared } = await prepare(claim, stepInputs);
   checkPreparedInputs(stepInputs, inputs);
-  const result = await runStepWhileLeased(executor, claim, {
+  const result = await runStepWhileLeased(engineCtx, claim, {
     ...prepared,
     client,
     session: claim.conversationId,
@@ -176,8 +169,8 @@ async function runClaimedStep(
   switch (result.outcome) {
     case "continue":
     case "completed": {
-      if (await commitStep(executor, claim, result, inputs)) {
-        await reconcileTurn(executor, claim.turnId);
+      if (await commitStep(engineCtx, claim, result, inputs)) {
+        await reconcileTurn(engineCtx, claim.turnId);
       }
       return;
     }
@@ -185,8 +178,8 @@ async function runClaimedStep(
       // The capture comes before the commit. A crash between the two runs
       // the step again, so a failure that repeats is captured twice.
       const failure = captureModelFailure(result.reply);
-      if (await failTurn(executor, claim, result.error, failure)) {
-        await reconcileTurn(executor, claim.turnId);
+      if (await failTurn(engineCtx, claim, result.error, failure)) {
+        await reconcileTurn(engineCtx, claim.turnId);
       }
       return;
     }
@@ -242,7 +235,7 @@ function checkPreparedInputs(
  * the cancel owns the Turn, so this invocation writes nothing.
  */
 async function runStepWhileLeased(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   lease: TurnLease,
   input: Omit<StepInput, "signal">,
 ): Promise<StepResult | undefined> {
@@ -255,7 +248,7 @@ async function runStepWhileLeased(
     }
     checking = true;
     try {
-      if (!(await holdsLease(executor, lease))) {
+      if (!(await holdsLease(engineCtx, lease))) {
         abort.abort(new Error("The Turn was cancelled or taken over"));
       }
     } catch (error) {

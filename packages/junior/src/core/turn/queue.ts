@@ -3,18 +3,15 @@
 // message sent twice or late runs no step twice. Each step runs in its own
 // trace, which links to the span that published the message.
 import * as z from "zod";
-import { getChatConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
-import {
-  getQueueProvider,
-  type QueueMessageMetadata,
-} from "@/chat/queue/provider";
+import type { QueueMessageMetadata } from "@/chat/queue/provider";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
+import type { EngineContext } from "@/core/engine-context";
 import { activeTraceContext, withSpan } from "@/core/telemetry";
 
 /** Queue topic of Turn step messages. */
@@ -53,10 +50,11 @@ const turnStepSign = {
  * second send with the same key.
  */
 export async function publishTurnStep(
+  engineCtx: Pick<EngineContext, "queue">,
   turnId: string,
   options: { delayMs?: number; idempotencyKey?: string } = {},
 ): Promise<void> {
-  const queue = getQueueProvider();
+  const { queue } = engineCtx;
   await withSpan(
     "queue.publish",
     {
@@ -104,7 +102,10 @@ export type RunTurnStep = (
  * Builds the queue consumer of Turn step messages. It acknowledges a message
  * with a bad or expired signature and retries one that cannot be checked yet.
  */
-export function createTurnStepConsumer(run: RunTurnStep) {
+export function createTurnStepConsumer(
+  engineCtx: Pick<EngineContext, "queue" | "leaseMs">,
+  run: RunTurnStep,
+) {
   return queueCallback<TurnStepMessage>({
     consumerGroup: TURN_STEP_CONSUMER_GROUP,
     // advanceTurn fails a Turn after `maxAttempts` tries of one step, so the
@@ -125,7 +126,7 @@ export function createTurnStepConsumer(run: RunTurnStep) {
         {
           "app.turn.id": message.turnId,
           "messaging.destination.name": metadata.topicName,
-          "messaging.system": getQueueProvider().messagingSystem,
+          "messaging.system": engineCtx.queue.messagingSystem,
           "messaging.message.id": metadata.messageId,
           "messaging.message.receive.latency":
             Date.now() - metadata.createdAt.getTime(),
@@ -140,7 +141,6 @@ export function createTurnStepConsumer(run: RunTurnStep) {
     topic: TURN_STEP_TOPIC,
     verify: (value) => verifyQueueMessage(turnStepSign, value),
     visibilityTimeoutSeconds:
-      getChatConfig().functionMaxDurationSeconds +
-      VISIBILITY_TIMEOUT_BUFFER_SECONDS,
+      engineCtx.leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
   });
 }

@@ -53,6 +53,7 @@ import { contextProvenance } from "@/chat/conversations/provenance";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import type { EngineContext } from "@/core/engine-context";
 import {
   findUnreadInputs,
   inputEventKey,
@@ -61,7 +62,6 @@ import {
 import { publishTurnStep } from "@/core/turn/queue";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
-import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
 
@@ -96,7 +96,7 @@ function leaseFence(lease: TurnLease) {
  * Turn after its transaction commits, so a worker can claim it.
  */
 export async function createTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   args: {
     conversationId: string;
     actorIdentityId: string;
@@ -105,7 +105,7 @@ export async function createTurn(
   },
 ): Promise<Turn> {
   const turnId = randomUUID();
-  await executor
+  await engineCtx.db
     .db()
     .insert(juniorTurns)
     .values({ ...args, id: turnId, state: "queued" });
@@ -134,10 +134,10 @@ export type TurnRecord = Turn & {
 
 /** Finds a Turn by id. Undefined when it does not exist. */
 export async function findTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   turnId: string,
 ): Promise<TurnRecord | undefined> {
-  const [turn] = await executor
+  const [turn] = await engineCtx.db
     .db()
     .select({
       turnId: juniorTurns.id,
@@ -159,10 +159,10 @@ export async function findTurn(
  * the next queued Turn by priority and age.
  */
 export async function findOpenTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   conversationId: string,
 ): Promise<Turn | undefined> {
-  const [turn] = await executor
+  const [turn] = await engineCtx.db
     .db()
     .select({ turnId: juniorTurns.id, state: juniorTurns.state })
     .from(juniorTurns)
@@ -187,23 +187,23 @@ export async function findOpenTurn(
  * claims only one gets the Turn.
  */
 export async function claimTurn(
-  executor: JuniorSqlDatabase,
-  args: { turnId: string; owner: string; leaseMs: number },
+  engineCtx: Pick<EngineContext, "db" | "owner" | "leaseMs">,
+  turnId: string,
 ): Promise<ClaimedTurn | undefined> {
-  const [claimed] = await executor
+  const [claimed] = await engineCtx.db
     .db()
     .update(juniorTurns)
     .set({
       state: "running",
-      leaseOwner: args.owner,
-      leaseExpiresAt: leaseExpiry(args.leaseMs),
+      leaseOwner: engineCtx.owner,
+      leaseExpiresAt: leaseExpiry(engineCtx.leaseMs),
       leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
       attempts: sql`${juniorTurns.attempts} + 1`,
       updatedAt: sql`now()`,
     })
     .where(
       and(
-        eq(juniorTurns.id, args.turnId),
+        eq(juniorTurns.id, turnId),
         or(
           eq(juniorTurns.state, "queued"),
           and(
@@ -228,10 +228,10 @@ export async function claimTurn(
  * caller's `lease_epoch`. False after a cancel or a takeover.
  */
 export async function holdsLease(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   lease: TurnLease,
 ): Promise<boolean> {
-  const rows = await executor
+  const rows = await engineCtx.db
     .db()
     .select({ id: juniorTurns.id })
     .from(juniorTurns)
@@ -259,7 +259,7 @@ function stepEventKey(turnId: string, stepSeq: number, index: number): string {
  * step is already committed, and then nothing is written.
  */
 export async function commitStep(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   turn: TurnLease & { conversationId: string; stepSeq: number },
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   inputs: InputMessage[],
@@ -271,10 +271,10 @@ export async function commitStep(
     leaseExpiresAt: null,
     updatedAt: sql`now()`,
   };
-  return executor.transaction(() =>
-    withConversationEventLock(executor, turn.conversationId, async () => {
-      const outcome = await commitOutcome(executor, turn.turnId, step, inputs);
-      const rows = await executor
+  return engineCtx.db.transaction(() =>
+    withConversationEventLock(engineCtx.db, turn.conversationId, async () => {
+      const outcome = await commitOutcome(engineCtx, turn.turnId, step, inputs);
+      const rows = await engineCtx.db
         .db()
         .update(juniorTurns)
         .set(
@@ -293,7 +293,7 @@ export async function commitStep(
       if (rows.length === 0) {
         return undefined;
       }
-      await createSqlConversationEventStore(executor).append(
+      await createSqlConversationEventStore(engineCtx.db).append(
         turn.conversationId,
         [
           ...inputs.map(({ inputId, message, provenance }) => ({
@@ -319,7 +319,7 @@ export async function commitStep(
  * Conversation lock keeps more out until the commit ends.
  */
 async function commitOutcome(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   turnId: string,
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
   inputs: InputMessage[],
@@ -328,7 +328,7 @@ async function commitOutcome(
     return "continue";
   }
   const read = new Set(inputs.map((input) => input.inputId));
-  const unread = await findUnreadInputs(executor, turnId);
+  const unread = await findUnreadInputs(engineCtx, turnId);
   return unread.every((input) => read.has(input.inputId))
     ? "completed"
     : "continue";
@@ -339,12 +339,12 @@ async function commitOutcome(
  * False when the lease is lost.
  */
 export async function failTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   lease: TurnLease,
   endReason: string,
   failure: TurnFailure,
 ): Promise<boolean> {
-  const rows = await executor
+  const rows = await engineCtx.db
     .db()
     .update(juniorTurns)
     .set({
@@ -369,10 +369,10 @@ export async function failTurn(
  * when the lease is lost.
  */
 export async function releaseTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   lease: TurnLease,
 ): Promise<boolean> {
-  const rows = await executor
+  const rows = await engineCtx.db
     .db()
     .update(juniorTurns)
     .set({
@@ -395,16 +395,16 @@ export async function releaseTurn(
  * False when the Turn has already ended.
  */
 export async function cancelTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db" | "queue">,
   turnId: string,
 ): Promise<boolean> {
-  const turn = await findTurn(executor, turnId);
+  const turn = await findTurn(engineCtx, turnId);
   if (!turn) {
     return false;
   }
-  const cancelled = await executor.transaction(() =>
-    withConversationEventLock(executor, turn.conversationId, async () => {
-      const rows = await executor
+  const cancelled = await engineCtx.db.transaction(() =>
+    withConversationEventLock(engineCtx.db, turn.conversationId, async () => {
+      const rows = await engineCtx.db
         .db()
         .update(juniorTurns)
         .set({
@@ -428,6 +428,6 @@ export async function cancelTurn(
   if (!cancelled) {
     return false;
   }
-  await publishTurnStep(turnId);
+  await publishTurnStep(engineCtx, turnId);
   return true;
 }

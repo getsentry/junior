@@ -5,6 +5,7 @@ import type {
   registerDevConsumer,
 } from "@vercel/queue";
 import {
+  getChatConfig,
   resetRuntimeConfig,
   restoreRuntimeConfig,
   snapshotRuntimeConfig,
@@ -30,6 +31,7 @@ import {
   registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
 import { turnStepConsumer } from "@/turn-steps/consumer";
+import { createEngineContext } from "@/turn-steps/engine-context";
 
 // Mock the SDK once for the file and import statically. Per-test
 // `vi.doMock` needs `vi.resetModules`, and then a parallel import can load
@@ -328,7 +330,7 @@ describe("Turn step Vercel queue integration", () => {
     // createApp sets the host's max duration after this module loads.
     resetRuntimeConfig(600);
 
-    turnStepConsumer().create();
+    turnStepConsumer(createEngineContext(getChatConfig())).create();
 
     expect(mocks.handleCallback).toHaveBeenCalledWith(expect.any(Function), {
       retry: expect.any(Function),

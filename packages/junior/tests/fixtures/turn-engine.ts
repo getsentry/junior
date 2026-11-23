@@ -16,6 +16,7 @@ import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { getQueueProvider } from "@/chat/queue/provider";
+import type { EngineContext } from "@/core/engine-context";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ToolDefinition } from "@/core/tool";
 import { advanceTurn } from "@/core/turn/advance";
@@ -66,6 +67,8 @@ export type Step = { prepare: Prepare; client?: ModelClient };
 /** The Conversation, its Turn, and the queue worker of one test. */
 export type TurnEngine = {
   fixture: LocalJuniorSqlFixture;
+  /** The context that core runs with: the test database and the BullMQ queue. */
+  engineCtx: EngineContext;
   turnId: string;
   /** Runs one step of a Turn, by default the test's Turn. */
   advance: (step: Step, leaseMs?: number, forTurnId?: string) => Promise<void>;
@@ -111,14 +114,20 @@ export async function startTurnEngine(): Promise<TurnEngine> {
   // The Turn ids of the step messages, and the marker of a delivery check.
   const stepMessages: string[] = [];
   let markerSeen = false;
-  const provider = getQueueProvider();
+  const engineCtx: EngineContext = {
+    db: fixture.sql,
+    queue: getQueueProvider(),
+    owner: "worker-a",
+    leaseMs: LEASE_MS,
+  };
+  const provider = engineCtx.queue;
   if (!provider.startWorker) {
     throw new Error("The BullMQ provider must start workers");
   }
   // The topic is fixed, so a count takes only the messages of one Turn.
   const worker = await provider.startWorker([
     {
-      ...createTurnStepConsumer(() => Promise.resolve()).consumer,
+      ...createTurnStepConsumer(engineCtx, () => Promise.resolve()).consumer,
       handler: async (payload) => {
         const parsed = carriedPayloadSchema.safeParse(payload);
         if (!parsed.success) {
@@ -134,7 +143,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
   ]);
 
   async function deliveredStepMessages(forTurnId = turnId): Promise<number> {
-    await getQueueProvider().send(TURN_STEP_TOPIC, { turnId, marker: true });
+    await engineCtx.queue.send(TURN_STEP_TOPIC, { turnId, marker: true });
     const deadline = Date.now() + 10_000;
     while (!markerSeen) {
       if (Date.now() > deadline) {
@@ -173,13 +182,11 @@ export async function startTurnEngine(): Promise<TurnEngine> {
 
   function advance(step: Step, leaseMs = LEASE_MS, forTurnId = turnId) {
     return advanceTurn(
-      fixture.sql,
+      { ...engineCtx, leaseMs },
       { turnId: forTurnId },
       {
         client: step.client ?? replyingClient([]),
         prepare: step.prepare,
-        owner: "worker-a",
-        leaseMs,
         maxAttempts: MAX_ATTEMPTS,
       },
     );
@@ -187,6 +194,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
 
   return {
     fixture,
+    engineCtx,
     turnId,
     advance,
     readTurn,

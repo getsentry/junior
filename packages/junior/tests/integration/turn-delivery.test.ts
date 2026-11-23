@@ -72,7 +72,7 @@ beforeEach(async () => {
     .set({ location: LOCATION, kind: "root" })
     .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
   handled = [];
-  const consumer = deliveryConsumer({
+  const consumer = deliveryConsumer(engine.engineCtx, {
     getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),
   }).consumer;
   const provider = getQueueProvider();

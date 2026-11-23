@@ -133,7 +133,7 @@ describe("advanceTurn at the end of a Turn", () => {
       endReason: "attempts_exhausted",
     });
     await expect(readOtherTurn()).resolves.toBeUndefined();
-    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId, attemptedAt: expect.any(Date) }),
     ]);
   });
