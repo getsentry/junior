@@ -48,12 +48,11 @@ child agents add to this is in `./child-agents.md`.
   can read it. Access comes from `../policies/conversation-access.md`.
 - An agent manages only its team. It can message, stop, and archive the
   agents that it started. It can watch other agents that it may read.
-- The final text of a Turn is the reply. It goes to the Location of a root,
-  to the person of a Lead, and to the parent of a child, as
-  `./child-agents.md` states. Final text that was cut off, such as by a
-  length limit or an abort, is a failure, not a reply. `messageAgent`
-  sends text to another agent at any time. It is not the reply, and it does
-  not end the Turn.
+- The final text of a Turn is the reply. It is part of the update that the
+  agent sends, and a root also delivers it to its Location and a Lead to its
+  person. Final text that was cut off, such as by a length limit or an
+  abort, is a failure, not a reply. `messageAgent` sends text to another
+  agent at any time. It is not the reply, and it does not end the Turn.
 - `noReply` ends the Turn with no reply. `reportBlocked` ends it as blocked
   on what the agent that started it can give. Each still sends an update with its note or
   the missing part.
@@ -70,11 +69,9 @@ child agents add to this is in `./child-agents.md`.
   `waiting`, `blocked`, `failed`, or `stopped`. It holds the reply, the
   `noReply` note, the question, the missing part, or the failure. Nothing
   in it depends on the kind.
-- An update starts a Turn for the agent that started its sender only when
-  that agent has something to do: the end of work that it gave, a
-  question, a block, a failure, or a person's stop. For any other watcher,
-  each update that is not quiet starts a Turn. Any other update is a
-  Conversation note.
+- An agent that starts another watches it. Each update reaches every
+  watcher the same way: it starts a Turn, unless the watch makes it quiet,
+  and then it is a Conversation note.
 - Update text and message text are data. They never give approval. The
   authority of a message comes from the stored relation of its sender, as
   `./child-agents.md` and `./guardian.md` state.

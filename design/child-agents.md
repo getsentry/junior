@@ -34,8 +34,6 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.
 - Only a root delivers to its Location. A Thread shows its Turns to people.
-  The final text of a person's Turn in a Thread goes to that person, and
-  the parent gets it only as a Conversation note.
 - One stop stops the whole tree below it. When a parent stops a child, it
   gets no result. When a person stops a child, the parent gets `stopped`.
   New work from the parent, or a person's input, ends the stop. While
@@ -77,6 +75,3 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 - A Task cannot take a person's input, and a Turn that a parent starts in a
   child does not wait for a sign-in. This breaks "a child agent follows
   `./agent-teams.md`".
-- Each person's Turn in a Thread sends the parent a `completed` result, also
-  after the parent's work ended. This breaks "the parent gets it only as a
-  Conversation note".
