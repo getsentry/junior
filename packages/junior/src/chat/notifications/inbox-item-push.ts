@@ -75,6 +75,33 @@ async function scheduleInboxItemPushTimer(
   });
 }
 
+/**
+ * Record the Slack card of an open item for each assignee, and keep a push
+ * timer from their first card for each one with no push yet. A User
+ * assigned again after their timer fired gets it again, and a timer that
+ * is due already fires at the next heartbeat.
+ */
+async function scheduleSlackCardPushes(
+  db: JuniorDatabase,
+  item: InboxItem,
+): Promise<void> {
+  const carded = await recordInboxItemSlackCard(db, {
+    itemId: item.id,
+    nowMs: Date.now(),
+    userIds: item.assignees.map((assignee) => assignee.userId),
+  });
+  const pushed = await listInboxItemPushUserIds(db, item.id);
+  /* oxlint-disable no-await-in-loop -- The timer index lock does not wait. */
+  for (const [userId, cardedAtMs] of carded) {
+    if (pushed.has(userId)) continue;
+    await scheduleInboxItemPushTimer(
+      pushTimerId(item.id, userId),
+      cardedAtMs + SLACK_CARD_PUSH_DELAY_MS,
+    );
+  }
+  /* oxlint-enable no-await-in-loop */
+}
+
 async function hasSlackCard(db: JuniorDatabase, itemId: string) {
   const rows = await db
     .select({ itemId: juniorInboxItemSlackCards.itemId })
@@ -212,24 +239,7 @@ export async function syncInboxItemPush(
       if (!url) return;
       const userIds = item.assignees.map((assignee) => assignee.userId);
       if (!options.slackWaited && (await hasSlackCard(db, item.id))) {
-        const carded = await recordInboxItemSlackCard(db, {
-          itemId: item.id,
-          nowMs: Date.now(),
-          userIds,
-        });
-        // Every User with no push yet keeps a timer from their first card. A
-        // User assigned again after their timer fired gets it again, and a
-        // timer that is due already fires at the next heartbeat.
-        const pushed = await listInboxItemPushUserIds(db, item.id);
-        /* oxlint-disable no-await-in-loop -- The timer index lock does not wait. */
-        for (const [userId, cardedAtMs] of carded) {
-          if (pushed.has(userId)) continue;
-          await scheduleInboxItemPushTimer(
-            pushTimerId(item.id, userId),
-            cardedAtMs + SLACK_CARD_PUSH_DELAY_MS,
-          );
-        }
-        /* oxlint-enable no-await-in-loop */
+        await scheduleSlackCardPushes(db, item);
         return;
       }
       await withSpan(
@@ -375,12 +385,13 @@ export async function pushConversationInboxItemsNow(
 /**
  * Push the item of one due timer to its User, after the item's Slack card
  * waited for them. A closed item, or a User no longer assigned, gets
- * nothing.
+ * nothing. An item whose User is not assigned goes in `unassigned`.
  */
 async function pushAfterSlackCard(
   db: JuniorDatabase,
   config: WebPushConfig,
   timerId: string,
+  unassigned: Set<string>,
 ): Promise<void> {
   const [itemId, userId] = pushTimerSchema.parse(JSON.parse(timerId));
   await runBestEffort(
@@ -388,6 +399,7 @@ async function pushAfterSlackCard(
       const item = await getInboxItem(db, itemId);
       if (!item || item.status !== "open" || !pushesToAssignees(item)) return;
       if (!item.assignees.some((assignee) => assignee.userId === userId)) {
+        unassigned.add(item.id);
         return;
       }
       const url = getDashboardInboxItemLink(item.id);
@@ -419,6 +431,9 @@ async function pushAfterSlackCard(
  * Push the items whose Slack card waited long enough. A failed pass leaves
  * its claims to expire, so the next heartbeat retries them. A push that
  * fails is logged and not retried, the same as one that sends at once.
+ * A User assigned again while the pass holds the claim of their timer
+ * gets it again from the show, and the removal then drops it. So the pass
+ * adds back the timers of each item with a User who was not assigned.
  */
 export async function runInboxItemPushTimers(
   db: JuniorDatabase,
@@ -432,8 +447,11 @@ export async function runInboxItemPushTimers(
   });
   if (timerIds.length === 0) return;
   const config = readWebPushConfig();
+  const unassigned = new Set<string>();
   if (config) {
-    await mapBounded(timerIds, (id) => pushAfterSlackCard(db, config, id));
+    await mapBounded(timerIds, (id) =>
+      pushAfterSlackCard(db, config, id, unassigned),
+    );
   }
   /* oxlint-disable no-await-in-loop -- The timer index lock does not wait. */
   for (const id of timerIds) {
@@ -441,6 +459,22 @@ export async function runInboxItemPushTimers(
       id,
       kind: "remove",
     });
+  }
+  for (const itemId of unassigned) {
+    await runBestEffort(
+      async () => {
+        const item = await getInboxItem(db, itemId);
+        if (
+          item?.status === "open" &&
+          pushesToAssignees(item) &&
+          (await hasSlackCard(db, item.id))
+        ) {
+          await scheduleSlackCardPushes(db, item);
+        }
+      },
+      "notification.inbox_item.push_failed",
+      { "app.inbox_item.id": itemId },
+    );
   }
   /* oxlint-enable no-await-in-loop */
 }
