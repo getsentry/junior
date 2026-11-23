@@ -116,7 +116,8 @@ export async function createHarness() {
 export type Harness = Awaited<ReturnType<typeof createHarness>>;
 
 // The checkpoint fields of a run's input: its history, then its instruction.
-function runInputCheckpoint(run: AgentRun) {
+/** The first checkpoint of a run's Turn, as the agent saves it. */
+export function runInputCheckpoint(run: AgentRun) {
   const history = run.history?.messages ?? [];
   return {
     actor: run.actor!,
@@ -169,22 +170,35 @@ export async function yieldRun(run: AgentRun): Promise<AgentRunOutcome> {
 
 /**
  * End a run's Turn with `answer`, as the agent does when it calls `reply` or
- * `noReply`, and save the Turn's completed record.
+ * `noReply`, and save the Turn's completed record. A `finalText` answer ends
+ * a Turn that is not gated with that final response.
  */
 export async function finishRun(
   run: AgentRun,
-  answer: TurnAnswer = { noReply: {} },
+  answer: TurnAnswer | { finalText: string } = { noReply: {} },
 ): Promise<AgentRunOutcome> {
   const input = runInputCheckpoint(run);
   await saveTurnCheckpoint({ ...input, mode: "running" });
   await run.durability?.onInputCommitted?.();
   await saveTurnCheckpoint({ ...input, mode: "completed" });
+  const ending =
+    "finalText" in answer
+      ? {
+          newMessages: [
+            {
+              role: "assistant",
+              content: [{ type: "text", text: answer.finalText }],
+              stopReason: "stop",
+              timestamp: Date.now(),
+            },
+          ],
+        }
+      : { answer, newMessages: [] };
   return completedAgentRun(
     buildTurnResult({
-      answer,
+      ...ending,
       generatedFileCount: 0,
       modelId: "test-model",
-      newMessages: [],
       reasoningLevel: "medium",
       shouldTrace: false,
       toolCalls: [],

@@ -7,7 +7,7 @@ import { replyTextSchema } from "@/chat/turn-answer";
 
 const DESCRIPTIONS = {
   parent: {
-    tool: "Send the reply of this Turn to your parent agent when the Turn ends. The parent reads it as your result.",
+    tool: "Send this text to your parent agent when the Turn ends.",
     text: "The finished result for your parent agent, with everything it needs to continue.",
   },
   automation: {

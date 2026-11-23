@@ -88,10 +88,17 @@ export interface ConversationSearchResult {
 /** Provider-owned channel filter and match details for Conversation search. */
 export interface ConversationSearchChannelPort {
   channelFilterSchema: z.ZodString;
-  describeMatch(match: ConversationSearchResult): Promise<{
+  /**
+   * Describe the provider channel of a match. `includeUrl` asks for the
+   * provider thread link, for when there is no dashboard link.
+   */
+  describeMatch(
+    match: ConversationSearchResult,
+    options: { includeUrl: boolean },
+  ): Promise<{
     channel_id?: string;
     channel_name?: string;
-    permalink?: string;
+    url?: string;
   }>;
   resolveChannel(input: string): Promise<string>;
 }

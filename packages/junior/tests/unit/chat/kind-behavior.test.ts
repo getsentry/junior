@@ -12,6 +12,7 @@ const rootTurn = {
   waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: true,
   tools: {
@@ -30,6 +31,8 @@ const personInThreadTurn = {
   ...rootTurn,
   promptMode: "thread",
   sender: "person",
+  failureNotice: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: { ...rootTurn.tools, agents: "none" },
@@ -42,7 +45,9 @@ const agentInThreadTurn = {
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
   gated: true,
-  failureNotice: "none",
+  missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -56,14 +61,8 @@ const agentInThreadTurn = {
   },
 };
 
-// A Task's parent learns that it failed or that no reply was sent.
 const { sender: _sender, ...childAgentTurn } = agentInThreadTurn;
-const agentInTaskTurn = {
-  ...childAgentTurn,
-  promptMode: "child_agent",
-  missingAnswerError: "No reply was sent.",
-  failureNotice: "parent",
-};
+const agentInTaskTurn = { ...childAgentTurn, promptMode: "child_agent" };
 
 // An Automation run almost never gets an answer, so only pending work keeps
 // its cache warm.
@@ -75,6 +74,7 @@ const automationTurn = {
   waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: false,
   tools: {
