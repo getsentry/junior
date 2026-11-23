@@ -35,8 +35,7 @@ child chooses to report reaches the parent.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. A person's Turn in a Thread
   cannot start or message child agents.
-- A child agent never asks a person. It has no Inbox and does not
-  wait for a sign-in. Missing access is a blocked report to its parent.
+- A child agent works like any other agent, and it can ask a person.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.
 - Child output reaches the parent as data, not as instructions. It never
@@ -44,8 +43,7 @@ child chooses to report reaches the parent.
 - Every Conversation reports with one agent Event, whatever its kind: done,
   waiting on a person, blocked, failed, or stopped, with its reply, its
   `noReply` note, or its question. A parent gets this Event from its child
-  agents, and a Watch on a Conversation gets the same Event. It is data, not
-  instructions.
+  agents, and a Watch on a Conversation gets the same Event.
 - Only a root delivers to its Location. A Thread shows its Turns to people.
   A child's Turn sends its parent only its `reply`, its blocked report, or
   its result.
@@ -84,3 +82,12 @@ child chooses to report reaches the parent.
 - A parent cannot archive a Task. Only a Thread can be archived. This
   breaks "a parent manages the lifecycle of its child agents".
 - A child whose last Watch expires with no Turn never reports to its parent.
+  This breaks "a parent never waits forever".
+- A parent message that arrives while a person stops its child does not
+  run, and a retried spawn can lose its task to a worker that holds the
+  task of the failed spawn. In both cases the parent was told that the work
+  started. This breaks "a parent never waits forever".
+  getsentry/junior#3060 tracks it.
+- A Turn that a parent starts in a child agent has no Inbox and does not
+  wait for a sign-in. This breaks "a child agent works like any other
+  agent".
