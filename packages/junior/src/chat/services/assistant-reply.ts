@@ -1,6 +1,5 @@
 import type { AssistantMessage } from "@earendil-works/pi-ai";
-import type { Nodes } from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
+import { markdownNodes, parseMarkdown } from "@sentry/junior-plugin-api";
 import { isLegacyNoReplyMarker } from "@/chat/no-reply";
 import { extractAssistantText } from "@/chat/pi/transcript";
 
@@ -25,7 +24,9 @@ function isClosedFence(source: string): boolean {
       ? "~"
       : undefined;
   const lastLine = source.lastIndexOf("\n");
-  const closer = lastLine < 0 ? "" : source.slice(lastLine + 1).trim();
+  let closer = lastLine < 0 ? "" : source.slice(lastLine + 1).trim();
+  // A fence inside a quote has the quote markers before its closer.
+  while (closer.startsWith(">")) closer = closer.slice(1).trimStart();
   return (
     marker !== undefined &&
     closer.length >= 3 &&
@@ -37,18 +38,13 @@ function isClosedFence(source: string): boolean {
 // Markdown, in text order. An indented line is not code here: reasoning
 // wrappers can be indented.
 function fencedCodeRanges(text: string): [number, number][] {
-  const ranges: [number, number][] = [];
-  const visit = (node: Nodes) => {
-    if (node.type === "code") {
-      const start = node.position?.start.offset ?? 0;
-      const end = node.position?.end.offset ?? 0;
-      if (isClosedFence(text.slice(start, end))) ranges.push([start, end]);
-    } else if ("children" in node) {
-      for (const child of node.children) visit(child);
-    }
-  };
-  visit(fromMarkdown(text));
-  return ranges;
+  return markdownNodes(parseMarkdown(text), ["code"]).flatMap(
+    ({ position }): [number, number][] => {
+      const start = position?.start.offset ?? 0;
+      const end = position?.end.offset ?? 0;
+      return isClosedFence(text.slice(start, end)) ? [[start, end]] : [];
+    },
+  );
 }
 
 /** Remove provider reasoning wrappers while preserving fenced code examples. */

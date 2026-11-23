@@ -8,14 +8,14 @@
  * the card, and the cover image.
  */
 import {
+  markdownText,
   objectSummary,
+  parseMarkdown,
   type ImageSourceContext,
   type ObjectAnnotation,
   type ObjectLinkContext,
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
-import type { PhrasingContent } from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
 import * as z from "zod";
 
 // Long enough that the access check, the card, and its cover share one
@@ -116,28 +116,19 @@ function parseCover(value: unknown): NotionCover | undefined {
     : undefined;
 }
 
-// The plain text of inline Markdown. Inline tags such as `<span>` drop.
-function inlineText(nodes: readonly PhrasingContent[]): string {
-  return nodes
-    .map((node) => {
-      if (node.type === "html") return "";
-      if (node.type === "image") return node.alt ?? "";
-      if ("value" in node) return node.value;
-      return "children" in node ? inlineText(node.children) : "";
-    })
-    .join("");
-}
-
 // The prose of one body line, or "" when the line is not body prose:
 // headings, rules, code fences, and lines that hold only a block tag such as
 // `<p />` or `<callout ...>`. List and quote markers drop, also nested ones.
 function lineProse(line: string): string {
-  let [node] = fromMarkdown(line).children;
+  let [node] = parseMarkdown(line).children;
   while (node?.type === "list" || node?.type === "blockquote") {
     node =
       node.type === "list" ? node.children[0]?.children[0] : node.children[0];
   }
-  return node?.type === "paragraph" ? inlineText(node.children) : "";
+  // Inline tags such as `<span>` drop.
+  return node?.type === "paragraph"
+    ? markdownText(node, { proseOnly: true })
+    : "";
 }
 
 /**

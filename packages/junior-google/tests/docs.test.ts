@@ -129,7 +129,7 @@ describe("Google Docs Markdown", () => {
     ).toBe("a\n\nb");
   });
 
-  it("reads quotes, escapes, item continuations, and tables as Markdown does", () => {
+  it("reads quotes, escapes, item continuations, task items, and tables as Markdown does", () => {
     const converted = convertMarkdown(
       [
         "> quoted *text*",
@@ -141,6 +141,8 @@ describe("Google Docs Markdown", () => {
         "",
         "  still one",
         "    - deep",
+        "- [x] done",
+        "- [ ] todo",
         "",
         "| a | b |",
         "|---|---|",
@@ -153,6 +155,8 @@ describe("Google Docs Markdown", () => {
         "*not em* and a_b_c",
         "one still one",
         "\tdeep",
+        "[x] done",
+        "[ ] todo",
         "| a | b | |---|---|",
       ].join("\n"),
     );

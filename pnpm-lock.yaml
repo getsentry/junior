@@ -211,6 +211,9 @@ catalogs:
     '@sentry/starlight-theme':
       specifier: ^0.9.1
       version: 0.9.1
+    '@types/mdast':
+      specifier: ^4.0.4
+      version: 4.0.4
     '@types/node':
       specifier: ^24.19.2
       version: 24.19.2
@@ -223,6 +226,15 @@ catalogs:
     drizzle-orm:
       specifier: ^0.45.4
       version: 0.45.4
+    mdast-util-from-markdown:
+      specifier: ^2.1.0
+      version: 2.1.0
+    mdast-util-gfm:
+      specifier: ^3.1.0
+      version: 3.1.0
+    micromark-extension-gfm:
+      specifier: ^3.0.0
+      version: 3.0.0
     p-limit:
       specifier: ^7.3.3
       version: 7.3.3
@@ -517,13 +529,13 @@ importers:
         specifier: 3.0.1
         version: 3.0.1
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       node-html-markdown:
         specifier: ^2.0.0
@@ -574,9 +586,6 @@ importers:
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -676,15 +685,6 @@ importers:
       lucide-react:
         specifier: ^1.17.0
         version: 1.17.0(react@19.2.6)
-      mdast-util-from-markdown:
-        specifier: ^2.1.0
-        version: 2.1.0
-      mdast-util-gfm:
-        specifier: ^3.1.0
-        version: 3.1.0
-      micromark-extension-gfm:
-        specifier: ^3.0.0
-        version: 3.0.0
       p-limit:
         specifier: 'catalog:'
         version: 7.3.3
@@ -737,9 +737,6 @@ importers:
       '@tanstack/eslint-plugin-query':
         specifier: ^5.101.4
         version: 5.101.4(eslint@10.8.0)(typescript@7.0.2)
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -823,9 +820,6 @@ importers:
       '@sentry/roach':
         specifier: 0.3.0
         version: 0.3.0(vitest@4.1.12)
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
       ai:
         specifier: 7.0.153
         version: 7.0.153(zod@4.6.7)
@@ -835,15 +829,6 @@ importers:
       hono:
         specifier: ^4.13.11
         version: 4.13.11
-      mdast-util-from-markdown:
-        specifier: ^2.1.0
-        version: 2.1.0
-      mdast-util-gfm:
-        specifier: ^3.1.0
-        version: 3.1.0
-      micromark-extension-gfm:
-        specifier: ^3.0.0
-        version: 3.0.0
       msw:
         specifier: ^2.14.6
         version: 2.14.6(@types/node@24.19.2)(typescript@7.0.2)
@@ -889,13 +874,13 @@ importers:
         specifier: ^18.1.2
         version: 18.1.2
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       p-limit:
         specifier: 'catalog:'
@@ -917,7 +902,7 @@ importers:
         specifier: workspace:*
         version: file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12)
       '@types/mdast':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
@@ -958,9 +943,6 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.4(@types/pg@8.15.6)(pg@8.21.0)
-      mdast-util-from-markdown:
-        specifier: ^2.1.0
-        version: 2.1.0
       p-limit:
         specifier: 'catalog:'
         version: 7.3.3
@@ -974,9 +956,6 @@ importers:
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing(@types/pg@8.15.6)(vitest@4.1.12)
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -1033,16 +1012,10 @@ importers:
       '@sentry/junior-plugin-api':
         specifier: workspace:*
         version: link:../junior-plugin-api
-      mdast-util-from-markdown:
-        specifier: ^2.1.0
-        version: 2.1.0
       zod:
         specifier: 'catalog:'
         version: 4.6.7
     devDependencies:
-      '@types/mdast':
-        specifier: ^4.0.4
-        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -1059,9 +1032,21 @@ importers:
 
   packages/junior-plugin-api:
     dependencies:
+      '@types/mdast':
+        specifier: 'catalog:'
+        version: 4.0.4
       commander:
         specifier: ^14.0.3
         version: 14.0.3
+      mdast-util-from-markdown:
+        specifier: 'catalog:'
+        version: 2.1.0
+      mdast-util-gfm:
+        specifier: 'catalog:'
+        version: 3.1.0
+      micromark-extension-gfm:
+        specifier: 'catalog:'
+        version: 3.0.0
       zod:
         specifier: 'catalog:'
         version: 4.6.7
@@ -1084,13 +1069,13 @@ importers:
         specifier: workspace:*
         version: link:../junior-plugin-api
       mdast-util-from-markdown:
-        specifier: ^2.1.0
+        specifier: 'catalog:'
         version: 2.1.0
       mdast-util-gfm:
-        specifier: ^3.1.0
+        specifier: 'catalog:'
         version: 3.1.0
       micromark-extension-gfm:
-        specifier: ^3.0.0
+        specifier: 'catalog:'
         version: 3.0.0
       zod:
         specifier: 'catalog:'
@@ -1100,7 +1085,7 @@ importers:
         specifier: workspace:*
         version: file:packages/junior-testing(vitest@4.1.12)
       '@types/mdast':
-        specifier: ^4.0.4
+        specifier: 'catalog:'
         version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
@@ -14965,9 +14950,6 @@ snapshots:
       hono: 4.13.11
       lexical: 0.53.0(typescript@7.0.2)
       lucide-react: 1.17.0(react@19.2.6)
-      mdast-util-from-markdown: 2.1.0
-      mdast-util-gfm: 3.1.0
-      micromark-extension-gfm: 3.0.0
       p-limit: 7.3.3
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
@@ -15092,8 +15074,14 @@ snapshots:
 
   '@sentry/junior-plugin-api@file:packages/junior-plugin-api':
     dependencies:
+      '@types/mdast': 4.0.4
       commander: 14.0.3
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       zod: 4.6.7
+    transitivePeerDependencies:
+      - supports-color
 
   '@sentry/junior-testing@file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)':
     dependencies:

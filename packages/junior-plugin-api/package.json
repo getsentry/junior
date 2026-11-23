@@ -22,7 +22,11 @@
     "src/object-icons.LICENSE"
   ],
   "dependencies": {
+    "@types/mdast": "catalog:",
     "commander": "^14.0.3",
+    "mdast-util-from-markdown": "catalog:",
+    "mdast-util-gfm": "catalog:",
+    "micromark-extension-gfm": "catalog:",
     "zod": "catalog:"
   },
   "scripts": {
