@@ -79,6 +79,7 @@ import { mockChartPng } from "./chart-png";
 import { errorResponse } from "./errors";
 import { mountMockPeopleRoutes } from "./people-routes";
 import { registerMockCodeChangeSearchRoutes } from "./code-change-search";
+import { registerMockSearchRoutes } from "./search-routes";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
 import {
@@ -878,6 +879,7 @@ export function createMockReportingApi(): Hono<{
     }),
   );
   addMockInboxItemRoutes(app);
+  registerMockSearchRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(

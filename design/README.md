@@ -4,8 +4,8 @@ Each file states the intent of one major system: the goals it must meet,
 where users reach it, and the rules users rely on. Teammates read it to learn
 why the system works the way it does. Agents read it before they change the
 system. The `create-design-docs` skill writes these files, and the
-`maintain-design-docs` skill checks the product against them. Both skills
-live in getsentry/junior-prod.
+`automate-design-doc-updates` skill checks the product against them. Both
+skills live in getsentry/junior-prod.
 
 ## File contract
 
@@ -36,8 +36,6 @@ Do not list behaviors. The verification map in
 
 - [Agent teams](./agent-teams.md): how agents start, message, watch, and
   report to each other, and how each one ends a Turn.
-- [Attention](./attention.md): when Junior asks for a person's attention.
-  Every system follows it.
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [Cache warming](./cache-warming.md): keeping the prompt cache of an idle
   Conversation warm while a return is likely.
@@ -52,6 +50,8 @@ Do not list behaviors. The verification map in
 - [Inbox](./inbox.md): work that waits for a person.
 - [Inbox stacks](./inbox-stacks.md): the Inbox rows in the dashboard, one
   stack for each root Conversation.
+- [Lead](./lead.md): a person's own Conversation that finds, starts, and
+  steers their other work.
 - [Prompts](./prompts.md): what the model reads in each Turn, and who wrote
   each part.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for

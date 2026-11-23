@@ -102,7 +102,7 @@ child agents add to this is in `./child-agents.md`.
 - The ungated path counts cut-off final text as a finished reply. This
   breaks "final text that was cut off is a failure".
 - A Lead asks its person in its reply, not with an Inbox item. This breaks
-  "one contract" and `./attention.md`.
+  "one contract" and `./inbox.md`.
 - A root that a Lead starts stores no link to the Lead, and the Lead's task
   counts as a person's message. So the Lead cannot stop or archive it, and
   the archive guard would refuse it. This breaks "an agent manages only its
