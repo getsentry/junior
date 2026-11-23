@@ -26,7 +26,7 @@ type ModelReplyEvent =
  * of `emulate`'s README for every field.
  */
 export type ModelRule = {
-  match?: { stream?: boolean };
+  match?: { stream?: boolean; hasToolResult?: boolean };
   times?: number;
   reply?: ModelReplyEvent[];
   error?: { status: number; message: string };

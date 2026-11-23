@@ -1,12 +1,24 @@
-import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ModelRequest } from "@/core/model/client";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { EngineContext } from "@/core/engine-context";
+import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { juniorTurnInbox, juniorTurns } from "@/db/schema";
-import { modelCalls, modelOverloaded } from "../fixtures/ai-emulator";
+import {
+  modelCalls,
+  modelOverloaded,
+  replyRule,
+  setModelReplies,
+} from "../fixtures/ai-emulator";
 import type { LocalJuniorSqlFixture } from "../fixtures/sql";
 import { createTurnHarness, type TurnHarness } from "../fixtures/turn-harness";
 import { createAssistantMessage } from "../fixtures/model-stream";
@@ -78,15 +90,14 @@ function danglingResult(toolCallId: string, text: string) {
 // The real path: an input goes through scheduleInput, and the host's Turn
 // step consumer runs each step from the queue.
 describe("advanceTurn at the end of a Turn", () => {
-  beforeEach(async () => {
-    harness = await createTurnHarness();
-  });
-
-  afterEach(async () => {
-    await harness.close();
-  });
+  /** Starts this test's harness, whose `prepare` gives the model `tools`. */
+  async function startHarness(tools: ToolDefinition[] = []) {
+    harness = await createTurnHarness({ tools });
+    onTestFinished(() => harness.close());
+  }
 
   it("hands on a failed Turn's late input on a redelivered message", async () => {
+    await startHarness();
     const { conversationId, engineCtx } = harness;
     const sent = await harness.send({ text: "How many Turns?" });
     // A crash right after the fail commit: reconcileTurn never ran.
@@ -109,6 +120,58 @@ describe("advanceTurn at the end of a Turn", () => {
         .pending(TURN_STEP_TOPIC)
         .filter((message) => messageTurnId(message.payload) === next!.id),
     ).toHaveLength(1);
+  });
+
+  it("closes an earlier Turn's pending tool calls without running them, and the model sees the results", async () => {
+    const executed: string[] = [];
+    await startHarness([
+      sendTool(executed),
+      { ...sendTool(executed), name: "lookup", replay: "safe" as const },
+    ]);
+    const { engineCtx } = harness;
+    const reply = createAssistantMessage({
+      type: "toolCalls",
+      calls: [
+        { name: "send", arguments: {}, id: "call-1" },
+        { name: "lookup", arguments: {}, id: "call-2" },
+      ],
+    });
+    const checked = createAssistantMessage({ type: "text", text: "Checked." });
+    await setModelReplies([
+      reply,
+      // Answers only a request that carries the closed calls' results.
+      { ...replyRule(checked), match: { hasToolResult: true } },
+    ]);
+    const first = await harness.send({ text: "How many Turns?" });
+    await harness.runStep();
+    // The Turn fails with its tool calls pending, and a new Turn starts.
+    await engineCtx.executor
+      .db()
+      .update(juniorTurns)
+      .set({ state: "failed", endedAt: sql`now()` })
+      .where(eq(juniorTurns.id, first.turnId));
+    const next = await harness.send({ text: "Did it send?" });
+
+    await harness.runUntilIdle();
+
+    expect(executed).toEqual([]);
+    await expect(harness.turn(next.turnId)).resolves.toMatchObject({
+      state: "completed",
+    });
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+      danglingResult(
+        "call-1",
+        "The previous Turn ended before this call's result was saved. It may or may not have run. Check its effect before you call it again.",
+      ),
+      danglingResult(
+        "call-2",
+        "The previous Turn ended before this call returned, so there is no result. Call it again if you still need it.",
+      ),
+      userText("Did it send?"),
+      storedReply(checked),
+    ]);
   });
 });
 
@@ -184,82 +247,6 @@ describe("advanceTurn at the end of a Turn, with a test prepare", () => {
     ).resolves.toBeUndefined();
     await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId, attemptedAt: expect.any(Date) }),
-    ]);
-  });
-
-  it("closes an earlier Turn's pending tool calls without running them, and the model sees the results", async () => {
-    const executed: string[] = [];
-    const tools = [
-      sendTool(executed),
-      { ...sendTool(executed), name: "lookup", replay: "safe" as const },
-    ];
-    await engine.addTestInput("How many Turns?");
-    const reply = createAssistantMessage({
-      type: "toolCalls",
-      calls: [
-        { name: "send", arguments: {}, id: "call-1" },
-        { name: "lookup", arguments: {}, id: "call-2" },
-      ],
-    });
-    await engine.advance(prepareWith([reply]));
-    // The Turn fails with its tool calls pending, and a new Turn starts.
-    await fixture.sql
-      .db()
-      .update(juniorTurns)
-      .set({ state: "failed", endedAt: sql`now()` })
-      .where(eq(juniorTurns.id, turnId));
-    const nextId = randomUUID();
-    await fixture.sql.db().insert(juniorTurns).values({
-      id: nextId,
-      conversationId: CONVERSATION_ID,
-      actorIdentityId: "identity:actor",
-      state: "queued",
-      priority: 0,
-      source: "slack",
-    });
-
-    await engine.advance(prepareWith([], tools), LEASE_MS, nextId);
-
-    expect(executed).toEqual([]);
-    const closed = [
-      danglingResult(
-        "call-1",
-        "The previous Turn ended before this call's result was saved. It may or may not have run. Check its effect before you call it again.",
-      ),
-      danglingResult(
-        "call-2",
-        "The previous Turn ended before this call returned, so there is no result. Call it again if you still need it.",
-      ),
-    ];
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      storedReply(reply),
-      ...closed,
-    ]);
-    const step = prepareWith(
-      [createAssistantMessage({ type: "text", text: "Checked." })],
-      tools,
-    );
-    const requests: ModelRequest[] = [];
-
-    await engine.advance(
-      {
-        ...step,
-        client: {
-          complete: (request, signal) => {
-            requests.push(request);
-            return step.client.complete(request, signal);
-          },
-        },
-      },
-      LEASE_MS,
-      nextId,
-    );
-
-    expect(requests[0]!.context.messages).toEqual([
-      userText("How many Turns?"),
-      storedReply(reply),
-      ...closed,
     ]);
   });
 });

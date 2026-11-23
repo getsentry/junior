@@ -1,6 +1,14 @@
 import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  onTestFinished,
+  vi,
+} from "vitest";
 import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs, type InputMessage } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
@@ -274,6 +282,187 @@ describe("advanceTurn", () => {
   });
 });
 
+// The real path with tools: the host's `prepare` gives the model the test's
+// tools.
+describe("advanceTurn with tools", () => {
+  /** Starts this test's harness, whose `prepare` gives the model `tools`. */
+  async function startHarness(tools: ToolDefinition[]) {
+    const started = await createTurnHarness({ tools });
+    onTestFinished(() => started.close());
+    harness = started;
+    return started;
+  }
+
+  it("stops a tool that respects the signal when the Turn is cancelled", async () => {
+    let cancelledTurnId = "";
+    const send: ToolDefinition = {
+      ...sendTool([]),
+      execute: async (_args, { signal }) => {
+        await cancelTurn(harness.engineCtx, cancelledTurnId);
+        // The tool works until its signal aborts.
+        await new Promise((_resolve, reject) => {
+          signal.addEventListener("abort", () => reject(signal.reason), {
+            once: true,
+          });
+        });
+        return { content: [{ type: "text", text: "sent" }] };
+      },
+    };
+    await startHarness([send]);
+    const reply = sendCallReply();
+    await setModelReplies([reply]);
+    ({ turnId: cancelledTurnId } = await harness.send({
+      text: "How many Turns?",
+    }));
+    await harness.runStep();
+
+    await harness.runStep();
+
+    await expect(harness.turn(cancelledTurnId)).resolves.toMatchObject({
+      state: "cancelled",
+      stepSeq: 1,
+    });
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+    ]);
+    // cancelTurn's message. The tool step's own message was delivered.
+    expect(pendingSteps(cancelledTurnId)).toBe(1);
+  });
+
+  it("runs a tool that must not run twice on the first attempt of its step", async () => {
+    const executed: string[] = [];
+    await startHarness([sendTool(executed)]);
+    await setModelReplies([sendCallReply()]);
+    await harness.send({ text: "How many Turns?" });
+    await harness.runStep();
+
+    await harness.runStep();
+
+    expect(executed).toEqual(["call-1"]);
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      expect.objectContaining({ role: "assistant" }),
+      expect.objectContaining({
+        role: "toolResult",
+        isError: false,
+        content: [{ type: "text", text: "sent" }],
+      }),
+    ]);
+  });
+
+  it("skips that tool when the step runs again after a lost attempt", async () => {
+    const executed: string[] = [];
+    await startHarness([sendTool(executed)]);
+    await setModelReplies([sendCallReply()]);
+    const { turnId: toolTurnId } = await harness.send({
+      text: "How many Turns?",
+    });
+    await harness.runStep();
+    // An invocation claims the tool step, then dies before it commits.
+    await claimTurn(
+      { ...harness.engineCtx, owner: "worker-dead", leaseMs: EXPIRED_LEASE_MS },
+      toolTurnId,
+    );
+
+    await harness.runStep();
+
+    expect(executed).toEqual([]);
+    await expect(harness.turn(toolTurnId)).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 2,
+      leaseEpoch: 3,
+    });
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      expect.objectContaining({ role: "assistant" }),
+      expect.objectContaining({ role: "toolResult", isError: true }),
+    ]);
+  });
+
+  it("runs the next step on a redelivery when the send after a continue commit fails", async () => {
+    const executed: string[] = [];
+    await startHarness([sendTool(executed)]);
+    const reply = sendCallReply();
+    const done = createAssistantMessage({ type: "text", text: "Sent." });
+    await setModelReplies([reply, done]);
+    const { turnId: toolTurnId } = await harness.send({
+      text: "How many Turns?",
+    });
+    // Stands in for the process dying after the commit, before the send.
+    vi.spyOn(harness.queue, "send").mockRejectedValueOnce(
+      new Error("The queue is unreachable"),
+    );
+
+    await harness.runStep();
+
+    await expect(harness.turn(toolTurnId)).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 1,
+      attempts: 0,
+      leaseOwner: null,
+    });
+    // The step message failed, so the queue keeps it for a redelivery.
+    expect(harness.queue.pending(TURN_STEP_TOPIC)).toEqual([
+      expect.objectContaining({ deliveryCount: 1 }),
+    ]);
+
+    // The queue delivers the same message again.
+    await harness.runStep();
+
+    // A first attempt, so the tool that must not run twice runs.
+    expect(executed).toEqual(["call-1"]);
+    await expect(harness.turn(toolTurnId)).resolves.toMatchObject({
+      state: "queued",
+      stepSeq: 2,
+    });
+
+    await harness.runStep();
+
+    await expect(harness.turn(toolTurnId)).resolves.toMatchObject({
+      state: "completed",
+      stepSeq: 3,
+    });
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+      expect.objectContaining({ role: "toolResult", isError: false }),
+      storedReply(done),
+    ]);
+    // The input's message, delivered again, and the tool step's message.
+    // Only the tool step's send went out.
+    expect(harness.queue.delivered(TURN_STEP_TOPIC)).toEqual([
+      expect.objectContaining({ deliveryCount: 2 }),
+      expect.objectContaining({ deliveryCount: 1 }),
+    ]);
+    expect(pendingSteps(toolTurnId)).toBe(0);
+  });
+
+  it("reads no inputs in a tool step", async () => {
+    const executed: string[] = [];
+    await startHarness([sendTool(executed)]);
+    const reply = sendCallReply();
+    await setModelReplies([reply]);
+    const { turnId: toolTurnId } = await harness.send({
+      text: "How many Turns?",
+    });
+    await harness.runStep();
+    const { inputId } = await harness.send({ text: "Also send it to Sam." });
+
+    await harness.runStep();
+
+    expect(executed).toEqual(["call-1"]);
+    await expect(harness.history()).resolves.toEqual([
+      userText("How many Turns?"),
+      storedReply(reply),
+      expect.objectContaining({ role: "toolResult" }),
+    ]);
+    await expect(
+      findUnreadInputs(harness.engineCtx, toolTurnId),
+    ).resolves.toEqual([expect.objectContaining({ inputId })]);
+  });
+});
+
 // These cases need a fault or a timing that no edge can give, so they run
 // one step at a time with a test `prepare` and model client: a `prepare`
 // that throws or changes its inputs, tools, an input or a change to the Turn
@@ -344,38 +533,6 @@ describe("advanceTurn with a test prepare", () => {
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
     expect(engine.sentStepMessages()).toBe(0);
-  });
-
-  it("stops a tool that respects the signal when the Turn is cancelled", async () => {
-    await engine.addTestInput("How many Turns?");
-    const reply = sendCallReply();
-    await engine.advance(prepareWith([reply]));
-    const send: ToolDefinition = {
-      ...sendTool([]),
-      execute: async (_args, { signal }) => {
-        await cancelTurn(engine.engineCtx, turnId);
-        // The tool works until its signal aborts.
-        await new Promise((_resolve, reject) => {
-          signal.addEventListener("abort", () => reject(signal.reason), {
-            once: true,
-          });
-        });
-        return { content: [{ type: "text", text: "sent" }] };
-      },
-    };
-
-    await engine.advance(prepareWith([], [send]));
-
-    await expect(engine.readTurn()).resolves.toMatchObject({
-      state: "cancelled",
-      stepSeq: 1,
-    });
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      storedReply(reply),
-    ]);
-    // The step that the first advance committed, and cancelTurn's message.
-    expect(engine.sentStepMessages()).toBe(2);
   });
 
   it("goes on with the step when a lease check fails", async () => {
@@ -533,93 +690,6 @@ describe("advanceTurn with a test prepare", () => {
     },
   );
 
-  it("runs a tool that must not run twice on the first attempt of its step", async () => {
-    const executed: string[] = [];
-    await engine.addTestInput("How many Turns?");
-    await engine.advance(prepareWith([sendCallReply()]));
-
-    await engine.advance(prepareWith([], [sendTool(executed)]));
-
-    expect(executed).toEqual(["call-1"]);
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      expect.objectContaining({ role: "assistant" }),
-      expect.objectContaining({
-        role: "toolResult",
-        isError: false,
-        content: [{ type: "text", text: "sent" }],
-      }),
-    ]);
-  });
-
-  it("skips that tool when the step runs again after a lost attempt", async () => {
-    const executed: string[] = [];
-    await engine.addTestInput("How many Turns?");
-    await engine.advance(prepareWith([sendCallReply()]));
-    // An invocation claims the tool step, then dies before it commits.
-    await claimTurn(
-      { ...engine.engineCtx, owner: "worker-dead", leaseMs: EXPIRED_LEASE_MS },
-      turnId,
-    );
-
-    await engine.advance(prepareWith([], [sendTool(executed)]));
-
-    expect(executed).toEqual([]);
-    await expect(engine.readTurn()).resolves.toMatchObject({
-      state: "queued",
-      stepSeq: 2,
-      leaseEpoch: 3,
-    });
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      expect.objectContaining({ role: "assistant" }),
-      expect.objectContaining({ role: "toolResult", isError: true }),
-    ]);
-  });
-  it("runs the next step on a redelivery when the send after a continue commit fails", async () => {
-    const executed: string[] = [];
-    await engine.addTestInput("How many Turns?");
-    const reply = sendCallReply();
-    const failure = new Error("The queue is unreachable");
-    // Stands in for the process dying after the commit, before the send.
-    vi.spyOn(engine.queue, "send").mockRejectedValueOnce(failure);
-
-    await expect(engine.advance(prepareWith([reply]))).rejects.toBe(failure);
-
-    await expect(engine.readTurn()).resolves.toMatchObject({
-      state: "queued",
-      stepSeq: 1,
-      attempts: 0,
-      leaseOwner: null,
-    });
-
-    // The queue delivers the same message again.
-    await engine.advance(prepareWith([], [sendTool(executed)]));
-
-    // A first attempt, so the tool that must not run twice runs.
-    expect(executed).toEqual(["call-1"]);
-    await expect(engine.readTurn()).resolves.toMatchObject({
-      state: "queued",
-      stepSeq: 2,
-    });
-
-    const done = createAssistantMessage({ type: "text", text: "Sent." });
-    await engine.advance(prepareWith([done]));
-
-    await expect(engine.readTurn()).resolves.toMatchObject({
-      state: "completed",
-      stepSeq: 3,
-    });
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      storedReply(reply),
-      expect.objectContaining({ role: "toolResult", isError: false }),
-      storedReply(done),
-    ]);
-    // Only the tool step's send went out.
-    expect(engine.sentStepMessages()).toBe(1);
-  });
-
   it("continues a completed Turn when an input arrives during the step, and sends the next step", async () => {
     await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "Three." });
@@ -647,29 +717,6 @@ describe("advanceTurn with a test prepare", () => {
       expect.objectContaining({ inputId: lateInputId }),
     ]);
     expect(engine.sentStepMessages()).toBe(1);
-  });
-
-  it("reads no inputs in a tool step", async () => {
-    const executed: string[] = [];
-    await engine.addTestInput("How many Turns?");
-    const reply = sendCallReply();
-    await engine.advance(prepareWith([reply]));
-    const inputId = await engine.addTestInput("Also send it to Sam.");
-    const toolStep = prepareWith([], [sendTool(executed)]);
-    const prepare = vi.fn(toolStep.prepare);
-
-    await engine.advance({ ...toolStep, prepare });
-
-    expect(prepare).toHaveBeenCalledWith(expect.anything(), []);
-    expect(executed).toEqual(["call-1"]);
-    await expect(engine.loadHistory()).resolves.toEqual([
-      userText("How many Turns?"),
-      storedReply(reply),
-      expect.objectContaining({ role: "toolResult" }),
-    ]);
-    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
-      expect.objectContaining({ inputId }),
-    ]);
   });
 
   it.each([

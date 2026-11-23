@@ -108,7 +108,12 @@ export async function runCoreEnginePrompt(args: {
     );
   }
   const worker = await queue.startWorker([
-    turnStepConsumer(engineCtx, { client: createGatewayModelClient() }),
+    turnStepConsumer(engineCtx, {
+      client: createGatewayModelClient(),
+      bot: config.bot,
+      // Core Turns have no tools yet.
+      tools: [],
+    }),
   ]);
   try {
     await getConversationStore().recordActivity({
