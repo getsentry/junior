@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
@@ -72,6 +72,7 @@ function getVercelOptions(nitro: {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const tempDir of tempDirs.splice(0)) {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -254,7 +255,8 @@ describe("juniorNitro plugin modules", () => {
     });
   });
 
-  it("uses a custom Vercel conversation work queue topic", () => {
+  it("uses the conversation work queue topic from the environment", () => {
+    vi.stubEnv("JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC", "custom_work");
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -270,9 +272,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({ conversationWorkQueueTopic: "custom_work" }).nitro.setup(
-      nitro,
-    );
+    juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(
@@ -321,9 +321,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({
-      conversationWorkQueueTopic: "new_topic",
-    }).nitro.setup(nitro);
+    juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(
@@ -332,7 +330,7 @@ describe("juniorNitro plugin modules", () => {
     ).toEqual([
       {
         type: "queue/v2beta",
-        topic: "new_topic",
+        topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
       },
     ]);
     expect(

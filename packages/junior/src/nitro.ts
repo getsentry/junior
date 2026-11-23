@@ -101,8 +101,6 @@ export interface JuniorNitroOptions {
   /** Authenticated dashboard configuration injected for createApp(). */
   dashboard?: JuniorNitroDashboardOptions;
   maxDuration?: number;
-  /** Vercel Queue topic for durable conversation work. Must match the runtime queue producer topic. */
-  conversationWorkQueueTopic?: string;
   /** Plugin catalog set or runtime-safe plugin module. Direct sets must not include runtime code. */
   plugins?: JuniorNitroPluginSource;
   /**
@@ -178,9 +176,7 @@ function configureVercelDeployment(
 ): number {
   const defaultMaxDuration =
     options.maxDuration ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-  const queueTopic = resolveConversationWorkQueueTopic({
-    topic: options.conversationWorkQueueTopic,
-  });
+  const queueTopic = resolveConversationWorkQueueTopic();
 
   nitro.options.vercel ??= {};
   nitro.options.vercel.config ??= { version: 3 };
