@@ -2,6 +2,7 @@ import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
 import { stopConversation } from "@/chat/conversations/stop";
+import { saveTurnCheckpoint } from "@/chat/task-execution/checkpoint";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { getSqlExecutor } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -17,6 +18,7 @@ import {
   commitRunInput,
   createHarness,
   finishRun,
+  runInputCheckpoint,
   sendPersonMessage,
   type Harness,
 } from "../fixtures/thread-input";
@@ -136,53 +138,67 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
     },
   );
 
-  it("tells the parent once when a person stops a person's Turn in a Thread", async () => {
-    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
-    const harness = await createHarness();
-    try {
-      const threadId = await spawn(harness, "call-person", { kind: "thread" });
-      harness.onRun(finishRun);
-      await harness.drain(threadId);
-      vi.setSystemTime(1_800_000_001_000);
-      await sendPersonMessage(harness, threadId, "person-1");
-      harness.onRun(async (run) => {
-        // The person's Turn has a saved record with the person's Actor.
-        await commitRunInput(run);
-        vi.setSystemTime(1_800_000_002_000);
-        await stopConversation({
-          conversationId: threadId,
-          conversationStore: harness.conversationStore,
-          queue: harness.queue,
-          state: harness.state,
+  // A saved Turn of an earlier release can have no Source.
+  it.each([{ record: "saved" }, { record: "saved without Source" }] as const)(
+    "tells the parent once when a person stops a person's Turn in a Thread ($record)",
+    async ({ record }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const threadId = await spawn(harness, "call-person", {
+          kind: "thread",
         });
-        return await finishRun(run);
-      });
-      await harness.drain(threadId);
+        harness.onRun(finishRun);
+        await harness.drain(threadId);
+        vi.setSystemTime(1_800_000_001_000);
+        await sendPersonMessage(harness, threadId, "person-1");
+        harness.onRun(async (run) => {
+          // The person's Turn has a saved record with the person's Actor.
+          if (record === "saved") {
+            await commitRunInput(run);
+          } else {
+            const { source: _source, ...input } = runInputCheckpoint(run);
+            await saveTurnCheckpoint({ ...input, mode: "running" });
+            await run.durability?.onInputCommitted?.();
+          }
+          vi.setSystemTime(1_800_000_002_000);
+          await stopConversation({
+            conversationId: threadId,
+            conversationStore: harness.conversationStore,
+            queue: harness.queue,
+            state: harness.state,
+          });
+          return await finishRun(run);
+        });
+        await harness.drain(threadId);
 
-      expect(harness.runs.at(-1)).toMatchObject({ source: { kind: "web" } });
-      // The parent runs the result as the Event system Actor, never as the
-      // person.
-      expect(
-        (
-          await getConversationWorkState({
-            conversationId: slackParentConversationId,
-          })
-        )?.messages
-          .filter((message) => message.input.text.includes('status="stopped"'))
-          .map((message) => ({
-            authorId: message.input.authorId,
-            text: message.input.text,
-          })),
-      ).toEqual([
-        {
-          authorId: resultAuthorId(EVENT_SYSTEM_ACTOR),
-          text: expect.stringContaining(`conversation_id="${threadId}"`),
-        },
-      ]);
-    } finally {
-      await harness.close();
-    }
-  });
+        expect(harness.runs.at(-1)).toMatchObject({ source: { kind: "web" } });
+        // The parent runs the result as the Event system Actor, never as the
+        // person.
+        expect(
+          (
+            await getConversationWorkState({
+              conversationId: slackParentConversationId,
+            })
+          )?.messages
+            .filter((message) =>
+              message.input.text.includes('status="stopped"'),
+            )
+            .map((message) => ({
+              authorId: message.input.authorId,
+              text: message.input.text,
+            })),
+        ).toEqual([
+          {
+            authorId: resultAuthorId(EVENT_SYSTEM_ACTOR),
+            text: expect.stringContaining(`conversation_id="${threadId}"`),
+          },
+        ]);
+      } finally {
+        await harness.close();
+      }
+    },
+  );
 
   it("shows the parent's next Turn that a person stopped a Task", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
