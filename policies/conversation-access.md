@@ -58,7 +58,8 @@ Check the rows in this order. The first match decides.
   Conversations at its own Destination.
 - One exception: a Lead may write into a public root where its person is a
   Participant. The Lead writes there for that person, as the person could.
-  It never writes into another person's public root.
+  It never writes into another person's public root. Its message there
+  runs as the person, the same as the task of `startConversation`.
 - `startConversation` makes a public root from a Lead. It runs as the
   person, and the Lead's task is its first message. The start is not
   reviewed. Action review judges the new root's own tool calls, the same

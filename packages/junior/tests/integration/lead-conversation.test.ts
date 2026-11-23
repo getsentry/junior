@@ -1,5 +1,5 @@
-import { createWebSource } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { createSlackSource, createWebSource } from "@sentry/junior-plugin-api";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { getSpawnedChildConversationId } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
@@ -31,6 +31,7 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
+  juniorIdentities,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { getConversationWorkState } from "@/chat/task-execution/store";
@@ -132,9 +133,8 @@ describe("Lead", () => {
 
   it("finds and steers only the public roots that its person takes part in", async () => {
     const runner = readRunsAgentRunner();
-    const { queue, state } = await createConversationWorkHarness(
-      runner.agentRunner,
-    );
+    const harness = await createConversationWorkHarness(runner.agentRunner);
+    const { queue, state } = harness;
     const ana = await signedInViewer("lead-steer@example.com");
     const bo = await signedInViewer("lead-other@example.com");
     const lead = await getLeadConversation(ana);
@@ -184,6 +184,68 @@ describe("Lead", () => {
     await expect(send(boWork.conversationId, "call-bo")).rejects.toThrow(
       "is a public conversation and this conversation is private",
     );
+
+    // A Slack thread that Ana takes part in through her linked Slack
+    // Identity. The Lead's message runs there as Ana, the same as the task
+    // of startConversation. It stays an Event Turn of the thread, so its
+    // reply goes to the thread.
+    const slackRoot = "slack:CLEAD:1712345.0001";
+    await getConversationStore().recordActivity({
+      conversationId: slackRoot,
+      destination: { channelId: "CLEAD", platform: "slack", teamId: "T123" },
+      nowMs: 1_000,
+      sessionSource: createSlackSource({
+        channelId: "CLEAD",
+        teamId: "T123",
+        threadTs: "1712345.0001",
+        visibility: "public",
+      }),
+      source: "slack",
+      visibility: "public",
+    });
+    await getDb()
+      .insert(juniorIdentities)
+      .values({
+        createdAt: new Date(1),
+        id: "identity:T123:ULEAD",
+        kind: "user",
+        provider: "slack",
+        providerSubjectId: "ULEAD",
+        providerTenantId: "T123",
+        updatedAt: new Date(1),
+        userId: ana.id,
+      });
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(1),
+        rootConversationId: slackRoot,
+        userId: ana.id,
+      });
+    await send(slackRoot, "call-slack");
+    vi.useFakeTimers({ now: Date.now() + 60_000, toFake: ["Date"] });
+    try {
+      await harness.process(queue.takeMessageFor(slackRoot));
+    } finally {
+      vi.useRealTimers();
+    }
+    const [run] = runner.runs;
+    expect(run).toMatchObject({
+      actor: { platform: "web", userId: ana.id },
+      conversationId: slackRoot,
+      location: { channelId: "CLEAD", threadTs: "1712345.0001" },
+      source: { kind: "event" },
+    });
+    expect(run!.instruction.text).toContain(
+      `conversation_id: ${lead.conversationId}`,
+    );
+    const root = await readRootConversation({
+      actor: run!.actor!,
+      conversationId: slackRoot,
+    });
+    expect(root.messages).toEqual([
+      { author: "user", text: expect.stringContaining("Please hurry.") },
+    ]);
 
     // A root from an older deploy has no kind and still counts as a root.
     await getDb()

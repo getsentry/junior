@@ -29,6 +29,7 @@ const RUNTIME_INPUT_TAGS = [
   "task",
   "agent-result",
   "agent-message",
+  "lead-message",
   "parent-agent-task",
   "inbox-item-answer",
   // Only saved Turns have these. Junior no longer writes them, and they keep

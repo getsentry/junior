@@ -1,4 +1,5 @@
 import { mapBounded } from "@/chat/fan-out";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
 import type { Actor } from "@/chat/actor";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
@@ -11,6 +12,7 @@ import {
 } from "./child-input";
 import { logDroppedParentMessage, parentMessageText } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
+import { TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE } from "./result-event-type";
 
 const senderActorMetadataSchema = z.object({ actor: actorSchema });
 
@@ -45,7 +47,8 @@ function senderActorFromMetadata(metadata: unknown): Actor | undefined {
  * that Turn. A parent message from the stored parent runs as the Actor of the
  * parent's Turn, with its grants and text. Input that a Turn with another
  * Actor sent, or that names no child of this Conversation, runs as the Event
- * system Actor. Input that `isDroppedChildInput` drops is left out. Returns
+ * system Actor. A Lead's message into a root of its person runs as that
+ * person. Input that `isDroppedChildInput` drops is left out. Returns
  * undefined when no input is left.
  */
 export async function withAgentInvocationResultActors(
@@ -74,6 +77,14 @@ export async function withAgentInvocationResultActors(
           input: { ...entry.message.input, text },
         },
       };
+    }
+    const { metadata } = entry.message.input;
+    if (
+      isEventMailboxMetadata(metadata) &&
+      metadata.event.eventType === TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE
+    ) {
+      const person = senderActorFromMetadata(metadata);
+      return person ? { ...entry, actor: person } : entry;
     }
     const input = childAgentInput(entry.message);
     if (!input) {

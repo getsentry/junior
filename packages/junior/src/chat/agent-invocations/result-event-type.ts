@@ -16,3 +16,9 @@ export const AGENT_REPLY_EVENT_TYPE = "agent.reply";
 
 /** Event type of a message that a child agent sends to its parent. */
 export const AGENT_MESSAGE_EVENT_TYPE = "agent.message";
+
+/**
+ * Event type of a message from another top-level agent. A Lead's message
+ * into a root of its person carries the person's Identity.
+ */
+export const TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE = "agent.top_level_message";

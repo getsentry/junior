@@ -15,8 +15,9 @@
  * the one exception, because it has no per-person Identity. A Run that an
  * agent started follows its parent agent, so the tasks and messages that the
  * parent sent with spawnAgent or messageAgent count as the user there, and no
- * person's message does. Each other message keeps its real author as a label
- * and is only context. Nothing is copied into the Run.
+ * person's message does. A Lead's message into a root of its person counts
+ * as that person. Each other message keeps its real author as a label and is
+ * only context. Nothing is copied into the Run.
  */
 import * as z from "zod";
 import type { Actor } from "@/chat/actor";
@@ -31,6 +32,7 @@ import {
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { isParentMessageAuthor } from "./parent-message";
+import { TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE } from "./result-event-type";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -114,6 +116,15 @@ function messageLabel(
     isParentMessageAuthor(
       messageAuthorSchema.safeParse(data.meta?.["author"]).data,
     )
+  ) {
+    return "user";
+  }
+  // A Lead's message into a root of its person passes on the person's
+  // instruction, so it counts when it carries the person's Identity.
+  if (
+    data.meta?.["eventType"] === TOP_LEVEL_AGENT_MESSAGE_EVENT_TYPE &&
+    data.authorIdentityId &&
+    personIdentityIds.has(data.authorIdentityId)
   ) {
     return "user";
   }

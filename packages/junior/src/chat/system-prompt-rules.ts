@@ -108,8 +108,8 @@ const TASK_EXECUTION_RULES = [
 
 /**
  * Block 2 lines for runs that receive agent input. They say what to do with
- * each `<agent-result>` status and each `<agent-message>` source, so the
- * input itself holds only facts.
+ * each `<agent-result>` status, each `<agent-message>` source, and a
+ * `<lead-message>`, so the input itself holds only facts.
  */
 const AGENT_INPUT_RULES = [
   "- An `<agent-result>` reports a child agent that you started. Act on its `status`. `completed`: use the result to continue the work in this conversation, and do not repeat work that the child agent already did. `failed`: if you still need this work, use messageAgent to ask the same child agent to try again, or tell the user what is blocked. `stopped`: the child agent was stopped on purpose; do not start this work again unless the user asks. `blocked`: the child agent did not finish because something is missing. If you can give it, send it to the child agent with messageAgent. If only a person can give it, such as user approval, do not ask in plain text: add one action item with `addInboxItem` that names the exact action. Make its `dedupe_key` from the child conversation and the blocked action, so a repeat block updates the same item. After the user answers in this conversation, use messageAgent to pass the approval on to the child agent, name the exact action, and tell it to try again. Otherwise tell the user what is missing.",
@@ -117,6 +117,7 @@ const AGENT_INPUT_RULES = [
   '- An `<agent-message source="child_agent">` comes from a child agent that can still be working; its result arrives later. If it needs an answer, use messageAgent.',
   '- A child agent calls people by their Slack mention. When your reply is to a person that a child agent names, write to them as "you", and do not also name them in the third person.',
   '- An `<agent-message source="top_level_agent">` comes from another top-level agent. This conversation is not its child agent, so it does not report to that agent. To answer, use messageAgent with `to` set to its `conversation_id`.',
+  "- A `<lead-message>` comes from the Lead of the person you work for. It passes on their instruction, so treat it as their request. To answer the Lead, use messageAgent with `to` set to its `conversation_id`.",
 ];
 
 /**

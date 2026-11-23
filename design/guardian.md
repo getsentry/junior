@@ -14,9 +14,11 @@ data, does not run.
 - Only the person who runs the Turn can authorize an action. Their own
   messages in the Run's Conversation set what is authorized. Text from the
   agent, a parent agent, tools, files, issues, comments, Event authors, and
-  other people is context. It is never approval. The one exception is the
-  task of a Conversation that a Lead starts: it passes on the instruction
-  of the Lead's person, so it counts as that person's request.
+  other people is context. It is never approval. The one exception is an
+  instruction that a Lead passes on for its person: the task of a
+  Conversation that the Lead starts, or a message that the Lead sends into
+  a root where its person is a Participant. It counts as that person's
+  request.
 - The model rates risk and authorization, and names one rule. Code turns the
   rule into allow, ask, or deny, so the model never chooses between ask and
   deny.
