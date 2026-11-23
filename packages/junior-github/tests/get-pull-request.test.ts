@@ -349,6 +349,33 @@ describe("getPullRequest", () => {
     );
   });
 
+  it("reports GraphQL errors from the draft code owners lookup", async () => {
+    const draft = pullRequestResponse();
+    const { tool } = toolContext(true, [
+      { body: { ...draft.body, draft: true } },
+      checksResponse({ contexts: [] }),
+      {
+        body: {
+          errors: [
+            {
+              type: "RATE_LIMITED",
+              message: "API rate limit exceeded for installation.",
+            },
+          ],
+        },
+      },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior", pull_request: 691 },
+        { toolCallId: "get-draft-graphql-errors" },
+      ),
+    ).rejects.toThrow(
+      "GitHub pull request code owners lookup failed: API rate limit exceeded for installation.",
+    );
+  });
+
   it.each([
     { name: "no checks", rollup: null },
     {
