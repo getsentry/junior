@@ -156,10 +156,14 @@ function payload(
     assignees: everyone ? [] : shared ? [viewer, teammate] : [viewer],
     canAct: item.status === "open",
     canTake: false,
-    conversationIds: [
-      ...(conversationId ? [conversationId] : []),
-      ...linkedConversationIds,
-    ],
+    // A To-do's item links no Conversation, like the API.
+    conversationIds:
+      seed.todoId === undefined
+        ? [
+            ...(conversationId ? [conversationId] : []),
+            ...linkedConversationIds,
+          ]
+        : [],
     kind: seed.kind ?? "action",
     owner: automationId
       ? { id: automationId, kind: "automation" }
@@ -366,5 +370,6 @@ export function readMockInboxItemCounts(nowMs: number) {
     snoozed: seeds(nowMs).filter(
       (seed) => isOpen(seed) && snoozedItemIds(nowMs).has(seed.id),
     ).length,
+    todos: needsViewer.filter((item) => item.todoId !== undefined).length,
   };
 }

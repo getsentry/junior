@@ -196,7 +196,7 @@ export const addInboxItemToolDefinition = zodToolDefinition({
           if (reserved) {
             context.addIssue({
               code: "custom",
-              message: `A \`dedupe_key\` that starts with \`${reserved.prefix}\` belongs to ${reserved.owner}. Use a different key.`,
+              message: `A \`dedupe_key\` that starts with \`${reserved.prefix}\` belongs to ${reserved.owner}. ${reserved.instead}`,
             });
           }
         })
