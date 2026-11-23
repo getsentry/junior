@@ -6,9 +6,7 @@ import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
   canAgentChangeInboxItem,
-  AUTOMATION_INBOX_ITEM_KEY_PREFIX,
-  PLUGIN_INBOX_ITEM_KEY_PREFIX,
-  REPLY_NOTICE_KEY_PREFIX,
+  RESERVED_INBOX_ITEM_KEY_PREFIXES,
   canReadInboxItem,
   readInboxItemAgentScope,
   requireInboxItemAssignees,
@@ -191,6 +189,17 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .max(200)
+        .superRefine((key, context) => {
+          const reserved = RESERVED_INBOX_ITEM_KEY_PREFIXES.find(({ prefix }) =>
+            key.startsWith(prefix),
+          );
+          if (reserved) {
+            context.addIssue({
+              code: "custom",
+              message: `A \`dedupe_key\` that starts with \`${reserved.prefix}\` belongs to ${reserved.owner}. Use a different key.`,
+            });
+          }
+        })
         .nullable()
         .optional()
         .describe(
@@ -264,21 +273,6 @@ export function createAddInboxItemTool(
     execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
       const evidence = evidenceInput(input.request?.evidence);
-      if (input.dedupe_key?.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) {
-        throw new ToolInputError(
-          `A \`dedupe_key\` that starts with \`${PLUGIN_INBOX_ITEM_KEY_PREFIX}\` belongs to a plugin. Use a different key.`,
-        );
-      }
-      if (input.dedupe_key?.startsWith(AUTOMATION_INBOX_ITEM_KEY_PREFIX)) {
-        throw new ToolInputError(
-          `A \`dedupe_key\` that starts with \`${AUTOMATION_INBOX_ITEM_KEY_PREFIX}\` belongs to an Automation alert. Use a different key.`,
-        );
-      }
-      if (input.dedupe_key?.startsWith(REPLY_NOTICE_KEY_PREFIX)) {
-        throw new ToolInputError(
-          `A \`dedupe_key\` that starts with \`${REPLY_NOTICE_KEY_PREFIX}\` belongs to a reply notice. Use a different key.`,
-        );
-      }
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
       // A retry of the same tool call keeps the same key, so it updates the
