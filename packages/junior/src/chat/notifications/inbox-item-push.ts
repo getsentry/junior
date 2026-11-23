@@ -212,17 +212,21 @@ export async function syncInboxItemPush(
       if (!url) return;
       const userIds = item.assignees.map((assignee) => assignee.userId);
       if (!options.slackWaited && (await hasSlackCard(db, item.id))) {
-        const nowMs = Date.now();
-        const waiting = await recordInboxItemSlackCard(db, {
+        const carded = await recordInboxItemSlackCard(db, {
           itemId: item.id,
-          nowMs,
+          nowMs: Date.now(),
           userIds,
         });
+        // Every User with no push yet keeps a timer from their first card. A
+        // User assigned again after their timer fired gets it again, and a
+        // timer that is due already fires at the next heartbeat.
+        const pushed = await listInboxItemPushUserIds(db, item.id);
         /* oxlint-disable no-await-in-loop -- The timer index lock does not wait. */
-        for (const userId of waiting) {
+        for (const [userId, cardedAtMs] of carded) {
+          if (pushed.has(userId)) continue;
           await scheduleInboxItemPushTimer(
             pushTimerId(item.id, userId),
-            nowMs + SLACK_CARD_PUSH_DELAY_MS,
+            cardedAtMs + SLACK_CARD_PUSH_DELAY_MS,
           );
         }
         /* oxlint-enable no-await-in-loop */

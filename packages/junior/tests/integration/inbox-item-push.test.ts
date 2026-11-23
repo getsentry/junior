@@ -410,6 +410,27 @@ describe("inbox item push", () => {
     expect(pushes).toHaveLength(1);
     expect(getCapturedSlackApiCalls("users.getPresence")).toHaveLength(2);
     expect(await webPushes(dismissed.item.id)).toEqual([]);
+
+    // She is unassigned while her push waits, so the wait ends with no
+    // push. Assigned again, she gets it at the next heartbeat.
+    await person("bob@example.com");
+    const reassigned = await execute(tools.add, {
+      ...ASK,
+      dedupe_key: "deploy:queue",
+    });
+    await execute(tools.add, {
+      ...ASK,
+      assignees: ["bob@example.com"],
+      dedupe_key: "deploy:queue",
+    });
+    await later(5 * 60_000);
+    expect(pushes).toHaveLength(1);
+    await execute(tools.add, { ...ASK, dedupe_key: "deploy:queue" });
+    await later(60_000);
+    expect(pushes).toEqual([
+      expect.objectContaining({ tag: away.item.id }),
+      expect.objectContaining({ tag: reassigned.item.id }),
+    ]);
   });
   it("pushes an item that Slack shows at once when its Conversation detaches from or attaches to Slack", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });

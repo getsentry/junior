@@ -67,17 +67,17 @@ export async function claimInboxItemPush(
 }
 
 /**
- * Record that a Slack card shows an item to these Users. Return the Users
- * that had no record yet, so only the first card starts their wait for a
- * push.
+ * Record that a Slack card shows an item to these Users, once per User.
+ * Return when each of them first got a card, so their wait for a push
+ * starts then, also after a later show of the item.
  */
 export async function recordInboxItemSlackCard(
   db: JuniorDatabase,
   input: { itemId: string; nowMs: number; userIds: readonly string[] },
-): Promise<string[]> {
-  if (input.userIds.length === 0) return [];
+): Promise<Map<string, number>> {
+  if (input.userIds.length === 0) return new Map();
   const now = new Date(input.nowMs);
-  const inserted = await db
+  await db
     .insert(juniorInboxItemDeliveries)
     .values(
       input.userIds.map((userId) => ({
@@ -90,9 +90,22 @@ export async function recordInboxItemSlackCard(
         userId,
       })),
     )
-    .onConflictDoNothing()
-    .returning({ userId: juniorInboxItemDeliveries.userId });
-  return inserted.map((row) => row.userId);
+    .onConflictDoNothing();
+  const rows = await db
+    .select({
+      createdAt: juniorInboxItemDeliveries.createdAt,
+      userId: juniorInboxItemDeliveries.userId,
+    })
+    .from(juniorInboxItemDeliveries)
+    .where(
+      and(
+        eq(juniorInboxItemDeliveries.itemId, input.itemId),
+        eq(juniorInboxItemDeliveries.channel, "slack"),
+        eq(juniorInboxItemDeliveries.event, "created"),
+        inArray(juniorInboxItemDeliveries.userId, [...input.userIds]),
+      ),
+    );
+  return new Map(rows.map((row) => [row.userId, row.createdAt.getTime()]));
 }
 
 /**
