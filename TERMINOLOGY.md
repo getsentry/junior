@@ -146,14 +146,17 @@ Canonical words for Junior code and docs. One concept, one word.
   checkpoint**: the Redis resume cursor for one Turn.
 - **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
 - **Loader**: a named source of data for a core model request, such as a
-  file or a database row. Loaders do all of the I/O of a request. Its
-  lifetime is `deployment` (loaded once) or `step` (loaded for each step).
+  database row or a service. Loaders do all of the I/O of a request. Core runs
+  each needed Loader once for each step.
 - **Fragment**: a named piece of a core model request. It formats one
-  Loader's value into one field: the system prompt, the tools, the messages,
-  or the model settings. It does no I/O, and reads no clock or random value.
-- **Model request diagnostics**: how core built one model request: how each
-  Loader ran, and whether each Fragment was included, skipped, or disabled.
-  It holds no content.
+  Loader's value into the messages or the model settings. It does no I/O,
+  and reads no clock or random value.
+- **System prompt part**: a named, static piece of the system prompt of a
+  core model request. The host builds it once at startup. It holds no
+  Conversation data.
+- **Model request diagnostics**: how core built one model request: the size
+  of each System prompt part, how each Loader ran, and whether each Fragment
+  was included, skipped, or disabled. It holds no content.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
   tool calls), `tool_result`, or `system_message` (a Pi system message after
   the leading one) event. Not `model_item` or `model_message`.

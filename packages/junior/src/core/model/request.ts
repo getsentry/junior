@@ -1,22 +1,7 @@
 // The API that host code uses to declare how core builds each model request.
-// A loader gets data from outside the request, such as a file, a database row
-// or a service. A fragment formats a loader's value into one piece of the
-// request. `defineModelRequest` lists, for each field of the request, the
-// fragments that go into that field, in order.
-//
-// The rules:
-// - Loaders do all the I/O. Core runs each loader at most once per step, and
-//   a `deployment` loader once per spec.
-// - Fragments are pure. `enabled` and `format` do no I/O and read no clock
-//   and no random value, so the same inputs give the same request.
-// - Message fragments only append. Their messages go after the history, and a
-//   later step sees them in its history.
-// - `systemPrompt` and `tools` fragments must not change between steps, so
-//   the model provider can cache that part of the request. The types allow
-//   them only `deployment` loaders, and no `enabled` or context in `format`.
+// `defineModelRequest` states the rules and shows an example.
 import type { Message } from "@earendil-works/pi-ai";
 import type { ModelSettings } from "@/core/model/client";
-import type { ToolDefinition } from "@/core/tool";
 import type { UnreadInput } from "@/core/turn/inbox";
 import type { ClaimedTurn } from "@/core/turn/state";
 
@@ -29,51 +14,32 @@ export type ModelRequestContext = {
   inputs: UnreadInput[];
 };
 
-/**
- * How long a loader's value stays valid. `deployment`: core loads it once per
- * spec and uses it for every step. `step`: core loads it again for each step.
- */
-export type LoaderLifetime = "deployment" | "step";
-
-/** Keeps the `step` values of one request. Core makes one for each request. */
-export type StepValues = { readonly ctx: ModelRequestContext };
+/** Keeps the loaded values of one model request. Core makes one per request. */
+export type LoadedValues = { readonly ctx: ModelRequestContext };
 
 /**
- * Where core keeps loaded values: on the spec for `deployment` values, and on
- * the request's `StepValues` for `step` values.
+ * A source of data for fragments. Make one with `loader`. Core calls
+ * `loadInto` and `valueIn`: a fragment reads its loader's value through
+ * `valueIn`, so the value keeps its type.
  */
-export type LoadedValueKeys = {
-  deployment: ModelRequestSpec;
-  step: StepValues;
-};
-
-/** A source of data for fragments. Make one with `loader`. */
-export type Loader<T, L extends LoaderLifetime = LoaderLifetime> = {
+export type Loader<T> = {
   readonly label: string;
-  readonly lifetime: L;
   readonly timeoutMs: number;
   /** When true, a failed or timed-out load gives `undefined`. */
   readonly optional: boolean;
-  readonly load: (ctx: ModelRequestContext, signal: AbortSignal) => Promise<T>;
-  /**
-   * Core calls this. It runs `load` and keeps the value for this loader's
-   * lifetime, unless `signal` aborts first.
-   */
+  /** Runs the load, and keeps its value in `values` unless `signal` aborts. */
   readonly loadInto: (
-    keys: LoadedValueKeys,
+    values: LoadedValues,
     signal: AbortSignal,
   ) => Promise<void>;
-  /** Core calls this. True when a value is kept for this loader's lifetime. */
-  readonly has: (keys: LoadedValueKeys) => boolean;
   /**
-   * Core calls this. The kept value. With no value, an optional loader gives
+   * The value kept in `values`. With no value, an optional loader gives
    * `undefined`, and a required one throws.
    */
-  readonly valueIn: (keys: LoadedValueKeys) => T;
+  readonly valueIn: (values: LoadedValues) => T;
 };
 
-type LoaderOptions<L extends LoaderLifetime> = {
-  lifetime: L;
+type LoaderOptions = {
   /** Core aborts `signal` and stops waiting for the load after this time. */
   timeoutMs: number;
   /**
@@ -83,57 +49,57 @@ type LoaderOptions<L extends LoaderLifetime> = {
   optional?: boolean;
 };
 
+type Load<T> = (ctx: ModelRequestContext, signal: AbortSignal) => Promise<T>;
+
 /**
  * Declares a loader. `label` names it in diagnostics and errors, and must be
- * unique in a spec. `load` does the I/O, and stops when `signal` aborts.
+ * unique in a spec. `load` does the I/O, and stops when `signal` aborts. Core
+ * runs it again for each step.
  */
-export function loader<T, L extends LoaderLifetime>(
+export function loader<T>(
   label: string,
-  load: (ctx: ModelRequestContext, signal: AbortSignal) => Promise<T>,
-  options: LoaderOptions<L> & { optional: true },
-): Loader<T | undefined, L>;
-export function loader<T, L extends LoaderLifetime>(
+  load: Load<T>,
+  options: LoaderOptions & { optional: true },
+): Loader<T | undefined>;
+export function loader<T>(
   label: string,
-  load: (ctx: ModelRequestContext, signal: AbortSignal) => Promise<T>,
-  options: LoaderOptions<L> & { optional?: false },
-): Loader<T, L>;
-export function loader<T, L extends LoaderLifetime>(
+  load: Load<T>,
+  options: LoaderOptions & { optional?: false },
+): Loader<T>;
+export function loader<T>(
   label: string,
-  load: (ctx: ModelRequestContext, signal: AbortSignal) => Promise<T>,
-  options: LoaderOptions<L>,
-): Loader<T, L> | Loader<T | undefined, L> {
+  load: Load<T>,
+  options: LoaderOptions,
+): Loader<T> | Loader<T | undefined> {
   if (options.optional) {
-    return buildLoader<T | undefined, L>(label, load, options, () => undefined);
+    return buildLoader<T | undefined>(label, load, options, () => undefined);
   }
-  return buildLoader<T, L>(label, load, options, () => {
+  return buildLoader<T>(label, load, options, () => {
     throw new Error(`Loader "${label}" has no value`);
   });
 }
 
-function buildLoader<T, L extends LoaderLifetime>(
+function buildLoader<T>(
   label: string,
-  load: (ctx: ModelRequestContext, signal: AbortSignal) => Promise<T>,
-  { lifetime, timeoutMs, optional = false }: LoaderOptions<L>,
+  load: Load<T>,
+  { timeoutMs, optional = false }: LoaderOptions,
   missing: () => T,
-): Loader<T, L> {
-  // Weak keys, so the values go away with their spec or request.
-  const values = new WeakMap<LoadedValueKeys[L], { value: T }>();
+): Loader<T> {
+  // Weak keys, so the values go away with their request.
+  const kept = new WeakMap<LoadedValues, { value: T }>();
   return {
     label,
-    lifetime,
     timeoutMs,
     optional,
-    load,
-    loadInto: async (keys, signal) => {
-      const value = await load(keys.step.ctx, signal);
+    loadInto: async (values, signal) => {
+      const value = await load(values.ctx, signal);
       if (!signal.aborted) {
-        values.set(keys[lifetime], { value });
+        kept.set(values, { value });
       }
     },
-    has: (keys) => values.has(keys[lifetime]),
-    valueIn: (keys) => {
-      const kept = values.get(keys[lifetime]);
-      return kept ? kept.value : missing();
+    valueIn: (values) => {
+      const entry = kept.get(values);
+      return entry ? entry.value : missing();
     },
   };
 }
@@ -148,24 +114,15 @@ export function skip(reason: string): Skip {
 
 type Enabled = (ctx: ModelRequestContext) => boolean;
 
-type Format = (value: never, ctx: ModelRequestContext) => unknown;
-
 /**
- * One piece of a model request. Make one with `fragment`. The type keeps the
- * exact `format` and `enabled`, so `defineModelRequest` can check where the
- * fragment may go.
+ * One piece of a model request. Make one with `fragment`. Core calls
+ * `render`, which runs `format` on the loader's value.
  */
-export type Fragment<
-  TLifetime extends LoaderLifetime = LoaderLifetime,
-  TEnabled extends Enabled | undefined = Enabled | undefined,
-  TFormat extends Format = Format,
-> = {
+export type Fragment<TOutput = unknown> = {
   readonly name: string;
-  readonly loader?: Loader<unknown, TLifetime>;
-  readonly enabled?: TEnabled;
-  readonly format: TFormat;
-  /** Core calls this. It runs `format` on the loader's kept value. */
-  readonly render: (keys: LoadedValueKeys) => ReturnType<TFormat>;
+  readonly loader?: Loader<unknown>;
+  readonly enabled?: Enabled;
+  readonly render: (values: LoadedValues) => TOutput | Skip;
 };
 
 /**
@@ -174,22 +131,22 @@ export type Fragment<
  * returns `skip(reason)`. `enabled` returning false leaves the fragment out,
  * and core does not run its loader for it.
  */
-export function fragment<
-  T,
-  L extends LoaderLifetime,
-  TFormat extends (value: T, ctx: ModelRequestContext) => unknown,
-  TEnabled extends Enabled | undefined = undefined,
->(
+export function fragment<T, TResult>(
   name: string,
-  definition: { loader: Loader<T, L>; enabled?: TEnabled; format: TFormat },
-): Fragment<L, TEnabled, TFormat>;
-export function fragment<
-  TFormat extends (value: undefined, ctx: ModelRequestContext) => unknown,
-  TEnabled extends Enabled | undefined = undefined,
->(
+  definition: {
+    loader: Loader<T>;
+    enabled?: Enabled;
+    format: (value: T, ctx: ModelRequestContext) => TResult;
+  },
+): Fragment<Exclude<TResult, Skip>>;
+export function fragment<TResult>(
   name: string,
-  definition: { loader?: undefined; enabled?: TEnabled; format: TFormat },
-): Fragment<never, TEnabled, TFormat>;
+  definition: {
+    loader?: undefined;
+    enabled?: Enabled;
+    format: (value: undefined, ctx: ModelRequestContext) => TResult;
+  },
+): Fragment<Exclude<TResult, Skip>>;
 export function fragment(
   name: string,
   definition:
@@ -204,73 +161,106 @@ export function fragment(
         format: (value: undefined, ctx: ModelRequestContext) => unknown;
       },
 ): Fragment {
+  const { enabled } = definition;
   if (definition.loader) {
     const { loader: source, format } = definition;
     return {
       name,
-      ...definition,
-      render: (keys) => format(source.valueIn(keys), keys.step.ctx),
+      loader: source,
+      enabled,
+      render: (values) => format(source.valueIn(values), values.ctx),
     };
   }
   const { format } = definition;
   return {
     name,
-    ...definition,
-    render: (keys) => format(undefined, keys.step.ctx),
+    enabled,
+    render: (values) => format(undefined, values.ctx),
   };
 }
 
-/**
- * A fragment that gives the same output at every step: a `deployment` loader
- * or none, no `enabled`, and a `format` that reads only its value.
- */
-type StableFragment<TOutput> = Fragment<
-  "deployment",
-  undefined,
-  (value: never) => TOutput | Skip
->;
+/** One named, static part of the system prompt. */
+export type SystemPromptPart = { name: string; text: string };
 
-/** A fragment whose output goes into a field of type `TOutput`. */
-type FieldFragment<TOutput> = Fragment<
-  LoaderLifetime,
-  Enabled | undefined,
-  (value: never, ctx: ModelRequestContext) => TOutput | Skip
->;
-
-/** The fragments of each field of the model request, in order. */
+/** The parts of the system prompt, and the fragments of each other field. */
 export type ModelRequestLayout = {
-  /** Their outputs are joined, in order, into the system prompt. */
-  systemPrompt: StableFragment<string>[];
-  tools: StableFragment<ToolDefinition[]>[];
+  /** Their texts are joined, in order, into the system prompt. */
+  systemPrompt: readonly SystemPromptPart[];
   /** Their messages go after the history, in order. */
-  messages: FieldFragment<Message | Message[]>[];
-  model: FieldFragment<ModelSettings>;
+  messages: readonly Fragment<Message | Message[]>[];
+  model: Fragment<ModelSettings>;
 };
 
-/**
- * A checked layout. Build it once, and give it to core for every step: core
- * keeps `deployment` values for as long as the spec lives.
- */
+/** A checked layout. Build it once at startup, and give it to core. */
 export type ModelRequestSpec = Readonly<ModelRequestLayout>;
 
 /**
  * Checks a layout and makes the spec that core builds each model request
- * from. It throws on two fragments with one name, on one fragment used twice,
- * and on two loaders with one label.
+ * from. It throws on an empty or repeated system prompt part name, on two
+ * fragments with one name, on one fragment used twice, and on two loaders
+ * with one label. It freezes the system prompt parts.
+ *
+ * The rules:
+ * - Loaders do all of the I/O. Core runs each needed loader once per step.
+ * - Fragments are pure. `enabled` and `format` do no I/O, and read no clock
+ *   and no random value, so the same inputs give the same request.
+ * - Message fragments only append. Their messages go after the history, and
+ *   a later step sees them in its history.
+ * - The system prompt holds no Conversation data. The host builds its parts
+ *   once at startup, so the model provider can cache that part of the
+ *   request.
+ * - Tools are not in the layout. A Turn's tools are bound to its Actor and
+ *   sandbox, and the step gets them separately.
+ *
+ * @example
+ * // At startup:
+ * const soul = await readFile("SOUL.md", "utf8");
+ * const memories = loader(
+ *   "memories",
+ *   (ctx, signal) => memoryStore.recall(ctx.turn.conversationId, signal),
+ *   { timeoutMs: 2_000, optional: true },
+ * );
+ * const recalled = fragment("recalled-memories", {
+ *   loader: memories,
+ *   // Recall only for a step that has new inputs.
+ *   enabled: (ctx) => ctx.inputs.length > 0,
+ *   format: (notes): Message | Skip =>
+ *     notes && notes.length > 0
+ *       ? { role: "user", content: notes.join("\n"), timestamp: 0 }
+ *       : skip("no memories"),
+ * });
+ * const settings: ModelSettings = {
+ *   id: "anthropic/claude-sonnet-4.5",
+ *   reasoning: "low",
+ *   privacy: "public",
+ * };
+ * const spec = defineModelRequest({
+ *   systemPrompt: [
+ *     { name: "identity", text: "You are Junior, Sentry's Slack bot." },
+ *     { name: "personality", text: soul },
+ *   ],
+ *   messages: [recalled],
+ *   model: fragment("model", { format: () => settings }),
+ * });
  */
 export function defineModelRequest(
   layout: ModelRequestLayout,
 ): ModelRequestSpec {
-  const fragments: Fragment[] = [
-    ...layout.systemPrompt,
-    ...layout.tools,
-    ...layout.messages,
-    layout.model,
-  ];
+  const partNames = new Set<string>();
+  for (const { name } of layout.systemPrompt) {
+    if (name === "") {
+      throw new Error("A system prompt part has no name");
+    }
+    if (partNames.has(name)) {
+      throw new Error(`Two system prompt parts are named "${name}"`);
+    }
+    partNames.add(name);
+  }
+
   const seenFragments = new Set<Fragment>();
   const names = new Set<string>();
   const loaders = new Map<string, Loader<unknown>>();
-  for (const item of fragments) {
+  for (const item of [...layout.messages, layout.model]) {
     if (seenFragments.has(item)) {
       throw new Error(`Fragment "${item.name}" is used more than once`);
     }
@@ -288,6 +278,13 @@ export function defineModelRequest(
     }
     loaders.set(item.loader.label, item.loader);
   }
-  // A new object, because core keeps `deployment` values per spec.
-  return { ...layout };
+
+  return {
+    ...layout,
+    systemPrompt: Object.freeze(
+      layout.systemPrompt.map(({ name, text }) =>
+        Object.freeze({ name, text }),
+      ),
+    ),
+  };
 }

@@ -1,6 +1,5 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
 import type { ModelSettings } from "@/core/model/client";
-import type { ToolDefinition } from "@/core/tool";
 import {
   defineModelRequest,
   fragment,
@@ -14,107 +13,127 @@ const MODEL: ModelSettings = {
   privacy: "public",
 };
 const model = fragment("model", { format: () => MODEL });
-const soul = loader("soul", () => Promise.resolve("You are Junior."), {
-  lifetime: "deployment",
-  timeoutMs: 100,
-});
 const turnRow = loader(
   "turn-row",
   (ctx) => Promise.resolve({ turnId: ctx.turn.turnId }),
-  { lifetime: "step", timeoutMs: 100 },
+  { timeoutMs: 100 },
 );
 
+function userText(content: string) {
+  return { role: "user" as const, content, timestamp: 0 };
+}
+
 describe("defineModelRequest", () => {
-  it("throws on two fragments with one name", () => {
+  it("throws on an empty or repeated system prompt part name", () => {
+    expect(() =>
+      defineModelRequest({
+        systemPrompt: [{ name: "", text: "You are Junior." }],
+        messages: [],
+        model,
+      }),
+    ).toThrow("A system prompt part has no name");
     expect(() =>
       defineModelRequest({
         systemPrompt: [
-          fragment("soul", { loader: soul, format: (text) => text }),
-          fragment("soul", { format: () => "Be brief." }),
+          { name: "identity", text: "You are Junior." },
+          { name: "identity", text: "You work at Sentry." },
         ],
-        tools: [],
         messages: [],
         model,
       }),
-    ).toThrow('Two fragments are named "soul"');
+    ).toThrow('Two system prompt parts are named "identity"');
+  });
+
+  it("freezes the system prompt parts", () => {
+    const parts = [{ name: "identity", text: "You are Junior." }];
+    const spec = defineModelRequest({
+      systemPrompt: parts,
+      messages: [],
+      model,
+    });
+
+    parts[0]!.text = "You are someone else.";
+
+    expect(spec).toEqual({
+      systemPrompt: [{ name: "identity", text: "You are Junior." }],
+      messages: [],
+      model,
+    });
+    expect(Object.isFrozen(spec.systemPrompt)).toBe(true);
+    expect(Object.isFrozen(spec.systemPrompt[0])).toBe(true);
+  });
+
+  it("throws on two fragments with one name", () => {
+    expect(() =>
+      defineModelRequest({
+        systemPrompt: [],
+        messages: [
+          fragment("turn", { loader: turnRow, format: () => userText("A") }),
+          fragment("turn", { format: () => userText("B") }),
+        ],
+        model,
+      }),
+    ).toThrow('Two fragments are named "turn"');
   });
 
   it("throws on one fragment used twice", () => {
-    const soulText = fragment("soul", { loader: soul, format: (text) => text });
+    const turn = fragment("turn", {
+      loader: turnRow,
+      format: (row) => userText(row.turnId),
+    });
 
     expect(() =>
-      defineModelRequest({
-        systemPrompt: [soulText, soulText],
-        tools: [],
-        messages: [],
-        model,
-      }),
-    ).toThrow('Fragment "soul" is used more than once');
+      defineModelRequest({ systemPrompt: [], messages: [turn, turn], model }),
+    ).toThrow('Fragment "turn" is used more than once');
   });
 
   it("throws on two loaders with one label", () => {
-    const otherSoul = loader("soul", () => Promise.resolve("Be brief."), {
-      lifetime: "deployment",
+    const otherTurnRow = loader("turn-row", () => Promise.resolve("B"), {
       timeoutMs: 100,
     });
 
     expect(() =>
       defineModelRequest({
-        systemPrompt: [
-          fragment("soul", { loader: soul, format: (text) => text }),
-          fragment("brevity", { loader: otherSoul, format: (text) => text }),
+        systemPrompt: [],
+        messages: [
+          fragment("first", {
+            loader: turnRow,
+            format: (row) => userText(row.turnId),
+          }),
+          fragment("second", { loader: otherTurnRow, format: userText }),
         ],
-        tools: [],
-        messages: [],
         model,
       }),
-    ).toThrow('Two loaders are labeled "soul"');
+    ).toThrow('Two loaders are labeled "turn-row"');
   });
 
-  it("allows only fragments that do not change between steps in the system prompt and the tools", () => {
-    type SystemPromptFragment = ModelRequestLayout["systemPrompt"][number];
-    type ToolsFragment = ModelRequestLayout["tools"][number];
+  it("takes only static parts in the system prompt", () => {
+    type SystemPromptPart = ModelRequestLayout["systemPrompt"][number];
     type MessageFragment = ModelRequestLayout["messages"][number];
 
     expectTypeOf(
-      fragment("soul", { loader: soul, format: (text) => text }),
-    ).toExtend<SystemPromptFragment>();
-    // A step loader gives a new value for each step.
-    expectTypeOf(
-      fragment("turn", { loader: turnRow, format: (row) => row.turnId }),
-    ).not.toExtend<SystemPromptFragment>();
-    expectTypeOf(
-      fragment("turn-tools", {
-        loader: turnRow,
-        format: (): ToolDefinition[] => [],
-      }),
-    ).not.toExtend<ToolsFragment>();
-    // `enabled` and the context can change between steps.
-    expectTypeOf(
-      fragment("turn", { format: (_value, ctx) => ctx.turn.turnId }),
-    ).not.toExtend<SystemPromptFragment>();
-    expectTypeOf(
-      fragment("brevity", { enabled: () => true, format: () => "Be brief." }),
-    ).not.toExtend<SystemPromptFragment>();
-    // Message fragments may use both, but must give messages.
+      fragment("identity", { format: () => "You are Junior." }),
+    ).not.toExtend<SystemPromptPart>();
+    defineModelRequest({
+      // @ts-expect-error A fragment is not a system prompt part.
+      systemPrompt: [fragment("identity", { format: () => "You are Junior." })],
+      messages: [],
+      model,
+    });
+    // Message fragments must give messages.
     expectTypeOf(
       fragment("turn", {
         loader: turnRow,
-        format: (row, ctx) => ({
-          role: "user" as const,
-          content: `${row.turnId} ${ctx.turn.stepSeq}`,
-          timestamp: 0,
-        }),
+        format: (row, ctx) => userText(`${row.turnId} ${ctx.turn.stepSeq}`),
       }),
     ).toExtend<MessageFragment>();
     expectTypeOf(
-      fragment("soul", { loader: soul, format: (text) => text }),
+      fragment("identity", { format: () => "You are Junior." }),
     ).not.toExtend<MessageFragment>();
   });
 
   it("gives `undefined` to the fragments of an optional loader", () => {
     const count = loader("count", () => Promise.resolve(3), {
-      lifetime: "step",
       timeoutMs: 100,
       optional: true,
     });
