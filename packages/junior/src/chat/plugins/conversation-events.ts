@@ -5,7 +5,6 @@ import type {
   PluginConversationEventValue,
   PluginRegistration,
 } from "@sentry/junior-plugin-api";
-import { briefsTaskRegistration } from "@/chat/briefs/task";
 import { getConversationEventStore } from "@/chat/db";
 import { getRegistrations } from "./agent-hooks";
 
@@ -80,8 +79,7 @@ export function renderPluginConversationEvent(args: {
   namespace: string;
   version: number;
 }): ConversationEventPresentation | undefined {
-  // Stored Brief events render even when Brief generation is disabled.
-  const plugin = [briefsTaskRegistration, ...getRegistrations()].find(
+  const plugin = getRegistrations().find(
     (candidate) => candidate.manifest.name === args.namespace,
   );
   const definition = plugin?.conversationEvents?.find(

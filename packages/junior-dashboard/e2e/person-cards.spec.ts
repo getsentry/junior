@@ -213,28 +213,26 @@ test("the answer line names the person who answered", async ({
   const answeredBy = ask.getByRole("link", { name: "Dashboard User" });
   await expect(ask).toContainText("Answered by");
   await answeredBy.hover();
-  await expect(personCard(page, "Dashboard User")).toBeVisible();
+  // The card's activity comes from its read.
+  await expect(personCard(page, "Dashboard User")).toContainText("Last active");
 });
 
-test("a tap on a touch screen opens the person card", async ({
-  browser,
-  dashboard,
-}) => {
-  const context = await browser.newContext({
-    colorScheme: "dark",
+test.describe("on a touch screen", () => {
+  test.use({
     hasTouch: true,
     isMobile: true,
     viewport: { height: mobile.height, width: mobile.width },
   });
-  const page = await context.newPage();
-  await openConversation(page, dashboard.baseURL);
-  const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
-  await mention.tap();
-  const card = personCard(page, "Avery Chen");
-  await expect(card).toBeVisible();
-  // The first tap shows the card and stays on the page.
-  await expect(page).toHaveURL(/\/conversations\//);
-  await context.close();
+
+  test("a tap opens the person card", async ({ dashboard, page }) => {
+    await openConversation(page, dashboard.baseURL);
+    const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
+    await mention.tap();
+    const card = personCard(page, "Avery Chen");
+    await expect(card).toBeVisible();
+    // The first tap shows the card and stays on the page.
+    await expect(page).toHaveURL(/\/conversations\//);
+  });
 });
 
 // The screenshots show the new UI, where the request came from.

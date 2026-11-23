@@ -82,6 +82,8 @@ export interface WebMessageInput {
   kind: "web_message";
   /** Files that the person added to the message. */
   files?: FileInput[];
+  /** Send it to the person's Lead, which `GET /api/lead` finds or makes. */
+  lead?: boolean;
   text: string;
 }
 
@@ -229,7 +231,7 @@ export function appHomeUnlink(
 /** Send a message from the dashboard. */
 export function webMessage(
   text: string,
-  options: { files?: FileInput[] } = {},
+  options: { files?: FileInput[]; lead?: boolean } = {},
 ): WebMessageInput {
   return { kind: "web_message", text, ...options };
 }

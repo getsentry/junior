@@ -15,7 +15,7 @@ import {
   type TurnBehavior,
 } from "@/chat/conversations/kind-behavior";
 import type {
-  AgentInvocationSource,
+  ParentMessageSource,
   Destination,
   EventAutomationSource,
   PluginDispatchSource,
@@ -101,6 +101,8 @@ import {
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { renewPreviewOrigins } from "@/personal-tokens/preview-origins";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
+import { explainMissingToolResults } from "@/chat/tool-support/missing-tool-result";
+import type { ToolResultMessage } from "@earendil-works/pi-ai";
 
 interface RunSandboxArgs {
   availableSkills: SkillMetadata[];
@@ -275,7 +277,7 @@ type ToolRuntimeRoute =
       actor?: Actor | undefined;
       destination: Destination;
       source:
-        | AgentInvocationSource
+        | ParentMessageSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource
@@ -323,7 +325,7 @@ function resolveToolRuntimeRoute(args: {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return {
         destination,
         actor: args.actor,
@@ -353,6 +355,14 @@ export interface ToolWiring {
   close(): Promise<void>;
   /** Tools this Turn cannot run. They stay in the tool list. */
   disabledTools: DisabledToolPromptContext[];
+  /**
+   * Name the next call in each result of a step that called a tool outside
+   * the model tool list. Undefined when no result changed.
+   */
+  explainMissingToolResults(
+    messages: readonly PiMessage[],
+    toolResults: readonly ToolResultMessage[],
+  ): PiMessage[] | undefined;
   /** The tools that a Code Mode script can call, for `<script-tools>`. */
   scriptTools: string;
   toolGuidance: Array<{
@@ -624,8 +634,8 @@ export async function wireAgentTools(
   // current turn. Restore only providers this credential subject connected.
   // Shared Pi history mixes people and must not grant provider authority.
   // Intentional use still connects on demand through searchMcpTools under the
-  // current credential subject.
-  if (credentialUserId) {
+  // current credential subject. A Turn with an `only` list has no MCP tools.
+  if (credentialUserId && !toolRuntimeContext.listedTools?.only) {
     for (const provider of args.connectedMcpProviders) {
       if (provider === pendingMcpProvider) {
         continue; // awaiting user authorization — skip to avoid aborting unrelated turns
@@ -704,6 +714,11 @@ export async function wireAgentTools(
       workspace: agentSandbox.workspace,
     },
   });
+  const missingToolRoutes = {
+    catalogTools: plannedToolExposure.catalogTools,
+    modelToolNames: new Set(agentTools.map((tool) => tool.name)),
+    scriptTools: plannedToolExposure.scriptTools,
+  };
   // Keep Pi's native tool schema static for the whole turn. Ideally this
   // would use provider-native tool loading/search APIs, but Pi's generic
   // AgentTool surface cannot yet express OpenAI/Anthropic deferred MCP tools.
@@ -737,6 +752,8 @@ export async function wireAgentTools(
       }
     },
     disabledTools,
+    explainMissingToolResults: (messages, toolResults) =>
+      explainMissingToolResults(messages, toolResults, missingToolRoutes),
     scriptTools: renderScriptTools(plannedToolExposure.scriptTools),
     toolGuidance,
     toolRuntimeContext,
@@ -784,6 +801,11 @@ export function bindAgentTools(
 ): Pick<ToolRuntimeContext, "spawnAgent" | "messageAgent"> {
   const { bindSpawnAgent, bindMessageAgent } = run.environment ?? {};
   if (agents === "none" || !bindSpawnAgent) return {};
+  // A Lead steers other top-level agents and starts no child agents.
+  if (agents === "lead") {
+    const messageAgent = bindMessageAgent?.(run, agents);
+    return messageAgent ? { messageAgent } : {};
+  }
   // The rule reads only the Turn behavior and the deployment, so a child gets
   // the same tools on every path. Every child has depth 1 or more, so with
   // maxAgentDepth 0 no child can spawn. With more, a child past the limit

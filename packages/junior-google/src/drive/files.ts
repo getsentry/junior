@@ -187,7 +187,7 @@ export function requireFileType<T extends { mimeType: string; name: string }>(
   if (!type || !types.includes(type)) {
     const expected = types.map((item) => FILE_TYPES[item].label).join(" or ");
     throw new PluginToolInputError(
-      `"${metadata.name}" is not a ${expected} (${metadata.mimeType}).`,
+      `"${metadata.name}" is not a ${expected} (${metadata.mimeType}). Use the link or file id of a ${expected}.`,
     );
   }
   return { ...metadata, type };

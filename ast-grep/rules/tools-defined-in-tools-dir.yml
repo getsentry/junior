@@ -1,7 +1,7 @@
 # A model-facing tool is defined in a `tools` directory:
 # `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`. Code outside `tools`
 # may import and bind tools, but does not define them.
-# `policies/tool-design.md` owns the layout.
+# The `build-tools` repo skill explains the layout.
 id: tools-defined-in-tools-dir
 language: TypeScript
 severity: error

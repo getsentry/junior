@@ -25,7 +25,6 @@ import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
 import {
   ConversationStateIcon,
@@ -44,8 +43,8 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import {
   ConversationSidebarThreadRow,
   ConversationSidebarThreadToggle,
+  ConversationSidebarThreadsOmitted,
 } from "../conversations/ConversationSidebarThreadRow";
-import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
@@ -107,22 +106,13 @@ import {
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 const NO_NOTICES: readonly InboxItemPayload[] = [];
 
-/** The second line: the Brief, or the newest message when there is none. */
+/** The second line: the summary, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
-  const brief = conversation?.brief;
-  if (brief)
-    return {
-      mentions: undefined,
-      status: brief.status,
-      text: brief.summary || brief.intent,
-    };
+  if (conversation?.summary)
+    return { mentions: undefined, text: conversation.summary };
   const preview = conversation?.activityPreview;
   if (!preview) return undefined;
-  return {
-    mentions: preview.mentions,
-    status: undefined,
-    text: preview.text,
-  };
+  return { mentions: preview.mentions, text: preview.text };
 }
 
 /**
@@ -178,8 +168,6 @@ type InboxRowProps = {
    * is not a Conversation, which always has a `bundle`.
    */
   conversationId: string | undefined;
-  /** Set on a pinned row of a list that drags pins into a new order. */
-  drag?: PinnedRowDrag;
   expanded: boolean;
   /** The notices that fold into each ask, by the ask's id. */
   foldedNotices?: ReadonlyMap<string, readonly InboxItemPayload[]>;
@@ -281,7 +269,7 @@ function ConversationInboxRow(
     quickActions?: ReactNode;
   },
 ) {
-  const { conversation, drag } = props;
+  const { conversation } = props;
   const actions = useInboxRowActions(conversation, {
     onRowAction: props.onRowAction,
     selected: props.selected,
@@ -290,7 +278,7 @@ function ConversationInboxRow(
   const prefetch = usePrefetchConversation(conversation.id);
   const [threadsExpanded, setThreadsExpanded] = useState(false);
   const threads = props.showThreads
-    ? sidebarThreads(conversation.threads, { expanded: threadsExpanded })
+    ? sidebarThreads(conversation, { expanded: threadsExpanded })
     : undefined;
   const participant = conversation.isParticipant;
   const hasThreads = Boolean(threads && threads.threads.length > 0);
@@ -341,10 +329,7 @@ function ConversationInboxRow(
   );
   return (
     <li
-      className={cn(
-        inboxCardClass(props.expanded),
-        drag?.dragging && "opacity-40",
-      )}
+      className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
       ref={props.cardRef}
@@ -352,24 +337,13 @@ function ConversationInboxRow(
       <ContextMenu onOpenChange={actions.onMenuOpenChange}>
         <ContextMenuTrigger
           {...prefetch}
-          {...drag?.listeners}
           className={cn("group relative min-w-0", dashboardSurfaceRadiusClass)}
-          onKeyDown={drag?.onKeyDown}
-          ref={drag?.setNodeRef}
         >
           <InboxRowBody
             {...props}
             actionsBelow={actionsBelow}
             hoverActions={hoverActions}
             threadsShown={hasThreads}
-            linkProps={{
-              "aria-keyshortcuts": drag
-                ? "Alt+ArrowUp Alt+ArrowDown"
-                : undefined,
-              // The browser's own link drag would take the pointer from the
-              // reorder.
-              draggable: drag ? false : undefined,
-            }}
           />
         </ContextMenuTrigger>
         {actions.menu}
@@ -387,6 +361,9 @@ function ConversationInboxRow(
               selected={props.selected}
             />
           ))}
+          {threads.omittedCount > 0 ? (
+            <ConversationSidebarThreadsOmitted count={threads.omittedCount} />
+          ) : null}
           {toggle || actionsBelow ? (
             <div className="flex min-w-0 flex-wrap items-center gap-1">
               {toggle ? (
@@ -458,7 +435,6 @@ function InboxRowBody(
   props: InboxRowProps & {
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
-    linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
     /** Whether the row lists its Threads under the head. */
     threadsShown?: boolean;
   },
@@ -510,7 +486,7 @@ function InboxRowBody(
   const found = props.itemTitle ? undefined : rowSummary(conversation);
   // The viewer's answer replaces the line that asked for it.
   const summary = props.answered
-    ? { mentions: undefined, status: found?.status, text: props.answered }
+    ? { mentions: undefined, text: props.answered }
     : found;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
@@ -604,21 +580,15 @@ function InboxRowBody(
             className="col-start-2 row-start-1 grid min-w-0 gap-1"
             data-inbox-slot="title"
           >
-            {/* The Brief's outcome marks the title, as the dot does. It
-                sits outside the link, so the link's name stays the title. */}
             <span className="flex min-w-0 items-center gap-1.5">
-              {summary?.status ? (
-                <BriefOutcomeMarker status={summary.status} />
-              ) : null}
               <Link
-                {...props.linkProps}
                 aria-controls={opens ? undefined : controls}
                 aria-current={props.selected ? "page" : undefined}
                 aria-expanded={opens ? undefined : props.expanded}
                 className={cn(
                   "grid min-w-0 flex-1 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-                  // A long press opens the row menu or drags a pin, not the iOS
-                  // link callout.
+                  // A long press opens the row menu, not the iOS link
+                  // callout.
                   "[-webkit-touch-callout:none]",
                 )}
                 data-inbox-head=""

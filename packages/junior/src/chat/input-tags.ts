@@ -1,9 +1,15 @@
 /**
- * Tags for Turn inputs that the runtime creates. Each one is its own prompt
- * content part, outside `<current-instruction>`, which holds only words that
- * a person wrote. Tags are hints for the model: the runtime enforces approval
- * and permissions from the stored record. `policies/prompt-markers.md` owns
- * the tags and the escaping rules.
+ * Tags for Turn inputs that the runtime creates. Each input is its own prompt
+ * content part, in order, outside `<current-instruction>`, which holds only
+ * words that a person wrote. Tags are hints for the model: the runtime
+ * enforces approval and permissions from the stored record (Source, Actor,
+ * and provenance) and action review, never from rendered text.
+ *
+ * A person's words and runtime job blocks (`<task>`, `<parent-agent-task>`)
+ * get no trust label. The tag says what they are, and author attributes say
+ * who wrote them. A child tag never reuses one of these input tags.
+ * `prompt-tags.ts` in `@sentry/junior-plugin-api` owns the tag format and
+ * escaping.
  */
 
 import {
@@ -43,6 +49,9 @@ export interface TagAuthor {
  * Return the author attributes of a tag. Every block that shows who wrote
  * it, such as a person's message, a thread Message, or an Event author's
  * text, uses these, so one author always looks the same to the model.
+ * Take the author only from the envelope, never from the body, and do not
+ * repeat it in the body. `author_id` is the one ID without a `<provider>.`
+ * prefix.
  */
 export function authorAttrs(
   author: TagAuthor | undefined,
@@ -55,6 +64,9 @@ export function authorAttrs(
  * wrote, such as agent output or provider text. The tag names what it is and
  * `source` names who wrote it. One sentence says that the body is data, and
  * the body is escaped, so a copy of the closing tag cannot end the block.
+ * Text in a tool result needs no wrapper, because a tool result has no
+ * authority. Untrusted text never goes in the system prompt or in a block
+ * with the words of a person.
  */
 export function renderUntrustedTag(
   name: string,

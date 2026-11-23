@@ -53,7 +53,7 @@ async function requireRequesterCanEdit(
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
-      `The requester's email is unknown, so the tool cannot check that they may edit this ${noun}.`,
+      `The requester's email is unknown, so the tool cannot check that they may edit this ${noun}. No change to the call can fix this.`,
     );
   }
   const domain = emailDomain(requester);

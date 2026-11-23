@@ -100,18 +100,6 @@ export function inboxItemNeedsUser(userId: string): SQL {
 }
 
 /**
- * SQL: the Inbox item needs some person: an open `action` item with an
- * assigned User. It is `inboxItemNeedsUser` for any User.
- */
-export function inboxItemNeedsSomeone(): SQL {
-  return and(
-    eq(juniorInboxItems.status, "open"),
-    eq(juniorInboxItems.kind, "action"),
-    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
-  )!;
-}
-
-/**
  * SQL: the Inbox item waits for a person's input: an open `action` item,
  * whoever it is assigned to. An item with no assignees still waits for
  * anyone who can answer it. The Conversation that added it shows
@@ -363,19 +351,21 @@ export async function requireInboxItemLinks(args: {
   for (const conversationId of args.conversationIds) {
     const conversation = access.get(conversationId);
     if (!conversation || !isSameTenant(conversation.tenant, args.tenant)) {
-      throw new ToolInputError(`Conversation ${conversationId} is not found.`);
+      throw new ToolInputError(
+        `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+      );
     }
     if (args.allowedIds.has(conversationId)) continue;
     if (args.visibility === "private") {
       throw new ToolInputError(
-        "A private item links only to the Conversation that added it.",
+        "A private item links only to the Conversation that added it. Remove the other ids from `conversation_ids`.",
       );
     }
     if (conversation.visibility !== "public") {
       throw new ToolInputError(
         conversation.canViewPrivateContent
           ? `Conversation ${conversationId} is private. Only public Conversations can be linked.`
-          : `Conversation ${conversationId} is not found.`,
+          : `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
       );
     }
   }
@@ -415,7 +405,7 @@ export async function requireInboxItemAssignees(args: {
   );
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
-      "A private item can be assigned only to people in its Conversation.",
+      "A private item can be assigned only to people in its Conversation. Remove the other people from `assignees`.",
     );
   }
 }

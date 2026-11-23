@@ -1,4 +1,5 @@
 import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
@@ -7,10 +8,10 @@ import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import {
   juniorConversationEvents,
   juniorConversationBriefs,
+  juniorConversationEmbeddings,
   juniorConversations,
   juniorDestinations,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorInboxItems,
 } from "@/db/schema";
 import { touchConversationDetail } from "./detail-version";
@@ -18,6 +19,15 @@ import { withConversationEventLock } from "./event-lock";
 import { deleteMessageLinks } from "./message-links";
 import { resolveRootVisibility } from "./privacy";
 import { withConversationMutationLock } from "./store";
+
+// No runtime code reads or writes Agent invocations, but the table stays in
+// the database for one release, with its rows and their foreign keys to
+// Conversations. Purge still deletes the rows of a purged tree.
+// TODO(dcramer): Delete with the migration that drops the table.
+const juniorAgentInvocations = pgTable("junior_agent_invocations", {
+  parentConversationId: text("parent_conversation_id").notNull(),
+  childConversationId: text("child_conversation_id").notNull(),
+});
 
 /** An expired root conversation selected for purge, with its resolved visibility. */
 export interface ExpiredRoot {
@@ -145,6 +155,15 @@ export async function selectExpiredRoots(
             where briefs.conversation_id = tree.conversation_id
           )
           or exists (
+            select 1 from junior_conversations metadata
+            where metadata.conversation_id = tree.conversation_id
+              and metadata.summary is not null
+          )
+          or exists (
+            select 1 from junior_conversation_embeddings embeddings
+            where embeddings.conversation_id = tree.conversation_id
+          )
+          or exists (
             select 1 from junior_inbox_items inbox_items
             where inbox_items.owner_kind = 'conversation'
               and inbox_items.owner_id = tree.conversation_id
@@ -201,8 +220,9 @@ export async function selectExpiredRoots(
  * `transcript_purged_at`, and — for non-public content — null the raw-payload
  * metadata (`title`, `channel_name`, legacy actor JSON) so purged private
  * conversations keep only safe metadata. To-dos go with the transcript.
- * Non-public content also loses its Briefs and the Inbox items that it
- * added. The metadata rows themselves survive.
+ * Non-public content also loses its summary, Conversation embedding, legacy
+ * Briefs, and the Inbox items that it added. The metadata rows themselves
+ * survive.
  */
 export async function purgeConversationTree(
   executor: JuniorSqlDatabase,
@@ -342,11 +362,35 @@ export async function purgeConversationTree(
           const scrubMetadata = args.retention
             ? !isPublic
             : resolvedScrubMetadata;
+          // Clear the metadata before the embedding delete. The update locks
+          // each Conversation row, so an embedding write that holds a share
+          // lock commits first and is deleted below, and a later one finds
+          // no metadata. See `writeConversationEmbeddings`.
+          await executor
+            .db()
+            .update(juniorConversations)
+            .set({
+              transcriptPurgedAt: new Date(args.nowMs),
+              ...(scrubMetadata
+                ? {
+                    title: null,
+                    channelName: null,
+                    actor: null,
+                    summary: null,
+                    metadataThroughSeq: null,
+                  }
+                : undefined),
+            })
+            .where(inArray(juniorConversations.conversationId, ids));
           if (scrubMetadata) {
             await executor
               .db()
               .delete(juniorConversationBriefs)
               .where(inArray(juniorConversationBriefs.conversationId, ids));
+            await executor
+              .db()
+              .delete(juniorConversationEmbeddings)
+              .where(inArray(juniorConversationEmbeddings.conversationId, ids));
             // A private Inbox item holds content from its Conversation. A
             // public item stays, even when its destination later turned
             // private, because other Conversations can still link to it. An
@@ -367,16 +411,6 @@ export async function purgeConversationTree(
                 ),
               );
           }
-          await executor
-            .db()
-            .update(juniorConversations)
-            .set({
-              transcriptPurgedAt: new Date(args.nowMs),
-              ...(scrubMetadata
-                ? { title: null, channelName: null, actor: null }
-                : undefined),
-            })
-            .where(inArray(juniorConversations.conversationId, ids));
           await touchConversationDetail(executor.db(), ids);
           return { purged: true, conversations: ids.length };
         },

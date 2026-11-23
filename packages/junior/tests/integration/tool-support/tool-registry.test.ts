@@ -1,4 +1,5 @@
 import {
+  createEventSource,
   createLocalSource,
   createSlackSource,
   createWebSource,
@@ -36,6 +37,7 @@ const MODES: PromptMode[] = [
   "child_agent",
   "automation",
   "thread",
+  "lead",
 ];
 const PLATFORMS = ["slack", "local"] as const;
 
@@ -257,7 +259,7 @@ describe("static tool registry", () => {
           sentTurn(
             turnBehavior({ kind: "thread", personInput }),
             turnRun("slack:T0:C0:1.0:thread", personInput, {
-              kind: "agent_invocation",
+              kind: "parent_message",
             }),
           ),
         ),
@@ -363,6 +365,63 @@ describe("static tool registry", () => {
     );
     expect(turnInputFact(automation)).toContain(
       "<turn-input>\nThe automation sent the input of this Turn.\n</turn-input>",
+    );
+  });
+
+  // A Lead finds, starts, and steers work, and never does it. A person's
+  // Turn and a Watch Turn send the same tools and system prompt.
+  it("sends a Lead only the tools that steer work", async () => {
+    const conversationId = "local:web:lead";
+    const [person, watch] = await Promise.all(
+      [true, false].map((personInput) =>
+        sentTurn(
+          turnBehavior({ kind: "lead", personInput }),
+          turnRun(
+            conversationId,
+            personInput,
+            createEventSource({
+              eventKey: "event-1",
+              eventType: "timer.fired",
+              identifier: "timer-1",
+              namespace: "junior",
+            }),
+          ),
+        ),
+      ),
+    ).then((turns) => turns as [SentTurn, SentTurn]);
+
+    expectSameCachedPrefix([person, watch]);
+    expect(Object.keys(person.tools).sort()).toEqual(
+      [
+        "listWatches",
+        "messageAgent",
+        "noReply",
+        "readConversationEvent",
+        "searchConversationEvents",
+        "searchConversations",
+        "searchEventTypes",
+        "searchInboxItems",
+        "startConversation",
+        "stopWatchingResources",
+        "systemTime",
+        // `updateUserCustomization` is listed only with its experiment on.
+        "watchEvents",
+        "watchTimer",
+      ].sort(),
+    );
+    expect(person.disabled).toEqual([]);
+    // The Lead's main tools are in the model tool list, not behind
+    // `searchTools`.
+    expect(person.piTools.map((tool) => tool.name)).toEqual(
+      expect.arrayContaining([
+        "listWatches",
+        "readConversationEvent",
+        "searchConversationEvents",
+        "searchConversations",
+        "searchEventTypes",
+        "searchInboxItems",
+        "stopWatchingResources",
+      ]),
     );
   });
 

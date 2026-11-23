@@ -12,7 +12,7 @@ import {
 } from "@/chat/cache-warming/queue";
 import { createCacheWarmingRecorder } from "@/chat/cache-warming/recorder";
 import { runCacheWarmup } from "@/chat/cache-warming/warmup";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
+import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import { IDLE_HORIZON_MS, WARMUP_MARGIN_MS } from "@/chat/cache-warming/model";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore } from "@/chat/db";
@@ -140,14 +140,19 @@ export async function startChildAgent() {
     destination: parentDestination,
     source: "internal",
   });
-  await createAgentInvocation({
-    actor: { name: "parent-agent", platform: "system" },
-    destination: parentDestination,
-    idempotencyKey: "cache-warming-child",
-    input: "Summarize the durable task.",
-    parentConversationId,
-    reasoningLevel: "medium",
-  });
+  // The child's task waits in its mailbox, so the child still runs.
+  await spawnChildAgent(
+    {
+      actor: { name: "parent-agent", platform: "system" },
+      idempotencyKey: "cache-warming-child",
+      input: "Summarize the durable task.",
+      parentConversationId,
+      parentToolCallId: "cache-warming-child",
+      parentTurnId: "cache-warming-child",
+      reasoningLevel: "medium",
+    },
+    { queue: { send: async () => undefined } },
+  );
 }
 
 /** The last horizon message that the idle period sent. */

@@ -13,7 +13,7 @@ the check first. A rule that only review enforces is a judgment call.
 | Use the words in `TERMINOLOGY.md`. Do not invent synonyms. | Review |
 | Never ask a person to do the obviously right thing; do it. Ask for a person's attention only as `design/attention.md` allows. | Review |
 | Build the smallest design that solves the proven problem. When output lacks information, use the data the system already stores before you add a hook or lookup. No speculative abstractions, hooks, configuration, or wrappers. | Review, `policies/correctness-complexity.md` |
-| Generate deterministic output, such as links, IDs, and formats, in code. Do not fix it with prompt or tool text. | Review, `policies/agent-steering.md` |
+| Generate deterministic output, such as links, IDs, and formats, in code. Do not fix it with prompt or tool text. | Review, `design/prompts.md` |
 | Write TypeScript, not Java: functions, plain objects, simple types, small modules. | Review |
 | Search every consumer before you change a shared signature, error contract, or name. Use a hard cutover unless compatibility is required. | `pnpm typecheck` |
 | Let unexpected failures reach the owning boundary. Retry only expected transient failures. | `tool-error-classification:check` for tools, review elsewhere |
@@ -37,7 +37,8 @@ To prevent a problem or correct an agent, use the first of these that works:
    script.
 2. Directory structure and semantic names.
 3. Steering text: this file, `policies/`, prompts, and tool descriptions.
-   `policies/agent-steering.md` owns how to write it.
+   `design/prompts.md` states its intent, and the `build-tools` skill says
+   how to write it.
 
 ## Testing
 
@@ -101,12 +102,7 @@ One simulator can use about 10 GB of memory, so:
 - `policies/serverless-background-work.md`: work that must outlive a request.
 - `policies/observability.md`: telemetry for diagnosis.
 - `policies/performance.md`: awaits, fan-out, and query refreshes.
-- `policies/system-prompt.md`: system prompt blocks.
-- `policies/prompt-markers.md`: tags, untrusted text, IDs, and escaping in
-  model-read text.
-- `policies/agent-steering.md`: steering agent behavior.
 - `policies/agentic-semantics.md`: choices that depend on meaning or intent.
-- `policies/tool-design.md`: model-facing tool contracts.
 - `policies/testing.md`: what to test and where.
 - `policies/test-adapters.md`: shared test adapters.
 - `policies/evals.md`: agent-facing evals.

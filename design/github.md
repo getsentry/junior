@@ -62,3 +62,6 @@ also wake a Conversation or run an Event automation.
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior
   images".
+- A request for the signed-in GitHub user reads it with the requester's
+  account. This breaks "acts as its own App … not by using their
+  credentials".

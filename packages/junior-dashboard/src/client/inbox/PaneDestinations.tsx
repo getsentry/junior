@@ -12,8 +12,9 @@ import { Link, useLocation, useSearchParams } from "react-router";
 
 import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
-import type { PaneRow } from "../components/layout/paneRows";
+import { isLeadPath, type PaneRow } from "../components/layout/paneRows";
 import { cn, dashboardCountClass } from "../styles";
+import { LEAD_NAV_KEY } from "../shell/primaryNav";
 import { useInboxData } from "./inboxData";
 import {
   INBOX_VIEW_LABELS,
@@ -41,9 +42,6 @@ export const paneEntryClass = (selected: boolean, phone?: boolean) =>
       ? "bg-dashboard-accent/[0.12] text-dashboard-accent-text"
       : "text-dashboard-text hover:bg-dashboard-fill-hover",
   );
-
-const headingClass =
-  "m-0 px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted";
 
 function Entry(props: {
   count?: number;
@@ -109,10 +107,10 @@ function Entry(props: {
 }
 
 /**
- * The pane's destinations, in one list: the Inbox, Snoozed, and Done; then
- * Conversations, Automations, and the primary plugin pages; then the asks
- * by type. Each row reopens where the reader left it, and the Inbox and
- * Automations rows count what waits on the viewer.
+ * The pane's destinations, in one list: the Lead, the Inbox, Snoozed, and
+ * Done; then Conversations, Automations, and the primary plugin pages. The
+ * Inbox filters its asks by type itself. Each row reopens where the reader
+ * left it, and the Inbox and Automations rows count what waits on the viewer.
  */
 export function PaneDestinations(props: { phone?: boolean }) {
   const { pathname } = useLocation();
@@ -139,12 +137,26 @@ export function PaneDestinations(props: { phone?: boolean }) {
   // Automations shows where its page does. Primary plugin pages, and Code
   // and System without an account, follow it.
   const automationsItem = navItems.find((item) => item.key === "automations");
+  const leadItem = navItems.find((item) => item.key === LEAD_NAV_KEY);
   const pages = navItems.filter(
-    (item) => item.key !== "inbox" && item.key !== "automations",
+    (item) =>
+      item.key !== "inbox" &&
+      item.key !== "automations" &&
+      item.key !== LEAD_NAV_KEY,
   );
   return (
     <>
       <ul className="m-0 grid gap-0.5 p-0">
+        {leadItem ? (
+          <Entry
+            icon={navItemIcon(leadItem.key)}
+            label={leadItem.label}
+            phone={props.phone}
+            phoneTo={leadItem.to}
+            row={leadItem.key}
+            phoneSelected={isLeadPath(pathname, navItems)}
+          />
+        ) : null}
         {view("inbox", true)}
         {data.signedIn ? (
           <>
@@ -181,15 +193,6 @@ export function PaneDestinations(props: { phone?: boolean }) {
           />
         ))}
       </ul>
-      {data.signedIn ? (
-        <>
-          <h2 className={headingClass}>Asks by type</h2>
-          <ul className="m-0 grid gap-0.5 p-0">
-            {view("prs")}
-            {view("decisions")}
-          </ul>
-        </>
-      ) : null}
     </>
   );
 }

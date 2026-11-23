@@ -127,7 +127,9 @@ export async function vercelRequest(
   if (!response.ok) {
     const message = `${operation} failed with HTTP ${response.status}`;
     if (response.status === 400 || response.status === 404)
-      throw new PluginToolInputError(message);
+      throw new PluginToolInputError(
+        `${message}. Check the ids and names in the arguments.`,
+      );
     throw new Error(message);
   }
   if (response.status === 204) return undefined;

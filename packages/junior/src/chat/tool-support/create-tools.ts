@@ -1,9 +1,12 @@
 import { createSearchInboxItemsTool } from "@/chat/inbox-items/tools/search";
 import { resolveChannelCapabilities } from "@/chat/slack/tool-support/channel-capabilities";
-import { isEventEmbeddingsEnabled } from "@/chat/briefs/registration";
+import { isEventEmbeddingsEnabled } from "@/chat/conversations/event-embedding-config";
 import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
+import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { createStartConversationTool } from "@/chat/tools/start-conversation";
+import { readLeadUser } from "@/chat/lead/conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
 import { recordPreviewOrigin } from "@/personal-tokens/preview-origins";
@@ -299,6 +302,10 @@ const STATIC_TOOL_BINDERS = {
         },
         operation: "conversation_search_embedding",
       }),
+      // A Lead Turn that no person started searches for the Lead's person.
+      resolveUserId: async () =>
+        (await run.context.resolveActorIdentity?.())?.user?.id ??
+        (await readLeadUser(run.context.conversationId))?.id,
     }),
   spawnAgent: (run) =>
     run.context.spawnAgent
@@ -376,6 +383,7 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
+  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];
@@ -658,18 +666,23 @@ export function createTools(
         ? STATIC_TOOL_BINDERS[slot.name](run)
         : RUN_BUILT_TOOL_BUILDERS[slot.slot](run);
     if (!tool) continue;
-    tools[slot.name] =
+    tools[slot.name] = listedToolExposure(
+      listedTools,
+      slot.name,
       slot.kind === "static"
         ? withDisabledReason(
             tool,
             TURN_TOOL_LIMITS[slot.name]?.(context.turnTools),
           )
-        : tool;
+        : tool,
+    );
   }
 
-  for (const [name, pluginTool] of Object.entries(
-    getPluginTools(context, options.pluginSandbox),
-  )) {
+  // A Turn with an `only` list gets no plugin tools.
+  const pluginTools = listedTools.only
+    ? {}
+    : getPluginTools(context, options.pluginSandbox);
+  for (const [name, pluginTool] of Object.entries(pluginTools)) {
     if (tools[name]) {
       throw new Error(`Plugin tool "${name}" conflicts with a core tool`);
     }

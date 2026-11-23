@@ -1,23 +1,8 @@
 import * as z from "zod";
-import { briefOutcomeStatusSchema } from "@/chat/briefs/schema";
 import {
   conversationSummaryReportSchema,
   type ConversationSummaryReport,
 } from "./conversation";
-
-/**
- * The part of a Conversation's latest Brief that a feed row shows: what the
- * work is about and how it stands.
- */
-export const conversationFeedBriefSchema = z
-  .object({
-    intent: z.string(),
-    status: briefOutcomeStatusSchema,
-    summary: z.string(),
-  })
-  .strict();
-
-export type ConversationFeedBrief = z.infer<typeof conversationFeedBriefSchema>;
 
 const conversationFeedIncludeSchema = z.enum(["links", "media"]);
 
@@ -74,6 +59,20 @@ export type ConversationFeedMedia = z.infer<typeof conversationFeedMediaSchema>;
 export const CONVERSATION_FEED_LINK_LIMIT = 3;
 
 /**
+ * The most Threads a feed row lists, at any depth. Real roots hold far
+ * fewer, so this only bounds the response; a row past it says how many it
+ * left out, and its detail lists them all.
+ */
+export const CONVERSATION_FEED_THREAD_LIMIT = 100;
+
+/**
+ * The most waiting rows from outside the page that the first page adds.
+ * Real feeds wait on far fewer at once. The rest come on later pages, by
+ * activity like any other row.
+ */
+export const CONVERSATION_FEED_WAITING_LIMIT = 50;
+
+/**
  * The viewer's newest answer to an Inbox item that the Conversation added:
  * when it closed and the options they picked. A text answer has no choices.
  */
@@ -90,9 +89,9 @@ export type ConversationFeedViewerAnswer = z.infer<
 
 /** A feed row, with its visible Threads nested under their parents. */
 export type ConversationFeedItem = ConversationSummaryReport & {
-  brief?: ConversationFeedBrief | undefined;
   links?: string[] | undefined;
   media?: ConversationFeedMedia[] | undefined;
+  omittedThreadCount?: number | undefined;
   threads?: ConversationFeedItem[] | undefined;
   viewerAnswer?: ConversationFeedViewerAnswer | undefined;
 };
@@ -103,7 +102,6 @@ export type ConversationFeedItem = ConversationSummaryReport & {
  */
 const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
   conversationSummaryReportSchema.extend({
-    brief: conversationFeedBriefSchema.optional(),
     /**
      * Web links from the Conversation's recent messages, newest first, for
      * the row to resolve into cards. URLs only: never message text. Only
@@ -115,6 +113,11 @@ const conversationFeedItemSchema: z.ZodType<ConversationFeedItem> =
       .array(conversationFeedMediaSchema)
       .max(CONVERSATION_FEED_MEDIA_LIMIT)
       .optional(),
+    /**
+     * Threads that `CONVERSATION_FEED_THREAD_LIMIT` left out of `threads`.
+     * Only on a root, and only when the cap cut some.
+     */
+    omittedThreadCount: z.number().int().positive().optional(),
     threads: z.lazy(() => z.array(conversationFeedItemSchema)).optional(),
     /** Only on the viewer's own feed. */
     viewerAnswer: conversationFeedViewerAnswerSchema.optional(),
@@ -127,6 +130,12 @@ export const conversationFeedSchema = z
     generatedAt: z.string(),
     /** Present when older conversations follow this page. */
     nextCursor: z.string().optional(),
+    /**
+     * Present when `CONVERSATION_FEED_WAITING_LIMIT` cut the waiting rows
+     * that this first page adds from outside it. The rest come on later
+     * pages.
+     */
+    waitingRowsTruncated: z.literal(true).optional(),
   })
   .strict();
 

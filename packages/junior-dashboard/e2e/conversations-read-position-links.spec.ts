@@ -5,6 +5,10 @@ import {
 } from "./read-position-fixture";
 import { screenshot } from "./screenshot";
 
+// The current UI opens the Lead at home, so its list has its own path.
+const conversationListPath = (ui: string) =>
+  ui === "inbox" ? "/?view=conversations" : "/conversations";
+
 test("opens links outside the loaded rows from the page around them", async ({
   page,
   dashboard,
@@ -70,6 +74,7 @@ test("opens links outside the loaded rows from the page around them", async ({
   );
   await expect(page).not.toHaveURL(/[?&](turn|event)=/);
   await expect(linked).toBeHidden();
+  await mock.pageReadsLanded();
 });
 
 test("opens a Message link at the start of its reply", async ({
@@ -105,6 +110,7 @@ test("opens a Message link at the start of its reply", async ({
 test("opens a link that the cached latest page holds at its row", async ({
   page,
   dashboard,
+  ui,
 }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   const mock = await mockReadPositionConversation(page, {
@@ -114,7 +120,7 @@ test("opens a link that the cached latest page holds at its row", async ({
   mock.pagedDetail = true;
   const pageRequests = recordPageRequests(page);
   // A hover caches the latest page, which holds event 100.
-  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  await page.goto(`${dashboard.baseURL}${conversationListPath(ui)}`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===
@@ -146,6 +152,7 @@ test("opens a link that the cached latest page holds at its row", async ({
 test("opens at the latest event when a link at open fails", async ({
   page,
   dashboard,
+  ui,
 }) => {
   await page.setViewportSize({ width: 1600, height: 900 });
   const mock = await mockReadPositionConversation(page, {
@@ -154,7 +161,7 @@ test("opens at the latest event when a link at open fails", async ({
   });
   mock.pagedDetail = true;
   // A hover caches the latest page, so it shows while the link loads.
-  await page.goto(`${dashboard.baseURL}/?view=conversations`);
+  await page.goto(`${dashboard.baseURL}${conversationListPath(ui)}`);
   const prefetched = page.waitForResponse(
     (response) =>
       new URL(response.url()).pathname ===

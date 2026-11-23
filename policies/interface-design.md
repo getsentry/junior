@@ -26,9 +26,8 @@ function names are part of the interface.
 
 ### Lifecycle state
 
-- Store each lifecycle, such as a Turn, an agent invocation, or an
-  Automation run, as one status value. Use a discriminated union when a field
-  is valid only in some states.
+- Store each lifecycle, such as a Turn or an Automation run, as one status
+  value. Use a discriminated union when a field is valid only in some states.
 - One function owns the transitions of each lifecycle and rejects an illegal
   one. Other code calls it. It does not write the status directly.
 - A terminal state stays terminal. A late writer must not move it back.
@@ -60,7 +59,7 @@ function names are part of the interface.
   next to the first caller.
 - A role directory or file holds only that role. `tools/` holds only tools,
   and `tool-support/` holds code that only tools use.
-  `policies/tool-design.md` owns the tool layout.
+  The `tools-dir-*` ast-grep rules enforce the tool layout.
 - Do not add catch-all modules such as `utils`, `helpers`, `common`, `misc`,
   or `shared`. They name no feature and no role, so code collects there with
   no owner. The `no-catch-all-module-paths` ast-grep rule enforces this.

@@ -87,7 +87,9 @@ export async function readableItem(
 ): Promise<InboxItem> {
   const item = await getInboxItem(getDb(), id);
   if (!item || !canReadInboxItem(item, scope.reader)) {
-    throw new ToolInputError(`Inbox item ${id} is not found.`);
+    throw new ToolInputError(
+      `Inbox item ${id} is not found. Use searchInboxItems to find its id.`,
+    );
   }
   return item;
 }

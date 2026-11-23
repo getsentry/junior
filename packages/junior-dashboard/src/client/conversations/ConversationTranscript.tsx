@@ -25,7 +25,7 @@ import { Card } from "../components/layout/Card";
 import { unavailableTranscriptLabel } from "../format";
 import { KnownObjectsProvider } from "../display-text/DisplayText";
 import { ObjectAttachProvider } from "./ObjectAttach";
-import { ConversationBrief } from "./ConversationBrief";
+import { ConversationSummary } from "./ConversationSummary";
 import { transcriptMessagesFromEvents } from "./eventTranscript";
 import type {
   ConversationTranscript,
@@ -33,6 +33,7 @@ import type {
   TranscriptViewSubagentPart,
 } from "../types";
 import { TranscriptTasksLine } from "./TranscriptTasksLine";
+import { TranscriptStartedConversation } from "./TranscriptStartedConversation";
 import { TranscriptThreadCard } from "./TranscriptThreadCard";
 import { TranscriptContextEventView } from "./TranscriptContextEventView";
 import { TranscriptActivityGroup } from "./TranscriptActivityGroup";
@@ -67,6 +68,10 @@ import {
   TranscriptAutomationTriggerView,
 } from "./TranscriptAutomationTriggerView";
 import { TranscriptTypingIndicator } from "./TranscriptTypingIndicator";
+import {
+  isConversationWatchReport,
+  LeadWatchReport,
+} from "../lead/LeadWatchReport";
 import { groupTranscriptMessages } from "./transcriptRenderModel";
 import { transcriptRowAnchor } from "./conversationRoutes";
 import { useTranscriptSearch } from "./transcriptSearch";
@@ -86,13 +91,14 @@ import {
   transcriptRowSizeClass,
   UNREAD_MARKER_KEY,
   type TranscriptListRow,
+  transcriptDayLabels,
 } from "./transcriptListRows";
 import { useVirtualRows } from "./virtualRows";
 import { TranscriptImagesProvider } from "./TranscriptAttachment";
 import { TranscriptTimestampProvider } from "./TranscriptTimestamp";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
 import { ComfortableDensityContext } from "../uiShell";
-import { formatTime } from "../time";
+import { formatTime, getDashboardTimeZone } from "../time";
 
 type TranscriptEntry = ReturnType<typeof groupTranscriptMessages>[number];
 type TranscriptContextEntry = Extract<TranscriptEntry, { kind: "context" }>;
@@ -242,7 +248,7 @@ function SegmentEvents(
       {props.conversation.eventHistory.status === "expired" ? (
         <>
           <ExpiredTranscriptView
-            brief={props.conversation.brief}
+            conversation={props.conversation}
             expiredAt={props.conversation.eventHistory.expiredAt}
           />
           {props.responding ? <TranscriptThinkingRow /> : null}
@@ -294,17 +300,22 @@ function TranscriptThinkingRow() {
 }
 
 function ExpiredTranscriptView(props: {
-  brief: ConversationTranscript["brief"];
+  conversation: ConversationTranscript;
   expiredAt: string;
 }) {
+  const { summary, summaryMentions } = props.conversation;
   return (
     <>
-      {props.brief ? (
+      {summary ? (
         <Card as="section" padding="md" variant="section">
           <h3 className="mt-0 mb-3 font-display text-lg font-medium text-dashboard-text">
-            Brief
+            Summary
           </h3>
-          <ConversationBrief brief={props.brief} />
+          <ConversationSummary
+            mentions={summaryMentions}
+            summary={summary}
+            variant="full"
+          />
         </Card>
       ) : null}
       <Empty className="flex items-start gap-3 border-dashed border-dashboard-border-emphasis bg-dashboard-fill-soft">
@@ -321,7 +332,7 @@ function ExpiredTranscriptView(props: {
                 timeStyle: "short",
               })}
             </time>
-            .{props.brief ? " The brief above is still available." : null}
+            .{summary ? " The summary above is still available." : null}
           </EmptyDescription>
         </div>
       </Empty>
@@ -349,6 +360,7 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
   );
   return (
     <TranscriptEntryList
+      dayLabels={props.conversation.kind === "lead"}
       entries={entries}
       // Open rows and row sizes belong to one Conversation.
       key={props.conversation.conversationId}
@@ -380,6 +392,12 @@ const VisibleTranscriptEntries = memo(function VisibleTranscriptEntries(
           <TranscriptAutomationTriggerView
             message={entry.message}
             sourceTask={props.conversation.sourceTask}
+          />
+        ) : props.conversation.kind === "lead" &&
+          isConversationWatchReport(entry.message) ? (
+          <LeadWatchReport
+            message={entry.message}
+            timestamp={entry.message.timestamp}
           />
         ) : entry.message.eventType ? (
           <TranscriptRailEvent
@@ -475,6 +493,8 @@ function TranscriptEntryList(
   props: TranscriptEntryRenderers &
     TranscriptListPlacement & {
       entries: TranscriptEntry[];
+      /** Label the first row of each day, such as `Today`. */
+      dayLabels?: boolean | undefined;
       keyPrefix: string;
       /** A Turn is running, so the list ends with its progress. */
       responding?: boolean | undefined;
@@ -502,6 +522,13 @@ function TranscriptEntryList(
   const indexByKey = useMemo(
     () => new Map(rows.map((row, index) => [row.key, index])),
     [rows],
+  );
+  const days = useMemo(
+    () =>
+      props.dayLabels && searchQuery === undefined
+        ? transcriptDayLabels(rows, Date.now(), getDashboardTimeZone())
+        : undefined,
+    [props.dayLabels, rows, searchQuery],
   );
   const matchCount = searchQuery === undefined ? 0 : rows.length;
   const { match, onMatches } = search;
@@ -659,7 +686,17 @@ function TranscriptEntryList(
       }
       if (entry.kind === "failure") return renderFailure(entry);
       if (entry.kind === "reasoning") return renderReasoning(entry);
-      if (entry.kind === "tool") return renderTool(entry);
+      if (entry.kind === "tool") {
+        return entry.part.startedConversationId ? (
+          <TranscriptStartedConversation
+            conversationId={entry.part.startedConversationId}
+            input={entry.part.input}
+            timestamp={entry.timestamp}
+          />
+        ) : (
+          renderTool(entry)
+        );
+      }
       return renderMessage(entry, tasks ? renderTasks(tasks) : undefined);
     },
     [
@@ -705,6 +742,7 @@ function TranscriptEntryList(
             {virtualizer.getVirtualItems().map((item) => (
               <VirtualTranscriptRow
                 current={matchCount > 0 && item.index === match}
+                day={days?.get(item.index)}
                 index={item.index}
                 key={item.key}
                 live={item.index === liveIndex}
@@ -739,6 +777,8 @@ type TranscriptListPlacement = {
 const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
   /** The current search match. */
   current: boolean;
+  /** The day label above the first row of a day. */
+  day?: string | undefined;
   index: number;
   /** The activity row of the running Turn. */
   live: boolean;
@@ -765,6 +805,7 @@ const VirtualTranscriptRow = memo(function VirtualTranscriptRow(props: {
       style={{ transform: `translateY(${props.offset}px)` }}
     >
       <TranscriptAnswerLinkSegments index={props.index} />
+      {props.day ? <TranscriptDaySeparator label={props.day} /> : null}
       {row.kind === "unread_marker" ? (
         <TranscriptUnreadMarker />
       ) : row.kind === "activity" ? (
@@ -923,5 +964,19 @@ function RedactedTranscriptView(
         />
       )}
     />
+  );
+}
+
+function TranscriptDaySeparator(props: { label: string }) {
+  return (
+    <div
+      aria-label={props.label}
+      className="flex items-center gap-3 pb-2 pt-4 font-sans text-xs font-medium text-dashboard-text-faint"
+      role="separator"
+    >
+      <span className="h-px flex-1 bg-dashboard-border-subtle" />
+      {props.label}
+      <span className="h-px flex-1 bg-dashboard-border-subtle" />
+    </div>
   );
 }

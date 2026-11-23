@@ -7,6 +7,7 @@ import {
   mockDashboardApis,
   routeConversationVersion,
   withRequestedMailbox,
+  waitForOutlineRead,
 } from "./harness";
 
 test.use({ locale: "en-US", timezoneId: "America/New_York" });
@@ -62,6 +63,13 @@ test("reveals a closed tool result in transcript search", async ({
       }),
     })
     .first();
+  // Opening the tool rows is reading them, so the page saves the read
+  // position.
+  const readSaved = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PUT" &&
+      new URL(response.url()).pathname.endsWith("/read-position"),
+  );
   await activity.locator(':scope > [data-slot="collapsible-trigger"]').click();
   await toolRow.focus();
   await page.keyboard.press("Enter");
@@ -82,6 +90,7 @@ test("reveals a closed tool result in transcript search", async ({
   await expect(toolResult).toBeVisible();
   await page.getByPlaceholder("Search transcript…").fill("");
   await expect(toolResult).toBeHidden();
+  await readSaved;
 });
 
 test("inspects all reporting events and steps through event details", async ({
@@ -521,12 +530,17 @@ test("loads earlier events without merging tool starts and results", async ({
   await expect(linkedEntry).toBeFocused();
   await linkedEntry.click();
   await expect(linked).toBeVisible();
+  const outlineRead = waitForOutlineRead(
+    page,
+    "slack:CQA123:1770003600.000200",
+  );
   await page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(linked).toBeHidden();
   await expect(page).not.toHaveURL(/[?&]event=/);
+  await outlineRead;
 });
 
 test("mounts only the event log rows near the viewport", async ({
@@ -583,13 +597,16 @@ test("mounts only the event log rows near the viewport", async ({
   expect(await mounted.count()).toBeLessThan(80);
 
   // Arrow keys move past the end of the mounted range and mount the rows
-  // they reach. The row that holds the reader's place can stay mounted
-  // further down, so find the first gap from the top.
-  const seqs = await mounted.evaluateAll((rows) =>
-    rows.map((row) => Number(row.getAttribute("data-event-seq"))),
+  // they reach. The row that held the reader's place before the scroll
+  // stays mounted further down until the next render, which may or may not
+  // have come yet. So target the first unmounted row from the top.
+  const seqs = new Set(
+    await mounted.evaluateAll((rows) =>
+      rows.map((row) => Number(row.getAttribute("data-event-seq"))),
+    ),
   );
-  const target = seqs.findIndex((seq, index) => seq !== index + 1) + 1;
-  expect(target).toBeGreaterThan(1);
+  let target = 1;
+  while (seqs.has(target)) target += 1;
   await expect(entry(target)).not.toBeAttached();
   await entry(1).focus();
   for (let seq = 2; seq <= target; seq++) {
@@ -881,7 +898,7 @@ test("opens the event log from the sidebar row menu", async ({
   page,
   dashboard,
 }) => {
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
   const row = page
     .getByRole("navigation", { name: "Your conversations" })
     .getByRole("link", { name: /Closed issue summary/ });

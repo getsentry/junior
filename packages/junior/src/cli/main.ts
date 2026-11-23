@@ -57,11 +57,6 @@ async function runServiceAccount(argv: string[]): Promise<number> {
   return await mod.runServiceAccount(argv);
 }
 
-async function runBriefs(argv: string[]): Promise<number> {
-  const mod = await import("./briefs");
-  return await mod.runBriefs(argv);
-}
-
 function topLevelCommand(argv: string[]): string | undefined {
   const normalized = argv[0] === "--" ? argv.slice(1) : argv;
   return normalized[0];
@@ -81,10 +76,10 @@ export async function runMain(
     await initSentry();
   }
   const command = topLevelCommand(argv);
-  // `briefs pull` must work with only an API token, and `admin` only needs
-  // core SQL, so both skip app plugin loading like `init` does.
+  // `admin` only needs core SQL, so it skips app plugin loading like `init`
+  // does.
   const cliPluginsModule =
-    command && command !== "init" && command !== "briefs" && command !== "admin"
+    command && command !== "init" && command !== "admin"
       ? await import("./plugins")
       : undefined;
   const pluginSet = cliPluginsModule
@@ -95,7 +90,6 @@ export async function runMain(
     : undefined;
   const exitCode = await runCli(argv, {
     runAdmin,
-    runBriefs,
     runServiceAccount,
     runChat: async (chatArgv) => await runChat(chatArgv, pluginSet),
     runInit,

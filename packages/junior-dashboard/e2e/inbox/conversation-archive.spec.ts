@@ -277,12 +277,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: "Also archive its child conversations?",
     });
     await expect(confirm).toContainText("for everyone");
-    const archiveRequest = page.waitForRequest(
-      (request) =>
-        request.method() === "PATCH" && request.url().endsWith("/archive"),
+    const archived = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PATCH" &&
+        response.url().endsWith("/archive"),
     );
     await confirm.getByRole("button", { name: "Archive" }).click();
-    expect((await archiveRequest).postDataJSON()).toMatchObject({
+    expect((await archived).request().postDataJSON()).toMatchObject({
       applyToChildren: true,
       archived: true,
     });

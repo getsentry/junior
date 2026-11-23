@@ -369,7 +369,11 @@ not know the person's timezone. A tool that sends model text to your provider
 must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
 reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
 rewrites every string in `input`, outside Markdown code. A Slack user becomes
-`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
+`@handle` of their linked account at `provider`, or their name. When a tool
+input names a person by email, Slack mention, or name, call
+`ctx.users.findLinkedHandle(query, provider)`. It returns `found` with the
+`handle` of the linked account at `provider`, or `unlinked`, `ambiguous`, or
+`not_found`. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
@@ -464,7 +468,7 @@ context, and rejects its calls before review or execution.
 
 ```ts
 disabledTools(ctx) {
-  return ctx.source.kind === "agent_invocation"
+  return ctx.source.kind === "parent_message"
     ? { ping: "Child agents cannot ping my-provider." }
     : {};
 },

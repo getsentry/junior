@@ -1,14 +1,12 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import { ArrowUp } from "lucide-react";
 
 import type { Conversation } from "../../types";
 import {
-  buildConversationSections,
+  buildTimeSections,
   type ConversationSection,
 } from "../../conversations/conversationSections";
 import { useHeldListOrder } from "../../conversations/heldListOrder";
-import { PinnedConversationOrder } from "../../conversations/PinnedConversationOrder";
-import type { ReorderPins } from "../../conversations/useReorderPinnedConversations";
 
 /**
  * Lay out a conversation list in its sections and hold the order while the
@@ -24,16 +22,13 @@ export function ConversationSectionList(props: {
   className?: string;
   conversations: Conversation[];
   loading: boolean;
-  onReorderError(conversation: Conversation): void;
-  /** Leave unset when the list shows only some pins. */
-  onReorderPins?: ReorderPins | undefined;
   timeZone: string;
 }) {
   // Rebuild sections only when their inputs change. Avoid fresh Date.now()
   // arrays on unrelated parent renders while the reader is scrolling.
   const latestSections = useMemo(
     () =>
-      buildConversationSections(props.conversations, {
+      buildTimeSections(props.conversations, {
         nowMs: Date.now(),
         timeZone: props.timeZone,
       }),
@@ -41,27 +36,10 @@ export function ConversationSectionList(props: {
   );
   const held = useHeldListOrder(latestSections, { settled: !props.loading });
   const { releaseHold } = held;
-  const { onReorderPins } = props;
-  const reorderPins = useCallback<ReorderPins>(
-    (move) => {
-      releaseHold();
-      onReorderPins?.(move);
-    },
-    [onReorderPins, releaseHold],
-  );
-  const pinned =
-    held.sections.find((section) => section.key === "pinned")?.conversations ??
-    [];
   return (
     <div {...held.holdProps} className={props.className}>
       <ListUpdatesPill count={held.pending} onApply={held.applyPending} />
-      <PinnedConversationOrder
-        conversations={pinned}
-        onError={props.onReorderError}
-        reorder={onReorderPins ? reorderPins : undefined}
-      >
-        {props.children({ releaseHold, sections: held.sections })}
-      </PinnedConversationOrder>
+      {props.children({ releaseHold, sections: held.sections })}
     </div>
   );
 }

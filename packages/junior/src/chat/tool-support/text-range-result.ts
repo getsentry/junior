@@ -177,5 +177,7 @@ export function sliceFileContent(params: {
 
 /** Reject an expected missing read target through the tool-error channel. */
 export function missingFileResult(path: string): never {
-  throw new ToolInputError(`File not found: ${path}`);
+  throw new ToolInputError(
+    `File not found: ${path}. Check the path, for example with ls in bash.`,
+  );
 }

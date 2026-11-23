@@ -32,7 +32,8 @@ compile-time contracts must not drift.
 - Tool input JSON schemas may stay on the tool or schema system that serves the
   model. If a tool input carries runtime authority or durable context, that
   context must also pass the owning runtime edge schema.
-- Model-facing tool schema design rules live in `policies/tool-design.md`.
+- `design/tools.md` states the intent of model-facing tool schemas. The
+  `build-tools` repo skill says how to build them.
 
 ## Exceptions
 

@@ -3,19 +3,14 @@ import type { Actor } from "@/chat/actor";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { actorSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
 import type { MailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
 import {
   childAgentInput,
   getChildAgentInputSender,
-  routeChildInput,
+  isDroppedChildInput,
 } from "./child-input";
-import {
-  logDroppedParentMessage,
-  parentMessageText,
-  readParentMessage,
-} from "./parent-message";
-import { getLatestAgentInvocationForConversation } from "./store";
+import { logDroppedParentMessage, parentMessageText } from "./parent-message";
+import { readParentMessage } from "./parent-message-input";
 
 const senderActorMetadataSchema = z.object({ actor: actorSchema });
 
@@ -38,22 +33,20 @@ export function resultAuthorId(actor: Actor): string {
   }
 }
 
-/** Read the Actor that a reply or message from a child without an Agent invocation carries. */
+/** Read the Actor of the child Turn that a reply or message carries. */
 function senderActorFromMetadata(metadata: unknown): Actor | undefined {
   const parsed = senderActorMetadataSchema.safeParse(metadata);
   return parsed.success ? parsed.data.actor : undefined;
 }
 
 /**
- * Run each agent invocation result or message as the Actor that triggered the
- * child, user or system, with its grants. This is on purpose: the result
- * continues that Actor's work. The Actor comes from SQL when an agent
- * invocation names the child, so the parent Turn has the same authority it
- * had at spawn time. Otherwise the input carries it, and so does a parent
- * task to a child.
- * Input that a child's Turn with another Actor sent runs as the Event system
- * Actor, so it never gets more authority than that Turn. A result that a stop
- * skipped is dropped. Returns undefined when no input is left.
+ * Run each child reply or message as the Actor of the child Turn that sent
+ * it, which the input carries, so the parent never gets more authority than
+ * that Turn. A parent message from the stored parent runs as the Actor of the
+ * parent's Turn, with its grants and text. Input that a Turn with another
+ * Actor sent, or that names no child of this Conversation, runs as the Event
+ * system Actor. Input that `isDroppedChildInput` drops is left out. Returns
+ * undefined when no input is left.
  */
 export async function withAgentInvocationResultActors(
   work: MailboxTurnWork,
@@ -61,22 +54,10 @@ export async function withAgentInvocationResultActors(
   if (work.kind !== "mailbox") {
     return work;
   }
-  const conversationId = work.batch[0]?.message.conversationId;
-  const [latest, stoppedAtMs] = conversationId
-    ? await Promise.all([
-        getLatestAgentInvocationForConversation(conversationId),
-        getConversationStoppedAtMs(conversationId),
-      ])
-    : [undefined, undefined];
   const batch = await mapBounded(work.batch, async (entry) => {
-    // A parent message from the stored parent runs as the Actor of the
-    // parent's Turn, with its grants and text, as on an Agent invocation.
     const parentMessage = readParentMessage(entry.message);
     if (parentMessage) {
-      if (
-        (await routeChildInput(entry.message, latest, stoppedAtMs)) ===
-        "dropped"
-      ) {
+      if (await isDroppedChildInput(entry.message)) {
         logDroppedParentMessage(entry.message, parentMessage);
         return undefined;
       }
@@ -98,30 +79,19 @@ export async function withAgentInvocationResultActors(
     if (!input) {
       return entry;
     }
-    if (
-      (await routeChildInput(entry.message, latest, stoppedAtMs)) === "dropped"
-    ) {
+    if (await isDroppedChildInput(entry.message)) {
       return undefined;
     }
-    const { invocation } = await getChildAgentInputSender(entry.message, input);
-    // A child that no agent invocation names sends its Turn's Actor with
-    // the input. The author id must match either Actor.
-    const actor =
-      invocation?.actor ??
-      senderActorFromMetadata(entry.message.input.metadata);
-    if (!actor || entry.message.input.authorId !== resultAuthorId(actor)) {
+    const sender = await getChildAgentInputSender(entry.message, input);
+    const actor = senderActorFromMetadata(entry.message.input.metadata);
+    if (
+      !sender ||
+      !actor ||
+      entry.message.input.authorId !== resultAuthorId(actor)
+    ) {
       return { ...entry, actor: EVENT_SYSTEM_ACTOR };
     }
-    // Only a result continues the work of the Turn that spawned the child,
-    // so only a result keeps that Turn's grants, such as a timer owner's. A
-    // reply or message runs as the Actor only.
-    return input.kind === "result" && invocation?.credentialContext
-      ? {
-          ...entry,
-          actor,
-          credentialContext: invocation.credentialContext,
-        }
-      : { ...entry, actor };
+    return { ...entry, actor };
   });
   const kept = batch.filter((entry) => entry !== undefined);
   return kept.length > 0 ? { kind: "mailbox", batch: kept } : undefined;

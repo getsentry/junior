@@ -60,6 +60,7 @@ export const TranscriptMessageView = memo(
               chat={chatText}
               key={index}
               mentions={props.message.mentions}
+              skills={roleKind === "user"}
               text={part.text ?? ""}
             />
           ) : null,
@@ -72,6 +73,7 @@ export const TranscriptMessageView = memo(
         role={props.message.role}
         actor={transcriptMessageActorLabel(props.conversation, props.message)}
         fromAgent={Boolean(props.message.agentInvocationId)}
+        lead={props.conversation.kind === "lead"}
         avatarUrl={
           transcriptMessageActor(props.conversation, props.message)?.avatarUrl
         }
@@ -192,6 +194,7 @@ export function RedactedMessageView(props: {
       role={props.message.role}
       actor={transcriptMessageActorLabel(props.conversation, props.message)}
       fromAgent={Boolean(props.message.agentInvocationId)}
+      lead={props.conversation.kind === "lead"}
       avatarUrl={
         transcriptMessageActor(props.conversation, props.message)?.avatarUrl
       }

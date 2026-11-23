@@ -105,7 +105,7 @@ async function openPullRequest(): Promise<string> {
       },
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
-    source: { kind: "agent_invocation" },
+    source: { kind: "parent_message" },
     turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
     workspace: {} as never,
   })["github_createPullRequest"]!.execute!(
