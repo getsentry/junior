@@ -14,7 +14,6 @@ import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type GitHubPullRequestCommitComposition,
-  juniorGitHubIssues,
   juniorGitHubPullRequestIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
@@ -1892,137 +1891,6 @@ describe("GitHub webhook events", () => {
 });
 
 describe("GitHub-owned issue outcomes", () => {
-  it("tracks the newest lifecycle for Junior-owned issues without adopting human issues", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      const route = webhookRoute(fixture);
-      const opened = issueLifecyclePayload({
-        createdAt: "2026-07-01T12:00:00.000Z",
-        id: 3001,
-        number: 970,
-      });
-      await route.handler(signedRequest(opened, "issues"));
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            action: "closed",
-            closedAt: "2026-07-03T12:00:00.000Z",
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3001,
-            number: 970,
-            stateReason: "duplicate",
-            updatedAt: "2026-07-03T12:00:00.000Z",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            body: "bot issue without a Junior footer",
-            createdAt: "2026-07-02T13:00:00.000Z",
-            id: 3003,
-            number: 972,
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-07-02T14:00:00.000Z",
-            id: 3004,
-            number: 973,
-            user: "human",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            action: "reopened",
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3001,
-            number: 970,
-            stateReason: "reopened",
-            updatedAt: "2026-07-02T12:00:00.000Z",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            body: "ordinary human issue",
-            createdAt: "2026-07-02T12:00:00.000Z",
-            id: 3002,
-            number: 971,
-            user: "human",
-          }),
-          "issues",
-        ),
-      );
-
-      await expect(
-        fixture.db().select().from(juniorGitHubIssues),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          issueId: "3001",
-          repositoryFullName: "getsentry/junior",
-          state: "closed",
-          stateReason: "duplicate",
-          updatedAt: new Date("2026-07-03T12:00:00.000Z"),
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("keeps a terminal issue when its opening delivery arrives late", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      const route = webhookRoute(fixture);
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            action: "closed",
-            closedAt: "2026-07-03T12:00:00.000Z",
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3010,
-            number: 980,
-            updatedAt: "2026-07-03T12:00:00.000Z",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3010,
-            number: 980,
-          }),
-          "issues",
-        ),
-      );
-
-      await expect(
-        fixture.db().select().from(juniorGitHubIssues),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          issueId: "3010",
-          state: "closed",
-          stateReason: null,
-          updatedAt: new Date("2026-07-03T12:00:00.000Z"),
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("marks associated conversation resource annotations closed", async () => {
     const fixture = await createGitHubFixture();
     try {
@@ -2080,6 +1948,53 @@ describe("GitHub-owned issue outcomes", () => {
             status: "closed",
             url: "https://github.com/getsentry/junior/issues/990",
           },
+          conversationId: "slack:C123:1712345.0001",
+        },
+      ]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("marks the footer's conversations closed without the opening delivery", async () => {
+    const fixture = await createGitHubFixture();
+    try {
+      const annotations: Array<{
+        annotation: ConversationAnnotationInput;
+        conversationId: string;
+      }> = [];
+      const route = webhookRoute(
+        fixture,
+        [],
+        undefined,
+        undefined,
+        undefined,
+        annotations,
+      );
+      const closed = (input: { number: number; user?: string }) =>
+        route.handler(
+          signedRequest(
+            issueLifecyclePayload({
+              action: "closed",
+              closedAt: "2026-07-03T12:00:00.000Z",
+              createdAt: "2026-07-01T12:00:00.000Z",
+              id: 3030 + input.number,
+              updatedAt: "2026-07-03T12:00:00.000Z",
+              ...input,
+            }),
+            "issues",
+          ),
+        );
+      await closed({ number: 991 });
+      // A person's issue with a copied footer is not Junior's.
+      await closed({ number: 992, user: "human" });
+
+      expect(annotations).toEqual([
+        {
+          annotation: expect.objectContaining({
+            key: "getsentry/junior#991",
+            status: "closed",
+          }),
           conversationId: "slack:C123:1712345.0001",
         },
       ]);

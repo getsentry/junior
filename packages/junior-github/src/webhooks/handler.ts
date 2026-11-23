@@ -17,20 +17,13 @@ import * as z from "zod";
 import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
-import {
-  recordGitHubIssueConversations,
-  recordGitHubIssueOutcome,
-} from "../issue-outcomes/store.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
 } from "../pull-request-outcomes/store.js";
-import {
-  normalizeGitHubIssueConversations,
-  normalizeGitHubIssueOutcome,
-} from "./issue-outcome.js";
+import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
 import {
   normalizeGitHubPullRequestConversations,
   normalizeGitHubPullRequestLinkedIssues,
@@ -231,13 +224,9 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestOutcome({ body, botEmail })
           : undefined;
-      const issueOutcome =
+      const closedIssue =
         eventName === "issues"
-          ? normalizeGitHubIssueOutcome({ body, botEmail })
-          : undefined;
-      const issueConversations =
-        eventName === "issues"
-          ? normalizeGitHubIssueConversations({ body, botEmail })
+          ? normalizeGitHubClosedIssue({ body, botEmail })
           : undefined;
       const pullRequestConversations =
         eventName === "pull_request"
@@ -284,28 +273,19 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (issueOutcome) {
-        const recordedOutcome = await recordGitHubIssueOutcome(
-          args.db,
-          issueOutcome,
-        );
-        if (recordedOutcome.applied && issueOutcome.state === "closed") {
-          await updateGitHubAnnotations({
-            annotations: args.annotations,
-            conversationIds: recordedOutcome.conversationIds,
-            log: args.log,
-            update: {
-              repo: issueOutcome.repositoryFullName,
-              number: issueOutcome.number,
-              objectType: "task",
-              status: "closed",
-            },
-          });
-        }
+      if (closedIssue) {
+        await updateGitHubAnnotations({
+          annotations: args.annotations,
+          conversationIds: closedIssue.conversationIds,
+          log: args.log,
+          update: {
+            repo: closedIssue.repositoryFullName,
+            number: closedIssue.number,
+            objectType: "task",
+            status: "closed",
+          },
+        });
       }
-      const recordedIssueConversations = issueConversations
-        ? await recordGitHubIssueConversations(args.db, issueConversations)
-        : false;
       const recordedPullRequestConversations = pullRequestConversations
         ? await recordGitHubPullRequestConversations(
             args.db,
@@ -494,8 +474,7 @@ export function createGitHubWebhookRoute(args: {
       });
       if (
         !pullRequestOutcome &&
-        !issueOutcome &&
-        !recordedIssueConversations &&
+        !closedIssue &&
         !recordedPullRequestConversations &&
         !recordedPullRequestLinkedIssues &&
         events.length === 0
