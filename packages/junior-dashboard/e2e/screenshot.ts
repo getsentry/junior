@@ -1,6 +1,11 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import { expect, type Locator, type Page } from "@playwright/test";
+import {
+  expect,
+  type Locator,
+  type Page,
+  type Request,
+} from "@playwright/test";
 
 /** Default desktop browser size for route shots. */
 export const desktop = { height: 900, name: "desktop", width: 1440 } as const;
@@ -37,8 +42,16 @@ const SCREENSHOT_STYLE = [
 // the dashboard URL, such as the MCP settings, show this origin instead.
 const SCREENSHOT_ORIGIN = "http://127.0.0.1:3000";
 
-// Captures to try for two in a row that are the same.
-const MAX_CAPTURES = 8;
+// Settle passes to try for one in which the page starts no request.
+const MAX_SETTLE_PASSES = 5;
+
+// Frames in a row with no DOM change or scroll before the page counts as
+// still. React commits, chart resizes, and scroll restores land within a
+// frame or two of the change that causes them.
+const QUIET_FRAMES = 3;
+
+// A page that keeps changing for this long fails the shot.
+const QUIET_TIMEOUT_MS = 10_000;
 
 type ScreenshotOptions = {
   clip?: {
@@ -123,17 +136,14 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
       };
     }, SCREENSHOT_ORIGIN);
     const file = `${name}__${view.name}.png`;
-    const image = await stableCapture(file, page, async () =>
-      page.screenshot({
-        animations: "disabled",
-        // Element shots clip a full-page capture. A plain element shot
-        // scrolls the element into view, where sticky page chrome can cover
-        // it. Measure on each capture, as late content can move the element.
-        clip: options.target ? await boxOf(options.target) : options.clip,
-        fullPage: !options.clip,
-        style: SCREENSHOT_STYLE,
-      }),
-    );
+    // Element shots clip a full-page capture. A plain element shot scrolls
+    // the element into view, where sticky page chrome can cover it.
+    const image = await page.screenshot({
+      animations: "disabled",
+      clip: options.target ? await boxOf(options.target) : options.clip,
+      fullPage: !options.clip,
+      style: SCREENSHOT_STYLE,
+    });
     await mkdir(SCREENSHOT_DIR, { recursive: true });
     await writeFile(path.join(SCREENSHOT_DIR, file), image);
     // Later steps of the spec read the real URL.
@@ -141,29 +151,6 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
   }
 
   if (previous) await page.setViewportSize(previous);
-}
-
-/**
- * Capture until the image stops changing, so a late fetch, scroll, or layout
- * pass cannot land in some runs and not others. A page that never stops
- * changing fails the test here, not later as a Frameshift change on an
- * unrelated pull request.
- */
-async function stableCapture(
-  file: string,
-  page: Page,
-  shoot: () => Promise<Buffer>,
-): Promise<Buffer> {
-  let previous = await shoot();
-  for (let capture = 1; capture < MAX_CAPTURES; capture += 1) {
-    await settle(page);
-    const image = await shoot();
-    if (image.equals(previous)) return image;
-    previous = image;
-  }
-  throw new Error(
-    `Screenshot ${file} changed in each of ${MAX_CAPTURES} captures. Find what still moves and make it settle before the shot.`,
-  );
 }
 
 /** Page box of an element, in whole pixels. */
@@ -180,11 +167,35 @@ async function boxOf(target: Locator) {
 }
 
 /**
- * Wait for network, fonts, images, first video frames, and two frames so the
- * page stops moving.
+ * Wait until the page is done: no request in flight, every font, image, and
+ * first video frame loaded, and no DOM change or scroll for a few frames.
+ * A page that does not get there fails the test here, not later as a
+ * Frameshift change on an unrelated pull request.
  */
 async function settle(page: Page) {
-  await page.waitForLoadState("networkidle");
+  for (let pass = 1; pass <= MAX_SETTLE_PASSES; pass += 1) {
+    const started: string[] = [];
+    const onRequest = (request: Request) => started.push(request.url());
+    page.on("request", onRequest);
+    try {
+      await page.waitForLoadState("networkidle");
+      await loadAssets(page);
+      await waitForQuiet(page);
+    } finally {
+      page.off("request", onRequest);
+    }
+    // A commit can start a fetch, such as a list that loads when it first
+    // shows. Wait again for what that fetch renders.
+    if (started.length === 0) return;
+    if (pass === MAX_SETTLE_PASSES) {
+      throw new Error(
+        `The page kept starting requests before the shot: ${started.join(", ")}`,
+      );
+    }
+  }
+}
+
+async function loadAssets(page: Page) {
   await page.evaluate(async () => {
     // fonts.ready only waits for faces the page has already requested. A
     // late web font swap changes text width and layout, so load every face.
@@ -218,8 +229,56 @@ async function settle(page: Page) {
       ),
       new Promise((resolve) => setTimeout(resolve, 5_000)),
     ]);
-    await new Promise<void>((resolve) =>
-      requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-    );
   });
+}
+
+/**
+ * Wait for frames in a row with no DOM change and no scroll. Throws with the
+ * element that kept changing, so the spec can wait for what moves it.
+ */
+async function waitForQuiet(page: Page) {
+  const busy = await page.evaluate(
+    ({ frames, timeout }) =>
+      new Promise<string | null>((resolve) => {
+        let last = "";
+        let quiet = 0;
+        const changed = (target: EventTarget | null) => {
+          quiet = 0;
+          if (!(target instanceof Element)) return;
+          last = target.id
+            ? `#${target.id}`
+            : `${target.tagName.toLowerCase()}.${[...target.classList].slice(0, 3).join(".")}`;
+        };
+        const observer = new MutationObserver((records) => {
+          for (const record of records) changed(record.target);
+        });
+        observer.observe(document.documentElement, {
+          attributes: true,
+          characterData: true,
+          childList: true,
+          subtree: true,
+        });
+        const onScroll = (event: Event) => changed(event.target);
+        document.addEventListener("scroll", onScroll, true);
+        const done = (result: string | null) => {
+          observer.disconnect();
+          document.removeEventListener("scroll", onScroll, true);
+          clearTimeout(timer);
+          resolve(result);
+        };
+        const timer = setTimeout(() => done(last || "document"), timeout);
+        const frame = () => {
+          quiet += 1;
+          if (quiet > frames) done(null);
+          else requestAnimationFrame(frame);
+        };
+        requestAnimationFrame(frame);
+      }),
+    { frames: QUIET_FRAMES, timeout: QUIET_TIMEOUT_MS },
+  );
+  if (busy) {
+    throw new Error(
+      `The page kept changing for ${QUIET_TIMEOUT_MS}ms before the shot. Last change: ${busy}`,
+    );
+  }
 }
