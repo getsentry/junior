@@ -34,6 +34,8 @@ Do not list behaviors. The verification map in
 
 ## Systems
 
+- [Agent teams](./agent-teams.md): how agents start, message, watch, and
+  report to each other, and how each one ends a Turn.
 - [Attention](./attention.md): when Junior asks for a person's attention.
   Every system follows it.
 - [Automations](./automations.md): saved instructions that Junior runs later.

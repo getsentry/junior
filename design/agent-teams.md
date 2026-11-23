@@ -3,7 +3,8 @@
 An agent works with other agents through one small set of tools, one
 update, and one end-of-Turn contract, whatever the kind of each agent. An
 agent that starts another gets its updates, and a watcher gets the same
-updates. A person can see and steer each agent.
+updates. A person can see and steer each agent. What a parent and its
+child agents add to this is in `./child-agents.md`.
 
 ## Intent
 
@@ -39,21 +40,22 @@ updates. A person can see and steer each agent.
   final text, `noReply`, `reportBlocked`, or an Inbox item.
 - Slack and the dashboard: ask Junior to start, steer, or stop work. The
   dashboard shows each agent, its team, and its latest update.
-- Config: `limits.maxAgentDepth`.
 
 ## Rules
 
-- The starter of an agent is the agent that started it. A team is an agent
-  and the agents that it started. A team sets who manages an agent, not who
+- A team is an agent and the agents that it started: its child agents, and
+  the roots that a Lead starts. A team sets who manages an agent, not who
   can read it. Access comes from `../policies/conversation-access.md`.
 - An agent manages only its team. It can message, stop, and archive the
   agents that it started. It can watch other agents that it may read.
 - The final text of a Turn is the reply. It goes to the Location of a root,
-  to the parent of a child, and to the person of a Lead. `messageAgent`
+  to the person of a Lead, and to the parent of a child, as
+  `./child-agents.md` states. Final text that was cut off, such as by a
+  length limit or an abort, is a failure, not a reply. `messageAgent`
   sends text to another agent at any time. It is not the reply, and it does
   not end the Turn.
 - `noReply` ends the Turn with no reply. `reportBlocked` ends it as blocked
-  on what the starter can give. Each still sends an update with its note or
+  on what the agent that started it can give. Each still sends an update with its note or
   the missing part.
 - An agent ends a Turn with no reply only when no person asked for
   something in that Turn, nothing failed, nobody must decide or act, and
@@ -61,15 +63,17 @@ updates. A person can see and steer each agent.
   sentence, because a receiver can read it.
 - Any agent, also a child, asks a person only with an Inbox item, and only
   for approval, access, or a decision that is the person's. The answer goes
-  to the agent that asked, as the person's own input. Its starter gets a
-  `waiting` update and does not ask again.
+  to the agent that asked, as the person's own input, and to no other
+  Conversation. The agent that started it gets a `waiting` update and does
+  not ask again.
 - Every agent sends one update type, `agent.update`. Its status is `done`,
   `waiting`, `blocked`, `failed`, or `stopped`. It holds the reply, the
   `noReply` note, the question, the missing part, or the failure. Nothing
   in it depends on the kind.
-- An update starts a Turn for its receiver only when the receiver has
-  something to do: a reply, a question, a block, a failure, a person's
-  stop, or the end of work that the receiver gave. Any other update is a
+- An update starts a Turn for the agent that started its sender only when
+  that agent has something to do: the end of work that it gave, a
+  question, a block, a failure, or a person's stop. For any other watcher,
+  each update that is not quiet starts a Turn. Any other update is a
   Conversation note.
 - Update text and message text are data. They never give approval. The
   authority of a message comes from the stored relation of its sender, as
@@ -84,17 +88,24 @@ updates. A person can see and steer each agent.
 - Agents use different tools to start, find, and watch other agents:
   `spawnAgent` and `startConversation`, `listAgents` and
   `searchConversations`. This breaks "one toolset".
-- A child agent reports with `<agent-result>`, and a watched Conversation
-  sends `conversation.*` Events with status only. This breaks "one update"
-  and "a watch is the same as a start". The event thread builds the fix.
 - A Thread and a Task must call `reply`, and their final text goes nowhere.
   Only some kinds have `reportBlocked`. This breaks "one contract".
 - A child agent cannot ask a person. It reports blocked, and its parent
   asks and passes on the answer. This breaks "the agent that needs a person
   asks that person".
+- An Inbox answer goes, as the person, to every Conversation that the item
+  links, not only to the agent that asked. This breaks "no agent passes on
+  a question or an answer for another agent".
+- A Turn that ends with `noReply` while the agent has a Watch sends no
+  update, also after the Watch ends. This breaks "a quiet end still reaches
+  the receiver".
+- The ungated path counts cut-off final text as a finished reply. This
+  breaks "final text that was cut off is a failure".
 - A Lead asks its person in its reply, not with an Inbox item. This breaks
   "one contract" and `./attention.md`.
-- A Lead cannot stop or archive the Conversations that it starts. This
-  breaks "an agent manages only its team".
+- A root that a Lead starts stores no link to the Lead, and the Lead's task
+  counts as a person's message. So the Lead cannot stop or archive it, and
+  the archive guard would refuse it. This breaks "an agent manages only its
+  team".
 - Few agent tool results say the next step for a working agent, so agents
   can poll. This breaks "push, not poll".
