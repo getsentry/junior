@@ -28,8 +28,6 @@ export const githubStateExceptions = {
   "junior_code_changes.title":
     "Too expensive to derive: search matches code changes by title.",
 
-  "junior_github_issues.state": "Mirror awaiting cleanup: nothing reads it.",
-
   "junior_github_pull_request_issues.pull_request_id":
     "Mirror awaiting cleanup: nothing reads it.",
   "junior_github_pull_request_issues.issue_repository_full_name":
