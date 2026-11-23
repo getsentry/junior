@@ -7,9 +7,9 @@ import {
 } from "lexical";
 
 /**
- * What one line of the draft is. Bullet and quote markers show only when
- * the caret is on their line. Ordered list numbers and code fences always
- * show. Lines between fences are code.
+ * What one line of the draft is. List and quote markers show only when the
+ * caret is on their line. Code fences always show. Lines between fences
+ * are code.
  */
 export type MarkdownLineKind =
   | "bullet"

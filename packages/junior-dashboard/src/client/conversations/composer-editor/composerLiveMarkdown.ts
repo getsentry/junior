@@ -19,6 +19,7 @@ import {
   type ComposerTextPart,
 } from "../composerReferences";
 import { $composerPieces, type ComposerLookup } from "./composerEditorText";
+import { listEnter, orderedListNumbers } from "./composerMarkdownLists";
 import {
   parseMarkdownLines,
   type MarkdownLine,
@@ -45,9 +46,13 @@ type Line = { nodes: LexicalNode[]; start: number };
  * Style the draft's Markdown in place: split each line into marker and
  * text nodes with formats. The text does not change, so the draft stays
  * the raw Markdown that the message sends. Tokens outside code become
- * chips. The selection keeps its place in the text.
+ * chips. The selection keeps its place in the text. Without `markdown`,
+ * the draft is plain text with chips.
  */
-export function $styleComposerDraft(lookup: ComposerLookup): void {
+export function $styleComposerDraft(
+  lookup: ComposerLookup,
+  markdown: boolean,
+): void {
   const selection = $getSelection();
   const points = $isRangeSelection(selection)
     ? [selection.anchor, selection.focus]
@@ -55,7 +60,8 @@ export function $styleComposerDraft(lookup: ComposerLookup): void {
   for (const paragraph of $getRoot().getChildren()) {
     if (!$isElementNode(paragraph)) continue;
     let lines = $lines(paragraph);
-    const parsed = parseMarkdownLines(lines.map(lineText));
+    const texts = lines.map(lineText);
+    const parsed = markdown ? parseMarkdownLines(texts) : texts.map(plainLine);
     const saved = points.flatMap((point) => {
       const at = $pointInLine(point, paragraph, lines);
       return at ? [{ point, ...at }] : [];
@@ -85,8 +91,44 @@ export function $styleComposerDraft(lookup: ComposerLookup): void {
 }
 
 /**
+ * Continue a Markdown list when Enter ends a list item, with the next
+ * item's marker on a new line. Enter on an item with only its marker
+ * removes the marker, which ends the list. False when the caret is not at
+ * the end of a list item.
+ */
+export function $enterInMarkdownList(): boolean {
+  const selection = $getSelection();
+  if (!$isRangeSelection(selection) || !selection.isCollapsed()) return false;
+  const { anchor } = selection;
+  const paragraph =
+    anchor.type === "element" ? anchor.getNode() : anchor.getNode().getParent();
+  if (!$isElementNode(paragraph)) return false;
+  const lines = $lines(paragraph);
+  const at = $pointInLine(anchor, paragraph, lines);
+  if (!at) return false;
+  const texts = lines.map(lineText);
+  const text = texts[at.line]!;
+  const { kind } = parseMarkdownLines(texts)[at.line]!;
+  const enter =
+    at.offset === text.length && (kind === "bullet" || kind === "ordered")
+      ? listEnter(text, $orderedListNumbers(texts)[at.line])
+      : undefined;
+  if (!enter) return false;
+  if (enter.kind === "continue") {
+    selection.insertRawText(`\n${enter.marker}`);
+    return true;
+  }
+  const line = lines[at.line]!;
+  for (const node of line.nodes) node.remove();
+  anchor.set(paragraph.getKey(), line.start, "element");
+  selection.focus.set(paragraph.getKey(), line.start, "element");
+  return true;
+}
+
+/**
  * Show the markers of each span that the selection is in or touches, and
  * of each line that it is on. Hide the rest. Without focus, all hide.
+ * Hidden ordered list markers show the number that the list renders.
  */
 export function syncComposerMarkers(editor: LexicalEditor): void {
   const root = editor.getRootElement();
@@ -97,17 +139,24 @@ export function syncComposerMarkers(editor: LexicalEditor): void {
       ? $selectedRanges(paragraphs)
       : new Map<string, [number, number]>();
     for (const paragraph of paragraphs) {
-      for (const [index, line] of $lines(paragraph).entries()) {
+      const lines = $lines(paragraph);
+      const texts = lines.map(lineText);
+      const numbers = $orderedListNumbers(texts);
+      for (const [index, line] of lines.entries()) {
         const range = selected.get(`${paragraph.getKey()}:${index}`);
         for (const { node, span } of $lineMarkers(line)) {
           const { edge, line: kind } = node.getMarker();
+          const element = editor.getElementByKey(node.getKey());
           const hidden =
             edge === "line"
-              ? !range && (kind === "bullet" || kind === "quote")
+              ? !range && kind !== "fence"
               : !range || range[0] > span[1] || range[1] < span[0];
-          editor
-            .getElementByKey(node.getKey())
-            ?.toggleAttribute("data-hidden", hidden);
+          element?.toggleAttribute("data-hidden", hidden);
+          const number = numbers[index];
+          if (element && edge === "line" && number !== undefined) {
+            const delimiter = node.getTextContent().trimEnd().slice(-1);
+            element.dataset["number"] = `${number}${delimiter}`;
+          }
         }
       }
     }
@@ -179,6 +228,19 @@ function $lines(paragraph: ElementNode): Line[] {
     else lines.at(-1)!.nodes.push(child);
   }
   return lines;
+}
+
+function $orderedListNumbers(texts: string[]): (number | undefined)[] {
+  return orderedListNumbers(
+    parseMarkdownLines(texts).map(({ kind }, index) => ({
+      kind,
+      text: texts[index]!,
+    })),
+  );
+}
+
+function plainLine(text: string): MarkdownLine {
+  return { kind: "text", segments: text ? [{ format: 0, text }] : [] };
 }
 
 function nodeText(node: LexicalNode): string {

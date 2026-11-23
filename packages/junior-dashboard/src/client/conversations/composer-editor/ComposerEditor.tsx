@@ -47,6 +47,7 @@ import {
   type ComposerLookup,
 } from "./composerEditorText";
 import {
+  $enterInMarkdownList,
   $styleComposerDraft,
   placeCaretOutsideHiddenMarkers,
   syncComposerMarkers,
@@ -74,6 +75,8 @@ type ComposerEditorProps = {
   enterKeyHint: "enter" | "send";
   enterSends: boolean;
   label: string;
+  /** Style Markdown as it is typed, and continue lists on Enter. */
+  liveMarkdown: boolean;
   lookup: ComposerLookup;
   maxLength: number;
   onChange(text: string): void;
@@ -115,7 +118,7 @@ export default function ComposerEditor(props: ComposerEditorProps) {
         editable: props.editable,
         editorState: () => {
           $writeComposerText(initialText.current);
-          $styleComposerDraft(lookup);
+          $styleComposerDraft(lookup, props.liveMarkdown);
         },
         namespace: "junior-composer",
         nodes: [ComposerMarkerNode, ComposerMentionNode, ComposerReferenceNode],
@@ -238,6 +241,15 @@ function ComposerBehavior(
 
   useEffect(() => editor.setEditable(props.editable), [editor, props.editable]);
 
+  // Style the draft again when the setting changes.
+  useEffect(
+    () =>
+      editor.update(() =>
+        $styleComposerDraft(callbacks.current.lookup, props.liveMarkdown),
+      ),
+    [editor, props.liveMarkdown],
+  );
+
   useEffect(
     () =>
       mergeRegister(
@@ -258,19 +270,21 @@ function ComposerBehavior(
         // while an input method composes, which a new node would break.
         editor.registerNodeTransform(RootNode, () => {
           if (!editor.isComposing()) {
-            $styleComposerDraft(callbacks.current.lookup);
+            const { liveMarkdown, lookup } = callbacks.current;
+            $styleComposerDraft(lookup, liveMarkdown);
           }
         }),
         // Reveal the markers at the caret, after the caret leaves any
         // that are hidden.
         editor.registerUpdateListener(() => {
+          if (!callbacks.current.liveMarkdown) return;
           placeCaretOutsideHiddenMarkers(editor);
           syncComposerMarkers(editor);
         }),
         editor.registerCommand(
           FOCUS_COMMAND,
           () => {
-            syncComposerMarkers(editor);
+            if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
             return false;
           },
           COMMAND_PRIORITY_LOW,
@@ -279,7 +293,9 @@ function ComposerBehavior(
           BLUR_COMMAND,
           () => {
             // Focus moves after the blur event.
-            requestAnimationFrame(() => syncComposerMarkers(editor));
+            requestAnimationFrame(() => {
+              if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
+            });
             return false;
           },
           COMMAND_PRIORITY_LOW,
@@ -288,12 +304,18 @@ function ComposerBehavior(
         editor.registerCommand(
           KEY_ENTER_COMMAND,
           (event) => {
+            if (event?.isComposing) return false;
+            // Enter and Shift+Enter continue a list. Other modifiers keep
+            // their own meaning.
             if (
-              !callbacks.current.enterSends ||
-              !event ||
-              event.shiftKey ||
-              event.isComposing
+              callbacks.current.liveMarkdown &&
+              !(event?.altKey || event?.ctrlKey || event?.metaKey) &&
+              $enterInMarkdownList()
             ) {
+              event?.preventDefault();
+              return true;
+            }
+            if (!callbacks.current.enterSends || !event || event.shiftKey) {
               return false;
             }
             event.preventDefault();

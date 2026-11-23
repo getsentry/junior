@@ -25,6 +25,7 @@ import {
   type ConversationStartPosition,
 } from "../../conversations/transcriptReadPosition";
 import { useComposerAutocorrect } from "../../conversations/composerAutocorrect";
+import { useComposerLiveMarkdown } from "../../conversations/composerLiveMarkdownSetting";
 import { navLayoutChoices } from "../../components/NavLayoutSwitcher";
 import { useNavLayoutChoice, type NavLayoutChoice } from "../../navLayout";
 import { InlineError } from "../../components/InlineError";
@@ -160,7 +161,7 @@ function InterfaceSettings({ identity }: SettingsPageProps) {
       <NavLayoutSetting />
       <ConversationStartSetting />
       <TranscriptScrollerSetting />
-      <ComposerAutocorrectSetting />
+      <MessageBoxSetting />
       <InboxTabCountSetting />
     </SettingsSection>
   );
@@ -263,9 +264,13 @@ function ConversationStartSetting() {
   );
 }
 
-/** Let the user turn on keyboard autocorrect in the composer on this browser. */
-function ComposerAutocorrectSetting() {
+/**
+ * Let the user turn on keyboard autocorrect, and turn off live Markdown, in
+ * the composer on this browser.
+ */
+function MessageBoxSetting() {
   const [autocorrect, setAutocorrect] = useComposerAutocorrect();
+  const [liveMarkdown, setLiveMarkdown] = useComposerLiveMarkdown();
   return (
     <Card className="mt-6 mb-0" padding="md" variant="raised">
       <AnchorHeading
@@ -285,6 +290,22 @@ function ComposerAutocorrectSetting() {
           <FieldDescription id="composer-autocorrect-help">
             Let your keyboard correct spelling and capitalize sentences as you
             type. This can change ids, paths, and code.
+          </FieldDescription>
+        </FieldContent>
+      </Field>
+      <Field className="mt-4" orientation="horizontal">
+        <Checkbox
+          aria-describedby="composer-live-markdown-help"
+          checked={liveMarkdown}
+          id="composer-live-markdown"
+          onCheckedChange={setLiveMarkdown}
+        />
+        <FieldContent>
+          <FieldLabel htmlFor="composer-live-markdown">
+            Live Markdown preview
+          </FieldLabel>
+          <FieldDescription id="composer-live-markdown-help">
+            Style Markdown as you type, and continue lists when you press Enter.
           </FieldDescription>
         </FieldContent>
       </Field>

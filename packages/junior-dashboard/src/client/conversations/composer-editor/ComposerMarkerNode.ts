@@ -23,12 +23,16 @@ type SerializedComposerMarker = Spread<
 >;
 
 // Hidden inline markers take no space but stay in the text, so the caret,
-// copy, and `innerText` still see them. Hidden bullet and quote markers
-// keep their width and show a glyph instead.
+// copy, and `innerText` still see them. Hidden list and quote markers keep
+// their width and show a glyph instead. An ordered list marker shows the
+// number that the list renders, which `syncComposerMarkers` sets, at the
+// end of its width, before the space.
 const MARKER_CLASS = "text-dashboard-text-faint data-hidden:text-[0em]";
 const LINE_MARKER_CLASS: Partial<Record<MarkdownLineKind, string>> = {
   bullet:
     "relative data-hidden:text-transparent data-hidden:before:absolute data-hidden:before:left-0 data-hidden:before:text-dashboard-text-muted data-hidden:before:content-['•']",
+  ordered:
+    "relative data-hidden:text-transparent data-hidden:before:absolute data-hidden:before:right-[0.25em] data-hidden:before:whitespace-nowrap data-hidden:before:text-dashboard-text-muted data-hidden:before:content-[attr(data-number)]",
   quote:
     "relative data-hidden:text-transparent data-hidden:before:absolute data-hidden:before:left-0 data-hidden:before:text-dashboard-text-faint data-hidden:before:content-['│']",
 };

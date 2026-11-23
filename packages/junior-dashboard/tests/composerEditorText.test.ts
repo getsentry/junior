@@ -30,7 +30,7 @@ function roundTrip(text: string) {
   editor.update(
     () => {
       $writeComposerText(text);
-      $styleComposerDraft(lookup);
+      $styleComposerDraft(lookup, true);
     },
     { discrete: true },
   );

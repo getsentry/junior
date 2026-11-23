@@ -17,10 +17,8 @@ async function openComposer(page: Page, baseURL: string) {
   return composer;
 }
 
-test("Markdown markers show only while the caret is at their span", async ({
-  page,
-  dashboard,
-}) => {
+// The messages that the composer sends.
+async function recordSent(page: Page): Promise<string[]> {
   const sent: string[] = [];
   await page.route("**/api/conversations/*/messages", async (route) => {
     if (route.request().method() === "POST") {
@@ -28,6 +26,14 @@ test("Markdown markers show only while the caret is at their span", async ({
     }
     await route.fallback();
   });
+  return sent;
+}
+
+test("Markdown markers show only while the caret is at their span", async ({
+  page,
+  dashboard,
+}) => {
+  const sent = await recordSent(page);
   const composer = await openComposer(page, dashboard.baseURL);
   await composer.pressSequentially("Ship **this** now");
   const markers = composer.getByText("**", { exact: true });
@@ -85,4 +91,55 @@ test("arrow keys reach a span's edge from either side, then move one character",
   // Undo gives back the text before the last edit.
   await page.keyboard.press("ControlOrMeta+z");
   await expect(composer).toHaveText("a **b**X c");
+});
+
+test("Enter continues a numbered list, and Enter on an empty item ends it", async ({
+  page,
+  dashboard,
+}) => {
+  const sent = await recordSent(page);
+  const composer = await openComposer(page, dashboard.baseURL);
+  await composer.pressSequentially("1. Item one");
+  await page.keyboard.press("Enter");
+  await composer.pressSequentially("Item two");
+  await page.keyboard.press("Enter");
+  // The empty third item ends the list. Then Enter sends.
+  await page.keyboard.press("Enter");
+  await composer.pressSequentially("Thanks");
+  expect(sent).toEqual([]);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => sent).toEqual(["1. Item one\n2. Item two\nThanks"]);
+});
+
+test("Shift+Enter continues a bullet list", async ({ page, dashboard }) => {
+  const sent = await recordSent(page);
+  const composer = await openComposer(page, dashboard.baseURL);
+  await composer.pressSequentially("- one");
+  await page.keyboard.press("Shift+Enter");
+  await composer.pressSequentially("two");
+  // A new item, then the end of the list, then send.
+  for (let step = 0; step < 3; step++) await page.keyboard.press("Enter");
+  await expect.poll(() => sent).toEqual(["- one\n- two"]);
+});
+
+test("turning off the live Markdown preview gives a plain composer", async ({
+  page,
+  dashboard,
+}) => {
+  const sent = await recordSent(page);
+  await page.goto(`${dashboard.baseURL}/settings`);
+  const setting = page.getByRole("checkbox", {
+    name: "Live Markdown preview",
+  });
+  await expect(setting).toBeChecked();
+  await setting.click();
+  await expect(setting).not.toBeChecked();
+
+  const composer = await openComposer(page, dashboard.baseURL);
+  await composer.pressSequentially("**Ship** it");
+  await expect(composer.getByRole("strong")).toHaveCount(0);
+  await page.keyboard.press("Shift+Enter");
+  await composer.pressSequentially("1. Item one");
+  await page.keyboard.press("Enter");
+  await expect.poll(() => sent).toEqual(["**Ship** it\n1. Item one"]);
 });
