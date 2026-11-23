@@ -35,6 +35,43 @@ function waitForAbort(_ctx: PromptBuildContext, signal: AbortSignal) {
 }
 
 describe("assemblePrompt", () => {
+  it("runs the loaders at the same time", async () => {
+    const started = new Set<string>();
+    let release = () => {};
+    const bothStarted = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Each load waits until both have started. If they ran one after the
+    // other, the first would wait for its whole timeout and fail the step.
+    const waitForBoth = (label: string) =>
+      loader(
+        label,
+        async () => {
+          started.add(label);
+          if (started.size === 2) {
+            release();
+          }
+          await bothStarted;
+          return label;
+        },
+        { timeoutMs: 1_000 },
+      );
+    const layout = definePromptLayout({
+      systemPrompt: [],
+      messages: ["first", "second"].map((label) =>
+        fragment(label, { loader: waitForBoth(label), format: userText }),
+      ),
+    });
+
+    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
+
+    expect(newMessages).toEqual([userText("first"), userText("second")]);
+    expect(diagnostics.loaders).toEqual([
+      expect.objectContaining({ label: "first", status: "ok" }),
+      expect.objectContaining({ label: "second", status: "ok" }),
+    ]);
+  });
+
   it("runs a loader once for the fragments that share it", async () => {
     let loads = 0;
     const turnRow = loader(
@@ -99,6 +136,102 @@ describe("assemblePrompt", () => {
       field: "messages",
       status: "disabled",
     });
+  });
+
+  it("runs a shared loader once when one of its fragments is disabled", async () => {
+    let loads = 0;
+    const memory = loader(
+      "memory",
+      () => {
+        loads += 1;
+        return Promise.resolve("Thomas likes short replies.");
+      },
+      { timeoutMs: 100 },
+    );
+    const layout = definePromptLayout({
+      systemPrompt: [],
+      messages: [
+        fragment("off", {
+          loader: memory,
+          enabled: () => false,
+          format: userText,
+        }),
+        fragment("on", { loader: memory, format: userText }),
+      ],
+    });
+
+    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
+
+    expect(loads).toBe(1);
+    expect(newMessages).toEqual([userText("Thomas likes short replies.")]);
+    expect(diagnostics).toEqual({
+      systemPrompt: [],
+      loaders: [expect.objectContaining({ label: "memory", status: "ok" })],
+      fragments: [
+        { name: "off", field: "messages", status: "disabled" },
+        { name: "on", field: "messages", status: "included" },
+      ],
+    });
+  });
+
+  it("drops the value of a load that ends after its timeout", async () => {
+    let resolveLate = (_value: string) => {};
+    const late = new Promise<string>((resolve) => {
+      resolveLate = resolve;
+    });
+    let loads = 0;
+    // The first load ignores its signal and ends after the timeout.
+    const slow = loader(
+      "slow",
+      () => {
+        loads += 1;
+        return loads === 1 ? late : Promise.resolve("Fresh value");
+      },
+      { timeoutMs: 5, optional: true },
+    );
+    const values: unknown[] = [];
+    const layout = definePromptLayout({
+      systemPrompt: [],
+      messages: [
+        fragment("slow", {
+          loader: slow,
+          format: (value) => {
+            values.push(value);
+            return skip("not checked");
+          },
+        }),
+      ],
+    });
+
+    const first = await assemblePrompt(layout, CTX);
+    resolveLate("Late value");
+    await late;
+    await assemblePrompt(layout, CTX);
+
+    expect(first.diagnostics.loaders).toEqual([
+      expect.objectContaining({ label: "slow", status: "timed_out" }),
+    ]);
+    // The late value reaches no fragment, in its request or the next one.
+    expect(values).toEqual([undefined, "Fresh value"]);
+  });
+
+  it("throws an error that names a fragment whose format throws", async () => {
+    const cause = new Error("The turn row has no id");
+    const layout = definePromptLayout({
+      systemPrompt: [],
+      messages: [
+        fragment("turn", {
+          format: () => {
+            throw cause;
+          },
+        }),
+      ],
+    });
+
+    const result = assemblePrompt(layout, CTX);
+
+    await expect(result).rejects.toThrow('Fragment "turn" failed');
+    await expect(result).rejects.toMatchObject({ cause });
   });
 
   it("gives `undefined` for an optional loader that fails or times out", async () => {
