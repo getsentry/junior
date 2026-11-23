@@ -116,7 +116,6 @@ describe("applyJuniorDevelopmentDefaults", () => {
       JUNIOR_LOCAL_DEV_HEARTBEAT_SECRET,
     );
     assert.equal(env.JUNIOR_BASE_URL, "http://localhost:3000");
-    assert.equal(env.JUNIOR_QUEUE_PROVIDER, undefined);
   });
 
   test("keeps dev server state in the local Redis", () => {
@@ -124,8 +123,6 @@ describe("applyJuniorDevelopmentDefaults", () => {
     applyJuniorDevelopmentDefaults(env, {
       redisUrl: "redis://localhost:6382",
     });
-    assert.equal(env.JUNIOR_QUEUE_PROVIDER, undefined);
-    assert.equal(env.JUNIOR_QUEUE_REDIS_URL, undefined);
     assert.equal(env.JUNIOR_STATE_ADAPTER, "redis");
     assert.equal(env.REDIS_URL, "redis://localhost:6382");
 
@@ -147,27 +144,6 @@ describe("applyJuniorDevelopmentDefaults", () => {
     });
     assert.equal(explicitStateEnv.JUNIOR_STATE_ADAPTER, "memory");
     assert.equal(explicitStateEnv.REDIS_URL, undefined);
-  });
-
-  test("uses the local Redis for an explicit BullMQ queue", () => {
-    const env = { NODE_ENV: "development", JUNIOR_QUEUE_PROVIDER: "bullmq" };
-    applyJuniorDevelopmentDefaults(env, {
-      redisUrl: "redis://localhost:6382",
-    });
-    assert.equal(env.JUNIOR_QUEUE_REDIS_URL, "redis://localhost:6382");
-    assert.equal(env.JUNIOR_STATE_ADAPTER, "redis");
-    assert.equal(env.REDIS_URL, "redis://localhost:6382");
-
-    const customEnv = {
-      NODE_ENV: "development",
-      JUNIOR_QUEUE_PROVIDER: "bullmq",
-      JUNIOR_QUEUE_REDIS_URL: "redis://localhost:6390",
-    };
-    applyJuniorDevelopmentDefaults(customEnv, {
-      redisUrl: "redis://localhost:6382",
-    });
-    assert.equal(customEnv.JUNIOR_QUEUE_REDIS_URL, "redis://localhost:6390");
-    assert.equal(customEnv.REDIS_URL, "redis://localhost:6390");
   });
 
   test("preserves explicit config values", () => {
@@ -200,7 +176,6 @@ describe("applyJuniorDevelopmentDefaults", () => {
     });
 
     assert.equal(env.JUNIOR_SECRET, undefined);
-    assert.equal(env.JUNIOR_QUEUE_PROVIDER, undefined);
     assert.equal(env.JUNIOR_STATE_ADAPTER, undefined);
     assert.equal(env.JUNIOR_SCHEDULER_SECRET, undefined);
     assert.equal(env.JUNIOR_BASE_URL, undefined);

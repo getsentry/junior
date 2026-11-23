@@ -1,18 +1,10 @@
 /** Receive background compaction jobs from the queue. */
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
-import type {
-  QueueConsumer,
-  QueueMessageMetadata,
-} from "@/chat/queue/provider";
+import type { QueueMessageMetadata } from "@/chat/queue/provider";
 import { processBackgroundCompaction } from "./background-compaction";
-import {
-  BACKGROUND_COMPACTION_QUEUE_TOPIC,
-  verifyBackgroundCompactionMessage,
-} from "./background-compaction-queue";
+import { verifyBackgroundCompactionMessage } from "./background-compaction-queue";
 
-const BACKGROUND_COMPACTION_DEV_CONSUMER_GROUP =
-  "junior_context_compaction_dev";
 // The job records model failures itself. Retries cover storage errors only.
 const BACKGROUND_COMPACTION_MAX_DELIVERIES = 3;
 
@@ -28,14 +20,12 @@ function logRejected(reason: string, metadata: QueueMessageMetadata): void {
 
 function backgroundCompactionCallback() {
   return queueCallback({
-    consumerGroup: BACKGROUND_COMPACTION_DEV_CONSUMER_GROUP,
     maxDeliveries: BACKGROUND_COMPACTION_MAX_DELIVERIES,
     onRejected: logRejected,
     run: async (message, metadata) =>
       await processBackgroundCompaction(message, {
         enqueuedAtMs: metadata.createdAt.getTime(),
       }),
-    topic: BACKGROUND_COMPACTION_QUEUE_TOPIC,
     verify: verifyBackgroundCompactionMessage,
   });
 }
@@ -45,9 +35,4 @@ export function createVercelBackgroundCompactionCallback(): (
   request: Request,
 ) => Promise<Response> {
   return backgroundCompactionCallback().create();
-}
-
-/** Return the queue consumer for background compaction, for a pulling worker. */
-export function backgroundCompactionQueueConsumer(): QueueConsumer {
-  return backgroundCompactionCallback().consumer;
 }

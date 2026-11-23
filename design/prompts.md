@@ -48,3 +48,10 @@ and facts about their world. Plugins add guidance.
   as stopping early, are tested in the same evals.
 - Text names only the tools, arguments, and modes that exist where it
   shows.
+
+## Gaps
+
+- Some core rules set length with words, not numbers: "concise",
+  "briefly", and "as short as the job allows". The rules for child agents,
+  Automation runs, and Quick questions use them. This breaks "length,
+  count, and time are numbers".

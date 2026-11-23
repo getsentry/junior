@@ -5,8 +5,7 @@ import type { QueueConsumer, QueueProvider } from "@/chat/queue/provider";
 type QueueClientOptions = ConstructorParameters<typeof QueueClient>[0];
 
 function defaultQueueClientOptions(): QueueClientOptions {
-  const { queue } = getChatConfig();
-  const apiUrl = queue.provider === "vercel" ? queue.apiUrl : undefined;
+  const { apiUrl } = getChatConfig().queue;
   if (apiUrl) {
     // A local queue server does not check tokens. Any token skips the Vercel
     // OIDC lookup, which fails outside Vercel.

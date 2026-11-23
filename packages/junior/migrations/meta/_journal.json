@@ -1146,8 +1146,43 @@
     {
       "idx": 163,
       "version": "7",
-      "when": 1795444127833,
-      "tag": "0163_todo_inbox_items",
+      "when": 1795449455852,
+      "tag": "0163_pg_trgm",
+      "breakpoints": true
+    },
+    {
+      "idx": 164,
+      "version": "7",
+      "when": 1795449459671,
+      "tag": "0164_search_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1795454807296,
+      "tag": "0165_drop_legacy_archive_columns",
+      "breakpoints": true
+    },
+    {
+      "idx": 166,
+      "version": "7",
+      "when": 1795461906115,
+      "tag": "0166_memory_prefix_index",
+      "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1795465060510,
+      "tag": "0167_todo_search_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 168,
+      "version": "7",
+      "when": 1795468505604,
+      "tag": "0168_todo_inbox_items",
       "breakpoints": true
     }
   ]

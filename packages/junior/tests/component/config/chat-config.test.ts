@@ -260,53 +260,17 @@ describe("chat config", () => {
     );
   });
 
-  it("uses Vercel Queues by default and reads BullMQ settings", async () => {
-    expect((await loadConfig()).getChatConfig().queue).toEqual({
-      provider: "vercel",
-    });
-
-    process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-    process.env["JUNIOR_QUEUE_REDIS_URL"] = "redis://localhost:6382";
-    expect((await loadConfig()).getChatConfig().queue).toEqual({
-      provider: "bullmq",
-      redisUrl: "redis://localhost:6382",
-      workerConcurrency: 4,
-    });
-
-    process.env["JUNIOR_QUEUE_WORKER_CONCURRENCY"] = "2";
-    expect((await loadConfig()).getChatConfig().queue).toMatchObject({
-      workerConcurrency: 2,
-    });
-  });
-
   it("reads a Vercel Queues API URL for a local queue server", async () => {
+    expect((await loadConfig()).getChatConfig().queue).toEqual({});
+
     process.env["JUNIOR_QUEUE_API_URL"] = "http://127.0.0.1:3100";
     expect((await loadConfig()).getChatConfig().queue).toEqual({
-      provider: "vercel",
       apiUrl: "http://127.0.0.1:3100",
     });
 
     process.env["JUNIOR_QUEUE_API_URL"] = "localhost:3100";
     await expect(loadConfig()).rejects.toThrow(
       "JUNIOR_QUEUE_API_URL must be an http or https URL",
-    );
-  });
-
-  it("throws when the BullMQ queue has no Redis URL", async () => {
-    process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_QUEUE_REDIS_URL is required when JUNIOR_QUEUE_PROVIDER is bullmq",
-    );
-  });
-
-  it("throws when the BullMQ worker concurrency is not a positive integer", async () => {
-    process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-    process.env["JUNIOR_QUEUE_REDIS_URL"] = "redis://localhost:6382";
-    process.env["JUNIOR_QUEUE_WORKER_CONCURRENCY"] = "0";
-
-    await expect(loadConfig()).rejects.toThrow(
-      "JUNIOR_QUEUE_WORKER_CONCURRENCY must be a positive integer",
     );
   });
 

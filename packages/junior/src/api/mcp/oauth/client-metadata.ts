@@ -43,6 +43,18 @@ const cachedClientSchema = z.union([mcpClientSchema, invalidClientSchema]);
 type McpClient = z.output<typeof mcpClientSchema>;
 
 /**
+ * Junior's own iOS app (`apps/ios`). Every Junior knows it, so sign-in does
+ * not depend on a hosted document. Its redirect uses the app's URL scheme,
+ * which the browser sheet gives back only to the app that opened it. The
+ * app sends this client ID, so it must never change.
+ */
+export const JUNIOR_IOS_CLIENT: McpClient = {
+  clientId: "https://junior.sentry.dev/clients/ios",
+  name: "iOS app",
+  redirectUris: ["junior-ios://oauth/callback"],
+};
+
+/**
  * Parse a CIMD client ID. It must be a canonical `https:` URL with a path,
  * no fragment, no credentials, and no loopback or private IP host.
  */
@@ -120,14 +132,15 @@ function fetchClientMetadataDocument(url: URL): Promise<unknown> {
 }
 
 /**
- * Resolve a client from its CIMD URL. Return `undefined` when the client ID or
- * its document is invalid. Valid documents are cached for 5 minutes, and
- * failed fetches for 1 minute.
+ * Resolve a client: Junior's iOS app, or a client from its CIMD URL. Return
+ * `undefined` when the client ID or its document is invalid. Valid documents
+ * are cached for 5 minutes, and failed fetches for 1 minute.
  */
 export async function resolveMcpClient(
   state: McpState,
   clientId: string,
 ): Promise<McpClient | undefined> {
+  if (clientId === JUNIOR_IOS_CLIENT.clientId) return JUNIOR_IOS_CLIENT;
   const url = parseClientId(clientId);
   if (!url) return undefined;
   const key = mcpStateKey("client", sha256Hex(clientId));
@@ -158,12 +171,17 @@ function isLoopbackHttp(url: URL): boolean {
  * Return true when a requested redirect URI is allowed for a client. The URI
  * must be `https:` or loopback `http:`, and must equal a registered URI. A
  * loopback URI may use any port (RFC 8252 section 7.3), because native
- * clients such as Claude Code listen on a random port.
+ * clients such as Claude Code listen on a random port. Junior's iOS app uses
+ * exactly its registered URI.
  */
 export function redirectUriMatches(
-  registered: readonly string[],
+  client: McpClient,
   requested: string,
 ): boolean {
+  if (client.clientId === JUNIOR_IOS_CLIENT.clientId) {
+    return JUNIOR_IOS_CLIENT.redirectUris.includes(requested);
+  }
+  const registered = client.redirectUris;
   const url = URL.parse(requested);
   if (
     !url ||

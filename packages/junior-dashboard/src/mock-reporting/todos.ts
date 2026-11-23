@@ -1,6 +1,7 @@
 import type {
   ConversationTodo,
   ConversationTodosReport,
+  SearchTodo,
   TodoStatusBody,
 } from "@sentry/junior/api/schema";
 import {
@@ -130,6 +131,19 @@ export function readMockConversationTodos(
         mockTodoStatuses.get(`${conversationId}:${todo.id}`) ?? todo.status,
     })),
   };
+}
+
+/**
+ * The mock To-dos that `/api/search` can find: every one whose title the
+ * viewer sees, so never a redacted one.
+ */
+export function readMockSearchTodos(): SearchTodo[] {
+  return Object.keys(MOCK_TODOS).flatMap((conversationId) =>
+    (readMockConversationTodos(conversationId)?.todos ?? []).flatMap(
+      ({ id, status, title }) =>
+        title === undefined ? [] : [{ conversationId, id, status, title }],
+    ),
+  );
 }
 
 /** Set the status of one mock To-do, like the API. */

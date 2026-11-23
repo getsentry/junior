@@ -10,7 +10,6 @@ import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
   getQueueProvider,
-  type QueueConsumer,
   type QueueMessageMetadata,
 } from "@/chat/queue/provider";
 import {
@@ -22,7 +21,6 @@ import {
 /** Deploy topic name. Keep stable for Vercel queue wiring. */
 export const PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
 
-const PLUGIN_TASK_DEV_CONSUMER_GROUP = "junior_plugin_tasks_dev";
 const PLUGIN_TASK_MAX_DELIVERIES = 5;
 const PLUGIN_TASK_SIGN_CONTEXT = "junior.plugin_task_queue.v1";
 const PLUGIN_TASK_SIGN_VERSION = "v1" as const;
@@ -106,7 +104,6 @@ function logPluginTaskQueueMessageRejected(
 
 function pluginTaskCallback() {
   return queueCallback<PluginTaskQueueMessage>({
-    consumerGroup: PLUGIN_TASK_DEV_CONSUMER_GROUP,
     maxDeliveries: PLUGIN_TASK_MAX_DELIVERIES,
     onRejected: logPluginTaskQueueMessageRejected,
     // Load the runner on first use so this module can send without a cycle.
@@ -114,7 +111,6 @@ function pluginTaskCallback() {
       const { processPluginTask } = await import("./task-runner");
       await processPluginTask(message);
     },
-    topic: PLUGIN_TASK_QUEUE_TOPIC,
     verify: verifyPluginTaskQueueMessage,
   });
 }
@@ -138,9 +134,4 @@ export function createVercelPluginTaskCallback(): (
   request: Request,
 ) => Promise<Response> {
   return pluginTaskCallback().create();
-}
-
-/** Return the queue consumer for plugin tasks, for a pulling queue worker. */
-export function pluginTaskQueueConsumer(): QueueConsumer {
-  return pluginTaskCallback().consumer;
 }

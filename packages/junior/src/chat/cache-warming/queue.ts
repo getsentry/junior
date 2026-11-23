@@ -5,7 +5,6 @@ import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
   getQueueProvider,
-  type QueueConsumer,
   type QueueMessageMetadata,
 } from "@/chat/queue/provider";
 import {
@@ -16,8 +15,6 @@ import {
 
 /** Deploy topic name. Keep stable for Vercel queue wiring. */
 export const CACHE_WARMUP_QUEUE_TOPIC = "junior_cache_warmups";
-
-const CACHE_WARMUP_DEV_CONSUMER_GROUP = "junior_cache_warmups_dev";
 
 const cacheWarmupMessageSchema = z.discriminatedUnion("kind", [
   z
@@ -110,7 +107,6 @@ function logCacheWarmupRejected(
 
 function cacheWarmupCallback() {
   return queueCallback<CacheWarmupMessage>({
-    consumerGroup: CACHE_WARMUP_DEV_CONSUMER_GROUP,
     // A retry reaches the cache too late to help.
     maxDeliveries: 1,
     onRejected: logCacheWarmupRejected,
@@ -120,7 +116,6 @@ function cacheWarmupCallback() {
     },
     // The kill switch also drops warmups that were already queued.
     skip: () => !getChatConfig().cacheWarmingEnabled,
-    topic: CACHE_WARMUP_QUEUE_TOPIC,
     verify: (value) => verifyQueueMessage(cacheWarmupSign, value),
   });
 }
@@ -130,9 +125,4 @@ export function createVercelCacheWarmupCallback(): (
   request: Request,
 ) => Promise<Response> {
   return cacheWarmupCallback().create();
-}
-
-/** Return the queue consumer for cache warmups, for a pulling queue worker. */
-export function cacheWarmupQueueConsumer(): QueueConsumer {
-  return cacheWarmupCallback().consumer;
 }

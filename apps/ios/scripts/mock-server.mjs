@@ -125,7 +125,9 @@ function parseScopes(value) {
   return MCP_SCOPES.filter((scope) => names.includes(scope));
 }
 
-function isLoopbackRedirect(value) {
+// The iOS app's redirect, or a loopback one for other local clients.
+function isAllowedRedirect(value) {
+  if (value === "junior-ios://oauth/callback") return true;
   const url = URL.parse(value);
   return (
     url !== null &&
@@ -172,7 +174,7 @@ function handleAuthorize(request) {
       "The client ID is not a valid client metadata document URL.",
     );
   }
-  if (!isLoopbackRedirect(redirectUri)) {
+  if (!isAllowedRedirect(redirectUri)) {
     return invalidClientPage(
       "The redirect URI is not registered by this client.",
     );

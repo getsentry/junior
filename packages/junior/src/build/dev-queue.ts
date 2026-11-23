@@ -13,12 +13,11 @@ const LOCAL_CONSUMER_GROUP = "local";
  *
  * Nitro runs modules in its main process, which outlives each reload of the
  * app worker, so queued messages survive an app reload. A Nitro restart
- * loses them. Does nothing when the app uses another queue provider or
- * `JUNIOR_QUEUE_API_URL` names another server.
+ * loses them. Does nothing when `JUNIOR_QUEUE_API_URL` names another
+ * server.
  */
 export async function startDevQueue(nitro: Nitro): Promise<void> {
-  const queue = readQueueConfig(process.env);
-  if (queue.provider !== "vercel" || queue.apiUrl) {
+  if (readQueueConfig(process.env).apiUrl) {
     return;
   }
   // The port that Nitro's dev server listens on, unless `nitro dev --port`

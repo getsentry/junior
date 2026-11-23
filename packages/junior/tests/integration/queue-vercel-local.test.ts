@@ -23,9 +23,7 @@ const { port, previousEnv } = await vi.hoisted(async () => {
   }
   const previousEnv = {
     JUNIOR_QUEUE_API_URL: process.env["JUNIOR_QUEUE_API_URL"],
-    JUNIOR_QUEUE_PROVIDER: process.env["JUNIOR_QUEUE_PROVIDER"],
   };
-  process.env["JUNIOR_QUEUE_PROVIDER"] = "vercel";
   process.env["JUNIOR_QUEUE_API_URL"] = `http://127.0.0.1:${address.port}`;
   return { port: address.port, previousEnv };
 });
@@ -58,16 +56,11 @@ async function startConsumer(
   handler: QueueConsumer["handler"],
   retry: QueueConsumer["retry"] = () => undefined,
 ): Promise<LocalVercelQueueServer> {
-  const consumer: QueueConsumer = {
-    consumerGroup: `${topic}_local`,
-    handler,
-    retry,
-    topic,
-  };
+  const consumer: QueueConsumer = { handler, retry };
   const url = `http://app.localhost/api/queue/${topic}`;
   const callback = getQueueProvider().createCallback(consumer);
   server = await startLocalVercelQueueServer({
-    consumers: [{ consumerGroup: consumer.consumerGroup, topic, url }],
+    consumers: [{ consumerGroup: `${topic}_local`, topic, url }],
     fetch: async (request) =>
       request.url === url
         ? callback(request)

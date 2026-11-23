@@ -265,10 +265,16 @@ export async function listFiringInboxSnoozeTriggers(
     );
 }
 
+/** A snooze that a trigger ended: the item and the User who snoozed it. */
+export interface SettledInboxSnooze {
+  inboxItemId: string;
+  userId: string;
+}
+
 /**
  * End snoozes that a trigger fired. Only a `snoozed` row changes, so the
- * first trigger to fire wins. A woken snooze records why it woke. Return
- * the item and the User of each snooze that changed.
+ * first trigger to fire wins, and only its caller gets the snooze back. A
+ * woken snooze records why it woke. Return the snoozes that changed.
  */
 export async function settleInboxSnoozes(
   db: Pick<JuniorDatabase, "update">,
@@ -276,7 +282,7 @@ export async function settleInboxSnoozes(
     | { state: "cancelled" }
     | { reason: InboxSnoozeWakeReason; state: "woken" }
   ),
-): Promise<{ inboxItemId: string; userId: string }[]> {
+): Promise<SettledInboxSnooze[]> {
   if (input.snoozeIds.length === 0) return [];
   return await db
     .update(juniorInboxSnoozes)
