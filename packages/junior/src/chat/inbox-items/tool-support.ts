@@ -110,8 +110,10 @@ export function itemResult(item: InboxItem) {
     dedupe_key: item.dedupeKey,
     visibility: item.visibility,
     updated_at: item.updatedAt.toISOString(),
-    ...(item.subject ? { subject: item.subject } : undefined),
-    ...(item.automationId ? { automation_id: item.automationId } : undefined),
+    subject: item.subject,
+    ...(item.addedByAutomationId
+      ? { automation_id: item.addedByAutomationId }
+      : undefined),
     ...(item.request ? { request: requestResult(item.request) } : undefined),
     ...(item.answer ? { answer: item.answer } : undefined),
     ...(item.closedAt

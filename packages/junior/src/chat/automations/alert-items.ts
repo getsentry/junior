@@ -24,7 +24,6 @@ import {
 import { USER_INPUT_LIMITS } from "@/chat/inbox-items/user-input-request";
 import { eventAutomationTriggerSchema } from "@/chat/event-automations/types";
 import { mapBounded } from "@/chat/fan-out";
-import { AUTOMATION_INBOX_ITEM_KEY_PREFIX } from "@/chat/inbox-items/access";
 import { automationCreatorUserId } from "@/chat/inbox-items/assignees";
 import {
   dismissOpenInboxItems,
@@ -32,6 +31,7 @@ import {
   updateInboxItemContent,
   type InboxItemContent,
 } from "@/chat/inbox-items/store";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 import { fallbackShortTitle } from "@/chat/services/short-title";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -159,7 +159,7 @@ function alertKey(automationId: string, identity: unknown[]): string {
     .update(JSON.stringify(identity))
     .digest("hex")
     .slice(0, 16);
-  return `${AUTOMATION_INBOX_ITEM_KEY_PREFIX}${automationId}:${hash}`;
+  return `${automationId}:${hash}`;
 }
 
 /**
@@ -290,6 +290,7 @@ export async function syncAutomationAlert(
       body: alert.body,
       conversationIds: [],
       kind: "action",
+      subject: { id: automationId, kind: INBOX_SUBJECT_KINDS.automation },
       ...(alert.steps
         ? { request: stepsRequest(alert.body, alert.steps) }
         : undefined),

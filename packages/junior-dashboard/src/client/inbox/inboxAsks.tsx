@@ -47,11 +47,11 @@ export type AskPill = {
 // The change a pull request ask names: its saved linked work when the
 // Conversation has it, else the item's own subject.
 function askChange(item: InboxItemPayload, annotations: readonly Annotation[]) {
-  const url = item.subject?.url ?? item.subject?.id;
+  const url = item.subject.url;
   const work = url
     ? annotations.find((annotation) => annotation.url === url)
     : undefined;
-  const subjectTitle = item.subject?.title;
+  const subjectTitle = item.subject.object?.title;
   // A subject titled by its key, such as owner/repo#123, adds nothing to #123.
   const title =
     work?.title ??

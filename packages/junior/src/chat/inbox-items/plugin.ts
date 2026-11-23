@@ -6,8 +6,8 @@ import type {
   PluginReviewNotice,
 } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
-import { PLUGIN_INBOX_ITEM_KEY_PREFIX } from "@/chat/inbox-items/access";
 import { getDb } from "@/chat/db";
+import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { readIdentityByIdFromSql } from "@/chat/plugins/viewer";
 import type { JuniorDatabase } from "@/db/db";
 import type { ShowInboxItem } from "./changes";
@@ -20,6 +20,7 @@ import {
   updateInboxItemContent,
   type InboxItemContent,
 } from "./store";
+import { pluginSubjectKind, subjectKindLabel } from "./subjects";
 
 /**
  * Resolve the Users to assign. A plugin notice goes only to people in its
@@ -64,9 +65,10 @@ function choicesRequest(notice: PluginReviewNotice): InboxItemRequest {
 }
 
 /**
- * Connect a plugin to the Inbox for one Conversation. Dedupe keys are
- * `plugin:<name>:<key>`, so a plugin changes only its own items, and agents
- * cannot change them. A change sends no message to the Conversation. It
+ * Connect a plugin to the Inbox for one Conversation. Each item has one of
+ * the plugin's registered subject kinds, stored as `<plugin>:<kind>`. Dedupe
+ * keys are unique in the plugin's namespace, so a plugin changes only its
+ * own items, and agents cannot change them. A change sends no message to the Conversation. It
  * only shows the new state through `show`. An item is private when the
  * Conversation is not public.
  */
@@ -76,8 +78,10 @@ export function createPluginInboxItems(args: {
   show: ShowInboxItem;
 }): PluginInboxItems {
   const { conversationId, show } = args;
-  const scopedKey = (dedupeKey: string) =>
-    `${PLUGIN_INBOX_ITEM_KEY_PREFIX}${args.plugin}:${dedupeKey}`;
+  const scopedKey = (dedupeKey: string) => ({
+    dedupeKey,
+    namespace: args.plugin,
+  });
   const readAccess = async (db: JuniorDatabase) => {
     const access = (
       await readConversationAccessFromSql(db, [conversationId])
@@ -87,6 +91,12 @@ export function createPluginInboxItems(args: {
   };
   return {
     async upsert(notice: PluginReviewNotice) {
+      const subjectKind = pluginSubjectKind(args.plugin, notice.subject.kind);
+      if (!subjectKindLabel(subjectKind, getPlugins())) {
+        throw new Error(
+          `Plugin "${args.plugin}" has no inbox subject kind "${notice.subject.kind}"`,
+        );
+      }
       const db = getDb();
       const access = await readAccess(db);
       const existing = await getOpenInboxItemByDedupeKey(
@@ -121,8 +131,8 @@ export function createPluginInboxItems(args: {
         kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
         title: notice.title,
         visibility: isPrivate ? "private" : "public",
+        subject: { id: notice.subject.id, kind: subjectKind },
         ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
-        ...(notice.subject ? { subject: notice.subject } : undefined),
       };
       let itemId: string;
       // False when the item closed after the read above. A closed item does
@@ -138,7 +148,7 @@ export function createPluginInboxItems(args: {
       } else {
         const item = await insertInboxItem(db, {
           ...content,
-          dedupeKey: scopedKey(notice.dedupeKey),
+          dedupeKey: notice.dedupeKey,
           owner: { id: conversationId, kind: "conversation" },
           nowMs: Date.now(),
           ...(access.tenant ? { tenant: access.tenant } : undefined),

@@ -16,10 +16,10 @@ import { juniorAutomations } from "@/db/schema/automations";
 import { mapBounded } from "@/chat/fan-out";
 
 /**
- * Record a dispatched event automation run with the Automation version it ran,
- * and link its Conversation when it exists. The dispatch can finish before
- * this write, so a stored run, or a retry of the same Event, keeps the row it
- * has.
+ * Record an event automation run with the Automation version it runs, before
+ * its dispatch, so the dispatch can link the run's Conversation as soon as it
+ * exists. A retry of the same Event keeps the row it has. A run whose
+ * dispatch is never stored fails when the heartbeat settles it.
  */
 export async function recordEventAutomationRunStarted(
   db: JuniorDatabase,

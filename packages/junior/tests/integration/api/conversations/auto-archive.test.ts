@@ -368,6 +368,7 @@ describe("conversation auto-archive API", () => {
     }
     // An open action item for the viewer keeps the conversation in the feed.
     await insertInboxItem(getDb(), {
+      subject: { id: "archive-done:waiting", kind: "agent" },
       owner: { id: waitingId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
@@ -661,6 +662,7 @@ describe("conversation auto-archive API", () => {
     // An action item for Everyone waits on a person too, until it closes.
     for (const conversationId of [childItemId, childItemClosedId]) {
       const item = await insertInboxItem(getDb(), {
+        subject: { id: `archive-needs:${conversationId}`, kind: "agent" },
         owner: { id: `${conversationId}:child`, kind: "conversation" },
         assignedToEveryone: true,
         assigneeUserIds: [],
@@ -682,6 +684,7 @@ describe("conversation auto-archive API", () => {
       }
     }
     await insertInboxItem(getDb(), {
+      subject: { id: "archive-needs:linked", kind: "agent" },
       owner: { id: `${childItemId}:child`, kind: "conversation" },
       assignedToEveryone: true,
       assigneeUserIds: [],

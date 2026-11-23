@@ -25,6 +25,59 @@ const base = {
   visibility: "public" as const,
 };
 
+/**
+ * The subject of a pull request item, as the API sends it: its kind, the
+ * label of the kind, and the card that the API read for its URL, with the
+ * title that GitHub has now.
+ */
+export function pullRequestSubject(input: {
+  id?: string;
+  kind: string;
+  label?: string;
+  /** False while the pull request conflicts with its target branch. */
+  mergeable?: boolean;
+  resource?: typeof PULL_REQUEST_RESOURCE;
+  title: string;
+  titleParts?: {
+    breaking?: boolean;
+    scope?: string;
+    text: string;
+    type?: string;
+  };
+  url: string;
+}) {
+  const [, repository, number] =
+    /^https:\/\/github\.com\/([^/]+\/[^/]+)\/pull\/(\d+)$/.exec(input.url) ??
+    [];
+  const key = `${repository}#${number}`;
+  return {
+    id: input.id ?? input.url,
+    kind: input.kind,
+    ...(input.label ? { label: input.label } : undefined),
+    object: {
+      displayType: "Pull request",
+      facts: {
+        type: "code_change" as const,
+        ...(input.mergeable === undefined
+          ? undefined
+          : { mergeable: input.mergeable }),
+        ...(input.titleParts ? { titleParts: input.titleParts } : undefined),
+      },
+      key,
+      kind: "object" as const,
+      label: key,
+      objectType: "code_change" as const,
+      plugin: "github",
+      status: "open",
+      title: input.title,
+      url: input.url,
+    },
+    objectType: "code_change" as const,
+    ...(input.resource ? { resource: input.resource } : undefined),
+    url: input.url,
+  };
+}
+
 export const conversationId = "slack:CQA123:1770003600.000200";
 
 // Added between messages of the mock Conversation, so the inbox shows the
@@ -48,6 +101,7 @@ export const rollout = {
     ],
   },
   title: "Approve the payments-v42 rollout",
+  subject: { id: "item-rollout", kind: "agent" as const },
 };
 
 // A To-do that the checkout Conversation's agent gave the viewer. Its item
@@ -62,6 +116,7 @@ export const todoForYou = {
   title: "Confirm the rollback window",
   todoId: 13,
   visibility: "private" as const,
+  subject: { id: "13", kind: "todo" },
 };
 
 export const license = {
@@ -81,6 +136,7 @@ export const license = {
     ],
   },
   title: "Review the acme license entry",
+  subject: { id: "item-license", kind: "agent" as const },
 };
 
 export const audit = {
@@ -95,12 +151,12 @@ export const prReady = {
   body: "Junior opened a pull request for the payments retry fix.",
   id: "item-pr-ready",
   kind: "notice" as const,
-  subject: {
+  subject: pullRequestSubject({
     id: "acme/payments#42",
-    objectType: "code_change" as const,
+    kind: "agent",
     title: "fix(payments): Retry declined webhooks",
     url: "https://github.com/acme/payments/pull/42",
-  },
+  }),
   title: "Pull request ready for review",
 };
 
@@ -129,6 +185,7 @@ const dismissedNotice = {
   kind: "notice" as const,
   status: "dismissed" as const,
   title: "Digest skipped two alerts",
+  subject: { id: "item-digest", kind: "agent" as const },
 };
 
 // The agent added this item in the Conversation, so a message there closes it.
@@ -157,13 +214,13 @@ export const prMerge = {
   createdAt: "2026-08-07T11:00:00.000Z",
   id: "item-pr-merge",
   kind: "action" as const,
-  subject: {
-    id: "https://github.com/getsentry/payments/pull/42",
-    objectType: "code_change" as const,
+  subject: pullRequestSubject({
+    kind: "github:pull_request_merge",
+    label: "Ready to merge",
     resource: pullRequestResource,
     title: "Retry checkout writes after lock timeouts",
     url: "https://github.com/getsentry/payments/pull/42",
-  },
+  }),
   title: "Ready to merge · #42",
 };
 
@@ -176,25 +233,27 @@ export const prReview = {
   conversationIds: [],
   createdAt: "2026-08-07T09:00:00.000Z",
   id: "item-pr-review",
-  subject: {
-    id: "https://github.com/getsentry/payments/pull/91",
-    objectType: "code_change" as const,
+  subject: pullRequestSubject({
+    kind: "github:pull_request_review",
+    label: "Review requested",
     resource: pullRequestResource,
     title: "Pin the release train",
     url: "https://github.com/getsentry/payments/pull/91",
-  },
+  }),
   title: "Review requested · #91",
 };
 
 // The release Conversation saved the card of this pull request, with its
 // description.
 const releaseConversationId = "slack:CQA456:1770021600.000600";
-const pinPullRequest = {
-  id: "https://github.com/getsentry/payments/pull/91",
-  objectType: "code_change" as const,
+const pinPullRequest = pullRequestSubject({
+  kind: "github:pull_request_review",
+  label: "Review requested",
+  // The live card says that it conflicts with main.
+  mergeable: false,
   title: "Pin the release train to payments 4.2 (#91)",
   url: "https://github.com/getsentry/payments/pull/91",
-};
+});
 
 // The GitHub plugin's review ask, as it writes it: the URL alone on a line.
 export const pinReview = {
@@ -230,6 +289,7 @@ export const releaseNotes = {
   id: "item-release-notes",
   kind: "notice" as const,
   title: "Release notes drafted",
+  subject: { id: "item-release-notes", kind: "agent" as const },
 };
 
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
@@ -244,6 +304,7 @@ export const digest = {
   id: "item-digest-open",
   kind: "notice" as const,
   title: "Digest skipped two noisy alerts",
+  subject: { id: "item-digest-open", kind: "agent" as const },
 };
 
 // An ask for Everyone in its own Conversation: up for grabs until someone
@@ -270,6 +331,7 @@ export const grab = {
     ],
   },
   title: "Cover the Friday deploy",
+  subject: { id: "item-grab", kind: "agent" as const },
 };
 
 /**
@@ -285,6 +347,7 @@ export function automationAlert(automationId: string, title: string) {
     owner: { id: automationId, kind: "automation" },
     // An Automation's item has no root Conversation. JSON drops the key.
     rootConversationId: undefined,
+    subject: { id: automationId, kind: "automation" },
     title,
   };
 }

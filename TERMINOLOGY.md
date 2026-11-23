@@ -189,7 +189,9 @@ Canonical words for Junior code and docs. One concept, one word.
   Item or a Review item. **Assignee**: a User or Everyone (anyone who can see it). **Owner**:
   what the item belongs to, `{ kind, id }`: the Conversation that added it,
   or an Automation. The owner sets the item's visibility, tenant, and Inbox
-  stack. **Automation alert**: an Inbox item that an Automation owns. Core
+  stack. **Subject**: what the item is about, `{ kind, id }`, such as a
+  pull request. The kind says what the item asks, such as
+  `github:pull_request_review`. **Automation alert**: an Inbox item that an Automation owns. Core
   adds it for the creator when the Automation needs them, and closes it
   when the Automation recovers.
 - **Attention**: what Junior takes from a person with a reply, a question, a

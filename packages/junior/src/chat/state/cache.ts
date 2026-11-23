@@ -66,3 +66,20 @@ export function createCache(
     },
   };
 }
+
+/**
+ * Return whether a cache of `createCache` holds a value for a key, without
+ * loading it. A batch read uses it to read only the keys that it misses.
+ */
+export async function hasCachedValue(
+  state: StateAdapter,
+  namespace: string,
+  key: string,
+): Promise<boolean> {
+  await state.connect();
+  return (
+    (await state.get<StoredEntry<unknown>>(
+      `${cacheKeyPrefix(namespace)}${key}`,
+    )) != null
+  );
+}

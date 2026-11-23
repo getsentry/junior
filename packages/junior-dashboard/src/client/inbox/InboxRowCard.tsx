@@ -175,13 +175,13 @@ export function InboxRowCard(props: {
           />
         ) : null}
         {/* A question's row head and Related already link its subject. */}
-        {item.subject && !item.request ? (
+        {item.subject.url && !item.request ? (
           <InboxItemSubjectPreview
             // The Conversation that added the item keeps its subject card.
             conversationId={itemConversationId(item)}
             subject={item.subject}
             // An item row's head, or the card above it, names the subject.
-            titled={!props.headTitled || !item.subject.title}
+            titled={!props.headTitled || !item.subject.object?.title}
             sizeShown={props.sizeShown}
           />
         ) : null}
@@ -189,7 +189,7 @@ export function InboxRowCard(props: {
       {item.owner.kind === "automation" ? (
         <AutomationAlertDetails automationId={item.owner.id} />
       ) : null}
-      {item.subject ? <SubjectMergeConflict subject={item.subject} /> : null}
+      <SubjectMergeConflict subject={item.subject} />
       {item.request ? null : notices}
       {/* In the Inbox, the card's own Snooze and Dismiss replace the plain
           Dismiss, so they leave with motion. A card on its own, as in a

@@ -210,4 +210,12 @@ export interface PluginObjectLinkDefinition {
    * no tool reads this object.
    */
   readTool?(object: ObjectAnnotation): string | undefined;
+  /**
+   * Read many objects at once into `ctx.cache`, such as with one GraphQL
+   * query, so that the `canView` and `resolve` calls that follow read the
+   * cache. Junior calls it for a page of links, such as one Inbox page,
+   * with the links that its card cache does not have. It returns nothing:
+   * a link without a card still shows only after its `canView`.
+   */
+  preload?(ctx: ObjectLinkContext, urls: URL[]): Promise<void>;
 }

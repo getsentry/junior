@@ -196,7 +196,8 @@ export function pluginRuntimeRegistrationsFromPluginSet(
         plugin.images ||
         plugin.tasks ||
         plugin.userPages?.length ||
-        plugin.objectLinks?.length,
+        plugin.objectLinks?.length ||
+        plugin.inboxSubjects?.length,
     ) ?? []
   );
 }

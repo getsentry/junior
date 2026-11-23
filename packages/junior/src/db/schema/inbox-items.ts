@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -7,12 +7,11 @@ import {
   pgTable,
   primaryKey,
   text,
+  type AnyPgColumn,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 import type { InboxItemRequest } from "@/chat/inbox-items/evidence";
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
-import { juniorAutomations } from "./automations";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 import { juniorUsers } from "./users";
@@ -25,6 +24,17 @@ import { juniorUsers } from "./users";
 export type InboxItemOwnerKind = "conversation" | "automation";
 
 /**
+ * The namespace of an Inbox item's subject kind: the plugin name of a
+ * plugin kind such as `github:pull_request_review`, or a core kind such as
+ * `todo`. Only the code of that namespace changes the item.
+ */
+export function inboxSubjectNamespace(table: {
+  subjectKind: AnyPgColumn;
+}): SQL {
+  return sql`split_part(${table.subjectKind}, ':', 1)`;
+}
+
+/**
  * One Inbox item: something that needs a person. An action item stores its
  * `request`, and
  * its `answer` after an assignee submits it. `closed_at` is set for `done`
@@ -32,6 +42,12 @@ export type InboxItemOwnerKind = "conversation" | "automation";
  * `owner_kind` and `owner_id` name its owner. The owner kind decides how the
  * item gets its visibility and tenant, and where the Inbox stacks it. The id
  * has no foreign key, because it can name a row of more than one table.
+ *
+ * `subject_kind` and `subject_id` name what the item is about. The kind
+ * says what the item asks. A plugin kind starts with the plugin name, such
+ * as `github:pull_request_review`. Junior reads the subject's title, state,
+ * and link from the subject when it shows the item, and never copies them
+ * into a column here. `inbox-item-fields:check` keeps it that way.
  */
 export const juniorInboxItems = pgTable(
   "junior_inbox_items",
@@ -51,14 +67,13 @@ export const juniorInboxItems = pgTable(
     assignedToEveryone: boolean("assigned_to_everyone")
       .notNull()
       .default(false),
+    /**
+     * Unique among the open items of one subject namespace in one provider
+     * tenant: the part of `subject_kind` before `:`.
+     */
     dedupeKey: text("dedupe_key").notNull(),
-    subjectId: text("subject_id"),
-    subjectTitle: text("subject_title"),
-    subjectUrl: text("subject_url"),
-    /** The parsed subject title of a code change (`InboxItemSubjectTitleParts`). */
-    subjectTitleParts: jsonb(
-      "subject_title_parts",
-    ).$type<InboxItemSubjectTitleParts>(),
+    subjectKind: text("subject_kind").notNull(),
+    subjectId: text("subject_id").notNull(),
     // The default filled the rows from before owners had kinds.
     ownerKind: text("owner_kind")
       .$type<InboxItemOwnerKind>()
@@ -76,9 +91,6 @@ export const juniorInboxItems = pgTable(
      */
     provider: text("provider"),
     providerTenantId: text("provider_tenant_id"),
-    automationId: text("automation_id").references(() => juniorAutomations.id, {
-      onDelete: "set null",
-    }),
     closedAt: timestamptz("closed_at"),
     closedByUserId: text("closed_by_user_id").references(() => juniorUsers.id, {
       onDelete: "set null",
@@ -88,19 +100,17 @@ export const juniorInboxItems = pgTable(
     updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
-    // An agent's action asks a question. A plugin's action asks for a step
-    // outside Junior, such as a merge, and the plugin closes it. An
-    // Automation alert asks its creator to fix the Automation, and core
-    // closes it when the Automation recovers. A To-do's action asks its
-    // assignee to do the To-do, and core closes it when the To-do closes.
+    // An agent's action asks a question. Another action asks for a step
+    // outside the card, such as a merge, a To-do, or a fix to an Automation,
+    // and the code that added it closes it.
     check(
       "junior_inbox_items_kind_check",
-      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or ((${table.dedupeKey} like 'plugin:%' or ${table.dedupeKey} like 'automation:%' or ${table.dedupeKey} like 'todo:%') and ${table.answer} is null)))`,
+      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or (${table.subjectKind} not in ('agent', 'reply') and ${table.answer} is null)))`,
     ),
-    // Only core adds Automation alerts, with the reserved key prefix.
+    // Only an Automation owns an Automation alert.
     check(
       "junior_inbox_items_owner_check",
-      sql`(${table.ownerKind} = 'conversation' and ${table.dedupeKey} not like 'automation:%') or (${table.ownerKind} = 'automation' and ${table.dedupeKey} like 'automation:%')`,
+      sql`(${table.ownerKind} = 'automation') = (${table.subjectKind} = 'automation')`,
     ),
     check(
       "junior_inbox_items_status_check",
@@ -115,11 +125,13 @@ export const juniorInboxItems = pgTable(
       sql`${table.visibility} = 'public' or not ${table.assignedToEveryone}`,
     ),
     // Add with the key of an open item updates that item. Keys are unique
-    // only inside one provider tenant, so tenants cannot collide.
+    // only inside one provider tenant and one subject namespace, so tenants,
+    // plugins, and core cannot collide.
     uniqueIndex("junior_inbox_items_open_dedupe_uidx")
       .on(
         sql`coalesce(${table.provider}, '')`,
         sql`coalesce(${table.providerTenantId}, '')`,
+        inboxSubjectNamespace(table),
         table.dedupeKey,
       )
       .where(sql`${table.status} = 'open'`),
@@ -129,6 +141,11 @@ export const juniorInboxItems = pgTable(
       table.id,
     ),
     index("junior_inbox_items_subject_idx").on(table.subjectId, table.status),
+    // Reads find the open items of one kind, such as the To-dos.
+    index("junior_inbox_items_subject_kind_idx").on(
+      table.subjectKind,
+      table.status,
+    ),
     // Reads find the items of one owner, such as an Automation's alerts.
     index("junior_inbox_items_owner_idx").on(table.ownerKind, table.ownerId),
     // The Conversation status reads the open action items that each
@@ -136,10 +153,6 @@ export const juniorInboxItems = pgTable(
     index("junior_inbox_items_open_action_owner_idx")
       .on(table.ownerId)
       .where(sql`${table.status} = 'open' and ${table.kind} = 'action'`),
-    index("junior_inbox_items_automation_idx").on(
-      table.automationId,
-      table.status,
-    ),
     // A feed row reads the viewer's newest answer in its Conversation.
     index("junior_inbox_items_answered_idx")
       .on(table.ownerId, table.closedByUserId, table.closedAt)

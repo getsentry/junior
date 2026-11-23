@@ -5,7 +5,7 @@ import {
   exists,
   isNotNull,
   isNull,
-  notLike,
+  ne,
   or,
   sql,
   type AnyColumn,
@@ -17,10 +17,10 @@ import {
   type ProviderTenant,
 } from "@/api/conversations/access";
 import { getDb } from "@/chat/db";
-import { UPDATE_TODOS_TOOL_NAME } from "@/chat/todos/types";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
+  juniorAutomationRuns,
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
@@ -34,6 +34,12 @@ import {
   type ResolvedAssignees,
 } from "./assignees";
 import type { InboxItem, InboxItemVisibility } from "./store";
+import {
+  INBOX_SUBJECT_KINDS,
+  subjectKindPlugin,
+  subjectTodo,
+  type InboxItemSubject,
+} from "./subjects";
 
 // Every Inbox item access rule lives in this file. Callers must not copy a
 // rule.
@@ -172,7 +178,7 @@ export function inboxItemAssignedTo(userId: string): SQL {
   return and(
     sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id} and ${juniorInboxItemAssignees.userId} = ${userId})`,
     or(
-      notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+      ne(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
       ownerConversationOpenTo(userId),
     ),
   )!;
@@ -236,6 +242,26 @@ function publicIn(tenants: readonly ProviderTenant[]): SQL[] {
 }
 
 /**
+ * SQL: a run of this Automation added the Inbox item, so later runs can
+ * read and change it. The run's Conversation owns the item. A deleted run,
+ * such as when its Automation row goes, no longer counts.
+ */
+export function inboxItemAddedByAutomation(automationId: string): SQL {
+  return and(
+    eq(juniorInboxItems.ownerKind, "conversation"),
+    sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${juniorInboxItems.ownerId} and ${juniorAutomationRuns.automationId} = ${automationId})`,
+  )!;
+}
+
+/** SQL: a run of any Automation added the Inbox item. */
+export function inboxItemAddedByAnyAutomation(): SQL {
+  return and(
+    eq(juniorInboxItems.ownerKind, "conversation"),
+    sql`exists (select 1 from ${juniorAutomationRuns} where ${juniorAutomationRuns.conversationId} = ${juniorInboxItems.ownerId})`,
+  )!;
+}
+
+/**
  * SQL form of `canReadInboxItem`, for search. Keep the two the same; the
  * Inbox item access test checks that they agree.
  */
@@ -251,7 +277,7 @@ export function inboxItemVisibleTo(reader: InboxItemReader): SQL {
         ? [inboxItemLinkedTo(reader.conversationId)]
         : []),
       ...(reader.automationId
-        ? [eq(juniorInboxItems.automationId, reader.automationId)]
+        ? [inboxItemAddedByAutomation(reader.automationId)]
         : []),
     ) ?? sql`false`
   );
@@ -273,7 +299,7 @@ export function canReadInboxItem(
     (reader.conversationId !== undefined &&
       item.conversationIds.includes(reader.conversationId)) ||
     (reader.automationId !== undefined &&
-      item.automationId === reader.automationId)
+      item.addedByAutomationId === reader.automationId)
   );
 }
 
@@ -288,7 +314,7 @@ export async function canUserReadInboxItem(
   item: InboxItem,
   user: User,
 ): Promise<boolean> {
-  const todo = inboxItemTodo(item);
+  const todo = subjectTodo(item.subject);
   if (todo) {
     // Only its assignee reads a To-do's item, while they can see the
     // Conversation (`inboxItemAssignedTo`).
@@ -384,95 +410,32 @@ export async function readInboxItemAgentScope(
   };
 }
 
-/**
- * Dedupe keys with this prefix belong to plugins. Only the plugin that added
- * the item, or a person, can change it. An agent cannot use the prefix.
- */
-export const PLUGIN_INBOX_ITEM_KEY_PREFIX = "plugin:";
-
-/**
- * Dedupe keys with this prefix belong to Automation alerts, which core adds
- * and closes. An agent cannot use the prefix.
- */
-export const AUTOMATION_INBOX_ITEM_KEY_PREFIX = "automation:";
-
-/**
- * Dedupe keys with this prefix belong to To-dos for a person, which core
- * adds and closes as the To-do changes (`syncTodoInboxItems`). An agent
- * cannot use the prefix.
- */
-export const TODO_INBOX_ITEM_KEY_PREFIX = "todo:";
-
-/**
- * Return the To-do that an item shows, or undefined for any other item. The
- * key is `todo:<conversationId>:<todoId>`, and a Conversation id can hold
- * colons.
- */
-export function inboxItemTodo(
-  item: Pick<InboxItem, "dedupeKey">,
-): { conversationId: string; id: number } | undefined {
-  if (!item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return undefined;
-  const rest = item.dedupeKey.slice(TODO_INBOX_ITEM_KEY_PREFIX.length);
-  const split = rest.lastIndexOf(":");
-  const id = Number(rest.slice(split + 1));
-  if (split <= 0 || !Number.isSafeInteger(id) || id <= 0) return undefined;
-  return { conversationId: rest.slice(0, split), id };
-}
-
-/**
- * Dedupe keys with this prefix belong to reply notices, which core adds for
- * the starter of a dashboard Conversation and closes when they read the
- * reply. An agent cannot use the prefix or change the item.
- */
-export const REPLY_NOTICE_KEY_PREFIX = "reply:";
-
-const USE_ANOTHER_KEY = "Use a different key.";
-
-/**
- * The dedupe key prefixes that core and plugins own, with their owner and
- * what to do instead. The add tool's input schema rejects a key that starts
- * with one of them.
- */
-export const RESERVED_INBOX_ITEM_KEY_PREFIXES = [
-  {
-    owner: "a plugin",
-    prefix: PLUGIN_INBOX_ITEM_KEY_PREFIX,
-    instead: USE_ANOTHER_KEY,
-  },
-  {
-    owner: "an Automation alert",
-    prefix: AUTOMATION_INBOX_ITEM_KEY_PREFIX,
-    instead: USE_ANOTHER_KEY,
-  },
-  {
-    owner: "a reply notice",
-    prefix: REPLY_NOTICE_KEY_PREFIX,
-    instead: USE_ANOTHER_KEY,
-  },
-  {
-    owner: "a To-do",
-    prefix: TODO_INBOX_ITEM_KEY_PREFIX,
-    instead: `Assign a To-do to the person with ${UPDATE_TODOS_TOOL_NAME} instead.`,
-  },
-] as const;
-
-/** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
-export function inboxItemPlugin(dedupeKey: string): string | undefined {
-  if (!dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return undefined;
-  const plugin = dedupeKey
-    .slice(PLUGIN_INBOX_ITEM_KEY_PREFIX.length)
-    .split(":", 1)[0];
-  return plugin || undefined;
+/** Return the plugin that added an item, or undefined for core. */
+export function inboxItemPlugin(
+  item: Pick<InboxItem, "subject">,
+): string | undefined {
+  return subjectKindPlugin(item.subject.kind);
 }
 
 /** Return whether the item is an Automation alert. Core takes its answer. */
-export function isAutomationAlertItem(item: Pick<InboxItem, "dedupeKey">) {
-  return item.dedupeKey.startsWith(AUTOMATION_INBOX_ITEM_KEY_PREFIX);
+export function isAutomationAlertItem(item: Pick<InboxItem, "subject">) {
+  return item.subject.kind === INBOX_SUBJECT_KINDS.automation;
 }
 
 /** Return whether a plugin added the item. Its answer goes to the plugin. */
-export function isPluginInboxItem(item: Pick<InboxItem, "dedupeKey">) {
-  return inboxItemPlugin(item.dedupeKey) !== undefined;
+export function isPluginInboxItem(item: Pick<InboxItem, "subject">) {
+  return inboxItemPlugin(item) !== undefined;
+}
+
+/**
+ * Return the subject of an agent's item: the id the agent gave, such as a
+ * pull request URL, or else its dedupe key.
+ */
+export function agentInboxItemSubject(
+  id: string | undefined,
+  dedupeKey: string,
+): InboxItemSubject {
+  return { id: id ?? dedupeKey, kind: INBOX_SUBJECT_KINDS.agent };
 }
 
 /**
@@ -481,22 +444,21 @@ export function isPluginInboxItem(item: Pick<InboxItem, "dedupeKey">) {
  * Conversation, so private content never reaches its readers. A private
  * item changes only from the Conversation or Automation that added it. An
  * agent never changes an item that a plugin added, or an item that another
- * owner kind, such as an Automation, owns, or a reply notice.
+ * owner kind, such as an Automation, owns, or a reply notice: only items
+ * of the `agent` kind.
  */
 export function canAgentChangeInboxItem(
   item: InboxItem,
   scope: InboxItemAgentScope,
 ): boolean {
-  if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return false;
-  if (item.dedupeKey.startsWith(TODO_INBOX_ITEM_KEY_PREFIX)) return false;
-  if (item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)) return false;
+  if (item.subject.kind !== INBOX_SUBJECT_KINDS.agent) return false;
   if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;
   return (
     item.owner.id === scope.reader.conversationId ||
     (scope.reader.automationId !== undefined &&
-      item.automationId === scope.reader.automationId)
+      item.addedByAutomationId === scope.reader.automationId)
   );
 }
 

@@ -14,11 +14,11 @@ import type { InboxItemChange } from "./messages";
 import {
   canActOnInboxItem,
   canUserReadInboxItem,
-  inboxItemTodo,
   isAutomationAlertItem,
   isOnlyAssignee,
   isPluginInboxItem,
 } from "./access";
+import { subjectTodo } from "./subjects";
 import { answerAutomationAlert } from "./automation-answer";
 import { answerPluginInboxItem } from "./plugin-answer";
 import { matchReplyToInboxItems } from "./reply-match";
@@ -141,7 +141,7 @@ export async function actOnInboxItem(args: {
   const nowMs = args.nowMs ?? Date.now();
   const db = getDb();
   const item = await readInboxItemForUser(user, args.id);
-  const todo = inboxItemTodo(item);
+  const todo = subjectTodo(item.subject);
   if (todo) {
     if (action !== "done" && action !== "dismiss") {
       throw new InboxItemActionError(
@@ -257,7 +257,7 @@ async function closeTodoItem(
   nowMs: number,
   action: "dismiss" | "done",
 ): Promise<InboxItem> {
-  const todo = inboxItemTodo(item)!;
+  const todo = subjectTodo(item.subject)!;
   if (item.status === "open") {
     if (!canActOnInboxItem(item, user.id)) {
       throw new InboxItemActionError(

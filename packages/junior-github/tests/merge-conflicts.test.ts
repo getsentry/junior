@@ -662,13 +662,7 @@ describe("merge conflict check on webhook events", () => {
             dedupeKey: "merge-conflict:getsentry/junior#946",
             subject: {
               id: "https://github.com/getsentry/junior/pull/946",
-              title: "fix(conflicts): Pull request 946 (#946)",
-              titleParts: {
-                scope: "conflicts",
-                text: "Pull request 946",
-                type: "Fix",
-              },
-              url: "https://github.com/getsentry/junior/pull/946",
+              kind: "merge_conflict",
             },
             title: "Merge conflict · #946",
           },

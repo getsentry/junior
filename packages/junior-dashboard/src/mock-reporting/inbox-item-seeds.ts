@@ -57,6 +57,27 @@ const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
 const DAY = 24 * 60;
 
+/**
+ * The subject of a seed. `kind` defaults to the core kind of the seed, and
+ * `id` to the seed's own id. A pull request names what GitHub says about it
+ * now: `title`, and `titleParts` as the GitHub plugin splits the title. The
+ * mock API shows them on the subject's card, as the API reads the card
+ * live.
+ */
+export type MockSubject = Pick<
+  InboxItemPayload["subject"],
+  "id" | "objectType" | "resource" | "url"
+> & {
+  kind?: string;
+  title?: string;
+  titleParts?: {
+    breaking?: boolean;
+    scope?: string;
+    text: string;
+    type?: string;
+  };
+};
+
 export type MockItemSeed = Pick<
   InboxItemPayload,
   | "addedByTurnId"
@@ -66,7 +87,6 @@ export type MockItemSeed = Pick<
   | "mentions"
   | "request"
   | "status"
-  | "subject"
   | "title"
   | "wake"
 > &
@@ -89,6 +109,7 @@ export type MockItemSeed = Pick<
     plugin?: string;
     /** The item is also for a teammate, so Dismiss hides it for the viewer. */
     shared?: boolean;
+    subject?: MockSubject;
   };
 
 /** Every mock Inbox item, with its times relative to `nowMs`. */
@@ -255,6 +276,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
+        kind: "github:pull_request_merge",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "Update the package to 0.288.0",
@@ -285,6 +307,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2188",
+        kind: "github:merge_conflict",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "fix(slack): Retry Slack uploads on rate limits",
@@ -306,6 +329,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
+        kind: "github:pull_request_review",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "Pin the release train to payments 4.2",
@@ -366,11 +390,10 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/sentaur/pull/418",
+        kind: "github:pull_request_review",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        // As the GitHub plugin names it, with its number.
-        title: "ref(gocd)!: Retry a canary stage once on a lost agent (#418)",
-        // As the GitHub plugin parses the title.
+        title: "ref(gocd)!: Retry a canary stage once on a lost agent",
         titleParts: {
           breaking: true,
           scope: "gocd",
@@ -504,9 +527,10 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
+        kind: "github:pull_request_review",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
-        title: "feat(dashboard): Tabs in the dashboard sidebar (#3052)",
+        title: "feat(dashboard): Tabs in the dashboard sidebar",
         titleParts: {
           scope: "dashboard",
           text: "Tabs in the dashboard sidebar",
@@ -533,6 +557,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3037",
+        kind: "github:item",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "Fix the stable list order",

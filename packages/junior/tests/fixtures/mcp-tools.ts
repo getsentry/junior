@@ -71,6 +71,7 @@ export async function seedMcpInboxItem(args: {
 }): Promise<InboxItem> {
   const viewer = await requireViewer(args.email);
   const item = await insertInboxItem(getDb(), {
+    subject: { id: args.title, kind: "agent" },
     owner: { id: args.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [viewer.id],

@@ -1,6 +1,8 @@
 import { createAutomationTool } from "@/chat/automations/tools/create";
 import { createUpdateAutomationTool } from "@/chat/automations/tools/update";
 import { createSearchAutomationsTool } from "@/chat/automations/tools/search";
+import { createDeleteAutomationTool } from "@/chat/automations/tools/delete";
+import { getInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { automationToolContext } from "@/chat/automations/tool-access";
 import {
   context,
@@ -255,6 +257,58 @@ describe("event automations", () => {
     } finally {
       setDashboardConversationLinkOptions(links);
     }
+  });
+
+  it("dismisses an item that a running run added when its Automation is deleted", async () => {
+    const created = await createTask("Address the requested changes.");
+    const db = fixture.sql.db();
+    await ingestEventAutomations(
+      {
+        eventKey: "github:delivery-2:review.changes_requested",
+        eventType: "pull_request.review.changes_requested",
+        occurredAtMs: Date.now(),
+        namespace: "github",
+        identifier: "getsentry/junior#1174",
+        trustedSummary: "A reviewer requested changes.",
+        data: { repo: "getsentry/junior", pullRequest: 1174 },
+      },
+      { nowMs: Date.now(), queue, teamId },
+    );
+    // The run's row names its Conversation before the run's agent acts.
+    const [record] = queue.sentRecords();
+    const runConversationId = record!.conversationId;
+    expect(await db.select().from(juniorAutomationRuns)).toEqual([
+      expect.objectContaining({
+        conversationId: runConversationId,
+        status: "running",
+      }),
+    ]);
+    // The run asks a person something, then its Automation is deleted
+    // while the run still goes.
+    const item = await insertInboxItem(db, {
+      owner: { id: runConversationId, kind: "conversation" },
+      assignedToEveryone: false,
+      assigneeUserIds: [],
+      body: "Two review comments need an answer.",
+      conversationIds: [runConversationId],
+      dedupeKey: "review:1174",
+      kind: "notice",
+      nowMs: Date.now(),
+      subject: { id: "review:1174", kind: "agent" },
+      title: "Answer the review",
+      visibility: "private",
+    });
+    await execute(
+      createDeleteAutomationTool(
+        automationToolContext(context()),
+        getEventCatalog(),
+      ),
+      { automation_id: created.automation.id },
+    );
+    expect(await getInboxItem(db, item!.id)).toMatchObject({
+      closeReason: "Automation deleted",
+      status: "dismissed",
+    });
   });
 
   it("fans one event out to every matching task and deduplicates retries", async () => {

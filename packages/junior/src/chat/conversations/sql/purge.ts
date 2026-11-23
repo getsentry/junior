@@ -1,9 +1,10 @@
-import { and, asc, eq, inArray, isNull, ne, or, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, ne, not, or, sql } from "drizzle-orm";
 import { pgTable, text } from "drizzle-orm/pg-core";
 import type { JuniorSqlDatabase } from "@/db/db";
 import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import { requestAttachmentDeletion } from "@/chat/attachments/store";
 import { deleteTodos } from "@/chat/todos/store";
+import { inboxItemAddedByAnyAutomation } from "@/chat/inbox-items/access";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import {
   juniorConversationEvents,
@@ -141,7 +142,10 @@ export async function selectExpiredRoots(
         where inbox_items.owner_kind = 'conversation'
           and inbox_items.owner_id = tree.conversation_id
           and inbox_items.status = 'open'
-          and inbox_items.automation_id is null
+          and not exists (
+            select 1 from junior_automation_runs runs
+            where runs.conversation_id = inbox_items.owner_id
+          )
       )
       or exists (
         select 1 from junior_todos todos
@@ -170,7 +174,10 @@ export async function selectExpiredRoots(
               and inbox_items.visibility = 'private'
               and (
                 inbox_items.status <> 'open'
-                or inbox_items.automation_id is null
+                or not exists (
+                  select 1 from junior_automation_runs runs
+                  where runs.conversation_id = inbox_items.owner_id
+                )
               )
           )
           or exists (
@@ -406,7 +413,7 @@ export async function purgeConversationTree(
                   eq(juniorInboxItems.visibility, "private"),
                   or(
                     ne(juniorInboxItems.status, "open"),
-                    isNull(juniorInboxItems.automationId),
+                    not(inboxItemAddedByAnyAutomation()),
                   ),
                 ),
               );

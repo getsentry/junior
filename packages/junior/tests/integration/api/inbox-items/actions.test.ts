@@ -170,6 +170,7 @@ describe("inbox item actions API", () => {
       parentConversationId: "slack:CPUB:1.000004",
     });
     await insertInboxItem(getDb(), {
+      subject: { id: "fair-source:entry:initech", kind: "agent" },
       owner: { id: "agent:child-of-4", kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
@@ -566,6 +567,7 @@ describe("inbox item actions API", () => {
     });
     const add = async (conversationId: string, title: string) => {
       const created = await insertInboxItem(getDb(), {
+        subject: { id: `roll-up:${conversationId}`, kind: "agent" },
         owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
@@ -644,6 +646,7 @@ describe("inbox item actions API", () => {
       nowMs: number,
     ) => {
       const created = await insertInboxItem(getDb(), {
+        subject: { id: `waiting-sort:${index}`, kind: "agent" },
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
@@ -730,7 +733,7 @@ describe("inbox item actions API", () => {
     ) => {
       const pr = {
         id: `https://github.com/getsentry/junior/pull/${index}`,
-        url: `https://github.com/getsentry/junior/pull/${index}`,
+        kind: "github:pull_request_review",
       };
       const created = await insertInboxItem(getDb(), {
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
@@ -739,7 +742,12 @@ describe("inbox item actions API", () => {
         body: `Item ${index}.`,
         conversationIds: ["slack:CPUB:1.000001"],
         ...(input.kind === "decision"
-          ? { dedupeKey: `bundles:${index}`, kind: "action", request: REQUEST }
+          ? {
+              dedupeKey: `bundles:${index}`,
+              kind: "action",
+              request: REQUEST,
+              subject: { id: `bundles:${index}`, kind: "agent" },
+            }
           : input.kind === "pr"
             ? {
                 dedupeKey: `plugin:github:${index}`,
@@ -778,12 +786,11 @@ describe("inbox item actions API", () => {
     expect(
       first.items
         .slice(0, 3)
-        .map((listed: { subject?: { objectType?: string } }) => listed.subject),
-    ).toEqual([
-      expect.objectContaining({ objectType: "code_change" }),
-      expect.objectContaining({ objectType: "code_change" }),
-      undefined,
-    ]);
+        .map(
+          (listed: { subject: { objectType?: string } }) =>
+            listed.subject.objectType,
+        ),
+    ).toEqual(["code_change", "code_change", undefined]);
 
     // The counts cover every page.
     expect(await (await api(fixture, ana).get("/count")).json()).toEqual({

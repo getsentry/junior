@@ -12,6 +12,10 @@ import {
   type InboxSnoozeCreateBody,
   type InboxSnoozeSubjectBody,
 } from "@sentry/junior/api/schema";
+import type {
+  ObjectFacts,
+  OwnedObjectAnnotation,
+} from "@sentry/junior-plugin-api";
 import {
   type MockItemSeed,
   SENTAUR_CONVERSATION_ID,
@@ -19,6 +23,7 @@ import {
   teammate,
   viewer,
 } from "./inbox-item-seeds";
+import { readMockObjectLinks } from "./objects";
 
 type MockItemChange = Pick<
   InboxItemPayload,
@@ -126,6 +131,88 @@ function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
     : undefined;
 }
 
+// The labels of the GitHub plugin's subject kinds.
+const KIND_LABELS: Record<string, string> = {
+  "github:merge_conflict": "Merge conflict",
+  "github:pull_request_merge": "Ready to merge",
+  "github:pull_request_review": "Review requested",
+};
+
+// The card of a pull request that has no other mock card.
+function pullRequestCard(
+  url: string,
+  title: string | undefined,
+): OwnedObjectAnnotation | undefined {
+  if (!title || !URL.canParse(url)) return undefined;
+  const parsed = new URL(url);
+  const [owner, repo, type, number] = parsed.pathname.split("/").slice(1);
+  if (parsed.hostname !== "github.com" || type !== "pull" || !number) {
+    return undefined;
+  }
+  const key = `${owner}/${repo}#${number}`;
+  return {
+    displayType: "Pull request",
+    key,
+    kind: "object",
+    label: key,
+    objectType: "code_change",
+    plugin: "github",
+    status: "open",
+    title,
+    url,
+  };
+}
+
+type CodeChangeFacts = Extract<ObjectFacts, { type: "code_change" }>;
+
+// A mock card with the title and title parts that GitHub has now.
+function liveCard(
+  card: OwnedObjectAnnotation,
+  title: string | undefined,
+  titleParts: CodeChangeFacts["titleParts"],
+): OwnedObjectAnnotation {
+  const live: OwnedObjectAnnotation = { ...card };
+  if (title) live.title = title;
+  if (card.objectType === "code_change") {
+    const facts: CodeChangeFacts =
+      card.facts?.type === "code_change"
+        ? { ...card.facts }
+        : { type: "code_change" };
+    if (titleParts) facts.titleParts = titleParts;
+    live.facts = facts;
+  }
+  return live;
+}
+
+/**
+ * The subject of a seed, like the API: its kind and id, the label of the
+ * kind, and the card of its link with the title that GitHub has now.
+ */
+function subjectOf(seed: MockItemSeed): InboxItemPayload["subject"] {
+  const defaultKind =
+    seed.todoId !== undefined
+      ? "todo"
+      : seed.automationId
+        ? "automation"
+        : "agent";
+  if (!seed.subject) {
+    return {
+      id: seed.todoId?.toString() ?? seed.automationId ?? seed.id,
+      kind: defaultKind,
+    };
+  }
+  const { kind = defaultKind, title, titleParts, ...rest } = seed.subject;
+  const subject: InboxItemPayload["subject"] = { ...rest, kind };
+  const label = KIND_LABELS[kind];
+  if (label) subject.label = label;
+  const card = subject.url
+    ? (readMockObjectLinks([subject.url]).objects[0]?.object ??
+      pullRequestCard(subject.url, title))
+    : undefined;
+  if (card) subject.object = liveCard(card, title, titleParts);
+  return subject;
+}
+
 function payload(
   seed: MockItemSeed,
   all: readonly MockItemSeed[],
@@ -138,6 +225,7 @@ function payload(
     linkedConversationIds = [],
     plugin: _plugin,
     shared,
+    subject: _subject,
     wake,
     ...rest
   } = seed;
@@ -168,6 +256,7 @@ function payload(
     owner: automationId
       ? { id: automationId, kind: "automation" }
       : { id: conversationId!, kind: "conversation" },
+    subject: subjectOf(seed),
     ...(root ? { rootConversationId: root } : undefined),
     updatedAt: item.closedAt ?? seed.createdAt,
     visibility: "public",

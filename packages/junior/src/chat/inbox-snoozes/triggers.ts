@@ -3,15 +3,12 @@ import {
   type Event,
   type EventData,
 } from "@sentry/junior-plugin-api";
-import { and, inArray, like } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import { updateTimerIndex, type TimerIndex } from "@/chat/events/timer-index";
 import { getSqlExecutor } from "@/chat/db";
 import { mapBounded } from "@/chat/fan-out";
-import {
-  inboxItemTodo,
-  TODO_INBOX_ITEM_KEY_PREFIX,
-} from "@/chat/inbox-items/access";
+import { INBOX_SUBJECT_KINDS, subjectTodo } from "@/chat/inbox-items/subjects";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { setTodoStatusByUser } from "@/chat/todos/store";
@@ -47,7 +44,11 @@ async function resolvedTodos(
 > {
   if (resolved.length === 0) return [];
   const items = await db
-    .select({ dedupeKey: juniorInboxItems.dedupeKey, id: juniorInboxItems.id })
+    .select({
+      id: juniorInboxItems.id,
+      subjectId: juniorInboxItems.subjectId,
+      subjectKind: juniorInboxItems.subjectKind,
+    })
     .from(juniorInboxItems)
     .where(
       and(
@@ -55,10 +56,15 @@ async function resolvedTodos(
           juniorInboxItems.id,
           resolved.map((row) => row.inboxItemId),
         ),
-        like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+        eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
       ),
     );
-  const todoOf = new Map(items.map((item) => [item.id, inboxItemTodo(item)]));
+  const todoOf = new Map(
+    items.map((item) => [
+      item.id,
+      subjectTodo({ id: item.subjectId, kind: item.subjectKind }),
+    ]),
+  );
   return resolved.flatMap((row) => {
     const todo = todoOf.get(row.inboxItemId);
     return todo ? [{ ...todo, ...row }] : [];

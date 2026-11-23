@@ -1,9 +1,12 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
-import { eq } from "drizzle-orm";
+import { asc, eq } from "drizzle-orm";
+import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { createJuniorApi } from "@/api";
+import type { JuniorApiEnv } from "@/api/route";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
@@ -21,6 +24,8 @@ import {
   slackInvocationInput,
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
+import { seedLinkedPerson } from "../fixtures/slack-user";
+import { signedInViewer } from "../fixtures/user";
 import { mswServer } from "../msw/server";
 
 const API = "https://api.github.com/repos/getsentry/junior/pulls/1592";
@@ -249,6 +254,198 @@ describe("the ask of a Junior pull request", () => {
       expect(views.length).toBeGreaterThan(0);
       expect(views).not.toContainEqual({ ask: "open", chip: "merged" });
       expect(await readerView()).toEqual({ ask: "done", chip: "merged" });
+    } finally {
+      setDashboardConversationLinkOptions(previousDashboard);
+      await fixture.close();
+    }
+  });
+  it("asks for the review, then the merge, as new items that read their title from GitHub", async () => {
+    app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    await seedLinkedPerson({
+      email: "pat@example.com",
+      linked: { handle: "pat", provider: "github", subjectId: "2002" },
+      slackUserId: person.userId,
+    });
+    const { fixture } = await prepareSlackParentConversation();
+    const previousDashboard = setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      await migratePluginSchemas(fixture.sql, [
+        {
+          dir: path.resolve(process.cwd(), "../junior-github/migrations"),
+          pluginName: "github",
+        },
+      ]);
+      const github = { approved: false };
+      // The title on GitHub changed after Junior opened the pull request.
+      const title = "fix: Check the build";
+      let cardReads = 0;
+      mswServer.use(
+        http.get(API, () =>
+          HttpResponse.json({
+            auto_merge: null,
+            draft: false,
+            head: { sha: "head-1" },
+            html_url: PULL_URL,
+            mergeable_state: "clean",
+            merged: false,
+            requested_reviewers: github.approved ? [] : [{ login: "pat" }],
+            state: "open",
+            title,
+            user: { id: 264270552 },
+          }),
+        ),
+        http.get(`${API}/commits`, () => HttpResponse.json([])),
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/collaborators/pat/permission",
+          () => HttpResponse.json({ permission: "write" }),
+        ),
+        http.post("https://api.github.com/graphql", async ({ request }) => {
+          const { query } = (await request.json()) as { query: string };
+          if (query.includes("GitHubObjectCards")) {
+            cardReads += 1;
+            return HttpResponse.json({
+              data: {
+                r0: {
+                  n0_0: {
+                    __typename: "PullRequest",
+                    additions: 1,
+                    author: { login: BOT },
+                    baseRefName: "main",
+                    body: null,
+                    changedFiles: 1,
+                    deletions: 1,
+                    headRefName: "fix/check",
+                    isDraft: false,
+                    mergeable: "MERGEABLE",
+                    merged: false,
+                    number: 1592,
+                    reviewRequests: { nodes: [] },
+                    state: "OPEN",
+                    title,
+                    updatedAt: "2026-07-02T12:00:00Z",
+                    url: PULL_URL,
+                  },
+                  releaseConfig: null,
+                },
+              },
+            });
+          }
+          // The next-action check reads the pull request and its reviews.
+          return HttpResponse.json({
+            data: {
+              repository: {
+                pullRequest: {
+                  autoMergeRequest: null,
+                  commits: { nodes: [] },
+                  headRefOid: "head-1",
+                  isDraft: false,
+                  mergeStateStatus: "CLEAN",
+                  reviewRequests: {
+                    nodes: github.approved
+                      ? []
+                      : [
+                          {
+                            requestedReviewer: {
+                              __typename: "User",
+                              login: "pat",
+                            },
+                          },
+                        ],
+                  },
+                  reviews: {
+                    nodes: github.approved
+                      ? [
+                          {
+                            author: { __typename: "User", login: "pat" },
+                            commit: { oid: "head-1" },
+                            state: "APPROVED",
+                            submittedAt: "2026-07-02T12:00:00Z",
+                          },
+                        ]
+                      : [],
+                    pageInfo: { hasPreviousPage: false, startCursor: null },
+                  },
+                  state: "OPEN",
+                  timelineItems: { nodes: [] },
+                  title,
+                  url: PULL_URL,
+                },
+              },
+            },
+          });
+        }),
+      );
+
+      const body = await openPullRequest();
+      await sendGitHubWebhook("pull_request", {
+        action: "opened",
+        pull_request: pullRequest(body, false, "2026-07-01T12:00:00.000Z"),
+      });
+      await sendGitHubWebhook("pull_request", {
+        action: "review_requested",
+        pull_request: pullRequest(body, false, "2026-07-01T12:01:00.000Z"),
+        requested_reviewer: { login: "pat" },
+      });
+      expect(
+        await getDb()
+          .select({ subjectKind: juniorInboxItems.subjectKind })
+          .from(juniorInboxItems)
+          .where(eq(juniorInboxItems.subjectId, PULL_URL)),
+      ).toEqual([{ subjectKind: "github:pull_request_review" }]);
+      github.approved = true;
+      await sendGitHubWebhook("pull_request_review", {
+        action: "submitted",
+        pull_request: { number: 1592, user: { login: BOT } },
+        review: { state: "approved", user: { login: "pat" } },
+      });
+
+      // The kind says what the item asks, so the merge ask is a new item.
+      // The review ask closed, and the merge ask notifies the person again.
+      const asks = await getDb()
+        .select({
+          id: juniorInboxItems.id,
+          status: juniorInboxItems.status,
+          subjectKind: juniorInboxItems.subjectKind,
+        })
+        .from(juniorInboxItems)
+        .where(eq(juniorInboxItems.subjectId, PULL_URL))
+        .orderBy(asc(juniorInboxItems.createdAt));
+      expect(asks).toMatchObject([
+        { status: "done", subjectKind: "github:pull_request_review" },
+        { status: "open", subjectKind: "github:pull_request_merge" },
+      ]);
+
+      const viewer = await signedInViewer("pat@example.com");
+      const api = new Hono<JuniorApiEnv>();
+      api.use("*", async (context, next) => {
+        context.set("viewer", viewer);
+        await next();
+      });
+      api.route("/", createJuniorApi());
+      const response = await api.request(
+        "http://localhost/api/inbox-items?for=viewer",
+      );
+      expect(response.status).toBe(200);
+      const { items } = (await response.json()) as {
+        items: Array<{ id: string; subject: Record<string, unknown> }>;
+      };
+      // The label comes from the kind. The title is GitHub's title now, from
+      // one read for the page, and no Inbox column stores it.
+      expect(items).toMatchObject([
+        {
+          id: asks[1]!.id,
+          subject: {
+            id: PULL_URL,
+            kind: "github:pull_request_merge",
+            label: "Ready to merge",
+            object: { title, url: PULL_URL },
+            url: PULL_URL,
+          },
+        },
+      ]);
+      expect(cardReads).toBe(1);
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

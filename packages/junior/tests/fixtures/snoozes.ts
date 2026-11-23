@@ -57,6 +57,7 @@ export async function addItem(
   linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
+    subject: { id: title, kind: "agent" },
     owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -173,7 +174,7 @@ export async function addPullRequestItem(
       ],
       question: title,
     },
-    subject: { id: PULL_REQUEST.url, title, url: PULL_REQUEST.url },
+    subject: { id: PULL_REQUEST.url, kind: "agent" },
     tenant: { provider: "slack", providerTenantId: "T123" },
     title,
     visibility: "public",
@@ -187,6 +188,7 @@ export async function addEveryoneItem(
   title: string,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
+    subject: { id: title, kind: "agent" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: true,
     assigneeUserIds: [],
@@ -220,6 +222,7 @@ export async function addNotice(
   title: string,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
+    subject: { id: title, kind: "agent" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),

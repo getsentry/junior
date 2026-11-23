@@ -4,10 +4,12 @@
  * MCP Inbox items stay read-only. An answer sends a message to the linked
  * Conversations, which can start a Turn. A dismiss starts no Turn.
  */
+import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { getDashboardInboxItemLink } from "@/chat/dashboard-link";
 import { canActOnInboxItem } from "@/chat/inbox-items/access";
 import type { InboxItem } from "@/chat/inbox-items/store";
+import { subjectLink } from "@/chat/inbox-items/subjects";
 
 /** MCP view of one Inbox item. Answers happen in Slack or the dashboard. */
 export const mcpInboxItemSchema = z
@@ -37,12 +39,19 @@ export const mcpInboxItemSchema = z
   })
   .strict();
 
-/** Map an Inbox item to its MCP view for one user. */
+/**
+ * Map an Inbox item to its MCP view for one user. A subject shows only when
+ * it is a web link. Its title comes from the user's card of the link
+ * (`resolveInboxItemSubjects`).
+ */
 export function mcpInboxItem(
   item: InboxItem,
   userId: string,
+  cards: ReadonlyMap<string, OwnedObjectAnnotation>,
 ): z.output<typeof mcpInboxItemSchema> {
   const url = getDashboardInboxItemLink(item.id);
+  const subjectUrl = subjectLink(item.subject);
+  const subjectTitle = subjectUrl ? cards.get(subjectUrl)?.title : undefined;
   return {
     id: item.id,
     kind: item.kind,
@@ -55,12 +64,12 @@ export function mcpInboxItem(
       : item.assignees.map((person) => person.displayName ?? person.email),
     canAct: canActOnInboxItem(item, userId),
     conversationIds: item.conversationIds,
-    ...(item.subject
+    ...(subjectUrl
       ? {
           subject: {
             id: item.subject.id,
-            ...(item.subject.title ? { title: item.subject.title } : undefined),
-            ...(item.subject.url ? { url: item.subject.url } : undefined),
+            ...(subjectTitle ? { title: subjectTitle } : undefined),
+            url: subjectUrl,
           },
         }
       : undefined),

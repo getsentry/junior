@@ -1,6 +1,11 @@
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
-import type { User } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import {
+  defineJuniorPlugin,
+  type PluginRegistration,
+  type User,
+} from "@sentry/junior-plugin-api";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
@@ -11,7 +16,6 @@ import {
   getInboxItem,
 } from "@/chat/inbox-items/store";
 import { listWaitingConversations } from "@/chat/inbox-items/waiting";
-import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
@@ -82,13 +86,29 @@ const NOTICE = {
   dedupeKey: "pull-request-ready:getsentry/junior#946",
   subject: {
     id: "https://github.com/getsentry/junior/pull/946",
-    title: "getsentry/junior#946",
-    url: "https://github.com/getsentry/junior/pull/946",
+    kind: "ready",
   },
   title: "Ready to merge · #946",
 };
 
+/** A plugin that registers the `ready` subject kind. */
+function readyPlugin(name: string): PluginRegistration {
+  return defineJuniorPlugin({
+    inboxSubjects: [{ kind: "ready", label: "Ready to merge" }],
+    manifest: { description: `${name} test plugin`, displayName: name, name },
+  });
+}
+
 describe("plugin inbox items", () => {
+  beforeEach(async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        readyPlugin("github"),
+        readyPlugin("linear"),
+      ]),
+    });
+  });
+
   afterEach(async () => {
     shown = [];
     await closeDb();
@@ -116,7 +136,7 @@ describe("plugin inbox items", () => {
     expect(
       await getOpenInboxItemByDedupeKey(
         getDb(),
-        `plugin:github:${NOTICE.dedupeKey}`,
+        { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
         TENANT,
       ),
     ).toMatchObject({ kind: "action", status: "open" });
@@ -161,7 +181,7 @@ describe("plugin inbox items", () => {
     await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
     const added = await getOpenInboxItemByDedupeKey(
       getDb(),
-      `plugin:github:${NOTICE.dedupeKey}`,
+      { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
       TENANT,
     );
     expect(added).toMatchObject({
@@ -170,7 +190,7 @@ describe("plugin inbox items", () => {
       conversationIds: ["slack:C1:1.000001"],
       kind: "notice",
       status: "open",
-      subject: NOTICE.subject,
+      subject: { id: NOTICE.subject.id, kind: "github:ready" },
       title: NOTICE.title,
       visibility: "public",
     });
@@ -184,13 +204,13 @@ describe("plugin inbox items", () => {
     expect(
       await getOpenInboxItemByDedupeKey(
         getDb(),
-        `plugin:github:${NOTICE.dedupeKey}`,
+        { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
         TENANT,
       ),
     ).toMatchObject({ id: added!.id, title: "Still ready to merge" });
 
-    // An agent in another public Conversation of the tenant cannot take over
-    // the plugin key, or change the plugin notice.
+    // An agent in another public Conversation of the tenant cannot change
+    // the plugin notice. Its own dedupe keys are in another namespace.
     await conversation("slack:C1:1.000002", "public");
     const agent = {
       conversationId: "slack:C1:1.000002",
@@ -200,14 +220,6 @@ describe("plugin inbox items", () => {
       }),
       source: { kind: "slack" } as any,
     };
-    expect(() =>
-      createAddInboxItemTool(agent, services).prepareArguments!({
-        body: "Taken over.",
-        dedupe_key: `plugin:github:${NOTICE.dedupeKey}`,
-        kind: "notice",
-        title: "Taken over",
-      }),
-    ).toThrow("belongs to a plugin");
     await expect(
       createUpdateInboxItemTool(agent, services).execute!(
         { id: added!.id, reason: "Not needed.", status: "dismissed" } as any,
@@ -250,7 +262,7 @@ describe("plugin inbox items", () => {
     expect(
       await getOpenInboxItemByDedupeKey(
         getDb(),
-        `plugin:linear:${NOTICE.dedupeKey}`,
+        { dedupeKey: NOTICE.dedupeKey, namespace: "linear" },
         TENANT,
       ),
     ).toMatchObject({ assignees: [], status: "open" });
@@ -277,7 +289,7 @@ describe("plugin inbox items", () => {
       expect(
         await getOpenInboxItemByDedupeKey(
           getDb(),
-          `plugin:github:${NOTICE.dedupeKey}`,
+          { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
           TENANT,
         ),
       ).toMatchObject({

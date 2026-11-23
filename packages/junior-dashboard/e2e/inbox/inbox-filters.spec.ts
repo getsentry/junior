@@ -82,8 +82,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     const todoRows = todoList.getByRole("listitem");
     // Each pull request ask is a row, headed by its pull request.
     await expect(todoRows).toHaveText([
-      new RegExp(prReview.subject.title),
-      new RegExp(prMerge.subject.title),
+      new RegExp(prReview.subject.object.title),
+      new RegExp(prMerge.subject.object.title),
     ]);
 
     await page.reload();
@@ -92,8 +92,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       "page",
     );
     await expect(todoRows).toHaveText([
-      new RegExp(prReview.subject.title),
-      new RegExp(prMerge.subject.title),
+      new RegExp(prReview.subject.object.title),
+      new RegExp(prMerge.subject.object.title),
     ]);
     // The filters do not change the Inbox count.
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 7 waiting");
@@ -109,7 +109,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(todoRows).toHaveCount(1);
     await expect(todoList).toContainText(other.title);
     await expect(todoList).not.toContainText(todoForYou.title);
-    await expect(todoList).not.toContainText(prReview.subject.title);
+    await expect(todoList).not.toContainText(prReview.subject.object.title);
 
     // Pinned is a tab of the same control, so it turns the type off, and a
     // type turns Pinned off.

@@ -83,6 +83,13 @@ how the dashboard groups and acts on its rows.
   Everyone.
 - Making a Conversation public does not show its private items.
 - A Slack thread that its Conversation detached from gets no new item card.
+- An Inbox item stores only fields that every item uses, and its subject:
+  a `{ kind, id }` pair. It never stores a field that only one kind uses,
+  such as a state, a title part, or a provider id.
+- Each subject kind is unique. A plugin kind starts with the plugin name.
+  The kind says what the item asks.
+- Junior reads the title, state, and link of an item from its subject, and
+  can cache them. It does not copy them into the item.
 - Only the Conversation or the plugin that added an item can change it,
   and only within the assignee rules.
 - The answer to an item that a plugin added goes to that plugin, which does

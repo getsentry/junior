@@ -66,17 +66,8 @@ describe("next action item", () => {
           assigneeIdentityIds: ["identity-requester"],
           body: `#946 is approved, and GitHub says that it can merge.\n\n${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
-          subject: {
-            id: PULL_URL,
-            title: "feat(inbox): Add the Inbox notice (#946)",
-            // The Inbox shows the parsed conventional commit title.
-            titleParts: {
-              scope: "inbox",
-              text: "Add the Inbox notice",
-              type: "Feature",
-            },
-            url: PULL_URL,
-          },
+          // The Inbox reads the title of the pull request from GitHub.
+          subject: { id: PULL_URL, kind: "pull_request_merge" },
           title: "Ready to merge · #946",
           // The merge is the requester's step, so the item waits on them.
           waitsOnAssignees: true,
@@ -225,7 +216,7 @@ describe("next action item", () => {
     }
   });
 
-  it("shows one item that changes from review to merge", async () => {
+  it("asks for the merge with its own kind after the review", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
     const github: GitHubState = {
@@ -265,11 +256,7 @@ describe("next action item", () => {
           assigneeIdentityIds: ["identity-requester"],
           body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
           dedupeKey: DEDUPE_KEY,
-          subject: {
-            id: PULL_URL,
-            title: "Add the Inbox notice (#946)",
-            url: PULL_URL,
-          },
+          subject: { id: PULL_URL, kind: "pull_request_review" },
           title: "Review requested · #946",
           waitsOnAssignees: true,
         },
@@ -296,15 +283,20 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual(review);
 
       // Someone else approves, and GitHub can merge it. The requester merges
-      // or reviews, not both, so the same item now asks for the merge.
+      // or reviews, not both. The kind says what an item asks, so the ask
+      // for the merge has its own kind, and the Inbox closes the review item.
       github.mergeableStates = ["clean"];
       github.reviews = [{ state: "APPROVED", user: { login: "someone-else" } }];
       await webhook.handler(reviewSubmitted("approved"));
       expect(calls.at(-1)).toMatchObject({
         kind: "upsert",
-        notice: { dedupeKey: DEDUPE_KEY, title: "Ready to merge · #946" },
+        notice: {
+          dedupeKey: DEDUPE_KEY,
+          subject: { id: PULL_URL, kind: "pull_request_merge" },
+          title: "Ready to merge · #946",
+        },
       });
-      expect(calls).toHaveLength(4);
+      expect(calls).toHaveLength(5);
     } finally {
       await fixture.close();
     }

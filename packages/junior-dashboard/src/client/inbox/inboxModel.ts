@@ -316,7 +316,7 @@ function byConversation(
       // back to one.
       label:
         titleOf(group[0]!.conversationId) ??
-        group[0]!.newest.subject?.title ??
+        group[0]!.newest.subject.object?.title ??
         "Untitled",
       rows: group,
     }));
@@ -386,10 +386,11 @@ export function fyiCount(count: number): string {
  * end.
  */
 export function itemRowSubtitle(
-  item: Pick<InboxItemPayload, "subject" | "title">,
+  item: Partial<Pick<InboxItemPayload, "subject">> &
+    Pick<InboxItemPayload, "title">,
   conversationTitle: string | undefined,
 ): string | undefined {
-  const subject = item.subject?.title;
+  const subject = item.subject?.object?.title;
   const tail = subject ? / \(([^()]+)\)$/.exec(subject) : null;
   const about =
     subject && tail && item.title.includes(tail[1]!)

@@ -13,7 +13,6 @@ import type {
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import {
@@ -170,8 +169,6 @@ export function createGitHubWebhookRoute(args: {
   loadPullRequestConflictHistory?(
     pullRequest: GitHubPullRequestRef,
   ): Promise<unknown>;
-  /** Read the title parts of a pull request title in its repository. */
-  loadTitleParts?: LoadGitHubTitleParts;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -442,7 +439,6 @@ export function createGitHubWebhookRoute(args: {
           events,
           hasMatch,
           loadConflictHistory: args.loadPullRequestConflictHistory,
-          loadTitleParts: args.loadTitleParts,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,

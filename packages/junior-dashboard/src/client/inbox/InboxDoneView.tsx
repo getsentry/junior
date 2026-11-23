@@ -124,7 +124,7 @@ function DoneRow(props: {
           </div>
           <InboxItemObjects conversationId={itemConversationId(item)}>
             <DisplayText mentions={item.mentions} text={text} />
-            {item.subject ? (
+            {item.subject.url ? (
               <InboxItemSubjectPreview
                 conversationId={itemConversationId(item)}
                 subject={item.subject}

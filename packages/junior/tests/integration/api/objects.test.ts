@@ -344,6 +344,62 @@ describe("object links API", () => {
           user: { login: "byk" },
         });
       }),
+      // A page of links reads its objects with one GraphQL query. A
+      // transferred issue is null there, so its REST read follows the move.
+      http.post("https://api.github.com/graphql", async ({ request }) => {
+        reads.push("graphql");
+        const { variables } = (await request.json()) as {
+          variables: Record<string, number | string>;
+        };
+        const pull = {
+          __typename: "PullRequest",
+          additions: 120,
+          author: { login: "byk" },
+          baseRefName: "main",
+          body: null,
+          changedFiles: 4,
+          deletions: 8,
+          headRefName: "feat/github-link-cards",
+          isDraft: true,
+          mergeable: "CONFLICTING",
+          merged: false,
+          number: 34,
+          reviewRequests: { nodes: [] },
+          state: "OPEN",
+          title: "Add GitHub link cards",
+          updatedAt: "2026-01-02T03:04:05Z",
+          url: `${repo}/pull/34`,
+        };
+        const objects: Record<number, unknown> = {
+          12: {
+            __typename: "Issue",
+            assignees: { nodes: [{ login: "alice_acme" }] },
+            body: "Pasted links show as plain links.",
+            labels: { nodes: [{ name: "bug" }] },
+            number: 12,
+            issueState: "OPEN",
+            title: "Show GitHub links as cards",
+            updatedAt: "2026-01-02T03:04:05Z",
+            url: `${repo}/issues/12`,
+          },
+          34: pull,
+        };
+        return HttpResponse.json({
+          data: {
+            r0: {
+              releaseConfig: null,
+              ...Object.fromEntries(
+                Object.entries(variables)
+                  .filter(([name]) => name.startsWith("n0_"))
+                  .map(([name, number]) => [
+                    name,
+                    objects[Number(number)] ?? null,
+                  ]),
+              ),
+            },
+          },
+        });
+      }),
       // What GitHub shows signed out.
       http.get(
         `${repo}/issues/12`,
@@ -384,6 +440,11 @@ describe("object links API", () => {
         `${repo}/issues/99`,
         `${repo}/issues/56`,
       );
+      // One query reads the page. Only the objects that it misses, such as
+      // a transferred issue, are read one at a time.
+      expect(reads.filter((read) => read === "graphql")).toHaveLength(1);
+      expect(reads).not.toContain("issues/12");
+      expect(reads).not.toContain("pulls/34");
       expect(member.objects.get(`${repo}/issues/12`)).toMatchObject({
         description: "Pasted links show as plain links.",
         displayType: "Issue",

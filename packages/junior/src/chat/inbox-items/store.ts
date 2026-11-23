@@ -8,17 +8,14 @@ import {
   gt,
   ilike,
   inArray,
-  like,
   isNull,
   lt,
   not,
-  notLike,
   or,
   sql,
   type SQL,
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
-import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
 import {
@@ -26,12 +23,16 @@ import {
   inboxItemSnoozedBy,
 } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
-import type { InboxItemOwnerKind } from "@/db/schema/inbox-items";
+import {
+  inboxSubjectNamespace,
+  type InboxItemOwnerKind,
+} from "@/db/schema/inbox-items";
 import {
   hasUserPhoto,
   userAvatarUrlsFromIdentities,
 } from "@/chat/identities/avatar";
 import {
+  juniorAutomationRuns,
   juniorConversations,
   juniorIdentities,
   juniorInboxItemAssignees,
@@ -41,8 +42,8 @@ import {
 } from "@/db/schema";
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import {
-  PLUGIN_INBOX_ITEM_KEY_PREFIX,
-  TODO_INBOX_ITEM_KEY_PREFIX,
+  inboxItemAddedByAnyAutomation,
+  inboxItemAddedByAutomation,
   inboxItemAssignedTo,
   inboxItemForUser,
   inboxItemLinkedTo,
@@ -53,6 +54,13 @@ import {
 } from "./access";
 import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
 import type { InboxItemRequest } from "./evidence";
+import {
+  INBOX_SUBJECT_KINDS,
+  subjectKindPlugin,
+  type InboxItemSubject,
+} from "./subjects";
+
+export type { InboxItemSubject } from "./subjects";
 
 type InboxItemKind = "notice" | "action";
 
@@ -63,15 +71,6 @@ type InboxItemKind = "notice" | "action";
 export const INBOX_ITEM_REPLIED_REASON = "Replied in thread";
 export type InboxItemStatus = "open" | "done" | "dismissed";
 export type InboxItemVisibility = "public" | "private";
-
-/** The thing an Inbox item is about, such as a pull request. */
-export interface InboxItemSubject {
-  /** Stable id that Search matches, such as a URL. */
-  id: string;
-  title?: string;
-  url?: string;
-  titleParts?: InboxItemSubjectTitleParts;
-}
 
 /** One assigned User of an Inbox item. */
 export interface InboxItemAssignee {
@@ -123,7 +122,11 @@ export interface InboxItem {
   answer?: UserInputAnswer;
   assignedToEveryone: boolean;
   assignees: InboxItemAssignee[];
-  automationId?: string;
+  /**
+   * The Automation whose run added the item, read from the run of the
+   * owner Conversation. Its later runs can read and change the item.
+   */
+  addedByAutomationId?: string;
   closeReason?: string;
   closedAt?: Date;
   closedBy?: InboxItemAssignee;
@@ -141,7 +144,7 @@ export interface InboxItem {
   owner: InboxItemOwner;
   request?: InboxItemRequest;
   status: InboxItemStatus;
-  subject?: InboxItemSubject;
+  subject: InboxItemSubject;
   /** Provider tenant of the Conversation that added the item. */
   tenant?: ProviderTenant;
   title: string;
@@ -158,12 +161,36 @@ export interface InboxItemContent {
   conversationIds: string[];
   kind: InboxItemKind;
   request?: InboxItemRequest;
-  subject?: InboxItemSubject | undefined;
+  subject: InboxItemSubject;
   title: string;
   visibility: InboxItemVisibility;
 }
 
-type ItemRow = typeof juniorInboxItems.$inferSelect;
+/**
+ * One stored item, with the Automation whose run owns it. The run of the
+ * owner Conversation names that Automation, so the item stores no copy.
+ */
+interface ItemRow {
+  addedByAutomationId: string | null;
+  item: typeof juniorInboxItems.$inferSelect;
+}
+
+/** The join that reads the Automation of an item's owner run. */
+const ownerRun = and(
+  eq(juniorInboxItems.ownerKind, "conversation"),
+  eq(juniorAutomationRuns.conversationId, juniorInboxItems.ownerId),
+);
+
+/** Select item rows with the Automation of their owner run. */
+function selectItemRows(db: JuniorDatabase) {
+  return db
+    .select({
+      addedByAutomationId: juniorAutomationRuns.automationId,
+      item: juniorInboxItems,
+    })
+    .from(juniorInboxItems)
+    .leftJoin(juniorAutomationRuns, ownerRun);
+}
 
 const userPhotos = alias(juniorIdentities, "inbox_item_user_photos");
 
@@ -214,9 +241,10 @@ async function readUsers(
 
 async function hydrate(
   db: JuniorDatabase,
-  rows: readonly ItemRow[],
+  itemRows: readonly ItemRow[],
 ): Promise<InboxItem[]> {
-  if (rows.length === 0) return [];
+  if (itemRows.length === 0) return [];
+  const rows = itemRows.map((row) => row.item);
   const ids = rows.map((row) => row.id);
   const [assigneeRows, conversationRows] = await Promise.all([
     db
@@ -232,7 +260,8 @@ async function hydrate(
     ...assigneeRows.map((row) => row.userId),
     ...rows.flatMap((row) => (row.closedByUserId ? [row.closedByUserId] : [])),
   ]);
-  return rows.map((row) => {
+  return rows.map((row, index) => {
+    const addedByAutomationId = itemRows[index]!.addedByAutomationId;
     const closedBy = row.closedByUserId
       ? users.get(row.closedByUserId)
       : undefined;
@@ -253,12 +282,13 @@ async function hydrate(
       kind: row.kind,
       owner: { id: row.ownerId, kind: row.ownerKind },
       status: row.status,
+      subject: { id: row.subjectId, kind: row.subjectKind },
       title: row.title,
       updatedAt: row.updatedAt,
       visibility: row.visibility,
       ...(row.answer ? { answer: row.answer } : undefined),
       ...(row.addedByTurnId ? { addedByTurnId: row.addedByTurnId } : undefined),
-      ...(row.automationId ? { automationId: row.automationId } : undefined),
+      ...(addedByAutomationId ? { addedByAutomationId } : undefined),
       ...(row.closeReason ? { closeReason: row.closeReason } : undefined),
       ...(row.closedAt ? { closedAt: row.closedAt } : undefined),
       ...(closedBy ? { closedBy } : undefined),
@@ -268,18 +298,6 @@ async function hydrate(
             tenant: {
               provider: row.provider,
               providerTenantId: row.providerTenantId,
-            },
-          }
-        : undefined),
-      ...(row.subjectId
-        ? {
-            subject: {
-              id: row.subjectId,
-              ...(row.subjectTitle ? { title: row.subjectTitle } : undefined),
-              ...(row.subjectUrl ? { url: row.subjectUrl } : undefined),
-              ...(row.subjectTitleParts
-                ? { titleParts: row.subjectTitleParts }
-                : undefined),
             },
           }
         : undefined),
@@ -293,10 +311,8 @@ function contentColumns(content: InboxItemContent) {
     body: content.body,
     kind: content.kind,
     request: content.request ?? null,
-    subjectId: content.subject?.id ?? null,
-    subjectTitle: content.subject?.title ?? null,
-    subjectUrl: content.subject?.url ?? null,
-    subjectTitleParts: content.subject?.titleParts ?? null,
+    subjectId: content.subject.id,
+    subjectKind: content.subject.kind,
     title: content.title,
     visibility: content.visibility,
   };
@@ -334,10 +350,7 @@ export async function getInboxItem(
   db: JuniorDatabase,
   id: string,
 ): Promise<InboxItem | undefined> {
-  const rows = await db
-    .select()
-    .from(juniorInboxItems)
-    .where(eq(juniorInboxItems.id, id));
+  const rows = await selectItemRows(db).where(eq(juniorInboxItems.id, id));
   return (await hydrate(db, rows))[0];
 }
 
@@ -367,48 +380,50 @@ export async function listReplyActionItems(
   db: JuniorDatabase,
   conversationId: string,
 ): Promise<InboxItem[]> {
-  const rows = await db
-    .select()
-    .from(juniorInboxItems)
-    .where(
-      and(
-        inboxItemOwnedByConversation(conversationId),
-        eq(juniorInboxItems.kind, "action"),
-        notLike(juniorInboxItems.dedupeKey, `${PLUGIN_INBOX_ITEM_KEY_PREFIX}%`),
-        notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
-        or(
-          eq(juniorInboxItems.status, "open"),
-          eq(juniorInboxItems.closeReason, INBOX_ITEM_REPLIED_REASON),
-        ),
+  const rows = await selectItemRows(db).where(
+    and(
+      inboxItemOwnedByConversation(conversationId),
+      eq(juniorInboxItems.kind, "action"),
+      eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.agent),
+      or(
+        eq(juniorInboxItems.status, "open"),
+        eq(juniorInboxItems.closeReason, INBOX_ITEM_REPLIED_REASON),
       ),
-    );
+    ),
+  );
   return await hydrate(db, rows);
 }
 
 /**
- * Read the open Inbox item with one dedupe key in one provider tenant, if
- * there is one. Dedupe keys are unique only inside a tenant.
+ * Return the namespace of a subject kind: the plugin of a plugin kind, or
+ * the core kind. Dedupe keys are unique inside one namespace.
+ */
+export function subjectNamespace(kind: string): string {
+  return subjectKindPlugin(kind) ?? kind;
+}
+
+/**
+ * Read the open Inbox item with one dedupe key in one subject namespace and
+ * one provider tenant, if there is one. Dedupe keys are unique only there.
  */
 export async function getOpenInboxItemByDedupeKey(
   db: JuniorDatabase,
-  dedupeKey: string,
+  key: { dedupeKey: string; namespace: string },
   tenant: ProviderTenant | undefined,
 ): Promise<InboxItem | undefined> {
-  const rows = await db
-    .select()
-    .from(juniorInboxItems)
-    .where(
-      and(
-        eq(juniorInboxItems.dedupeKey, dedupeKey),
-        eq(juniorInboxItems.status, "open"),
-        tenant
-          ? and(
-              eq(juniorInboxItems.provider, tenant.provider),
-              eq(juniorInboxItems.providerTenantId, tenant.providerTenantId),
-            )
-          : isNull(juniorInboxItems.provider),
-      ),
-    );
+  const rows = await selectItemRows(db).where(
+    and(
+      eq(juniorInboxItems.dedupeKey, key.dedupeKey),
+      eq(inboxSubjectNamespace(juniorInboxItems), key.namespace),
+      eq(juniorInboxItems.status, "open"),
+      tenant
+        ? and(
+            eq(juniorInboxItems.provider, tenant.provider),
+            eq(juniorInboxItems.providerTenantId, tenant.providerTenantId),
+          )
+        : isNull(juniorInboxItems.provider),
+    ),
+  );
   return (await hydrate(db, rows))[0];
 }
 
@@ -420,7 +435,6 @@ export async function insertInboxItem(
   db: JuniorDatabase,
   input: InboxItemContent & {
     addedByTurnId?: string;
-    automationId?: string;
     dedupeKey: string;
     nowMs: number;
     owner: InboxItemOwner;
@@ -436,7 +450,6 @@ export async function insertInboxItem(
         ownerId: input.owner.id,
         ownerKind: input.owner.kind,
         addedByTurnId: input.addedByTurnId ?? null,
-        automationId: input.automationId ?? null,
         createdAt: now,
         dedupeKey: input.dedupeKey,
         id: randomUUID(),
@@ -574,13 +587,13 @@ export async function dismissOpenInboxItems(
         "ids" in input
           ? inArray(juniorInboxItems.id, [...input.ids])
           : "automationId" in input
-            ? eq(juniorInboxItems.automationId, input.automationId)
+            ? inboxItemAddedByAutomation(input.automationId)
             : and(
                 eq(juniorInboxItems.ownerKind, "conversation"),
                 inArray(juniorInboxItems.ownerId, [
                   ...input.ownerConversationIds,
                 ]),
-                isNull(juniorInboxItems.automationId),
+                not(inboxItemAddedByAnyAutomation()),
               ),
       ),
     )
@@ -755,7 +768,7 @@ function searchConditions(
     conditions.push(eq(juniorInboxItems.subjectId, filters.subjectId));
   }
   if (filters.automationId) {
-    conditions.push(eq(juniorInboxItems.automationId, filters.automationId));
+    conditions.push(inboxItemAddedByAutomation(filters.automationId));
   }
   if (filters.conversationId) {
     conditions.push(inboxItemLinkedTo(filters.conversationId));
@@ -801,7 +814,7 @@ export function inboxItemNeedsUserNow(userId: string): SQL {
 
 /**
  * Count the open Inbox items that need a User (`inboxItemNeedsUser`), one
- * row per subject URL, with the ones that ask with a form as `decisions`,
+ * row per subject, with the ones that ask with a form as `decisions`,
  * the Automation alerts as `automations`, and the To-dos as `todos`.
  * The nav count and the Inbox bundle counts all read this one query. A
  * snoozed item does not count until it wakes.
@@ -813,7 +826,8 @@ export async function countInboxItemsNeedingUserBySubject(
   Array<{
     automations: number;
     decisions: number;
-    subjectUrl: string | null;
+    subjectId: string;
+    subjectKind: string;
     todos: number;
     total: number;
   }>
@@ -825,16 +839,17 @@ export async function countInboxItemsNeedingUserBySubject(
           Number,
         ),
       decisions: count(juniorInboxItems.request),
-      subjectUrl: juniorInboxItems.subjectUrl,
+      subjectId: juniorInboxItems.subjectId,
+      subjectKind: juniorInboxItems.subjectKind,
       todos:
-        sql<number>`count(*) filter (where ${like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`)})`.mapWith(
+        sql<number>`count(*) filter (where ${eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo)})`.mapWith(
           Number,
         ),
       total: count(),
     })
     .from(juniorInboxItems)
     .where(inboxItemNeedsUserNow(userId))
-    .groupBy(juniorInboxItems.subjectUrl);
+    .groupBy(juniorInboxItems.subjectKind, juniorInboxItems.subjectId);
 }
 
 /**
@@ -873,6 +888,7 @@ export async function searchInboxItems(
 ): Promise<InboxItem[]> {
   const rows = await db
     .select({
+      addedByAutomationId: juniorAutomationRuns.automationId,
       item: juniorInboxItems,
       ownerRootConversationId: juniorConversations.rootConversationId,
     })
@@ -881,6 +897,7 @@ export async function searchInboxItems(
       juniorConversations,
       inboxItemOwnedByConversation(juniorConversations.conversationId),
     )
+    .leftJoin(juniorAutomationRuns, ownerRun)
     .where(and(...searchConditions(reader, filters)))
     .orderBy(
       desc(eq(juniorInboxItems.status, "open")),
@@ -897,10 +914,7 @@ export async function searchInboxItems(
             : [desc(juniorInboxItems.updatedAt), desc(juniorInboxItems.id)]),
     )
     .limit(filters.limit);
-  const items = await hydrate(
-    db,
-    rows.map((row) => row.item),
-  );
+  const items = await hydrate(db, rows);
   return items.map((item, index) => ({
     ...item,
     ownerRootConversationId: rows[index]!.ownerRootConversationId,

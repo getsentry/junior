@@ -91,6 +91,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
   await createApp({
     plugins: defineJuniorPlugins([
       defineJuniorPlugin({
+        inboxSubjects: [{ kind: "deploy_stopped", label: "Deploys stopped" }],
         manifest: {
           name: "deploys",
           displayName: "Deploys",
@@ -145,6 +146,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     body: "Deploys of `api` stopped after 3 failures.",
     choices: [{ label: "Resume" }],
     dedupeKey: "deploy-stopped:api",
+    subject: { id: "api", kind: "deploy_stopped" },
     title: "Deploys stopped · api",
   });
 

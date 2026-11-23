@@ -36,7 +36,6 @@ import type {
 import { and, eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
-import type { LoadGitHubTitleParts } from "../webhooks/title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubConflictFix,
@@ -44,6 +43,7 @@ import {
 } from "../db/schema.js";
 import { pullRequestRow } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
+import { GITHUB_INBOX_SUBJECTS } from "../inbox-subjects.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import type {
   GitHubMergeConflict,
@@ -252,12 +252,10 @@ export function parseGitHubConflictItemKey(
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
   db: GitHubDb;
-  loadTitleParts?: LoadGitHubTitleParts | undefined;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
-  title?: string;
 }): Promise<void> {
-  const { conflict, ref, title } = args;
+  const { conflict, ref } = args;
   const opener = (
     await listGitHubPullRequestOpeners(args.db, {
       numbers: [ref.number],
@@ -269,23 +267,12 @@ async function addUnlandedItem(args: {
   const url =
     conflict.url ??
     `https://github.com/${ref.repositoryFullName}/pull/${ref.number}`;
-  const titleParts = title
-    ? await args.loadTitleParts?.({
-        repositoryFullName: ref.repositoryFullName,
-        title,
-      })
-    : undefined;
   await args.inboxItems.forConversation(opener.conversationId).upsert({
     assigneeIdentityIds: [opener.identityId],
     body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
     choices: [{ label: GITHUB_CONFLICT_RESUME }],
     dedupeKey: gitHubConflictItemKey(ref),
-    subject: {
-      id: url,
-      title: title ? `${title} (#${ref.number})` : url,
-      ...(titleParts ? { titleParts } : undefined),
-      url,
-    },
+    subject: { id: url, kind: GITHUB_INBOX_SUBJECTS.mergeConflict },
     title: `Merge conflict · #${ref.number}`,
   });
 }
@@ -303,13 +290,10 @@ export async function applyGitHubConflictPolicy(args: {
   events: EventInput[];
   /** Read the pull request's `PULL_REQUEST_CONFLICT_HISTORY` from GitHub. */
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
-  /** Read the title parts of the item subject. */
-  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
-  title?: string;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const t = juniorGitHubPullRequests;

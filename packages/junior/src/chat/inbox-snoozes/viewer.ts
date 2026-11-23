@@ -13,6 +13,7 @@ import {
   inboxItemVisibleTo,
 } from "@/chat/inbox-items/access";
 import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
+import { subjectLink } from "@/chat/inbox-items/subjects";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorInboxItems } from "@/db/schema/inbox-items";
 import {
@@ -79,7 +80,8 @@ interface RowItem {
   /** The viewer can close it (`canActOnInboxItem`). */
   canAct: boolean;
   id: string;
-  subjectUrl: string | null;
+  /** The web link of the item's subject, such as a pull request. */
+  subjectUrl: string | undefined;
 }
 
 /**
@@ -114,7 +116,7 @@ async function visibleRowItems(
         {
           canAct: canActOnInboxItem(item, user.id),
           id: item.id,
-          subjectUrl: item.subject?.url ?? null,
+          subjectUrl: subjectLink(item.subject),
         },
       ];
     }
@@ -122,11 +124,12 @@ async function visibleRowItems(
   }
   if (!root) return [];
   const reader = await inboxItemReaderForUserInConversation(user, root);
-  return getDb()
+  const rows = await getDb()
     .select({
       canAct: sql<boolean>`${inboxItemForUser(user.id)}`,
       id: juniorInboxItems.id,
-      subjectUrl: juniorInboxItems.subjectUrl,
+      subjectId: juniorInboxItems.subjectId,
+      subjectKind: juniorInboxItems.subjectKind,
     })
     .from(juniorInboxItems)
     .where(
@@ -136,6 +139,11 @@ async function visibleRowItems(
         inboxItemInRow(root),
       ),
     );
+  return rows.map((row) => ({
+    canAct: row.canAct,
+    id: row.id,
+    subjectUrl: subjectLink({ id: row.subjectId, kind: row.subjectKind }),
+  }));
 }
 
 /**

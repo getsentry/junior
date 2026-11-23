@@ -17,9 +17,10 @@
  * needs no read.
  *
  * The requester takes one action, not both, so one item per pull request
- * shows it. Each webhook that can change one of these facts reads them
- * again from GitHub. Junior saves the derived action and changes the item
- * only when the action changes.
+ * shows it. Each action has its own subject kind, so a new action closes
+ * the item of the old one and adds a new item. Each webhook that can change
+ * one of these facts reads them again from GitHub. Junior saves the derived
+ * action and changes the items only when the action changes.
  *
  * The item goes to the Conversation where a person asked Junior to open the
  * pull request. It is assigned to that person only when they are in that
@@ -30,11 +31,10 @@ import type {
   PluginConversationInboxItems,
   PluginLogger,
   PluginInboxItems,
-  InboxItemSubjectTitleParts,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { loadGitHubTitleParts } from "./title-parts.js";
+import { GITHUB_INBOX_SUBJECTS } from "../inbox-subjects.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
@@ -356,6 +356,11 @@ function closeReason(
   };
 }
 
+const ACTION_SUBJECTS: Record<GitHubPullRequestAction, string> = {
+  merge: GITHUB_INBOX_SUBJECTS.pullRequestMerge,
+  review: GITHUB_INBOX_SUBJECTS.pullRequestReview,
+};
+
 async function showAction(
   items: PluginInboxItems,
   args: {
@@ -366,10 +371,17 @@ async function showAction(
     previous: GitHubPullRequestAction | undefined;
     reason: ReviewAgainReason | undefined;
     state: GitHubPullRequestMergeState;
-    titleParts: InboxItemSubjectTitleParts | undefined;
   },
 ): Promise<void> {
   const { action, number, state } = args;
+  // The item of the old action closes first, so the new action gets its
+  // own item with its own kind.
+  if (args.previous) {
+    await items.close({
+      dedupeKey: args.dedupeKey,
+      ...closeReason(state, args.previous),
+    });
+  }
   if (action) {
     await items.upsert({
       assigneeIdentityIds: [args.identityId],
@@ -382,23 +394,14 @@ async function showAction(
           ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
           : `${args.reason ? REVIEW_AGAIN_TEXT[args.reason](number) : `GitHub asks you to review #${number}.`}\n\n${state.url}`,
       dedupeKey: args.dedupeKey,
-      // The number stays visible where a view shows only the subject.
-      subject: {
-        id: state.url,
-        title: `${state.title} (#${number})`,
-        ...(args.titleParts ? { titleParts: args.titleParts } : undefined),
-        url: state.url,
-      },
+      // GitHub's canonical URL. The card of the URL gives the title and
+      // state, and it follows a renamed repository.
+      subject: { id: state.url, kind: ACTION_SUBJECTS[action] },
       title:
         action === "merge"
           ? `Ready to merge · #${number}`
           : `Review requested · #${number}`,
       waitsOnAssignees: true,
-    });
-  } else if (args.previous) {
-    await items.close({
-      dedupeKey: args.dedupeKey,
-      ...closeReason(state, args.previous),
     });
   }
 }
@@ -550,16 +553,6 @@ async function syncOne(
         previous,
         reason: next.reason,
         state,
-        titleParts: next.action
-          ? await loadGitHubTitleParts(
-              args.env,
-              {
-                repositoryFullName: target.repositoryFullName,
-                title: state.title,
-              },
-              args.log,
-            )
-          : undefined,
       });
       if (
         next.reason &&

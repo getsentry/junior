@@ -23,6 +23,7 @@ const question = {
   conversationIds: [CLOSED_ISSUE_ID],
   createdAt: "2026-08-07T08:00:00.000Z",
   id: "item-rollback",
+  subject: { id: "item-rollback", kind: "agent" },
   kind: "action" as const,
   request: {
     question: "Roll back payments-v42?",

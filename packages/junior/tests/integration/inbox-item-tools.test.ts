@@ -17,6 +17,7 @@ import {
 } from "@/db/schema";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { getConversation } from "@/chat/task-execution/store";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
@@ -375,6 +376,13 @@ describe("inbox item tools", () => {
           kind: "scheduled_automation",
         } as any,
       });
+    // Each run's row links its Conversation before the run acts, so later
+    // runs know the items that it added.
+    const started = (conversationId: string) =>
+      recordAutomationExecution("auto-digest", {
+        conversationId,
+        executionId: `run-${conversationId}`,
+      });
     const notice = {
       kind: "notice",
       title: "Digest needs a look",
@@ -401,6 +409,7 @@ describe("inbox item tools", () => {
       }),
     ).rejects.toThrow("only to people in its Conversation");
 
+    await started("slack:DRUN:1.000001");
     const added = await execute(run("slack:DRUN:1.000001").add, notice);
     // Ana took part only in the first run, which added the item.
     const again = await execute(run("slack:DRUN:1.000002").add, notice);
@@ -412,6 +421,7 @@ describe("inbox item tools", () => {
     // A run in a private Conversation cannot write into the public item of
     // an earlier run, by its key or by an update.
     await conversation("slack:CPUB:1.000009", "CPUB", "public");
+    await started("slack:CPUB:1.000009");
     const shared = await execute(run("slack:CPUB:1.000009").add, {
       ...notice,
       assignees: ["everyone"],
@@ -661,32 +671,28 @@ describe("inbox item tools", () => {
       body: "The last run failed.",
       assignees: ["everyone"],
     };
-    // The input schema rejects a key with a prefix that core or a plugin
-    // owns, so the tool never runs.
-    for (const [key, owner] of [
-      ["automation:sched_1", "an Automation alert"],
-      ["plugin:github:pr", "a plugin"],
-      ["reply:local:web:1", "a reply notice"],
-      ["todo:slack:CPUB:1.000001:1", "a To-do"],
-    ]) {
-      expect(() =>
-        agent.add.prepareArguments!({ ...notice, dedupe_key: key }),
-      ).toThrow(`belongs to ${owner}`);
-    }
     // An alert that core added for a public Automation.
     const alert = await insertInboxItem(getDb(), {
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
       body: "Last run failed.",
       conversationIds: [],
-      dedupeKey: "automation:sched_1:run",
+      dedupeKey: "sched_1:run",
       kind: "action",
       nowMs: Date.now(),
       owner: { id: "sched_1", kind: "automation" },
+      subject: { id: "sched_1", kind: "automation" },
       tenant: { provider: "slack", providerTenantId: "T123" },
       title: "Daily digest",
       visibility: "public",
     });
+    // An agent's keys are its own, so the alert's key adds another item.
+    const own = await execute(agent.add, {
+      ...notice,
+      dedupe_key: "sched_1:run",
+    });
+    expect(own).toMatchObject({ created: true });
+    expect(own.item.id).not.toBe(alert!.id);
     await expect(
       execute(agent.update, {
         id: alert!.id,

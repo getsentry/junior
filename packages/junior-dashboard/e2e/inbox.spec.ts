@@ -49,6 +49,7 @@ const rollout = {
     ],
   },
   title: "Approve the payments-v42 rollout",
+  subject: { id: "item-rollout", kind: "agent" as const },
 };
 
 const license = {
@@ -68,6 +69,7 @@ const license = {
     ],
   },
   title: "Review the acme license entry",
+  subject: { id: "item-license", kind: "agent" as const },
 };
 
 const audit = {
@@ -84,7 +86,16 @@ const prReady = {
   kind: "notice" as const,
   subject: {
     id: "acme/payments#42",
-    title: "fix(payments): Retry declined webhooks",
+    kind: "agent",
+    object: {
+      key: "acme/payments#42",
+      kind: "object",
+      label: "acme/payments#42",
+      objectType: "code_change",
+      plugin: "github",
+      title: "fix(payments): Retry declined webhooks",
+      url: "https://github.com/acme/payments/pull/42",
+    },
     url: "https://github.com/acme/payments/pull/42",
   },
   title: "Pull request ready for review",
@@ -325,7 +336,7 @@ test("the inbox shows an item in its conversation", async ({
     detail.getByRole("heading", { name: prReady.title }),
   ).toBeVisible();
   await expect(
-    details.getByRole("link", { name: prReady.subject.title }),
+    details.getByRole("link", { name: prReady.subject.object.title }),
   ).toBeVisible();
 
   // A closed item links to the open item after it, not to the oldest one.
@@ -522,6 +533,7 @@ test("a failed-run alert sends Pause to the server", async ({
     body: "Last run failed.",
     id: "item-run-alert",
     owner: { id: "scheduled-1", kind: "automation" },
+    subject: { id: "scheduled-1", kind: "automation" },
     request: failedRunAlert("scheduled-1", "Weekly project summary").request,
     rootConversationId: undefined,
     title: "Weekly project summary",
@@ -557,6 +569,7 @@ test("an Automation alert names its Automation as its source", async ({
     body: "Blocked: GitHub access expired. Fix the problem, then resume it.",
     id: "item-alert",
     owner: { id: "scheduled-1", kind: "automation" },
+    subject: { id: "scheduled-1", kind: "automation" },
     rootConversationId: undefined,
     title: "Weekly project summary",
   };

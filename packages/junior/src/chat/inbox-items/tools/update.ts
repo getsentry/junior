@@ -3,7 +3,7 @@ import { getDb } from "@/chat/db";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
   canAgentChangeInboxItem,
-  PLUGIN_INBOX_ITEM_KEY_PREFIX,
+  isPluginInboxItem,
   readInboxItemAgentScope,
   requireInboxItemAssignees,
   requireInboxItemLinks,
@@ -112,7 +112,7 @@ export function createUpdateInboxItemTool(
           `Inbox item ${item.id} is already closed. To follow up, add a new item with addInboxItem.`,
         );
       }
-      if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) {
+      if (isPluginInboxItem(item)) {
         throw new ToolInputError(
           "A plugin added this item. Only the plugin or a person can change it.",
         );
@@ -171,7 +171,7 @@ export function createUpdateInboxItemTool(
         if (input.assignees) {
           await requireInboxItemAssignees({
             assignees,
-            automationId: item.automationId,
+            automationId: item.addedByAutomationId,
             conversationIds: [context.conversationId, ...ownerLinks(item)],
             scope,
             visibility,
@@ -187,8 +187,8 @@ export function createUpdateInboxItemTool(
           nowMs: Date.now(),
           title: input.title ?? item.title,
           visibility,
+          subject: item.subject,
           ...(item.request ? { request: item.request } : undefined),
-          ...(item.subject ? { subject: item.subject } : undefined),
         });
         if (!updated) {
           throw new ToolInputError(

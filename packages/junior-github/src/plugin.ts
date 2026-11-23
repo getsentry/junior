@@ -4,6 +4,7 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { githubAccountLinks } from "./account-links.js";
+import { githubInboxSubjectKinds } from "./inbox-subjects.js";
 import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
@@ -27,7 +28,6 @@ import {
   parseGitHubConflictItemKey,
 } from "./merge-conflict-checks/policy.js";
 import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
-import { loadGitHubTitleParts } from "./webhooks/title-parts.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
@@ -193,6 +193,7 @@ export function githubPlugin(
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
     images: githubImageSource,
+    inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     events: {
       resourceTypes: [
@@ -386,12 +387,6 @@ export function githubPlugin(
           events: ctx.events,
           loadHistory: async (ref) =>
             await loadPullRequestConflictHistory(installationEnv, ref),
-          loadTitleParts: async (input) =>
-            await loadGitHubTitleParts(
-              { ...installationEnv, responses: ctx.state },
-              input,
-              ctx.log,
-            ),
           log: ctx.log,
           now: new Date(ctx.nowMs),
           inboxItems: ctx.inboxItems,
@@ -488,8 +483,6 @@ export function githubPlugin(
               ),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
-            loadTitleParts: async (input) =>
-              await loadGitHubTitleParts(installationEnv, input, ctx.log),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
               await markPullRequestFeedbackReviewing(installationEnv, target),

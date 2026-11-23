@@ -7,7 +7,7 @@ import {
   juniorIdentities,
   juniorInboxItems,
 } from "@/db/schema";
-import { inboxItemAssignedTo, REPLY_NOTICE_KEY_PREFIX } from "./access";
+import { inboxItemAssignedTo } from "./access";
 import {
   closeInboxItem,
   getOpenInboxItemByDedupeKey,
@@ -15,14 +15,16 @@ import {
   updateInboxItemContent,
   type InboxItemContent,
 } from "./store";
+import { INBOX_SUBJECT_KINDS } from "./subjects";
 
 // A reply in a dashboard Conversation is a notice for its starter. The
 // Conversation has one open reply notice at a time. Each reply replaces its
 // content, and the starter's read of the latest reply closes it. A Slack
 // thread already tells people, so a Conversation with a Location gets none.
 
-function replyNoticeKey(conversationId: string): string {
-  return `${REPLY_NOTICE_KEY_PREFIX}${conversationId}`;
+// The Conversation is both the subject and the dedupe key of its notice.
+function replyNoticeKey(conversationId: string) {
+  return { dedupeKey: conversationId, namespace: INBOX_SUBJECT_KINDS.reply };
 }
 
 /**
@@ -52,6 +54,7 @@ export async function upsertReplyNotice(
     body: input.body,
     conversationIds: [input.conversationId],
     kind: "notice",
+    subject: { id: input.conversationId, kind: INBOX_SUBJECT_KINDS.reply },
     title: input.title,
     visibility: access?.visibility === "public" ? "public" : "private",
   };
@@ -71,7 +74,7 @@ export async function upsertReplyNotice(
   const inserted = await insertInboxItem(db, {
     ...content,
     addedByTurnId: input.turnId,
-    dedupeKey: key,
+    dedupeKey: key.dedupeKey,
     nowMs: input.nowMs,
     owner: { id: input.conversationId, kind: "conversation" },
     ...(tenant ? { tenant } : undefined),
@@ -162,7 +165,8 @@ async function openReplyNoticeId(
     .from(juniorInboxItems)
     .where(
       and(
-        eq(juniorInboxItems.dedupeKey, replyNoticeKey(input.conversationId)),
+        eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.reply),
+        eq(juniorInboxItems.subjectId, input.conversationId),
         eq(juniorInboxItems.status, "open"),
         inboxItemAssignedTo(input.userId),
       ),

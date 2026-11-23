@@ -1,11 +1,11 @@
-import { and, eq, like, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
   juniorInboxItemConversations,
   juniorInboxItems,
 } from "@/db/schema";
-import { TODO_INBOX_ITEM_KEY_PREFIX, inboxItemPlugin } from "./access";
+import { INBOX_SUBJECT_KINDS, subjectKindPlugin } from "./subjects";
 import { inboxItemNeedsUserNow } from "./store";
 
 /** One open Inbox item that a Conversation waits on a User for. */
@@ -42,8 +42,8 @@ const waitingTodoRootId =
 function waitingItemsQuery(db: JuniorDatabase, userId: string) {
   const columns = {
     createdAt: juniorInboxItems.createdAt,
-    dedupeKey: juniorInboxItems.dedupeKey,
     itemId: juniorInboxItems.id,
+    subjectKind: juniorInboxItems.subjectKind,
     title: juniorInboxItems.title,
   };
   return db
@@ -73,7 +73,7 @@ function waitingItemsQuery(db: JuniorDatabase, userId: string) {
           and(
             inboxItemNeedsUserNow(userId),
             eq(juniorInboxItems.ownerKind, "conversation"),
-            like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+            eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.todo),
           ),
         ),
     );
@@ -107,7 +107,7 @@ export async function listWaitingConversations(
   );
   const waiting = new Map<string, WaitingConversation>();
   for (const row of rows) {
-    const plugin = inboxItemPlugin(row.dedupeKey);
+    const plugin = subjectKindPlugin(row.subjectKind);
     const item = { title: row.title, ...(plugin ? { plugin } : undefined) };
     const current = waiting.get(row.conversationId);
     // Rows come newest first, so each later row is older.

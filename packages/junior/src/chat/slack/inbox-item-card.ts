@@ -9,6 +9,7 @@ import {
   type InboxItem,
   type InboxItemAssignee,
 } from "@/chat/inbox-items/store";
+import { subjectLink } from "@/chat/inbox-items/subjects";
 import {
   escapeSlackMrkdwnText,
   normalizeSlackReplyMarkdown,
@@ -62,7 +63,7 @@ function assigneeText(item: InboxItem): string {
  * issue URL for a pull request.
  */
 function titleText(item: InboxItem): string {
-  const href = safeLinkUrl(item.subject?.url);
+  const href = safeLinkUrl(subjectLink(item.subject));
   if (!href) return `**${item.title}**`;
   const label = item.title.replace(/[[\]\\]/g, "\\$&");
   return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;

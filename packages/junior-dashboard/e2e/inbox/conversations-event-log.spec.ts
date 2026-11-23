@@ -818,6 +818,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         conversationIds: [conversationId],
         createdAt: report.startedAt,
         id: "item-tall",
+        subject: { id: "item-tall", kind: "agent" },
         kind: "action",
         request: {
           question: "How should the payments-v42 rollout go?",

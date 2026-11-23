@@ -502,6 +502,7 @@ describe("Slack webhook: Inbox item cards", () => {
     await createApp({
       plugins: defineJuniorPlugins([
         defineJuniorPlugin({
+          inboxSubjects: [{ kind: "deploy_stopped", label: "Deploys stopped" }],
           manifest: {
             name: "deploys",
             displayName: "Deploys",
@@ -528,6 +529,7 @@ describe("Slack webhook: Inbox item cards", () => {
       body: "Deploys of `api` stopped after 3 failures.",
       choices: [{ label: "Resume" }],
       dedupeKey: "deploy-stopped:api",
+      subject: { id: "api", kind: "deploy_stopped" },
       title: "Deploys stopped · api",
     });
 

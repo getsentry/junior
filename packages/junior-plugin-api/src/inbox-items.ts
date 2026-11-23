@@ -4,28 +4,25 @@ import type { PluginState } from "./state";
 import type { PluginEventToolContext } from "./tools";
 
 /**
- * A code change title split by Conventional Commits, such as
- * `feat(api)!: Add retries`. The plugin that owns the code change parses it,
- * so the Inbox can lead with the words and show the rest as pills.
+ * One kind of Inbox item that a plugin adds, such as `pull_request_review`.
+ * Junior stores it as `<plugin>:<kind>`, so each kind is unique. The kind
+ * says what the item asks, and `label` names that ask in the Inbox, such as
+ * `Review requested`.
  */
-export interface InboxItemSubjectTitleParts {
-  /** The title without its type prefix, such as `Add retries`. */
-  text: string;
-  /** The change type as one word, such as `Feature`. Unset when unknown. */
-  type?: string;
-  /** The scope, such as `api`. */
-  scope?: string;
-  /** The title marks a breaking change, such as with `!`. */
-  breaking?: boolean;
+export interface PluginInboxSubjectKind {
+  kind: string;
+  label: string;
 }
 
-/** What a plugin item is about, such as a pull request. */
-export interface InboxItemSubjectInput {
+/**
+ * What a plugin item is about: one of the plugin's registered `kind`s and
+ * the id of the object, such as the canonical URL of a pull request. Junior
+ * reads the object's title, state, and link from the object link that
+ * claims the URL, and does not store them.
+ */
+export interface PluginInboxItemSubject {
   id: string;
-  title?: string;
-  url?: string;
-  /** Set only for a code change whose title follows Conventional Commits. */
-  titleParts?: InboxItemSubjectTitleParts;
+  kind: string;
 }
 
 /**
@@ -46,7 +43,7 @@ export interface PluginReviewNotice {
    */
   dedupeKey: string;
   /** What the notice is about, such as a pull request. Search matches `id`. */
-  subject?: InboxItemSubjectInput;
+  subject: PluginInboxItemSubject;
   /**
    * For an item that waits on its assignees, name their step, such as
    * `Ready to merge · #946`. It is the reason that the dashboard shows.

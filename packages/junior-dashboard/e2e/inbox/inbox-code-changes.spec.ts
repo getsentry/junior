@@ -1,6 +1,11 @@
 import type { Locator, Page } from "@playwright/test";
 
-import { mockInboxItems, prMerge, prReview } from "./inbox-fixture";
+import {
+  mockInboxItems,
+  prMerge,
+  prReview,
+  pullRequestSubject,
+} from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -8,8 +13,10 @@ import { expect, test } from "../test";
 // GitHub plugin parses it.
 const breakingReview = {
   ...prReview,
-  subject: {
-    ...prReview.subject,
+  subject: pullRequestSubject({
+    kind: prReview.subject.kind,
+    label: prReview.subject.label,
+    resource: prReview.subject.resource,
     title: "feat(release)!: Pin the release train (#91)",
     titleParts: {
       breaking: true,
@@ -17,7 +24,8 @@ const breakingReview = {
       text: "Pin the release train",
       type: "Feature",
     },
-  },
+    url: prReview.subject.url,
+  }),
 };
 
 // A merge conflict ask has Resume choices, so its kind is a Question. Its
@@ -36,9 +44,10 @@ const conflict = {
       },
     ],
   },
-  subject: {
-    ...prMerge.subject,
-    id: "https://github.com/getsentry/payments/pull/57",
+  subject: pullRequestSubject({
+    kind: "github:merge_conflict",
+    label: "Merge conflict",
+    resource: prMerge.subject.resource,
     title: "fix(slack): Keep thread replies in order",
     titleParts: {
       scope: "slack",
@@ -46,7 +55,7 @@ const conflict = {
       type: "Fix",
     },
     url: "https://github.com/getsentry/payments/pull/57",
-  },
+  }),
   title: "Merge conflict · #57",
 };
 

@@ -14,7 +14,10 @@ import {
   type Event,
   type TaskOutcome,
 } from "@sentry/junior-plugin-api";
-import { dispatchEventAutomation } from "@/chat/agent-dispatch/context";
+import {
+  dispatchEventAutomation,
+  eventAutomationDispatchId,
+} from "@/chat/agent-dispatch/context";
 import { automationReplyAttribution } from "@/chat/automations/reply-attribution";
 import { renderTaskInput } from "@/chat/task-input";
 import { effectiveTaskOutcomes } from "@/chat/task-outcomes";
@@ -195,6 +198,13 @@ export async function ingestEventAutomations(
               taskId: task.id,
             }
           : undefined;
+      // The run's row exists before its dispatch, so the dispatch links it
+      // to the run's Conversation before the run's agent can act.
+      await recordEventAutomationRunStarted(db, {
+        automation: task,
+        dispatchId: eventAutomationDispatchId(idempotencyKey),
+        nowMs,
+      });
       const dispatch = await dispatchEventAutomation({
         automationId: task.id,
         conversationWorkQueue: options.queue,
@@ -210,11 +220,6 @@ export async function ingestEventAutomations(
           replyAttribution: automationReplyAttribution(task.title),
           outcomes,
         },
-      });
-      await recordEventAutomationRunStarted(db, {
-        automation: task,
-        dispatchId: dispatch.id,
-        nowMs,
       });
       if (dispatch.status === "created") {
         dispatched += 1;

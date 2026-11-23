@@ -17,7 +17,6 @@ import type {
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
@@ -46,7 +45,6 @@ export const gitHubPullRequestMergeSchema = z.object({
   mergeable: z.boolean().nullable().optional(),
   mergeable_state: z.string().optional(),
   state: z.string(),
-  title: z.string().optional(),
 });
 
 /** Values that GitHub reports for a conflicted pull request. */
@@ -147,7 +145,6 @@ export async function loadGitHubMergeConflictEvents(args: {
   loadConflictHistory?:
     | ((ref: GitHubPullRequestRef) => Promise<unknown>)
     | undefined;
-  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
@@ -181,12 +178,10 @@ export async function loadGitHubMergeConflictEvents(args: {
         draft: loaded.draft === true,
         events: gitHubMergeConflictEvents({ ...ref, conflict }),
         loadHistory: loadConflictHistory,
-        loadTitleParts: args.loadTitleParts,
         log: args.log,
         now: new Date(),
         ref,
         inboxItems: args.inboxItems,
-        ...(loaded.title ? { title: loaded.title } : undefined),
       });
     } catch (error) {
       // The delivered events still publish without the conflict check.

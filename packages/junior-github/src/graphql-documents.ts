@@ -193,7 +193,7 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
     search(query: $query, type: ISSUE, first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName title url }
+        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName url }
       }
     }
   }
@@ -364,6 +364,139 @@ export function pullRequestLifecycles(count: number): GitHubGraphqlOperation {
               }))
             : [selection],
         ),
+      }),
+    }),
+  );
+}
+
+// The card query for one issue or pull request. `githubObjectCards` repeats
+// its `repository` field for each repository, and its `issueOrPullRequest`
+// field for each number. `repository(owner:, name:)` follows a renamed
+// repository, as the REST reads do.
+const GITHUB_OBJECT_CARD = githubGraphql(`
+  query GitHubObjectCards($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      releaseConfig: object(expression: "HEAD:.github/release.yml") {
+        ... on Blob { text }
+      }
+      issueOrPullRequest(number: $number) {
+        __typename
+        ... on Issue {
+          assignees(first: 5) { nodes { login } }
+          body
+          labels(first: 5) { nodes { name } }
+          number
+          issueState: state
+          title
+          updatedAt
+          url
+        }
+        ... on PullRequest {
+          additions
+          author { login }
+          baseRefName
+          body
+          changedFiles
+          deletions
+          headRefName
+          isDraft
+          mergeable
+          merged
+          number
+          reviewRequests(first: 5) {
+            nodes { requestedReviewer { ... on User { login } } }
+          }
+          state
+          title
+          updatedAt
+          url
+        }
+      }
+    }
+  }
+`);
+
+/**
+ * Return the query that reads the cards of many issues and pull requests at
+ * once. Repository `r` has the alias `r<r>` and the variables `$o<r>` and
+ * `$m<r>`. Its object `i` has the alias `n<r>_<i>` and the variable
+ * `$n<r>_<i>`. `counts[r]` is the number of objects of repository `r`.
+ */
+export function githubObjectCards(
+  counts: readonly number[],
+): GitHubGraphqlOperation {
+  const variable = (value: string): VariableNode => ({
+    kind: Kind.VARIABLE,
+    name: { kind: Kind.NAME, value },
+  });
+  const repositoryVariables: Record<string, (r: number) => string> = {
+    name: (r) => `m${r}`,
+    owner: (r) => `o${r}`,
+  };
+  const objects = (r: number) =>
+    Array.from({ length: counts[r] ?? 0 }, (_, i) => `n${r}_${i}`);
+  return operation(
+    visit(parse(GITHUB_OBJECT_CARD.query), {
+      OperationDefinition: (node) => ({
+        ...node,
+        variableDefinitions: counts.flatMap((_, r) =>
+          (node.variableDefinitions ?? []).flatMap((definition) => {
+            const name = definition.variable.name.value;
+            const names =
+              name === "number"
+                ? objects(r)
+                : [repositoryVariables[name]?.(r) ?? name];
+            return names.map((value) => ({
+              ...definition,
+              variable: variable(value),
+            }));
+          }),
+        ),
+      }),
+      SelectionSet: (node) => ({
+        ...node,
+        selections: node.selections.flatMap((selection): SelectionNode[] => {
+          if (
+            selection.kind !== Kind.FIELD ||
+            selection.name.value !== "repository"
+          ) {
+            return [selection];
+          }
+          return counts.map((_, r) => ({
+            ...selection,
+            alias: { kind: Kind.NAME, value: `r${r}` },
+            arguments: (selection.arguments ?? []).map((argument) => ({
+              ...argument,
+              value: variable(
+                repositoryVariables[argument.name.value]?.(r) ??
+                  argument.name.value,
+              ),
+            })),
+            ...(selection.selectionSet
+              ? {
+                  selectionSet: {
+                    ...selection.selectionSet,
+                    selections: selection.selectionSet.selections.flatMap(
+                      (child): SelectionNode[] =>
+                        child.kind === Kind.FIELD &&
+                        child.name.value === "issueOrPullRequest"
+                          ? objects(r).map((name) => ({
+                              ...child,
+                              alias: { kind: Kind.NAME, value: name },
+                              arguments: (child.arguments ?? []).map(
+                                (argument) => ({
+                                  ...argument,
+                                  value: variable(name),
+                                }),
+                              ),
+                            }))
+                          : [child],
+                    ),
+                  },
+                }
+              : undefined),
+          }));
+        }),
       }),
     }),
   );

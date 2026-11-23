@@ -111,7 +111,7 @@ describe("inbox item evidence", () => {
     await slackConversation(OTHER_TENANT_ID, "CEXT", "public", "T999");
     const ana = await user("ana@example.com");
     await user("ben@example.com");
-    const subject = { id: RELEASE, title: "payments-v42" };
+    const subject = { id: RELEASE };
     const evidence = [
       {
         label: "Canary error rate",
@@ -252,7 +252,7 @@ describe("inbox item evidence", () => {
       await slackConversation(id, "CPUB", "public");
     }
     const ana = await user("ana@example.com");
-    const subject = { id: RELEASE, title: "payments-v42" };
+    const subject = { id: RELEASE };
     // The related notice is older than every item on the busy subject.
     const rose = await add(LATENCY_ID, {
       assignees: ["ana@example.com"],
@@ -273,7 +273,7 @@ describe("inbox item evidence", () => {
         dedupeKey: `busy:${index}`,
         kind: "notice",
         nowMs: start + index,
-        subject: { id: "release:busy" },
+        subject: { id: "release:busy", kind: "agent" },
         tenant,
         title: `Busy release ${index}`,
         visibility: "public",

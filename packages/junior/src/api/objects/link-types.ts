@@ -21,6 +21,8 @@ export interface ObjectLinkType {
   objectTypes: readonly ObjectType[];
   /** `junior` for core, or the plugin name. */
   owner: string;
+  /** Read many objects at once before `canView` and `resolve` run. */
+  preload?(viewer: User, urls: URL[]): Promise<void>;
   /** The tool that reads the object live, for a Turn after an attach. */
   readTool?(object: ObjectAnnotation): string | undefined;
   resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;

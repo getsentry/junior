@@ -1,5 +1,8 @@
 import * as z from "zod";
-import { objectTypeSchema } from "@sentry/junior-plugin-api";
+import {
+  objectTypeSchema,
+  ownedObjectAnnotationSchema,
+} from "@sentry/junior-plugin-api";
 import { inboxItemRequestSchema } from "@/chat/inbox-items/evidence";
 import { actorIdentitySchema } from "./conversation";
 import {
@@ -99,9 +102,23 @@ export const inboxItemSchema = z
      */
     rootConversationId: z.string().min(1).optional(),
     status: z.enum(["open", "done", "dismissed"]),
+    /**
+     * What the item is about. `kind` says what the item asks, such as
+     * `github:pull_request_review`. The rest comes from the subject when
+     * Junior reads the item, never from a copy in the item.
+     */
     subject: z
       .object({
         id: z.string().min(1),
+        kind: z.string().min(1),
+        /** The name of a plugin kind's ask, such as `Review requested`. */
+        label: z.string().min(1).optional(),
+        /**
+         * The viewer's card of `url`, such as a pull request with its title
+         * and state. Unset when no link type claims `url`, the viewer
+         * cannot see it, or its provider read failed.
+         */
+        object: ownedObjectAnnotationSchema.optional(),
         /**
          * The object type of the link type that claims `url`, such as
          * `code_change` for a pull request. Unset when none claims it.
@@ -113,24 +130,10 @@ export const inboxItemSchema = z
          * Unset when no Event source claims it.
          */
         resource: inboxSnoozeResourceSchema.optional(),
-        title: z.string().min(1).optional(),
-        /**
-         * A code change title split by Conventional Commits, as the plugin
-         * that owns the code change parsed it.
-         */
-        titleParts: z
-          .object({
-            breaking: z.boolean().optional(),
-            scope: z.string().min(1).optional(),
-            text: z.string().min(1),
-            type: z.string().min(1).optional(),
-          })
-          .strict()
-          .optional(),
+        /** The web link of `id`, when `id` is one. */
         url: z.string().min(1).optional(),
       })
-      .strict()
-      .optional(),
+      .strict(),
     title: z.string().min(1),
     /**
      * The id of the To-do that the item shows, for a To-do assigned to the

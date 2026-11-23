@@ -11,6 +11,7 @@ import {
   searchInboxItems,
   type InboxItemVisibility,
 } from "@/chat/inbox-items/store";
+import { recordAutomationExecution } from "@/chat/automations/execution-stats";
 import { juniorAutomations, juniorIdentities } from "@/db/schema";
 
 const T123 = { provider: "slack", providerTenantId: "T123" };
@@ -49,8 +50,19 @@ async function addItem(input: {
   dedupeKey: string;
   visibility: InboxItemVisibility;
 }): Promise<string> {
+  // A run of an Automation adds its item from the run's own Conversation.
+  let ownerId = input.conversationId;
+  if (input.automationId) {
+    ownerId = `slack:CRUN:${input.dedupeKey}`;
+    await conversation(ownerId, input.visibility);
+    await recordAutomationExecution(input.automationId, {
+      conversationId: ownerId,
+      executionId: `run-${input.dedupeKey}`,
+    });
+  }
   const item = await insertInboxItem(getDb(), {
-    owner: { id: input.conversationId, kind: "conversation" },
+    subject: { id: input.dedupeKey, kind: "agent" },
+    owner: { id: ownerId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: input.assigneeUserIds,
     body: "Body",
@@ -61,7 +73,6 @@ async function addItem(input: {
     tenant: T123,
     title: input.dedupeKey,
     visibility: input.visibility,
-    ...(input.automationId ? { automationId: input.automationId } : undefined),
   });
   if (!item) throw new Error(`no item for ${input.dedupeKey}`);
   return item.id;

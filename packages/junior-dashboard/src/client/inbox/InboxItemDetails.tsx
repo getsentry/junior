@@ -41,7 +41,7 @@ function Fact(props: { children: ReactNode; label: string }) {
  */
 function SubjectCard(props: {
   body: string;
-  subject: NonNullable<InboxItemPayload["subject"]>;
+  subject: InboxItemPayload["subject"];
 }) {
   const { subject } = props;
   const href = subject.url ? inboxItemSubjectHref(subject.url) : undefined;
@@ -51,10 +51,10 @@ function SubjectCard(props: {
       <span className="text-sm">
         {href ? (
           <OutboundLink className={dashboardInlineLinkClass} href={href}>
-            {subject.title ?? href}
+            {subject.object?.title ?? href}
           </OutboundLink>
         ) : (
-          (subject.title ?? subject.id)
+          (subject.object?.title ?? subject.id)
         )}
       </span>
     </DetailsCard>
@@ -135,7 +135,7 @@ export function InboxItemDetails(props: {
             </Fact>
           </dl>
         </DetailsCard>
-        {subject ? (
+        {subject.url ? (
           <InboxItemObjects conversationId={itemConversationId(item)}>
             <SubjectCard body={item.body} subject={subject} />
           </InboxItemObjects>

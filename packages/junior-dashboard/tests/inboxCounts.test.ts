@@ -26,11 +26,11 @@ function ask(
       type === "prQuestion"
         ? {
             id: `https://github.com/getsentry/junior/pull/${id}`,
+            kind: "agent",
             objectType: "code_change",
-            title: id,
             url: `https://github.com/getsentry/junior/pull/${id}`,
           }
-        : undefined,
+        : { id, kind: type === "todo" ? "todo" : "agent" },
     todoId: type === "todo" ? 1 : undefined,
   };
 }

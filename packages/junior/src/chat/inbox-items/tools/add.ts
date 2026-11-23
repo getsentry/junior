@@ -5,8 +5,8 @@ import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
+  agentInboxItemSubject,
   canAgentChangeInboxItem,
-  RESERVED_INBOX_ITEM_KEY_PREFIXES,
   canReadInboxItem,
   readInboxItemAgentScope,
   requireInboxItemAssignees,
@@ -51,6 +51,7 @@ import {
   type InboxItemToolContext,
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
+import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 
 const subjectSchema = z
   .object({
@@ -60,10 +61,8 @@ const subjectSchema = z
       .min(1)
       .max(500)
       .describe(
-        "Stable id of the thing the item is about, such as a pull request URL. Search matches it exactly.",
+        "Stable id of the thing the item is about, such as a pull request URL. Search matches it exactly. The Inbox reads the title and state of a URL from its source.",
       ),
-    title: z.string().trim().min(1).max(200).nullable().optional(),
-    url: z.string().url().max(2000).nullable().optional(),
   })
   .strict();
 
@@ -150,17 +149,6 @@ function requireRequest(kind: InboxItem["kind"], hasRequest: boolean): void {
   }
 }
 
-function subjectInput(
-  subject: z.output<typeof subjectSchema> | null | undefined,
-) {
-  if (!subject) return undefined;
-  return {
-    id: subject.id,
-    ...(subject.title ? { title: subject.title } : undefined),
-    ...(subject.url ? { url: subject.url } : undefined),
-  };
-}
-
 export const addInboxItemToolDefinition = zodToolDefinition({
   description: `Ask a person for input, or tell them about work that needs them. This is how you ask a person anything: the item goes in the Inbox and, in a Slack thread, shows as a card with buttons. The answer arrives later as a \`<inbox-item-answer>\` with the item id. A dismiss comes as a note. An assignee's thread reply that answers the item also closes it. If your next step needs the answer, end the Turn now with \`${NO_REPLY_TOOL_NAME}\` and no text: the card is your reply. Continue other work that does not need the answer.`,
   annotations: {
@@ -189,17 +177,6 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .max(200)
-        .superRefine((key, context) => {
-          const reserved = RESERVED_INBOX_ITEM_KEY_PREFIXES.find(({ prefix }) =>
-            key.startsWith(prefix),
-          );
-          if (reserved) {
-            context.addIssue({
-              code: "custom",
-              message: `A \`dedupe_key\` that starts with \`${reserved.prefix}\` belongs to ${reserved.owner}. ${reserved.instead}`,
-            });
-          }
-        })
         .nullable()
         .optional()
         .describe(
@@ -281,7 +258,7 @@ export function createAddInboxItemTool(
         input.dedupe_key ?? `ask:${options.toolCallId ?? randomUUID()}`;
       const existing = await getOpenInboxItemByDedupeKey(
         db,
-        dedupeKey,
+        { dedupeKey, namespace: INBOX_SUBJECT_KINDS.agent },
         scope.tenant,
       );
       if (
@@ -351,7 +328,7 @@ export function createAddInboxItemTool(
       await requireInboxItemAssignees({
         assignees,
         automationId: existing
-          ? existing.automationId
+          ? existing.addedByAutomationId
           : scope.reader.automationId,
         conversationIds: [context.conversationId, ...ownerLinks(existing)],
         scope,
@@ -363,13 +340,11 @@ export function createAddInboxItemTool(
         body: input.body,
         conversationIds,
         kind: input.kind,
+        subject: agentInboxItemSubject(input.subject?.id, dedupeKey),
         title: input.title,
         visibility,
         ...(input.request
           ? { request: requestInput(input.request, evidence) }
-          : undefined),
-        ...(input.subject
-          ? { subject: subjectInput(input.subject) }
           : undefined),
       };
       // Write only the item that the checks above read, so a concurrent add
@@ -407,9 +382,6 @@ export function createAddInboxItemTool(
         owner: { id: context.conversationId, kind: "conversation" },
         ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
         nowMs: Date.now(),
-        ...(scope.reader.automationId
-          ? { automationId: scope.reader.automationId }
-          : undefined),
         ...(scope.tenant ? { tenant: scope.tenant } : undefined),
       });
       if (!item) {
