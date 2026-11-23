@@ -45,7 +45,7 @@ describe("Turn state", () => {
   beforeEach(async () => {
     fixture = await createJuniorSqlFixture();
     engineCtx = {
-      db: fixture.sql,
+      executor: fixture.sql,
       queue: getQueueProvider(),
       owner: "worker-a",
       leaseMs: LEASE_MS,

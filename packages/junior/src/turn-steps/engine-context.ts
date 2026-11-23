@@ -8,7 +8,7 @@ import { SERVICE_INSTANCE_ID } from "@/deployment";
 /** Builds the context that core's Turn engine runs with. */
 export function createEngineContext(config: ChatConfig): EngineContext {
   return {
-    db: getSqlExecutor(),
+    executor: getSqlExecutor(),
     queue: getQueueProvider(),
     // The id that the process's spans carry as `service.instance.id`. The
     // lease epoch, not the owner, fences the writes.

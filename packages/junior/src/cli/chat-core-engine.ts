@@ -50,13 +50,13 @@ export type CoreEngineResult =
 type EndedTurn = { state: TurnState; endReason: string | null };
 
 async function waitForTurnEnd(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   turnId: string,
 ): Promise<EndedTurn> {
   const deadline = Date.now() + TURN_WAIT_TIMEOUT_MS;
   /* oxlint-disable no-await-in-loop -- Each read waits for the one before it. */
   while (Date.now() < deadline) {
-    const [turn] = await engineCtx.db
+    const [turn] = await executor
       .db()
       .select({ state: juniorTurns.state, endReason: juniorTurns.endReason })
       .from(juniorTurns)
@@ -73,12 +73,13 @@ async function waitForTurnEnd(
 }
 
 async function lastAssistantText(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
 ): Promise<string> {
-  const events = await createSqlConversationEventStore(
-    engineCtx.db,
-  ).loadCurrentHistory(conversationId);
+  const events =
+    await createSqlConversationEventStore(executor).loadCurrentHistory(
+      conversationId,
+    );
   const reply = projectConversationEvents(events)
     .messages.filter((message) => message.role === "assistant")
     .at(-1);

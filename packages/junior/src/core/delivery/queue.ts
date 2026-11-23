@@ -51,11 +51,10 @@ const deliverySign = {
 
 /** Sends a message that delivers the Turn's replies, after `delayMs` if set. */
 export async function publishDelivery(
-  engineCtx: Pick<EngineContext, "queue">,
+  { queue }: Pick<EngineContext, "queue">,
   message: DeliveryMessage,
   options: { delayMs?: number } = {},
 ): Promise<void> {
-  const { queue } = engineCtx;
   await withSpan(
     "queue.publish",
     {
@@ -101,7 +100,7 @@ export type RunDelivery = (
  * with a bad or expired signature and retries one that cannot be checked yet.
  */
 export function createDeliveryConsumer(
-  engineCtx: Pick<EngineContext, "queue" | "leaseMs">,
+  { queue, leaseMs }: Pick<EngineContext, "queue" | "leaseMs">,
   run: RunDelivery,
 ) {
   return queueCallback<SignedDeliveryMessage>({
@@ -125,7 +124,7 @@ export function createDeliveryConsumer(
           "app.turn.id": message.turnId,
           "gen_ai.conversation.id": message.conversationId,
           "messaging.destination.name": metadata.topicName,
-          "messaging.system": engineCtx.queue.messagingSystem,
+          "messaging.system": queue.messagingSystem,
           "messaging.message.id": metadata.messageId,
           "messaging.message.receive.latency":
             Date.now() - metadata.createdAt.getTime(),
@@ -144,6 +143,6 @@ export function createDeliveryConsumer(
     topic: DELIVERY_TOPIC,
     verify: (value) => verifyQueueMessage(deliverySign, value),
     visibilityTimeoutSeconds:
-      engineCtx.leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
+      leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
   });
 }

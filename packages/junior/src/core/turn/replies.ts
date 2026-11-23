@@ -29,11 +29,11 @@ export function replyText(row: EventRow): string | undefined {
 
 /** Finds the reply events of a Turn, in history order. */
 export async function findTurnReplies(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
   turnId: string,
 ): Promise<EventRow[]> {
-  const events = await engineCtx.db
+  const events = await executor
     .db()
     .select()
     .from(juniorConversationEvents)

@@ -50,11 +50,10 @@ const turnStepSign = {
  * second send with the same key.
  */
 export async function publishTurnStep(
-  engineCtx: Pick<EngineContext, "queue">,
+  { queue }: Pick<EngineContext, "queue">,
   turnId: string,
   options: { delayMs?: number; idempotencyKey?: string } = {},
 ): Promise<void> {
-  const { queue } = engineCtx;
   await withSpan(
     "queue.publish",
     {
@@ -103,7 +102,7 @@ export type RunTurnStep = (
  * with a bad or expired signature and retries one that cannot be checked yet.
  */
 export function createTurnStepConsumer(
-  engineCtx: Pick<EngineContext, "queue" | "leaseMs">,
+  { queue, leaseMs }: Pick<EngineContext, "queue" | "leaseMs">,
   run: RunTurnStep,
 ) {
   return queueCallback<TurnStepMessage>({
@@ -126,7 +125,7 @@ export function createTurnStepConsumer(
         {
           "app.turn.id": message.turnId,
           "messaging.destination.name": metadata.topicName,
-          "messaging.system": engineCtx.queue.messagingSystem,
+          "messaging.system": queue.messagingSystem,
           "messaging.message.id": metadata.messageId,
           "messaging.message.receive.latency":
             Date.now() - metadata.createdAt.getTime(),
@@ -141,6 +140,6 @@ export function createTurnStepConsumer(
     topic: TURN_STEP_TOPIC,
     verify: (value) => verifyQueueMessage(turnStepSign, value),
     visibilityTimeoutSeconds:
-      engineCtx.leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
+      leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
   });
 }

@@ -75,22 +75,22 @@ const tryLockResultSchema = z.object({
  * Location delivers, unless its Delivery is paused.
  */
 export async function deliverTurn(
-  engineCtx: Pick<EngineContext, "db" | "queue">,
+  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   message: DeliveryMessage,
   senders: DeliverySenders,
 ): Promise<void> {
-  await recordReplies(engineCtx, message);
+  await recordReplies({ executor }, message);
   while (true) {
     // oxlint-disable-next-line no-await-in-loop -- Rows go out one at a time, in event order.
-    const next = await engineCtx.db.transaction(() =>
-      sendNextRow(engineCtx, message.conversationId, senders),
+    const next = await executor.transaction(() =>
+      sendNextRow({ executor }, message.conversationId, senders),
     );
     if (next.kind === "idle") {
       return;
     }
     if (next.kind === "later") {
       // oxlint-disable-next-line no-await-in-loop -- The loop ends here.
-      await publishDelivery(engineCtx, message, { delayMs: next.delayMs });
+      await publishDelivery({ queue }, message, { delayMs: next.delayMs });
       return;
     }
   }
@@ -101,11 +101,11 @@ export async function deliverTurn(
  * the Conversation delivers. Rows that already exist still send.
  */
 function recordReplies(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   message: DeliveryMessage,
 ): Promise<void> {
-  return engineCtx.db.transaction(async () => {
-    const db = engineCtx.db.db();
+  return executor.transaction(async () => {
+    const db = executor.db();
     const [conversation] = await db
       .select({
         kind: juniorConversations.kind,
@@ -132,7 +132,7 @@ function recordReplies(
       return;
     }
     const replies = await findTurnReplies(
-      engineCtx,
+      { executor },
       message.conversationId,
       message.turnId,
     );
@@ -167,11 +167,11 @@ type NextRow =
  * rows after it wait.
  */
 async function sendNextRow(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
   senders: DeliverySenders,
 ): Promise<NextRow> {
-  const db = engineCtx.db.db();
+  const db = executor.db();
   const lock = tryLockResultSchema.parse(
     await db.execute(
       sql`select pg_try_advisory_xact_lock(hashtext(${`junior:delivery:${conversationId}`})) as locked`,

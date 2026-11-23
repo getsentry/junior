@@ -85,14 +85,19 @@ type AdvanceTurnOptions = {
  * claimed, for example after a duplicate message or when the Turn has ended.
  */
 export async function advanceTurn(
-  engineCtx: Pick<EngineContext, "db" | "queue" | "owner" | "leaseMs">,
+  {
+    executor,
+    queue,
+    owner,
+    leaseMs,
+  }: Pick<EngineContext, "executor" | "queue" | "owner" | "leaseMs">,
   message: { turnId: string },
   options: AdvanceTurnOptions,
 ): Promise<void> {
-  const claim = await claimTurn(engineCtx, message.turnId);
+  const claim = await claimTurn({ executor, owner, leaseMs }, message.turnId);
   if (!claim) {
     // A crash after a commit can lose what follows it. It is safe to repeat.
-    await reconcileTurn(engineCtx, message.turnId);
+    await reconcileTurn({ executor, queue }, message.turnId);
     return;
   }
   try {
@@ -102,27 +107,27 @@ export async function advanceTurn(
     // An attempt takes the inputs that are unread when it claims the Turn. A
     // failed Turn drops them, and moves only inputs that came after its last
     // claim.
-    const unread = await findUnreadInputs(engineCtx, claim.turnId);
+    const unread = await findUnreadInputs({ executor }, claim.turnId);
     await markInputsAttempted(
-      engineCtx,
+      { executor },
       unread.map((input) => input.inputId),
     );
     if (claim.attempts > options.maxAttempts) {
       if (
-        await failTurn(engineCtx, claim, "attempts_exhausted", {
+        await failTurn({ executor }, claim, "attempts_exhausted", {
           failureCode: "agent_run_failed",
         })
       ) {
-        await reconcileTurn(engineCtx, claim.turnId);
+        await reconcileTurn({ executor, queue }, claim.turnId);
       }
       return;
     }
-    await runClaimedStep(engineCtx, claim, unread, options);
+    await runClaimedStep({ executor, queue }, claim, unread, options);
   } catch (error) {
     // The queue retries the message. With a live lease, the retry would claim
     // nothing and the Turn would stay running.
     try {
-      await releaseTurn(engineCtx, claim);
+      await releaseTurn({ executor }, claim);
     } catch (releaseError) {
       // The first error caused the failure, so it reaches the caller. The
       // lease expires, and then a retry can claim the Turn.
@@ -135,13 +140,13 @@ export async function advanceTurn(
 }
 
 async function runClaimedStep(
-  engineCtx: Pick<EngineContext, "db" | "queue">,
+  { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   claim: ClaimedTurn,
   unread: UnreadInput[],
   { client, prepare }: Pick<AdvanceTurnOptions, "client" | "prepare">,
 ): Promise<void> {
   const events = await createSqlConversationEventStore(
-    engineCtx.db,
+    executor,
   ).loadCurrentHistory(claim.conversationId);
   setActiveSpanAttributes({
     "app.turn.step_seq": claim.stepSeq,
@@ -153,7 +158,7 @@ async function runClaimedStep(
   const stepInputs = hasPendingToolCalls(history) ? [] : unread;
   const { inputs, ...prepared } = await prepare(claim, stepInputs);
   checkPreparedInputs(stepInputs, inputs);
-  const result = await runStepWhileLeased(engineCtx, claim, {
+  const result = await runStepWhileLeased({ executor }, claim, {
     ...prepared,
     client,
     session: claim.conversationId,
@@ -169,8 +174,8 @@ async function runClaimedStep(
   switch (result.outcome) {
     case "continue":
     case "completed": {
-      if (await commitStep(engineCtx, claim, result, inputs)) {
-        await reconcileTurn(engineCtx, claim.turnId);
+      if (await commitStep({ executor }, claim, result, inputs)) {
+        await reconcileTurn({ executor, queue }, claim.turnId);
       }
       return;
     }
@@ -178,8 +183,8 @@ async function runClaimedStep(
       // The capture comes before the commit. A crash between the two runs
       // the step again, so a failure that repeats is captured twice.
       const failure = captureModelFailure(result.reply);
-      if (await failTurn(engineCtx, claim, result.error, failure)) {
-        await reconcileTurn(engineCtx, claim.turnId);
+      if (await failTurn({ executor }, claim, result.error, failure)) {
+        await reconcileTurn({ executor, queue }, claim.turnId);
       }
       return;
     }
@@ -235,7 +240,7 @@ function checkPreparedInputs(
  * the cancel owns the Turn, so this invocation writes nothing.
  */
 async function runStepWhileLeased(
-  engineCtx: Pick<EngineContext, "db">,
+  { executor }: Pick<EngineContext, "executor">,
   lease: TurnLease,
   input: Omit<StepInput, "signal">,
 ): Promise<StepResult | undefined> {
@@ -248,7 +253,7 @@ async function runStepWhileLeased(
     }
     checking = true;
     try {
-      if (!(await holdsLease(engineCtx, lease))) {
+      if (!(await holdsLease({ executor }, lease))) {
         abort.abort(new Error("The Turn was cancelled or taken over"));
       }
     } catch (error) {
