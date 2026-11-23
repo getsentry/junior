@@ -55,7 +55,8 @@ function isRegExpCall(node: ESTree.CallExpression | ESTree.NewExpression) {
 /**
  * Ban regexes that read Markdown, such as ones that strip emphasis, code
  * fences, or links to get plain text. A regex misses nesting, escapes, and
- * code spans. Parse with `mdast-util-from-markdown` and read the text nodes.
+ * code spans. Use the shared helpers in `@sentry/junior-plugin-api`:
+ * `parseMarkdown`, `markdownNodes`, `markdownText`, and `markdownPlainText`.
  */
 export const noRegexMarkdownRule = defineRule({
   meta: {
@@ -65,7 +66,7 @@ export const noRegexMarkdownRule = defineRule({
     },
     messages: {
       noRegexMarkdown:
-        "Parse Markdown with `mdast-util-from-markdown` (with the GFM extensions) and read the text of its nodes. Do not match Markdown syntax with a regex.",
+        "Do not match Markdown syntax with a regex. Use the Markdown helpers from `@sentry/junior-plugin-api`: `markdownPlainText` for plain text, or `parseMarkdown` with `markdownNodes` and `markdownText` to read nodes. Add a helper there when none fits.",
     },
     schema: [],
   },

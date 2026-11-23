@@ -1,10 +1,9 @@
-import type { RootContent } from "mdast";
+import { markdownNodes, parseMarkdown } from "@sentry/junior-plugin-api";
 import type { BundledLanguage } from "shiki/bundle/web";
 
 import { dashboardCodeLanguages } from "../code-languages";
 import { detectOutputLanguage, prettyJsonData } from "../format";
 import type { CodeBlock } from "../types";
-import { parseMarkdown } from "../markdownTree";
 
 // Shiki has no language detection, and agents often leave fences untagged.
 // Only clear signals select a language, so prose in a fence stays plain.
@@ -43,33 +42,29 @@ interface MarkdownFence {
 
 /** Return the fenced code blocks of Markdown text, in text order. */
 export function markdownFences(text: string): MarkdownFence[] {
-  const fences: MarkdownFence[] = [];
-  const visit = (nodes: readonly RootContent[]) => {
-    for (const node of nodes) {
-      if (node.type === "list" || node.type === "listItem") {
-        visit(node.children);
-        continue;
-      }
-      if (node.type !== "code" || !node.position) continue;
+  return markdownNodes(parseMarkdown(text), ["code"]).flatMap(
+    (node): MarkdownFence[] => {
+      if (!node.position) return [];
       const fenceStart = node.position.start.offset ?? 0;
       const start = fenceStart - (node.position.start.column - 1);
       const fenced =
         text.startsWith("```", fenceStart) ||
         text.startsWith("~~~", fenceStart);
-      // A fence after a list marker on its line, or an indented code block,
+      // Only a fence with nothing but indent before it on its line counts.
+      // An indented code block, or a fence after a list or quote marker,
       // stays in the prose.
-      if (!fenced || text.slice(start, fenceStart).trim()) continue;
-      fences.push({
-        // The code ends with its final newline, as the fence holds it.
-        code: node.value ? `${node.value}\n` : "",
-        end: node.position.end.offset ?? text.length,
-        language: node.lang ?? undefined,
-        start,
-      });
-    }
-  };
-  visit(parseMarkdown(text).children);
-  return fences;
+      if (!fenced || text.slice(start, fenceStart).trim()) return [];
+      return [
+        {
+          // The code ends with its final newline, as the fence holds it.
+          code: node.value ? `${node.value}\n` : "",
+          end: node.position.end.offset ?? text.length,
+          language: node.lang ?? undefined,
+          start,
+        },
+      ];
+    },
+  );
 }
 
 /** Parse transcript prose as Markdown or JSON while preserving fenced code. */

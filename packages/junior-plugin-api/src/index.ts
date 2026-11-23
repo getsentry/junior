@@ -39,4 +39,5 @@ export * from "./cli";
 export * from "./manifest";
 export * from "./registration";
 export * from "./inbox-items";
+export * from "./markdown";
 export * from "./user-pages";

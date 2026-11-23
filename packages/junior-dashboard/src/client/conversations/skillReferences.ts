@@ -1,6 +1,4 @@
-import type { Nodes } from "mdast";
-
-import { parseMarkdown } from "../markdownTree";
+import { markdownNodes, parseMarkdown } from "@sentry/junior-plugin-api";
 
 /** The `$skill-name` or `@name` reference that the caret is in. */
 export type ComposerToken = {
@@ -72,15 +70,7 @@ export function findProseSkillReferences(text: string): SkillReference[] {
 // text. A fence with no closing fence runs to the end of the text, and a run
 // of backticks with no closing run is text, as CommonMark reads them.
 function codeRanges(text: string): [number, number][] {
-  const ranges: [number, number][] = [];
-  const visit = (node: Nodes) => {
-    if (node.type === "code" || node.type === "inlineCode") {
-      const { end, start } = node.position ?? {};
-      if (start && end) ranges.push([start.offset ?? 0, end.offset ?? 0]);
-    } else if ("children" in node) {
-      for (const child of node.children) visit(child);
-    }
-  };
-  visit(parseMarkdown(text));
-  return ranges;
+  return markdownNodes(parseMarkdown(text), ["code", "inlineCode"]).map(
+    ({ position }) => [position?.start.offset ?? 0, position?.end.offset ?? 0],
+  );
 }

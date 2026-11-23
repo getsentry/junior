@@ -8,8 +8,7 @@
  * such as tables and images, stays as plain text.
  */
 
-import type { Nodes } from "mdast";
-import { fromMarkdown } from "mdast-util-from-markdown";
+import { type MarkdownNode, parseMarkdown } from "@sentry/junior-plugin-api";
 
 /** Docs named paragraph styles that the converter uses. */
 type DocParagraphStyle =
@@ -69,7 +68,7 @@ interface Block {
 
 // The Markdown source of a node, for syntax that Docs cannot style. Markdown
 // joins wrapped lines, so line breaks become spaces.
-function sourceText(node: Nodes, markdown: string): string {
+function sourceText(node: MarkdownNode, markdown: string): string {
   const start = node.position?.start.offset ?? 0;
   const end = node.position?.end.offset ?? start;
   return markdown.slice(start, end).replaceAll("\n", " ");
@@ -80,33 +79,42 @@ function isSafeLink(url: string): boolean {
   return SAFE_LINK_PREFIXES.some((prefix) => lower.startsWith(prefix));
 }
 
+// The style that each emphasis node adds to its text.
+const EMPHASIS_STYLES: Partial<Record<MarkdownNode["type"], InlineStyle>> = {
+  emphasis: { italic: true },
+  strong: { bold: true },
+};
+
 /** Read the inline children of a node into styled runs. */
 function inlineRuns(
-  nodes: readonly Nodes[],
+  nodes: readonly MarkdownNode[],
   markdown: string,
   style: InlineStyle = {},
 ): Run[] {
   return nodes.flatMap((node): Run[] => {
-    switch (node.type) {
-      case "text":
-        return [{ style, text: node.value.replaceAll("\n", " ") }];
-      case "break":
-        return [{ style, text: " " }];
-      case "inlineCode":
-        return [{ style: { ...style, code: true }, text: node.value }];
-      case "strong":
-        return inlineRuns(node.children, markdown, { ...style, bold: true });
-      case "emphasis":
-        return inlineRuns(node.children, markdown, { ...style, italic: true });
-      case "link":
-        return isSafeLink(node.url)
-          ? inlineRuns(node.children, markdown, { ...style, link: node.url })
-          : [{ style, text: sourceText(node, markdown) }];
-      default:
-        return [{ style, text: sourceText(node, markdown) }];
+    if (node.type === "text") {
+      return [{ style, text: node.value.replaceAll("\n", " ") }];
     }
+    if (node.type === "break") return [{ style, text: " " }];
+    if (node.type === "inlineCode") {
+      return [{ style: { ...style, code: true }, text: node.value }];
+    }
+    if (node.type === "link" && isSafeLink(node.url)) {
+      return inlineRuns(node.children, markdown, { ...style, link: node.url });
+    }
+    const added = EMPHASIS_STYLES[node.type];
+    if (added && "children" in node) {
+      return inlineRuns(node.children, markdown, { ...style, ...added });
+    }
+    return [{ style, text: sourceText(node, markdown) }];
   });
 }
+
+// Blocks with no text in a Doc.
+const DROPPED_BLOCKS = new Set<MarkdownNode["type"]>([
+  "definition",
+  "thematicBreak",
+]);
 
 /** Read Markdown blocks into Docs paragraphs. */
 function parseBlocks(input: string): Block[] {
@@ -114,71 +122,50 @@ function parseBlocks(input: string): Block[] {
     .replace(/\r\n?/g, "\n")
     .replace(DROPPED_CHARACTERS, "");
   const blocks: Block[] = [];
-  const visit = (nodes: readonly Nodes[], level?: number) => {
+  const paragraph = (runs: Run[], style: DocParagraphStyle = "NORMAL_TEXT") =>
+    blocks.push({ runs, style });
+  const visit = (nodes: readonly MarkdownNode[], level?: number) => {
     for (const node of nodes) {
-      switch (node.type) {
-        case "heading":
-          blocks.push({
-            runs: inlineRuns(node.children, markdown),
-            style: `HEADING_${node.depth}`,
-          });
-          break;
-        case "paragraph":
-          blocks.push({
-            runs: inlineRuns(node.children, markdown),
-            style: "NORMAL_TEXT",
-          });
-          break;
-        case "code":
-          for (const line of node.value.split("\n")) {
-            blocks.push({
-              runs: line ? [{ style: { code: true }, text: line }] : [],
-              style: "NORMAL_TEXT",
-            });
-          }
-          break;
-        case "blockquote":
-          visit(node.children);
-          break;
-        case "list": {
-          const itemLevel = Math.min(
-            level === undefined ? 0 : level + 1,
-            MAX_LIST_LEVEL,
-          );
-          for (const item of node.children) {
-            // The item's paragraphs make one list paragraph. A nested list
-            // or a code block follows it.
-            const block: Block = {
-              level: itemLevel,
-              ordered: node.ordered === true,
-              runs: [],
-              style: "NORMAL_TEXT",
-            };
-            blocks.push(block);
-            for (const child of item.children) {
-              if (child.type === "paragraph") {
-                if (block.runs.length)
-                  block.runs.push({ style: {}, text: " " });
-                block.runs.push(...inlineRuns(child.children, markdown));
-              } else {
-                visit([child], itemLevel);
-              }
-            }
-          }
-          break;
+      if (node.type === "heading") {
+        paragraph(inlineRuns(node.children, markdown), `HEADING_${node.depth}`);
+      } else if (node.type === "paragraph") {
+        paragraph(inlineRuns(node.children, markdown));
+      } else if (node.type === "code") {
+        for (const line of node.value.split("\n")) {
+          paragraph(line ? [{ style: { code: true }, text: line }] : []);
         }
-        case "thematicBreak":
-        case "definition":
-          break;
-        default:
-          blocks.push({
-            runs: [{ style: {}, text: sourceText(node, markdown) }],
+      } else if (node.type === "blockquote") {
+        visit(node.children);
+      } else if (node.type === "list") {
+        const itemLevel = Math.min(
+          level === undefined ? 0 : level + 1,
+          MAX_LIST_LEVEL,
+        );
+        for (const item of node.children) {
+          // The item's paragraphs make one list paragraph. A nested list or
+          // a code block follows it.
+          const block: Block = {
+            level: itemLevel,
+            ordered: node.ordered === true,
+            runs: [],
             style: "NORMAL_TEXT",
-          });
+          };
+          blocks.push(block);
+          for (const child of item.children) {
+            if (child.type !== "paragraph") {
+              visit([child], itemLevel);
+              continue;
+            }
+            if (block.runs.length) block.runs.push({ style: {}, text: " " });
+            block.runs.push(...inlineRuns(child.children, markdown));
+          }
+        }
+      } else if (!DROPPED_BLOCKS.has(node.type)) {
+        paragraph([{ style: {}, text: sourceText(node, markdown) }]);
       }
     }
   };
-  visit(fromMarkdown(markdown).children);
+  visit(parseMarkdown(markdown).children);
   return blocks;
 }
 
