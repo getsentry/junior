@@ -5,16 +5,15 @@ import {
   defaultEmbedDomains,
   describeVideo,
   embedDomainSchema,
-  folderUriSchema,
   MAX_EMBED_DOMAINS,
   resolveEmbedDomains,
-  resolveFolder,
   sandboxPathSchema,
   uploadAttemptSchema,
   videoIdFromUri,
   videoOutputSchema,
   VIMEO_OPERATIONS,
   vimeoClient,
+  writableFolder,
 } from "../tool-support/vimeo-api.js";
 
 /** Upload a sandbox video into a Vimeo folder as a private video. */
@@ -26,7 +25,7 @@ export const vimeoUploadTool = definePluginTool({
     readOnlyHint: false,
   },
   description:
-    "Upload a video file from the sandbox into a Vimeo folder as a private video: hidden from vimeo.com or unlisted, embeddable only on allowed domains, not downloadable. Returns the video ID, the privacy hash for unlisted videos, and the embed URL once the bytes are sent; Vimeo finishes processing later. Each call creates a new video. To change the file of an existing video, use vimeo_replaceFile.",
+    "Upload a video file from the sandbox into the install's Vimeo folder as a private video: hidden from vimeo.com or unlisted, embeddable only on allowed domains, not downloadable. Returns the video ID, the privacy hash for unlisted videos, and the embed URL once the bytes are sent; Vimeo finishes processing later. Each call creates a new video. To change the file of an existing video, use vimeo_replaceFile.",
   // Review may see the raw input, before defaults apply.
   describeProposal: (input) =>
     `Upload ${input.path} to Vimeo as "${input.title}" (${input.view ?? "disable"}, embeds on ${(input.embed_domains ?? defaultEmbedDomains()).join(", ") || "no domain"})`,
@@ -54,7 +53,6 @@ export const vimeoUploadTool = definePluginTool({
           "Hostnames where the video may be embedded. Omit to use the install's default domains.",
         )
         .optional(),
-      folder_uri: folderUriSchema.optional(),
     })
     .strict(),
   outputSchema: videoOutputSchema.extend({
@@ -63,7 +61,7 @@ export const vimeoUploadTool = definePluginTool({
     status_error: z.string().optional(),
   }),
   async execute(input, options, ctx) {
-    const folder = resolveFolder(input.folder_uri);
+    const folder = writableFolder();
     const embedDomains = resolveEmbedDomains(input.embed_domains);
     const bytes = await readVideo(input.path, ctx.sandbox);
     const signal = options.signal;

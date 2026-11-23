@@ -5,6 +5,7 @@ import {
 import * as z from "zod";
 import { imageType, readImage } from "../tool-support/media.js";
 import {
+  assertWritable,
   sandboxPathSchema,
   videoIdSchema,
   VIMEO_OPERATIONS,
@@ -26,7 +27,7 @@ export const vimeoSetThumbnailTool = definePluginTool({
     readOnlyHint: false,
   },
   description:
-    "Set the poster thumbnail of a Vimeo video from a JPEG or PNG in the sandbox. The new image replaces the active thumbnail.",
+    "Set the poster thumbnail of a video in the install's Vimeo folder from a JPEG or PNG in the sandbox. The new image replaces the active thumbnail.",
   describeProposal: (input) =>
     `Set the thumbnail of Vimeo video ${input.video_id} from ${input.path}`,
   inputSchema: z
@@ -48,6 +49,7 @@ export const vimeoSetThumbnailTool = definePluginTool({
       VIMEO_OPERATIONS.setThumbnail,
       signal,
     );
+    assertWritable(await client.getVideo(input.video_id));
     const picture = pictureSchema.parse(
       await client.api("POST", `/videos/${input.video_id}/pictures`),
     );

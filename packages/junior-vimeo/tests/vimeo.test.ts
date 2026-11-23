@@ -35,6 +35,7 @@ const storedVideo = {
   status: "transcoding",
   upload: { status: "complete" },
   transcode: { status: "in_progress" },
+  parent_folder: { uri: FOLDER },
 };
 
 type ApiCall = { operation: string; method: string; url: URL; body: unknown };
@@ -109,8 +110,10 @@ function fakeVimeo() {
         : Response.json(storedVideo);
     }
     if (route === "GET /videos/555") {
+      // A video that the shared account can edit, outside the folder.
       return Response.json({
         uri: "/videos/555",
+        parent_folder: { uri: `/users/${OWNER}/projects/999` },
         privacy: { view: "disable", embed: "whitelist" },
         status: "available",
         transcode: { status: "complete" },
@@ -285,7 +288,7 @@ describe("Vimeo tools", () => {
         title: "t",
         embed_domains: ["www.example.com"],
       }),
-    ).rejects.toThrow(/No default Vimeo folder/);
+    ).rejects.toThrow(/No Vimeo folder is set for uploads/);
     expect(state.apiCalls).toHaveLength(0);
   });
 
@@ -295,7 +298,8 @@ describe("Vimeo tools", () => {
       video_id: "987654",
       path: "out/clip.mp4",
     });
-    const version = state.apiCalls[0]!;
+    expect(state.apiCalls[0]!.method).toBe("GET");
+    const version = state.apiCalls[1]!;
     expect(version.operation).toBe("vimeo.replace_file");
     expect(version.url.toString()).toBe(
       "https://api.vimeo.com/videos/987654/versions?fields=upload",
@@ -317,6 +321,7 @@ describe("Vimeo tools", () => {
     const put = state.uploads.find((call) => call.url === PICTURE_UPLOAD)!;
     expect(put.headers.get("Content-Type")).toBe("image/jpeg");
     expect(state.apiCalls.map((call) => call.method)).toEqual([
+      "GET",
       "POST",
       "PATCH",
     ]);
@@ -327,6 +332,25 @@ describe("Vimeo tools", () => {
     await expect(
       run("setThumbnail", { video_id: "987654", path: "secret.txt" }),
     ).rejects.toThrow(/not a JPEG or PNG/);
+  });
+
+  it("changes no video outside the install's folder", async () => {
+    const { state, tools, run } = fakeVimeo();
+    expect(() =>
+      tools["upload"]!.prepareArguments!({
+        path: "x",
+        title: "t",
+        folder_uri: `/users/${OWNER}/projects/999`,
+      }),
+    ).toThrow(/folder_uri/);
+    await expect(
+      run("replaceFile", { video_id: "555", path: "out/clip.mp4" }),
+    ).rejects.toThrow(/not in \/users\/111\/projects\/222/);
+    await expect(
+      run("setThumbnail", { video_id: "555", path: "out/poster.jpg" }),
+    ).rejects.toThrow(/not in \/users\/111\/projects\/222/);
+    expect(state.apiCalls.every((call) => call.method === "GET")).toBe(true);
+    expect(state.uploads).toHaveLength(0);
   });
 
   it("lists the default folder newest first and reports the next page", async () => {

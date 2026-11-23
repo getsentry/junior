@@ -51,11 +51,12 @@ callback URLs.
 <details class="plugin-config">
 <summary><code>VIMEO_FOLDER_URI</code></summary>
 
-Default folder for uploads and listings, as
-`/users/<owner id>/projects/<folder id>`. A call can name another folder.
+The folder where Junior uploads, as `/users/<owner id>/projects/<folder id>`.
+Junior changes only videos in this folder. A listing can name another
+folder.
 
 - **Define:** Set `VIMEO_FOLDER_URI` in the deployment environment
-- **Required:** No. Without it, each call must name a folder.
+- **Required:** Yes, to upload, replace a file, or set a thumbnail
 
 </details>
 
@@ -92,6 +93,10 @@ share the folder with the Junior account with **Can manage**. Junior uploads
 into the team owner's account, as Vimeo requires for team members.
 
 ## Privacy
+
+Every requester shares one Vimeo account, so Junior uploads only into
+`VIMEO_FOLDER_URI` and changes only videos in that folder. It refuses to
+change any other video that the account can edit.
 
 Vimeo applies these settings when it creates the video, before any bytes
 arrive:

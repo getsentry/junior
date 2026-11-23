@@ -42,6 +42,7 @@ export const VIDEO_FIELDS = [
   "transcode.status",
   "duration",
   "pictures.base_link",
+  "parent_folder.uri",
 ].join(",");
 
 const HOSTNAME_RE =
@@ -67,6 +68,7 @@ const videoSchema = z
     transcode: z.object({ status: z.string().nullish() }).nullish(),
     duration: z.number().nullish(),
     pictures: z.object({ base_link: z.string().nullish() }).nullish(),
+    parent_folder: z.object({ uri: z.string().nullish() }).nullish(),
   })
   .passthrough();
 
@@ -141,6 +143,10 @@ export function resolveFolder(input: string | undefined): {
       `No default Vimeo folder is set (${FOLDER_ENV}). Pass the folder URI.`,
     );
   }
+  return parseFolder(value);
+}
+
+function parseFolder(value: string): { owner: string; uri: string } {
   const match = FOLDER_URI_RE.exec(value);
   if (!match) {
     throw new PluginToolInputError(
@@ -148,6 +154,35 @@ export function resolveFolder(input: string | undefined): {
     );
   }
   return { owner: match[1]!, uri: `/users/${match[1]}/projects/${match[2]}` };
+}
+
+/**
+ * The one folder whose videos the tools may create or change. The Vimeo
+ * account is shared by every requester, so writes stay in the folder that
+ * the install names and never reach other videos that the account can edit.
+ */
+export function writableFolder(): { owner: string; uri: string } {
+  const value = process.env[FOLDER_ENV]?.trim();
+  if (!value) {
+    throw new PluginToolInputError(
+      `No Vimeo folder is set for uploads (${FOLDER_ENV}). An admin must set it; no change to the call can work in this Turn.`,
+    );
+  }
+  return parseFolder(value);
+}
+
+/** Fail unless the video is in the folder that the tools may change. */
+export function assertWritable(video: Video): void {
+  const folder = writableFolder();
+  const parent = video.parent_folder?.uri;
+  const inFolder = parent
+    ? FOLDER_URI_RE.test(parent) && parseFolder(parent).uri === folder.uri
+    : false;
+  if (!inFolder) {
+    throw new PluginToolInputError(
+      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${folder.uri}. Junior changes only videos in that folder; use vimeo_listFolder to find them.`,
+    );
+  }
 }
 
 /** Embed domains from input, else the host default in `VIMEO_EMBED_DOMAINS`. */
