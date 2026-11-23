@@ -170,17 +170,22 @@ async function runsOnConversationLoop(
 }
 
 /**
- * Return whether input waits in a child's mailbox that will run a Turn that
- * answers its parent, such as a fired Timer whose Watch is already gone.
+ * Return whether input waits in a child's mailbox that will run a later Turn
+ * that answers its parent, such as a fired Timer whose Watch is already gone.
+ * The input that the running attempt took belongs to its own Turn, which
+ * can ack it as late as its end.
  */
 export async function hasWaitingParentWork(
   conversationId: string,
   kind: ConversationKind,
 ): Promise<boolean> {
   const work = await getConversationWorkState({ conversationId });
+  const running = new Set(work?.runningInboundMessageIds);
   return await runsOnConversationLoop(
     kind,
-    work?.execution.pendingMessages ?? [],
+    (work?.messages ?? []).filter(
+      (message) => !running.has(message.inboundMessageId),
+    ),
     [],
   );
 }

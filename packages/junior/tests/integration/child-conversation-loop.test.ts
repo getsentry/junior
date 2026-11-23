@@ -259,14 +259,16 @@ describe("child Turns on the Conversation loop", () => {
   // A Watch Turn that ends with `noReply` ends the Thread's work when no
   // Watch is left and no input waits to run, so its parent gets a result.
   // With a Watch left, the Thread still works and its parent waits. An Event
-  // that arrives during the Turn runs next, and only that Turn reports.
+  // that arrives during the Turn runs next, and only that Turn reports. The
+  // Turn's own input does not wait, even before the Turn acks it.
   it.each([
-    { watchLeft: false, eventWaits: false, results: 1 },
-    { watchLeft: true, eventWaits: false, results: 0 },
-    { watchLeft: false, eventWaits: true, results: 1 },
+    { watchLeft: false, eventWaits: false, acked: true, results: 1 },
+    { watchLeft: false, eventWaits: false, acked: false, results: 1 },
+    { watchLeft: true, eventWaits: false, acked: true, results: 0 },
+    { watchLeft: false, eventWaits: true, acked: true, results: 1 },
   ])(
-    "reports a Thread whose Watch Turn ends with noReply (Watch left: $watchLeft, Event waits: $eventWaits)",
-    async ({ watchLeft, eventWaits, results }) => {
+    "reports a Thread whose Watch Turn ends with noReply (Watch left: $watchLeft, Event waits: $eventWaits, acked: $acked)",
+    async ({ watchLeft, eventWaits, acked, results }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -308,9 +310,18 @@ describe("child Turns on the Conversation loop", () => {
         await sendEvent("deploy-1");
         vi.setSystemTime(Date.now() + 60_000);
         harness.onRun(async (run) => {
-          const outcome = await finishRun(run, {
-            noReply: { note: "The deploy is green." },
-          });
+          const outcome = await finishRun(
+            acked
+              ? run
+              : {
+                  ...run,
+                  durability: {
+                    ...run.durability,
+                    onInputCommitted: undefined,
+                  },
+                },
+            { noReply: { note: "The deploy is green." } },
+          );
           if (eventWaits && harness.runs.length === runsBefore + 1) {
             await sendEvent("deploy-2");
           }
