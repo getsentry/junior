@@ -340,6 +340,21 @@ export async function getInboxItem(
   return (await hydrate(db, rows))[0];
 }
 
+/** Return whether one Inbox item is open. */
+export async function isInboxItemOpen(
+  db: JuniorDatabase,
+  id: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
+    .where(
+      and(eq(juniorInboxItems.id, id), eq(juniorInboxItems.status, "open")),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Read the action items that the agent added in one Conversation and that a
  * reply can answer: the open items, and the items that a reply closed. A

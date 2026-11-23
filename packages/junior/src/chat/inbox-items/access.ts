@@ -288,6 +288,13 @@ export const PLUGIN_INBOX_ITEM_KEY_PREFIX = "plugin:";
  */
 export const AUTOMATION_INBOX_ITEM_KEY_PREFIX = "automation:";
 
+/**
+ * Dedupe keys with this prefix belong to reply notices, which core adds for
+ * the starter of a dashboard Conversation and closes when they read the
+ * reply. An agent cannot use the prefix or change the item.
+ */
+export const REPLY_NOTICE_KEY_PREFIX = "reply:";
+
 /** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
 export function inboxItemPlugin(dedupeKey: string): string | undefined {
   if (!dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return undefined;
@@ -313,13 +320,14 @@ export function isPluginInboxItem(item: Pick<InboxItem, "dedupeKey">) {
  * Conversation, so private content never reaches its readers. A private
  * item changes only from the Conversation or Automation that added it. An
  * agent never changes an item that a plugin added, or an item that another
- * owner kind, such as an Automation, owns.
+ * owner kind, such as an Automation, owns, or a reply notice.
  */
 export function canAgentChangeInboxItem(
   item: InboxItem,
   scope: InboxItemAgentScope,
 ): boolean {
   if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return false;
+  if (item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)) return false;
   if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;

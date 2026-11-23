@@ -22,6 +22,7 @@ import {
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
+import { markConversationRead } from "./read-position";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
@@ -183,9 +184,12 @@ export async function appendConversationMessageForViewer(
       },
     );
   // A dashboard message answers the open questions that the agent asked in
-  // this Conversation, like a typed Slack reply.
-  const closeAnswered = () =>
-    closeInboxItemsAnsweredByReply({
+  // this Conversation, like a typed Slack reply. The viewer also saw the
+  // transcript so far. The message can wait as pending with no event, so
+  // move the read position here: it closes the reply notice, and a reply
+  // task that runs later sees the read and adds no notice.
+  const closeAnsweredAndRead = async () => {
+    await closeInboxItemsAnsweredByReply({
       conversationId,
       delivery: {
         queue: services.queue,
@@ -194,6 +198,10 @@ export async function appendConversationMessageForViewer(
       resolveUser: async () => viewer,
       text: body.message,
     });
+    await markConversationRead(viewer, conversationId, {
+      lastReadSeq: Number.MAX_SAFE_INTEGER,
+    });
+  };
   try {
     let accepted: AcceptedConversationMessage;
     try {
@@ -208,11 +216,11 @@ export async function appendConversationMessageForViewer(
         getConversationWorkState({ conversationId, state }),
       ]);
       if (work?.execution.inboundMessageIds.includes(messageId)) {
-        await closeAnswered();
+        await closeAnsweredAndRead();
       }
       throw error;
     }
-    await closeAnswered();
+    await closeAnsweredAndRead();
     return accepted;
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);

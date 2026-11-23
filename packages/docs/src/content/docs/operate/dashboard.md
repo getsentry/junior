@@ -177,12 +177,14 @@ Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs,
 ## Configure push notifications
 
 The dashboard can send push notifications through Web Push. When Junior
-replies in a dashboard Conversation, the person who sent the message gets a
-notification on each device that they turned on. When Junior asks a person a
-question in the Inbox, each assigned person gets one notification for it. A
-question for everyone and a notice do not send one. After the question
-closes, the next notification removes it from the device. A Conversation in a
-Slack thread does not send these notifications. Slack notifies people there.
+replies in a dashboard Conversation, the person who started it gets a notice
+in the Inbox and a notification on each device that they turned on. The notice
+holds the latest reply and closes when they read it. When Junior asks a person
+a question in the Inbox, each assigned person gets one notification for it. A
+question for everyone and other notices do not send one. After a question or
+a reply notice closes, the next notification removes it from the device. A
+Conversation in a Slack thread does not send these notifications or add a
+reply notice. Slack notifies people there.
 
 1. Create one VAPID key pair for the deployment:
 
