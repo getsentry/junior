@@ -50,6 +50,22 @@ async function startIdleChild(harness: Harness, kind: "task" | "thread") {
   return childId;
 }
 
+async function createDeployWatch(harness: Harness, conversationId: string) {
+  await createWatch(
+    {
+      conversationId,
+      events: ["deployment.failed"],
+      expiresAtMs: Date.now() + 600_000,
+      identifier: "getsentry/junior",
+      intent: "Check the deploy.",
+      label: "getsentry/junior deploys",
+      namespace: "github",
+      resourceType: "deployment_source",
+    },
+    { state: harness.state },
+  );
+}
+
 /** Spawn one helper agent of a child, as the child's `spawnAgent` does. */
 async function createHelper(
   harness: Harness,
@@ -151,14 +167,11 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 
-  // Only a gated Turn answers the parent, so only it keeps the child
-  // running. A person's Turn in a Thread does not.
-  it.each([
-    { input: "helper reply", running: true },
-    { input: "person message", running: false },
-  ] as const)(
-    "shows a Thread as running only while a Turn that answers runs ($input)",
-    async ({ input, running }) => {
+  // Every Turn of a child answers its parent, so each one keeps it running,
+  // whoever started it.
+  it.each([{ input: "helper reply" }, { input: "person message" }] as const)(
+    "shows a Thread as running while its Turn runs ($input)",
+    async ({ input }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -187,14 +200,8 @@ describe("child Turns on the Conversation loop", () => {
         await harness.processUntilRun(childId);
 
         expect(seen).toEqual([
-          {
-            agents: [
-              expect.objectContaining({
-                status: running ? "running" : "idle",
-              }),
-            ],
-          },
-          running ? [childId] : [],
+          { agents: [expect.objectContaining({ status: "running" })] },
+          [childId],
         ]);
       } finally {
         await harness.close();
@@ -207,8 +214,7 @@ describe("child Turns on the Conversation loop", () => {
     const harness = await createHarness();
     try {
       const childId = await startIdleChild(harness, "task");
-      // A sibling also has input in its mailbox, but a person's message does
-      // not answer the parent.
+      // A sibling's waiting person message also answers the parent.
       const threadId = await startIdleChild(
         { ...harness, agentName: `${harness.agentName}-sibling` },
         "thread",
@@ -241,16 +247,19 @@ describe("child Turns on the Conversation loop", () => {
         Object.fromEntries(
           agents.map((agent) => [agent.conversation_id, agent.status]),
         ),
-      ).toEqual({ [childId]: "running", [threadId]: "idle" });
+      ).toEqual({ [childId]: "running", [threadId]: "running" });
       await expect(
         listUnreportedSiblingAgents(
           slackParentConversationId,
           "agent:sibling",
           [],
         ),
-      ).resolves.toEqual([
-        expect.objectContaining({ childConversationId: childId }),
-      ]);
+      ).resolves.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ childConversationId: childId }),
+          expect.objectContaining({ childConversationId: threadId }),
+        ]),
+      );
     } finally {
       await harness.close();
     }
@@ -274,19 +283,7 @@ describe("child Turns on the Conversation loop", () => {
       try {
         const childId = await startIdleChild(harness, "thread");
         if (watchLeft) {
-          await createWatch(
-            {
-              conversationId: childId,
-              events: ["deployment.failed"],
-              expiresAtMs: Date.now() + 600_000,
-              identifier: "getsentry/junior",
-              intent: "Check the deploy.",
-              label: "getsentry/junior deploys",
-              namespace: "github",
-              resourceType: "deployment_source",
-            },
-            { state: harness.state },
-          );
+          await createDeployWatch(harness, childId);
         }
         const sendEvent = (eventKey: string) =>
           appendAndEnqueueInboundMessage({
@@ -355,15 +352,71 @@ describe("child Turns on the Conversation loop", () => {
     },
   );
 
-  it.each(["task", "thread"] as const)(
-    "tells a %s's parent when its Conversation loop Turn fails",
-    async (kind) => {
+  // A person's Turn in a Thread reports to the parent like an agent's Turn.
+  // The person also sees its final text. With a Watch left after `noReply`,
+  // the Thread still works and its parent waits.
+  it.each([
+    { end: "final text", watchLeft: false, results: 1 },
+    { end: "noReply", watchLeft: false, results: 1 },
+    { end: "noReply", watchLeft: true, results: 0 },
+  ] as const)(
+    "reports a person's Turn in a Thread that ends with $end (Watch left: $watchLeft)",
+    async ({ end, watchLeft, results }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const childId = await startIdleChild(harness, "thread");
+        if (watchLeft) {
+          await createDeployWatch(harness, childId);
+        }
+        const before = await parentMessageTexts();
+        await sendPersonMessage(harness, childId, "person-1");
+        harness.onRun((run) =>
+          finishRun(
+            run,
+            end === "final text"
+              ? { finalText: "The deploy is green." }
+              : { noReply: { note: "The deploy is green." } },
+          ),
+        );
+        await harness.drain(childId);
+
+        expect(harness.runs.at(-1)).toMatchObject({
+          conversationId: childId,
+          source: { kind: "web" },
+        });
+        expect(
+          (await parentMessageTexts())
+            .slice(before.length)
+            .filter((text) => text.includes("The deploy is green.")),
+        ).toEqual(
+          Array.from({ length: results }, () =>
+            expect.stringMatching(/status="completed"/),
+          ),
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
+  it.each([
+    { kind: "task", input: "helper reply" },
+    { kind: "thread", input: "helper reply" },
+    { kind: "thread", input: "person message" },
+  ] as const)(
+    "tells a $kind's parent when its Conversation loop Turn fails ($input)",
+    async ({ kind, input }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
         const childId = await startIdleChild(harness, kind);
         const before = await parentMessageTexts();
-        await sendHelperReply(harness, await createHelper(harness, childId));
+        if (input === "helper reply") {
+          await sendHelperReply(harness, await createHelper(harness, childId));
+        } else {
+          await sendPersonMessage(harness, childId, "person-message");
+        }
         // The runner throws on each try, so the last try fails the Turn.
         for (let tries = 0; tries < CONVERSATION_WORK_MAX_RETRIES; tries++) {
           await harness.drain(childId);

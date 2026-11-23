@@ -21,7 +21,6 @@ import { mapBounded } from "@/chat/fan-out";
 import { recordChildAgentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
-import { runsPersonInput } from "./parent-result";
 import { createDeliverToParent } from "./result";
 import {
   getChildAgentLockName,
@@ -229,12 +228,12 @@ export async function cancelWaitingParentMessages(
 
 /**
  * Tell the parent of a child agent that a person stops it, when the stop
- * cuts work that the parent gave: a waiting parent message or a running Turn
- * that does not run a person's input. Call it before the stop request is
- * saved, so a failure leaves the stop to be retried. A child with no such
- * work, and a run that an earlier stop already cut, stay quiet. The result
- * is keyed by the stop time, which a redelivery of the same stop keeps, so a
- * retry adds nothing even when a worker took the waiting work in between.
+ * cuts work: waiting input or a running Turn, whoever started it. Call it
+ * before the stop request is saved, so a failure leaves the stop to be
+ * retried. An idle child already sent its result, so it stays quiet, and so
+ * does a run that an earlier stop already cut. The result is keyed by the
+ * stop time, which a redelivery of the same stop keeps, so a retry adds
+ * nothing even when a worker took the waiting work in between.
  */
 export async function reportPersonStopToParent(
   conversationId: string,
@@ -271,15 +270,11 @@ export async function reportPersonStopToParent(
     return parentMessage ? [parentMessage] : [];
   });
   const [turn] = runId ? await listActiveMailboxTurns(conversationId) : [];
-  const cutsTurn = runId !== undefined && !runsPersonInput(turn, work);
-  if (!cutsTurn && !firstWaiting) {
+  if (!runId && !work?.messages.length) {
     return;
   }
   await createDeliverToParent(options)({
-    actor:
-      (cutsTurn ? turn?.actor : undefined) ??
-      firstWaiting?.actor ??
-      EVENT_SYSTEM_ACTOR,
+    actor: turn?.actor ?? firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR,
     conversationId,
     result: {
       kind: "stopped",

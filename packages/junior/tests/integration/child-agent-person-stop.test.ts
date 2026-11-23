@@ -2,12 +2,8 @@ import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getSqlExecutor } from "@/chat/db";
-import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import {
-  appendAndEnqueueInboundMessage,
-  startConversationWork,
-} from "@/chat/task-execution/store";
+import { startConversationWork } from "@/chat/task-execution/store";
 import { changeTodos, listTodos } from "@/chat/todos/store";
 import { slackParentConversationId } from "../fixtures/agent-invocations";
 import { mailboxTexts, message, spawn } from "../fixtures/parent-agent-tools";
@@ -134,7 +130,7 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
     },
   );
 
-  it("tells the parent nothing when a person stops a person's Turn in a Thread", async () => {
+  it("tells the parent once when a person stops a person's Turn in a Thread", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -144,23 +140,6 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
       vi.setSystemTime(1_800_000_001_000);
       await sendPersonMessage(harness, threadId, "person-1");
       harness.onRun(async (run) => {
-        // A Watch Event waits beside the person's unsaved Turn.
-        await appendAndEnqueueInboundMessage({
-          message: createEventInboundMessage({
-            event: {
-              eventKey: "deploy-1",
-              eventType: "deployment.failed",
-              identifier: "getsentry/junior",
-              namespace: "github",
-              occurredAtMs: Date.now(),
-              trustedSummary: "A deployment failed.",
-            },
-            subscription: { conversationId: threadId, id: "watch-1" },
-            text: "Deploy failed.",
-          }),
-          queue: harness.queue,
-          state: harness.state,
-        });
         vi.setSystemTime(1_800_000_002_000);
         await stopConversation({
           conversationId: threadId,
@@ -177,7 +156,7 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
         (await mailboxTexts(harness, slackParentConversationId)).filter(
           (text) => text.includes('status="stopped"'),
         ),
-      ).toEqual([]);
+      ).toEqual([expect.stringContaining(`conversation_id="${threadId}"`)]);
     } finally {
       await harness.close();
     }

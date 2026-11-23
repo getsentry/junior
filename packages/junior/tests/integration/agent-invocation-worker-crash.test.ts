@@ -14,7 +14,6 @@ import {
 } from "@/chat/agent-invocations/result";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { createEventInboundMessage } from "@/chat/events/notification";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -104,16 +103,15 @@ describe("child agent worker crash", () => {
     await disconnectStateAdapter();
   });
 
-  // When every try of a child Turn is killed, its parent learns it. A
-  // person's Turn in a Thread keeps the stored failure. A child whose lost
-  // Turn already replied sent its answer. A reply of an earlier Turn does not
+  // When every try of a child Turn is killed, its parent learns it, whoever
+  // started the Turn. A child whose lost Turn already replied sent its answer. A reply of an earlier Turn does not
   // answer the lost one.
   it.each([
     { kind: "task" as const, notices: 1, replied: "no" },
     { kind: "task" as const, notices: 0, replied: "this Turn" },
     { kind: "task" as const, notices: 1, replied: "an earlier Turn" },
     { kind: "thread" as const, notices: 1, replied: "no" },
-    { kind: "thread" as const, notices: 0, replied: "no", person: true },
+    { kind: "thread" as const, notices: 1, replied: "no", person: true },
   ])(
     "tells a child's parent when every try of its Conversation loop Turn is killed ($kind, replied: $replied, person: $person)",
     async ({ kind, notices, person, replied }) => {
@@ -138,23 +136,7 @@ describe("child agent worker crash", () => {
           { parentConversationId: childId },
         );
         if (person) {
-          // A person's Message wakes the Thread instead. A Watch Event waits
-          // beside it.
-          await appendInboundMessage({
-            message: createEventInboundMessage({
-              event: {
-                eventKey: "deploy-1",
-                eventType: "deployment.failed",
-                identifier: "getsentry/junior",
-                namespace: "github",
-                occurredAtMs: Date.now(),
-                trustedSummary: "A deployment failed.",
-              },
-              subscription: { conversationId: childId, id: "watch-1" },
-              text: "Deploy failed.",
-            }),
-            state,
-          });
+          // A person's Message wakes the Thread instead.
           await appendAndEnqueueWebMessage(
             {
               actor: webTestActor,
