@@ -36,7 +36,7 @@ also wake a Conversation or run an Event automation.
 - A user's linked GitHub account is used for attribution. In the
   dashboard, it also limits which PR and issue cards the user sees.
 - Code opens on Mine. Mine lists each of your open PRs once, with the Inbox
-  asks that name it. Old Pull requests links open Mine.
+  asks that name it.
 - Every PR names its Work owner. Junior refuses to open a PR that names
   nobody.
 - Images in PRs, issues, and comments are links to public Junior images.

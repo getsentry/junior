@@ -60,8 +60,6 @@ import {
 } from "../../components/layout/PaneNav";
 import {
   isOldAutomationsPath,
-  isOldPullRequestsPath,
-  oldPullRequestsTarget,
   returnPathLabel,
 } from "../../components/layout/paneRows";
 import { HomeSummary } from "./HomeSummary";
@@ -286,9 +284,6 @@ export function ConversationWorkspace(props: {
   // The Automations bundle became its own page.
   if (isOldAutomationsPath(location))
     return <Navigate replace to="/automations" />;
-  // Pull requests moved to Code, which opens on the viewer's own.
-  if (isOldPullRequestsPath(location))
-    return <Navigate replace to={oldPullRequestsTarget(location.search)} />;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">

@@ -60,35 +60,6 @@ export function isOldAutomationsPath(location: {
   );
 }
 
-/**
- * True for the old Pull requests links, `/?view=prs` and
- * `/review?bundle=prs`, which redirect to Code.
- */
-export function isOldPullRequestsPath(location: {
-  pathname: string;
-  search: string;
-}): boolean {
-  const params = new URLSearchParams(location.search);
-  return (
-    (location.pathname === "/" && params.get("view") === "prs") ||
-    (location.pathname === "/review" && params.get("bundle") === "prs")
-  );
-}
-
-/**
- * Where an old Pull requests link goes: the ask it names, with its snooze
- * link kept, or Code, which opens on Mine.
- */
-export function oldPullRequestsTarget(search: string): string {
-  const params = new URLSearchParams(search);
-  const itemId = params.get("item");
-  if (!itemId) return NAV_PAGES.code.to;
-  return inboxViewPath("inbox", {
-    itemId,
-    snooze: Boolean(params.get("snooze")),
-  });
-}
-
 // A link may leave the colons of a Conversation id unencoded, so compare
 // decoded paths.
 const decodedPath = (path: string) => {
@@ -129,7 +100,7 @@ export function paneRowForPath(
 ): PaneRow | undefined {
   const { pathname } = location;
   if (isOldAutomationsPath(location)) return "automations";
-  if (isOldPullRequestsPath(location) || isCodePath(pathname)) return "code";
+  if (isCodePath(pathname)) return "code";
   if (pathname === "/")
     return parseInboxView(new URLSearchParams(location.search).get("view"));
   // The Lead is a Conversation with its own row.
