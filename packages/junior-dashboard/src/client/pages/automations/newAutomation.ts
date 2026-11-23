@@ -40,7 +40,9 @@ export function useNewAutomationAction(): PaneNewAction {
 }
 
 /** Where the palette opens an Automation: its editor, unless it cannot change. */
-export function automationSelectPath(automation: AutomationListItem): string {
+export function automationSelectPath(
+  automation: Pick<AutomationListItem, "id" | "status">,
+): string {
   return automation.status === "completed"
     ? automationPath(automation.id)
     : automationPath(automation.id, "edit");

@@ -1,6 +1,7 @@
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
+import { mockSearchRows } from "../search-fixture";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -245,21 +246,13 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    // ⌘K reads the memory search, not the page list.
-    await page.route("**/api/memory/search?*", (route) =>
-      route.fulfill({
-        json: {
-          memories: forgotMemory
-            ? []
-            : [
-                {
-                  content: "Deploy runbooks live in Notion.",
-                  id: "memory-search",
-                },
-              ],
-        },
-      }),
-    );
+    // ⌘K finds the same memory through `/api/search`.
+    await mockSearchRows(page, {
+      memories: () =>
+        forgotMemory
+          ? []
+          : [{ id: "memory-search", title: "Deploy runbooks live in Notion." }],
+    });
     await page.route("**/api/memory/memories/memory-search", async (route) => {
       if (route.request().method() === "GET") {
         if (forgotMemory) {

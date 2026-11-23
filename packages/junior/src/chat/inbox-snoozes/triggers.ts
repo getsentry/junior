@@ -7,6 +7,7 @@ import { CORE_EVENT_NAMESPACE } from "@/chat/events/catalog";
 import { updateTimerIndex, type TimerIndex } from "@/chat/events/timer-index";
 import { mapBounded } from "@/chat/fan-out";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
+import { pushInboxSnoozeWakes } from "@/chat/notifications/inbox-item-push";
 import { getStateAdapter } from "@/chat/state/adapter";
 import type { JuniorDatabase } from "@/db/db";
 import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
@@ -34,8 +35,8 @@ type SnoozeEvent = Pick<Event, "eventType" | "namespace"> & {
  * Fire the snooze triggers that one Event matches. A `resolve` trigger
  * dismisses the item and cancels its snooze; a `wake` trigger ends the
  * snooze, which records `reason`. When one Event fires both on a snooze,
- * `resolve` wins. A snooze that already ended ignores the Event. Returns
- * the number of items woken.
+ * `resolve` wins. A snooze that already ended ignores the Event. Each
+ * woken snooze pushes to its User. Returns the number of items woken.
  */
 async function fireTriggers(
   db: JuniorDatabase,
@@ -63,23 +64,26 @@ async function fireTriggers(
   if (resolving.size === 0 && waking.size === 0) {
     return 0;
   }
-  return db.transaction(async (tx) => {
-    const resolvedItemIds = await settleInboxSnoozes(tx, {
+  const woken = await db.transaction(async (tx) => {
+    const resolved = await settleInboxSnoozes(tx, {
       snoozeIds: [...resolving],
       state: "cancelled",
     });
     await dismissOpenInboxItems(tx, {
-      ids: resolvedItemIds,
+      ids: resolved.map((snooze) => snooze.inboxItemId),
       nowMs,
       reason: "A snooze trigger resolved it.",
     });
-    const wokenItemIds = await settleInboxSnoozes(tx, {
+    return await settleInboxSnoozes(tx, {
       reason,
       snoozeIds: [...waking],
       state: "woken",
     });
-    return wokenItemIds.length;
   });
+  // Only the caller whose update woke a snooze gets it back, so each wake
+  // pushes once. A resolved item closed, so it pushes nothing.
+  await pushInboxSnoozeWakes(woken);
+  return woken.length;
 }
 
 /** Fire the snooze triggers that one published Event matches. */

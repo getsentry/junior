@@ -14,6 +14,7 @@ import type {
   CodeChangePublisher,
   EventPublisher,
   PluginConversationAnnotations,
+  PluginConversationChanges,
   PluginConversationInboxItems,
   PluginLogger,
   PluginState,
@@ -86,6 +87,7 @@ interface ReconcileArgs {
   annotations: PluginConversationAnnotations;
   botEmail?: string | undefined;
   codeChanges: CodeChangePublisher;
+  conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   events: EventPublisher;
   /** Read the commits of one pull request, for the people of a merge. */
@@ -242,10 +244,10 @@ async function reconcilePullRequest(
   await applyGitHubPullRequestOutcome({
     annotations: args.annotations,
     codeChanges: args.codeChanges,
+    conversationChanges: args.conversationChanges,
     db: args.db,
     log: args.log,
     outcome,
-    inboxItems: args.inboxItems,
   });
 }
 

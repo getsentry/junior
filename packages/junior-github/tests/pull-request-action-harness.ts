@@ -4,6 +4,7 @@
  */
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
+  PluginConversationAnnotations,
   PluginConversationInboxItems,
   PluginRoute,
   PluginState,
@@ -16,6 +17,7 @@ import {
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
+import { conversationChangesThrough } from "./conversation-changes";
 import type { GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import { memoryState } from "./plugin-harness";
@@ -645,24 +647,29 @@ export function route(
   const unused = () => {
     throw new Error("The next-action webhooks do not use this");
   };
+  const annotations: PluginConversationAnnotations = {
+    forConversation() {
+      return {
+        async upsert() {},
+        async remove() {},
+        async list() {
+          return [];
+        },
+      };
+    },
+  };
   const [webhook] = githubPlugin().hooks!.routes!({
     agent: { dispatchForIdentity: unused },
-    annotations: {
-      forConversation() {
-        return {
-          async upsert() {},
-          async remove() {},
-          async list() {
-            return [];
-          },
-        };
-      },
-    },
+    annotations,
     codeChanges: {
       async associateConversations() {},
       async recordActivity() {},
       async record() {},
     },
+    conversationChanges: conversationChangesThrough({
+      annotations,
+      inboxItems,
+    }),
     db: fixture.db(),
     log: {
       error(message) {

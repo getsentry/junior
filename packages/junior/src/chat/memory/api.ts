@@ -25,7 +25,6 @@ import {
   listMemories,
   MemoryNotFoundError,
   type MemoryView,
-  searchMemories,
 } from "./viewer";
 import { parseCapturedMemories, parseRecalledMemoryIds } from "./events";
 import { MemoryRestoreConflictError, restoreMemory } from "./restore";
@@ -136,19 +135,6 @@ export type MemoryDashboardResponse = z.output<
   typeof memoryDashboardResponseSchema
 >;
 export type MemoryListResponse = z.output<typeof memoryListResponseSchema>;
-
-/** The memories that quick pickers, such as the composer, offer for a query. */
-export const memorySearchResponseSchema = z
-  .object({
-    memories: z.array(
-      z.object({ content: z.string().min(1), id: z.string().min(1) }).strict(),
-    ),
-  })
-  .strict();
-
-const memorySearchQuerySchema = z
-  .object({ q: z.string().trim().min(1).max(200) })
-  .strict();
 
 // `archived: false` restores an archived memory; `true` forgets it.
 const memoryPatchSchema = z.object({ archived: z.boolean() }).strict();
@@ -313,14 +299,7 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
       );
       const isCollection = url.pathname === "/memories";
       const isDashboard = url.pathname === "/dashboard";
-      const isSearch = url.pathname === "/search";
-      if (
-        !isCollection &&
-        !isDashboard &&
-        !isSearch &&
-        !memoryPath &&
-        !conversationPath
-      ) {
+      if (!isCollection && !isDashboard && !memoryPath && !conversationPath) {
         return json({ error: "Not found." }, 404);
       }
       const isRead = request.method === "GET" || request.method === "HEAD";
@@ -387,21 +366,6 @@ export function createMemoryApi(options: MemoryApiOptions): PluginRouteApp {
           return request.method === "HEAD"
             ? new Response(null, { headers, status: 200 })
             : Response.json(body, { headers });
-        }
-
-        if (isSearch && isRead) {
-          const query = memorySearchQuerySchema.parse(
-            Object.fromEntries(url.searchParams),
-          );
-          const body = memorySearchResponseSchema.parse({
-            memories: await searchMemories(options.db, query.q),
-          });
-          return request.method === "HEAD"
-            ? new Response(null, {
-                headers: { "cache-control": "no-store" },
-                status: 200,
-              })
-            : json(body);
         }
 
         if (isCollection && isRead) {

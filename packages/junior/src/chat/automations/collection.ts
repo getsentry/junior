@@ -82,7 +82,9 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
       createdAtMs: automation.createdAtMs,
       lastRunId: automation.lastRunId,
       activityAtMs: activityAtMs.mapWith(Number).as("activity_at_ms"),
-      state: sql<string>`${automation.status}`.as("state"),
+      state: sql<
+        (typeof automation.$inferSelect)["status"]
+      >`${automation.status}`.as("state"),
       lastRunNeedsAttention: lastRunNeedsAttention.as(
         "last_run_needs_attention",
       ),

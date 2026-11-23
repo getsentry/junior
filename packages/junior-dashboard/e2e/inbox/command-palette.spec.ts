@@ -5,8 +5,9 @@ import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { expandRow, mockInboxItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { waitForSettingsReads } from "../harness";
-import { mobile, screenshot } from "../screenshot";
+import { desktop, mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
+import { expectRequestBudget } from "../request-budget";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -465,30 +466,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("dialog", { name: "Weekly project summary" }),
     ).toBeVisible();
-
-    // Memories come from the memory search, which matches word prefixes.
-    await page.route("**/api/memory/memories/memory-deploy-runbook", (route) =>
-      route.fulfill({
-        json: {
-          content: "Deploy runbooks live in Notion.",
-          createdAt: "2026-07-30T12:00:00.000Z",
-          id: "memory-deploy-runbook",
-          kind: "knowledge",
-          observedAt: "2026-07-30T12:00:00.000Z",
-          origin: "explicit",
-          sourcePlatform: "slack",
-        },
-      }),
-    );
-    await (
-      await firstMatch(
-        "/memories",
-        "deploy run",
-        "Memories",
-        /Deploy runbooks live in Notion/,
-      )
-    ).click();
-    await expect(page).toHaveURL(/\/memories\/memory-deploy-runbook$/);
   });
 
   test("closed Inbox matches show under Done, after the open ones", async ({
@@ -515,13 +492,82 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
+  test("finds Inbox items, Automations, and Memories with one search for each typed query", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 800, width: 1280 });
+    await mockInboxItems(page);
+    await mockLandingAutomationApis(page);
+    await page.goto(dashboard.baseURL);
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    await expect(palette.getByRole("group").first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const group = (name: string) =>
+      palette.getByRole("group", { exact: true, name }).getByRole("option");
+    const listSearches: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        url.searchParams.has("q") &&
+        [
+          "/api/automations",
+          "/api/inbox-items",
+          "/api/user-pages/memory/memories",
+        ].includes(url.pathname)
+      )
+        listSearches.push(url.pathname);
+    });
+
+    await expectRequestBudget(
+      page,
+      async () => {
+        // A half-typed word finds the text with a word that it starts: a
+        // title match first, then a match in an instruction.
+        await palette.getByRole("combobox").fill("revie");
+        await expect(group("Automations")).toHaveText([
+          /Fair Source PR review/,
+          /Post-merge cleanup/,
+        ]);
+      },
+      { requests: 6, serialRounds: 2 },
+    );
+
+    expect(listSearches).toEqual([]);
+    await expect(group("Memories")).toHaveText([
+      /Start incident reviews with the customer impact/,
+    ]);
+    await expect(group("Inbox")).toHaveCount(3);
+    await expect(group("Done")).toHaveAccessibleName(
+      /Review the initech license entry/,
+    );
+    // Conversations lead the list, so show the server-matched groups.
+    // A resize resets the scroll, so each size gets its own shot.
+    const shot = async (view: typeof desktop | typeof mobile) => {
+      await page.setViewportSize({ height: view.height, width: view.width });
+      // Highlight the row, since the palette keeps the highlight in view.
+      await group("Memories").first().hover();
+      await expect(group("Memories").first()).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await screenshot(page, "inbox-palette-search", {
+        lightTheme: true,
+        view: view.name,
+      });
+    };
+    await shot(desktop);
+    await shot(mobile);
+  });
+
   test("waits for every server search before it says nothing matches", async ({
     page,
     dashboard,
   }) => {
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/memory/search?q=*", async (route) => {
+    await page.route(/\/api\/search\?/, async (route) => {
       await released;
       await route.fallback();
     });
@@ -532,7 +578,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       response.url().includes("/api/conversations?q="),
     );
     await palette.getByRole("combobox").fill("zzqx nothing");
-    // The conversation search has answered; Memories still reads.
+    // The conversation search has answered; `/api/search` still reads.
     await conversationsSearched;
     await expect(palette.getByText("Searching…")).toBeVisible();
     await expect(palette.getByText("No matches.")).toHaveCount(0);

@@ -33,6 +33,7 @@
  * only through the requester's linked GitHub account.
  */
 import type {
+  ConversationInboxItemChange,
   PluginConversationInboxItems,
   PluginLogger,
   PluginInboxItems,
@@ -369,42 +370,35 @@ async function showAction(
 }
 
 /**
- * Close the next-action item and the merge conflict notice of a pull request
- * that merged or closed. The outcome write calls this before it marks the
- * chips, so no reader sees an ended pull request next to its open item. The
- * items are optional, so a failure is logged. In a webhook, the next-action
- * sync after it closes the item again.
+ * Return the closes of the next-action item and the merge conflict notice
+ * of a pull request that merged or closed, with the conversation that owns
+ * them. Undefined when no person asked Junior for the pull request. The
+ * outcome write saves them in one batch with that conversation's chip, so no
+ * reader sees an ended pull request next to its open item.
  */
-export async function closeEndedGitHubPullRequestItems(args: {
+export async function endedGitHubPullRequestItemChanges(args: {
   db: GitHubDb;
-  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
-  inboxItems: PluginConversationInboxItems;
   state: EndedState;
   target: GitHubPullRequestTarget;
-}): Promise<void> {
+}): Promise<
+  | { conversationId: string; inboxItems: ConversationInboxItemChange[] }
+  | undefined
+> {
   const { target } = args;
-  try {
-    const opener = (
-      await listGitHubPullRequestOpeners(args.db, {
-        numbers: [target.number],
-        repositoryFullName: target.repositoryFullName,
-      })
-    ).get(target.number);
-    if (!opener?.conversationId) return;
-    const items = args.inboxItems.forConversation(opener.conversationId);
-    const reason = ENDED_REASONS[args.state];
-    await Promise.all([
-      items.close({ dedupeKey: actionDedupeKey(target), ...reason }),
-      items.close({ dedupeKey: gitHubConflictItemKey(target), ...reason }),
-    ]);
-  } catch (error) {
-    logFailOpenFailure(
-      args.log,
-      "GitHub ended pull request item close failed",
-      error,
-      { number: target.number, repository: target.repositoryFullName },
-    );
-  }
+  const conversationId = (
+    await listGitHubPullRequestOpeners(args.db, {
+      numbers: [target.number],
+      repositoryFullName: target.repositoryFullName,
+    })
+  ).get(target.number)?.conversationId;
+  if (!conversationId) return undefined;
+  const reason = ENDED_REASONS[args.state];
+  return {
+    conversationId,
+    inboxItems: [actionDedupeKey(target), gitHubConflictItemKey(target)].map(
+      (dedupeKey) => ({ close: { dedupeKey, ...reason }, conversationId }),
+    ),
+  };
 }
 
 /**

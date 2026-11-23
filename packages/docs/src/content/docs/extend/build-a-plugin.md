@@ -492,8 +492,22 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.inboxItems` as
-from a plugin route.
+`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, `ctx.inboxItems`, and
+`ctx.conversationChanges` as from a plugin route.
+
+Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
+Inbox item changes together, such as a chip that shows a merged pull request
+and the close of its ask. Junior saves the batch in one write. When one entry
+fails, Junior saves no entry. A batch has at most 100 entries.
+
+```ts
+await ctx.conversationChanges.apply({
+  annotations: [{ conversationId, upsert: annotation }],
+  inboxItems: [
+    { conversationId, close: { dedupeKey, reason, status: "done" } },
+  ],
+});
+```
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";

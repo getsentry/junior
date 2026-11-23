@@ -11,6 +11,21 @@ type RetrievalModelOptions = {
   rerank: (query: string, document: string) => number | undefined;
 };
 
+/** Answer every embedding call of the model service with `vectorFor(text)`. */
+export function mockEmbeddings(
+  vectorFor: (text: string) => readonly number[],
+): void {
+  mswServer.use(
+    http.post(`${GATEWAY_URL}/embedding-model`, async ({ request }) => {
+      const body = (await request.json()) as { values: string[] };
+      return HttpResponse.json({
+        embeddings: body.values.map(vectorFor),
+        usage: { tokens: body.values.length },
+      });
+    }),
+  );
+}
+
 /**
  * Answer embedding and reranking calls of the model service. Every text gets
  * the same vector, so only word matches and reranking scores rank results.
@@ -20,14 +35,8 @@ export function mockRetrievalModels(
   options: RetrievalModelOptions,
 ): RerankRequest[] {
   const rerankRequests: RerankRequest[] = [];
+  mockEmbeddings(() => [1, 0]);
   mswServer.use(
-    http.post(`${GATEWAY_URL}/embedding-model`, async ({ request }) => {
-      const body = (await request.json()) as { values: string[] };
-      return HttpResponse.json({
-        embeddings: body.values.map(() => [1, 0]),
-        usage: { tokens: body.values.length },
-      });
-    }),
     http.post(`${GATEWAY_URL}/reranking-model`, async ({ request }) => {
       const body = (await request.json()) as {
         documents: { values: string[] };
