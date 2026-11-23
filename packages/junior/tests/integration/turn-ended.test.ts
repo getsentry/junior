@@ -20,19 +20,7 @@ import {
 } from "../fixtures/turn-engine";
 
 // The end of a Turn through advanceTurn: what a failed Turn drops or hands
-// on, and how a new Turn closes an earlier Turn's tool calls. The queue env
-// must be set before chat config loads. advance-turn.test.ts and
-// turn-step-queue.test.ts start workers on the same topic, so this file uses
-// Redis database 2.
-vi.hoisted(() => {
-  const redisUrl = new URL(
-    process.env["REDIS_URL"]?.trim() || "redis://localhost:6382",
-  );
-  redisUrl.pathname = "/2";
-  process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-  process.env["JUNIOR_QUEUE_REDIS_URL"] = redisUrl.href;
-  process.env["JUNIOR_QUEUE_WORKER_CONCURRENCY"] = "1";
-});
+// on, and how a new Turn closes an earlier Turn's tool calls.
 
 let engine: TurnEngine;
 let fixture: LocalJuniorSqlFixture;
@@ -105,7 +93,7 @@ describe("advanceTurn at the end of a Turn", () => {
       { id: lateId, turnId: next!.id, idempotencyKey: `slack-event:${lateId}` },
     ];
     await expect(readInputs()).resolves.toEqual(inputs);
-    await expect(engine.deliveredStepMessages(next!.id)).resolves.toBe(1);
+    expect(engine.sentStepMessages(next!.id)).toBe(1);
 
     // The new Turn's attempt claims the moved input, so its failure drops it.
     // Injected fault: the model provider is overloaded.
@@ -233,6 +221,6 @@ describe("advanceTurn at the end of a Turn", () => {
     await expect(readInputs()).resolves.toEqual([
       expect.objectContaining({ id: inputId, turnId: next!.id }),
     ]);
-    await expect(engine.deliveredStepMessages(next!.id)).resolves.toBe(1);
+    expect(engine.sentStepMessages(next!.id)).toBe(1);
   });
 });

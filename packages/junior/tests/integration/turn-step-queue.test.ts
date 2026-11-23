@@ -116,7 +116,7 @@ function thisTurnPayload(payload: unknown) {
 async function recordPayloads(): Promise<Record<string, unknown>[]> {
   const payloads: Record<string, unknown>[] = [];
   await startWorker({
-    ...turnStep.consumer,
+    ...turnStep,
     handler: async (payload) => {
       const carried = thisTurnPayload(payload);
       if (carried) {
@@ -176,7 +176,7 @@ describe("turn step queue on BullMQ", () => {
   });
 
   it("runs the step in a new trace that links to the publisher", async () => {
-    await startWorker(turnStep.consumer);
+    await startWorker(turnStep);
 
     await publishFromRequest();
     await waitFor(() => spansOfThisTurn("queue.process").length > 0);
@@ -220,7 +220,7 @@ describe("turn step queue on BullMQ", () => {
   });
 
   it("holds a delayed message back", async () => {
-    await startWorker(turnStep.consumer);
+    await startWorker(turnStep);
 
     const sentAtMs = Date.now();
     await publishFromRequest({ delayMs: 1_500 });
@@ -231,7 +231,7 @@ describe("turn step queue on BullMQ", () => {
   });
 
   it("drops a second send with the same idempotency key", async () => {
-    await startWorker(turnStep.consumer);
+    await startWorker(turnStep);
 
     const idempotencyKey = `${turnId}:1`;
     await publishFromRequest({ idempotencyKey });
@@ -247,7 +247,7 @@ describe("turn step queue on BullMQ", () => {
     await publishFromRequest();
     await waitFor(() => payloads.length > 0);
     await Promise.all(workers.splice(0).map((worker) => worker.close()));
-    await startWorker(turnStep.consumer);
+    await startWorker(turnStep);
 
     // Change the signed Turn id, then send the real message after it.
     const otherTurnId = `turn_${randomUUID()}`;
@@ -268,12 +268,12 @@ describe("turn step queue on BullMQ", () => {
     await publishFromRequest();
     delete process.env["JUNIOR_SECRET"];
     await startWorker({
-      ...turnStep.consumer,
+      ...turnStep,
       handler: (payload, metadata) => {
         if (thisTurnPayload(payload)) {
           deliveries.push(metadata.deliveryCount);
         }
-        return turnStep.consumer.handler(payload, metadata);
+        return turnStep.handler(payload, metadata);
       },
     });
 
@@ -298,8 +298,8 @@ describe("turn step queue on BullMQ", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.now() + QUEUE_SIGNATURE_MAX_AGE_MS + 1);
     await expect(
-      turnStep.consumer.handler(payloads[0], {
-        consumerGroup: turnStep.consumer.consumerGroup,
+      turnStep.handler(payloads[0], {
+        consumerGroup: turnStep.consumerGroup,
         createdAt: new Date(),
         deliveryCount: 1,
         messageId: "expired",

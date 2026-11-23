@@ -1,12 +1,7 @@
 // The harness of the Turn engine integration tests: one Conversation with one
-// queued Turn, a BullMQ worker that takes the step messages, and the AI
-// emulator for the model requests. Chat config reads the queue provider when
-// it loads, so a test file sets the queue env in `vi.hoisted` before this
-// module loads. CI runs Redis at REDIS_URL. Locally,
-// compose.yaml runs it on port 6382. Each file that starts this worker uses its
-// own Redis database, because the topic is fixed. One job at a time keeps
-// deliveries in send order, so the marker of `deliveredStepMessages` comes
-// last.
+// queued Turn, an in-process queue that holds the messages core sends, and
+// the AI emulator for the model requests. Each test gets its own queue, so
+// tests read its messages instead of a worker's.
 import { randomUUID } from "node:crypto";
 import type { AssistantMessage } from "@earendil-works/pi-ai";
 import { eq } from "drizzle-orm";
@@ -15,13 +10,12 @@ import * as z from "zod";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
 import type { ToolDefinition } from "@/core/tool";
 import { advanceTurn } from "@/core/turn/advance";
 import type { InputMessage, UnreadInput } from "@/core/turn/inbox";
-import { TURN_STEP_TOPIC, createTurnStepConsumer } from "@/core/turn/queue";
+import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import {
   juniorConversations,
   juniorIdentities,
@@ -38,6 +32,7 @@ import {
   setModelRules,
   type ModelRule,
 } from "./ai-emulator";
+import { createInProcessQueue, type InProcessQueue } from "./in-process-queue";
 import { createAssistantMessage } from "./model-stream";
 
 export const CONVERSATION_ID = "slack:C123:1718123456.000000";
@@ -54,20 +49,17 @@ export const MODEL: ModelSettings = {
   privacy: "private",
 };
 
-const carriedPayloadSchema = z.looseObject({
-  turnId: z.string(),
-  marker: z.literal(true).optional(),
-});
-
 export type Prepare = Parameters<typeof advanceTurn>[2]["prepare"];
 
 /** How a test prepares a step, and the model client that the step uses. */
 export type Step = { prepare: Prepare; client?: ModelClient };
 
-/** The Conversation, its Turn, and the queue worker of one test. */
+/** The Conversation, its Turn, and the queue of one test. */
 export type TurnEngine = {
   fixture: LocalJuniorSqlFixture;
-  /** The context that core runs with: the test database and the BullMQ queue. */
+  /** The queue that core sends to. Nothing is delivered until a test asks. */
+  queue: InProcessQueue;
+  /** The context that core runs with: the test database and its queue. */
   engineCtx: EngineContext;
   turnId: string;
   /** Runs one step of a Turn, by default the test's Turn. */
@@ -77,11 +69,8 @@ export type TurnEngine = {
   loadHistory: () => ReturnType<typeof loadMessages>;
   /** Adds an inbox row for the test's Turn, and returns its id. */
   addTestInput: (text: string) => Promise<string>;
-  /**
-   * Waits until every step message sent so far is delivered, and counts
-   * those of one Turn, by default the test's Turn. Call it once per test.
-   */
-  deliveredStepMessages: (forTurnId?: string) => Promise<number>;
+  /** Counts the step messages sent for a Turn, by default the test's Turn. */
+  sentStepMessages: (forTurnId?: string) => number;
   close: () => Promise<void>;
 };
 
@@ -111,47 +100,19 @@ export async function startTurnEngine(): Promise<TurnEngine> {
     source: "slack",
   });
 
-  // The Turn ids of the step messages, and the marker of a delivery check.
-  const stepMessages: string[] = [];
-  let markerSeen = false;
+  const queue = createInProcessQueue();
   const engineCtx: EngineContext = {
     executor: fixture.sql,
-    queue: getQueueProvider(),
+    queue,
     owner: "worker-a",
     leaseMs: LEASE_MS,
   };
-  const provider = engineCtx.queue;
-  if (!provider.startWorker) {
-    throw new Error("The BullMQ provider must start workers");
-  }
-  // The topic is fixed, so a count takes only the messages of one Turn.
-  const worker = await provider.startWorker([
-    {
-      ...createTurnStepConsumer(engineCtx, () => Promise.resolve()).consumer,
-      handler: async (payload) => {
-        const parsed = carriedPayloadSchema.safeParse(payload);
-        if (!parsed.success) {
-          return;
-        }
-        if (!parsed.data.marker) {
-          stepMessages.push(parsed.data.turnId);
-        } else if (parsed.data.turnId === turnId) {
-          markerSeen = true;
-        }
-      },
-    },
-  ]);
 
-  async function deliveredStepMessages(forTurnId = turnId): Promise<number> {
-    await engineCtx.queue.send(TURN_STEP_TOPIC, { turnId, marker: true });
-    const deadline = Date.now() + 10_000;
-    while (!markerSeen) {
-      if (Date.now() > deadline) {
-        throw new Error("Timed out waiting for queue delivery");
-      }
-      await new Promise((resolve) => setTimeout(resolve, 25));
-    }
-    return stepMessages.filter((id) => id === forTurnId).length;
+  // No consumer takes step messages, so each one that was sent is pending.
+  function sentStepMessages(forTurnId = turnId): number {
+    return queue
+      .pending(TURN_STEP_TOPIC)
+      .filter((message) => messageTurnId(message.payload) === forTurnId).length;
   }
 
   async function readTurn() {
@@ -194,18 +155,24 @@ export async function startTurnEngine(): Promise<TurnEngine> {
 
   return {
     fixture,
+    queue,
     engineCtx,
     turnId,
     advance,
     readTurn,
     loadHistory: () => loadMessages(fixture),
     addTestInput,
-    deliveredStepMessages,
-    close: async () => {
-      await worker.close();
-      await fixture.close();
-    },
+    sentStepMessages,
+    close: () => fixture.close(),
   };
+}
+
+const carriedTurnIdSchema = z.looseObject({ turnId: z.string() });
+
+/** The Turn id that a step or delivery message carries. */
+export function messageTurnId(payload: unknown): string | undefined {
+  const parsed = carriedTurnIdSchema.safeParse(payload);
+  return parsed.success ? parsed.data.turnId : undefined;
 }
 
 async function loadMessages(fixture: LocalJuniorSqlFixture) {

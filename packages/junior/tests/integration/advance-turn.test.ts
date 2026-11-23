@@ -2,7 +2,6 @@ import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { getQueueProvider } from "@/chat/queue/provider";
 import type { ModelRequest } from "@/core/model/client";
 import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs, type InputMessage } from "@/core/turn/inbox";
@@ -36,19 +35,6 @@ import {
   type Step,
   type TurnEngine,
 } from "../fixtures/turn-engine";
-
-// The queue env must be set before chat config loads. turn-ended.test.ts and
-// turn-step-queue.test.ts start workers on the same topic, so this file uses
-// Redis database 1.
-vi.hoisted(() => {
-  const redisUrl = new URL(
-    process.env["REDIS_URL"]?.trim() || "redis://localhost:6382",
-  );
-  redisUrl.pathname = "/1";
-  process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-  process.env["JUNIOR_QUEUE_REDIS_URL"] = redisUrl.href;
-  process.env["JUNIOR_QUEUE_WORKER_CONCURRENCY"] = "1";
-});
 
 // A lease that has expired by the next statement.
 const EXPIRED_LEASE_MS = 0;
@@ -145,7 +131,7 @@ describe("advanceTurn", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(1);
+    expect(engine.sentStepMessages()).toBe(1);
     expect(requests).toMatchObject([
       { model: MODEL, session: CONVERSATION_ID },
     ]);
@@ -167,7 +153,7 @@ describe("advanceTurn", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(0);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("fails the Turn with the model error and writes no history", async () => {
@@ -184,7 +170,7 @@ describe("advanceTurn", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(0);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("fails the Turn and writes no history when the model stream closes mid-reply", async () => {
@@ -203,7 +189,7 @@ describe("advanceTurn", () => {
       expect.objectContaining({ stream: true, fault: "disconnect" }),
     ]);
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(0);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it.each(["completed", "cancelled"] as const)(
@@ -230,9 +216,7 @@ describe("advanceTurn", () => {
       await expect(engine.readTurn()).resolves.toEqual(before);
       await expect(engine.loadHistory()).resolves.toEqual([]);
       // Only cancelTurn's own message.
-      await expect(engine.deliveredStepMessages()).resolves.toBe(
-        state === "cancelled" ? 1 : 0,
-      );
+      expect(engine.sentStepMessages()).toBe(state === "cancelled" ? 1 : 0);
     },
   );
 
@@ -248,7 +232,7 @@ describe("advanceTurn", () => {
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
     // Only cancelTurn's own message.
-    await expect(engine.deliveredStepMessages()).resolves.toBe(1);
+    expect(engine.sentStepMessages()).toBe(1);
   });
 
   it("writes nothing when the model request throws its own error after a cancel", async () => {
@@ -272,7 +256,7 @@ describe("advanceTurn", () => {
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
     // Only cancelTurn's own message.
-    await expect(engine.deliveredStepMessages()).resolves.toBe(1);
+    expect(engine.sentStepMessages()).toBe(1);
   });
 
   it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
@@ -290,7 +274,7 @@ describe("advanceTurn", () => {
       stepSeq: 0,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(0);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("stops a tool that respects the signal when the Turn is cancelled", async () => {
@@ -322,7 +306,7 @@ describe("advanceTurn", () => {
       storedReply(reply),
     ]);
     // The step that the first advance committed, and cancelTurn's message.
-    await expect(engine.deliveredStepMessages()).resolves.toBe(2);
+    expect(engine.sentStepMessages()).toBe(2);
   });
 
   // Holding a table lock needs a second database session, which PGlite lacks.
@@ -424,7 +408,7 @@ describe("advanceTurn", () => {
       leaseOwner: null,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(0);
+    expect(engine.sentStepMessages()).toBe(0);
   });
 
   it("commits a step that succeeds on its last try, and resets the attempts", async () => {
@@ -454,7 +438,7 @@ describe("advanceTurn", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(1);
+    expect(engine.sentStepMessages()).toBe(1);
   });
 
   it.each([
@@ -533,7 +517,7 @@ describe("advanceTurn", () => {
     const reply = sendCallReply();
     const failure = new Error("The queue is unreachable");
     // Stands in for the process dying after the commit, before the send.
-    vi.spyOn(getQueueProvider(), "send").mockRejectedValueOnce(failure);
+    vi.spyOn(engine.queue, "send").mockRejectedValueOnce(failure);
 
     await expect(engine.advance(prepareWith([reply]))).rejects.toBe(failure);
 
@@ -568,7 +552,7 @@ describe("advanceTurn", () => {
       storedReply(done),
     ]);
     // Only the tool step's send went out.
-    await expect(engine.deliveredStepMessages()).resolves.toBe(1);
+    expect(engine.sentStepMessages()).toBe(1);
   });
 
   it("reads an unread input into the history before the reply", async () => {
@@ -639,7 +623,7 @@ describe("advanceTurn", () => {
     await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId: lateInputId }),
     ]);
-    await expect(engine.deliveredStepMessages()).resolves.toBe(1);
+    expect(engine.sentStepMessages()).toBe(1);
   });
 
   it("reads no inputs in a tool step", async () => {
