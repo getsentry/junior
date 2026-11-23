@@ -23,7 +23,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       body: "#91 has new commits since you requested changes.\n\nhttps://github.com/getsentry/payments/pull/91",
     };
     await mockInboxItems(page, { open: [rereview] });
-    await page.goto(`${dashboard.baseURL}/?item=${rereview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rereview.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(asks.getByRole("region", { name: card })).toHaveCount(1);
     await expect(
@@ -53,7 +53,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     };
     await mockInboxItems(page, { open: [sized] });
-    await page.goto(`${dashboard.baseURL}/?item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${prReview.id}`);
     const size = "1,204 lines added, 340 removed, 12 files changed";
     const pull = page
       .getByRole("region", { name: /: asks$/ })
@@ -72,7 +72,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await mockInboxItems(page, {
       open: [pinReview, pinChecks],
     });
-    await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinReview.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     // The URL alone in the ask's text shows no card of its own: the one
     // card names the change, its state and branch, and its description.
@@ -161,7 +161,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       open: [pinReview, notice],
     });
     // A link to the notice opens the review's row, which holds it.
-    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinChecks.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const checks = asks.getByRole("region", { name: pinChecks.title });
     await checks.getByRole("button", { name: "Checks failed" }).click();
@@ -180,7 +180,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [pinReview, pinChecks] });
-    await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinReview.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     const asks = todo.getByRole("region", { name: /: asks$/ });
     await asks.getByRole("button", { name: "Snooze" }).click();
@@ -204,7 +204,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [pinReview, releaseNotes] });
-    await page.goto(`${dashboard.baseURL}/?item=${pinReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinReview.id}`);
     // Its Conversation's row in To do holds the ask only.
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.getByRole("region", { name: /: asks$/ })).toBeVisible();
@@ -221,7 +221,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText(releaseNotes.title)).toHaveCount(1);
 
     // A link to it opens its FYI row, which has Dismiss and Snooze.
-    await page.goto(`${dashboard.baseURL}/?item=${releaseNotes.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${releaseNotes.id}`);
     const row = fyi.locator('[data-inbox-row^="fyi:"]');
     await expect(row).toHaveAttribute("data-expanded", "true");
     await expect(

@@ -3,52 +3,291 @@ import {
   openRepositoryConversations,
   pinFirstRepositoryConversation,
 } from "../repositoryConversations";
+import {
+  mockInboxItems,
+  mockViewerCodeChanges,
+  prReview,
+} from "./inbox-fixture";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  test("shows code activity", async ({ page, dashboard }) => {
-    await page.goto(`${dashboard.baseURL}/code`);
+  test("the Code row opens Mine, and stays the origin of a Conversation that Code opens", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1440 });
+    await page.goto(dashboard.baseURL);
+    const primary = page.getByRole("navigation", { name: "Primary" });
+    const code = primary.getByRole("link", { exact: true, name: "Code" });
+    await code.click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
+    await expect(code).toHaveAttribute("aria-current", "page");
+    const scopes = page.getByRole("navigation", { name: "Code to show" });
+    await expect(
+      scopes.getByRole("link", { exact: true, name: "Mine" }),
+    ).toHaveAttribute("aria-current", "page");
 
+    // A Conversation opened from a repository keeps Code as its origin.
+    const list = await openRepositoryConversations(page, dashboard.baseURL);
+    await expect(code).toHaveAttribute("aria-current", "page");
+    await list
+      .getByRole("link", { name: /^Open / })
+      .first()
+      .click();
+    await expect(page).toHaveURL(/\/conversations\//);
+    await expect(code).toHaveAttribute("aria-current", "true");
+    await page.getByRole("link", { name: "Back to Code" }).click();
+    await expect(page).toHaveURL(/\/code\/[^/]+\/conversations$/);
+  });
+
+  test("Code · All lists every repository first, then every stat and the activity chart", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(`${dashboard.baseURL}/code`);
+    await page
+      .getByRole("navigation", { name: "Code to show" })
+      .getByRole("link", { exact: true, name: "All" })
+      .click();
+    await expect(page).toHaveURL(/\/code\?scope=all$/);
+    const main = page.getByRole("main");
     await expect(
-      page
-        .getByRole("main")
-        .getByRole("heading", { name: "Code", exact: true }),
+      main.getByRole("heading", { name: "Code", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText("Repositories and code changes created by Junior."),
+      main.getByRole("table").getByRole("link", { name: "getsentry/junior" }),
     ).toBeVisible();
-    // Draft only shows on open changes; a merged change shows Merged.
-    const recentChanges = page.locator("section", {
-      hasText: "Recent changes",
-    });
-    await expect(recentChanges.getByText(/^draft$/i)).toHaveCount(1);
-    await expect(recentChanges.getByText(/^merged$/i)).toHaveCount(1);
+    // The table comes first. The summary cards, the chart, and the newest
+    // changes follow it.
+    await expect(main).toContainText(
+      /Repositories[\s\S]*Median merge time[\s\S]*Cost[\s\S]*Changes over time[\s\S]*Recent changes/,
+    );
+    await expect(main).toContainText(
+      "Repositories and code changes created by Junior.",
+    );
+    // The chart card holds its own range.
+    await main
+      .getByRole("group", { name: "Reporting period" })
+      .getByRole("button", { name: "7d" })
+      .click();
+    await expect(
+      main.getByRole("img", { name: "Code changes during the last 7 days" }),
+    ).toBeVisible();
+    // Draft only shows on open changes.
+    await expect(main).toContainText(/Recent changes[\s\S]*draft/i);
     await screenshot(page, "code");
 
-    await page
+    await main
       .getByRole("link", { name: "getsentry/junior", exact: true })
       .click();
 
     await expect(
-      page.getByRole("heading", { name: "getsentry/junior", exact: true }),
+      main.getByRole("heading", { name: "getsentry/junior", exact: true }),
     ).toBeVisible();
     await expect(page).toHaveTitle(/^\(\d+\) getsentry\/junior - Junior$/);
     await expect(
       page.getByRole("link", { name: "junior", exact: true }),
     ).toHaveAttribute("href", "/system/workspaces/workspace-junior");
     await expect(
-      page.getByText("Keep repository context across turns"),
+      main.getByRole("link", { name: /Keep repository context across turns/ }),
     ).toBeVisible();
     await screenshot(page, "code-repository");
 
-    await page
-      .getByRole("navigation", { name: "Repository navigation" })
-      .getByRole("link", { name: "Changes" })
-      .click();
+    const tabs = page.getByRole("navigation", {
+      name: "Repository navigation",
+    });
+    await expect(tabs.getByRole("link", { name: "Overview" })).toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await tabs.getByRole("link", { name: "Changes" }).click();
     await expect(page).toHaveURL(/\/code\/[^/]+\/changes$/);
     await expect(page.getByRole("tab", { name: /Merged/ })).toBeVisible();
+    // The Changes tab has no chart of its own.
+    await expect(
+      main.getByRole("img", { name: /^Code changes during/ }),
+    ).toHaveCount(0);
+    await page.getByRole("link", { name: "Back to Code" }).click();
+    await expect(page).toHaveURL(/\/code\?scope=all$/);
+  });
+
+  test("Code · Mine sorts your open changes into Waiting on you, Waiting on others and Drafts", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [prReview] });
+    await mockViewerCodeChanges(page, [
+      {
+        idleDays: 0,
+        number: 7,
+        size: { additions: 1204, changedFiles: 12, deletions: 340 },
+        title: "Tune the retry backoff",
+      },
+      // GitHub counted no deletions here.
+      {
+        idleDays: 10,
+        number: 8,
+        size: { additions: 64, changedFiles: 2 },
+        title: "Drop the legacy webhook",
+      },
+      // prReview asks the viewer to review this one.
+      { idleDays: 1, number: 91, title: "Pin the release train" },
+      { draft: true, idleDays: 0, number: 15, title: "Sketch the replay" },
+      {
+        idleDays: 0,
+        number: 9,
+        state: "merged",
+        title: "Rename the payments queue",
+      },
+    ]);
+    await page.goto(`${dashboard.baseURL}/code`);
+    const mine = page.getByRole("region", { exact: true, name: "Code" });
+    await expect(mine.getByRole("region")).toHaveText([
+      /^Waiting on you/,
+      /^Waiting on others/,
+      /^Drafts/,
+    ]);
+    const waiting = mine
+      .getByRole("region", { name: "Waiting on you" })
+      .getByRole("listitem", { name: "Pin the release train" });
+    await expect(
+      waiting.getByRole("link", { exact: true, name: "Pin the release train" }),
+    ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
+    // The rest wait on a reviewer, CI or Junior: newest activity first, so
+    // the idle one comes last.
+    const others = mine.getByRole("region", { name: "Waiting on others" });
+    await expect(others.getByRole("listitem")).toHaveText([
+      /Tune the retry backoff/,
+      /Drop the legacy webhook/,
+    ]);
+    // Each row gives its size, and leaves out a count it does not know.
+    await expect(
+      others.getByRole("listitem", { name: "Tune the retry backoff" }),
+    ).toContainText("1,204 lines added, 340 removed, 12 files changed");
+    const legacy = others.getByRole("listitem", {
+      name: "Drop the legacy webhook",
+    });
+    await expect(legacy).toContainText("64 lines added, 2 files changed");
+    await expect(legacy).not.toContainText("removed");
+    await expect(
+      mine.getByRole("listitem", { name: "Rename the payments queue" }),
+    ).toHaveCount(0);
+    // A draft waits on its author, so it leaves the other piles. Drafts starts
+    // collapsed.
+    const drafts = mine.getByRole("region", { name: "Drafts" });
+    await expect(drafts.getByRole("listitem")).toHaveCount(0);
+    await drafts.getByRole("button", { name: /Drafts/ }).click();
+    await expect(drafts.getByRole("listitem")).toHaveText([
+      /Sketch the replay/,
+    ]);
+    // The viewer's own numbers follow the list.
+    await expect(
+      mine.getByRole("img", { name: /^Code changes during the last 30 days/ }),
+    ).toBeVisible();
+
+    // The ask stays with its pull request, and opens its row in the Inbox.
+    await waiting.getByRole("link", { name: /^Review requested/ }).click();
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
+    );
+  });
+
+  test("Code · Mine waits for your asks before it groups your changes, and says when they fail", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [prReview] });
+    await mockViewerCodeChanges(page, [
+      { idleDays: 1, number: 91, title: "Pin the release train" },
+    ]);
+    // Hold the asks, so only the changes have loaded.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/api/inbox-items?**", async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await page.goto(`${dashboard.baseURL}/code`);
+    const mine = page.getByRole("region", { exact: true, name: "Code" });
+    await expect(mine.getByRole("status")).toHaveText(
+      "Loading your pull requests",
+    );
+    await expect(mine.getByRole("region")).toHaveCount(0);
+    release();
+    // The change waits on the viewer, because its ask names it.
+    await expect(
+      mine
+        .getByRole("region", { name: "Waiting on you" })
+        .getByRole("listitem", { name: "Pin the release train" }),
+    ).toBeVisible();
+    await expect(
+      mine.getByRole("region", { name: "Waiting on others" }),
+    ).toHaveCount(0);
+
+    await page.unroute("**/api/inbox-items?**");
+    await page.route("**/api/inbox-items?**", (route) =>
+      route.fulfill({ json: { error: "unavailable" }, status: 503 }),
+    );
+    await page.reload();
+    await expect(
+      mine.getByRole("alert").filter({ hasText: "Could not load your asks." }),
+    ).toBeVisible();
+    await expect(mine.getByRole("region")).toHaveCount(0);
+  });
+
+  test.describe("on a phone", () => {
+    test.use({ viewport: { height: 844, width: 390 } });
+
+    test("the header holds the way back, the title, and Mine · All", async ({
+      page,
+      dashboard,
+    }) => {
+      await page.goto(`${dashboard.baseURL}/inbox`);
+      await page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("link", { exact: true, name: "Code" })
+        .click();
+      await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
+      // The phone header holds the title and the scope tabs, as an Inbox
+      // list holds its filters. The page body has neither.
+      const header = page.getByRole("main");
+      const body = header.getByRole("region", { exact: true, name: "Code" });
+      const scopes = header.getByRole("navigation", { name: "Code to show" });
+      await expect(
+        header.getByRole("heading", { exact: true, name: "Code" }),
+      ).toBeVisible();
+      await expect(scopes).toBeVisible();
+      await expect(
+        body.getByRole("heading", { exact: true, name: "Code" }),
+      ).toHaveCount(0);
+      await expect(
+        body.getByRole("navigation", { name: "Code to show" }),
+      ).toHaveCount(0);
+      await expect(
+        scopes.getByRole("link", { exact: true, name: "Mine" }),
+      ).toHaveAttribute("aria-current", "page");
+      await scopes.getByRole("link", { exact: true, name: "All" }).click();
+      await expect(page).toHaveURL(/\/code\?scope=all$/);
+      // The repository table leads the page body.
+      await page
+        .getByRole("main")
+        .getByRole("link", { name: "getsentry/junior", exact: true })
+        .click();
+      await expect(
+        header.getByRole("heading", { exact: true, name: "getsentry/junior" }),
+      ).toBeVisible();
+      await expect(
+        header.getByRole("navigation", { name: "Repository navigation" }),
+      ).toBeVisible();
+      await header.getByRole("link", { name: "Back to Code" }).click();
+      await expect(page).toHaveURL(/\/code\?scope=all$/);
+      await header
+        .getByRole("link", { name: "Back to the Inbox entries" })
+        .click();
+      await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
+    });
   });
 
   test("counts every open code change past the listed ones", async ({
@@ -115,7 +354,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(week.getByText("To do", { exact: true })).toBeVisible();
     await expect(week.getByText("Needs you")).toHaveCount(0);
 
-    await page.goto(`${dashboard.baseURL}/code`);
+    await page.goto(`${dashboard.baseURL}/code?scope=all`);
     await page
       .getByRole("link", { name: "getsentry/junior", exact: true })
       .click();
@@ -199,7 +438,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         response,
       });
     });
-    await page.goto(`${dashboard.baseURL}/code`);
+    await page.goto(`${dashboard.baseURL}/code?scope=all`);
     await page
       .getByRole("link", { name: "getsentry/junior", exact: true })
       .click();

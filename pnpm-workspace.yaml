@@ -81,7 +81,6 @@ allowBuilds:
   "@parcel/watcher": true
   agent-browser: true
   esbuild: true
-  msgpackr-extract: false
   msw: true
   node-liblzma: false
   protobufjs: true

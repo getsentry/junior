@@ -923,7 +923,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }
 
   test("opens the event log from the row menu", async ({ page, dashboard }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = page
       .getByRole("region", { exact: true, name: "Conversations" })
       .getByRole("link", { name: /Closed issue summary/ });

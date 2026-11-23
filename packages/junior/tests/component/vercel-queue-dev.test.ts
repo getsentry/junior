@@ -232,12 +232,14 @@ describe("conversation work Vercel queue integration", () => {
     delete process.env["JUNIOR_SECRET"];
     // Config reads the kill switch when it loads, so load a fresh copy.
     vi.resetModules();
-    const { conversationWorkQueueConsumer } =
+    const { createVercelConversationWorkCallback } =
       await import("@/chat/task-execution/vercel-callback");
     const run = vi.fn();
+    createVercelConversationWorkCallback({ run });
+    const { handler } = lastPushCallback();
 
     await expect(
-      conversationWorkQueueConsumer({ run }).handler(
+      handler(
         {
           schemaVersion: 2,
           conversationId: "slack:C123:1712345.0001",

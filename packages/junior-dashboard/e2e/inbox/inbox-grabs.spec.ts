@@ -30,7 +30,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { automations: () => 0, open: [shared, grab] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, shared.title));
     const asks = todo.getByRole("region", { name: /: asks$/ });
@@ -51,7 +51,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [grab],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const grabs = page.getByRole("region", { name: "Up for grabs" });
     await expandRow(rowHead(grabs, grab.title));
     await grabs.getByRole("button", { name: "I'll take it" }).click();
@@ -72,7 +72,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [license, grab],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(
       page.getByRole("region", { name: "Up for grabs" }),
     ).toBeVisible();

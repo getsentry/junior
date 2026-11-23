@@ -13,6 +13,7 @@ import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import { PULL_REQUEST_CHECKS } from "../graphql-documents.js";
+import { checkContextState } from "../pull-request-review-again.js";
 import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
@@ -156,26 +157,6 @@ const checksResponseSchema = z.object({
     }),
   }),
 });
-type CheckContext = z.output<typeof checkContextSchema>;
-
-// A check run that completed with one of these conclusions does not block a
-// merge. Every other conclusion does.
-const PASSING_CONCLUSIONS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
-
-function contextState(
-  context: CheckContext,
-): "passing" | "failing" | "pending" {
-  if (context.__typename === "CheckRun") {
-    if (context.status !== "COMPLETED") return "pending";
-    return PASSING_CONCLUSIONS.has(context.conclusion ?? "")
-      ? "passing"
-      : "failing";
-  }
-  if (context.state === "SUCCESS") return "passing";
-  return context.state === "PENDING" || context.state === "EXPECTED"
-    ? "pending"
-    : "failing";
-}
 
 /** Read the required checks and merge state of one pull request. */
 async function readPullRequestChecks(
@@ -206,7 +187,7 @@ async function readPullRequestChecks(
   >;
   for (const context of rollup?.contexts.nodes ?? []) {
     if (!context.isRequired) continue;
-    checks[contextState(context)].push(
+    checks[checkContextState(context)].push(
       context.__typename === "CheckRun" ? context.name : context.context,
     );
   }

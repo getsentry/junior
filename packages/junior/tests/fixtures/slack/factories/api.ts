@@ -475,6 +475,14 @@ export function dndInfoOk(window?: { startMs: number; endMs: number }) {
   });
 }
 
+/**
+ * Model https://docs.slack.dev/reference/methods/users.getPresence/ for
+ * another user: Slack returns only `presence`.
+ */
+export function usersGetPresenceOk(presence: "active" | "away" = "away") {
+  return slackOk({ presence });
+}
+
 /** Model the bot fields from https://docs.slack.dev/reference/methods/bots.info/. */
 export function botsInfoOk(
   input: {

@@ -136,3 +136,6 @@ Snooze:
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
+- When a Snooze fails, the row comes back with an error toast that offers
+  no Retry. This breaks "when it fails, only that row comes back, and a
+  toast offers Retry".

@@ -2,6 +2,7 @@ import { createHmac } from "node:crypto";
 import type {
   CodeChangeInput,
   ConversationAnnotationInput,
+  ConversationChangeBatch,
   EventInput,
   EventPublisher,
   HeartbeatHookContext,
@@ -10,6 +11,7 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { expect } from "vitest";
 import { githubPlugin } from "../src/index";
+import { conversationChangesThrough } from "./conversation-changes";
 import type { GitHubFixture } from "./github-db";
 
 /** A signed GitHub webhook delivery. */
@@ -78,6 +80,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
       annotation: ConversationAnnotationInput;
       conversationId: string;
     }>,
+    /** Batches of annotation and Inbox item changes, in order. */
+    batches: [] as ConversationChangeBatch[],
     closedNotices: [] as string[],
     codeChanges: [] as CodeChangeInput[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
@@ -153,25 +157,31 @@ export function createPluginHarness(fixture: GitHubFixture) {
     const unused = () => {
       throw new Error("GitHub webhooks do not dispatch agents");
     };
+    const annotations: HeartbeatHookContext["annotations"] = {
+      forConversation() {
+        return {
+          async upsert() {},
+          async remove() {},
+          async list() {
+            return [];
+          },
+        };
+      },
+    };
     const [route] = githubPlugin().hooks!.routes!({
       agent: { dispatchForIdentity: unused },
-      annotations: {
-        forConversation() {
-          return {
-            async upsert() {},
-            async remove() {},
-            async list() {
-              return [];
-            },
-          };
-        },
-      },
+      annotations,
       cache,
       codeChanges: {
         async associateConversations() {},
         async recordActivity() {},
         async record() {},
       },
+      conversationChanges: conversationChangesThrough({
+        annotations,
+        batches: recorded.batches,
+        inboxItems,
+      }),
       db: fixture.db(),
       events,
       log: { error() {}, info() {}, warn() {} },
@@ -193,21 +203,22 @@ export function createPluginHarness(fixture: GitHubFixture) {
     const unused = () => {
       throw new Error("The GitHub heartbeat does not use this");
     };
+    const annotations: HeartbeatHookContext["annotations"] = {
+      forConversation(conversationId) {
+        return {
+          async upsert(annotation) {
+            recorded.annotations.push({ annotation, conversationId });
+          },
+          async remove() {},
+          async list() {
+            return [];
+          },
+        };
+      },
+    };
     await githubPlugin().hooks!.heartbeat!({
       agent: { dispatch: unused, dispatchForIdentity: unused, get: unused },
-      annotations: {
-        forConversation(conversationId) {
-          return {
-            async upsert(annotation) {
-              recorded.annotations.push({ annotation, conversationId });
-            },
-            async remove() {},
-            async list() {
-              return [];
-            },
-          };
-        },
-      },
+      annotations,
       cache,
       codeChanges: {
         async associateConversations() {},
@@ -216,6 +227,11 @@ export function createPluginHarness(fixture: GitHubFixture) {
           recorded.codeChanges.push(input);
         },
       },
+      conversationChanges: conversationChangesThrough({
+        annotations,
+        batches: recorded.batches,
+        inboxItems,
+      }),
       db: fixture.db(),
       embedder: { embedTexts: unused, model: "unused", provider: "unused" },
       events,

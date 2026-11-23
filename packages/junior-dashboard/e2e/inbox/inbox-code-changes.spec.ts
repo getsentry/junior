@@ -69,7 +69,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [breakingReview, prMerge, conflict] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const review = row(page, "Pin the release train");
     const head = review.locator("[data-inbox-head]");
     // The state is one word before the title. The title has no type prefix,
@@ -108,7 +108,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [breakingReview] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const review = row(page, "Pin the release train");
     // Closed, the row's hover actions end with the pull request, after
     // Dismiss and Snooze.

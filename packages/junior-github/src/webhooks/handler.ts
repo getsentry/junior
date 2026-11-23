@@ -5,6 +5,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
   PluginConversationAnnotations,
+  PluginConversationChanges,
   PluginConversationInboxItems,
   PluginLogger,
   PluginRoute,
@@ -15,23 +16,14 @@ import type {
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
-import {
-  recordGitHubIssueConversations,
-  recordGitHubIssueOutcome,
-} from "../issue-outcomes/store.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
   recordGitHubPullRequestConversations,
-  recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
 } from "../pull-request-outcomes/store.js";
-import {
-  normalizeGitHubIssueConversations,
-  normalizeGitHubIssueOutcome,
-} from "./issue-outcome.js";
+import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
 import {
   normalizeGitHubPullRequestConversations,
-  normalizeGitHubPullRequestLinkedIssues,
   normalizeGitHubPullRequestOutcome,
 } from "./pull-request-outcome.js";
 import { normalizeGitHubPullRequestActivity } from "./pull-request-activity.js";
@@ -151,6 +143,7 @@ export function createGitHubWebhookRoute(args: {
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   codeChanges: CodeChangePublisher;
+  conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
@@ -226,30 +219,22 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestOutcome({ body, botEmail })
           : undefined;
-      const issueOutcome =
+      const closedIssue =
         eventName === "issues"
-          ? normalizeGitHubIssueOutcome({ body, botEmail })
-          : undefined;
-      const issueConversations =
-        eventName === "issues"
-          ? normalizeGitHubIssueConversations({ body, botEmail })
+          ? normalizeGitHubClosedIssue({ body, botEmail })
           : undefined;
       const pullRequestConversations =
         eventName === "pull_request"
           ? normalizeGitHubPullRequestConversations({ body, botEmail })
           : undefined;
-      const pullRequestLinkedIssues =
-        eventName === "pull_request"
-          ? normalizeGitHubPullRequestLinkedIssues({ body, botEmail })
-          : undefined;
       if (pullRequestOutcome) {
         const recordedOutcome = await applyGitHubPullRequestOutcome({
           annotations: args.annotations,
           codeChanges: args.codeChanges,
+          conversationChanges: args.conversationChanges,
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
-          inboxItems: args.inboxItems,
         });
         if (
           recordedOutcome.applied &&
@@ -279,28 +264,21 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (issueOutcome) {
-        const recordedOutcome = await recordGitHubIssueOutcome(
-          args.db,
-          issueOutcome,
-        );
-        if (recordedOutcome.applied && issueOutcome.state === "closed") {
-          await updateGitHubAnnotations({
-            annotations: args.annotations,
-            conversationIds: recordedOutcome.conversationIds,
-            log: args.log,
-            update: {
-              repo: issueOutcome.repositoryFullName,
-              number: issueOutcome.number,
-              objectType: "task",
-              status: "closed",
-            },
-          });
-        }
+      if (closedIssue) {
+        await updateGitHubAnnotations({
+          annotations: args.annotations,
+          conversationIds: closedIssue.conversationIds,
+          // A person can edit the footer, so it cannot add a card.
+          existingOnly: true,
+          log: args.log,
+          update: {
+            repo: closedIssue.repositoryFullName,
+            number: closedIssue.number,
+            objectType: "task",
+            status: "closed",
+          },
+        });
       }
-      const recordedIssueConversations = issueConversations
-        ? await recordGitHubIssueConversations(args.db, issueConversations)
-        : false;
       const recordedPullRequestConversations = pullRequestConversations
         ? await recordGitHubPullRequestConversations(
             args.db,
@@ -328,12 +306,6 @@ export function createGitHubWebhookRoute(args: {
       if (pullRequestActivity) {
         await args.codeChanges.recordActivity(pullRequestActivity);
       }
-      const recordedPullRequestLinkedIssues = pullRequestLinkedIssues
-        ? await recordGitHubPullRequestLinkedIssues(
-            args.db,
-            pullRequestLinkedIssues,
-          )
-        : false;
 
       const checkSuitePublishTargets =
         eventName === "check_suite"
@@ -473,6 +445,7 @@ export function createGitHubWebhookRoute(args: {
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
         inboxItems: args.inboxItems,
+        state: args.state,
         targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({
@@ -487,10 +460,8 @@ export function createGitHubWebhookRoute(args: {
       });
       if (
         !pullRequestOutcome &&
-        !issueOutcome &&
-        !recordedIssueConversations &&
+        !closedIssue &&
         !recordedPullRequestConversations &&
-        !recordedPullRequestLinkedIssues &&
         events.length === 0
       ) {
         return new Response("Ignored", { status: 202 });

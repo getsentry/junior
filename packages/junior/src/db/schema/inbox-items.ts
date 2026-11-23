@@ -35,6 +35,22 @@ export function inboxSubjectNamespace(table: {
 }
 
 /**
+ * The words of an Inbox item for search: its title, ranked above its body.
+ * The `simple` config keeps each word as typed, so a prefix of it matches.
+ */
+export function inboxItemSearchDocument(table: {
+  body: AnyPgColumn;
+  title: AnyPgColumn;
+}): SQL {
+  return sql`(setweight(to_tsvector('simple', ${table.title}), 'A') || setweight(to_tsvector('simple', ${table.body}), 'B'))`;
+}
+
+/** The lowercase title of an Inbox item, for typo-tolerant search. */
+export function inboxItemFuzzyTitle(table: { title: AnyPgColumn }): SQL {
+  return sql`lower(${table.title})`;
+}
+
+/**
  * One Inbox item: something that needs a person. An action item stores its
  * `request`, and
  * its `answer` after an assignee submits it. `closed_at` is set for `done`
@@ -157,6 +173,14 @@ export const juniorInboxItems = pgTable(
     index("junior_inbox_items_answered_idx")
       .on(table.ownerId, table.closedByUserId, table.closedAt)
       .where(sql`${table.answer} is not null`),
+    index("junior_inbox_items_search_idx").using(
+      "gin",
+      inboxItemSearchDocument(table),
+    ),
+    index("junior_inbox_items_title_trgm_idx").using(
+      "gin",
+      sql`${inboxItemFuzzyTitle(table)} gin_trgm_ops`,
+    ),
   ],
 );
 
@@ -222,7 +246,7 @@ export const juniorInboxItemSlackCards = pgTable(
 
 /**
  * One notification of one Inbox item event to one assigned User on one
- * channel. The key stops a second send for the same event, also on a
+ * channel: a Slack card in a thread of the item, or a web push. The key stops a second send for the same event, also on a
  * retry. `skip_reason` says why a `skipped` row sent nothing. A `sent` row
  * becomes `cleared` when the item closes, so the devices can close it.
  */
@@ -235,8 +259,8 @@ export const juniorInboxItemDeliveries = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => juniorUsers.id, { onDelete: "cascade" }),
-    channel: text("channel").$type<"web_push">().notNull(),
-    event: text("event").$type<"created" | "reply">().notNull(),
+    channel: text("channel").$type<"slack" | "web_push">().notNull(),
+    event: text("event").$type<"created" | "reply" | "wake">().notNull(),
     status: text("status").$type<"sent" | "skipped" | "cleared">().notNull(),
     skipReason: text("skip_reason"),
     createdAt: timestamptz("created_at").notNull(),

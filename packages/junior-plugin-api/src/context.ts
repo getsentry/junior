@@ -58,7 +58,12 @@ export interface PluginMetadata {
 }
 
 export interface PluginLogger {
-  error(message: string, metadata?: Record<string, unknown>): void;
+  /** Report an error. `cause` is the caught error, which the report keeps. */
+  error(
+    message: string,
+    metadata?: Record<string, unknown>,
+    cause?: unknown,
+  ): void;
   info(message: string, metadata?: Record<string, unknown>): void;
   warn(message: string, metadata?: Record<string, unknown>): void;
 }

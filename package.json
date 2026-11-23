@@ -23,6 +23,7 @@
     "migration-locks:check": "node scripts/check.mjs migration-locks",
     "money-units:check": "node scripts/check.mjs money-units",
     "inbox-item-fields:check": "node scripts/check.mjs inbox-item-fields",
+    "provider-state:check": "node scripts/check.mjs provider-state",
     "lockfile-families:check": "node scripts/check.mjs lockfile-families",
     "oxlint-rules:check": "node --test tools/oxlint/junior/rules/*.test.ts packages/junior-dashboard/oxlint/*.test.ts",
     "test-architecture:check": "node scripts/check.mjs test-architecture",

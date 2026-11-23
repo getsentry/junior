@@ -11,6 +11,8 @@ export type ScopeTab = {
   iconOnlyOnPhone?: boolean;
   label: string;
   on: boolean;
+  /** The page the tab opens, when it is not the list's own page. */
+  path?: string;
   search: string;
 };
 
@@ -38,7 +40,11 @@ export function ScopeTabs(props: { label: string; tabs: readonly ScopeTab[] }) {
             )}
             key={tab.label}
             replace
-            to={{ search: tab.search }}
+            to={
+              tab.path === undefined
+                ? { search: tab.search }
+                : { pathname: tab.path, search: tab.search }
+            }
           >
             {Icon ? (
               <Icon

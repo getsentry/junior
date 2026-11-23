@@ -1,6 +1,6 @@
 {
-  "id": "6e048459-b96c-4646-96b5-4cf5cb58272b",
-  "prevId": "d3d6db66-daa3-4037-9180-13af2af27cbd",
+  "id": "eb40e0ee-9b09-4ffd-b666-be867a43a1b6",
+  "prevId": "7a4938a8-6b94-4147-9d8e-299e2f1d768e",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1268,6 +1268,38 @@
           "where": "\"junior_automations\".\"status\" <> 'deleted'",
           "concurrently": false,
           "method": "btree",
+          "with": {}
+        },
+        "junior_automations_search_idx": {
+          "name": "junior_automations_search_idx",
+          "columns": [
+            {
+              "expression": "(setweight(to_tsvector('simple', coalesce(\"title\", '')), 'A') || setweight(to_tsvector('simple', coalesce(\"instruction\", '') || ' ' || coalesce(\"skill\", '') || ' ' || case when \"kind\" = 'event' then coalesce(\"identifier\", '') || ' ' || coalesce(\"record\"->'trigger'->>'label', '') || ' ' || coalesce(\"namespace\", '') else '' end), 'B'))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_automations\".\"status\" <> 'deleted'",
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "junior_automations_title_trgm_idx": {
+          "name": "junior_automations_title_trgm_idx",
+          "columns": [
+            {
+              "expression": "lower(coalesce(\"title\", '')) gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_automations\".\"status\" <> 'deleted'",
+          "concurrently": false,
+          "method": "gin",
           "with": {}
         }
       },
@@ -4383,17 +4415,29 @@
           "primaryKey": false,
           "notNull": true
         },
-        "subject_kind": {
-          "name": "subject_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "subject_id": {
           "name": "subject_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "subject_title": {
+          "name": "subject_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_url": {
+          "name": "subject_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "owner_kind": {
           "name": "owner_kind",
@@ -4422,6 +4466,12 @@
         },
         "provider_tenant_id": {
           "name": "provider_tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "automation_id": {
+          "name": "automation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -4469,12 +4519,6 @@
             },
             {
               "expression": "coalesce(\"provider_tenant_id\", '')",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "split_part(\"subject_kind\", ':', 1)",
               "asc": true,
               "isExpression": true,
               "nulls": "last"
@@ -4540,27 +4584,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_inbox_items_subject_kind_idx": {
-          "name": "junior_inbox_items_subject_kind_idx",
-          "columns": [
-            {
-              "expression": "subject_kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_inbox_items_owner_idx": {
           "name": "junior_inbox_items_owner_idx",
           "columns": [
@@ -4598,6 +4621,27 @@
           "method": "btree",
           "with": {}
         },
+        "junior_inbox_items_automation_idx": {
+          "name": "junior_inbox_items_automation_idx",
+          "columns": [
+            {
+              "expression": "automation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_inbox_items_answered_idx": {
           "name": "junior_inbox_items_answered_idx",
           "columns": [
@@ -4625,9 +4669,52 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "junior_inbox_items_search_idx": {
+          "name": "junior_inbox_items_search_idx",
+          "columns": [
+            {
+              "expression": "(setweight(to_tsvector('simple', \"title\"), 'A') || setweight(to_tsvector('simple', \"body\"), 'B'))",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "junior_inbox_items_title_trgm_idx": {
+          "name": "junior_inbox_items_title_trgm_idx",
+          "columns": [
+            {
+              "expression": "lower(\"title\") gin_trgm_ops",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
         }
       },
       "foreignKeys": {
+        "junior_inbox_items_automation_id_junior_automations_id_fk": {
+          "name": "junior_inbox_items_automation_id_junior_automations_id_fk",
+          "tableFrom": "junior_inbox_items",
+          "tableTo": "junior_automations",
+          "columnsFrom": [
+            "automation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "junior_inbox_items_closed_by_user_id_junior_users_id_fk": {
           "name": "junior_inbox_items_closed_by_user_id_junior_users_id_fk",
           "tableFrom": "junior_inbox_items",
@@ -4648,11 +4735,11 @@
       "checkConstraints": {
         "junior_inbox_items_kind_check": {
           "name": "junior_inbox_items_kind_check",
-          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or (\"junior_inbox_items\".\"subject_kind\" not in ('agent', 'reply') and \"junior_inbox_items\".\"answer\" is null)))"
+          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%') and \"junior_inbox_items\".\"answer\" is null)))"
         },
         "junior_inbox_items_owner_check": {
           "name": "junior_inbox_items_owner_check",
-          "value": "(\"junior_inbox_items\".\"owner_kind\" = 'automation') = (\"junior_inbox_items\".\"subject_kind\" = 'automation')"
+          "value": "(\"junior_inbox_items\".\"owner_kind\" = 'conversation' and \"junior_inbox_items\".\"dedupe_key\" not like 'automation:%') or (\"junior_inbox_items\".\"owner_kind\" = 'automation' and \"junior_inbox_items\".\"dedupe_key\" like 'automation:%')"
         },
         "junior_inbox_items_status_check": {
           "name": "junior_inbox_items_status_check",

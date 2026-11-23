@@ -177,11 +177,15 @@ async function runCheck(
   try {
     unknown = await checkRepository(args, check.repositoryFullName);
   } catch (error) {
-    args.log.error("GitHub merge conflict check failed", {
-      attempts: check.attempts,
-      errorType: error instanceof Error ? error.name : "UnknownError",
-      repository: check.repositoryFullName,
-    });
+    args.log.error(
+      "GitHub merge conflict check failed",
+      {
+        attempts: check.attempts,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        repository: check.repositoryFullName,
+      },
+      error,
+    );
     // Keep the claim, so the check runs again when the claim ends.
     if (check.attempts >= MAX_ATTEMPTS) {
       await settleGitHubConflictCheck(args.state, check);

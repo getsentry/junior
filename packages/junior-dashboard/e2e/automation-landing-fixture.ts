@@ -5,6 +5,7 @@ import type {
 } from "@sentry/junior/api/schema";
 import { mockAutomationCollection } from "../src/mock-reporting/automation-collection";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { mockSearchRows } from "./search-fixture";
 
 const HOUR = 3_600_000;
 const DAY = 24 * HOUR;
@@ -375,6 +376,7 @@ export async function mockLandingAutomationApis(page: Page) {
       ),
     }),
   );
+  await mockSearchRows(page, { automations: () => report.automations });
   const find = (id: string) =>
     landingAutomations.find((entry) => entry.summary.id === id);
   await page.route(/\/api\/automations\/[^/?]+$/, (route) => {

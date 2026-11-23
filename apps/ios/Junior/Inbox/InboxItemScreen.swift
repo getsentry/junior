@@ -6,6 +6,7 @@ import SwiftUI
 /// items; answering one happens on the web.
 struct InboxItemScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @Environment(InboxModel.self) private var inbox
   @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
@@ -28,8 +29,8 @@ struct InboxItemScreen: View {
             if !item.conversationIds.isEmpty { conversations(item) }
             if let next = inbox.next(after: item.id) {
               Button {
-                app.path.removeLast()
-                app.path.append(.inboxItem(next.id))
+                window.path.removeLast()
+                window.path.append(.inboxItem(next.id))
               } label: {
                 HStack(spacing: 6) {
                   Text("Next: \(next.title)").lineLimit(1)
@@ -135,7 +136,7 @@ struct InboxItemScreen: View {
         let label = subject.title ?? subject.id
         if let url = subject.url {
           Button {
-            app.openLink(url)
+            window.openLink(url)
           } label: {
             TagChip(label: label, maxWidth: 300, outbound: true) {
               Icon("link", size: 12).foregroundStyle(Tokens.textMuted)
@@ -149,7 +150,7 @@ struct InboxItemScreen: View {
       Text(assignees(item)).type(.xs).foregroundStyle(Tokens.textMuted)
       if let url = item.url {
         Button(item.canAct ? (item.kind == "notice" ? "Dismiss on the web" : "Answer on the web") : "Open on the web") {
-          app.openLink(url)
+          window.openLink(url)
         }
         .buttonStyle(.dashboard(item.canAct ? .primary : .outline))
         .accessibilityIdentifier("answer-on-web")
@@ -170,7 +171,7 @@ struct InboxItemScreen: View {
       Text("From").type(.xs, .semibold).foregroundStyle(Tokens.text).accessibilityAddTraits(.isHeader)
       ForEach(item.conversationIds, id: \.self) { id in
         Button {
-          app.path.append(.conversation(id))
+          window.path.append(.conversation(id))
         } label: {
           HStack(spacing: 8) {
             Icon("message-square", size: 14).foregroundStyle(Tokens.textMuted)

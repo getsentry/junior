@@ -28,7 +28,7 @@ import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
 import { useConversationDelivery } from "./useConversationDelivery";
 import { useRenameConversation } from "./useRenameConversation";
-import { conversationIsResponding, isChildConversation } from "./transcript";
+import { conversationShowsThinking, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
   useConversationCatchUp,
@@ -905,7 +905,7 @@ export function ConversationPage(props: {
                         responding={
                           !detail.error &&
                           !history.newer &&
-                          conversationIsResponding(detail.data)
+                          conversationShowsThinking(detail)
                         }
                         onOpenSubagentTranscript={onOpenSubagentTranscript}
                         search={search}

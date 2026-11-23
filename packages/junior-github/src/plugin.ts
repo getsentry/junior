@@ -192,6 +192,11 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    codeLinks: {
+      change: ({ number, repository }) =>
+        `https://github.com/${repository}/pull/${number}`,
+      repository: (name) => `https://github.com/${name}`,
+    },
     images: githubImageSource,
     inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
@@ -406,6 +411,7 @@ export function githubPlugin(
           annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
           codeChanges: ctx.codeChanges,
+          conversationChanges: ctx.conversationChanges,
           db,
           events: ctx.events,
           loadCommitPages: async (target) =>
@@ -460,6 +466,7 @@ export function githubPlugin(
                 ),
               }),
             codeChanges: ctx.codeChanges,
+            conversationChanges: ctx.conversationChanges,
             db: gitHubDbSchema.parse(ctx.db),
             installationId: () => readEnv(installationIdEnv),
             loadGitHubIncidents: async () =>

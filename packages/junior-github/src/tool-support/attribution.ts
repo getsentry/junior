@@ -66,7 +66,7 @@ function cleanDisplayValue(
 
 /**
  * Whether a person started this Turn from its own surface. An Automation run,
- * Event, plugin dispatch, or Agent invocation acts for no person. Core's
+ * Event, plugin dispatch, or Parent message acts for no person. Core's
  * Automation tools use the same rule.
  */
 export function startedByPerson(ctx: {

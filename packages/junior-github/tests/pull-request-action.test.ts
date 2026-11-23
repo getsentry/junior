@@ -159,9 +159,9 @@ describe("next action item", () => {
       releaseMerge();
       await Promise.all([failing, queued]);
       expect(errors).toEqual([
-        "GitHub ended pull request item close failed",
-        "GitHub ended pull request item close failed",
-        "GitHub pull request action failed",
+        "GitHub ended pull request change failed: Error",
+        "GitHub ended pull request change failed: Error",
+        "GitHub pull request action failed: Error",
       ]);
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
@@ -335,6 +335,46 @@ describe("next action item", () => {
       await webhook.handler(reviewSubmitted("approved"));
       expect(requests).toEqual(["pull", "pull"]);
       expect(minted).toBe(1);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("logs the GraphQL error when GitHub returns errors with no data", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const errors: string[] = [];
+    mockGitHub(
+      {
+        draft: false,
+        mergeableStates: ["clean"],
+        merged: false,
+        reviews: [],
+        state: "open",
+      },
+      [],
+    );
+    // GitHub reports GraphQL errors, such as a rate limit, with HTTP 200.
+    mswServer.use(
+      http.post("https://api.github.com/graphql", () =>
+        HttpResponse.json({
+          errors: [
+            {
+              message:
+                "API rate limit already exceeded for installation ID 456.",
+              type: "RATE_LIMITED",
+            },
+          ],
+        }),
+      ),
+    );
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      await route(fixture, calls, errors).handler(checkSuiteCompleted());
+      expect(errors).toEqual([
+        "GitHub pull request action failed: GitHubGraphqlError",
+      ]);
+      expect(calls).toEqual([]);
     } finally {
       await fixture.close();
     }

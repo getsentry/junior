@@ -48,10 +48,10 @@ BEGIN
 END;
 $function$;--> statement-breakpoint
 CREATE TRIGGER "junior_inbox_items_legacy_subject" BEFORE INSERT OR UPDATE ON "junior_inbox_items" FOR EACH ROW WHEN (NEW."subject_kind" IS NULL) EXECUTE FUNCTION "junior_inbox_items_legacy_subject"();--> statement-breakpoint
--- junior:bounded-backfill: every row needs its subject before 0165 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once.
+-- junior:bounded-backfill: every row needs its subject before 0171 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once.
 UPDATE "junior_inbox_items" SET "subject_kind" = NULL;--> statement-breakpoint
 -- NOT VALID: the backfill gave every row its subject, and the checks still
--- hold for every new write. 0165 validates the NOT NULL checks without a
+-- hold for every new write. 0171 validates the NOT NULL checks without a
 -- lock that blocks reads, then sets NOT NULL.
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_kind_not_null" CHECK ("subject_kind" IS NOT NULL) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_id_not_null" CHECK ("subject_id" IS NOT NULL) NOT VALID;--> statement-breakpoint

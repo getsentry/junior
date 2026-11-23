@@ -34,24 +34,14 @@ export function applyJuniorDevelopmentDefaults(env, options = {}) {
   if (!hasValue(env.JUNIOR_BASE_URL) && hasValue(options.baseUrl)) {
     env.JUNIOR_BASE_URL = options.baseUrl.trim();
   }
-  // Only the dev server passes this option. Other local commands keep memory
-  // state.
-  if (hasValue(options.redisUrl)) {
-    const bullmq = env.JUNIOR_QUEUE_PROVIDER?.trim() === "bullmq";
-    if (bullmq && !hasValue(env.JUNIOR_QUEUE_REDIS_URL)) {
-      env.JUNIOR_QUEUE_REDIS_URL = options.redisUrl.trim();
-    }
-    // Nitro replaces its app worker after each app change, and a BullMQ
-    // worker runs in a separate process. Memory state does not survive the
-    // first and is not shared with the second, so keep state in Redis. Use
-    // the local Redis, not a `REDIS_URL` from `pnpm dev:env`, which can be
-    // shared with preview deployments.
-    if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
-      env.JUNIOR_STATE_ADAPTER = "redis";
-      env.REDIS_URL = bullmq
-        ? env.JUNIOR_QUEUE_REDIS_URL.trim()
-        : options.redisUrl.trim();
-    }
+  // Only the dev server passes `redisUrl`. Other local commands keep memory
+  // state. Nitro replaces its app worker after each app change, and memory
+  // state does not survive that, so keep state in Redis. Use the local Redis,
+  // not a `REDIS_URL` from `pnpm dev:env`, which can be shared with preview
+  // deployments.
+  if (hasValue(options.redisUrl) && !hasValue(env.JUNIOR_STATE_ADAPTER)) {
+    env.JUNIOR_STATE_ADAPTER = "redis";
+    env.REDIS_URL = options.redisUrl.trim();
   }
   if (!hasValue(env.JUNIOR_STATE_ADAPTER)) {
     env.JUNIOR_STATE_ADAPTER = "memory";

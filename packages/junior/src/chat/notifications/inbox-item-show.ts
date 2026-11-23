@@ -5,8 +5,8 @@ import { syncInboxItemPush } from "./inbox-item-push";
 
 /**
  * Return the `ShowInboxItem` for app setup: the item's Slack cards, then
- * its push. The push reads the cards, so an item that Slack shows does not
- * push. Pass `getSlackAdapter` outside Slack work so each card uses the
+ * its push. The push reads the cards, so an item that Slack shows pushes
+ * only after its card waited. Pass `getSlackAdapter` outside Slack work so each card uses the
  * token of its workspace.
  */
 export function createInboxItemShow(

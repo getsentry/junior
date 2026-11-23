@@ -64,6 +64,51 @@ function choicesRequest(notice: PluginReviewNotice): InboxItemRequest {
   });
 }
 
+/** The dedupe key of a plugin item, unique in the plugin's namespace. */
+function pluginItemKey(plugin: string, dedupeKey: string) {
+  return { dedupeKey, namespace: plugin };
+}
+
+async function readAccess(db: JuniorDatabase, conversationId: string) {
+  const access = (
+    await readConversationAccessFromSql(db, [conversationId])
+  ).get(conversationId);
+  if (!access) throw new Error(`Conversation ${conversationId} is not found`);
+  return access;
+}
+
+/**
+ * Close the open item of a plugin with the key, in the tenant of the
+ * Conversation. Return the id of the item that closed, or undefined when no
+ * item was open. Pass a transaction to save it with other changes. The
+ * caller shows the item after the write.
+ */
+export async function closePluginInboxItem(
+  db: JuniorDatabase,
+  args: {
+    conversationId: string;
+    dedupeKey: string;
+    plugin: string;
+    reason: string;
+    status: "done" | "dismissed";
+  },
+): Promise<string | undefined> {
+  const access = await readAccess(db, args.conversationId);
+  const item = await getOpenInboxItemByDedupeKey(
+    db,
+    pluginItemKey(args.plugin, args.dedupeKey),
+    access.tenant,
+  );
+  if (!item) return undefined;
+  const closed = await closeInboxItem(db, {
+    id: item.id,
+    nowMs: Date.now(),
+    reason: args.reason,
+    status: args.status,
+  });
+  return closed ? item.id : undefined;
+}
+
 /**
  * Connect a plugin to the Inbox for one Conversation. Each item has one of
  * the plugin's registered subject kinds, stored as `<plugin>:<kind>`. Dedupe
@@ -78,17 +123,6 @@ export function createPluginInboxItems(args: {
   show: ShowInboxItem;
 }): PluginInboxItems {
   const { conversationId, show } = args;
-  const scopedKey = (dedupeKey: string) => ({
-    dedupeKey,
-    namespace: args.plugin,
-  });
-  const readAccess = async (db: JuniorDatabase) => {
-    const access = (
-      await readConversationAccessFromSql(db, [conversationId])
-    ).get(conversationId);
-    if (!access) throw new Error(`Conversation ${conversationId} is not found`);
-    return access;
-  };
   return {
     async upsert(notice: PluginReviewNotice) {
       const subjectKind = pluginSubjectKind(args.plugin, notice.subject.kind);
@@ -98,10 +132,10 @@ export function createPluginInboxItems(args: {
         );
       }
       const db = getDb();
-      const access = await readAccess(db);
+      const access = await readAccess(db, conversationId);
       const existing = await getOpenInboxItemByDedupeKey(
         db,
-        scopedKey(notice.dedupeKey),
+        pluginItemKey(args.plugin, notice.dedupeKey),
         access.tenant,
       );
       // An item from a private Conversation stays private.
@@ -176,24 +210,14 @@ export function createPluginInboxItems(args: {
       }
     },
     async close(input) {
-      const db = getDb();
-      const access = await readAccess(db);
-      const item = await getOpenInboxItemByDedupeKey(
-        db,
-        scopedKey(input.dedupeKey),
-        access.tenant,
-      );
-      if (!item) return false;
-      const closed = await closeInboxItem(db, {
-        id: item.id,
-        nowMs: Date.now(),
-        reason: input.reason,
-        status: input.status,
+      const itemId = await closePluginInboxItem(getDb(), {
+        ...input,
+        conversationId,
+        plugin: args.plugin,
       });
-      if (closed) {
-        await show(item.id);
-      }
-      return closed;
+      if (!itemId) return false;
+      await show(itemId);
+      return true;
     },
   };
 }

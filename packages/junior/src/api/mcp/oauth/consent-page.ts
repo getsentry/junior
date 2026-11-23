@@ -37,6 +37,15 @@ function blockedPage(): Response {
   });
 }
 
+// A custom-scheme redirect, such as the iOS app's, has the origin "null",
+// which matches nothing in CSP. Allow its scheme instead.
+function formActionSource(redirectUri: string): string {
+  const url = new URL(redirectUri);
+  return url.protocol === "https:" || url.protocol === "http:"
+    ? url.origin
+    : url.protocol;
+}
+
 function consentPage(args: {
   agentName: string;
   authorization: McpAuthorization;
@@ -60,7 +69,7 @@ function consentPage(args: {
       <button type="submit" name="action" value="deny">Deny</button>
       <button type="submit" name="action" value="approve" class="primary">Allow</button>
     </form>`,
-    formOrigin: new URL(args.authorization.redirectUri).origin,
+    formActionSource: formActionSource(args.authorization.redirectUri),
     message: `${clientName} wants to connect to ${args.agentName}.`,
     status: 200,
     title: `Connect ${clientName}`,

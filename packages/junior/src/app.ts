@@ -86,7 +86,6 @@ import {
 } from "@/deployment";
 import {
   consumeConversationQueueMessage,
-  conversationWorkQueueConsumer,
   createVercelConversationWorkCallback,
 } from "@/chat/task-execution/vercel-callback";
 import type {
@@ -98,7 +97,6 @@ import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
-  pluginTaskQueueConsumer,
   sendVercelPluginTask,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
@@ -106,31 +104,15 @@ import {
   processPluginTask,
   type SendPluginTask,
 } from "@/chat/plugins/task-runner";
-import {
-  cacheWarmupQueueConsumer,
-  createVercelCacheWarmupCallback,
-} from "@/chat/cache-warming/queue";
-import {
-  createVercelWorkspaceSnapshotJobCallback,
-  workspaceSnapshotJobQueueConsumer,
-} from "@/chat/sandbox/snapshot/job-callback";
-import {
-  backgroundCompactionQueueConsumer,
-  createVercelBackgroundCompactionCallback,
-} from "@/chat/services/background-compaction-callback";
+import { createVercelCacheWarmupCallback } from "@/chat/cache-warming/queue";
+import { createVercelWorkspaceSnapshotJobCallback } from "@/chat/sandbox/snapshot/job-callback";
+import { createVercelBackgroundCompactionCallback } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
 import {
   vercelBackgroundCompactionQueue,
   type BackgroundCompactionMessage,
   type BackgroundCompactionQueue,
 } from "@/chat/services/background-compaction-queue";
-import {
-  getQueueProvider,
-  type QueueConsumer,
-  type QueueWorker,
-} from "@/chat/queue/provider";
-import { closeDb } from "@/chat/db";
-import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
   createProductionConversationWorkOptions,
   createProductionSlackWebhookServices,
@@ -465,56 +447,8 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
   }
 }
 
-/** A Hono app from `createApp()` that can also run its queue consumers. */
-export type JuniorApp = Hono & {
-  /**
-   * Pull this app's queue messages in this process until `close()`.
-   *
-   * Only for a queue provider whose consumers pull messages, such as the
-   * local BullMQ queue. The dev server runs it in its own worker process, so
-   * the Nitro process only sends messages. `close()` also closes the database
-   * and state connections of this process.
-   */
-  startQueueWorker(): Promise<QueueWorker>;
-};
-
-async function startQueueWorker(
-  consumers: QueueConsumer[],
-  backgroundWork: Set<Promise<unknown>>,
-): Promise<QueueWorker> {
-  const provider = getQueueProvider();
-  if (!provider.startWorker) {
-    throw new Error(
-      `The ${provider.messagingSystem} queue provider has no queue worker`,
-    );
-  }
-  const worker = await provider.startWorker(consumers);
-  return {
-    // Try every step, so one failure does not leave the other resources open.
-    close: async () => {
-      try {
-        await worker.close();
-      } finally {
-        // A job can end before the work it started with `waitUntil`, such
-        // as title work. Let that work finish before its connections close.
-        while (backgroundWork.size > 0) {
-          // oxlint-disable-next-line no-await-in-loop -- Work that finishes can start more work, so check again until none is left.
-          await Promise.allSettled(backgroundWork);
-        }
-        try {
-          await disconnectStateAdapter();
-        } finally {
-          await closeDb();
-        }
-      }
-    },
-  };
-}
-
 /** Create a Hono app with all Junior routes. */
-export async function createApp(
-  options?: JuniorAppOptions,
-): Promise<JuniorApp> {
+export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   const virtualConfig = await resolveVirtualConfig();
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
@@ -668,9 +602,6 @@ export async function createApp(
     sandbox: { tracePropagation },
     visionContext: { attachmentStorage },
   };
-  // Background work that Conversation work starts. A queue worker waits for
-  // it before it closes its connections.
-  const backgroundWork = new Set<Promise<unknown>>();
   let conversationWorkOptions: ConversationWorkCallbackOptions | undefined;
   const getConversationWorkOptions = (): ConversationWorkCallbackOptions => {
     conversationWorkOptions ??=
@@ -680,13 +611,7 @@ export async function createApp(
         queue: conversationWorkQueue,
         sendPluginTask,
         services: runtimeServiceOverrides,
-        waitUntil: (task) => {
-          backgroundWork.add(task);
-          void task
-            .finally(() => backgroundWork.delete(task))
-            .catch(() => undefined);
-          waitUntil(task);
-        },
+        waitUntil,
       });
     return conversationWorkOptions;
   };
@@ -930,17 +855,5 @@ export async function createApp(
     });
   });
 
-  return Object.assign(app, {
-    startQueueWorker: () =>
-      startQueueWorker(
-        [
-          conversationWorkQueueConsumer(getConversationWorkOptions()),
-          pluginTaskQueueConsumer(),
-          workspaceSnapshotJobQueueConsumer(),
-          cacheWarmupQueueConsumer(),
-          backgroundCompactionQueueConsumer(),
-        ],
-        backgroundWork,
-      ),
-  });
+  return app;
 }

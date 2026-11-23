@@ -1,4 +1,5 @@
 import type { PluginCliDefinition } from "./cli";
+import type { PluginCodeLinks } from "./code";
 import {
   isPluginModelCostEventName,
   type PluginConversationEventDefinition,
@@ -25,6 +26,8 @@ export interface PluginModelConfig {
 
 export type PluginRegistrationInput = {
   cli?: PluginCliDefinition;
+  /** Web pages of the code changes that this plugin records. */
+  codeLinks?: PluginCodeLinks;
   conversationEvents?: PluginConversationEventDefinition[];
   hooks?: PluginHooks;
   /** Images that this plugin serves through the Junior image proxy. */
