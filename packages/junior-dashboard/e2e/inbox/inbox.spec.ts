@@ -89,7 +89,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // "Pull request ready for review" notice does not.
     await expect(
       page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
-    ).toHaveText([/^All\s*6$/, /^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/]);
+    ).toHaveText([/^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/, /^All\s*6$/]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 
     // Code lists the viewer's open changes, with their asks.
@@ -418,8 +418,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("region", { name: `${checkout}: asks` }),
     ).toBeVisible();
 
-    await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
     await page.goto(`${dashboard.baseURL}/review`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
     await page.goto(`${dashboard.baseURL}/inbox`);

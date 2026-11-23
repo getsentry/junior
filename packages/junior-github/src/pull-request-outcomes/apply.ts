@@ -38,13 +38,11 @@ export function githubCodeChange(
     repository: {
       name: outcome.repositoryFullName,
       providerId: outcome.repositoryId,
-      url: `https://github.com/${outcome.repositoryFullName}`,
     },
     size: outcome.size,
     state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
     title: outcome.title,
     updatedAt: outcome.updatedAt,
-    url: `https://github.com/${outcome.repositoryFullName}/pull/${outcome.number}`,
   };
 }
 

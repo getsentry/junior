@@ -1,58 +1,125 @@
 {
-  "id": "0a09b305-07df-4493-bbdf-05f980a07cd8",
+  "id": "b85b88bb-e673-46b0-bf5a-e3582daae286",
   "prevId": "84ce1936-1b4b-461e-95a0-f3dbfd5d14fb",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
-    "public.junior_github_pull_request_issues": {
-      "name": "junior_github_pull_request_issues",
+    "public.junior_github_issues": {
+      "name": "junior_github_issues",
       "schema": "",
       "columns": {
-        "pull_request_id": {
-          "name": "pull_request_id",
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "repository_id": {
+          "name": "repository_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "issue_repository_full_name": {
-          "name": "issue_repository_full_name",
+        "repository_full_name": {
+          "name": "repository_full_name",
           "type": "text",
           "primaryKey": false,
           "notNull": true
         },
-        "issue_number": {
-          "name": "issue_number",
+        "number": {
+          "name": "number",
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "state": {
+          "name": "state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "state_reason": {
+          "name": "state_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "conversation_ids": {
+          "name": "conversation_ids",
+          "type": "text[]",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "ARRAY[]::text[]"
+        },
+        "opened_at": {
+          "name": "opened_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "closed_at": {
+          "name": "closed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
         }
       },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_github_pull_request_issues_pull_request_id_junior_github_pull_requests_pull_request_id_fk": {
-          "name": "junior_github_pull_request_issues_pull_request_id_junior_github_pull_requests_pull_request_id_fk",
-          "tableFrom": "junior_github_pull_request_issues",
-          "tableTo": "junior_github_pull_requests",
-          "columnsFrom": [
-            "pull_request_id"
-          ],
-          "columnsTo": [
-            "pull_request_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_github_pull_request_issues_pull_request_id_issue_repository_full_name_issue_number_pk": {
-          "name": "junior_github_pull_request_issues_pull_request_id_issue_repository_full_name_issue_number_pk",
+      "indexes": {
+        "junior_github_issues_opened_at_idx": {
+          "name": "junior_github_issues_opened_at_idx",
           "columns": [
-            "pull_request_id",
-            "issue_repository_full_name",
-            "issue_number"
-          ]
+            {
+              "expression": "opened_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_github_issues_closed_at_idx": {
+          "name": "junior_github_issues_closed_at_idx",
+          "columns": [
+            {
+              "expression": "closed_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_github_issues_open_idx": {
+          "name": "junior_github_issues_open_idx",
+          "columns": [
+            {
+              "expression": "issue_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_github_issues\".\"state\" = 'open'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
