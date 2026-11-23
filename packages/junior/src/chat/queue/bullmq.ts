@@ -3,6 +3,7 @@ import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import type { Job } from "bullmq";
 import { getChatConfig } from "@/chat/config";
+import { importAtRuntime } from "@/chat/queue/import-at-runtime";
 import { logException, logInfo } from "@/chat/logging";
 import type {
   QueueConsumer,
@@ -42,17 +43,6 @@ const MAX_BACKOFF_MS = 30_000;
 // So this is the dedupe window for idempotency keys.
 const COMPLETED_JOB_AGE_SECONDS = 60 * 60;
 const FAILED_JOB_AGE_SECONDS = 24 * 60 * 60;
-
-/**
- * Import a module by a name held in a variable.
- *
- * Bundlers follow a literal `import("bullmq")` and put BullMQ into the
- * production server, even though production never selects this provider.
- * Node resolves this import when the app runs instead.
- */
-function importAtRuntime(specifier: string): Promise<unknown> {
-  return import(/* @vite-ignore */ specifier);
-}
 
 function bullmqConfig() {
   const config = getChatConfig().queue;

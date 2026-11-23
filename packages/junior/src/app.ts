@@ -9,6 +9,7 @@ import {
 } from "@/chat/configuration/defaults";
 import {
   botConfig,
+  getChatConfig,
   resetRuntimeConfig,
   restoreRuntimeConfig as restoreChatRuntimeConfig,
   setBotModelConfig,
@@ -129,11 +130,13 @@ import {
   type BackgroundCompactionMessage,
   type BackgroundCompactionQueue,
 } from "@/chat/services/background-compaction-queue";
+import { startLocalQueueDelivery } from "@/chat/queue/local-delivery";
 import {
   getQueueProvider,
   type QueueConsumer,
   type QueueWorker,
 } from "@/chat/queue/provider";
+import { queueCallbackRoutes } from "@/chat/queue/routes";
 import { closeDb } from "@/chat/db";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -942,17 +945,24 @@ export async function createApp(
     });
   });
 
+  const queueConsumers = (): QueueConsumer[] => [
+    conversationWorkQueueConsumer(getConversationWorkOptions()),
+    pluginTaskQueueConsumer(),
+    workspaceSnapshotJobQueueConsumer(),
+    cacheWarmupQueueConsumer(),
+    backgroundCompactionQueueConsumer(),
+  ];
+  if (getChatConfig().queue.provider === "local") {
+    // Vercel Queues pushes messages to the callback routes. With the local
+    // queue, this process pushes them.
+    await startLocalQueueDelivery({
+      consumers: queueConsumers(),
+      fetch: async (request) => app.fetch(request),
+      routes: queueCallbackRoutes(),
+    });
+  }
+
   return Object.assign(app, {
-    startQueueWorker: () =>
-      startQueueWorker(
-        [
-          conversationWorkQueueConsumer(getConversationWorkOptions()),
-          pluginTaskQueueConsumer(),
-          workspaceSnapshotJobQueueConsumer(),
-          cacheWarmupQueueConsumer(),
-          backgroundCompactionQueueConsumer(),
-        ],
-        backgroundWork,
-      ),
+    startQueueWorker: () => startQueueWorker(queueConsumers(), backgroundWork),
   });
 }

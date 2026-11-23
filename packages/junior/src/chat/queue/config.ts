@@ -3,6 +3,7 @@ import { toOptionalTrimmed } from "@/chat/optional-string";
 /** Which queue delivers background work. */
 export type QueueConfig =
   | { provider: "vercel" }
+  | { provider: "local" }
   | { provider: "bullmq"; redisUrl: string; workerConcurrency: number };
 
 /** Jobs that one BullMQ worker runs at the same time, for each queue topic. */
@@ -31,6 +32,7 @@ export function readQueueConfig(env: NodeJS.ProcessEnv): QueueConfig {
   const provider = toOptionalTrimmed(env["JUNIOR_QUEUE_PROVIDER"]) ?? "vercel";
   switch (provider) {
     case "vercel":
+    case "local":
       return { provider };
     case "bullmq": {
       const redisUrl = toOptionalTrimmed(env["JUNIOR_QUEUE_REDIS_URL"]);
@@ -48,6 +50,6 @@ export function readQueueConfig(env: NodeJS.ProcessEnv): QueueConfig {
       };
     }
     default:
-      throw new Error("JUNIOR_QUEUE_PROVIDER must be vercel or bullmq");
+      throw new Error("JUNIOR_QUEUE_PROVIDER must be vercel, local, or bullmq");
   }
 }

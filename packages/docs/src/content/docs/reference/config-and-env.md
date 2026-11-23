@@ -54,7 +54,7 @@ related:
 | `JUNIOR_S3_ACCESS_KEY_ID`                   | Conditional | S3 access key ID. Required when the provider is `s3`.                                                                                                                       |
 | `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
 | `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
-| `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel` or `bullmq`. Defaults to `vercel`. Use `bullmq` only for local development.                                                   |
+| `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel`, `local`, or `bullmq`. Defaults to `vercel`. Use `local` or `bullmq` only for local development.                              |
 | `JUNIOR_QUEUE_REDIS_URL`                    | Conditional | Redis for the BullMQ queue, such as `redis://localhost:6382`. Required when the provider is `bullmq`.                                                                       |
 | `JUNIOR_QUEUE_WORKER_CONCURRENCY`           | No          | Jobs that the BullMQ worker runs at the same time for each queue topic. A positive integer. Defaults to `4`.                                                                |
 
@@ -73,6 +73,16 @@ visible after you change to another provider.
 `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=memory` keeps objects in process memory.
 Junior loses them when the process stops, and each process has its own copy.
 Do not use it for a deployed app.
+
+`JUNIOR_QUEUE_PROVIDER=local` delivers background work like Vercel Queues,
+with no external service. Junior keeps messages in the `junior_local_queue`
+schema of `DATABASE_URL`, and the app process POSTs each message to its queue
+callback route. Failed messages are retried with backoff. If the app stops
+while a message runs, the message is sent again after the consumer's
+visibility timeout. Install the optional `pg-boss` package to use it. Junior
+loads it only when this provider is selected, so it never enters a deployed
+bundle. If two dev servers share one database, each one can take the other's
+messages.
 
 `JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
 Redis. Local development then needs no Vercel Queues access. The app only

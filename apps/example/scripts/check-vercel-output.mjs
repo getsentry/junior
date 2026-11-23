@@ -134,12 +134,12 @@ function assertFunctionHasCodemodeFiles(functionDir) {
   );
 }
 
-// The BullMQ queue provider is for local dev only. Junior imports it at run
-// time so bundlers skip it. Fail if BullMQ or its msgpackr dependency still
-// reaches a deployed function.
+// The BullMQ and local queue providers are for local dev only. Junior imports
+// their packages at run time so bundlers skip them. Fail if BullMQ, its
+// msgpackr dependency, or pg-boss still reaches a deployed function.
 function assertNoDevQueuePackages(functionDir) {
   for (const entry of readdirSync(functionDir, { recursive: true })) {
-    if (/(^|[\\/])(bullmq|msgpackr)[^\\/]*$/.test(entry)) {
+    if (/(^|[\\/])(bullmq|msgpackr|pg-boss)[^\\/]*$/.test(entry)) {
       fail(`${path.relative(appRoot, functionDir)} contains ${entry}`);
     }
   }
