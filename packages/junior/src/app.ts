@@ -80,6 +80,7 @@ import {
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
@@ -882,7 +883,7 @@ export async function createApp(
     registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
   }
-  app.post("/api/internal/agent/continue", (c) => {
+  app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
     );

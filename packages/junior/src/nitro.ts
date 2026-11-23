@@ -12,23 +12,14 @@ import {
   injectVirtualConfig,
   type RuntimePluginModule,
 } from "@/build/virtual-config";
-import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
-import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
-import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
-import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
-import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
+import { queueCallbackRoutes } from "@/chat/queue/routes";
 import {
-  JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
-  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_HEARTBEAT_CRON_SCHEDULE,
   JUNIOR_HEARTBEAT_ROUTE,
-  JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_RETENTION_CRON_SCHEDULE,
   JUNIOR_RETENTION_ROUTE,
-  JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
-  JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
   getDeploymentServiceVersion,
 } from "@/deployment";
 import {
@@ -176,7 +167,6 @@ function configureVercelDeployment(
 ): number {
   const defaultMaxDuration =
     options.maxDuration ?? DEFAULT_FUNCTION_MAX_DURATION_SECONDS;
-  const queueTopic = resolveConversationWorkQueueTopic();
 
   nitro.options.vercel ??= {};
   nitro.options.vercel.config ??= { version: 3 };
@@ -219,7 +209,7 @@ function configureVercelDeployment(
   const functionRules = nitro.options.vercel.functionRules;
   // Each queue topic pushes to one callback route. Keep the other triggers of
   // that route.
-  const addQueueTrigger = (route: string, topic: string) => {
+  for (const { route, topic } of queueCallbackRoutes()) {
     const existingRule = functionRules[route] ?? {};
     const existingTriggers = Array.isArray(existingRule.experimentalTriggers)
       ? existingRule.experimentalTriggers
@@ -234,19 +224,7 @@ function configureVercelDeployment(
         { type: VERCEL_QUEUE_TRIGGER_TYPE, topic },
       ],
     };
-  };
-  addQueueTrigger(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, queueTopic);
-  addQueueTrigger(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, PLUGIN_TASK_QUEUE_TOPIC);
-  addQueueTrigger(
-    JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
-    WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
-  );
-  addQueueTrigger(JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE, CACHE_WARMUP_QUEUE_TOPIC);
-
-  addQueueTrigger(
-    JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
-    BACKGROUND_COMPACTION_QUEUE_TOPIC,
-  );
+  }
 
   return defaultMaxDuration;
 }
