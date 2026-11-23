@@ -8,15 +8,19 @@ export function renderMcpPage(page: {
   /** HTML that follows the message. Callers escape every value in it. */
   bodyHtml?: string;
   /**
-   * Extra origin that a form on the page may reach. The consent form
-   * redirects to the client, and `form-action` also applies to that redirect.
+   * Extra CSP source, an origin or a scheme, that a form on the page may
+   * reach. The consent form redirects to the client, and `form-action` also
+   * applies to that redirect.
    */
-  formOrigin?: string;
+  formActionSource?: string;
   message: string;
   status: number;
   title: string;
 }): Response {
-  const formAction = ["'self'", ...(page.formOrigin ? [page.formOrigin] : [])];
+  const formAction = [
+    "'self'",
+    ...(page.formActionSource ? [page.formActionSource] : []),
+  ];
   const message = `    <p>${escapeHtml(page.message)}</p>`;
   return renderHtmlPage({
     bodyHtml: page.bodyHtml ? `${message}\n${page.bodyHtml}` : message,
