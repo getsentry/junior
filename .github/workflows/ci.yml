@@ -97,6 +97,7 @@ jobs:
               - packages/junior-restream/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
+              - packages/junior-vimeo/**
               - packages/junior-xdotcom/**
             repo:
               - package.json

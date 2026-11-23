@@ -1,0 +1,40 @@
+{
+  "name": "@sentry/junior-vimeo",
+  "version": "0.313.0",
+  "private": false,
+  "publishConfig": {
+    "access": "public"
+  },
+  "type": "module",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/getsentry/junior.git",
+    "directory": "packages/junior-vimeo"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "prepack": "pnpm run build",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@sentry/junior-plugin-api": "workspace:*",
+    "zod": "catalog:"
+  },
+  "devDependencies": {
+    "@sentry/junior-testing": "workspace:*",
+    "@types/node": "catalog:",
+    "tsdown": "catalog:",
+    "typescript": "catalog:",
+    "vitest": "catalog:"
+  }
+}
