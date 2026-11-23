@@ -470,6 +470,7 @@ describe("child agent task work", () => {
       },
       subagentOutcome: "error",
       parentMessages: [],
+      lastResult: "failed" as const,
     },
     {
       // A blocked report is a result, not a model failure.

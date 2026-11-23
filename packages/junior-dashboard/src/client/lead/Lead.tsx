@@ -46,18 +46,24 @@ export function useLeadPageKind(
 }
 
 /**
- * Read the Lead's Watches again when its transcript changes, since only its
- * own Turns add or stop them.
+ * Read the Lead's Watches again when its transcript shows an event that the
+ * last Lead read had not seen, since only the Lead's own Turns add or stop
+ * them.
  */
-export function useLeadWatchRefresh(lastSeq: number | undefined) {
+export function useLeadWatchRefresh(
+  lastSeq: number | undefined,
+  readSeq: number | undefined,
+) {
   const queryClient = useQueryClient();
   useEffect(() => {
-    if (lastSeq === undefined) return;
+    if (lastSeq === undefined || readSeq === undefined || lastSeq <= readSeq) {
+      return;
+    }
     void queryClient.invalidateQueries({
       exact: true,
       queryKey: LEAD_QUERY_KEY,
     });
-  }, [lastSeq, queryClient]);
+  }, [lastSeq, queryClient, readSeq]);
 }
 
 /** Open the viewer's Lead from the narrow conversation list. */
