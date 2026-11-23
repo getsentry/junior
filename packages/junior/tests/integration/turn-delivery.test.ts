@@ -1,8 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import * as z from "zod";
-import { getQueueProvider } from "@/chat/queue/provider";
 import { DELIVERY_TOPIC } from "@/core/delivery/queue";
 import {
   juniorConversations,
@@ -22,6 +20,7 @@ import {
 } from "../fixtures/sql";
 import {
   CONVERSATION_ID,
+  messageTurnId,
   prepareWith,
   startTurnEngine,
   type TurnEngine,
@@ -32,18 +31,8 @@ import {
 } from "../msw/handlers/slack-api";
 
 // Delivery of core Turn replies to Slack: a committed step sends a delivery
-// message, and the app's delivery consumer posts the Turn's replies. The
-// queue env must be set before chat config loads. Other Turn engine files
-// use Redis databases 1 and 2, so this file uses 3.
-vi.hoisted(() => {
-  const redisUrl = new URL(
-    process.env["REDIS_URL"]?.trim() || "redis://localhost:6382",
-  );
-  redisUrl.pathname = "/3";
-  process.env["JUNIOR_QUEUE_PROVIDER"] = "bullmq";
-  process.env["JUNIOR_QUEUE_REDIS_URL"] = redisUrl.href;
-  process.env["JUNIOR_QUEUE_WORKER_CONCURRENCY"] = "1";
-});
+// message, and the app's delivery consumer posts the Turn's replies. The test
+// delivers the messages from the in-process queue.
 
 const THREAD_TS = "1718123456.000000";
 const LOCATION = {
@@ -54,14 +43,12 @@ const LOCATION = {
   threadTs: THREAD_TS,
 } as const;
 
-const deliveryPayloadSchema = z.looseObject({ turnId: z.string() });
+// Longer than the longest delivery backoff, so every delayed check is due.
+const AFTER_EVERY_BACKOFF_SECONDS = 60;
 
 let engine: TurnEngine;
 let fixture: LocalJuniorSqlFixture;
 let turnId: string;
-// The Turn ids of the delivery messages that the consumer finished.
-let handled: string[];
-let closeWorker: () => Promise<void>;
 
 beforeEach(async () => {
   engine = await startTurnEngine();
@@ -71,53 +58,34 @@ beforeEach(async () => {
     .update(juniorConversations)
     .set({ location: LOCATION, kind: "root" })
     .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
-  handled = [];
-  const consumer = deliveryConsumer(engine.engineCtx, {
-    getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),
-  }).consumer;
-  const provider = getQueueProvider();
-  if (!provider.startWorker) {
-    throw new Error("The BullMQ provider must start workers");
-  }
-  const worker = await provider.startWorker([
-    {
-      ...consumer,
-      handler: async (payload, metadata) => {
-        try {
-          await consumer.handler(payload, metadata);
-        } finally {
-          const parsed = deliveryPayloadSchema.safeParse(payload);
-          if (parsed.success) {
-            handled.push(parsed.data.turnId);
-          }
-        }
-      },
-    },
-  ]);
-  closeWorker = () => worker.close();
+  engine.queue.mount(
+    deliveryConsumer(engine.engineCtx, {
+      getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),
+    }),
+  );
 });
 
 afterEach(async () => {
   vi.restoreAllMocks();
-  await closeWorker();
   await engine.close();
 });
 
-async function waitFor(check: () => boolean | Promise<boolean>) {
-  const deadline = Date.now() + 10_000;
-  while (!(await check())) {
-    if (Date.now() > deadline) {
-      throw new Error("Timed out waiting for delivery");
-    }
-    await new Promise((resolve) => setTimeout(resolve, 25));
-  }
+/** Delivers each delivery message that is due, and returns how many. */
+function deliver() {
+  return engine.queue.runUntilIdle(DELIVERY_TOPIC);
 }
 
-/** Waits until the consumer has finished `count` delivery messages of a Turn. */
-function handledDeliveries(count: number, forTurnId = turnId) {
-  return waitFor(
-    () => handled.filter((id) => id === forTurnId).length >= count,
-  );
+/** Delivers the delivery messages that wait out a backoff, too. */
+function deliverAfterBackoff() {
+  engine.queue.advanceTime(AFTER_EVERY_BACKOFF_SECONDS);
+  return deliver();
+}
+
+/** Counts the delivery messages of a Turn that the consumer finished. */
+function handledDeliveries(forTurnId = turnId) {
+  return engine.queue
+    .delivered(DELIVERY_TOPIC)
+    .filter((message) => messageTurnId(message.payload) === forTurnId).length;
 }
 
 function readOutbox() {
@@ -200,8 +168,9 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "completed",
     });
-    await handledDeliveries(2);
-    await waitFor(allSent);
+    await deliver();
+    expect(handledDeliveries()).toBe(2);
+    await expect(allSent()).resolves.toBe(true);
     expect(postedTexts()).toEqual([
       { text: "Three.", thread: THREAD_TS },
       { text: "None.", thread: THREAD_TS },
@@ -223,7 +192,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
 
     await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
-    await handledDeliveries(1);
+    await deliver();
+    expect(handledDeliveries()).toBe(1);
 
     expect(postedTexts()).toEqual([]);
     await expect(readOutbox()).resolves.toEqual([
@@ -231,8 +201,9 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     ]);
 
     await release();
-    await waitFor(allSent);
-    await handledDeliveries(2);
+    await deliverAfterBackoff();
+    await expect(allSent()).resolves.toBe(true);
+    expect(handledDeliveries()).toBe(2);
     expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
   });
 
@@ -241,7 +212,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
 
     await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
-    await waitFor(allSent);
+    await deliver();
+    await deliverAfterBackoff();
 
     await expect(readOutbox()).resolves.toEqual([
       expect.objectContaining({ state: "sent", attempts: 1 }),
@@ -256,7 +228,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
   it("fails a reply after its fifth retryable failure, then posts the next reply", async () => {
     const release = await holdDeliveryLock();
     await advanceTwoReplies("Three.", "None.");
-    await handledDeliveries(2);
+    await deliver();
+    expect(handledDeliveries()).toBe(2);
     const [head] = await readOutbox();
     // Four retryable failures so far, so the next one is the fifth.
     await fixture.sql
@@ -267,9 +240,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     queueSlackApiError("chat.postMessage", { error: "fatal_error" });
 
     await release();
-    await waitFor(async () =>
-      (await readOutbox()).every((row) => row.state !== "pending"),
-    );
+    await deliverAfterBackoff();
 
     await expect(readOutbox()).resolves.toEqual([
       expect.objectContaining({
@@ -287,7 +258,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
   });
 
   it("waits the Retry-After of a Slack rate limit before it tries a reply again", async () => {
-    const send = vi.spyOn(getQueueProvider(), "send");
     // Every try of one post: the Slack client retries a rate limit itself.
     for (let attempt = 0; attempt < 3; attempt++) {
       queueSlackRateLimit("chat.postMessage", 2);
@@ -296,14 +266,14 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
 
+    await deliver();
+
     // The backoff after a first failure is 1 s, so 2 s is the Retry-After.
-    await waitFor(() =>
-      send.mock.calls.some(
-        ([topic, , options]) =>
-          topic === DELIVERY_TOPIC && options?.delaySeconds === 2,
-      ),
-    );
-    await waitFor(allSent);
+    expect(engine.queue.pending(DELIVERY_TOPIC)).toEqual([
+      expect.objectContaining({ delaySeconds: 2, due: false }),
+    ]);
+    engine.queue.advanceTime(2);
+    await deliver();
     await expect(readOutbox()).resolves.toEqual([
       expect.objectContaining({ state: "sent", attempts: 1 }),
     ]);
@@ -323,7 +293,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "completed",
     });
-    await handledDeliveries(1);
+    await deliver();
+    expect(handledDeliveries()).toBe(1);
 
     await expect(readOutbox()).resolves.toEqual([]);
     expect(postedTexts()).toEqual([]);
@@ -371,7 +342,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       undefined,
       childTurnId,
     );
-    await handledDeliveries(1, childTurnId);
+    await deliver();
+    expect(handledDeliveries(childTurnId)).toBe(1);
 
     await expect(readOutbox()).resolves.toEqual([]);
     expect(postedTexts()).toEqual([]);
@@ -381,7 +353,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     const failure = new Error("The queue is unreachable");
     // Stands in for the process dying after the end commit, before the
     // delivery message is sent.
-    vi.spyOn(getQueueProvider(), "send").mockRejectedValueOnce(failure);
+    vi.spyOn(engine.queue, "send").mockRejectedValueOnce(failure);
 
     await engine.addTestInput("How many Turns?");
     await expect(engine.advance(prepareWith([reply("Three.")]))).rejects.toBe(
@@ -393,7 +365,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
 
     // The queue delivers the same step message again. Its claim misses.
     await engine.advance(prepareWith([]));
-    await waitFor(allSent);
+    await deliver();
+    await expect(allSent()).resolves.toBe(true);
 
     expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
   });
@@ -402,7 +375,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     const failure = new Error("The queue is unreachable");
     // Stands in for the process dying after a "continue" commit, before the
     // delivery message is sent.
-    vi.spyOn(getQueueProvider(), "send").mockRejectedValueOnce(failure);
+    vi.spyOn(engine.queue, "send").mockRejectedValueOnce(failure);
     await engine.addTestInput("How many Turns?");
     await expect(advanceContinuingStep("Three.")).rejects.toBe(failure);
 
@@ -411,7 +384,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     // Injected fault: the model provider is overloaded.
     await engine.advance(prepareWith([modelOverloaded()]));
     await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
-    await waitFor(allSent);
+    await deliver();
+    await expect(allSent()).resolves.toBe(true);
 
     expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
   });
@@ -428,7 +402,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "completed",
     });
-    await handledDeliveries(1);
+    await deliver();
+    expect(handledDeliveries()).toBe(1);
 
     await expect(readOutbox()).resolves.toEqual([]);
     expect(postedTexts()).toEqual([]);
@@ -438,7 +413,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
     const release = await holdDeliveryLock();
     await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([reply("Three.")]));
-    await handledDeliveries(1);
+    await deliver();
+    expect(handledDeliveries()).toBe(1);
     await expect(readOutbox()).resolves.toEqual([
       expect.objectContaining({ state: "pending" }),
     ]);
@@ -449,7 +425,8 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("Turn delivery", () => {
       .set({ deliveryPausedAt: new Date() })
       .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
     await release();
-    await waitFor(allSent);
+    await deliverAfterBackoff();
+    await expect(allSent()).resolves.toBe(true);
 
     expect(postedTexts()).toEqual([{ text: "Three.", thread: THREAD_TS }]);
   });

@@ -5,7 +5,10 @@
 import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
-import type { QueueMessageMetadata } from "@/chat/queue/provider";
+import type {
+  QueueConsumer,
+  QueueMessageMetadata,
+} from "@/chat/queue/provider";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,
   signQueueMessage,
@@ -100,12 +103,13 @@ export type RunTurnStep = (
 /**
  * Builds the queue consumer of Turn step messages. It acknowledges a message
  * with a bad or expired signature and retries one that cannot be checked yet.
+ * The host mounts it on its queue provider.
  */
 export function createTurnStepConsumer(
   { queue, leaseMs }: Pick<EngineContext, "queue" | "leaseMs">,
   run: RunTurnStep,
-) {
-  return queueCallback<TurnStepMessage>({
+): QueueConsumer {
+  const { consumer } = queueCallback<TurnStepMessage>({
     consumerGroup: TURN_STEP_CONSUMER_GROUP,
     // advanceTurn fails a Turn after `maxAttempts` tries of one step, so the
     // queue retries without a limit.
@@ -142,4 +146,5 @@ export function createTurnStepConsumer(
     visibilityTimeoutSeconds:
       leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
   });
+  return consumer;
 }

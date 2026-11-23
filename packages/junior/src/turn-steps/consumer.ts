@@ -3,6 +3,7 @@
 // oxlint-disable-next-line no-restricted-imports -- The core Turn's model stream. Each reply keeps its usage in history; Conversation cost metrics do not count it yet.
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
+import type { QueueConsumer } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { modelClient } from "@/core/model/client";
 import { advanceTurn } from "@/core/turn/advance";
@@ -21,10 +22,10 @@ const client = modelClient({
 });
 
 /**
- * The queue consumer of Turn step messages. The queue provider picks which
- * entry point is live.
+ * The queue consumer of Turn step messages. The host mounts it on
+ * `engineCtx.queue`.
  */
-export function turnStepConsumer(engineCtx: EngineContext) {
+export function turnStepConsumer(engineCtx: EngineContext): QueueConsumer {
   return createTurnStepConsumer(engineCtx, (message) =>
     advanceTurn(engineCtx, message, {
       client,

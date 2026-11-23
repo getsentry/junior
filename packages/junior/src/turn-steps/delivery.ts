@@ -2,6 +2,7 @@
 // delivery messages, with a sender for each Location provider.
 import type { SlackAdapter } from "@chat-adapter/slack";
 import { RetryableDeliveryError } from "@/chat/agent/types";
+import type { QueueConsumer } from "@/chat/queue/provider";
 import { createSlackSystemTurnDelivery } from "@/chat/providers/slack/system-turn";
 import { SlackActionError } from "@/chat/slack/client";
 import {
@@ -13,11 +14,14 @@ import {
 import { createDeliveryConsumer } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
 
-/** The queue consumer of delivery messages. */
+/**
+ * The queue consumer of delivery messages. The host mounts it on
+ * `engineCtx.queue`.
+ */
 export function deliveryConsumer(
   engineCtx: EngineContext,
   args: { getSlackAdapter: () => SlackAdapter },
-) {
+): QueueConsumer {
   const senders: DeliverySenders = {
     slack: slackSender(args.getSlackAdapter),
   };

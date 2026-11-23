@@ -104,9 +104,7 @@ export async function runCoreEnginePrompt(args: {
       "--engine core runs its steps on a BullMQ worker. Set JUNIOR_QUEUE_PROVIDER=bullmq and JUNIOR_QUEUE_REDIS_URL.",
     );
   }
-  const worker = await queue.startWorker([
-    turnStepConsumer(engineCtx).consumer,
-  ]);
+  const worker = await queue.startWorker([turnStepConsumer(engineCtx)]);
   try {
     await getConversationStore().recordActivity({
       conversationId: args.conversationId,

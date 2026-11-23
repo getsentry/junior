@@ -4,7 +4,10 @@
 import * as z from "zod";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
-import type { QueueMessageMetadata } from "@/chat/queue/provider";
+import type {
+  QueueConsumer,
+  QueueMessageMetadata,
+} from "@/chat/queue/provider";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,
   signQueueMessage,
@@ -98,12 +101,13 @@ export type RunDelivery = (
 /**
  * Builds the queue consumer of delivery messages. It acknowledges a message
  * with a bad or expired signature and retries one that cannot be checked yet.
+ * The host mounts it on its queue provider.
  */
 export function createDeliveryConsumer(
   { queue, leaseMs }: Pick<EngineContext, "queue" | "leaseMs">,
   run: RunDelivery,
-) {
-  return queueCallback<SignedDeliveryMessage>({
+): QueueConsumer {
+  const { consumer } = queueCallback<SignedDeliveryMessage>({
     consumerGroup: DELIVERY_CONSUMER_GROUP,
     // The outbox rows hold the delivery state, so a retry only sends what is
     // left.
@@ -145,4 +149,5 @@ export function createDeliveryConsumer(
     visibilityTimeoutSeconds:
       leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
   });
+  return consumer;
 }

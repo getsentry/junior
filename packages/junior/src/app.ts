@@ -894,8 +894,8 @@ export async function createApp(
     registerVercelWorkspaceSnapshotJobDevConsumer();
     registerVercelCacheWarmupDevConsumer();
     registerVercelBackgroundCompactionDevConsumer();
-    turnSteps.registerDev();
-    deliveries.registerDev();
+    engineCtx.queue.registerDevConsumer?.(turnSteps);
+    engineCtx.queue.registerDevConsumer?.(deliveries);
   }
   app.post("/api/internal/agent/continue", (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
@@ -928,14 +928,18 @@ export async function createApp(
     backgroundCompactionPOST ??= createVercelBackgroundCompactionCallback();
     return backgroundCompactionPOST(c.req.raw);
   });
-  let turnStepPOST: ReturnType<typeof turnSteps.create> | undefined;
+  let turnStepPOST:
+    | ReturnType<typeof engineCtx.queue.createCallback>
+    | undefined;
   app.post(JUNIOR_TURN_STEP_CALLBACK_ROUTE, (c) => {
-    turnStepPOST ??= turnSteps.create();
+    turnStepPOST ??= engineCtx.queue.createCallback(turnSteps);
     return turnStepPOST(c.req.raw);
   });
-  let deliveryPOST: ReturnType<typeof deliveries.create> | undefined;
+  let deliveryPOST:
+    | ReturnType<typeof engineCtx.queue.createCallback>
+    | undefined;
   app.post(JUNIOR_DELIVERY_CALLBACK_ROUTE, (c) => {
-    deliveryPOST ??= deliveries.create();
+    deliveryPOST ??= engineCtx.queue.createCallback(deliveries);
     return deliveryPOST(c.req.raw);
   });
 
@@ -975,8 +979,8 @@ export async function createApp(
           workspaceSnapshotJobQueueConsumer(),
           cacheWarmupQueueConsumer(),
           backgroundCompactionQueueConsumer(),
-          turnSteps.consumer,
-          deliveries.consumer,
+          turnSteps,
+          deliveries,
         ],
         backgroundWork,
       ),
