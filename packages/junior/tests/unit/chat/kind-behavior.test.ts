@@ -12,7 +12,7 @@ const rootTurn = {
   waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
-  quietResult: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: true,
   tools: {
@@ -31,6 +31,8 @@ const personInThreadTurn = {
   ...rootTurn,
   promptMode: "thread",
   sender: "person",
+  failureNotice: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: { ...rootTurn.tools, agents: "none" },
@@ -45,7 +47,7 @@ const agentInThreadTurn = {
   gated: true,
   missingAnswerError: "No reply was sent.",
   failureNotice: "parent",
-  quietResult: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -72,7 +74,7 @@ const automationTurn = {
   waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
-  quietResult: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: false,
   tools: {

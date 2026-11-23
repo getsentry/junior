@@ -20,7 +20,6 @@ import {
   commitParentMessageFork,
   isParentMessageAuthor,
 } from "@/chat/agent-invocations/parent-message";
-import { recordChildAgentEnded } from "@/chat/agent-invocations/markers";
 import {
   childWorkEnded,
   type DeliverToParent,
@@ -389,13 +388,9 @@ export function createConversationTurnWorker(
         turnId,
       });
     };
-    // A Turn that sends no failure notice, such as a person's Turn in a
-    // Thread, ends the child's dashboard markers with the failure.
     const reportFailure = async (text: string): Promise<void> => {
       if (behavior.failureNotice === "parent") {
         await sendToParent({ kind: "failed", text });
-      } else {
-        await recordChildAgentEnded(context.conversationId, "error");
       }
     };
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
@@ -755,15 +750,20 @@ export function createConversationTurnWorker(
                 });
               } else if (reply.blocked) {
                 await blockRunAutomation(context.conversationId, reply.blocked);
-              } else if (
-                reply.noReply &&
-                behavior.quietResult === "parent" &&
-                (await childWorkEnded(context.conversationId, kind, turnId))
-              ) {
-                await sendToParent({
-                  kind: "completed",
-                  text: reply.noReply.note ?? "",
-                });
+              } else if (reply.noReply) {
+                if (
+                  behavior.endResult === "parent" &&
+                  (await childWorkEnded(context.conversationId, turnId))
+                ) {
+                  await sendToParent({
+                    kind: "completed",
+                    text: reply.noReply.note ?? "",
+                  });
+                }
+              } else if (behavior.endResult === "parent" && reply.text) {
+                // A person's Turn in a Thread ends with final text. The
+                // person sees it, and the parent gets it too.
+                await sendToParent({ kind: "completed", text: reply.text });
               }
 
               const completedState = buildDeliveredTurnStatePatch({

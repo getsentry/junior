@@ -41,11 +41,11 @@ child chooses to report reaches the parent.
   parent. It drops all other parent messages.
 - Child output reaches the parent as data, not as instructions. It never
   gives user approval.
-- Only a root delivers to its Location. A child keeps its final response,
-  and only the text of a `reply` leaves it.
+- Only a root delivers to its Location. A Thread shows its Turns to people.
+  A child's Turn sends its parent only its `reply`, its blocked report, or
+  its result.
 - One stop stops the whole tree below it. When a parent stops a child, it
-  gets no result. When a person stops work that the parent gave a child,
-  the parent gets `stopped`.
+  gets no result. When a person stops a child, the parent gets `stopped`.
   New work from the parent, or a person's input, ends the stop. While
   stopped, a Conversation keeps its Watches and saves automated input as
   skipped Messages that start no Turn. Only a stop holds input.
@@ -53,11 +53,10 @@ child chooses to report reaches the parent.
   that the child sees when it next runs, and it cannot start a child.
 - A parent never waits forever, and never sees a running child as done.
   Each result names the siblings that did not report yet. A child that
-  fails on work that its parent gave, or still has no answer after one
-  reminder, tells its parent `failed`. A person's Turn in a Thread keeps its
-  failure.
-- A child always sends its parent a result when the work that its parent
-  gave ends, even when its last Turn ends with `noReply`.
+  fails, or still has no answer after one reminder, tells its parent
+  `failed`.
+- A child always sends its parent a result when its work ends, whoever
+  started its last Turn, even when that Turn ends with `noReply`.
 - A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
   levels of child agents can start their own. The default is 1, so a
   root's child can start children. With 0, only a root can.

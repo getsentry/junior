@@ -66,11 +66,11 @@ export type TurnBehavior = {
    */
   failureNotice: "none" | "parent";
   /**
-   * `parent`: a Turn that ends with `noReply` and also ends the work of its
-   * Conversation sends the parent agent a completed result. `none`: the
-   * Turn sends nothing.
+   * `parent`: a Turn that ends with final text, or with `noReply` that also
+   * ends the work of its Conversation, sends the parent agent a completed
+   * result. `none`: the Turn sends nothing.
    */
-  quietResult: "none" | "parent";
+  endResult: "none" | "parent";
   /**
    * Run the plugin tasks of a completed session, such as memory capture.
    * Memory is public, so a child agent never captures it.
@@ -119,7 +119,7 @@ const ROOT: TurnBehavior = {
   waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
-  quietResult: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: true,
   tools: {
@@ -142,11 +142,13 @@ const ROOT_RUNTIME_TURN: TurnBehavior = {
 
 // A person's Turn in a Thread runs like a Turn on a root, but it does not
 // start or message child agents: their results would report to the parent as
-// the wrong Actor.
+// the wrong Actor. It reports to the parent like every Turn of a child.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
   promptMode: "thread",
   sender: "person",
+  failureNotice: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: { ...ROOT.tools, agents: "none" },
@@ -165,7 +167,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   gated: true,
   missingAnswerError: "No reply was sent.",
   failureNotice: "parent",
-  quietResult: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -205,7 +207,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
-  quietResult: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: false,
   tools: {

@@ -19,11 +19,7 @@ import {
   resolveMailboxTurnWork,
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
-import {
-  runsPersonInput,
-  type DeliverToParent,
-  type ParentResult,
-} from "./parent-result";
+import type { DeliverToParent, ParentResult } from "./parent-result";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationWorkState,
@@ -379,8 +375,7 @@ export function createDeliverToParent(options: {
 /**
  * End the work of a child Conversation whose last attempt lost its worker.
  * Its open markers end with `error`. Then the child tells its parent that it
- * failed, as a failed Turn does. A person's Turn in a Thread keeps the stored
- * failure and its telemetry.
+ * failed, as a failed Turn does.
  */
 export function createEndStoppedChildWork(options: {
   queue: ConversationWorkQueue;
@@ -408,9 +403,6 @@ export function createEndStoppedChildWork(options: {
     // or, before the first save, from its input, which is still pending.
     // `inboundMessageIds` also holds the input of earlier Turns.
     const work = await getConversationWorkState({ conversationId });
-    if (runsPersonInput(turns[0], work)) {
-      return;
-    }
     const pending = work?.execution.pendingMessages ?? [];
     const turnIds = new Set([
       ...turns.map((turn) => turn.turnId),
@@ -471,8 +463,8 @@ export function createChildConversationWorker(options: {
     }
     const result = await options.runTurn(context, kept);
     if (result.status === "completed") {
-      // A Turn that sent no result, such as a person's Turn in a Thread,
-      // ends the child's work here.
+      // A Turn that sent no result, such as a `noReply` Turn, ends the
+      // child's markers here.
       await recordChildAgentEnded(context.conversationId, "success", options);
     }
     return result;
