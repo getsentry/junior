@@ -63,6 +63,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Pinned$/,
       /^All\s*7$/,
     ]);
+    // Tab moves through the tabs in their order on screen.
+    const tabs = typeFilters(page);
+    await tabs.first().focus();
+    for (let index = 1; index < (await tabs.count()); index += 1) {
+      await page.keyboard.press("Tab");
+      await expect(tabs.nth(index)).toBeFocused();
+    }
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 7 waiting");
     await expect(typeFilter(page, "All")).toHaveAttribute(
       "aria-current",
@@ -135,45 +142,35 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
   });
 
-  test("Tab moves through the tabs in their order on screen", async ({
-    dashboard,
-    page,
-  }) => {
-    await mockInboxItems(page, {
-      automations: () => 0,
-      open: [rollout, prMerge, todoForYou, other],
-    });
-    await page.goto(`${dashboard.baseURL}/`);
-    const tabs = typeFilters(page);
-    await expect(tabs).toHaveText([
-      /^Other/,
-      /^PRs/,
-      /^Decisions/,
-      /^To-dos/,
-      /^Pinned/,
-      /^All/,
-    ]);
-    const count = await tabs.count();
-    await tabs.first().focus();
-    for (let index = 1; index < count; index += 1) {
-      await page.keyboard.press("Tab");
-      await expect(tabs.nth(index)).toBeFocused();
-    }
-  });
-
-  test("on a phone every tab fits one row of the header", async ({
+  test("on a phone every tab fits one row of the header, also with a two-digit count on each type", async ({
     dashboard,
     page,
   }) => {
     await page.setViewportSize(mobile);
+    // Ten asks of each type.
+    const tenOf = <Item extends { id: string }>(item: Item) =>
+      Array.from({ length: 10 }, (_, index) => ({
+        ...item,
+        id: `${item.id}-${index}`,
+      }));
     await mockInboxItems(page, {
       automations: () => 0,
-      open: [rollout, license, migration, prMerge, prReview, todoForYou, other],
+      open: [rollout, prMerge, todoForYou, other].flatMap(tenOf),
     });
     // On a phone, the home page lists the entries; the Inbox has its own.
     await page.goto(`${dashboard.baseURL}/?view=inbox`);
     const tabs = typeFilters(page);
-    await expect(tabs).toHaveCount(6);
+    await expect(tabs).toHaveText([
+      /^Other\s*10$/,
+      /^PRs\s*10$/,
+      /^Decisions\s*10$/,
+      /^To-dos\s*10$/,
+      /^Pinned$/,
+      /^All\s*40$/,
+    ]);
+    await expect(
+      page.getByRole("heading", { exact: true, name: "Inbox" }),
+    ).toBeInViewport({ ratio: 1 });
     // Each type shows only its icon and count; the name stays for screen
     // readers.
     await expect(tabs.first()).toHaveAccessibleName(/^Other/);
@@ -183,6 +180,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     }
     await screenshot(page, "inbox-type-filters", { lightTheme: true });
   });
+
   test("a link to an ask that a filter hides shows its row and clears the filter", async ({
     dashboard,
     page,
