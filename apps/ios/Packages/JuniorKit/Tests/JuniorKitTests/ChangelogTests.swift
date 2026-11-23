@@ -1,4 +1,4 @@
-// The build-range cases are ported from armcknight/pippin
+// The version-range cases are ported from armcknight/pippin
 // (Tests/PippinCore/ChangelogParserTests.swift), https://github.com/armcknight/pippin,
 // under the MIT License. Copyright (c) 2016 Andrew McKnight. The full license
 // text is in Sources/JuniorKit/Changelog/Changelog.swift.
@@ -7,100 +7,118 @@ import Testing
 
 @testable import JuniorKit
 
+private let pull = "https://github.com/getsentry/junior/pull"
+
 @Suite struct ChangelogTests {
-  /// A release candidate cycle, then a final release. Newest first.
+  /// Craft's format, newest first: a summary, categories, and scope groups.
   private let changelog = """
     # Changelog
 
-    ## [Unreleased]
-    - Next note
+    ## 0.313.0
 
-    ## [1.0.1+44] 2026-04-16
-    - Final release note
+    Junior removes legacy brief handling.
 
-    ## [1.0.1-RC2+43] 2026-04-15
-    - RC2 note
+    ### New Features ✨
 
-    ## [1.0.1-RC1+42] 2026-04-14
-    - RC1 note
+    Inbox adds filters and navigation.
 
-    ## [1.0.0+40] 2026-03-01
-    - Previous release note
+    #### Dashboard
 
-    ## [0.9.0+10] 2026-01-01
-    - Old note
+    - Filter the Inbox by ask type by @BYK with @sentry-junior in [#3966](\(pull)/3966)
+
+    #### Ios
+
+    - Rename a conversation by @armcknight with @sentry-junior in [#4044](\(pull)/4044)
+
+    ### Bug Fixes 🐛
+
+    #### Other
+
+    - (agent) Name the next call by @dcramer in [#4013](\(pull)/4013)
+    - (ios) Read Conversations from Junior 0.310 by @armcknight and @claude in [#3884](\(pull)/3884)
+
+    ### Internal Changes 🔧
+
+    #### Ios
+
+    - Build, test, and screenshot the iOS app by @armcknight in [#3605](\(pull)/3605)
+
+    ## 0.312.0
+
+    ### New Features ✨
+
+    #### Ios
+
+    - IPad layout by @armcknight with @sentry-junior in [#3892](\(pull)/3892)
+
+    ## 0.311.0
+
+    ### Bug Fixes 🐛
+
+    - (slack) Not an iOS entry by @dcramer in [#3744](\(pull)/3744)
+
+    ## 0.310.0
+
+    ### New Features ✨
+
+    - (ios) Add a native iOS client by @gricha and @claude in [#3544](\(pull)/3544)
     """
 
-  /// After the release candidate sections become one final section.
-  private let consolidatedChangelog = """
-    ## [Unreleased]
+  private var releases: [ChangelogRelease] { ChangelogParser.parse(from: changelog) }
 
-    ## [1.0.1+44] 2026-04-16
-    - RC1 note
-    - RC2 note
-    - Final release note
-
-    ## [1.0.0+40] 2026-03-01
-    - Previous release note
-    """
-
-  private func versions(since: Int, upTo: Int, in markdown: String) -> [String] {
-    ChangelogParser.entriesSince(build: since, upTo: upTo, from: ChangelogParser.parse(from: markdown)).map(\.version)
+  private func versions(since: String, upTo: String) -> [String] {
+    ChangelogParser.releases(since: since, upTo: upTo, from: releases).map(\.version)
   }
 
-  @Test func parsesSections() {
-    let entries = ChangelogParser.parse(from: changelog)
+  @Test func keepsOnlyIOSEntries() {
+    #expect(releases.map(\.version) == ["0.313.0", "0.312.0", "0.310.0"])
     #expect(
-      entries.map(\.version) == ["Unreleased", "1.0.1+44", "1.0.1-RC2+43", "1.0.1-RC1+42", "1.0.0+40", "0.9.0+10"])
-    #expect(entries[0] == ChangelogEntry(version: "Unreleased", date: nil, content: "- Next note"))
-    #expect(entries[1] == ChangelogEntry(version: "1.0.1+44", date: "2026-04-16", content: "- Final release note"))
-    #expect(entries[1].title == "1.0.1 (44)")
-    #expect(entries[2].build == 43)
-    #expect(entries[0].build == nil)
-    #expect(entries[0].title == "Unreleased")
+      releases[0].groups == [
+        ChangelogGroup(
+          title: "New Features ✨", entries: ["Rename a conversation ([#4044](\(pull)/4044))"]),
+        ChangelogGroup(
+          title: "Bug Fixes 🐛",
+          entries: ["Read Conversations from Junior 0.310 ([#3884](\(pull)/3884))"]),
+      ])
+    #expect(releases[2].groups.map(\.entries) == [["Add a native iOS client ([#3544](\(pull)/3544))"]])
   }
 
-  @Test func keepsSubsectionsAndDashDates() {
-    let entries = ChangelogParser.parse(from: "## [0.1.0+2] - 2026-11-20\n\n### Added\n\n- A note\n")
-    #expect(entries == [ChangelogEntry(version: "0.1.0+2", date: "2026-11-20", content: "### Added\n\n- A note")])
+  @Test func keepsAnEntryWithoutAuthors() {
+    let entry = ChangelogParser.iosEntry("(iOS) Rename a conversation (#4044)", scope: nil)
+    #expect(entry == "Rename a conversation (#4044)")
+    #expect(ChangelogParser.iosEntry("Rename a conversation", scope: "Other") == nil)
   }
 
-  @Test func rc1ToRC2ShowsRC2Entry() {
-    #expect(versions(since: 42, upTo: 43, in: changelog) == ["1.0.1-RC2+43"])
+  @Test func oneVersionToTheNextShowsThatVersion() {
+    #expect(versions(since: "0.312.0", upTo: "0.313.0") == ["0.313.0"])
   }
 
-  @Test func rc2ToFinalAfterConsolidationShowsFinalEntry() {
-    // Build 43 is gone from the file, but the final section (44) is found.
-    #expect(versions(since: 43, upTo: 44, in: consolidatedChangelog) == ["1.0.1+44"])
-  }
-
-  @Test func oldReleaseToNewShowsAllEntriesInRange() {
-    #expect(versions(since: 40, upTo: 44, in: changelog) == ["1.0.1+44", "1.0.1-RC2+43", "1.0.1-RC1+42"])
-  }
-
-  @Test func sameBuildReturnsEmpty() {
-    #expect(versions(since: 44, upTo: 44, in: changelog).isEmpty)
-  }
-
-  @Test func entriesWithoutBuildNumberAreSkipped() {
-    let legacy = """
-      ## [1.1.0] 2026-05-01
-      - No build number here
-
-      ## [1.0.1+44] 2026-04-16
-      - Has build number
-      """
-    #expect(versions(since: 43, upTo: 44, in: legacy) == ["1.0.1+44"])
+  @Test func oldReleaseToNewShowsAllReleasesInRange() {
+    #expect(versions(since: "0.309.0", upTo: "0.313.0") == ["0.313.0", "0.312.0", "0.310.0"])
   }
 
   @Test func sinceBoundaryIsExclusiveAndCurrentIsInclusive() {
-    #expect(versions(since: 42, upTo: 44, in: changelog) == ["1.0.1+44", "1.0.1-RC2+43"])
+    #expect(versions(since: "0.310.0", upTo: "0.312.0") == ["0.312.0"])
   }
 
-  @Test func whatsNewIsEmptyOnFirstLaunchAndSameBuild() {
-    #expect(ChangelogParser.whatsNew(in: changelog, lastLaunchedBuild: nil, currentBuild: 44).isEmpty)
-    #expect(ChangelogParser.whatsNew(in: changelog, lastLaunchedBuild: 44, currentBuild: 44).isEmpty)
-    let update = ChangelogParser.whatsNew(in: changelog, lastLaunchedBuild: 43, currentBuild: 44)
-    #expect(update.map(\.version) == ["1.0.1+44"])
+  @Test func sameVersionReturnsEmpty() {
+    #expect(versions(since: "0.313.0", upTo: "0.313.0").isEmpty)
+  }
+
+  @Test func comparesVersionsByNumber() {
+    #expect(versions(since: "0.99.0", upTo: "0.310.0") == ["0.310.0"])
+  }
+
+  @Test func sectionsWithoutAVersionAreSkipped() {
+    let other = ChangelogParser.parse(from: "## Unreleased\n\n### New Features ✨\n\n- (ios) Next\n")
+    #expect(other.map(\.version) == ["Unreleased"])
+    #expect(ChangelogParser.releases(since: "0.1.0", upTo: "1.0.0", from: other).isEmpty)
+  }
+
+  @Test func whatsNewIsEmptyOnFirstLaunchAndSameVersion() {
+    #expect(ChangelogParser.whatsNew(in: releases, lastSeenVersion: nil, currentVersion: "0.313.0").isEmpty)
+    #expect(ChangelogParser.whatsNew(in: releases, lastSeenVersion: "0.313.0", currentVersion: "0.313.0").isEmpty)
+    let update = ChangelogParser.whatsNew(in: releases, lastSeenVersion: "0.312.0", currentVersion: "0.313.0")
+    #expect(update.map(\.version) == ["0.313.0"])
   }
 }

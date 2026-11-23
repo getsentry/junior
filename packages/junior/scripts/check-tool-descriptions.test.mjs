@@ -30,15 +30,17 @@ describe("check-tool-descriptions", () => {
     const issues = collectToolDescriptionIssues(
       {
         "src/fields.ts": `
-          export const fieldSchema = z.object({ kind: z.enum(["text"]) });
+          export const fieldSchema = z.object({
+            kind: z.enum(["text"]).describe("Field kind."),
+          });
         `,
         "src/tool.ts": `
           import { fieldSchema } from "@/fields";
           zodTool({
             description: "Add an item. Set \`kind\` on each field and pass dedupe_key to update.",
             inputSchema: z.object({
-              dedupe_key: z.string(),
-              fields: z.array(fieldSchema),
+              dedupe_key: z.string().describe("Stable key."),
+              fields: z.array(fieldSchema).describe("Fields to ask."),
             }),
           });
         `,
@@ -57,7 +59,7 @@ describe("check-tool-descriptions", () => {
       "src/tool.ts": `
         export const readToolDefinition = zodToolDefinition({
           description: "Read a file at \`path\`.",
-          inputSchema: z.object({ path: z.string() }),
+          inputSchema: z.object({ path: z.string().describe("File path.") }),
         });
       `,
     });
@@ -81,7 +83,7 @@ describe("check-tool-descriptions", () => {
         });
         definePluginTool({
           description: renderDescription(),
-          inputSchema: z.object({ path: z.string() }),
+          inputSchema: z.object({ path: z.string().describe("File path.") }),
         });
       `,
     });
@@ -101,11 +103,11 @@ describe("check-tool-descriptions", () => {
         const PARTS = ["Read a file.", "Pass \`path\`."] as const;
         zodTool({
           description: ("Write a file. Pass \`path\`." as const),
-          inputSchema: z.object({ path: z.string() }),
+          inputSchema: z.object({ path: z.string().describe("File path.") }),
         });
         zodTool({
           description: PARTS.join(" ") satisfies string,
-          inputSchema: z.object({ path: z.string() }),
+          inputSchema: z.object({ path: z.string().describe("File path.") }),
         });
       `,
     });
@@ -113,6 +115,38 @@ describe("check-tool-descriptions", () => {
     assert.deepEqual(issues, [
       "src/tool.ts\ttool-description-names-param\tpath: Read a file. Pass `path`.",
       "src/tool.ts\ttool-description-names-param\tpath: Write a file. Pass `path`.",
+    ]);
+  });
+
+  it("flags input fields without describe(), also behind shared params", () => {
+    const issues = collectToolDescriptionIssues(
+      {
+        "src/params.ts": `
+          export const teamSchema = z.string().describe("Team slug.");
+          export const flag = (description) => z.boolean().describe(description);
+        `,
+        "src/tool.ts": `
+          import { flag, teamSchema } from "./params.js";
+          zodTool({
+            description: "Search items.",
+            inputSchema: z.object({
+              team: teamSchema,
+              exact: flag("Match the whole query."),
+              loose: flag("Match part of the query."),
+              limit: z.number().int(),
+              filter: z
+                .object({ since: z.string() })
+                .describe("Filter for results."),
+            }),
+          });
+        `,
+      },
+      { app: "src" },
+    );
+
+    assert.deepEqual(issues, [
+      "src/tool.ts\tparam-missing-description\tlimit: Search items.",
+      "src/tool.ts\tparam-missing-description\tsince: Search items.",
     ]);
   });
 

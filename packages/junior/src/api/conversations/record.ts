@@ -119,6 +119,7 @@ export function conversationFromRecordRow(
     ...(value.channelName ? { channelName: value.channelName } : undefined),
     ...(value.source ? { source: value.source } : undefined),
     ...(value.title ? { title: value.title } : undefined),
+    ...(value.summary ? { summary: value.summary } : undefined),
     ...(value.transcriptPurgedAt
       ? { transcriptPurgedAtMs: value.transcriptPurgedAt.getTime() }
       : undefined),

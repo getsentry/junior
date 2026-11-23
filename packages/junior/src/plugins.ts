@@ -192,6 +192,7 @@ export function pluginRuntimeRegistrationsFromPluginSet(
   return (
     pluginSet?.registrations.filter(
       (plugin) =>
+        plugin.codeLinks ||
         plugin.hooks ||
         plugin.images ||
         plugin.tasks ||

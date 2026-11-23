@@ -739,7 +739,7 @@ describe("Automations API", () => {
       // same two as the Automations entry. The failed run's alert asks Run
       // again or Pause, so it is also a decision.
       const count = await authenticatedApi("viewer@example.com").request(
-        "http://localhost/api/review-items/count?include=automations",
+        "http://localhost/api/inbox-items/count?include=automations",
       );
       expect(await count.json()).toEqual({
         automations: 2,
@@ -747,6 +747,7 @@ describe("Automations API", () => {
         decisions: 1,
         needsViewer: 2,
         snoozed: 0,
+        todos: 0,
       });
       expect((await list("state=unavailable")).total).toBe(2);
       const lastPage = await list("page=21");

@@ -30,10 +30,11 @@ import { googleFileLinks } from "./links/files";
 import { googleImages } from "./links/thumbnails";
 import { createGoogleSetupPage, createGoogleSetupRoutes } from "./setup-routes";
 import type { GoogleDb } from "./store";
-import type { GoogleToolContext } from "./tools/shared";
+import type { GoogleToolContext } from "./google-api";
 import { cancelCalendarEventTool } from "./tools/cancel-event";
 import { createGoogleDocTool } from "./tools/create-doc";
 import { createCalendarEventTool } from "./tools/create-event";
+import { createGoogleSlidesTool } from "./tools/create-slides";
 import { findMeetingTimesTool } from "./tools/find-meeting-times";
 import { insertGoogleDocContentTool } from "./tools/insert-doc-content";
 import { listGoogleFileCommentsTool } from "./tools/list-file-comments";
@@ -90,6 +91,7 @@ export function googlePlugin(): PluginRegistration {
             cancelCalendarEvent: cancelCalendarEventTool,
             createCalendarEvent: createCalendarEventTool,
             createGoogleDoc: createGoogleDocTool,
+            createGoogleSlides: createGoogleSlidesTool,
             findMeetingTimes: findMeetingTimesTool,
             getGoogleSlideThumbnail: getGoogleSlideThumbnailTool,
             insertGoogleDocContent: insertGoogleDocContentTool,
@@ -107,6 +109,7 @@ export function googlePlugin(): PluginRegistration {
           (ctx): GoogleToolContext => ({
             accountEmail: config.accountEmail,
             allowedDomains: config.allowedDomains,
+            ...(ctx.artifacts ? { artifacts: ctx.artifacts } : undefined),
             egress: ctx.egress,
             sandbox: ctx.sandbox,
             users: ctx.users,

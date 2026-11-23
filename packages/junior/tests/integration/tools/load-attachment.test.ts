@@ -13,7 +13,7 @@ import {
 } from "@/chat/attachments/store";
 import { closeDb, getConversationStore, getSqlExecutor } from "@/chat/db";
 import { readSlackAttachmentSource } from "@/chat/slack/attachments";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createLoadAttachmentTool } from "@/chat/tools/load-attachment";
 import { juniorAttachments, juniorConversations } from "@/db/schema";
 import { localWorkspace } from "../../fixtures/local-workspace";
@@ -528,7 +528,9 @@ describe("loadAttachment tool", () => {
       await expect(
         tool.execute?.({ attachment_id: attachmentId }, {}),
       ).rejects.toThrow(
-        new ToolInputError("Attachment not found in this conversation."),
+        new ToolInputError(
+          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+        ),
       );
     }
     expect(getCapturedSlackApiCalls("files.info")).toEqual([]);

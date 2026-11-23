@@ -5,9 +5,11 @@ import SwiftUI
 /// composer docked at the bottom (`ConversationWorkspace` stacked home).
 struct HomeScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @State private var model = HomeModel()
   @State private var archiveError: String?
   @State private var undo: MCPConversation?
+  @State private var renaming: MCPConversation?
   @FocusState private var searchFocused: Bool
   @Environment(\.splitColumn) private var column
 
@@ -34,16 +36,17 @@ struct HomeScreen: View {
     }
     .background(Tokens.bg)
     .toolbar(.hidden, for: .navigationBar)
+    .renameAlert($renaming) { row, title in rename(row, title) }
     .task(id: app.conversationsVersion) { await model.load(app) }
     .task(id: model.query) {
       // Debounce like the dashboard (250ms) before a server search.
       try? await Task.sleep(for: .milliseconds(250))
       if !Task.isCancelled { await model.load(app) }
     }
-    .onChange(of: app.focusSearch, initial: true) { _, focus in
+    .onChange(of: window.focusSearch, initial: true) { _, focus in
       if focus {
         searchFocused = true
-        app.focusSearch = false
+        window.focusSearch = false
       }
     }
   }
@@ -68,7 +71,8 @@ struct HomeScreen: View {
           if !collapsed.wrappedValue {
             VStack(spacing: 8) {
               ForEach(section.rows) { row in
-                ConversationCard(row: row, onArchive: { archive(row) }, onPin: { pin(row) })
+                ConversationCard(
+                  row: row, onArchive: { archive(row) }, onPin: { pin(row) }, onRename: { renaming = row })
               }
             }
           }
@@ -158,16 +162,26 @@ extension HomeScreen {
       }
     }
   }
+
+  private func rename(_ row: MCPConversation, _ title: String) {
+    Task {
+      do {
+        try await model.rename(row, title: title, app: app)
+      } catch {
+        withAnimation { archiveError = (error as? JuniorAPIError)?.localizedDescription ?? "Could not rename." }
+      }
+    }
+  }
 }
 
 /// Above the list beside the open item: closes it to show the
 /// new-conversation composer (`ConversationSidebar.tsx`).
 private struct NewConversationRow: View {
-  @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
 
   var body: some View {
     Button {
-      app.path = []
+      window.path = []
     } label: {
       HStack(spacing: 8) {
         Icon("pencil", size: 12)
@@ -179,11 +193,11 @@ private struct NewConversationRow: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 8)
-      .background(app.path.isEmpty ? Tokens.fillHover : .clear, in: RoundedRectangle(cornerRadius: 8))
+      .background(window.path.isEmpty ? Tokens.fillHover : .clear, in: RoundedRectangle(cornerRadius: 8))
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft))
-    .accessibilityAddTraits(app.path.isEmpty ? .isSelected : [])
+    .accessibilityAddTraits(window.path.isEmpty ? .isSelected : [])
   }
 }
 
@@ -191,13 +205,15 @@ private struct NewConversationRow: View {
 /// the Conversation lives.
 struct ConversationCard: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let row: MCPConversation
   let onArchive: () -> Void
   let onPin: () -> Void
+  let onRename: () -> Void
 
   var body: some View {
     Button {
-      app.path = [route]
+      window.path = [route]
     } label: {
       // A card with only a title centers it against the tile, as the web's
       // stretched column does.
@@ -221,21 +237,23 @@ struct ConversationCard: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 10)
-      .listCard(selected: app.path.first == route)
+      .listCard(selected: window.path.first == route)
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft, scale: 0.99))
     .contextMenu {
       Button(
         row.pinnedAt == nil ? "Pin" : "Unpin", systemImage: row.pinnedAt == nil ? "pin" : "pin.slash", action: onPin)
+      Button("Rename", systemImage: "pencil", action: onRename)
       Button(row.archivedAt == nil ? "Archive" : "Restore", systemImage: "archivebox", action: onArchive)
     }
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(accessibilityText)
     .accessibilityAddTraits(.isButton)
-    .accessibilityAddTraits(app.path.first == route ? .isSelected : [])
-    .accessibilityAction { app.path = [route] }
+    .accessibilityAddTraits(window.path.first == route ? .isSelected : [])
+    .accessibilityAction { window.path = [route] }
     .accessibilityAction(named: row.pinnedAt == nil ? "Pin" : "Unpin", onPin)
+    .accessibilityAction(named: "Rename", onRename)
     .accessibilityAction(named: row.archivedAt == nil ? "Archive" : "Restore", onArchive)
   }
 

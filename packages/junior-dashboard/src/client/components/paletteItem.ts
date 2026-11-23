@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 
-import type { FOCUS_REPLY_STATE } from "../conversations/conversationRoutes";
+import type { ReplyFocusState } from "../conversations/conversationRoutes";
 import { quickOpenMatch } from "./quickOpenMatch";
 
 /** One command palette row: a place to go, or an action to run. */
@@ -14,7 +14,7 @@ export type PaletteItem = {
   meta?: string;
   score: number;
   /** Navigation state for the destination page. */
-  state?: typeof FOCUS_REPLY_STATE;
+  state?: ReplyFocusState;
 } & ({ run(): void; to?: undefined } | { run?: undefined; to: string });
 
 // Below any label match, so rows that match only other text rank last.

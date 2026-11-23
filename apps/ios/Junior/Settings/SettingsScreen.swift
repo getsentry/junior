@@ -6,6 +6,7 @@ import UIKit
 /// the Junior this app is signed in to.
 struct SettingsScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @State private var archiving = false
   @State private var archiveResult: String?
   @State private var logsResult: String?
@@ -50,7 +51,7 @@ struct SettingsScreen: View {
               .accessibilityIdentifier("sign-out")
           }
           card("Changelog", description: "Version \(appVersion)") {
-            Button("Show changelog") { app.changelog = .full() }
+            Button("Show changelog") { window.changelog = .full() }
               .buttonStyle(.dashboard(.outline))
               .accessibilityIdentifier("show-changelog")
           }

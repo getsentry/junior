@@ -254,7 +254,8 @@ export async function refreshGrant(args: {
   // Refresh cannot narrow or widen a grant. Connect again for other scopes.
   if (
     args.scope !== undefined &&
-    parseMcpScopes(args.scope)?.join(" ") !== grant.scope
+    parseMcpScopes(args.scope)?.join(" ") !==
+      parseMcpScopes(grant.scope)?.join(" ")
   ) {
     return {
       description: `Refresh keeps the granted scope: ${grant.scope}.`,

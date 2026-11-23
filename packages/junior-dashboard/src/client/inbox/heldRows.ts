@@ -6,17 +6,10 @@ import type { ConversationRow } from "./inboxData";
  */
 export type RowPlaces = ReadonlyMap<string, { index: number; time: string }>;
 
-/**
- * Note where each row shows now, to hold it there. Pins are left out: the
- * reader orders them, so a pin, an unpin or a drag shows at once.
- */
+/** Note where each row shows now, to hold it there. */
 export function rowPlaces(rows: readonly ConversationRow[]): RowPlaces {
   return new Map(
-    rows.flatMap((row, index) =>
-      row.conversation?.pinnedAt
-        ? []
-        : [[row.conversationId, { index, time: row.time }] as const],
-    ),
+    rows.map((row, index) => [row.conversationId, { index, time: row.time }]),
   );
 }
 
@@ -33,8 +26,7 @@ export function heldRows(
   held: RowPlaces | undefined,
 ): readonly ConversationRow[] {
   if (!held) return rows;
-  const place = (row: ConversationRow) =>
-    row.conversation?.pinnedAt ? undefined : held.get(row.conversationId);
+  const place = (row: ConversationRow) => held.get(row.conversationId);
   const seen = rows
     .flatMap((row) => {
       const at = place(row);

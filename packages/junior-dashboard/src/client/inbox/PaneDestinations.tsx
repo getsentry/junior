@@ -1,7 +1,6 @@
 import {
   CircleCheck,
   Clock3,
-  GitPullRequest,
   Inbox,
   MessageCircleQuestion,
   MessagesSquare,
@@ -12,8 +11,14 @@ import { Link, useLocation, useSearchParams } from "react-router";
 
 import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
-import type { PaneRow } from "../components/layout/paneRows";
+import {
+  isLeadPath,
+  isCodePath,
+  type PaneRow,
+  type PaneRowMark,
+} from "../components/layout/paneRows";
 import { cn, dashboardCountClass } from "../styles";
+import { LEAD_NAV_KEY } from "../shell/primaryNav";
 import { useInboxData } from "./inboxData";
 import {
   INBOX_VIEW_LABELS,
@@ -28,22 +33,25 @@ const ICONS: Record<InboxView, LucideIcon> = {
   decisions: MessageCircleQuestion,
   done: CircleCheck,
   inbox: Inbox,
-  prs: GitPullRequest,
   snoozed: Clock3,
 };
 
-/** The row style that the destinations and the In flight rows share. */
-export const paneEntryClass = (selected: boolean, phone?: boolean) =>
+/**
+ * The row style that the destinations and the In flight rows share. The
+ * list that opened the page keeps the accent text without the fill, so only
+ * the page's own row is lit.
+ */
+export const paneEntryClass = (mark?: PaneRowMark, phone?: boolean) =>
   cn(
-    "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+    // A count adds its own column, so a row without one gives its title the
+    // full width, with no gap left for a count.
+    "grid min-w-0 grid-flow-col grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
     phone ? "h-11" : "h-8",
-    selected
-      ? "bg-dashboard-accent/[0.12] text-dashboard-accent-text"
-      : "text-dashboard-text hover:bg-dashboard-fill-hover",
+    mark === "page"
+      ? "bg-dashboard-accent/[0.12]"
+      : "hover:bg-dashboard-fill-hover",
+    mark ? "text-dashboard-accent-text" : "text-dashboard-text",
   );
-
-const headingClass =
-  "m-0 px-3 pt-5 pb-1 font-sans text-xs font-medium text-dashboard-text-muted";
 
 function Entry(props: {
   count?: number;
@@ -63,26 +71,32 @@ function Entry(props: {
   strong?: boolean;
 }) {
   const link = usePaneRowLink(props.row);
-  const selected = props.phone ? props.phoneSelected : link.current;
+  const mark = props.phone
+    ? props.phoneSelected
+      ? "page"
+      : undefined
+    : link.mark;
   const Icon = props.icon;
   return (
     <li className="list-none">
       <Link
-        aria-current={selected ? "page" : undefined}
+        // The list that opened the page is current in the pane's set of
+        // lists, but it is not the page.
+        aria-current={mark === "origin" ? "true" : mark}
         // A count that waits on the viewer reads as one, as the tab title's.
         aria-label={
           props.strong && props.count
             ? `${props.label}, ${props.count} waiting`
             : undefined
         }
-        className={paneEntryClass(selected, props.phone)}
+        className={paneEntryClass(mark, props.phone)}
         to={props.phone ? props.phoneTo : link.to}
       >
         <Icon
           aria-hidden="true"
           className={cn(
             "size-4",
-            selected ? "text-current" : "text-dashboard-text-muted",
+            mark ? "text-current" : "text-dashboard-text-muted",
           )}
           strokeWidth={1.9}
         />
@@ -109,17 +123,19 @@ function Entry(props: {
 }
 
 /**
- * The pane's destinations, in one list: the Inbox, Snoozed, and Done; then
- * Conversations, Automations, and the primary plugin pages; then the asks
- * by type. Each row reopens where the reader left it, and the Inbox and
- * Automations rows count what waits on the viewer.
+ * The pane's destinations, in one list: the Lead, the Inbox, Snoozed, and
+ * Done; then Conversations, Code, Automations, and the primary plugin pages.
+ * The Inbox filters its asks by type itself. Each row reopens where the
+ * reader left it, and the Inbox and Automations rows count what waits on the
+ * viewer.
  */
 export function PaneDestinations(props: { phone?: boolean }) {
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const data = useInboxData();
   const navItems = usePaneNavItems();
-  const onList = pathname === "/" && (!props.phone || params.has("view"));
+  const onList =
+    pathname === inboxViewPath("inbox") && (!props.phone || params.has("view"));
   const current = onList ? parseInboxView(params.get("view")) : undefined;
   const view = (row: InboxView, strong?: boolean) => (
     <Entry
@@ -128,23 +144,43 @@ export function PaneDestinations(props: { phone?: boolean }) {
       key={row}
       label={INBOX_VIEW_LABELS[row]}
       phone={props.phone}
-      // On a phone the Inbox entry needs `?view=`, since `/` alone lists
-      // the entries.
-      phoneTo={row === "inbox" ? "/?view=inbox" : inboxViewPath(row)}
+      // On a phone the Inbox entry needs `?view=`, since `/inbox` alone
+      // lists the entries.
+      phoneTo={
+        row === "inbox"
+          ? `${inboxViewPath("inbox")}?view=inbox`
+          : inboxViewPath(row)
+      }
       row={row}
       phoneSelected={current === row}
       strong={strong}
     />
   );
-  // Automations shows where its page does. Primary plugin pages, and Code
-  // and System without an account, follow it.
+  // Code and Automations show where their pages do. Primary plugin pages,
+  // and System without an account, follow them.
   const automationsItem = navItems.find((item) => item.key === "automations");
+  const codeItem = navItems.find((item) => item.key === "code");
+  const leadItem = navItems.find((item) => item.key === LEAD_NAV_KEY);
   const pages = navItems.filter(
-    (item) => item.key !== "inbox" && item.key !== "automations",
+    (item) =>
+      item.key !== "inbox" &&
+      item.key !== "automations" &&
+      item.key !== "code" &&
+      item.key !== LEAD_NAV_KEY,
   );
   return (
     <>
       <ul className="m-0 grid gap-0.5 p-0">
+        {leadItem ? (
+          <Entry
+            icon={navItemIcon(leadItem.key)}
+            label={leadItem.label}
+            phone={props.phone}
+            phoneTo={leadItem.to}
+            row={leadItem.key}
+            phoneSelected={isLeadPath(pathname, navItems)}
+          />
+        ) : null}
         {view("inbox", true)}
         {data.signedIn ? (
           <>
@@ -155,6 +191,16 @@ export function PaneDestinations(props: { phone?: boolean }) {
       </ul>
       <ul className="m-0 mt-3 grid gap-0.5 border-t border-dashboard-border-subtle p-0 pt-3">
         {view("conversations")}
+        {codeItem ? (
+          <Entry
+            icon={navItemIcon("code")}
+            label={codeItem.label}
+            phone={props.phone}
+            phoneSelected={isCodePath(pathname)}
+            phoneTo={codeItem.to}
+            row="code"
+          />
+        ) : null}
         {automationsItem ? (
           <Entry
             count={data.counts.automations}
@@ -181,15 +227,6 @@ export function PaneDestinations(props: { phone?: boolean }) {
           />
         ))}
       </ul>
-      {data.signedIn ? (
-        <>
-          <h2 className={headingClass}>Asks by type</h2>
-          <ul className="m-0 grid gap-0.5 p-0">
-            {view("prs")}
-            {view("decisions")}
-          </ul>
-        </>
-      ) : null}
     </>
   );
 }

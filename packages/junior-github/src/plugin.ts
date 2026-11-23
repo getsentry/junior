@@ -27,6 +27,7 @@ import {
   parseGitHubConflictItemKey,
 } from "./merge-conflict-checks/policy.js";
 import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
+import { loadGitHubTitleParts } from "./webhooks/title-parts.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
@@ -191,6 +192,11 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    codeLinks: {
+      change: ({ number, repository }) =>
+        `https://github.com/${repository}/pull/${number}`,
+      repository: (name) => `https://github.com/${name}`,
+    },
     images: githubImageSource,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     events: {
@@ -359,7 +365,7 @@ export function githubPlugin(
           },
         ];
       },
-      async reviewItemAnswered(ctx) {
+      async inboxItemAnswered(ctx) {
         const ref = parseGitHubConflictItemKey(ctx.dedupeKey);
         if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
@@ -385,9 +391,15 @@ export function githubPlugin(
           events: ctx.events,
           loadHistory: async (ref) =>
             await loadPullRequestConflictHistory(installationEnv, ref),
+          loadTitleParts: async (input) =>
+            await loadGitHubTitleParts(
+              { ...installationEnv, responses: ctx.state },
+              input,
+              ctx.log,
+            ),
           log: ctx.log,
           now: new Date(ctx.nowMs),
-          reviewItems: ctx.reviewItems,
+          inboxItems: ctx.inboxItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -404,6 +416,7 @@ export function githubPlugin(
           annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
           codeChanges: ctx.codeChanges,
+          conversationChanges: ctx.conversationChanges,
           db,
           events: ctx.events,
           loadCommitPages: async (target) =>
@@ -412,7 +425,7 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
-          reviewItems: ctx.reviewItems,
+          inboxItems: ctx.inboxItems,
           state: ctx.state,
         });
       },
@@ -438,6 +451,8 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
+          responses: ctx.state,
+          tokens: new Map(),
         };
         return [
           createGitHubWebhookRoute({
@@ -456,6 +471,7 @@ export function githubPlugin(
                 ),
               }),
             codeChanges: ctx.codeChanges,
+            conversationChanges: ctx.conversationChanges,
             db: gitHubDbSchema.parse(ctx.db),
             installationId: () => readEnv(installationIdEnv),
             loadGitHubIncidents: async () =>
@@ -479,13 +495,16 @@ export function githubPlugin(
               ),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
+            loadTitleParts: async (input) =>
+              await loadGitHubTitleParts(installationEnv, input, ctx.log),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
-            reviewItems: ctx.reviewItems,
+            inboxItems: ctx.inboxItems,
             state: ctx.state,
+            tokens: installationEnv.tokens,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];

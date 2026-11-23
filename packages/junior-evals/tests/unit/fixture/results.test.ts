@@ -47,6 +47,19 @@ describe("slackCallReplies", () => {
     expect(visibleMessages).toEqual([]);
   });
 
+  it("reads a post that Slack formatting changed as the same reply", () => {
+    const { replies } = read(
+      [
+        "*Plan*\n\n~old~ *bold* <https://example.com|the docs> for `snake_case`",
+      ],
+      "## Plan\n\n~~old~~ **bold** [the docs](https://example.com) for `snake_case`",
+    );
+
+    expect(replies).toEqual([
+      expect.objectContaining({ messageId: "message-1" }),
+    ]);
+  });
+
   it("reads a split inside a code block as one reply", () => {
     const code = [
       "Run this script:",

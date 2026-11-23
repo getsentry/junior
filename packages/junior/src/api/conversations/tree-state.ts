@@ -11,12 +11,12 @@ import {
 } from "@/chat/conversations/sql/subtree";
 import { listConversationsWithWatches } from "@/chat/events/store";
 import {
-  reviewItemForUser,
-  reviewItemNeedsInput,
-  reviewItemOwnedByConversation,
-} from "@/chat/review-items/access";
+  inboxItemForUser,
+  inboxItemNeedsInput,
+  inboxItemOwnedByConversation,
+} from "@/chat/inbox-items/access";
 import type { JuniorDatabase } from "@/db/db";
-import { juniorConversations, juniorReviewItems } from "@/db/schema";
+import { juniorConversations, juniorInboxItems } from "@/db/schema";
 
 /**
  * The most Conversations of one tree whose Watches a read checks, newest
@@ -37,10 +37,10 @@ export type ConversationTreeRead = {
  * a Turn waits on the User to sign in.
  */
 function needsUserSql(userId: string) {
-  return sql<boolean>`(exists (select 1 from ${juniorReviewItems} where ${and(
-    reviewItemOwnedByConversation(juniorConversations.conversationId),
-    reviewItemNeedsInput(),
-    reviewItemForUser(userId),
+  return sql<boolean>`(exists (select 1 from ${juniorInboxItems} where ${and(
+    inboxItemOwnedByConversation(juniorConversations.conversationId),
+    inboxItemNeedsInput(),
+    inboxItemForUser(userId),
   )}) or ${awaitsAuthorizationFrom(juniorConversations.conversationId, userId)})`;
 }
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildSandboxInput } from "@/chat/tools/execution/build-sandbox-input";
+import { buildSandboxInput } from "@/chat/tool-support/build-sandbox-input";
 
 describe("buildSandboxInput", () => {
   it("normalizes bash command", () => {

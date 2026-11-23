@@ -21,7 +21,7 @@ let splitMinWidth: CGFloat = 761
 /// list beside the open item. Opening an item from the list replaces the
 /// open item; links inside it push over it in its own stack.
 struct SplitShell<Content: View>: View {
-  @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @ViewBuilder var list: Content
 
   var body: some View {
@@ -38,18 +38,18 @@ struct SplitShell<Content: View>: View {
     }
   }
 
-  /// Screens pushed over the open item: the rest of `app.path`.
+  /// Screens pushed over the open item: the rest of `window.path`.
   private var pushed: Binding<[Route]> {
     Binding(
-      get: { Array(app.path.dropFirst()) },
-      set: { app.path = Array(app.path.prefix(1)) + $0 })
+      get: { Array(window.path.dropFirst()) },
+      set: { window.path = Array(window.path.prefix(1)) + $0 })
   }
 
   @ViewBuilder private var openItem: some View {
-    if let route = app.path.first {
+    if let route = window.path.first {
       // A new identity per item, so each screen loads its own item.
       RouteScreen(route: route, column: .detailRoot).id(route)
-    } else if app.place == .conversations {
+    } else if window.place == .conversations {
       NewConversationPane()
     } else {
       Tokens.bg.ignoresSafeArea().toolbar(.hidden, for: .navigationBar)

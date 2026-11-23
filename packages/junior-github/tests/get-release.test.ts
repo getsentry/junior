@@ -37,7 +37,7 @@ describe("getRelease", () => {
       ),
     ).resolves.toMatchObject({
       release: {
-        html_url: RELEASE.html_url,
+        url: RELEASE.html_url,
         id: RELEASE.id,
         tag_name: "0.129.0",
       },

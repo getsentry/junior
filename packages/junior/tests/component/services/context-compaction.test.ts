@@ -55,7 +55,7 @@ describe("context compaction projection reset", () => {
   });
 
   it("compares repeated commits in their durable JSON form", async () => {
-    const { commitMessages, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const conversationId = "conversation-json-normalization";
     const priorMessages = [
@@ -85,7 +85,9 @@ describe("context compaction projection reset", () => {
       ...assistant("Lookup complete.", 2),
       usage: { input: 5 },
     });
-    await expect(loadProjection({ conversationId })).resolves.toHaveLength(3);
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toHaveLength(3);
   });
 
   it("keeps earlier user asks before the summary at Turn start", async () => {
@@ -193,7 +195,7 @@ describe("context compaction projection reset", () => {
   it("counts retained runtime context in the replacement hard limit", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");
-    const { commitMessages, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const conversationId = "conversation-active-pending-hard-limit";
     const original = [user("Keep this committed history.", 1)];
@@ -241,7 +243,9 @@ describe("context compaction projection reset", () => {
         async () => ({ summary: "s".repeat(200_000) }),
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
-    await expect(loadProjection({ conversationId })).resolves.toEqual(original);
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual(original);
   });
 
   it("retains split host context during active compaction", async () => {
@@ -366,7 +370,7 @@ describe("context compaction projection reset", () => {
             instruction,
             agents,
           ],
-          turnStartMessageIndex: earlierTurns.length,
+          isTurnMessage: (_messages, index) => index >= earlierTurns.length,
         },
         async () => ({ summary: "Short summary." }),
       );
@@ -408,7 +412,7 @@ describe("context compaction projection reset", () => {
   it("blocks the next provider request when hard-limit compaction fails", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");
-    const { commitMessages, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const conversationId = "conversation-active-hard-limit";
     const original = [user("Keep this committed history.", 1)];
@@ -437,6 +441,8 @@ describe("context compaction projection reset", () => {
         },
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
-    await expect(loadProjection({ conversationId })).resolves.toEqual(original);
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual(original);
   });
 });

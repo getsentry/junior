@@ -4,7 +4,8 @@
  * Every model request goes to the real AI Gateway. This observer only watches
  * agent requests (the ones that offer tools) and holds them while a test
  * reacts. It never changes a model request or its response, and it writes
- * a model answer only for a forced Guardian decision (`guardian.ts`). A test
+ * a model answer only for a forced Guardian decision or a Guardian fault
+ * (`guardian.ts`). A test
  * can make the provider reject one agent request with
  * `rejectNextModelRequest()` or `rejectNextModelRequestAsTooLong()`. Two
  * requests are not model requests. Image generation is a third-party image

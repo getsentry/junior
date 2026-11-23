@@ -1,4 +1,8 @@
-import type { AnyToolDefinition, ToolExposure } from "@/chat/tools/definition";
+import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
+import type {
+  AnyToolDefinition,
+  ToolExposure,
+} from "@/chat/tool-support/definition";
 
 export interface PlannedToolExposure {
   /** Tools that `searchTools` finds and `executeTool` runs. */
@@ -14,6 +18,22 @@ export function effectiveToolExposure(
   definition: AnyToolDefinition,
 ): ToolExposure {
   return definition.exposure ?? "direct";
+}
+
+/**
+ * Return the tool as a Turn lists it. A deferred tool that the Turn's tool
+ * config names in `direct` is in the model tool list. Other exposures do not
+ * change, so `direct` cannot reveal a Code Mode-only or hidden tool.
+ */
+export function listedToolExposure<T extends AnyToolDefinition>(
+  listedTools: Pick<TurnBehavior["tools"], "direct">,
+  name: string,
+  tool: T,
+): T {
+  return listedTools.direct?.includes(name) &&
+    effectiveToolExposure(tool) === "deferred"
+    ? { ...tool, exposure: "direct" }
+    : tool;
 }
 
 // The table in the `ToolExposure` JSDoc, as data.

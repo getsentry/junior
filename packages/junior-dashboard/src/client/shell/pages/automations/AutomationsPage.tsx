@@ -3,7 +3,7 @@ import { Link, useLocation, useSearchParams } from "react-router";
 import {
   automationListQuerySchema,
   type AutomationListItem,
-  type ReviewItemPayload,
+  type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { useAutomationPagesData } from "../../../api";
 import { Button, buttonVariants } from "../../../components/ui/button";
@@ -37,20 +37,15 @@ import {
   useAutomationAttentionData,
 } from "../../../inbox/inboxQueries";
 import { PageEnd } from "../../../inbox/PageEnd";
-import {
-  useReviewItemAction,
-  useReviewItemsData,
-} from "../../../inbox/queries";
-import {
-  RowDismissButton,
-  RowSnoozeButton,
-} from "../../../inbox/RowSnoozeDismiss";
+import { useInboxItemAction, useInboxItemsData } from "../../../inbox/queries";
+import { RowDismissButton } from "../../../inbox/RowDismissButton";
+import { RowSnoozeButton } from "../../../inbox/RowSnoozeDismiss";
 import { AutomationRow } from "./AutomationRow";
 import { AutomationScopeTabs, automationScopeOf } from "./AutomationScopeTabs";
 import { NAV_PAGES } from "../../../navPages";
 
 /** An Automation in To do, with its alert. */
-type TodoAlert = { alert: ReviewItemPayload; automation: AutomationListItem };
+type TodoAlert = { alert: InboxItemPayload; automation: AutomationListItem };
 
 const EMPTY: AutomationListItem[] = [];
 const NO_ALERTS: TodoAlert[] = [];
@@ -61,7 +56,7 @@ const NO_ALERTS: TodoAlert[] = [];
  * groups until then.
  */
 function todoAlerts(
-  alerts: readonly ReviewItemPayload[],
+  alerts: readonly InboxItemPayload[],
   automations: readonly AutomationListItem[],
 ): TodoAlert[] {
   const byId = new Map(
@@ -137,7 +132,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
   // To do holds the viewer's open alerts that are not snoozed, as the
   // Inbox's To do does. Filters narrow the whole list instead.
   const inbox = useInboxData();
-  const alerts = useReviewItemsData({
+  const alerts = useInboxItemsData({
     automationAlerts: true,
     enabled: props.enabled && !filtered,
     forViewer: true,
@@ -152,7 +147,7 @@ export function AutomationsPage(props: { enabled: boolean }) {
         ),
         attention.data?.automations ?? EMPTY,
       );
-  const dismiss = useReviewItemAction({ optimistic: true });
+  const dismiss = useInboxItemAction({ optimistic: true });
   const automations = pages.automations;
   const loading = !list && !query.error;
   const scroll = usePaneRowScroll("automations", Boolean(list));
@@ -286,10 +281,10 @@ const AutomationGroups = memo(function AutomationGroups(props: {
   automations: AutomationListItem[];
   /** The card open in place, if any. */
   expanded?: string;
-  onDismiss(alert: ReviewItemPayload): void;
+  onDismiss(alert: InboxItemPayload): void;
   onExpand(id: string | undefined): void;
   /** Snoozes the alert, as the Inbox does. */
-  onSnooze(alert: ReviewItemPayload, untilMs: number): void;
+  onSnooze(alert: InboxItemPayload, untilMs: number): void;
   search: string;
   todo: TodoAlert[];
 }) {
@@ -321,6 +316,7 @@ const AutomationGroups = memo(function AutomationGroups(props: {
             onToggle={() => toggleRow(automation.id)}
             rowKey={automation.id}
           >
+            <RowDismissButton onClick={() => props.onDismiss(alert)} />
             <RowSnoozeButton
               onOpenChange={(open) =>
                 setSnoozeId(open ? automation.id : undefined)
@@ -331,7 +327,6 @@ const AutomationGroups = memo(function AutomationGroups(props: {
               }}
               open={snoozeId === automation.id}
             />
-            <RowDismissButton onClick={() => props.onDismiss(alert)} />
           </InboxAutomationRow>
         ))}
       </InboxSection>

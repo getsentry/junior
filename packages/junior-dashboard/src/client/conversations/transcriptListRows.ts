@@ -2,11 +2,12 @@ import {
   isCollapsibleActivityEntry,
   quietTurnEntryKeys,
 } from "./TranscriptActivityGroup";
-import { reviewItemIdFromToolCall } from "../inbox/reviewItemFormat";
+import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
 import { isMemoryCaptureEvent } from "./conversationMemory";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
+import { calendarDay, calendarDaysAgo, formatTime } from "../time";
 
 type SubagentEntry = Extract<RenderedTranscriptEntry, { kind: "subagent" }>;
 
@@ -45,8 +46,10 @@ export const UNREAD_MARKER_KEY = "unread-marker";
  * do not match, and the "New" marker becomes its own row before the first
  * unread row. The Tasks of a Turn move to its end, so they do not split its
  * activity: under its reply, or in a Tasks row when it has no reply yet. A
- * question that Junior asked moves after them. Memory capture events do not
- * show: the turn context and the details panel hold a Turn's memories.
+ * question that Junior asked moves after them, and shows once: at its last
+ * ask, since a later ask with the same dedupe key updates the same item.
+ * Memory capture events do not show: the turn context and the details panel
+ * hold a Turn's memories.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -132,11 +135,15 @@ export function transcriptListRows(input: {
     tasks = [];
     pushAsks();
   };
+  const lastAskKeys = lastAskEntryKeys(entries);
   // Asks and Tasks move out of their place in the Turn. Memory captures
-  // drop out.
+  // and earlier asks of the same item drop out.
   const moveOut = (entry: RenderedTranscriptEntry): boolean => {
-    if (isAskEntry(entry)) asks.push(entry);
-    else if (isTaskEntry(entry)) tasks.push(entry);
+    if (isAskEntry(entry)) {
+      if (lastAskKeys.has(entry.key)) asks.push(entry);
+      return true;
+    }
+    if (isTaskEntry(entry)) tasks.push(entry);
     else if (!isCaptureEntry(entry)) return false;
     return true;
   };
@@ -215,7 +222,7 @@ export function liveActivityIndex(
 
 function askedItemId(entry: RenderedTranscriptEntry): string | undefined {
   return entry.kind === "tool"
-    ? reviewItemIdFromToolCall(entry.part)
+    ? inboxItemIdFromToolCall(entry.part)
     : undefined;
 }
 
@@ -223,7 +230,19 @@ function isAskEntry(entry: RenderedTranscriptEntry): boolean {
   return askedItemId(entry) !== undefined;
 }
 
-/** Find the row that records the question Junior asked with a Review item. */
+/** Return the key of the last ask entry of each Inbox item. */
+function lastAskEntryKeys(
+  entries: readonly RenderedTranscriptEntry[],
+): Set<string> {
+  const keys = new Map<string, string>();
+  for (const entry of entries) {
+    const itemId = askedItemId(entry);
+    if (itemId !== undefined) keys.set(itemId, entry.key);
+  }
+  return new Set(keys.values());
+}
+
+/** Find the row that records the question Junior asked with an Inbox item. */
 export function askRowIndex(
   rows: readonly TranscriptListRow[],
   itemId: string,
@@ -407,4 +426,53 @@ function stableActivityGroupKey(args: {
     args.knownKeys.set(entryKey, groupKey);
   }
   return groupKey;
+}
+
+function entryTimestamp(
+  entry: RenderedTranscriptEntry | undefined,
+): number | undefined {
+  if (!entry) return undefined;
+  return entry.kind === "message" ? entry.message.timestamp : entry.timestamp;
+}
+
+function rowTimestamp(row: TranscriptListRow): number | undefined {
+  if (row.kind === "unread_marker") return undefined;
+  if (row.kind === "entry") return entryTimestamp(row.entry);
+  return entryTimestamp(row.entries[0]);
+}
+
+/**
+ * Label the first row of each calendar day: `Today`, `Yesterday`, then the
+ * weekday and date. Returns labels by row index.
+ */
+export function transcriptDayLabels(
+  rows: readonly TranscriptListRow[],
+  nowMs: number,
+  timeZone: string,
+): Map<number, string> {
+  const labels = new Map<number, string>();
+  const nowDay = calendarDay(nowMs, timeZone);
+  let lastDay: number | undefined;
+  for (const [index, row] of rows.entries()) {
+    const time = rowTimestamp(row);
+    if (time === undefined) continue;
+    const day = calendarDay(time, timeZone);
+    if (day === lastDay) continue;
+    lastDay = day;
+    const days = calendarDaysAgo(time, nowDay, timeZone);
+    labels.set(
+      index,
+      days <= 0
+        ? "Today"
+        : days === 1
+          ? "Yesterday"
+          : formatTime(time, {
+              day: "numeric",
+              month: "short",
+              timeZone,
+              weekday: "long",
+            }),
+    );
+  }
+  return labels;
 }

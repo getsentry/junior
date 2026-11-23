@@ -3,8 +3,8 @@ import type {
   CompleteConversationTurnInput,
   FailConversationTurnInput,
 } from "@/chat/conversations/turn-lifecycle";
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
-import { getConversationEventStore } from "@/chat/db";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
+
 import type { AgentRunOutcome } from "@/chat/runtime/agent-run-outcome";
 import type { AgentRunner } from "@/chat/runtime/agent-runner";
 import type { AgentRunResult } from "@/chat/services/turn-result";
@@ -69,9 +69,7 @@ export async function finishTurn(
   turnId: string,
   saved: SavedTurnResult,
 ): Promise<void> {
-  const lifecycle = new ConversationTurnLifecycleService(
-    getConversationEventStore(),
-  );
+  const lifecycle = getTurnLifecycle();
   const common = {
     conversationId,
     createdAtMs: saved.finishedAtMs ?? Date.now(),

@@ -1,3 +1,4 @@
+import { searchCatalogTools } from "@/chat/tool-support/catalog-search";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import {
@@ -11,10 +12,9 @@ import { githubPlugin } from "@sentry/junior-github";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { closeDb } from "@/chat/db";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
-import { searchCatalogTools } from "@/chat/tools/search-tools";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import { planToolExposure } from "@/chat/tool-exposure";
 
 const rootTurnTools = turnBehavior({
@@ -66,8 +66,8 @@ const RANKING_CASES = [
   ["read one conversation event", "conversations", "readConversationEvent"],
   ["list active watches", "resource-watches", "listWatches"],
   ["stop watching a resource", "resource-watches", "stopWatchingResources"],
-  ["find open review items", "inbox", "searchReviewItems"],
-  ["update a review item", "inbox", "updateReviewItem"],
+  ["find open inbox items", "inbox", "searchInboxItems"],
+  ["update an inbox item", "inbox", "updateInboxItem"],
   ["list automations", "automations", "searchAutomations"],
   // Synonyms and abbreviations.
   ["fetch issue details", "github", "github_getIssue"],

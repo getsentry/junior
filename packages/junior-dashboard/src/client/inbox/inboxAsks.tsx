@@ -1,11 +1,11 @@
-import type { ReviewItemPayload } from "@sentry/junior/api/schema";
+import type { InboxItemPayload } from "@sentry/junior/api/schema";
 import { objectPresentation } from "@sentry/junior-plugin-api";
 import { objectToneClass } from "../components/ObjectIcon";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import { AskKindIcon } from "./askKind";
 import { inboxItemKind } from "./inboxModel";
-import { itemNeedsViewer } from "./reviewItemFormat";
+import { itemNeedsViewer } from "./inboxItemFormat";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
 type Annotation = NonNullable<Conversation["sidebarAnnotations"]>[number];
@@ -14,6 +14,7 @@ const PLURALS: Record<string, string> = {
   Approval: "Approvals",
   FYI: "FYIs",
   Question: "Questions",
+  "To do for you": "To dos for you",
 };
 
 // The kind of a pull request ask in short words, before its change's title.
@@ -45,10 +46,7 @@ export type AskPill = {
 
 // The change a pull request ask names: its saved linked work when the
 // Conversation has it, else the item's own subject.
-function askChange(
-  item: ReviewItemPayload,
-  annotations: readonly Annotation[],
-) {
+function askChange(item: InboxItemPayload, annotations: readonly Annotation[]) {
   const url = item.subject?.url ?? item.subject?.id;
   const work = url
     ? annotations.find((annotation) => annotation.url === url)
@@ -74,7 +72,7 @@ function askChange(
  * request state with its change, or FYI. Repeats fold into a count.
  */
 export function askPills(
-  items: readonly ReviewItemPayload[],
+  items: readonly InboxItemPayload[],
   annotations: readonly Annotation[],
 ): AskPill[] {
   const pills = new Map<string, AskPill>();

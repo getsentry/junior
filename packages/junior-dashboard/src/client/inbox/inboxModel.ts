@@ -1,7 +1,8 @@
 import type {
   AutomationListItem,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
+import { parsePath } from "react-router";
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import type { Conversation } from "../types";
@@ -12,20 +13,19 @@ import {
   itemNeedsViewer,
   itemStackKey,
   itemUpForGrabs,
-  reviewItemStatusLabel,
-} from "./reviewItemFormat";
+  inboxItemStatusLabel,
+} from "./inboxItemFormat";
 
 /**
  * The Inbox entries in the pane, as in Google Inbox. Each one names a list
  * in the main area: the Inbox, Snoozed, Done, Conversations, then the asks
- * by type.
+ * by type. The viewer's pull requests are in Code.
  */
 export type InboxView =
   | "conversations"
   | "decisions"
   | "done"
   | "inbox"
-  | "prs"
   | "snoozed";
 
 const INBOX_VIEWS: readonly InboxView[] = [
@@ -33,7 +33,6 @@ const INBOX_VIEWS: readonly InboxView[] = [
   "decisions",
   "done",
   "inbox",
-  "prs",
   "snoozed",
 ];
 
@@ -43,7 +42,6 @@ export const INBOX_VIEW_LABELS: Record<InboxView, string> = {
   decisions: "Decisions",
   done: "Done",
   inbox: "Inbox",
-  prs: "Pull requests",
   snoozed: "Snoozed",
 };
 
@@ -54,42 +52,53 @@ export function parseInboxView(value: string | null): InboxView {
 
 /** Read the entry of a list path, such as the return path of a Back. */
 export function inboxViewOfPath(path: string): InboxView {
-  return parseInboxView(new URLSearchParams(path.split("?")[1]).get("view"));
+  return parseInboxView(
+    new URLSearchParams(parsePath(path).search).get("view"),
+  );
 }
 
-/** The list path of an entry, with one item's row expanded when given. */
+/**
+ * The list path of an entry, with one item's row expanded when given, and
+ * its snooze dialog open when `snooze` is set.
+ */
 export function inboxViewPath(
   view: InboxView,
-  options: { itemId?: string } = {},
+  options: { itemId?: string; snooze?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
-  // Phones show the entries at `/`, so an item link names its entry.
+  // Phones show the entries at `/inbox`, so an item link names its entry.
   if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
+  if (options.itemId && options.snooze) params.set("snooze", "1");
   const search = params.toString();
-  return search ? `/?${search}` : "/";
+  return search ? `/inbox?${search}` : "/inbox";
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
-export function isCodeChangeItem(item: ReviewItemPayload): boolean {
+export function isCodeChangeItem(item: InboxItemPayload): boolean {
   return item.subject?.objectType === "code_change";
 }
 
 /** A question or approval that Junior asks with a form. */
-export function isDecisionItem(item: ReviewItemPayload): boolean {
+export function isDecisionItem(item: InboxItemPayload): boolean {
   return Boolean(item.request);
+}
+
+/** An item that shows a To-do for the viewer. */
+export function isTodoItem(item: InboxItemPayload): boolean {
+  return item.todoId !== undefined;
 }
 
 /** Keep the items that one bundle holds. */
 export function itemsInView(
-  items: readonly ReviewItemPayload[],
+  items: readonly InboxItemPayload[],
   view: "decisions" | "prs",
-): ReviewItemPayload[] {
+): InboxItemPayload[] {
   return items.filter(view === "prs" ? isCodeChangeItem : isDecisionItem);
 }
 
 /** A row for one item, as a stack or an item view shows it. */
-export function singleRow(item: ReviewItemPayload): InboxBundle {
+export function singleRow(item: InboxItemPayload): InboxBundle {
   return {
     conversationId: item.rootConversationId,
     items: [item],
@@ -111,7 +120,7 @@ function queueOrder(a: InboxBundle, b: InboxBundle): number {
 
 /** Build the rows of a bundle of items: one row per item, queue order. */
 export function viewRows(
-  items: readonly ReviewItemPayload[],
+  items: readonly InboxItemPayload[],
   view: "decisions" | "prs",
 ): InboxBundle[] {
   return itemsInView(items, view).map(singleRow).sort(queueOrder);
@@ -123,17 +132,17 @@ export function viewRows(
  * line. The notice stays open on its own: closing the action item does not
  * close it, and it then shows on its own again.
  */
-export function foldNotices(items: readonly ReviewItemPayload[]): {
+export function foldNotices(items: readonly InboxItemPayload[]): {
   /** The notices that fold into each action item, by the item's id. */
-  folded: ReadonlyMap<string, ReviewItemPayload[]>;
+  folded: ReadonlyMap<string, InboxItemPayload[]>;
   /** Every other item, in the same order. */
-  shown: ReviewItemPayload[];
+  shown: InboxItemPayload[];
 } {
-  const subjectKeys = (item: ReviewItemPayload) =>
+  const subjectKeys = (item: InboxItemPayload) =>
     [item.subject?.id, item.subject?.url].filter(
       (key): key is string => key !== undefined,
     );
-  const hosts = new Map<string, ReviewItemPayload>();
+  const hosts = new Map<string, InboxItemPayload>();
   for (const item of [...items].sort(
     (a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt),
   )) {
@@ -141,7 +150,7 @@ export function foldNotices(items: readonly ReviewItemPayload[]): {
     for (const key of subjectKeys(item))
       if (!hosts.has(key)) hosts.set(key, item);
   }
-  const folded = new Map<string, ReviewItemPayload[]>();
+  const folded = new Map<string, InboxItemPayload[]>();
   const shown = items.filter((item) => {
     if (item.status !== "open" || item.kind !== "notice") return true;
     const host = subjectKeys(item)
@@ -159,7 +168,7 @@ export function foldNotices(items: readonly ReviewItemPayload[]): {
  * stack with the newest notice first. Notices wait on no one, so they are
  * not in To do.
  */
-export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
+export function fyiRows(items: readonly InboxItemPayload[]): InboxBundle[] {
   return inboxBundles(
     items.filter((item) => item.status === "open" && item.kind === "notice"),
   ).sort(
@@ -174,7 +183,7 @@ export function fyiRows(items: readonly ReviewItemPayload[]): InboxBundle[] {
  * The item's card already names the subject, so the reference that plugin
  * titles add after ` · ` drops out.
  */
-export function foldedNoticeLabel(notice: ReviewItemPayload): string {
+export function foldedNoticeLabel(notice: InboxItemPayload): string {
   return notice.title.split(" · ")[0] || notice.title;
 }
 
@@ -217,9 +226,9 @@ export function timeGroups<Row>(
  * closed, newest closed first as the list reads them. Empty groups drop out.
  */
 export function doneSections(
-  items: readonly ReviewItemPayload[],
+  items: readonly InboxItemPayload[],
   nowMs: number,
-): { items: ReviewItemPayload[]; key: string; label: string }[] {
+): { items: InboxItemPayload[]; key: string; label: string }[] {
   return TIME_SECTIONS.map((section) => ({
     ...section,
     items: items.filter(
@@ -237,7 +246,7 @@ export function doneSections(
 const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 
 function pullRequestState(
-  item: ReviewItemPayload,
+  item: InboxItemPayload,
 ): (typeof PULL_REQUEST_STATES)[number] | "Other" {
   if (!isCodeChangeItem(item)) return "Other";
   const state = item.title.split(" · ")[0];
@@ -262,10 +271,7 @@ const PULL_REQUEST_STATE_TEXT: Record<
  * request state and number of its title, as in "GitHub asks you to review
  * #91." under "Review requested · #91". `text` leaves out the subject URL.
  */
-export function textRepeatsHead(
-  item: ReviewItemPayload,
-  text: string,
-): boolean {
+export function textRepeatsHead(item: InboxItemPayload, text: string): boolean {
   const state = pullRequestState(item);
   if (state === "Other") return false;
   const number = item.title.slice(item.title.indexOf(" · ") + 3);
@@ -277,10 +283,12 @@ export function textRepeatsHead(
 
 /**
  * What one item is, as its row says: Question, Approval, the pull request
- * state that a plugin ask names, or FYI. A closed item says how it closed.
+ * state that a plugin ask names, To do for you, or FYI. A closed item says
+ * how it closed.
  */
-export function inboxItemKind(item: ReviewItemPayload): string {
-  if (item.status !== "open") return reviewItemStatusLabel(item);
+export function inboxItemKind(item: InboxItemPayload): string {
+  if (item.status !== "open") return inboxItemStatusLabel(item);
+  if (item.todoId !== undefined) return "To do for you";
   if (item.kind === "notice") return "FYI";
   if (item.request) return "Question";
   const state = pullRequestState(item);
@@ -360,7 +368,7 @@ export function automationAttentionGroup(
 export function sweepOf(
   rows: readonly InboxBundle[],
   isPinned: (conversationId: string | undefined) => boolean,
-): ReviewItemPayload[] {
+): InboxItemPayload[] {
   return rows
     .filter((row) => !isPinned(row.conversationId))
     .flatMap((row) => row.items)
@@ -382,7 +390,7 @@ export function fyiCount(count: number): string {
  * end.
  */
 export function itemRowSubtitle(
-  item: Pick<ReviewItemPayload, "subject" | "title">,
+  item: Pick<InboxItemPayload, "subject" | "title">,
   conversationTitle: string | undefined,
 ): string | undefined {
   const subject = item.subject?.title;
@@ -402,7 +410,7 @@ export function itemRowSubtitle(
  * linked work saved it. Undefined when that work has no size.
  */
 export function subjectSize(
-  item: Pick<ReviewItemPayload, "subject">,
+  item: Pick<InboxItemPayload, "subject">,
   conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
 ): CodeChangeSize | undefined {
   const url = item.subject?.url;
@@ -418,7 +426,7 @@ export function subjectSize(
  */
 export function childOf(
   rootTitle: string | undefined,
-  item: Pick<ReviewItemPayload, "addedByLabel">,
+  item: Pick<InboxItemPayload, "addedByLabel">,
 ): string | undefined {
   const child = item.addedByLabel;
   if (!child || !rootTitle || child === rootTitle) return child ?? rootTitle;
@@ -431,7 +439,7 @@ export function childOf(
  * neither has no row here.
  */
 function linkedInboxRowKey(
-  item: ReviewItemPayload,
+  item: InboxItemPayload,
   rows: { grabs: readonly InboxBundle[]; todo: readonly InboxBundle[] },
 ): string | undefined {
   const rowIn = (prefix: string, bundles: readonly InboxBundle[]) =>
@@ -455,16 +463,16 @@ export function linkedRowOf(
   view: InboxView,
   linkedId: string | undefined,
   rows: {
-    awake: readonly ReviewItemPayload[];
-    done: readonly ReviewItemPayload[];
-    foldedNotices: ReadonlyMap<string, readonly ReviewItemPayload[]>;
+    awake: readonly InboxItemPayload[];
+    done: readonly InboxItemPayload[];
+    foldedNotices: ReadonlyMap<string, readonly InboxItemPayload[]>;
     grabs: readonly InboxBundle[];
     snoozed: readonly InboxBundle[];
     todo: readonly InboxBundle[];
   },
 ): {
   key?: string;
-  open?: ReviewItemPayload;
+  open?: InboxItemPayload;
   rowItemId?: string;
   snoozedKey?: string;
 } {
@@ -486,7 +494,7 @@ export function linkedRowOf(
         ? linkedId
         : undefined;
     if (!open) return undefined;
-    if (view === "prs" || view === "decisions") return open.id;
+    if (view === "decisions") return open.id;
     if (view !== "inbox") return `conversation:${open.rootConversationId}`;
     if (open.kind === "notice") return `fyi:${open.id}`;
     return linkedInboxRowKey(open, rows);

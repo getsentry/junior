@@ -18,7 +18,7 @@ related:
 | `SLACK_SIGNING_SECRET`                      | Yes         | Verifies Slack request signatures.                                                                                                                                          |
 | `SLACK_BOT_TOKEN` or `SLACK_BOT_USER_TOKEN` | Yes         | Posts thread replies and calls Slack APIs.                                                                                                                                  |
 | `REDIS_URL`                                 | Yes         | Runtime state, locks, and durable background task records. Vercel Queues only deliver wakeups.                                                                              |
-| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting. The database needs pgvector.                                                                        |
+| `DATABASE_URL`                              | Yes         | Standard Neon/Vercel Postgres URL for Junior SQL records and reporting. The database needs the pgvector and pg_trgm extensions.                                             |
 | `JUNIOR_DATABASE_DRIVER`                    | No          | SQL client driver for Junior records: `neon` or `postgres`. Defaults to `neon`; set `postgres` for local Postgres or node-postgres deployments.                             |
 | `JUNIOR_SQL_STATEMENT_TIMEOUT_MS`           | No          | PostgreSQL runtime statement timeout in milliseconds. Defaults to `30000` (30 seconds); set `0` to disable. This does not limit `junior upgrade` migrations.                |
 | `JUNIOR_CONVERSATION_WORK_ENABLED`          | No          | Operational kill switch for queue processing and heartbeat recovery. Defaults to `true`; set `false` to acknowledge wakes without running or recovering conversation work.  |
@@ -54,9 +54,7 @@ related:
 | `JUNIOR_S3_ACCESS_KEY_ID`                   | Conditional | S3 access key ID. Required when the provider is `s3`.                                                                                                                       |
 | `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
 | `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
-| `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel` or `bullmq`. Defaults to `vercel`. Use `bullmq` only for local development.                                                   |
-| `JUNIOR_QUEUE_REDIS_URL`                    | Conditional | Redis for the BullMQ queue, such as `redis://localhost:6382`. Required when the provider is `bullmq`.                                                                       |
-| `JUNIOR_QUEUE_WORKER_CONCURRENCY`           | No          | Jobs that the BullMQ worker runs at the same time for each queue topic. A positive integer. Defaults to `4`.                                                                |
+| `JUNIOR_QUEUE_API_URL`                      | No          | Vercel Queues API base URL, such as `http://127.0.0.1:3100`. Use it only to point the queue client at a local queue server for development or tests.                       |
 
 For Vercel deployments, create a private Blob store and connect it to the
 project before using `sendFiles` or `publishImage`. Prefer an OIDC connection.
@@ -74,15 +72,13 @@ visible after you change to another provider.
 Junior loses them when the process stops, and each process has its own copy.
 Do not use it for a deployed app.
 
-`JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
-Redis. Local development then needs no Vercel Queues access. The app only
-sends jobs. One separate worker process runs them. `pnpm dev` starts that
-process, and the worker logs `queue.bullmq.worker.started` with its
-concurrency for each queue topic. Because the worker is a separate process,
-state must be in Redis, not memory. Install the optional `bullmq` and `redis` packages to use
-it. Junior loads them only when this provider is selected, so they never enter a
-deployed bundle. Give the queue its own Redis URL. If two dev servers share one
-Redis, each one can take the other's jobs.
+`JUNIOR_QUEUE_API_URL` sends queue API calls to a local server instead of
+Vercel Queues. Junior then sends a placeholder token and does not get a Vercel
+OIDC token. The local server is `startLocalVercelQueueServer` in
+`packages/junior/src/chat/queue/local-server.ts`. It keeps messages in memory
+and pushes each one to its callback route. In `nitro dev`, the
+`@sentry/junior/nitro` module starts this server and sets the variable, unless
+the variable is already set. Do not set this variable for a deployed app.
 
 Junior applies `JUNIOR_SQL_STATEMENT_TIMEOUT_MS` through PostgreSQL `statement_timeout` for both the Neon and node-postgres drivers. `junior upgrade` does not apply this runtime limit because schema migrations can legitimately take longer.
 
@@ -177,21 +173,11 @@ The egress proxy verifies Vercel-signed Sandbox OIDC tokens per request to authe
 
 Provider credentials and other plugin-specific variables live on each plugin setup page under [Extend](/extend/). Keep this page limited to core runtime configuration.
 
-## Brief generation
+## Conversation metadata
 
-Brief generation is off by default. Enable it in app configuration when each
-Conversation needs a durable Brief:
-
-```ts
-import { createApp } from "@sentry/junior";
-
-const app = await createApp({
-  briefs: { enabled: true },
-});
-```
-
-This option costs one fast-model call per completed Turn. The example app and
-`junior chat` enable it.
+After each completed Turn, Junior updates the summary of the Conversation and
+its embedding. Search, the dashboard, unfurls, and MCP read them. This is
+always on and costs one fast-model call and one embedding per completed Turn.
 
 ## Event embeddings
 
@@ -249,6 +235,9 @@ A child agent is a Task by default: only its parent gives it work. The model
 can start a Thread instead, a child agent that people can open and message
 directly. A parent can have at most 8 child agents with open work, Tasks and
 Threads alike. The model can archive a finished Thread with `archiveAgent`.
+
+A stopped conversation gives its child agents no new work: its `messageAgent`
+calls return `noted` and start nothing, and its `spawnAgent` calls fail.
 
 By default, a child agent of the root Conversation can start its own child
 agents, and those cannot start more. Set `limits.maxAgentDepth` to change how
@@ -422,6 +411,8 @@ likely to cost less than that write.
   turn reads a much smaller prefix, but it gets a summary in place of
   history that it would have kept in that turn, which can make an answer
   worse. When no summary is ready, or a turn runs, Junior warms as usual.
+  A request that is too large to store for warmups gets no warmups. It
+  still gets one check for a ready summary, which swaps it in or stops.
   `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns this off. The default is
   `true`.
 - While warming is on, Junior sends model requests with the short cache

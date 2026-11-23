@@ -149,6 +149,7 @@
       "files": ["src/**/*.ts", "src/**/*.tsx"],
       "rules": {
         "junior/no-regex-url-parsing": "error",
+        "junior/no-split-url-query": "error",
         "junior/no-value-switch": "error"
       }
     },
@@ -186,7 +187,6 @@
         "src/client/components/ProfileMenu.tsx",
         "src/client/components/layout/DashboardHeader.tsx",
         "src/client/components/layout/NavRail.tsx",
-        "src/client/conversations/HomeSummary.tsx",
         "src/client/pages/automations/AutomationsPageLayout.tsx",
         "src/client/pages/code/RepositoryPage.tsx",
         "src/client/primaryNav.ts"

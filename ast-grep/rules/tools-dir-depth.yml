@@ -1,0 +1,12 @@
+# A `tools` directory has at most one collection level:
+# `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`.
+# The `build-tools` repo skill explains the layout.
+id: tools-dir-depth
+language: TypeScript
+severity: error
+message: A tools directory has at most one collection level. Move this file to tools/<tool>.ts or tools/<collection>/<tool>.ts.
+files:
+  - packages/*/src/**/tools/*/*/**/*.ts
+  - apps/**/src/**/tools/*/*/**/*.ts
+rule:
+  kind: program

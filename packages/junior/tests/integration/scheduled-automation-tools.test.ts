@@ -11,7 +11,7 @@ import {
   automationToolContext,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   claimDueScheduledRun,
   markScheduledRunFailed,
@@ -25,10 +25,10 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import type { ToolExecuteOptions } from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { ToolExecuteOptions } from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { readUserTimezone } from "@/chat/identities/sql";
@@ -1156,8 +1156,8 @@ describe("Scheduled automation tools", () => {
         automation_id: automationId,
       }),
     ).rejects.toThrow("Only the creator can resume it or run it now.");
-    // A reader can move it to a public channel that they name. Junior joins
-    // the channel, and the move drops the creator's credentials.
+    // A reader can move it to a public channel that they name and that
+    // Junior is in. The move drops the creator's credentials.
     queueSlackApiResponse("conversations.info", {
       body: conversationsInfoOk({ channelId: "CPRIVATE", isPrivate: true }),
     });
@@ -1175,6 +1175,15 @@ describe("Scheduled automation tools", () => {
         automation_id: automationId,
         destination: "<#CPUBLIC|security-alerts>",
       }),
+    ).rejects.toThrow("You are not in that channel.");
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: true }),
+    });
+    await expect(
+      executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
+        automation_id: automationId,
+        destination: "<#CPUBLIC|security-alerts>",
+      }),
     ).resolves.toMatchObject({
       automation: {
         credential_mode: "system",
@@ -1182,9 +1191,7 @@ describe("Scheduled automation tools", () => {
         conversation_access: { audience: "channel", visibility: "public" },
       },
     });
-    expect(getCapturedSlackApiCalls("conversations.join")).toMatchObject([
-      { params: { channel: "CPUBLIC" } },
-    ]);
+    expect(getCapturedSlackApiCalls("conversations.join")).toEqual([]);
     await expect(
       executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
         automation_id: automationId,
@@ -2507,11 +2514,15 @@ describe("Scheduled automation tool wiring via createTools", () => {
       queueSlackApiResponse("conversations.info", {
         body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: false }),
       });
+      await expect(createFromWeb("<#CPUBLIC>")).rejects.toThrow(
+        "You are not in that channel.",
+      );
+      queueSlackApiResponse("conversations.info", {
+        body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: true }),
+      });
       const shared = await createFromWeb("<#CPUBLIC>");
       expect(shared.automation.is_creator).toBe(true);
-      expect(getCapturedSlackApiCalls("conversations.join")).toMatchObject([
-        { params: { channel: "CPUBLIC" } },
-      ]);
+      expect(getCapturedSlackApiCalls("conversations.join")).toEqual([]);
       await expect(
         readStoredTask(fixture.sql.db(), shared.automation.id),
       ).resolves.toMatchObject({
@@ -2553,7 +2564,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
             channelId: "C123",
             threadTs: "1700000000.100000",
           },
-          source: { kind: "agent_invocation" },
+          source: { kind: "parent_message" },
           destination: {
             platform: "slack",
             teamId: TEAM_ID,

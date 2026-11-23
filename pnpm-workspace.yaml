@@ -12,11 +12,17 @@ catalog:
   "@sentry/node": 11.14.0
   "@sentry/server-utils": 11.14.0
   "@sentry/starlight-theme": ^0.9.1
+  # Markdown parsing, shared by the plugin API helpers and the plugins.
+  "@types/mdast": ^4.0.4
   # Node 24 is the supported runtime in development, CI, and deployments.
   "@types/node": ^24.19.2
   "@vitest/coverage-v8": 4.1.12
   drizzle-kit: ^0.31.8
   drizzle-orm: ^0.45.4
+  mdast-util-from-markdown: ^2.1.0
+  mdast-util-gfm: ^3.1.0
+  micromark-extension-gfm: ^3.0.0
+  p-limit: ^7.3.3
   tsdown: 0.23.7
   typescript: 7.0.2
   vitest: ^4.1.12
@@ -75,7 +81,6 @@ allowBuilds:
   "@parcel/watcher": true
   agent-browser: true
   esbuild: true
-  msgpackr-extract: false
   msw: true
   node-liblzma: false
   protobufjs: true

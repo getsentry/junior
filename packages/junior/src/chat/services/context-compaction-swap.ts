@@ -43,12 +43,13 @@ import {
   getAgentContextCompactionTriggerTokens,
   getAgentContextInputLimitTokens,
 } from "@/chat/services/context-budget";
-import { appendPlanSnapshot } from "@/chat/plan/snapshot";
+import { appendTodosSnapshot } from "@/chat/todos/snapshot";
 import {
   compactActiveContextIfNeeded,
   estimateHistoryTokens,
   estimateReplacementTokens,
   renderCompactionSummary,
+  replacementSeqs,
   selectRetainedUserMessageEntries,
   summarizedRuntimeContextMessage,
   userMessage,
@@ -394,7 +395,7 @@ async function applyPreparedSummary(
     ...retained,
     {
       message: userMessage(
-        await appendPlanSnapshot(
+        await appendTodosSnapshot(
           renderCompactionSummary(prepared.summary),
           args.conversationId,
         ),
@@ -474,5 +475,9 @@ async function applyPreparedSummary(
     "app.compaction.outcome": "applied",
     "app.compaction.summary_chars": prepared.summary.length,
   });
-  return { compacted: true, piMessages: messages };
+  return {
+    compacted: true,
+    piMessages: messages,
+    piMessageSeqs: replacementSeqs(replacement, result),
+  };
 }
