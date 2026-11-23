@@ -26,5 +26,5 @@ export function logFailOpenFailure(
     });
     return;
   }
-  log?.error(message, attributes);
+  log?.error(message, attributes, error);
 }
