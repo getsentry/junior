@@ -28,7 +28,8 @@ class PostgresExecutor implements JuniorSqlExecutor {
   }
 
   db(): JuniorDatabase {
-    return drizzle(this.queryClient(), {
+    return drizzle({
+      client: this.queryClient(),
       schema: juniorSqlSchema,
     }) as JuniorDatabase;
   }

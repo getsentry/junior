@@ -19,7 +19,8 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   }
 
   db(): JuniorDatabase {
-    return drizzle(this.client, {
+    return drizzle({
+      client: this.client,
       schema: juniorSqlSchema,
     }) as JuniorDatabase;
   }
@@ -58,7 +59,10 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(drizzle(this.client, { schema: juniorSqlSchema }), config);
+    await migrate(
+      drizzle({ client: this.client, schema: juniorSqlSchema }),
+      config,
+    );
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
