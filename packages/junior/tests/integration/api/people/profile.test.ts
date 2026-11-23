@@ -16,12 +16,13 @@ import {
   juniorConversationMetrics,
   juniorConversations,
   juniorIdentities,
+  juniorUsers,
 } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   recordTurn,
@@ -508,11 +509,31 @@ describe("people profile API", () => {
           .values(metrics.slice(offset, offset + 1_000));
       }
 
+      // Other people, so a plan that groups by every user in the table costs
+      // its active-days subquery once for each of them.
+      await fixture.sql
+        .db()
+        .insert(juniorUsers)
+        .values(
+          Array.from({ length: 300 }, (_, index) => ({
+            id: `other-${index}`,
+            primaryEmail: `other-${index}@example.com`,
+            primaryEmailNormalized: `other-${index}@example.com`,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        );
+      await fixture.sql.query("analyze");
+
       // The seed Conversation has no Turn, so it does not count.
       // Aggregates in one round, then the recent rows' access and usage.
-      const report = await expectSqlBudget(
-        () => readPeopleProfileFromSql("aggregate@example.com"),
-        { statements: 10, serialRounds: 2 },
+      const report = await expectPlanCost(
+        () =>
+          expectSqlBudget(
+            () => readPeopleProfileFromSql("aggregate@example.com"),
+            { statements: 10, serialRounds: 2 },
+          ),
+        10_000,
       );
       expect(report.totals).toMatchObject({
         conversations: 5_000,
