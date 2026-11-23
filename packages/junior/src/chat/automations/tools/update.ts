@@ -12,7 +12,6 @@ import {
 } from "@/chat/automations/edit-schema";
 import type { AutomationTask } from "@/chat/automations/task";
 import type { TaskCandidate } from "@/chat/automations/read";
-import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import { automationRevision } from "@/chat/automations/revision";
 import {
   requireToolAutomation,
@@ -50,7 +49,7 @@ import { getConversationAccess } from "@/chat/scheduled-automations/tool-support
 import { moveTaskOutcomes, resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { taskOutcomeInputSchema } from "@/chat/task-outcomes-schema";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
@@ -218,7 +217,11 @@ async function updateEvent(
     automationRevision(task),
     editor,
   );
-  if (!saved) throw new ToolInputError("Automation was not found.");
+  if (!saved) {
+    throw new ToolInputError(
+      "Automation was not found: it was deleted. No change to the call can fix this.",
+    );
+  }
   return { ...current, task: saved };
 }
 
@@ -334,7 +337,9 @@ export function createUpdateAutomationTool(
         );
       }
       if (Object.keys(input).length === 0 && status === undefined) {
-        throw new ToolInputError("Automation update requires a change.");
+        throw new ToolInputError(
+          "Automation update requires a change. Set status or at least one field to change.",
+        );
       }
       if (current.kind === "scheduled" && current.task.status === "completed") {
         throw new ToolInputError(
@@ -360,14 +365,10 @@ export function createUpdateAutomationTool(
         );
       }
       const editor = automationEditor(caller.viewer, current);
-      const editedTask = editedAutomationTask(current.task.task, input);
-      if (editedTask) {
-        requireAutomationTaskText(editedTask, {
-          creator: current.task.createdBy,
-          requester: editor,
-          current: current.task.task,
-        });
-      }
+      const editedTask = editedAutomationTask(current.task.task, input, {
+        creator: current.task.createdBy,
+        requester: editor,
+      });
       let saved = current;
       if (Object.keys(input).length > 0) {
         saved =

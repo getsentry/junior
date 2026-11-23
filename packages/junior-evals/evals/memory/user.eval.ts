@@ -1,5 +1,4 @@
 import { defineJuniorPlugins } from "@sentry/junior";
-import { memoryPlugin } from "@sentry/junior-memory";
 import { describe, expect } from "vitest";
 import {
   evalDocsPlugin,
@@ -168,7 +167,7 @@ describe("User Memory", () => {
       kind: "knowledge",
     });
     const { run } = await agent({
-      plugins: defineJuniorPlugins([memoryPlugin(), evalDocsPlugin]),
+      plugins: defineJuniorPlugins([evalDocsPlugin]),
     });
     const conversation = await run(
       slackMention(
@@ -208,7 +207,7 @@ describe("User Memory", () => {
       kind: "knowledge",
     });
     const { run } = await agent({
-      plugins: defineJuniorPlugins([memoryPlugin(), evalDocsPlugin]),
+      plugins: defineJuniorPlugins([evalDocsPlugin]),
     });
     const conversation = await run(
       slackMention("you have docs access already, that's not it"),

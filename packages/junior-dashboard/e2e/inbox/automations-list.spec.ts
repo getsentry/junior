@@ -1,5 +1,5 @@
 import { LIST_NOW, automationReport } from "./automation-fixture";
-import { automationAlert, license, mockReviewItems } from "./inbox-fixture";
+import { automationAlert, license, mockInboxItems } from "./inbox-fixture";
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { NOW } from "../../src/mock-reporting/fixtures";
 import { expect, test } from "../test";
@@ -119,6 +119,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(details).toHaveCount(0);
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
 
+    // The open page also reads the Automation's versions.
+    const versionsRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname ===
+        "/api/automations/scheduled-1/versions",
+    );
     // A pointer that rests on a row loads its page, so the open reuses it.
     await rows.first().hover();
     await expect
@@ -132,6 +138,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("heading", { name: "Weekly project summary" }),
     ).toBeVisible();
     expect(summaryReads).toHaveLength(2);
+    await versionsRead;
   });
 
   test("To do lists an alert that the Inbox has not loaded yet", async ({
@@ -158,7 +165,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: `item-ask-${index}`,
       title: `Approve rollout step ${index}`,
     }));
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [...asks, automationAlert("scheduled-1", "Weekly project summary")],
       pageSize: 10,
     });

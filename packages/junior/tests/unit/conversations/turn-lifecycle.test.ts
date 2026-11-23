@@ -1,3 +1,4 @@
+import { createConversationWorkQueueTestAdapter } from "../../fixtures/conversation-work";
 import { describe, expect, it } from "vitest";
 import type {
   ConversationEvent,
@@ -155,7 +156,9 @@ class MemoryConversationEventStore implements ConversationEventStore {
 describe("conversation turn lifecycle", () => {
   it("records start retries once with stable correlation", async () => {
     const store = new MemoryConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(store);
+    const lifecycle = new ConversationTurnLifecycleService(store, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
     const input = {
       conversationId: "local:test:turn",
       createdAtMs: 100,
@@ -182,7 +185,9 @@ describe("conversation turn lifecycle", () => {
 
   it("keeps the first terminal fact across retries and conflicts", async () => {
     const store = new MemoryConversationEventStore();
-    const lifecycle = new ConversationTurnLifecycleService(store);
+    const lifecycle = new ConversationTurnLifecycleService(store, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
 
     await lifecycle.complete({
       conversationId: "local:test:turn",
@@ -222,7 +227,9 @@ describe("conversation turn lifecycle", () => {
       attempts += 1;
       throw appendError;
     };
-    const lifecycle = new ConversationTurnLifecycleService(store);
+    const lifecycle = new ConversationTurnLifecycleService(store, {
+      watchQueue: createConversationWorkQueueTestAdapter,
+    });
 
     await expect(
       lifecycle.start({

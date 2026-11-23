@@ -99,7 +99,9 @@ export const vercelDeploymentTool = definePluginTool({
       const message = `Vercel project lookup failed with HTTP ${response.status}`;
       // Missing project is model-repairable. Auth, rate limit, and 5xx stay system errors.
       if (response.status === 404) {
-        throw new PluginToolInputError(message);
+        throw new PluginToolInputError(
+          `${message}. Check project, and set team when the project belongs to a team.`,
+        );
       }
       throw new Error(message);
     }

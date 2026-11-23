@@ -3,6 +3,7 @@ import * as z from "zod";
 import { breakerStates, connectedState } from "@/chat/cache-warming/request";
 import { botConfig } from "@/chat/config";
 import { mapBounded } from "@/chat/fan-out";
+import { withLock } from "@/chat/state/locks";
 import {
   sentryTelemetry,
   telemetryResponse,
@@ -29,6 +30,8 @@ const FRESH_MS = 60_000;
 const STALE_MS = 60 * 60 * 1_000;
 // Sentry allows few events reads at once per org.
 const READ_CONCURRENCY = 2;
+// How long a page load waits for another load's refresh to finish.
+const REFRESH_WAIT_MS = 15_000;
 
 const cacheKey = (window: CacheHealthWindow) =>
   `junior:cache_warming:health:${window}`;
@@ -60,6 +63,9 @@ const CALL_AGGREGATES = [
 const IDLE_PERIOD_METRIC =
   "cache_warming.idle_period.saved_usd,distribution,none";
 const BREAKER_METRIC = "sum(value,cache_warming.breaker,counter,none)";
+// Sentry resolves an untyped custom attribute as a string and rejects
+// `sum(app.cost.total_usd)` with a 400, so the cost names its type.
+const WARMUP_COST = "sum(tags[app.cost.total_usd,number])";
 
 const count = (value: unknown) =>
   typeof value === "number" && Number.isFinite(value)
@@ -130,7 +136,7 @@ function windowReads(
         "app.cache_warming.turn_ending",
         "app.cache_warming.skip_reason",
         "count()",
-        "sum(app.cost.total_usd)",
+        WARMUP_COST,
       ],
       per_page: 100,
     }),
@@ -175,7 +181,7 @@ function warmupTotals(body: unknown): CacheHealthData["warmups"] {
   let costUsd = 0;
   for (const row of tableSchema.parse(body).data) {
     const rows = count(row["count()"]);
-    costUsd += usd(row["sum(app.cost.total_usd)"]);
+    costUsd += usd(row[WARMUP_COST]);
     const outcome = label(row["app.cache_warming.outcome"]);
     if (outcome === "skipped") {
       const reason = label(row["app.cache_warming.skip_reason"]) ?? "unknown";
@@ -258,9 +264,16 @@ async function readWindow(
   window: CacheHealthWindow,
   nowMs: number,
 ): Promise<SentryHealth | { status: "rate_limited" | "denied" }> {
+  let stopped: SentryTelemetryResponse<unknown> | undefined;
   const answers = await mapBounded(
     windowReads(telemetry, window, nowMs),
-    (read) => read(),
+    async (read) => {
+      // Once Sentry refuses one read, the rest would spend quota for nothing.
+      if (stopped) return stopped;
+      const answer = await read();
+      if (answer.status !== "ok") stopped ??= answer;
+      return answer;
+    },
     READ_CONCURRENCY,
   );
   const bodies: unknown[] = [];
@@ -282,11 +295,36 @@ export async function warmedBreakerStates() {
   ]);
 }
 
+const isFresh = (health: SentryHealth, nowMs: number) =>
+  nowMs - Date.parse(health.fetchedAt) < FRESH_MS;
+
+// Read the window again unless another load just did. When Sentry rate
+// limits the read, the last answer is served, marked stale.
+async function refreshWindow(
+  state: Awaited<ReturnType<typeof connectedState>>,
+  telemetry: SentryTelemetry,
+  window: CacheHealthWindow,
+  nowMs: number,
+): Promise<SentryHealth | { status: "rate_limited" | "denied" }> {
+  const cached = await state.get<SentryHealth>(cacheKey(window));
+  if (cached && isFresh(cached, nowMs)) return cached;
+  const read = await readWindow(telemetry, window, nowMs);
+  if (read.status === "ok") {
+    await state.set(cacheKey(window), read, STALE_MS);
+    return read;
+  }
+  if (read.status === "rate_limited" && cached) {
+    return { ...cached, stale: true };
+  }
+  return read;
+}
+
 /**
  * Read the cache health of the last 24 hours or 7 days from Junior's own
  * Sentry telemetry. Page loads within a minute share one answer through the
- * state adapter. When Sentry rate limits a read, an answer up to an hour old
- * is served, marked stale. The breaker state is always live.
+ * state adapter, and one load at a time refreshes it. When Sentry rate limits
+ * a read, an answer up to an hour old is served, marked stale. The breaker
+ * state is always live.
  */
 export async function readCacheHealth(
   window: CacheHealthWindow,
@@ -298,19 +336,27 @@ export async function readCacheHealth(
   }
   const state = await connectedState();
   const cached = await state.get<SentryHealth>(cacheKey(window));
-  let health: SentryHealth;
-  if (cached && nowMs - Date.parse(cached.fetchedAt) < FRESH_MS) {
+  let health: SentryHealth | { status: "rate_limited" | "denied" | "busy" };
+  if (cached && isFresh(cached, nowMs)) {
     health = cached;
   } else {
-    const read = await readWindow(telemetry, window, nowMs);
-    if (read.status === "ok") {
-      await state.set(cacheKey(window), read, STALE_MS);
-      health = read;
-    } else if (read.status === "rate_limited" && cached) {
+    const refresh = await withLock(
+      state,
+      `${cacheKey(window)}:refresh`,
+      () => refreshWindow(state, telemetry, window, nowMs),
+      { waitMs: REFRESH_WAIT_MS },
+    );
+    if (refresh.acquired) {
+      health = refresh.value;
+    } else if (cached) {
+      // Another load's refresh is still running. Serve the old answer
+      // rather than read Sentry again.
       health = { ...cached, stale: true };
     } else {
-      return { status: read.status };
+      // Reading Sentry here too would bring back the overlapping reads.
+      health = { status: "busy" };
     }
   }
+  if (health.status !== "ok") return { status: health.status };
   return { ...health, breakers: await warmedBreakerStates() };
 }

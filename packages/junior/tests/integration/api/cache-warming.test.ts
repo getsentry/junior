@@ -55,7 +55,7 @@ function fakeSentryEvents(options: { status?: number } = {}) {
         "app.cache_warming.turn_ending": "reply",
         "app.cache_warming.skip_reason": null,
         "count()": 30,
-        "sum(app.cost.total_usd)": 1.5,
+        "sum(tags[app.cost.total_usd,number])": 1.5,
       },
       {
         "app.cache_warming.trigger": "tool_wait",
@@ -63,7 +63,7 @@ function fakeSentryEvents(options: { status?: number } = {}) {
         "app.cache_warming.turn_ending": null,
         "app.cache_warming.skip_reason": null,
         "count()": 2,
-        "sum(app.cost.total_usd)": 0.25,
+        "sum(tags[app.cost.total_usd,number])": 0.25,
       },
       {
         "app.cache_warming.trigger": "idle",
@@ -71,7 +71,7 @@ function fakeSentryEvents(options: { status?: number } = {}) {
         "app.cache_warming.turn_ending": "no_reply",
         "app.cache_warming.skip_reason": "unlikely_return",
         "count()": 9,
-        "sum(app.cost.total_usd)": null,
+        "sum(tags[app.cost.total_usd,number])": null,
       },
     ],
   };
@@ -405,16 +405,22 @@ describe("cache warming API", () => {
     });
     expect(sentry.reads).toHaveLength(6);
 
-    // A rate limited read serves the last answer, marked stale.
+    // Loads that find the answer old together share one refresh.
+    vi.setSystemTime(new Date("2031-05-09T08:31:10.000Z"));
+    await Promise.all([readHealth(person), readHealth(person)]);
+    expect(sentry.reads).toHaveLength(12);
+
+    // A rate limited read serves the last answer, marked stale, and stops
+    // the reads that have not started.
     mswServer.resetHandlers();
     const limited = fakeSentryEvents({ status: 429 });
-    vi.setSystemTime(new Date("2031-05-09T08:32:00.000Z"));
+    vi.setSystemTime(new Date("2031-05-09T08:32:30.000Z"));
     expect(await readHealth(person)).toMatchObject({
       status: "ok",
       stale: true,
-      fetchedAt: "2031-05-09T08:30:00.000Z",
+      fetchedAt: "2031-05-09T08:31:10.000Z",
     });
-    expect(limited.reads.length).toBeGreaterThan(0);
+    expect(limited.reads).toHaveLength(2);
 
     // A token that Sentry rejects is reported, not served from the cache.
     vi.stubEnv("SENTRY_READ_TOKEN", "sntrys_revoked");

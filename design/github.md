@@ -7,8 +7,11 @@ also wake a Conversation or run an Event automation.
 
 ## Intent
 
-- Junior carries its PR to the requester's review without asking
-  ([Attention](./attention.md)).
+- Junior carries its PR to the requester's review without asking. For a PR,
+  the next steps are review and merge, and Junior asks for a review only
+  when the required checks pass.
+- Junior owns the upkeep of its PRs, such as merge conflicts, failed
+  checks, and review feedback. It does that work and tells nobody.
 - Changes reach the code only through a PR, never a direct push to the
   default branch.
 - Junior never approves or merges a PR. A person merges it.
@@ -35,26 +38,36 @@ also wake a Conversation or run an Event automation.
 - Images in PRs, issues, and comments are links to public Junior images.
 - Junior can review a PR and request changes.
 - When the requester requests changes on a Junior PR, the PR asks for
-  their review again after Junior pushes new commits or marks the change
-  request addressed, and the required checks pass. A requester who approved
-  since is not asked.
-- Junior cannot fork or administer a repo, and never pushes to or deletes
-  the default branch.
+  their review again, in the Inbox and on GitHub, only when Junior marks
+  each comment of that change request addressed or declined and the
+  required checks pass. Pushes, merges of the base branch, comments, and
+  replies do not ask. When the requester comments or reviews, Junior acts
+  next, and the Inbox stops asking. A requester who approved since is not
+  asked. The Inbox item says why it asks: every comment is handled, or the
+  checks now pass.
+- Junior cannot fork or administer a repo, and never deletes the default
+  branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
   replies in that Conversation know it. When it is approved and can merge,
-  the requester gets a "Ready to merge" item, because a person merges.
+  the requester gets a "Ready to merge" Inbox item.
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 
 ## Gaps
 
-- Junior asks the requester to review again as soon as it pushes a fix or
-  marks a change request addressed, before the required checks pass. This
-  breaks "asks for a review only when the required checks pass".
-
+- A pull request that Junior opens ready for review asks for a review at
+  once, before the required checks pass. This breaks "asks for a review
+  only when the required checks pass".
+- Some asks are only a Slack message: a draft PR that waits for the
+  requester's review, and a decision on a watched issue. They add no Inbox
+  item. This breaks "there is one way to ask a person"
+  ([Inbox](./inbox.md)).
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior
   images".
+- A request for the signed-in GitHub user reads it with the requester's
+  account. This breaks "acts as its own App … not by using their
+  credentials".

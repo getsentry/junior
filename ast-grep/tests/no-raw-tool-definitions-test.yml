@@ -1,0 +1,9 @@
+id: no-raw-tool-definitions
+valid:
+  - "export const readFileTool = zodTool({ inputSchema, outputSchema, execute: async () => ({}) });"
+  - "export const searchTool = definePluginTool({ inputSchema: schema, async execute() { return {}; } });"
+  - "const piTool = { name, parameters: schema, execute: run };"
+  - "const options = { inputSchema };"
+invalid:
+  - "export const readFileTool = { description, inputSchema: schema, execute: async () => ({}) };"
+  - "export function createSearchTool() { return { inputSchema, async execute() { return {}; } }; }"

@@ -231,26 +231,26 @@ export function slackListsCreateOk(
           id: input.titleColumnId ?? "COL_TITLE",
           key: "task",
           name: "Task",
-          type: "rich_text",
+          type: "text",
           is_primary_column: true,
         },
         {
           id: input.completedColumnId ?? "COL_DONE",
-          key: "completed",
+          key: "todo_completed",
           name: "Completed",
-          type: "checkbox",
+          type: "todo_completed",
         },
         {
           id: input.assigneeColumnId ?? "COL_ASSIGNEE",
-          key: "assignee",
+          key: "todo_assignee",
           name: "Assignee",
-          type: "user",
+          type: "todo_assignee",
         },
         {
           id: input.dueDateColumnId ?? "COL_DUE",
-          key: "due_date",
+          key: "todo_due_date",
           name: "Due Date",
-          type: "date",
+          type: "todo_due_date",
         },
       ],
     },
@@ -473,6 +473,14 @@ export function dndInfoOk(window?: { startMs: number; endMs: number }) {
     next_dnd_start_ts: window ? Math.floor(window.startMs / 1000) : 1,
     next_dnd_end_ts: window ? Math.floor(window.endMs / 1000) : 1,
   });
+}
+
+/**
+ * Model https://docs.slack.dev/reference/methods/users.getPresence/ for
+ * another user: Slack returns only `presence`.
+ */
+export function usersGetPresenceOk(presence: "active" | "away" = "away") {
+  return slackOk({ presence });
 }
 
 /** Model the bot fields from https://docs.slack.dev/reference/methods/bots.info/. */

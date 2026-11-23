@@ -8,8 +8,9 @@ export {
 } from "../chat/attachments/input";
 export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
-  AGENT_REPLY_EVENT_TYPE,
+  AGENT_UPDATE_EVENT_TYPE,
   isAgentInvocationResultEventType,
+  isAgentUpdateEventType,
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
@@ -18,12 +19,12 @@ export {
   isEmptyUserInputAnswer,
   normalizeUserInputAnswer,
   USER_INPUT_NOTE,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/inbox-items/user-input-request";
 export type {
   UserInputAnswer,
   UserInputField,
   UserInputRequest,
-} from "../chat/tools/runtime/user-input-request";
+} from "../chat/inbox-items/user-input-request";
 export type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 export type { AutomationCard } from "../chat/automations/card";
 export type { AutomationTask } from "../chat/automations/task";
@@ -81,8 +82,6 @@ export type {
 } from "./schema/code";
 export {
   acceptedConversationMessageSchema,
-  forkConversationBodySchema,
-  forkConversationResponseSchema,
   conversationAuxiliaryCostsSchema,
   conversationDetailQuerySchema,
   CONVERSATION_DETAIL_VERSION_HEADER,
@@ -101,6 +100,10 @@ export {
   createConversationBodySchema,
   createConversationMessageBodySchema,
 } from "./schema/conversation";
+export {
+  forkConversationBodySchema,
+  forkConversationResponseSchema,
+} from "./schema/conversation-fork";
 export { activityPreviewText } from "./schema/activity-preview-text";
 export {
   attachmentUploadSchema,
@@ -263,15 +266,15 @@ export {
   watchParamsSchema,
 } from "./schema/watch";
 export {
-  conversationPlanItemSchema,
-  conversationPlanReportSchema,
-  planItemStatusBodySchema,
-} from "./schema/plan";
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoStatusBodySchema,
+} from "./schema/todos";
 export type {
-  ConversationPlanItem,
-  ConversationPlanReport,
-  PlanItemStatusBody,
-} from "./schema/plan";
+  ConversationTodo,
+  ConversationTodosReport,
+  TodoStatusBody,
+} from "./schema/todos";
 export type {
   ConversationWatch,
   ConversationWatchesReport,
@@ -316,8 +319,8 @@ export type {
   PersonCardReport,
   PersonParams,
 } from "./schema/person";
-export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/common";
-export type { ApiError } from "./schema/common";
+export { apiErrorSchema, CONTENT_VERSION_HEADER } from "./schema/response";
+export type { ApiError } from "./schema/response";
 export {
   connectionListSchema,
   connectionParamsSchema,
@@ -371,6 +374,7 @@ export {
   revokePersonalTokenResponseSchema,
 } from "./schema/personal-token";
 export type { PersonalTokenMetadata } from "./schema/personal-token";
+export { leadSchema } from "./schema/lead";
 export {
   USER_CUSTOMIZATION_MAX_CHARS,
   userCustomizationSchema,
@@ -463,29 +467,40 @@ export type {
   SkillReports,
 } from "../reporting-schema";
 export {
-  reviewItemActionSchema,
-  reviewItemCountSchema,
-  reviewItemListSchema,
-  reviewItemSchema,
-  reviewItemWaitingConversationsSchema,
-} from "./schema/review-item";
+  inboxItemActionSchema,
+  inboxItemCountSchema,
+  inboxItemListSchema,
+  inboxItemSchema,
+  inboxItemWaitingConversationsSchema,
+} from "./schema/inbox-item";
 export type {
-  ReviewItemActionBody,
-  ReviewItemChangeRecord,
-  ReviewItemPayload,
-} from "./schema/review-item";
+  InboxItemActionBody,
+  InboxItemChangeRecord,
+  InboxItemPayload,
+} from "./schema/inbox-item";
 export {
   INBOX_SNOOZE_MAX_TRIGGERS,
   inboxSnoozeCreateSchema,
   inboxSnoozeResourceSchema,
   inboxSnoozeSchema,
   inboxSnoozeSubjectSchema,
+  inboxSnoozeWakesClearSchema,
 } from "./schema/inbox-snooze";
 export type {
   InboxSnoozeCreateBody,
   InboxSnoozeResource,
   InboxSnoozeSubjectBody,
   InboxSnoozeTrigger,
+  InboxSnoozeWake,
 } from "./schema/inbox-snooze";
+export { searchQuerySchema, searchReportSchema } from "./schema/search";
+export type {
+  SearchAutomation,
+  SearchInboxItem,
+  SearchMemory,
+  SearchReport,
+  SearchSource,
+  SearchTodo,
+} from "./schema/search";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

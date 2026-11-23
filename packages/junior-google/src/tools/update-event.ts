@@ -8,16 +8,18 @@ import {
   emailListSchema,
   googleApiError,
   googleApiRequest,
+  requireAllowedEmails,
+  timeZoneSchema,
+  type GoogleToolContext,
+} from "../google-api";
+import {
   MAX_EVENT_MS,
   ownEventOutputFields,
   ownEventResult,
   ownEventIdSchema,
   ownEventSchema,
   readOwnEventForRequester,
-  requireAllowedEmails,
-  timeZoneSchema,
-  type GoogleToolContext,
-} from "./shared";
+} from "../calendar/events";
 
 const inputSchema = z
   .object({
@@ -129,7 +131,9 @@ export const updateCalendarEventTool = definePluginTool({
         throw new PluginToolInputError("end must be after start.");
       }
       if (durationMs > MAX_EVENT_MS) {
-        throw new PluginToolInputError("Events can be at most 8 hours long.");
+        throw new PluginToolInputError(
+          "Events can be at most 8 hours long. Set end at most 8 hours after start.",
+        );
       }
     }
     requireAllowedEmails(

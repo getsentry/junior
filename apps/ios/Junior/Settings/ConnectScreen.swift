@@ -42,7 +42,7 @@ struct ConnectScreen: View {
         .padding(20)
         .panelCard(radius: 10)
         Text(
-          "The app reads your Conversations, Review items, and Automations, and sends messages as you. Answer Review items and change Automations on the web."
+          "The app reads your Conversations, Inbox items, and Automations, and sends messages as you. Answer Inbox items and change Automations on the web."
         )
         .type(.xs, lineHeight: 1.625)
         .foregroundStyle(Tokens.textMuted)

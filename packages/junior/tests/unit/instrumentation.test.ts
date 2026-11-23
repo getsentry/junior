@@ -106,7 +106,9 @@ describe("initSentry", () => {
       options?.integrations?.([
         http,
         { name: "Anthropic_AI", setupOnce: () => {} },
+        { name: "PiAi", setupOnce: () => {} },
         { name: "VercelAI", setupOnce: () => {} },
+        { name: "Dedupe", setupOnce: () => {} },
       ]),
     ).toEqual([http]);
     const span: {

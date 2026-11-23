@@ -113,7 +113,7 @@ describe("resolvePullRequestReviewThread", () => {
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message:
-        "This bot can only resolve review threads on pull requests it authored.",
+        "This bot can only resolve review threads on pull requests it authored. Leave this thread for a person to resolve.",
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -137,7 +137,8 @@ describe("resolvePullRequestReviewThread", () => {
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "GitHub review thread was not found.",
+      message:
+        "GitHub review thread was not found. Set thread_id to the node id of a review thread on a pull request in repo.",
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -159,7 +160,8 @@ describe("resolvePullRequestReviewThread", () => {
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "GitHub review thread was not found.",
+      message:
+        "GitHub review thread was not found. Set thread_id to the node id of a review thread on a pull request in repo.",
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });

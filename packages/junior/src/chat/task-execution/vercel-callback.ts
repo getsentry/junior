@@ -5,7 +5,6 @@ import { logWarn, withLogContext, withSpan } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
   getQueueProvider,
-  type QueueConsumer,
   type QueueMessageMetadata,
 } from "@/chat/queue/provider";
 import type { ConversationStore } from "@/chat/conversations/store";
@@ -31,8 +30,6 @@ import { verifyConversationQueueMessage } from "./queue-signing";
 import { settleConversationTitleWork } from "@/chat/services/conversation-title";
 
 export const CONVERSATION_WORK_VISIBILITY_TIMEOUT_BUFFER_SECONDS = 30;
-export const CONVERSATION_WORK_DEV_CONSUMER_GROUP =
-  "junior_conversation_work_dev";
 
 export interface ProcessConversationQueueMessageOptions {
   beforeWorkStops?: BeforeWorkStops | undefined;
@@ -187,7 +184,6 @@ function conversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ) {
   return queueCallback<ConversationQueueMessage>({
-    consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
     // Conversation work stores and limits failed attempts in durable state.
     maxDeliveries: null,
     onRejected: logConversationQueueMessageRejected,
@@ -209,7 +205,6 @@ function conversationWorkCallback(
     run: async (message, metadata) => {
       await processConversationQueueMessage(message, options, metadata);
     },
-    topic: resolveConversationWorkQueueTopic(options),
     verify: verifyConversationQueueMessage,
     visibilityTimeoutSeconds:
       options.visibilityTimeoutSeconds ??
@@ -222,18 +217,4 @@ export function createVercelConversationWorkCallback(
   options: VercelConversationWorkCallbackOptions,
 ): (request: Request) => Promise<Response> {
   return conversationWorkCallback(options).create();
-}
-
-/** Return the queue consumer for conversation work, for a pulling queue worker. */
-export function conversationWorkQueueConsumer(
-  options: VercelConversationWorkCallbackOptions,
-): QueueConsumer {
-  return conversationWorkCallback(options).consumer;
-}
-
-/** Register the Vercel Queue local-dev consumer for Nitro's central route dispatcher. */
-export function registerVercelConversationWorkDevConsumer(
-  options: VercelConversationWorkCallbackOptions,
-): (() => void) | undefined {
-  return conversationWorkCallback(options).registerDev();
 }

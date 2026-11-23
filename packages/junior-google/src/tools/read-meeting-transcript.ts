@@ -9,15 +9,14 @@ import {
   FILE_ID_PATTERN,
   googleFileMimeType,
   MAX_CONTENT_CHARS,
-} from "./files";
+} from "../drive/files";
 import {
   googleApiError,
   googleApiRequest,
-  googleAttendeeSchema,
-  parseEventId,
   requesterEmail,
   type GoogleToolContext,
-} from "./shared";
+} from "../google-api";
+import { googleAttendeeSchema, parseEventId } from "../calendar/events";
 
 // Google Meet names the Docs it saves like
 // "Weekly triage - 2026/10/12 14:01 CEST - Transcript". The title only labels
@@ -238,7 +237,7 @@ async function readInvitedEvent(
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
-      "The requester's email is unknown, so the tool cannot check that they were invited to this meeting.",
+      "The requester's email is unknown, so the tool cannot check that they were invited to this meeting. No change to the call can fix this.",
     );
   }
   const response = await googleApiRequest(ctx, {
@@ -247,7 +246,7 @@ async function readInvitedEvent(
   });
   if (response.status === 404) {
     throw new PluginToolInputError(
-      `Your calendar has no event ${eventId}. You can only read the transcript of a meeting you are invited to.`,
+      `Your calendar has no event ${eventId}. Check event_id. You can only read the transcript of a meeting you are invited to.`,
     );
   }
   if (
@@ -255,7 +254,9 @@ async function readInvitedEvent(
     (response.status === 200 &&
       cancelledEventSchema.safeParse(response.body).success)
   ) {
-    throw new PluginToolInputError(`Event ${eventId} was cancelled.`);
+    throw new PluginToolInputError(
+      `Event ${eventId} was cancelled. No change to the call can fix this.`,
+    );
   }
   if (response.status !== 200) {
     throw googleApiError("google.calendar.event.get", response);
@@ -267,12 +268,12 @@ async function readInvitedEvent(
     isInvited(event, ctx.accountEmail);
   if (!juniorInvited) {
     throw new PluginToolInputError(
-      "You are not invited to this meeting, so you cannot read its transcript.",
+      "You are not invited to this meeting, so you cannot read its transcript. No change to the call can fix this.",
     );
   }
   if (!isInvited(event, requester)) {
     throw new PluginToolInputError(
-      "Only people invited to this meeting can ask you for its transcript.",
+      "Only people invited to this meeting can ask you for its transcript. No change to the call can fix this.",
     );
   }
   return { event, eventId };

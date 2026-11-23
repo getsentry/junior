@@ -2,14 +2,14 @@ import { describe, expect } from "vitest";
 import {
   heartbeat,
   reply,
-  reviewItemAnswer,
-  reviewItemDismiss,
+  inboxItemAnswer,
+  inboxItemDismiss,
   slackMention,
   webMessage,
   type InboxItem,
 } from "@junior-evals/fixture/inputs";
 import {
-  insertReviewItem,
+  insertInboxItem,
   insertScheduledAutomation,
   slackChannel,
 } from "@junior-evals/fixture/insert";
@@ -72,7 +72,7 @@ describe("Inbox", () => {
       due: true,
       task: ENTRY_REVIEW_TASK,
     });
-    const existing = await insertReviewItem({
+    const existing = await insertInboxItem({
       automationId: automation.id,
       body: "Acme uses BUSL with a six-year change date.",
       dedupeKey: "fair-source:acme-entry",
@@ -88,10 +88,10 @@ describe("Inbox", () => {
     // The run works with the Inbox. Each completed add updates the
     // open item, so no second item starts.
     expect(
-      toolCallsOf("addReviewItem", delivery).length +
-        toolCallsOf("searchReviewItems", delivery).length,
+      toolCallsOf("addInboxItem", delivery).length +
+        toolCallsOf("searchInboxItems", delivery).length,
     ).toBeGreaterThan(0);
-    const added = completedToolCalls("addReviewItem", delivery).map(itemOutput);
+    const added = completedToolCalls("addInboxItem", delivery).map(itemOutput);
     expect(added.filter((output) => output.created)).toEqual([]);
     for (const output of added) {
       expect(output.item.id).toBe(existing.id);
@@ -102,7 +102,7 @@ describe("Inbox", () => {
     run,
   }) => {
     const destination = slackChannel();
-    const existing = await insertReviewItem({
+    const existing = await insertInboxItem({
       body: "Acme uses BUSL with a six-year change date.",
       dedupeKey: "fair-source:acme-entry",
       destination,
@@ -119,7 +119,7 @@ describe("Inbox", () => {
       ),
     );
 
-    const closes = completedToolCalls("updateReviewItem", reply).filter(
+    const closes = completedToolCalls("updateInboxItem", reply).filter(
       (call) => (call.input as { status?: string }).status,
     );
     expect(closes).toHaveLength(1);
@@ -136,9 +136,9 @@ describe("Inbox", () => {
   }) => {
     const conversation = await run(
       [
-        reviewItemAnswer(ownerItem("login"), { owner: ["Priya"] }),
-        reviewItemAnswer(ownerItem("billing"), { owner: ["Sam"] }),
-        reviewItemDismiss({
+        inboxItemAnswer(ownerItem("login"), { owner: ["Priya"] }),
+        inboxItemAnswer(ownerItem("billing"), { owner: ["Sam"] }),
+        inboxItemDismiss({
           body: "Twelve branches are older than 90 days.",
           title: "Delete the stale staging branches",
         }),
@@ -160,7 +160,7 @@ describe("Inbox", () => {
     // one Turn handles them all, and the agent does not ask again. The
     // dismiss is not a decision, so the agent never sees it.
     expect(conversation.turns).toHaveLength(1);
-    expect(toolCallsOf("addReviewItem", conversation)).toEqual([]);
+    expect(toolCallsOf("addInboxItem", conversation)).toEqual([]);
     expect(conversation.replies.map((entry) => entry.text).join("\n")).toMatch(
       /391/,
     );

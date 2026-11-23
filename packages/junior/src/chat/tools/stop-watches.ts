@@ -7,8 +7,8 @@ import {
 import { RESOURCE_WATCH_TOOL_SOURCE } from "@/chat/events/tool-support";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const resultDataSchema = z
   .object({
@@ -60,7 +60,7 @@ export function createStopWatchingResourcesTool(context: ToolRuntimeContext) {
           : undefined;
         if (!stopped) {
           throw new ToolInputError(
-            "Watch was not found in the current conversation or its child agents.",
+            "Watch was not found in the current conversation or its child agents. Use listWatches to find its id.",
           );
         }
         if (stopped.status === "completed") {

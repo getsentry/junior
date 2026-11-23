@@ -21,7 +21,7 @@ result to a Slack Destination.
 
 ## Entry points
 
-- Slack: ask Junior in the conversation that should get the results.
+- Slack: ask Junior in a thread or DM.
 - Dashboard: ask Junior in a Conversation, and name a public Slack channel
   as the Destination.
 - Dashboard: Automations, and its Runs view.
@@ -37,13 +37,8 @@ result to a Slack Destination.
 - A Destination is optional. It is a Slack channel or DM, never a web
   Conversation.
 - A block pauses the Automation until someone resumes it.
-- When an Automation needs its creator, core adds an Automation alert to
-  their Inbox: for a block, a trigger that no enabled plugin serves, or a
-  failed or blocked last run. A failed-run alert offers Run again and
-  Pause. It closes when the Automation recovers: it is active, its last run
-  succeeded, and its trigger is available. A dismissed alert hides its
-  alerts until the Automation recovers. A pause closes the alert, but it is
-  no recovery.
+- When an Automation needs its creator, Junior adds an Automation alert to
+  their Inbox ([Inbox](./inbox.md)).
 - An event filter limits noise. It is not access control.
 
 ## Gaps
@@ -54,6 +49,7 @@ result to a Slack Destination.
   providers have no Junior access yet. This breaks "acts as Junior": a run
   can fail when the creator is not connected, and an edit by someone else
   switches it back to Junior's credentials.
-- When an Automation reaches the limit of automated Turns in a row, Junior
-  posts a pause notice to the Destination. This breaks "posts nothing unless
-  it chooses to" and "never posts a failure to the Destination".
+- When a run's Conversation reaches the limit of automated Turns in a row,
+  Junior stops it and posts a stop notice to the Destination. This breaks
+  "posts nothing unless it chooses to" and "never posts a failure to the
+  Destination".

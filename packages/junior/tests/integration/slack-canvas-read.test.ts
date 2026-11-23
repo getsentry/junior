@@ -44,7 +44,7 @@ describe("createSlackCanvasReadTool", () => {
     expect(result).toMatchObject({
       canvas_id: "F0AU9MRL63T",
       title: "Issue with GitHub tools",
-      permalink: "https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T",
+      url: "https://sentry.slack.com/docs/T024ZCV9U/F0AU9MRL63T",
       filetype: "quip",
       mimetype: "text/plain",
       truncated: false,
@@ -194,7 +194,12 @@ describe("createSlackCanvasReadTool", () => {
 
     await expect(
       tool.execute({ canvas: "https://example.com/not-a-canvas" }, {}),
-    ).rejects.toThrow("Could not parse a Slack canvas/file ID");
+    ).rejects.toMatchObject({
+      name: "ToolInputError",
+      message: expect.stringContaining(
+        "Could not parse a Slack canvas/file ID",
+      ),
+    });
     expect(getCapturedSlackApiCalls("files.info")).toHaveLength(0);
   });
 

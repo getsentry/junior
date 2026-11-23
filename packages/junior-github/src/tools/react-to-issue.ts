@@ -80,7 +80,9 @@ export const gitHubReactToIssueTool = definePluginTool({
     if (!response.ok) {
       const message = `GitHub issue reaction failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`;
       if (response.status === 404 || response.status === 422) {
-        throw new PluginToolInputError(message);
+        throw new PluginToolInputError(
+          `${message}. Check repo and issue, and fix any field that GitHub names.`,
+        );
       }
       throw new Error(message);
     }

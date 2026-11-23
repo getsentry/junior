@@ -8,9 +8,9 @@ import {
   GOOGLE_FILE_TYPES,
   googleFileRequest,
   parseFileReference,
-} from "./files";
-import { readRequesterFile } from "./file-access";
-import type { GoogleToolContext } from "./shared";
+} from "../drive/files";
+import { readRequesterFile } from "../drive/file-access";
+import type { GoogleToolContext } from "../google-api";
 
 const inputSchema = z
   .object({

@@ -239,28 +239,32 @@ function plugin(name: string, overrides: Partial<Plugin> = {}): Plugin {
 describe("dashboard canonical-event components", () => {
   it("renders transcript markdown with hard breaks and safe links", () => {
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="line">
-          <DisplayText
-            text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
-          />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TranscriptSearchProvider query="line">
+            <DisplayText
+              text={"line one\nline two\n\n[docs](https://docs.sentry.io)"}
+            />
+          </TranscriptSearchProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(html.match(/<br\/>/g)).toHaveLength(1);
     expect(html).toContain('href="https://docs.sentry.io"');
-    expect(html).toContain('target="_blank"');
+    expect(html).not.toContain('target="_blank"');
     expect(html).toContain("<mark");
   });
 
   it("highlights a markdown link label when search matches its URL", () => {
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="docs.sentry.io">
-          <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TranscriptSearchProvider query="docs.sentry.io">
+            <DisplayText text="[product docs](https://docs.sentry.io/platforms/)" />
+          </TranscriptSearchProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain("<mark");
@@ -285,11 +289,13 @@ describe("dashboard canonical-event components", () => {
 
   it("renders bold-wrapped bare URLs without leaking emphasis markers into the href", () => {
     const html = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <TranscriptSearchProvider query="">
-          <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
-        </TranscriptSearchProvider>
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <TranscriptSearchProvider query="">
+            <DisplayText text="**PR is up: https://github.com/getsentry/getsentry/pull/21513**" />
+          </TranscriptSearchProvider>
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
 
     expect(html).toContain(
@@ -1746,7 +1752,7 @@ describe("dashboard canonical-event components", () => {
     );
 
     const reportOnlyPluginHtml = renderSystemPage(
-      "/system/plugins/briefs",
+      "/system/plugins/report-only",
       loading,
     );
     expect(reportOnlyPluginHtml).toContain("Loading plugin");

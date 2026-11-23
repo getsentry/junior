@@ -40,7 +40,7 @@ import { resolveViewerUser, setUserAdminFromSql } from "@/chat/plugins/viewer";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { juniorAgentInvocations, juniorConversationEvents } from "@/db/schema";
+import { juniorConversationEvents } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
 import { closeConversationFixture } from "../fixtures/conversation";
 import {
@@ -555,9 +555,10 @@ describe("cache warming savings re-fill", () => {
     const read = (60_000 * cost.cacheRead) / 1_000_000;
     const write = (60_000 * cost.cacheWrite) / 1_000_000;
     const close = (usd: number) => expect.closeTo(usd, 3);
-    // Two idle periods and two tool waits, each with one warmed hit.
+    // Two idle periods and two tool waits, each with one warmed hit. The
+    // oracle prices a warmup at 1.1 reads.
     const saved = 2 * (write - read);
-    const oracle = 4 * (write - 2 * read);
+    const oracle = 4 * (write - 2.1 * read);
     expect(report.days.at(-3)).toMatchObject({
       date: "2031-07-01",
       history: true,
@@ -735,25 +736,23 @@ describe("cache warming savings re-fill", () => {
       activityAtMs: RUN,
       nowMs: RUN,
     });
-    await getDb()
-      .insert(juniorAgentInvocations)
-      .values({
-        invocationId: "agent-invocation:replay-automation-child",
-        parentConversationId: "local:test:replay-automation-child",
-        childConversationId: "local:test:replay-automation-child:task",
-        input: "Check the deploy.",
-        actor: { name: "automation", platform: "system" },
-        source: { kind: "agent_invocation" },
-        destination: {
-          conversationId: "local:test:replay-automation-child",
-          platform: "local",
+    // The parent's marker says its child agent still runs.
+    await getConversationEventStore().append(
+      "local:test:replay-automation-child",
+      [
+        {
+          createdAtMs: RUN - MINUTE,
+          data: {
+            type: "subagent_started",
+            subagentInvocationId: "replay-automation-child",
+            subagentKind: "agent",
+            childConversationId: "local:test:replay-automation-child:task",
+            parentToolCallId: "spawn-child",
+            task: "Check the deploy.",
+          },
         },
-        status: "running",
-        mailboxStatus: "pending",
-        createdAt: new Date(RUN - MINUTE),
-        updatedAt: new Date(RUN - MINUTE),
-        terminalAt: null,
-      });
+      ],
+    );
     // An Automation run with no child that never gets a later Turn.
     await storeCalls(
       "local:test:replay-automation-alone",

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import {
   collectToolErrorThrows,
   diffToolErrorBaseline,
+  isUnderToolsPath,
   parseBaseline,
 } from "./check-tool-error-classification.mjs";
 
@@ -42,5 +43,22 @@ packages/junior/src/chat/tools/c.ts\tthrow new Error("gone");
     assert.deepEqual(stale, [
       'packages/junior/src/chat/tools/c.ts\tthrow new Error("gone");',
     ]);
+  });
+
+  it("scans tools and the tool-support code next to them", () => {
+    for (const path of [
+      "packages/junior/src/chat/tools/demo.ts",
+      "packages/junior/src/chat/tool-support/registry.ts",
+      "packages/junior-vercel/src/tool-support/vercel-api.ts",
+      "packages/junior/src/chat/automations/tool-support.ts",
+    ]) {
+      assert.equal(isUnderToolsPath(path), true, path);
+    }
+    for (const path of [
+      "packages/junior/src/chat/sandbox/file-utils.ts",
+      "packages/junior/tests/tools/demo.ts",
+    ]) {
+      assert.equal(isUnderToolsPath(path), false, path);
+    }
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior-dashboard",
-  "version": "0.310.0",
+  "version": "0.313.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -47,7 +47,7 @@
     "hono": "^4.13.11",
     "lexical": "^0.53.0",
     "lucide-react": "^1.17.0",
-    "p-limit": "^7.3.3",
+    "p-limit": "catalog:",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "react-is": "^19.2.6",

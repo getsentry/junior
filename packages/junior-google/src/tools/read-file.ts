@@ -11,12 +11,12 @@ import {
   googleLinkFileType,
   MAX_CONTENT_CHARS,
   parseFileReference,
-} from "./files";
-import { docOutputFields, readDocContent } from "./read-doc";
-import { readSheetContent, sheetOutputFields } from "./read-sheet";
-import { readSlidesContent, slidesOutputFields } from "./read-slides";
-import { readRequesterFile } from "./file-access";
-import type { GoogleToolContext } from "./shared";
+} from "../drive/files";
+import { docOutputFields, readDocContent } from "../docs/read";
+import { readSheetContent, sheetOutputFields } from "../sheets/read";
+import { readSlidesContent, slidesOutputFields } from "../slides/read";
+import { readRequesterFile } from "../drive/file-access";
+import type { GoogleToolContext } from "../google-api";
 
 const inputSchema = z
   .object({

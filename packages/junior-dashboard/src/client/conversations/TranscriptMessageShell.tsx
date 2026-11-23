@@ -5,6 +5,7 @@ import { Message, MessageContent } from "../components/ui/message";
 import { transcriptRoleKind } from "../format";
 import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import juniorAvatarUrl from "../../assets/junior-avatar.webp";
+import { LeadMark } from "../lead/LeadMark";
 import {
   transcriptAvatarClass,
   transcriptColumnsClass,
@@ -18,6 +19,8 @@ export function TranscriptMessageShell(props: {
   children: ReactNode;
   /** The parent agent wrote this input, so it shows an agent, not a person. */
   fromAgent?: boolean;
+  /** A Lead wrote this reply, so it shows the Lead mark. */
+  lead?: boolean | undefined;
   onCopy?: ClipboardEventHandler<HTMLElement>;
   role: string;
 }) {
@@ -47,7 +50,9 @@ export function TranscriptMessageShell(props: {
             transcriptAvatarClass,
           )}
         >
-          {kind === "assistant" ? (
+          {kind === "assistant" && props.lead ? (
+            <LeadMark size="avatar" />
+          ) : kind === "assistant" ? (
             <img
               alt=""
               className="size-full object-contain"

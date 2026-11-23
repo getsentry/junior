@@ -389,6 +389,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect.poll(() => pageRequests).toContain("?before=160");
     expect(new Set(pageRequests).size).toBe(pageRequests.length);
     releaseNewer();
+    await mock.pageReadsLanded();
   });
 
   test("jumps to the latest page without the newer pages", async ({
@@ -433,7 +434,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       transcript.getByRole("button", { name: "Load newer events" }),
     ).toHaveCount(0);
-    expect(pageRequests).toEqual(["?around=20", "?after=40"]);
+    expect(pageRequests).toEqual([
+      "?around=20&limit=300",
+      "?after=40&limit=119",
+    ]);
 
     // Earlier pages load above the latest page as the reader scrolls up.
     await transcript.evaluate((element) => {
@@ -444,6 +448,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeAttached();
     expect(pageRequests.slice(2)).toEqual(["?before=160"]);
     releaseNewer();
+    await mock.pageReadsLanded();
   });
 
   test("opens far behind at the read position and loads newer pages after it", async ({

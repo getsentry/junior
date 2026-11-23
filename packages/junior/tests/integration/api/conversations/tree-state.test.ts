@@ -1,21 +1,22 @@
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 import { setConversationArchive } from "@/api/conversations/archive";
 import {
   conversationDetailReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
-import { getDb } from "@/chat/db";
+import { getDb, getSqlExecutor } from "@/chat/db";
+import { conversationSubtree } from "@/chat/conversations/sql/subtree";
 import { juniorConversations } from "@/db/schema";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { recordAuthorizationRequested } from "@/chat/conversations/projection";
 import { cancelWatch, createTimerWatch } from "@/chat/events/store";
 import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { expectSqlBudget, explainNodes } from "../../../fixtures/sql-budget";
 import { closeConversationFixture } from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
@@ -78,7 +79,7 @@ describe("conversation tree state", () => {
       watching: true,
     });
     await expect(
-      fixture.tree(running.invocation.childConversationId),
+      fixture.tree(running.child.childConversationId),
     ).resolves.toEqual({ treeState: "working", watching: false });
 
     const asking = await spawnChildAgent({
@@ -88,7 +89,7 @@ describe("conversation tree state", () => {
     fixture.queue.takeMessageFor(asking.childConversationId);
     // An item for another person is not shown to the viewer.
     const other = await resolveViewerUser("bob@example.com");
-    const forOther = await insertReviewItem(getDb(), {
+    const forOther = await insertInboxItem(getDb(), {
       owner: { id: asking.childConversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
@@ -107,7 +108,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "working",
     });
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: forOther!.id,
       nowMs: Date.now(),
       status: "dismissed",
@@ -121,7 +122,7 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: everyone,
       nowMs: Date.now(),
       status: "dismissed",
@@ -142,7 +143,7 @@ describe("conversation tree state", () => {
       watching: false,
     });
 
-    await closeReviewItem(getDb(), {
+    await closeInboxItem(getDb(), {
       id: item,
       nowMs: Date.now(),
       status: "dismissed",
@@ -331,6 +332,37 @@ describe("conversation tree state", () => {
     await expect(fixture.tree(conversationId)).resolves.toEqual(DONE);
   });
 
+  it("plans a root's tree without a walk over it", async () => {
+    const fixture = await createStatusFixture();
+    const conversationId = await recordSlackRoot(
+      fixture.conversationStore,
+      "1700000000.000540",
+    );
+    await getSqlExecutor().execute(
+      `insert into junior_conversations
+        (conversation_id, root_conversation_id, parent_conversation_id,
+         created_at, last_activity_at, updated_at, execution_status)
+      select 'agent:big-tree-' || n, $1, $1, now(), now(), now(), 'idle'
+      from generate_series(1, 2000) n`,
+      [conversationId],
+    );
+    await getSqlExecutor().execute("analyze junior_conversations");
+    const [nodes] = await explainNodes(() =>
+      getDb().execute(
+        sql`select * from ${conversationSubtree([conversationId])}`,
+      ),
+    );
+    // Postgres guesses each recursive step from the rows that start the
+    // walk. A guess that holds the root's tree prices the read high enough
+    // to turn on JIT.
+    const walks = nodes!.filter(
+      (node) => node["Node Type"] === "Recursive Union",
+    );
+    expect(walks.length).toBeGreaterThan(0);
+    // A tenth of the 2,000 children: the guess covers the walk, not the tree.
+    for (const walk of walks) expect(walk["Plan Rows"]).toBeLessThan(200);
+  });
+
   it("skips archived children and their descendants", async () => {
     const fixture = await createStatusFixture();
     const conversationId = await recordSlackRoot(
@@ -382,7 +414,7 @@ describe("conversation tree state", () => {
       "local:web:tree-token",
     );
     const other = await resolveViewerUser("bob@example.com");
-    await insertReviewItem(getDb(), {
+    await insertInboxItem(getDb(), {
       owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],

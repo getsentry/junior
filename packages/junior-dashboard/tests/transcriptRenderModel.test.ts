@@ -850,7 +850,7 @@ describe("canonical event transcript reduction", () => {
     );
   });
 
-  it.each(["agent_invocation.completed", "agent.reply"])(
+  it.each(["agent_invocation.completed", "agent.reply", "agent.update"])(
     "shows %s inputs only for the memories their Turn recalled",
     (eventType) => {
       const result = (seq: number, messageId: string) =>

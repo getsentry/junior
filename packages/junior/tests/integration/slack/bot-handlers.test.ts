@@ -21,6 +21,7 @@ import {
   type ConversationWorkQueueTestAdapter,
 } from "../../fixtures/conversation-work";
 import { mockTitleModel } from "../../fixtures/title-model";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 const emptyThreadReplies = async () => [];
 const ORIGINAL_AI_GATEWAY_API_KEY = process.env["AI_GATEWAY_API_KEY"];
@@ -129,6 +130,7 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEDUP:1700000000.000";
     const destination = slackDestination("C9TIMEDUP");
     const activeSessionId = "turn_msg-duplicate";
+    await recordTurnStart(conversationId, activeSessionId);
     await upsertTurnRecord({
       conversationId,
       destination,
@@ -138,7 +140,6 @@ describe("bot handlers (integration)", () => {
       resumeReason: "yield",
       source: createSlackSourceForTest("C9TIMEDUP"),
       piMessages: turnPiMessages("please keep working"),
-      turnStartMessageIndex: 0,
     });
     const queue = createConversationWorkQueueTestAdapter();
     const { slackRuntime } = createRuntime({
@@ -181,6 +182,7 @@ describe("bot handlers (integration)", () => {
     const conversationId = "slack:C9TIMEFAIL:1700000000.000";
     const destination = slackDestination("C9TIMEFAIL");
     const activeSessionId = "turn_msg-original";
+    await recordTurnStart(conversationId, activeSessionId);
     await upsertTurnRecord({
       conversationId,
       destination,
@@ -190,7 +192,6 @@ describe("bot handlers (integration)", () => {
       resumeReason: "yield",
       source: createSlackSourceForTest("C9TIMEFAIL"),
       piMessages: turnPiMessages("please keep working"),
-      turnStartMessageIndex: 0,
     });
     const queue = createConversationWorkQueueTestAdapter();
     queue.rejectSends();

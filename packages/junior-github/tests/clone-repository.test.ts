@@ -221,7 +221,7 @@ describe("cloneRepository", () => {
 
     await expect(
       tool.execute({ repo: "getsentry/junior" }, {}),
-    ).rejects.toThrow("destination already exists");
+    ).rejects.toThrow("already exists. Use that checkout");
     expect(run).toHaveBeenCalledTimes(2);
   });
 
@@ -257,7 +257,7 @@ describe("cloneRepository", () => {
 
     await expect(
       tool.execute({ repo: "getsentry/skills", directory: "skills" }, {}),
-    ).rejects.toThrow("Directory conflicts with a reserved sandbox path");
+    ).rejects.toThrow("conflicts with a reserved sandbox path");
   });
 
   it("removes a partial clone before retrying authorization", async () => {

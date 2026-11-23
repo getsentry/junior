@@ -2,6 +2,7 @@
  * Call results read through Junior's reporting API, the way the dashboard
  * reads a Conversation. Tests never read stored rows directly.
  */
+import { markdownPlainText } from "@sentry/junior-plugin-api";
 import type * as z from "zod";
 import {
   conversationDetailReportSchema,
@@ -56,7 +57,7 @@ const SCRIPT_CALL_STATUS = new Map(
 
 /**
  * The tool calls that a `codemode` script made, read from its result text
- * (`renderResult` in `codemode/tool.ts`): a status line, `Tool calls (N):`,
+ * (`renderResult` in `chat/tools/codemode.ts`): a status line, `Tool calls (N):`,
  * then `<i>. <tool>: <status>` for each call, with indented notes. The
  * reporting API does not return script arguments, so the calls have no
  * `input`. A call that did not start is not a call.
@@ -446,19 +447,17 @@ export function readCallEvents(args: {
 
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
- * changes formatting and links references, such as `owner/repo#1`. Remove
- * code fence lines: a split inside a code block closes the block at the end of
- * a post and opens it again in the next post.
+ * changes formatting and links references, such as `owner/repo#1`. Only the
+ * text of the parsed Markdown counts, so code fences drop: a split inside a
+ * code block closes the block at the end of a post and opens it again in the
+ * next post.
  */
 function comparableText(text: string): string {
-  return text
-    .replace(/^[ \t]*(`{3,}|~{3,}).*$/gm, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-    .replace(/<[^|>]+\|([^>]*)>/g, "$1")
-    .replace(/<(https?:\/\/[^>]+)>/g, "$1")
-    .replace(/[*_~`>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  return markdownPlainText(
+    text
+      .replace(/<[^|>]+\|([^>]*)>/g, "$1")
+      .replace(/<(https?:\/\/[^>]+)>/g, "$1"),
+  );
 }
 
 /** What one call did in a Slack thread, read from its Slack API calls. */

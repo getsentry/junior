@@ -12,7 +12,10 @@ import type {
   ConversationSource,
 } from "@/chat/conversations/store";
 import { fallbackShortTitle } from "@/chat/services/short-title";
-import { slackStatsLocationLabel, surfaceFallbackLabel } from "./shared";
+import {
+  slackStatsLocationLabel,
+  surfaceFallbackLabel,
+} from "./location-labels";
 import type {
   ActorIdentity,
   ConversationEventHistory,
@@ -36,6 +39,7 @@ type ConversationProjectionSource = Pick<
   | "location"
   | "parentConversationId"
   | "source"
+  | "summary"
   | "title"
   | "updatedAtMs"
 > & {
@@ -275,6 +279,10 @@ export function conversationSummaryFromStoredConversation(args: {
       visibility,
     }),
     kind: conversation.kind,
+    // The summary holds private content, like the title.
+    ...(canViewPrivateContent && conversation.summary
+      ? { summary: conversation.summary }
+      : undefined),
     ...(conversation.parentConversationId
       ? { parentConversationId: conversation.parentConversationId }
       : undefined),

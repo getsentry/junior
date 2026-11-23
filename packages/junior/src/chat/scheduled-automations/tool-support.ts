@@ -37,7 +37,7 @@ export const compactTaskResultSchema = z
         visibility: z.enum(["private", "public"]),
       })
       .strict(),
-    dashboard_url: z.string().url().nullable(),
+    url: z.string().url().nullable(),
     last_run_at: z.string().nullable(),
     run_now_at: z.string().nullable(),
   })
@@ -93,7 +93,7 @@ export function compactTask(task: ScheduledAutomation, isCreator: boolean) {
       : null,
     ...automationResultFields(task, isCreator),
     conversation_access: task.conversationAccess,
-    dashboard_url: getDashboardTaskLink(task.id) ?? null,
+    url: getDashboardTaskLink(task.id) ?? null,
     last_run_at: task.lastRunAtMs
       ? new Date(task.lastRunAtMs).toISOString()
       : null,

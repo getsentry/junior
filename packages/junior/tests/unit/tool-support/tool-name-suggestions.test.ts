@@ -5,7 +5,7 @@ import {
   findToolNameHint,
   renderToolNameHint,
 } from "@/chat/tool-support/tool-name-suggestions";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 
 function demo(
   options: { exposure?: "hidden"; source?: string } = {},

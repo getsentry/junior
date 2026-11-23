@@ -20,13 +20,11 @@ import {
 import {
   createChildConversationWorker,
   createDeliverToParent,
-  enqueueAgentInvocationResult,
-  withAgentInvocationResultActors,
 } from "@/chat/agent-invocations/result";
+import { withAgentInvocationResultActors } from "@/chat/agent-invocations/result-actors";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { logException, withLogContext } from "@/chat/logging";
-import { skipInputAfterConversationStop } from "@/chat/conversations/session-stop";
-import type { TerminalAgentInvocation } from "@/chat/agent-invocations/types";
+import { resumeForPersonInput } from "@/chat/conversations/session-stop";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
 import { resolveMailboxTurnWork } from "@/chat/task-execution/mailbox-turn";
@@ -117,13 +115,6 @@ export function createConversationWork(
     },
     runTurn: runtime.runDispatchTurn,
   });
-  const enqueueResult = async (
-    invocation: TerminalAgentInvocation,
-  ): Promise<void> =>
-    await enqueueAgentInvocationResult(invocation, {
-      queue: options.queue,
-      state: options.state,
-    });
   const conversationTurnWorker = createConversationTurnWorker(
     options.agentRunner,
     createSlackSystemTurnDelivery({
@@ -132,9 +123,7 @@ export function createConversationWork(
     }),
     createDeliverToParent({ queue: options.queue, state: options.state }),
   );
-  const childWorker = createChildConversationWorker(options.agentRunner, {
-    enqueueResult,
-    queue: options.queue,
+  const childWorker = createChildConversationWorker({
     runTurn: conversationTurnWorker,
     state: options.state,
   });
@@ -163,7 +152,7 @@ export function createConversationWork(
     if (mailboxTurn) {
       const work = await withAgentInvocationResultActors(mailboxTurn);
       if (!work) {
-        // A stop skipped every child result in this input.
+        // A stop or parent check dropped every input.
         await context.attempt.ack();
         return { status: "completed" };
       }
@@ -181,11 +170,9 @@ export function createConversationWork(
   ): Promise<ConversationWorkerResult> => {
     // The stored kind decides the worker, so child work never reaches a root
     // worker. A child Turn can have any Source.
-    if (!topLevel) {
-      return await childWorker(context);
-    }
-    // A root's run can see its stop late. Then it stops the child agents that
-    // it spawned or gave new work to after the stop, as a child's worker does.
+    const worker = topLevel ? runRoot : childWorker;
+    // A run can see its stop late. Then it stops the child agents that it
+    // spawned or gave new work to after the stop.
     const readStopSignal = context.stopSignal;
     let stopSignal: AbortSignal | undefined;
     const stopLateChildAgents = async () => {
@@ -195,7 +182,7 @@ export function createConversationWork(
     };
     let result: ConversationWorkerResult;
     try {
-      result = await runRoot({
+      result = await worker({
         ...context,
         stopSignal: readStopSignal
           ? () => (stopSignal = readStopSignal())
@@ -216,14 +203,13 @@ export function createConversationWork(
     return result;
   };
   const run = async (
-    attemptContext: ConversationWorkerContext,
+    context: ConversationWorkerContext,
   ): Promise<ConversationWorkerResult> => {
-    // Apply a session stop to automated input, on a root or a child.
-    const stopped = await skipInputAfterConversationStop(attemptContext);
-    if ("skipped" in stopped) {
-      return stopped.skipped;
-    }
-    const { context } = stopped;
+    // A person's input ends a stop, on a root or a child.
+    await resumeForPersonInput(
+      context.conversationId,
+      context.attempt.messages,
+    );
     const conversation = await options.conversationStore.get({
       conversationId: context.conversationId,
     });

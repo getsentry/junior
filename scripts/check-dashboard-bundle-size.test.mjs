@@ -81,7 +81,7 @@ test("rejects a shell with no baseline, and skips main when it has none", () => 
     sizes: { classic: 100_000, inbox: 1_000 },
   });
   assert.deepEqual(errors, [
-    "inbox: no baseline entry. Run `node scripts/check-dashboard-bundle-size.mjs --update`.",
+    "inbox: no baseline entry. Run `pnpm dashboard-bundle-size:check --update`.",
   ]);
   assert.match(lines[0], /^classic: measured 97\.7 KB gzip/);
 });

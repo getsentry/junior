@@ -53,9 +53,9 @@ import {
 import { isAuthPath, type AuthenticatedRoute } from "./authenticated-routes";
 import { resetMockConversationViewerState } from "./mock-reporting/fixtures";
 import { resetMockReadPositions } from "./mock-reporting/read-positions";
-import { resetMockPlan } from "./mock-reporting/plan";
+import { resetMockTodos } from "./mock-reporting/todos";
 import { resetMockWatches } from "./mock-reporting/watches";
-import { resetMockReviewItems } from "./mock-reporting/review-items";
+import { resetMockInboxItems } from "./mock-reporting/inbox-items";
 import { resetMockSends } from "./mock-reporting/sends";
 import { createMockReportingApi } from "./mock-reporting/routes";
 import {
@@ -100,8 +100,8 @@ export function resetMockDashboardState(): void {
   resetMockConversationViewerState();
   mockUserSettingsByEmail.clear();
   resetMockReadPositions();
-  resetMockPlan();
-  resetMockReviewItems();
+  resetMockTodos();
+  resetMockInboxItems();
   resetMockSends();
   resetMockWatches();
 }
@@ -129,6 +129,7 @@ interface DashboardRuntimeOptions extends JuniorDashboardOptions {
 interface DashboardPluginRoute {
   app: PluginRouteApp;
   pluginName: string;
+  prefix: string;
 }
 
 type Variables = JuniorApiVariables & { authSession: DashboardSession };
@@ -352,10 +353,6 @@ function mockViewerFromSession(session: DashboardSession) {
     identities: [],
     ...(displayName ? { displayName } : undefined),
   };
-}
-
-function pluginRoutePrefix(pluginName: string): string {
-  return `/api/plugins/${pluginName}`;
 }
 
 /** Strip the core-owned plugin prefix before dispatching to a plugin app. */
@@ -628,7 +625,7 @@ export function createDashboardApp(
     }
   }
   for (const route of options.pluginRoutes ?? []) {
-    const prefix = pluginRoutePrefix(route.pluginName);
+    const { prefix } = route;
     const handler = async (c: Context<{ Variables: Variables }>) => {
       const response = await route.app.fetch(
         pluginRouteRequest(c.req.raw, prefix),

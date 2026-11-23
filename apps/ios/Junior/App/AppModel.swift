@@ -24,7 +24,7 @@ enum Place: Hashable {
 /// A pushed screen. Paths mirror the dashboard routes they render.
 enum Route: Hashable {
   case conversation(String)
-  case reviewItem(String)
+  case inboxItem(String)
   case automation(String)
   case settings
 }
@@ -60,12 +60,18 @@ final class AppModel {
   var focusSearch = false
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
+  /// Open the rename prompt on arrival (`?rename=1`).
+  var openRename = false
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
 
   /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0
-  private(set) var reviewItemsVersion = 0
+  private(set) var inboxItemsVersion = 0
+  /// The latest title that a rename from a list saved. `savedTitleVersion`
+  /// bumps with each one, so the open Conversation shows it at once.
+  private(set) var savedTitle: SavedTitle?
+  private(set) var savedTitleVersion = 0
 
   /// A pinned "now" for deterministic screenshots (`-JuniorFixedNow`).
   let fixedNow: Date?
@@ -173,7 +179,7 @@ final class AppModel {
       path = [.conversation(parts[1])]
     case "inbox":
       place = .inbox
-      path = item.map { [.reviewItem($0)] } ?? []
+      path = item.map { [.inboxItem($0)] } ?? []
     case "automations" where parts.count > 1 && parts[1] != "runs":
       place = .automations
       path = [.automation(parts[1])]
@@ -189,6 +195,7 @@ final class AppModel {
     // `?drawer=1` opens the navigation drawer over the page (screenshots).
     drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
+    openRename = components.queryItems?.contains { $0.name == "rename" } == true
   }
 
   func go(_ place: Place) {
@@ -198,7 +205,7 @@ final class AppModel {
   }
 
   /// Open a dashboard page in the in-app browser, for what the public API
-  /// cannot do (answer a Review item, change an Automation).
+  /// cannot do (answer an Inbox item, change an Automation).
   func openOnWeb(_ dashboardPath: String) {
     show(server.page(dashboardPath))
   }
@@ -232,9 +239,9 @@ final class AppModel {
     await refreshInboxCount()
   }
 
-  /// Open Review items that wait on the viewer.
+  /// Open Inbox items that wait on the viewer.
   func refreshInboxCount() async {
-    if let list = try? await call("searchReviewItems", ["limit": 50], as: ReviewItemList.self) {
+    if let list = try? await call("searchInboxItems", ["limit": 50], as: InboxItemList.self) {
       inboxCount = list.items.filter(\.canAct).count
     }
   }
@@ -249,7 +256,7 @@ final class AppModel {
         try? await Task.sleep(for: .seconds(idle ? 60 : 15))
         guard let self, !Task.isCancelled, self.signedIn else { continue }
         self.conversationsVersion += 1
-        self.reviewItemsVersion += 1
+        self.inboxItemsVersion += 1
         await self.refreshInboxCount()
       }
     }
@@ -264,10 +271,16 @@ final class AppModel {
     lastInput = Date()
   }
 
+  /// Tell the open Conversation about a title that a list saved.
+  func didRename(_ saved: SavedTitle) {
+    savedTitle = saved
+    savedTitleVersion += 1
+  }
+
   /// Tell screens that data changed after a local write.
   func didWrite() {
     conversationsVersion += 1
-    reviewItemsVersion += 1
+    inboxItemsVersion += 1
   }
 }
 
