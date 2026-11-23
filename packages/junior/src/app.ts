@@ -886,9 +886,13 @@ export async function createApp(
     | undefined;
   // Built after resetRuntimeConfig, so the lease and the queue visibility
   // timeout use this app's functionMaxDurationSeconds.
-  const engineCtx = createEngineContext(getChatConfig());
+  const chatConfig = getChatConfig();
+  const engineCtx = createEngineContext(chatConfig);
   const turnSteps = turnStepConsumer(engineCtx, {
     client: createGatewayModelClient(),
+    bot: chatConfig.bot,
+    // Core Turns have no tools yet.
+    tools: [],
   });
   const deliveries = deliveryConsumer(engineCtx, {
     getSlackAdapter: getProductionSlackAdapter,

@@ -8,6 +8,7 @@
 // shared database.
 import { randomInt, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
+import { getChatConfig } from "@/chat/config";
 import type { Location } from "@/chat/conversations/location";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
@@ -15,6 +16,7 @@ import { DELIVERY_TOPIC } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { scheduleInput } from "@/core/turn/schedule";
+import type { ToolDefinition } from "@/core/tool";
 import {
   juniorConversations,
   juniorIdentities,
@@ -83,8 +85,13 @@ export type TurnHarness = {
   close: () => Promise<void>;
 };
 
-/** Creates a root Slack Conversation and its queue for one test. */
-export async function createTurnHarness(): Promise<TurnHarness> {
+/**
+ * Creates a root Slack Conversation and its queue for one test. The host's
+ * `prepare` gives the model `tools`.
+ */
+export async function createTurnHarness({
+  tools = [],
+}: { tools?: ToolDefinition[] } = {}): Promise<TurnHarness> {
   const fixture = await createJuniorSqlFixture();
   const db = fixture.sql.db();
   const threadTs = `${randomInt(1e9, 2e9)}.${randomInt(1e5, 1e6)}`;
@@ -119,7 +126,13 @@ export async function createTurnHarness(): Promise<TurnHarness> {
     owner: "worker-a",
     leaseMs: LEASE_MS,
   };
-  queue.mount(turnStepConsumer(engineCtx, { client: emulatedModelClient() }));
+  queue.mount(
+    turnStepConsumer(engineCtx, {
+      client: emulatedModelClient(),
+      bot: getChatConfig().bot,
+      tools,
+    }),
+  );
   queue.mount(
     deliveryConsumer(engineCtx, {
       getSlackAdapter: () => new FakeSlackAdapter({ botUserId: "U_BOT" }),

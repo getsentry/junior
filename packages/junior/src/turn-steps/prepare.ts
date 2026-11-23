@@ -1,18 +1,20 @@
-// The host's `prepare` for the core Turn engine. It gives the system prompt
-// and the model settings of the claimed Turn, and turns each unread input
-// into a user message with instruction authority for its Actor. It gives no
-// tools yet.
+// The host's `prepare` for the core Turn engine. It gives the system prompt,
+// the tools and the model settings of the claimed Turn, and turns each unread
+// input into a user message with instruction authority for its Actor. The
+// host gives the database, the bot settings and the tools, so a test can run
+// this `prepare` with its own tools.
 import { actorSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { getChatConfig } from "@/chat/config";
+import type { BotConfig } from "@/chat/config";
 import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
-import { getSqlExecutor } from "@/chat/db";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
+import type { EngineContext } from "@/core/engine-context";
 import type { PreparedStep } from "@/core/turn/advance";
 import type { InputMessage, UnreadInput } from "@/core/turn/inbox";
 import type { ClaimedTurn } from "@/core/turn/state";
+import type { ToolDefinition } from "@/core/tool";
 
 const turnInputPayloadSchema = z
   .object({ text: z.string().min(1), actor: actorSchema })
@@ -35,30 +37,39 @@ function inputMessage(input: UnreadInput): InputMessage {
 }
 
 /**
- * Prepares one step of a claimed Turn: the system prompt, the model settings
- * with the Conversation's privacy, and the inputs as user messages.
+ * Builds the host's `prepare`. Each step gets the system prompt, `tools`, the
+ * model settings of `bot` with the Conversation's privacy, and the inputs as
+ * user messages. It reads `bot` at each step, so a later change applies.
  */
-export async function prepareTurnStep(
-  turn: ClaimedTurn,
-  inputs: UnreadInput[],
-): Promise<PreparedStep & { inputs: InputMessage[] }> {
-  const { bot } = getChatConfig();
-  const { visibility } = await resolveRootVisibility(
-    getSqlExecutor(),
-    turn.conversationId,
-  );
-  return {
-    // The engine has no Delivery yet, so the reply stays in history. A Turn
-    // without Delivery gets the local rules.
-    systemPrompt: await buildDeploymentSystemPrompt("local", "conversation"),
-    tools: [],
-    model: {
-      id: bot.modelId,
-      reasoning: bot.reasoningLevel,
-      privacy: resolveConversationPrivacy({
-        visibility: visibility ?? undefined,
-      }),
-    },
-    inputs: inputs.map(inputMessage),
+export function createPrepareTurnStep({
+  executor,
+  bot,
+  tools,
+}: Pick<EngineContext, "executor"> & {
+  bot: BotConfig;
+  tools: ToolDefinition[];
+}) {
+  return async (
+    turn: ClaimedTurn,
+    inputs: UnreadInput[],
+  ): Promise<PreparedStep & { inputs: InputMessage[] }> => {
+    const { visibility } = await resolveRootVisibility(
+      executor,
+      turn.conversationId,
+    );
+    return {
+      // The engine has no Delivery yet, so the reply stays in history. A Turn
+      // without Delivery gets the local rules.
+      systemPrompt: await buildDeploymentSystemPrompt("local", "conversation"),
+      tools,
+      model: {
+        id: bot.modelId,
+        reasoning: bot.reasoningLevel,
+        privacy: resolveConversationPrivacy({
+          visibility: visibility ?? undefined,
+        }),
+      },
+      inputs: inputs.map(inputMessage),
+    };
   };
 }

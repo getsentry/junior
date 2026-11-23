@@ -333,9 +333,14 @@ describe("Turn step Vercel queue integration", () => {
     // createApp sets the host's max duration after this module loads.
     resetRuntimeConfig(600);
 
-    const engineCtx = createEngineContext(getChatConfig());
+    const chatConfig = getChatConfig();
+    const engineCtx = createEngineContext(chatConfig);
     engineCtx.queue.createCallback(
-      turnStepConsumer(engineCtx, { client: createGatewayModelClient() }),
+      turnStepConsumer(engineCtx, {
+        client: createGatewayModelClient(),
+        bot: chatConfig.bot,
+        tools: [],
+      }),
     );
 
     expect(mocks.handleCallback).toHaveBeenCalledWith(expect.any(Function), {
