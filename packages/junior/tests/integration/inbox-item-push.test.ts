@@ -5,13 +5,18 @@ import {
   type Identity,
   type User,
 } from "@sentry/junior-plugin-api";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import webPush from "web-push";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
+import { createIdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
+import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
+import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
+import { getInboxItem } from "@/chat/inbox-items/store";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createUpdateInboxItemTool } from "@/chat/inbox-items/tools/update";
 import {
@@ -23,7 +28,18 @@ import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { juniorInboxItemDeliveries } from "@/db/schema";
+import { createConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
+import { useGitHubEvents } from "../fixtures/event-automations";
+import {
+  addEveryoneItem,
+  addPullRequestItem,
+  api,
+  conversation,
+  PULL_REQUEST,
+  ROOT,
+  user,
+} from "../fixtures/snoozes";
 import { getCapturedSlackApiCalls } from "../msw/handlers/slack-api";
 import { mswServer } from "../msw/server";
 
@@ -68,6 +84,12 @@ async function person(email: string): Promise<User> {
 /** Ana has the phone, and pushes at any time. */
 async function anaWithPhone(): Promise<User> {
   const ana = await person("ana@example.com");
+  await addPhone(ana);
+  return ana;
+}
+
+/** Give this User the phone, with pushes at any time. */
+async function addPhone(ana: User): Promise<void> {
   await savePushSubscription(
     getDb(),
     ana.id,
@@ -92,7 +114,6 @@ async function anaWithPhone(): Promise<User> {
     },
     Date.now(),
   );
-  return ana;
 }
 
 /** Tools of a Turn that Ana started, in the dashboard or a Slack thread. */
@@ -132,6 +153,7 @@ async function turnTools(
   };
   return {
     add: createAddInboxItemTool(context, services),
+    conversationId,
     update: createUpdateInboxItemTool(context, services),
   };
 }
@@ -263,5 +285,176 @@ describe("inbox item push", () => {
 
     expect(getCapturedSlackApiCalls("chat.postMessage")).toHaveLength(1);
     expect(pushes).toEqual([]);
+  });
+
+  it("pushes each wake of a snooze from a time or an Event, once", async () => {
+    // The app that GitHub Events need sets its own dashboard links.
+    await useGitHubEvents();
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    const fixture = await createConversationFixture();
+    // A User of the Slack workspace, so she can see the items of its thread.
+    const ana = await user("ana@example.com");
+    await addPhone(ana);
+    await conversation(ROOT, "public");
+    const asAna = api(fixture, ana);
+    const publisher = createEventAppPublisher({
+      conversationWork: () => ({ queue: fixture.queue }),
+    });
+    const heartbeat = (nowMs: number) =>
+      runHeartbeat({
+        conversationWorkQueue: fixture.queue,
+        dispatchForIdentity: createIdentityDispatcher({
+          conversationWorkQueue: () => fixture.queue,
+        }),
+        events: publisher,
+        nowMs,
+      });
+    const merged = {
+      eventKey: `pull_request.merged:${PULL_REQUEST.identifier}`,
+      eventType: "pull_request.merged",
+      identifier: PULL_REQUEST.identifier,
+      namespace: "github",
+      occurredAtMs: Date.now(),
+      trustedSummary: "Pull request merged.",
+    };
+    const wakePush = (id: string) => ({
+      body: "Review acme entry",
+      tag: id,
+      title: "Review acme entry",
+      url: `https://junior.example.com/inbox?item=${id}`,
+    });
+    const wakeDelivery = async (id: string) =>
+      (
+        await getDb()
+          .select({
+            skipReason: juniorInboxItemDeliveries.skipReason,
+            status: juniorInboxItemDeliveries.status,
+          })
+          .from(juniorInboxItemDeliveries)
+          .where(
+            and(
+              eq(juniorInboxItemDeliveries.itemId, id),
+              eq(juniorInboxItemDeliveries.event, "wake"),
+            ),
+          )
+      )[0];
+
+    // The timer wakes it once. A later heartbeat finds nothing to wake.
+    const acme = await addPullRequestItem(ROOT, [ana], "Review acme entry");
+    const row = { conversationId: ROOT, inboxItemId: acme };
+    const wakeAtMs = Date.now() + 60_000;
+    expect((await asAna.snooze(row, wakeAtMs)).status).toBe(201);
+    await heartbeat(wakeAtMs);
+    await heartbeat(wakeAtMs + 1);
+    expect(pushes).toEqual([wakePush(acme)]);
+    expect(await wakeDelivery(acme)).toEqual({
+      skipReason: null,
+      status: "sent",
+    });
+
+    // The Event wakes it again, and its repeat wakes nothing.
+    expect(
+      (
+        await asAna.snoozeOn(row, [
+          { eventType: "pull_request.merged", outcome: "wake" },
+        ])
+      ).status,
+    ).toBe(201);
+    await publisher.publish(merged);
+    await publisher.publish(merged);
+    expect(pushes).toEqual([wakePush(acme), wakePush(acme)]);
+
+    // The reply notice of her dashboard Conversation pushes to her too.
+    const tools = await turnTools(ana);
+    const notice = await upsertReplyNotice(getDb(), {
+      body: "The deploy finished.",
+      conversationId: tools.conversationId,
+      nowMs: Date.now(),
+      starterUserId: ana.id,
+      title: "Deploy api",
+      turnId: "turn-1",
+    });
+    expect(
+      (
+        await asAna.snooze(
+          { conversationId: tools.conversationId, inboxItemId: notice },
+          wakeAtMs + 30_000,
+        )
+      ).status,
+    ).toBe(201);
+    await heartbeat(wakeAtMs + 30_000);
+    expect(pushes[2]).toEqual({
+      body: "The deploy finished.",
+      tag: notice,
+      title: "Deploy api",
+      url: `https://junior.example.com/conversations/${encodeURIComponent(tools.conversationId)}`,
+    });
+
+    // A Wake that she picks pushes nothing, and its timer then finds the
+    // snooze woken.
+    expect((await asAna.snooze(row, wakeAtMs + 60_000)).status).toBe(201);
+    expect((await asAna.unsnooze(row)).status).toBe(204);
+    await heartbeat(wakeAtMs + 60_000);
+    // A trigger that resolves the item closes it and pushes nothing.
+    const globex = await addPullRequestItem(ROOT, [ana], "Review globex entry");
+    expect(
+      (
+        await asAna.snoozeOn({ conversationId: ROOT, inboxItemId: globex }, [
+          { eventType: "pull_request.merged", outcome: "resolve" },
+        ])
+      ).status,
+    ).toBe(201);
+    await publisher.publish(merged);
+    expect((await getInboxItem(getDb(), globex))?.status).toBe("dismissed");
+    // An Everyone item does not push when its snooze wakes.
+    const everyone = await addEveryoneItem(ROOT, "Review initech entry");
+    expect(
+      (
+        await asAna.snooze(
+          { conversationId: ROOT, inboxItemId: everyone },
+          wakeAtMs + 120_000,
+        )
+      ).status,
+    ).toBe(201);
+    await heartbeat(wakeAtMs + 120_000);
+    expect(pushes).toHaveLength(3);
+
+    // Outside her notification hours, the wake is recorded as skipped.
+    const hooli = await addPullRequestItem(ROOT, [ana], "Review hooli entry");
+    await saveNotificationSchedule(
+      getDb(),
+      ana.id,
+      {
+        days: [],
+        end: "18:00",
+        followSlack: false,
+        start: "09:00",
+        workingHoursOnly: true,
+      },
+      Date.now(),
+    );
+    expect(
+      (
+        await asAna.snooze(
+          { conversationId: ROOT, inboxItemId: hooli },
+          wakeAtMs + 180_000,
+        )
+      ).status,
+    ).toBe(201);
+    await heartbeat(wakeAtMs + 180_000);
+    expect(pushes).toHaveLength(3);
+    expect(await wakeDelivery(hooli)).toEqual({
+      skipReason: "outside_hours",
+      status: "skipped",
+    });
+
+    // The close of a woken item clears its push on every device.
+    expect((await asAna.act(acme, { action: "dismiss" })).status).toBe(200);
+    expect(await wakeDelivery(acme)).toMatchObject({ status: "cleared" });
+    await addPhone(ana);
+    const next = await execute(tools.add, ASK);
+    expect(pushes[3]).toMatchObject({ close: [acme], tag: next.item.id });
   });
 });

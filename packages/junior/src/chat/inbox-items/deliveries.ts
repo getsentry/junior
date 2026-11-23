@@ -65,14 +65,16 @@ export async function claimInboxItemPush(
 }
 
 /**
- * Record the web push of a reply notice to its starter. Each reply pushes
- * again, so the one record of the item holds the latest push. A skipped
- * push keeps an earlier `sent` record: that notification still shows, and
- * the close of the item must clear it.
+ * Record a web push that can repeat for one item and User: a reply to its
+ * starter, or the wake of their snooze. Each one pushes again, so the one
+ * record of the event holds the latest push. A skipped push keeps an
+ * earlier `sent` record: that notification still shows, and the close of
+ * the item must clear it.
  */
-export async function recordReplyNoticePush(
+export async function recordRepeatInboxItemPush(
   db: JuniorDatabase,
   input: {
+    event: "reply" | "wake";
     itemId: string;
     nowMs: number;
     skipReason: InboxItemDeliverySkipReason | undefined;
@@ -89,7 +91,7 @@ export async function recordReplyNoticePush(
     ...result,
     channel: "web_push",
     createdAt: now,
-    event: "reply",
+    event: input.event,
     itemId: input.itemId,
     userId: input.userId,
   });
