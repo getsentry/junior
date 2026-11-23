@@ -8,8 +8,9 @@ import {
   loader,
   skip,
   type ModelRequestContext,
+  type Skip,
 } from "@/core/model/request";
-import type { ToolDefinition } from "@/core/tool";
+import type { UnreadInput } from "@/core/turn/inbox";
 
 const MODEL: ModelSettings = {
   id: "anthropic/claude-sonnet-4.5",
@@ -33,19 +34,6 @@ function userText(content: string): UserMessage {
   return { role: "user", content, timestamp: 0 };
 }
 
-function testTool(name: string): ToolDefinition {
-  return {
-    name,
-    description: `The ${name} tool.`,
-    parameters: {
-      type: "object",
-      properties: {},
-    } as ToolDefinition["parameters"],
-    replay: "safe",
-    execute: () => Promise.resolve({ content: [] }),
-  };
-}
-
 /** A load that ends only when core aborts its signal. */
 function waitForAbort(_ctx: ModelRequestContext, signal: AbortSignal) {
   return new Promise<string>((_resolve, reject) => {
@@ -62,11 +50,10 @@ describe("assembleModelRequest", () => {
         loads += 1;
         return Promise.resolve({ turnId: ctx.turn.turnId });
       },
-      { lifetime: "step", timeoutMs: 100 },
+      { timeoutMs: 100 },
     );
     const spec = defineModelRequest({
       systemPrompt: [],
-      tools: [],
       messages: ["first", "second", "third"].map((name) =>
         fragment(name, {
           loader: turnRow,
@@ -99,11 +86,10 @@ describe("assembleModelRequest", () => {
         loads += 1;
         return Promise.resolve("Thomas likes short replies.");
       },
-      { lifetime: "step", timeoutMs: 100 },
+      { timeoutMs: 100 },
     );
     const spec = defineModelRequest({
       systemPrompt: [],
-      tools: [],
       messages: [
         fragment("memory", {
           loader: memory,
@@ -133,7 +119,7 @@ describe("assembleModelRequest", () => {
     const failing = loader(
       "failing",
       () => Promise.reject(new Error("The memory store is down")),
-      { lifetime: "step", timeoutMs: 100, optional: true },
+      { timeoutMs: 100, optional: true },
     );
     const slow = loader(
       "slow",
@@ -141,12 +127,11 @@ describe("assembleModelRequest", () => {
         timeoutSignal = signal;
         return waitForAbort(ctx, signal);
       },
-      { lifetime: "step", timeoutMs: 5, optional: true },
+      { timeoutMs: 5, optional: true },
     );
     const values: unknown[] = [];
     const spec = defineModelRequest({
       systemPrompt: [],
-      tools: [],
       messages: [failing, slow].map((source) =>
         fragment(source.label, {
           loader: source,
@@ -175,18 +160,14 @@ describe("assembleModelRequest", () => {
     const failing = loader(
       "soul",
       () => Promise.reject(new Error("ENOENT: SOUL.md")),
-      { lifetime: "step", timeoutMs: 100 },
+      { timeoutMs: 100 },
     );
-    const slow = loader("memory", waitForAbort, {
-      lifetime: "step",
-      timeoutMs: 5,
-    });
+    const slow = loader("memory", waitForAbort, { timeoutMs: 5 });
 
     await expect(
       assembleModelRequest(
         defineModelRequest({
           systemPrompt: [],
-          tools: [],
           messages: [fragment("soul", { loader: failing, format: userText })],
           model,
         }),
@@ -198,7 +179,6 @@ describe("assembleModelRequest", () => {
       assembleModelRequest(
         defineModelRequest({
           systemPrompt: [],
-          tools: [],
           messages: [fragment("memory", { loader: slow, format: userText })],
           model,
         }),
@@ -211,7 +191,6 @@ describe("assembleModelRequest", () => {
   it("reports the reason of a skipped fragment", async () => {
     const spec = defineModelRequest({
       systemPrompt: [],
-      tools: [],
       messages: [
         fragment("inputs", {
           format: (_value, ctx) =>
@@ -240,19 +219,10 @@ describe("assembleModelRequest", () => {
 
   it("keeps the layout order within each field", async () => {
     const history: Message[] = [userText("Earlier")];
-    const search = testTool("search");
-    const read = testTool("read");
-    const write = testTool("write");
     const spec = defineModelRequest({
       systemPrompt: [
-        fragment("soul", { format: () => "You are Junior." }),
-        fragment("world", { format: () => "You work at Sentry." }),
-      ],
-      tools: [
-        fragment("search", { format: () => [search] }),
-        fragment("files", {
-          format: () => [read, write],
-        }),
+        { name: "identity", text: "You are Junior." },
+        { name: "world", text: "You work at Sentry." },
       ],
       messages: [
         fragment("first", { format: () => userText("First") }),
@@ -263,7 +233,7 @@ describe("assembleModelRequest", () => {
       model,
     });
 
-    const { request, newMessages } = await assembleModelRequest(
+    const { request, newMessages, diagnostics } = await assembleModelRequest(
       spec,
       { ...CTX, history },
       { session: "conversation-1" },
@@ -277,82 +247,99 @@ describe("assembleModelRequest", () => {
     expect(request).toEqual({
       systemPrompt: "You are Junior.\n\nYou work at Sentry.",
       messages: [...history, ...newMessages],
-      tools: [search, read, write],
       model: MODEL,
       session: "conversation-1",
     });
+    expect(diagnostics).toEqual({
+      systemPrompt: [
+        { name: "identity", chars: 15 },
+        { name: "world", chars: 19 },
+      ],
+      loaders: [],
+      fragments: [
+        { name: "first", field: "messages", status: "included" },
+        { name: "pair", field: "messages", status: "included" },
+        { name: "model", field: "model", status: "included" },
+      ],
+    });
   });
 
-  it("runs a deployment loader once for every request of one spec", async () => {
-    let loads = 0;
-    const soul = loader(
-      "soul",
-      () => {
-        loads += 1;
-        return Promise.resolve("You are Junior.");
-      },
-      { lifetime: "deployment", timeoutMs: 100 },
+  it("builds the layout of the `defineModelRequest` example", async () => {
+    // The example's code, with a fake memory store and SOUL.md text.
+    const soul = "Be direct.";
+    const memoryStore = {
+      recall: (conversationId: string, _signal: AbortSignal) =>
+        Promise.resolve(
+          conversationId === "conversation-1"
+            ? ["Thomas likes short replies."]
+            : [],
+        ),
+    };
+    const memories = loader(
+      "memories",
+      (ctx, signal) => memoryStore.recall(ctx.turn.conversationId, signal),
+      { timeoutMs: 2_000, optional: true },
     );
+    const recalled = fragment("recalled-memories", {
+      loader: memories,
+      // Recall only for a step that has new inputs.
+      enabled: (ctx) => ctx.inputs.length > 0,
+      format: (notes): Message | Skip =>
+        notes && notes.length > 0
+          ? { role: "user", content: notes.join("\n"), timestamp: 0 }
+          : skip("no memories"),
+    });
+    const settings: ModelSettings = {
+      id: "anthropic/claude-sonnet-4.5",
+      reasoning: "low",
+      privacy: "public",
+    };
     const spec = defineModelRequest({
       systemPrompt: [
-        fragment("soul", { loader: soul, format: (text) => text }),
+        { name: "identity", text: "You are Junior, Sentry's Slack bot." },
+        { name: "personality", text: soul },
       ],
-      tools: [],
-      messages: [],
-      model,
+      messages: [recalled],
+      model: fragment("model", { format: () => settings }),
     });
+    const input: UnreadInput = {
+      inputId: "input-1",
+      actorIdentityId: "identity-1",
+      payload: {},
+      sentAt: new Date(0),
+      traceContext: null,
+      attemptedAt: null,
+    };
+    const withInput = { ...CTX, inputs: [input] };
 
-    const first = await assembleModelRequest(spec, CTX, {
+    const recall = await assembleModelRequest(spec, withInput, {
       session: "conversation-1",
     });
-    const second = await assembleModelRequest(spec, CTX, {
+    const noInputs = await assembleModelRequest(spec, CTX, {
       session: "conversation-1",
     });
-
-    expect(loads).toBe(1);
-    expect(second.request).toEqual(first.request);
-    expect(second.diagnostics.loaders).toEqual([
-      { label: "soul", lifetime: "deployment", ms: 0, status: "cached" },
-    ]);
-  });
-
-  it("loads a deployment loader again after it fails", async () => {
-    let loads = 0;
-    const soul = loader(
-      "soul",
-      () => {
-        loads += 1;
-        return loads === 1
-          ? Promise.reject(new Error("ENOENT: SOUL.md"))
-          : Promise.resolve("You are Junior.");
-      },
-      { lifetime: "deployment", timeoutMs: 100 },
+    const noMemories = await assembleModelRequest(
+      spec,
+      { ...withInput, turn: { ...CTX.turn, conversationId: "conversation-2" } },
+      { session: "conversation-2" },
     );
-    const spec = defineModelRequest({
-      systemPrompt: [
-        fragment("soul", { loader: soul, format: (text) => text }),
-      ],
-      tools: [],
-      messages: [],
-      model,
-    });
 
-    await expect(
-      assembleModelRequest(spec, CTX, { session: "conversation-1" }),
-    ).rejects.toThrow('Loader "soul" failed');
-    const retry = await assembleModelRequest(spec, CTX, {
+    expect(recall.request).toEqual({
+      systemPrompt: "You are Junior, Sentry's Slack bot.\n\nBe direct.",
+      messages: [userText("Thomas likes short replies.")],
+      model: settings,
       session: "conversation-1",
     });
-    const next = await assembleModelRequest(spec, CTX, {
-      session: "conversation-1",
+    expect(noInputs.diagnostics.fragments[0]).toEqual({
+      name: "recalled-memories",
+      field: "messages",
+      status: "disabled",
     });
-
-    expect(loads).toBe(2);
-    expect(retry.diagnostics.loaders).toEqual([
-      expect.objectContaining({ label: "soul", status: "ok" }),
-    ]);
-    expect(next.diagnostics.loaders).toEqual([
-      expect.objectContaining({ label: "soul", status: "cached" }),
-    ]);
+    expect(noMemories.diagnostics.fragments[0]).toEqual({
+      name: "recalled-memories",
+      field: "messages",
+      status: "skipped",
+      reason: "no memories",
+    });
   });
 });
