@@ -54,10 +54,15 @@ export function sentryConversationUrl(
   return `${parsed.protocol}//${parsed.hostname}${port}/organizations/${orgSlug}/${path}`;
 }
 
-/** Build the conversation session footer, preferring a host-provided dashboard link. */
+/**
+ * Build the conversation session footer, preferring a host-provided dashboard
+ * link. `earlierConversationIds` keeps the markers of Conversations that wrote
+ * the body before, so the footer names every one of them.
+ */
 export function githubConversationFooter(
   conversationId: string,
   dashboardUrl?: string,
+  earlierConversationIds: string[] = [],
 ): string | undefined {
   const id = nonEmptyString(conversationId, "conversationId");
   const normalizedDashboardUrl = dashboardUrl?.trim();
@@ -70,8 +75,13 @@ export function githubConversationFooter(
   if (!sessionLinks) {
     return undefined;
   }
-  const conversationMarker = `<!-- ${GITHUB_CONVERSATION_ID_MARKER}${encodeURIComponent(id)} -->`;
-  return `${GITHUB_SESSION_FOOTER_START}\n${conversationMarker}\n\n--\n\n${sessionLinks}\n\n${GITHUB_SESSION_FOOTER_END}`;
+  const markers = [...new Set([id, ...earlierConversationIds])]
+    .map(
+      (markerId) =>
+        `<!-- ${GITHUB_CONVERSATION_ID_MARKER}${encodeURIComponent(markerId)} -->`,
+    )
+    .join("\n");
+  return `${GITHUB_SESSION_FOOTER_START}\n${markers}\n\n--\n\n${sessionLinks}\n\n${GITHUB_SESSION_FOOTER_END}`;
 }
 
 /** Read opaque native conversation ids from runtime-owned GitHub footers. */
@@ -143,9 +153,16 @@ export function appendGitHubFooter(
   body: string,
   conversationId: string,
   dashboardUrl?: string,
+  currentBody?: string,
 ): string {
-  const footer = githubConversationFooter(conversationId, dashboardUrl);
   const normalizedBody = body.trimEnd();
+  // A replacement body keeps the Conversations of the body on GitHub, so a
+  // close still reaches each one.
+  const footer = githubConversationFooter(
+    conversationId,
+    dashboardUrl,
+    githubConversationIds(currentBody),
+  );
   const existingFooter = new RegExp(
     `${escapeRegExp(GITHUB_SESSION_FOOTER_START)}[\\s\\S]*?${escapeRegExp(GITHUB_SESSION_FOOTER_END)}`,
   );
