@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type {
   MessageMetadata,
-  handleCallback,
+  QueueClient,
   registerDevConsumer,
 } from "@vercel/queue";
 import {
@@ -36,10 +36,11 @@ const mocks = vi.hoisted(() => {
       _options?: { idempotencyKey?: string; retentionSeconds: number },
     ) => ({ messageId: "msg_1" }),
   );
+  const handleCallback = vi.fn<QueueClient["handleCallback"]>();
   return {
     send,
-    queueClient: { send },
-    handleCallback: vi.fn<typeof handleCallback>(),
+    queueClient: { handleCallback, send },
+    handleCallback,
     registerDevConsumer: vi.fn<typeof registerDevConsumer>(),
     processPluginTask: vi.fn(async (_message: unknown) => undefined),
     processWorkspaceSnapshotJob: vi.fn(async (_message: unknown) => undefined),
@@ -50,7 +51,6 @@ vi.mock("@vercel/queue", () => ({
   QueueClient: vi.fn(function QueueClientMock() {
     return mocks.queueClient;
   }),
-  handleCallback: mocks.handleCallback,
   registerDevConsumer: mocks.registerDevConsumer,
 }));
 vi.mock("@/chat/plugins/task-runner", () => ({
@@ -94,7 +94,7 @@ function queueMetadata(overrides: Partial<MessageMetadata> = {}) {
   } satisfies MessageMetadata;
 }
 
-/** Return the handler and retry hook passed to the last `handleCallback`. */
+/** Return the handler and retry hook passed to the client's last `handleCallback`. */
 function lastPushCallback() {
   const call = mocks.handleCallback.mock.lastCall;
   const handler = call?.[0];

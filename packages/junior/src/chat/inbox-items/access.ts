@@ -295,6 +295,16 @@ export const AUTOMATION_INBOX_ITEM_KEY_PREFIX = "automation:";
  */
 export const REPLY_NOTICE_KEY_PREFIX = "reply:";
 
+/**
+ * The dedupe key prefixes that core and plugins own, with their owner. The
+ * add tool's input schema rejects a key that starts with one of them.
+ */
+export const RESERVED_INBOX_ITEM_KEY_PREFIXES = [
+  { owner: "a plugin", prefix: PLUGIN_INBOX_ITEM_KEY_PREFIX },
+  { owner: "an Automation alert", prefix: AUTOMATION_INBOX_ITEM_KEY_PREFIX },
+  { owner: "a reply notice", prefix: REPLY_NOTICE_KEY_PREFIX },
+] as const;
+
 /** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
 export function inboxItemPlugin(dedupeKey: string): string | undefined {
   if (!dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return undefined;
