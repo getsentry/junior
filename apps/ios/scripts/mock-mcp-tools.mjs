@@ -298,6 +298,12 @@ export function createMockMcpTools({ app, origin }) {
         ? []
         : item.assignees.map((person) => person.displayName ?? person.email),
       canAct: item.canAct,
+      // Like `itemNeedsUser`. Each mock item that is not for Everyone names
+      // the viewer, so each such open action needs them.
+      needsViewer:
+        item.status === "open" &&
+        item.kind === "action" &&
+        !item.assignedToEveryone,
       conversationIds: item.conversationIds,
       subject: item.subject
         ? {
