@@ -1,12 +1,11 @@
-// The API that host code uses to declare how core builds each model request.
-// `defineModelRequest` states the rules and shows an example.
+// The API that host code uses to declare how core builds the prompt of each
+// model request. `definePromptLayout` states the rules and shows an example.
 import type { Message } from "@earendil-works/pi-ai";
-import type { ModelSettings } from "@/core/model/client";
 import type { UnreadInput } from "@/core/turn/inbox";
 import type { ClaimedTurn } from "@/core/turn/state";
 
 /** What a loader or a fragment knows about the step that it builds for. */
-export type ModelRequestContext = {
+export type PromptBuildContext = {
   turn: ClaimedTurn;
   /** The Conversation history before this step's new messages. */
   history: Message[];
@@ -14,8 +13,8 @@ export type ModelRequestContext = {
   inputs: UnreadInput[];
 };
 
-/** Keeps the loaded values of one model request. Core makes one per request. */
-export type LoadedValues = { readonly ctx: ModelRequestContext };
+/** Keeps the loaded values of one prompt. Core makes one per prompt. */
+export type LoadedValues = { readonly ctx: PromptBuildContext };
 
 /**
  * A source of data for fragments. Make one with `loader`. Core calls
@@ -43,17 +42,17 @@ type LoaderOptions = {
   /** Core aborts `signal` and stops waiting for the load after this time. */
   timeoutMs: number;
   /**
-   * When true, a failed or timed-out load gives `undefined`, and the request
+   * When true, a failed or timed-out load gives `undefined`, and the prompt
    * is built without it. Otherwise the failure stops the step.
    */
   optional?: boolean;
 };
 
-type Load<T> = (ctx: ModelRequestContext, signal: AbortSignal) => Promise<T>;
+type Load<T> = (ctx: PromptBuildContext, signal: AbortSignal) => Promise<T>;
 
 /**
  * Declares a loader. `label` names it in diagnostics and errors, and must be
- * unique in a spec. `load` does the I/O, and stops when `signal` aborts. Core
+ * unique in a layout. `load` does the I/O, and stops when `signal` aborts. Core
  * runs it again for each step.
  */
 export function loader<T>(
@@ -85,7 +84,7 @@ function buildLoader<T>(
   { timeoutMs, optional = false }: LoaderOptions,
   missing: () => T,
 ): Loader<T> {
-  // Weak keys, so the values go away with their request.
+  // Weak keys, so the values go away with their prompt.
   const kept = new WeakMap<LoadedValues, { value: T }>();
   return {
     label,
@@ -104,18 +103,18 @@ function buildLoader<T>(
   };
 }
 
-/** What `format` returns to leave its fragment out of this request. */
+/** What `format` returns to leave its fragment out of this prompt. */
 export type Skip = { skipped: string };
 
-/** Leaves a fragment out of this request. `reason` goes into diagnostics. */
+/** Leaves a fragment out of this prompt. `reason` goes into diagnostics. */
 export function skip(reason: string): Skip {
   return { skipped: reason };
 }
 
-type Enabled = (ctx: ModelRequestContext) => boolean;
+type Enabled = (ctx: PromptBuildContext) => boolean;
 
 /**
- * One piece of a model request. Make one with `fragment`. Core calls
+ * One piece of a prompt. Make one with `fragment`. Core calls
  * `render`, which runs `format` on the loader's value.
  */
 export type Fragment<TOutput = unknown> = {
@@ -127,7 +126,7 @@ export type Fragment<TOutput = unknown> = {
 
 /**
  * Declares a fragment. `name` names it in diagnostics, and must be unique in
- * a spec. `format` turns the loader's value into the fragment's output, or
+ * a layout. `format` turns the loader's value into the fragment's output, or
  * returns `skip(reason)`. `enabled` returning false leaves the fragment out,
  * and core does not run its loader for it.
  */
@@ -136,7 +135,7 @@ export function fragment<T, TResult>(
   definition: {
     loader: Loader<T>;
     enabled?: Enabled;
-    format: (value: T, ctx: ModelRequestContext) => TResult;
+    format: (value: T, ctx: PromptBuildContext) => TResult;
   },
 ): Fragment<Exclude<TResult, Skip>>;
 export function fragment<TResult>(
@@ -144,7 +143,7 @@ export function fragment<TResult>(
   definition: {
     loader?: undefined;
     enabled?: Enabled;
-    format: (value: undefined, ctx: ModelRequestContext) => TResult;
+    format: (value: undefined, ctx: PromptBuildContext) => TResult;
   },
 ): Fragment<Exclude<TResult, Skip>>;
 export function fragment(
@@ -153,12 +152,12 @@ export function fragment(
     | {
         loader: Loader<unknown>;
         enabled?: Enabled;
-        format: (value: unknown, ctx: ModelRequestContext) => unknown;
+        format: (value: unknown, ctx: PromptBuildContext) => unknown;
       }
     | {
         loader?: undefined;
         enabled?: Enabled;
-        format: (value: undefined, ctx: ModelRequestContext) => unknown;
+        format: (value: undefined, ctx: PromptBuildContext) => unknown;
       },
 ): Fragment {
   const { enabled } = definition;
@@ -179,38 +178,37 @@ export function fragment(
   };
 }
 
-/** One named, static part of the system prompt. */
-export type SystemPromptPart = { name: string; text: string };
-
-/** The parts of the system prompt, and the fragments of each other field. */
-export type ModelRequestLayout = {
-  /** Their texts are joined, in order, into the system prompt. */
-  systemPrompt: readonly SystemPromptPart[];
-  /** Their messages go after the history, in order. */
-  messages: readonly Fragment<Message | Message[]>[];
-  model: Fragment<ModelSettings>;
-};
-
-/** A checked layout. Build it once at startup, and give it to core. */
-export type ModelRequestSpec = Readonly<ModelRequestLayout>;
+/** One named, static section of the system prompt. */
+export type SystemPromptSection = { name: string; text: string };
 
 /**
- * Checks a layout and makes the spec that core builds each model request
- * from. It throws on an empty or repeated system prompt part name, on two
+ * The sections of the system prompt, and the fragments of the messages. Check
+ * it with `definePromptLayout` once at startup, and give the result to core.
+ */
+export type PromptLayout = {
+  /** Their texts are joined, in order, into the system prompt. */
+  readonly systemPrompt: readonly SystemPromptSection[];
+  /** Their messages go after the history, in order. */
+  readonly messages: readonly Fragment<Message | Message[]>[];
+};
+
+/**
+ * Checks a layout and returns the copy that core builds each prompt from. It
+ * throws on an empty or repeated system prompt section name, on two
  * fragments with one name, on one fragment used twice, and on two loaders
- * with one label. It freezes the system prompt parts.
+ * with one label. It freezes the system prompt sections.
  *
  * The rules:
  * - Loaders do all of the I/O. Core runs each needed loader once per step.
  * - Fragments are pure. `enabled` and `format` do no I/O, and read no clock
- *   and no random value, so the same inputs give the same request.
+ *   and no random value, so the same inputs give the same prompt.
  * - Message fragments only append. Their messages go after the history, and
  *   a later step sees them in its history.
- * - The system prompt holds no Conversation data. The host builds its parts
- *   once at startup, so the model provider can cache that part of the
- *   request.
- * - Tools are not in the layout. A Turn's tools are bound to its Actor and
- *   sandbox, and the step gets them separately.
+ * - The system prompt holds no Conversation data. The host builds its
+ *   sections once at startup, so the model provider can cache that part of
+ *   the request.
+ * - Tools and model settings are not in the layout. They belong to the Turn,
+ *   and the step gets them separately.
  *
  * @example
  * // At startup:
@@ -229,38 +227,30 @@ export type ModelRequestSpec = Readonly<ModelRequestLayout>;
  *       ? { role: "user", content: notes.join("\n"), timestamp: 0 }
  *       : skip("no memories"),
  * });
- * const settings: ModelSettings = {
- *   id: "anthropic/claude-sonnet-4.5",
- *   reasoning: "low",
- *   privacy: "public",
- * };
- * const spec = defineModelRequest({
+ * const layout = definePromptLayout({
  *   systemPrompt: [
  *     { name: "identity", text: "You are Junior, Sentry's Slack bot." },
  *     { name: "personality", text: soul },
  *   ],
  *   messages: [recalled],
- *   model: fragment("model", { format: () => settings }),
  * });
  */
-export function defineModelRequest(
-  layout: ModelRequestLayout,
-): ModelRequestSpec {
-  const partNames = new Set<string>();
+export function definePromptLayout(layout: PromptLayout): PromptLayout {
+  const sectionNames = new Set<string>();
   for (const { name } of layout.systemPrompt) {
     if (name === "") {
-      throw new Error("A system prompt part has no name");
+      throw new Error("A system prompt section has no name");
     }
-    if (partNames.has(name)) {
-      throw new Error(`Two system prompt parts are named "${name}"`);
+    if (sectionNames.has(name)) {
+      throw new Error(`Two system prompt sections are named "${name}"`);
     }
-    partNames.add(name);
+    sectionNames.add(name);
   }
 
   const seenFragments = new Set<Fragment>();
   const names = new Set<string>();
   const loaders = new Map<string, Loader<unknown>>();
-  for (const item of [...layout.messages, layout.model]) {
+  for (const item of layout.messages) {
     if (seenFragments.has(item)) {
       throw new Error(`Fragment "${item.name}" is used more than once`);
     }

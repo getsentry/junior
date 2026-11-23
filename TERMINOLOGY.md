@@ -145,18 +145,20 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Execution slice**: one serverless invocation segment of a Run. **Turn
   checkpoint**: the Redis resume cursor for one Turn.
 - **Reasoning level**: `none`, `low`, `medium`, `high`, or `xhigh`.
-- **Loader**: a named source of data for a core model request, such as a
-  database row or a service. Loaders do all of the I/O of a request. Core runs
-  each needed Loader once for each step.
-- **Fragment**: a named piece of a core model request. It formats one
-  Loader's value into the messages or the model settings. It does no I/O,
-  and reads no clock or random value.
-- **System prompt part**: a named, static piece of the system prompt of a
-  core model request. The host builds it once at startup. It holds no
-  Conversation data.
-- **Model request diagnostics**: how core built one model request: the size
-  of each System prompt part, how each Loader ran, and whether each Fragment
-  was included, skipped, or disabled. It holds no content.
+- **Loader**: a named source of data for a core prompt, such as a database
+  row or a service. Loaders do all of the I/O of a prompt. Core runs each
+  needed Loader once for each step.
+- **Fragment**: a named piece of a core prompt. It formats one Loader's value
+  into messages. It does no I/O, and reads no clock or random value.
+- **Prompt layout**: the System prompt sections and the message Fragments
+  of a core prompt, in order. The host checks it once at startup with
+  `definePromptLayout`.
+- **System prompt section**: a named, static piece of the system prompt in a
+  core prompt. The host builds it once at startup. It holds no Conversation
+  data.
+- **Prompt diagnostics**: how core built one prompt: the size of each System
+  prompt section, how each Loader ran, and whether each Fragment was
+  included, skipped, or disabled. It holds no content.
 - **Agent history item**: a `user_message`, `assistant_message` (holds its
   tool calls), `tool_result`, or `system_message` (a Pi system message after
   the leading one) event. Not `model_item` or `model_message`.

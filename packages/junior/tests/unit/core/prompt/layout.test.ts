@@ -1,18 +1,11 @@
 import { describe, expect, expectTypeOf, it } from "vitest";
-import type { ModelSettings } from "@/core/model/client";
 import {
-  defineModelRequest,
+  definePromptLayout,
   fragment,
   loader,
-  type ModelRequestLayout,
-} from "@/core/model/request";
+  type PromptLayout,
+} from "@/core/prompt/layout";
 
-const MODEL: ModelSettings = {
-  id: "anthropic/claude-sonnet-4.5",
-  reasoning: "low",
-  privacy: "public",
-};
-const model = fragment("model", { format: () => MODEL });
 const turnRow = loader(
   "turn-row",
   (ctx) => Promise.resolve({ turnId: ctx.turn.turnId }),
@@ -23,55 +16,50 @@ function userText(content: string) {
   return { role: "user" as const, content, timestamp: 0 };
 }
 
-describe("defineModelRequest", () => {
-  it("throws on an empty or repeated system prompt part name", () => {
+describe("definePromptLayout", () => {
+  it("throws on an empty or repeated system prompt section name", () => {
     expect(() =>
-      defineModelRequest({
+      definePromptLayout({
         systemPrompt: [{ name: "", text: "You are Junior." }],
         messages: [],
-        model,
       }),
-    ).toThrow("A system prompt part has no name");
+    ).toThrow("A system prompt section has no name");
     expect(() =>
-      defineModelRequest({
+      definePromptLayout({
         systemPrompt: [
           { name: "identity", text: "You are Junior." },
           { name: "identity", text: "You work at Sentry." },
         ],
         messages: [],
-        model,
       }),
-    ).toThrow('Two system prompt parts are named "identity"');
+    ).toThrow('Two system prompt sections are named "identity"');
   });
 
-  it("freezes the system prompt parts", () => {
-    const parts = [{ name: "identity", text: "You are Junior." }];
-    const spec = defineModelRequest({
-      systemPrompt: parts,
+  it("freezes the system prompt sections", () => {
+    const sections = [{ name: "identity", text: "You are Junior." }];
+    const layout = definePromptLayout({
+      systemPrompt: sections,
       messages: [],
-      model,
     });
 
-    parts[0]!.text = "You are someone else.";
+    sections[0]!.text = "You are someone else.";
 
-    expect(spec).toEqual({
+    expect(layout).toEqual({
       systemPrompt: [{ name: "identity", text: "You are Junior." }],
       messages: [],
-      model,
     });
-    expect(Object.isFrozen(spec.systemPrompt)).toBe(true);
-    expect(Object.isFrozen(spec.systemPrompt[0])).toBe(true);
+    expect(Object.isFrozen(layout.systemPrompt)).toBe(true);
+    expect(Object.isFrozen(layout.systemPrompt[0])).toBe(true);
   });
 
   it("throws on two fragments with one name", () => {
     expect(() =>
-      defineModelRequest({
+      definePromptLayout({
         systemPrompt: [],
         messages: [
           fragment("turn", { loader: turnRow, format: () => userText("A") }),
           fragment("turn", { format: () => userText("B") }),
         ],
-        model,
       }),
     ).toThrow('Two fragments are named "turn"');
   });
@@ -83,7 +71,7 @@ describe("defineModelRequest", () => {
     });
 
     expect(() =>
-      defineModelRequest({ systemPrompt: [], messages: [turn, turn], model }),
+      definePromptLayout({ systemPrompt: [], messages: [turn, turn] }),
     ).toThrow('Fragment "turn" is used more than once');
   });
 
@@ -93,7 +81,7 @@ describe("defineModelRequest", () => {
     });
 
     expect(() =>
-      defineModelRequest({
+      definePromptLayout({
         systemPrompt: [],
         messages: [
           fragment("first", {
@@ -102,23 +90,21 @@ describe("defineModelRequest", () => {
           }),
           fragment("second", { loader: otherTurnRow, format: userText }),
         ],
-        model,
       }),
     ).toThrow('Two loaders are labeled "turn-row"');
   });
 
-  it("takes only static parts in the system prompt", () => {
-    type SystemPromptPart = ModelRequestLayout["systemPrompt"][number];
-    type MessageFragment = ModelRequestLayout["messages"][number];
+  it("takes only static sections in the system prompt", () => {
+    type SystemPromptSection = PromptLayout["systemPrompt"][number];
+    type MessageFragment = PromptLayout["messages"][number];
 
     expectTypeOf(
       fragment("identity", { format: () => "You are Junior." }),
-    ).not.toExtend<SystemPromptPart>();
-    defineModelRequest({
-      // @ts-expect-error A fragment is not a system prompt part.
+    ).not.toExtend<SystemPromptSection>();
+    definePromptLayout({
+      // @ts-expect-error A fragment is not a system prompt section.
       systemPrompt: [fragment("identity", { format: () => "You are Junior." })],
       messages: [],
-      model,
     });
     // Message fragments must give messages.
     expectTypeOf(
