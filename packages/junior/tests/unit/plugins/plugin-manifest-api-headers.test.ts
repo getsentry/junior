@@ -611,7 +611,7 @@ describe("plugin manifest API headers", () => {
         "    private-key-env: EXAMPLE_KEY",
       ],
       ["accounts:", "  service-account:", "    tools:", "      - search"],
-      "Plugin example accounts.service-account requires mcp without auth or oauth-client",
+      "Plugin example accounts.service-account.tools requires mcp without auth or oauth-client",
     ],
     [
       "a key that no surface enforces",
@@ -625,6 +625,12 @@ describe("plugin manifest API headers", () => {
         "      - default",
       ],
       "Plugin example accounts",
+    ],
+    [
+      "operations on an MCP plugin",
+      ["  allowed-tools:", "    - search"],
+      ["accounts:", "  service-account:", "    operations:", "      - search"],
+      "Plugin example accounts.service-account.operations requires oauth with oauth-bearer credentials and no mcp",
     ],
     [
       "user OAuth off and no service account",
@@ -649,6 +655,66 @@ describe("plugin manifest API headers", () => {
         "/tmp/example",
       ),
     ).toThrow(message);
+  });
+
+  it("parses an OAuth plugin service account that lists egress operations", () => {
+    const manifest = parsePluginManifest(
+      [
+        "name: example",
+        "display-name: Example",
+        "description: Example API access",
+        "env-vars:",
+        "  EXAMPLE_CLIENT_ID:",
+        "  EXAMPLE_CLIENT_SECRET:",
+        "  EXAMPLE_TOKEN:",
+        "credentials:",
+        "  type: oauth-bearer",
+        "  domains:",
+        "    - api.example.com",
+        "  auth-token-env: EXAMPLE_TOKEN",
+        "oauth:",
+        "  client-id-env: EXAMPLE_CLIENT_ID",
+        "  client-secret-env: EXAMPLE_CLIENT_SECRET",
+        "  authorize-endpoint: https://example.com/oauth/authorize",
+        "  token-endpoint: https://example.com/oauth/token",
+        "accounts:",
+        "  user-oauth: false",
+        "  service-account:",
+        "    operations:",
+        "      - example.upload",
+      ].join("\n"),
+      "/tmp/example",
+    );
+    expect(manifest.accounts).toEqual({
+      userOAuth: false,
+      serviceAccount: { operations: ["example.upload"] },
+    });
+  });
+
+  it("rejects service account operations without top-level OAuth", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example API access",
+          "env-vars:",
+          "  EXAMPLE_TOKEN:",
+          "credentials:",
+          "  type: oauth-bearer",
+          "  domains:",
+          "    - api.example.com",
+          "  auth-token-env: EXAMPLE_TOKEN",
+          "accounts:",
+          "  service-account:",
+          "    operations:",
+          "      - example.upload",
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example accounts.service-account.operations requires oauth with oauth-bearer credentials and no mcp",
+    );
   });
 
   it("rejects command env references that reuse MCP header env vars", () => {

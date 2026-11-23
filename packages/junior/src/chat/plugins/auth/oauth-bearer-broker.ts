@@ -3,8 +3,16 @@ import type {
   CredentialBroker,
   CredentialLease,
 } from "@/chat/credentials/broker";
-import { CredentialUnavailableError } from "@/chat/credentials/broker";
+import {
+  CredentialUnavailableError,
+  ServiceAccountUnavailableError,
+} from "@/chat/credentials/broker";
 import { credentialUserSubjectId } from "@/chat/credentials/context";
+import {
+  serviceAccountAllows,
+  serviceAccountOnly,
+} from "@/chat/credentials/service-account";
+import { logWarn } from "@/chat/logging";
 import { mergeHeaderTransforms } from "@/chat/credentials/header-transforms";
 import { hasRequiredOAuthScope } from "@/chat/credentials/oauth-scope";
 import {
@@ -18,6 +26,13 @@ import type {
 import { resolvePluginCommandEnv } from "@/chat/plugins/command-env";
 import { resolveAuthTokenPlaceholder } from "./auth-token-placeholder";
 import { resolveApiHeaderTransforms } from "./api-headers-broker";
+import {
+  deleteOAuthServiceAccountCredentials,
+  getOAuthServiceAccountCredentials,
+  putOAuthServiceAccountCredentials,
+  withOAuthServiceAccountLock,
+  type OAuthServiceAccountCredentials,
+} from "./oauth-service-account";
 import {
   buildOAuthTokenRequest,
   parseOAuthTokenResponse,
@@ -135,21 +150,67 @@ function getLeaseExpiry(expiresAt?: number): number {
     : Date.now() + MAX_LEASE_MS;
 }
 
-function canUseStoredToken(
-  stored: StoredTokens | undefined,
-): stored is StoredTokens {
+function canUseStoredToken<T extends Pick<StoredTokens, "expiresAt">>(
+  stored: T | undefined,
+): stored is T {
   return (
     stored !== undefined &&
     (stored.expiresAt === undefined || stored.expiresAt > Date.now())
   );
 }
 
-function shouldRefreshStoredToken(stored: StoredTokens | undefined): boolean {
+function shouldRefreshStoredToken(
+  stored: Pick<StoredTokens, "expiresAt"> | undefined,
+): boolean {
   return (
     stored !== undefined &&
     stored.expiresAt !== undefined &&
     stored.expiresAt - Date.now() < REFRESH_BUFFER_MS
   );
+}
+
+/**
+ * Return a usable token of the plugin's OAuth service account, refreshing it
+ * when it is about to expire. Returns nothing when no Admin connected it, or
+ * when the provider rejected it, which removes the stored account.
+ */
+async function serviceAccountToken(
+  provider: string,
+  oauth: NonNullable<PluginManifest["oauth"]>,
+): Promise<OAuthServiceAccountCredentials | undefined> {
+  const stored = await getOAuthServiceAccountCredentials(provider);
+  if (!shouldRefreshStoredToken(stored) || !stored?.refreshToken) {
+    return canUseStoredToken(stored) ? stored : undefined;
+  }
+  return await withOAuthServiceAccountLock(provider, async (fence) => {
+    const latest = await getOAuthServiceAccountCredentials(provider);
+    if (!shouldRefreshStoredToken(latest) || !latest?.refreshToken) {
+      return canUseStoredToken(latest) ? latest : undefined;
+    }
+    let refreshed: Awaited<ReturnType<typeof refreshAccessToken>>;
+    try {
+      refreshed = await refreshAccessToken(
+        provider,
+        latest.refreshToken,
+        oauth,
+        latest.scope ?? oauth.scope,
+      );
+    } catch (error) {
+      if (!(error instanceof OAuthRefreshRejectedError)) {
+        throw error;
+      }
+      await fence();
+      await deleteOAuthServiceAccountCredentials(provider);
+      logWarn("oauth.service_account.disconnected", {
+        "app.plugin.name": provider,
+      });
+      return undefined;
+    }
+    const next = { ...latest, ...refreshed };
+    await fence();
+    await putOAuthServiceAccountCredentials(provider, next);
+    return next;
+  });
 }
 
 export function createOAuthBearerBroker(
@@ -191,6 +252,24 @@ export function createOAuthBearerBroker(
       const envToken = process.env[authTokenEnv]?.trim();
       const oauth = manifest.oauth;
       const userSubjectId = credentialUserSubjectId(input.context);
+      // Only plugin host code names an operation, so sandbox commands never
+      // get the service account.
+      const serviceAccountMayServe =
+        input.operation !== undefined &&
+        serviceAccountAllows(manifest, { operation: input.operation });
+      const serviceAccountLease = async () => {
+        const token =
+          serviceAccountMayServe && oauth
+            ? await serviceAccountToken(provider, oauth)
+            : undefined;
+        return token
+          ? buildLease(
+              token.accessToken,
+              getLeaseExpiry(token.expiresAt),
+              input.reason,
+            )
+          : undefined;
+      };
       if (!oauth) {
         if (envToken) {
           return buildLease(envToken, Date.now() + MAX_LEASE_MS, input.reason);
@@ -199,6 +278,19 @@ export function createOAuthBearerBroker(
         throw new CredentialUnavailableError(
           provider,
           `No ${provider} credentials available.`,
+        );
+      }
+
+      if (serviceAccountOnly(manifest)) {
+        const lease = await serviceAccountLease();
+        if (lease) {
+          return lease;
+        }
+        throw new ServiceAccountUnavailableError(
+          provider,
+          serviceAccountMayServe
+            ? `The ${provider} service account is not connected. An admin must connect it on the dashboard Admin page.`
+            : `The ${provider} service account does not allow this request.`,
         );
       }
 
@@ -309,12 +401,20 @@ export function createOAuthBearerBroker(
           );
         }
 
+        const lease = await serviceAccountLease();
+        if (lease) {
+          return lease;
+        }
         throw new CredentialUnavailableError(
           provider,
           `No ${provider} credentials available.`,
         );
       }
 
+      const lease = await serviceAccountLease();
+      if (lease) {
+        return lease;
+      }
       if (envToken) {
         return buildLease(envToken, getLeaseExpiry(), input.reason);
       }

@@ -256,8 +256,12 @@ const accountsSourceSchema = z
   .object({
     "user-oauth": z.boolean().optional(),
     "service-account": z
-      .object({ tools: nonEmptyStringArraySchema("tools") })
-      .strict()
+      .union([
+        z.object({ tools: nonEmptyStringArraySchema("tools") }).strict(),
+        z
+          .object({ operations: nonEmptyStringArraySchema("operations") })
+          .strict(),
+      ])
       .optional(),
   })
   .strict();
@@ -1136,11 +1140,12 @@ function unloadedMcpTools(
 
 /**
  * Validate which accounts the plugin may use against the surfaces that
- * support them. Today only MCP OAuth stores a service account.
+ * support them: MCP OAuth lists tools, and a top-level `oauth` block with
+ * `oauth-bearer` credentials lists `egress.fetch` operations.
  */
 function normalizeAccounts(
   data: Record<string, unknown>,
-  mcp: PluginMcpConfig | undefined,
+  surfaces: { mcp: PluginMcpConfig | undefined; oauthBearer: boolean },
   name: string,
 ): PluginAccountsConfig | undefined {
   const result = accountsSourceSchema.safeParse(data);
@@ -1157,11 +1162,24 @@ function normalizeAccounts(
   if (!serviceAccount) {
     return undefined;
   }
+  const { mcp } = surfaces;
+  if ("operations" in serviceAccount) {
+    // One surface stores the account, so an MCP plugin lists tools instead.
+    if (mcp || !surfaces.oauthBearer) {
+      throw new Error(
+        `Plugin ${name} accounts.service-account.operations requires oauth with oauth-bearer credentials and no mcp`,
+      );
+    }
+    return {
+      ...(userOAuth === false ? { userOAuth } : undefined),
+      serviceAccount: { operations: serviceAccount.operations },
+    };
+  }
   // The connect flow registers its own OAuth client, and signed bot auth
   // has no per-actor account to replace.
   if (!mcp || mcp.auth || mcp.oauthClient) {
     throw new Error(
-      `Plugin ${name} accounts.service-account requires mcp without auth or oauth-client`,
+      `Plugin ${name} accounts.service-account.tools requires mcp without auth or oauth-client`,
     );
   }
   const unknownTools = unloadedMcpTools(mcp, serviceAccount.tools);
@@ -1309,7 +1327,11 @@ function parseManifestSource(
     : undefined;
   const mcp = data.mcp ? normalizeMcp(data.mcp, envVars, data.name) : undefined;
   const accounts = data.accounts
-    ? normalizeAccounts(data.accounts, mcp, data.name)
+    ? normalizeAccounts(
+        data.accounts,
+        { mcp, oauthBearer: Boolean(data.oauth && credentials) },
+        data.name,
+      )
     : undefined;
 
   const manifest: PluginManifest = {
