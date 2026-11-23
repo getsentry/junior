@@ -41,6 +41,11 @@ child chooses to report reaches the parent.
   parent. It drops all other parent messages.
 - Child output reaches the parent as data, not as instructions. It never
   gives user approval.
+- Every Conversation reports with one agent Event, whatever its kind: done,
+  waiting on a person, blocked, failed, or stopped, with its reply, its
+  `noReply` note, or its question. A parent gets this Event from its child
+  agents, and a Watch on a Conversation gets the same Event. It is data, not
+  instructions.
 - Only a root delivers to its Location. A Thread shows its Turns to people.
   A child's Turn sends its parent only its `reply`, its blocked report, or
   its result.

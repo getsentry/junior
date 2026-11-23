@@ -51,48 +51,40 @@ import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
   AGENT_INVOCATION_EVENT_NAMESPACE,
   AGENT_MESSAGE_EVENT_TYPE,
-  AGENT_REPLY_EVENT_TYPE,
+  AGENT_UPDATE_EVENT_TYPE,
 } from "./result-event-type";
+import { renderAgentResult } from "./agent-update";
 import type { ChildAgent, ChildAgentSender } from "./types";
 
-// TODO(dcramer): Add an `agent_invocation.needs_input` Event type when a child
-// can pause for input or auth instead of failing (#881).
-const AGENT_INVOCATION_RESULT_MAX_LENGTH = 12_000;
+// TODO(dcramer): Add a `waiting` agent update from a child when it can pause
+// for input or auth instead of failing (#881).
 
 /** How one child result that reaches the parent ended. */
 type ResultStatus = "blocked" | "completed" | "failed" | "stopped";
 
 /**
  * Render the parent agent input for one child agent result as one
- * `<agent-result>`. A child agent wrote the output, so it is escaped data.
- * `status` and `waiting_on` are runtime facts. The system prompt says what to
- * do for each status, so the input repeats no guidance.
+ * `<agent-result>`, the agent update that a Watch on the child also gets.
+ * The system prompt says what to do for each status, so the input repeats no
+ * guidance.
  */
 function renderResultInput(
   sender: ChildAgentSender,
   result: { output: string; status: ResultStatus },
   openSiblings: readonly ChildAgent[],
 ): string {
-  const output = result.output
-    .trim()
-    .slice(0, AGENT_INVOCATION_RESULT_MAX_LENGTH);
-  return renderUntrustedTag(
-    "agent-result",
-    {
-      conversation_id: sender.childConversationId,
-      name: sender.agentName,
-      source: "child_agent",
-      status: result.status,
-      title: sender.title,
-      // Fan-out: one Turn per result would post partial findings. Name the
-      // open siblings so the parent can wait for them.
-      waiting_on: openSiblings.length
-        ? openSiblings.map(siblingLabel).join(", ")
-        : undefined,
-    },
-    "A child agent that you started",
-    output || "(empty)",
-  );
+  return renderAgentResult({
+    conversationId: sender.childConversationId,
+    name: sender.agentName,
+    source: "child_agent",
+    title: sender.title,
+    update: { status: result.status, text: result.output },
+    // Fan-out: one Turn per result would post partial findings. Name the
+    // open siblings so the parent can wait for them.
+    waitingOn: openSiblings.length
+      ? openSiblings.map(siblingLabel).join(", ")
+      : undefined,
+  });
 }
 
 function siblingLabel(sibling: ChildAgent): string {
@@ -278,9 +270,10 @@ export async function enqueueChildResultToParent(args: {
   const metadata = {
     ...senderEventMetadata(args.actor, {
       eventKey: inboundMessageId,
-      eventType: AGENT_REPLY_EVENT_TYPE,
+      eventType: AGENT_UPDATE_EVENT_TYPE,
       identifier: senderId,
       namespace: AGENT_INVOCATION_EVENT_NAMESPACE,
+      ...(stillWorks ? undefined : { status: rendered.status }),
       trustedSummary: `${childAgentLabel(args.sender)} ${stillWorks ? "sent a message." : RESULT_SUMMARIES[args.result.kind]}`,
     }),
     ...childMessageSenderMetadata({

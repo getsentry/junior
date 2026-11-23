@@ -163,7 +163,7 @@ describe("child agent task work", () => {
             metadata: expect.objectContaining({
               kind: "event",
               event: expect.objectContaining({
-                eventType: "agent.reply",
+                eventType: "agent.update",
                 identifier: childConversationId,
                 namespace: "junior",
               }),
@@ -208,7 +208,7 @@ describe("child agent task work", () => {
         message: resultMessage,
         source: createEventSource({
           eventKey: resultMessage.inboundMessageId,
-          eventType: "agent.reply",
+          eventType: "agent.update",
           identifier: childConversationId,
           namespace: "junior",
         }),

@@ -128,6 +128,8 @@ export type EventMailboxMetadata = {
     objectType?: ObjectType | undefined;
     /** Omitted on mailbox input created before summaries were stored separately. */
     trustedSummary?: string;
+    /** What an agent update says happened, such as `completed`. */
+    status?: string;
   };
   /** Signed timer creator subject. Verified before the Turn uses it. */
   credentialSubject?: CredentialSubject;
@@ -164,7 +166,8 @@ export function isEventMailboxMetadata(
     (fields["objectType"] === undefined ||
       objectTypeSchema.safeParse(fields["objectType"]).success) &&
     (fields["trustedSummary"] === undefined ||
-      typeof fields["trustedSummary"] === "string")
+      typeof fields["trustedSummary"] === "string") &&
+    (fields["status"] === undefined || typeof fields["status"] === "string")
   );
 }
 
@@ -333,7 +336,9 @@ export function eventBatchMessageMeta(
   | "eventIdentifier"
   | "eventNamespace"
   | "eventObjectType"
+  | "eventStatus"
   | "eventType"
+  | "eventWatchId"
   | "events"
   | "reviewItemChanges"
   | "trustedSummary"
@@ -357,6 +362,12 @@ export function eventBatchMessageMeta(
     eventNamespace: metadata.event.namespace,
     eventIdentifier: metadata.event.identifier,
     eventObjectType: metadata.event.objectType,
+    ...(metadata.event.status
+      ? { eventStatus: metadata.event.status }
+      : undefined),
+    ...(metadata.event.subscriptionId
+      ? { eventWatchId: metadata.event.subscriptionId }
+      : undefined),
     ...(metadata.event.trustedSummary
       ? { trustedSummary: metadata.event.trustedSummary }
       : undefined),
@@ -392,6 +403,8 @@ export function createEventInboundMessage(input: {
   /** Core's decision for the Event author. */
   author?: AuthorTrust;
   receivedAtMs?: number;
+  /** What an agent update says happened. */
+  status?: string;
 }): InboundMessage {
   const metadata: EventMailboxMetadata = {
     kind: "event",
@@ -407,6 +420,7 @@ export function createEventInboundMessage(input: {
       subscriptionId: input.subscription.id,
       trustedSummary: input.event.trustedSummary,
       objectType: input.event.objectType,
+      ...(input.status ? { status: input.status } : undefined),
     },
   };
   return {

@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
-import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
@@ -437,13 +437,19 @@ export function createAddInboxItemTool(
  */
 async function publishWaiting(
   services: InboxItemToolServices,
-  item: Pick<InboxItem, "id" | "kind" | "owner">,
+  item: Pick<InboxItem, "body" | "id" | "kind" | "owner" | "request">,
 ): Promise<void> {
   const conversationId = ownerConversationId(item);
   if (item.kind !== "action" || !conversationId) return;
-  await publishConversationStatus(
+  await publishAgentUpdate(
     conversationId,
     { type: "waiting", inboxItemId: item.id },
-    { queue: services.queue() },
+    {
+      queue: services.queue(),
+      update: async () => ({
+        status: "waiting",
+        text: item.request?.question ?? item.body,
+      }),
+    },
   );
 }

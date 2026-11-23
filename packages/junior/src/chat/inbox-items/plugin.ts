@@ -1,4 +1,4 @@
-import { publishConversationStatus } from "@/chat/conversations/watch-events";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
 import type {
@@ -152,10 +152,16 @@ export function createPluginInboxItems(args: {
       // an update makes a notice an action. The Event key is the item, so a
       // later update of the same action does not report it again.
       if (open && content.kind === "action") {
-        await publishConversationStatus(
+        await publishAgentUpdate(
           conversationId,
           { type: "waiting", inboxItemId: itemId },
-          { queue: getVercelConversationWorkQueue() },
+          {
+            queue: getVercelConversationWorkQueue(),
+            update: async () => ({
+              status: "waiting",
+              text: content.request?.question ?? content.body,
+            }),
+          },
         );
       }
     },
