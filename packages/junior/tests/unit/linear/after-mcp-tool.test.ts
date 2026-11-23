@@ -10,6 +10,7 @@ function baseContext(
       async getOrLoad(_key, load) {
         return (await load()).value;
       },
+      async delete() {},
     },
     db: {},
     log: {

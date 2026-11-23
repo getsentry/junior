@@ -33,17 +33,20 @@ export function createCache(
   state: StateAdapter,
   namespace: string,
 ): PluginCache {
+  const stateKey = (key: string) => {
+    if (!key.trim()) throw new Error("Cache key is required");
+    if (key.length > MAX_CACHE_KEY_LENGTH) {
+      throw new Error("Cache key exceeds the maximum length");
+    }
+    return `${cacheKeyPrefix(namespace)}${key}`;
+  };
   return {
     async getOrLoad<T>(
       key: string,
       load: () => Promise<CacheEntry<T>>,
       options?: { refresh?: boolean },
     ): Promise<T> {
-      if (!key.trim()) throw new Error("Cache key is required");
-      if (key.length > MAX_CACHE_KEY_LENGTH) {
-        throw new Error("Cache key exceeds the maximum length");
-      }
-      const cacheKey = `${cacheKeyPrefix(namespace)}${key}`;
+      const cacheKey = stateKey(key);
       const cached = async () =>
         options?.refresh
           ? undefined
@@ -90,6 +93,9 @@ export function createCache(
         if (hit) return hit.value;
         throw error;
       }
+    },
+    async delete(key) {
+      await state.delete(stateKey(key));
     },
   };
 }

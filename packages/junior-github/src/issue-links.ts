@@ -19,7 +19,8 @@ import { githubObjectFacts } from "./object-facts.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
-// The same time as the card cache, so a changed object shows within a minute.
+// Webhooks clear a changed object, so the TTL bounds only a change that
+// sends no webhook.
 const OBJECT_CACHE_TTL_MS = 60_000;
 // When GitHub fails after the TTL, the card keeps the last object read. The
 // repository access check still expires, so access is never extended.
@@ -118,6 +119,18 @@ function pullRequestCard(
   });
 }
 
+/**
+ * The cache key of one issue or pull request, such as
+ * `pulls:getsentry/junior#12`. Webhooks clear it when the object changes.
+ */
+export function githubObjectCacheKey(
+  collection: "issues" | "pulls",
+  repo: string,
+  number: number | string,
+): string {
+  return `${collection}:${repo}#${number}`.toLowerCase();
+}
+
 /** Read the object with the App. Nothing for a missing or deleted one. */
 async function readObject(
   ctx: ObjectLinkContext,
@@ -125,7 +138,7 @@ async function readObject(
 ): Promise<ObjectAnnotation | null> {
   const collection = link.kind === "issue" ? "issues" : "pulls";
   return await ctx.cache.getOrLoad(
-    `${collection}:${link.owner}/${link.name}#${link.number}`.toLowerCase(),
+    githubObjectCacheKey(collection, `${link.owner}/${link.name}`, link.number),
     async () => {
       const response = await githubApi(ctx.egress, {
         followRedirects: true,
@@ -180,6 +193,8 @@ async function resolveLink(
  * A pull request at its issue URL shows the pull request card.
  */
 export const githubIssueLinks: PluginObjectLinkDefinition = {
+  // The object cache is shared by every viewer, and webhooks clear it.
+  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
   objectTypes: ["task", "code_change"],
@@ -193,6 +208,7 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
 
 /** GitHub pull request links, such as `https://github.com/owner/repo/pull/12`. */
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
+  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
   objectTypes: ["code_change"],

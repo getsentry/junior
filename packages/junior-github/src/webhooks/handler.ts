@@ -4,6 +4,7 @@ import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
+  PluginCache,
   PluginConversationAnnotations,
   PluginConversationChanges,
   PluginConversationInboxItems,
@@ -22,6 +23,7 @@ import {
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
+import { clearGitHubObjectCache } from "./object-cache.js";
 import {
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
@@ -148,6 +150,8 @@ export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
   appIdEnv: string;
   botEmail(): string | undefined;
+  /** The plugin cache, whose issue and pull request entries webhooks clear. */
+  cache: PluginCache;
   classifyPullRequestCommits?(input: {
     number: number;
     repositoryFullName: string;
@@ -226,6 +230,11 @@ export function createGitHubWebhookRoute(args: {
           status: 202,
         });
       }
+      await clearGitHubObjectCache({
+        body,
+        cache: args.cache,
+        eventName,
+      });
       const botEmail = args.botEmail();
       const pullRequestOutcome =
         eventName === "pull_request"

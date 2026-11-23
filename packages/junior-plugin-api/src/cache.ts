@@ -30,4 +30,9 @@ export interface PluginCache {
     load: () => Promise<CacheEntry<T>>,
     options?: { refresh?: boolean },
   ): Promise<T>;
+  /**
+   * Drop the cached value of `key`, such as when a provider webhook says
+   * that the object changed. The next `getOrLoad` loads it again.
+   */
+  delete(key: string): Promise<void>;
 }

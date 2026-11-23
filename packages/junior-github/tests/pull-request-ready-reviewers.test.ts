@@ -98,6 +98,13 @@ function route(
     },
   };
   const [webhook] = githubPlugin().hooks!.routes!({
+    // The ready webhook clears its cached pull request.
+    cache: {
+      async getOrLoad(_key, load) {
+        return (await load()).value;
+      },
+      async delete() {},
+    },
     annotations: {
       forConversation() {
         return {
