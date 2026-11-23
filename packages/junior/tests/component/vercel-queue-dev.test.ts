@@ -1,198 +1,129 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { ConversationWorkerContext } from "@/chat/task-execution/worker";
+import type { MessageMetadata, QueueClient } from "@vercel/queue";
+import {
+  PLUGIN_TASK_QUEUE_TOPIC,
+  createVercelPluginTaskCallback,
+  pluginTaskId,
+  sendVercelPluginTask,
+  signPluginTaskQueueMessage,
+} from "@/chat/plugins/task-queue";
+import { createVercelWorkspaceSnapshotJobCallback } from "@/chat/sandbox/snapshot/job-callback";
+import {
+  sendNextWorkspaceSnapshotJob,
+  sendWorkspaceSnapshotJob,
+} from "@/chat/sandbox/snapshot/job-queue";
+import { createVercelConversationWorkCallback } from "@/chat/task-execution/vercel-callback";
 
-type PluginQueueCall =
-  | [
-      (
-        message: unknown,
-        metadata: {
-          consumerGroup: string;
-          createdAt: Date;
-          deliveryCount: number;
-          expiresAt: Date;
-          messageId: string;
-          region: string;
-          topicName: string;
-        },
-      ) => Promise<void>,
-      {
-        retry?: (
-          error: unknown,
-          metadata: {
-            consumerGroup: string;
-            createdAt: Date;
-            deliveryCount: number;
-            expiresAt: Date;
-            messageId: string;
-            region: string;
-            topicName: string;
-          },
-        ) => unknown;
-      },
-    ]
-  | undefined;
-
-type WorkspaceQueueMetadata = Parameters<NonNullable<PluginQueueCall>[0]>[1];
-
-type WorkspaceDevConsumer = {
-  client: {
-    send(
-      topic: string,
-      message: Record<string, unknown>,
-      options?: { idempotencyKey?: string; retentionSeconds: number },
-    ): Promise<{ messageId: string }>;
+// Mock the SDK once for the file and import statically. Per-test
+// `vi.doMock` needs `vi.resetModules`, and then a parallel import can load
+// the real SDK.
+const mocks = vi.hoisted(() => {
+  const send = vi.fn(
+    async (
+      _topic: string,
+      _message: Record<string, unknown>,
+      _options?: { idempotencyKey?: string; retentionSeconds: number },
+    ) => ({ messageId: "msg_1" }),
+  );
+  const handleCallback = vi.fn<QueueClient["handleCallback"]>();
+  return {
+    send,
+    queueClient: { handleCallback, send },
+    handleCallback,
+    processPluginTask: vi.fn(async (_message: unknown) => undefined),
+    processWorkspaceSnapshotJob: vi.fn(async (_message: unknown) => undefined),
   };
-  consumerGroup: string;
-  handler: (
-    message: unknown,
-    metadata: WorkspaceQueueMetadata,
-  ) => Promise<void>;
-  retry: (error: unknown, metadata: WorkspaceQueueMetadata) => unknown;
-  topic: string;
-};
+});
 
-type ConversationQueueCall =
-  | [
-      (
-        message: unknown,
-        metadata: {
-          consumerGroup: string;
-          createdAt: Date;
-          deliveryCount: number;
-          expiresAt: Date;
-          messageId: string;
-          region: string;
-          topicName: string;
-        },
-      ) => Promise<void>,
-      {
-        retry?: (
-          error: unknown,
-          metadata: {
-            consumerGroup: string;
-            createdAt: Date;
-            deliveryCount: number;
-            expiresAt: Date;
-            messageId: string;
-            region: string;
-            topicName: string;
-          },
-        ) => unknown;
-        visibilityTimeoutSeconds?: number;
-      },
-    ]
-  | undefined;
+vi.mock("@vercel/queue", () => ({
+  QueueClient: vi.fn(function QueueClientMock() {
+    return mocks.queueClient;
+  }),
+}));
+vi.mock("@/chat/plugins/task-runner", () => ({
+  processPluginTask: mocks.processPluginTask,
+}));
+vi.mock("@/chat/sandbox/snapshot/job-runner", () => ({
+  processWorkspaceSnapshotJob: mocks.processWorkspaceSnapshotJob,
+}));
 
-const originalNodeEnv = process.env.NODE_ENV;
-const originalQueueTopic = process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 const originalConversationWorkEnabled =
-  process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
-const originalJuniorSecret = process.env.JUNIOR_SECRET;
+  process.env["JUNIOR_CONVERSATION_WORK_ENABLED"];
 
-afterEach(async () => {
-  const { disconnectStateAdapter } = await import("@/chat/state/adapter");
-  await disconnectStateAdapter();
-  process.env.NODE_ENV = originalNodeEnv;
-  if (originalQueueTopic === undefined) {
-    delete process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC;
+afterEach(() => {
+  vi.clearAllMocks();
+  if (originalJuniorSecret === undefined) {
+    delete process.env["JUNIOR_SECRET"];
   } else {
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = originalQueueTopic;
+    process.env["JUNIOR_SECRET"] = originalJuniorSecret;
   }
   if (originalConversationWorkEnabled === undefined) {
-    delete process.env.JUNIOR_CONVERSATION_WORK_ENABLED;
+    delete process.env["JUNIOR_CONVERSATION_WORK_ENABLED"];
   } else {
-    process.env.JUNIOR_CONVERSATION_WORK_ENABLED =
+    process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] =
       originalConversationWorkEnabled;
   }
-  if (originalJuniorSecret === undefined) {
-    delete process.env.JUNIOR_SECRET;
-  } else {
-    process.env.JUNIOR_SECRET = originalJuniorSecret;
-  }
-  vi.doUnmock("@vercel/queue");
-  vi.doUnmock("@/chat/plugins/task-runner");
-  vi.doUnmock("@/chat/sandbox/snapshot/job-runner");
-  vi.resetModules();
 });
+
+function queueMetadata(overrides: Partial<MessageMetadata> = {}) {
+  return {
+    consumerGroup: "consumer",
+    createdAt: new Date(1_000),
+    deliveryCount: 1,
+    expiresAt: new Date(2_000),
+    messageId: "msg_1",
+    region: "iad1",
+    topicName: "topic",
+    ...overrides,
+  } satisfies MessageMetadata;
+}
+
+/** Return the handler and retry hook passed to the client's last `handleCallback`. */
+function lastPushCallback() {
+  const call = mocks.handleCallback.mock.lastCall;
+  const handler = call?.[0];
+  const retry = call?.[1]?.retry;
+  if (!handler || !retry) {
+    throw new Error("Expected a queue handler and retry hook");
+  }
+  return { handler, retry };
+}
 
 describe("Workspace snapshot Vercel queue integration", () => {
   it("runs only messages signed by the snapshot queue sender", async () => {
-    const routeHandler = vi.fn();
-    const handleCallback = vi.fn(
-      (..._args: NonNullable<PluginQueueCall>) => routeHandler,
-    );
-    const send = vi.fn(
-      async (
-        _topic: string,
-        _message: Record<string, unknown>,
-        _options?: { idempotencyKey?: string; retentionSeconds: number },
-      ) => ({ messageId: "msg_snapshot" }),
-    );
-    const processWorkspaceSnapshotJob = vi.fn(async () => undefined);
-    const unregister = vi.fn();
-    const registerDevConsumer = vi.fn(
-      (_input: WorkspaceDevConsumer) => unregister,
-    );
-
-    vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(function QueueClientMock() {
-        return { send };
-      }),
-      handleCallback,
-      registerDevConsumer,
-    }));
-    vi.doMock("@/chat/sandbox/snapshot/job-runner", () => ({
-      processWorkspaceSnapshotJob,
-    }));
-
-    const {
-      createVercelWorkspaceSnapshotJobCallback,
-      registerVercelWorkspaceSnapshotJobDevConsumer,
-    } = await import("@/chat/sandbox/snapshot/job-callback");
-    const { sendNextWorkspaceSnapshotJob, sendWorkspaceSnapshotJob } =
-      await import("@/chat/sandbox/snapshot/job-queue");
+    const routeHandler = vi.fn(async () => new Response());
+    mocks.handleCallback.mockReturnValueOnce(routeHandler);
 
     expect(createVercelWorkspaceSnapshotJobCallback()).toBe(routeHandler);
-    const call = handleCallback.mock.calls[0];
-    const handler = call?.[0];
-    const retry = call?.[1].retry;
-    if (!handler || !retry) {
-      throw new Error(
-        "Expected Workspace snapshot queue handler and retry hook",
-      );
-    }
-    const metadata: WorkspaceQueueMetadata = {
+    const { handler, retry } = lastPushCallback();
+    const metadata = queueMetadata({
       consumerGroup: "workspace-snapshots",
-      createdAt: new Date(1_000),
-      deliveryCount: 1,
-      expiresAt: new Date(2_000),
       messageId: "msg_snapshot",
-      region: "iad1",
       topicName: "junior_workspace_snapshots",
-    };
+    });
     const message = {
       workspaceId: "11111111-1111-4111-8111-111111111111",
       profileHash: "profile-hash",
     };
 
     await expect(handler(message, metadata)).resolves.toBeUndefined();
-    expect(processWorkspaceSnapshotJob).not.toHaveBeenCalled();
+    expect(mocks.processWorkspaceSnapshotJob).not.toHaveBeenCalled();
 
-    process.env.JUNIOR_SECRET = "workspace-snapshot-secret";
+    process.env["JUNIOR_SECRET"] = "workspace-snapshot-secret";
     await sendWorkspaceSnapshotJob(message);
-    const sendCall = send.mock.calls[0];
-    const signedMessage = sendCall?.[1];
+    const signedMessage = mocks.send.mock.lastCall?.[1];
     if (!signedMessage) throw new Error("Expected signed queue message");
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
-    expect(processWorkspaceSnapshotJob).toHaveBeenCalledWith(message);
+    expect(mocks.processWorkspaceSnapshotJob).toHaveBeenCalledWith(message);
 
     await expect(
       handler({ ...signedMessage, profileHash: "tampered" }, metadata),
     ).resolves.toBeUndefined();
-    expect(processWorkspaceSnapshotJob).toHaveBeenCalledTimes(1);
+    expect(mocks.processWorkspaceSnapshotJob).toHaveBeenCalledTimes(1);
 
     await sendNextWorkspaceSnapshotJob(message);
-    expect(send).toHaveBeenLastCalledWith(
+    expect(mocks.send).toHaveBeenLastCalledWith(
       "junior_workspace_snapshots",
       expect.objectContaining(message),
       { retentionSeconds: 3_600 },
@@ -202,71 +133,22 @@ describe("Workspace snapshot Vercel queue integration", () => {
     expect(
       retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
     ).toBeUndefined();
-
-    process.env.NODE_ENV = "development";
-    expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
-    const registered = registerDevConsumer.mock.calls[0]?.[0];
-    expect(registered).toMatchObject({
-      client: { send },
-      consumerGroup: "junior_workspace_snapshots_dev",
-      topic: "junior_workspace_snapshots",
-    });
-    expect(typeof registered?.handler).toBe("function");
-    expect(typeof registered?.retry).toBe("function");
   });
 });
 
 describe("plugin task Vercel queue integration", () => {
   it("passes parsed plugin task payloads through the Vercel callback", async () => {
-    const routeHandler = vi.fn();
-    const handleCallback = vi.fn(() => routeHandler);
-    const processPluginTask = vi.fn(async () => undefined);
-
-    vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
-      handleCallback,
-      registerDevConsumer: vi.fn(),
-    }));
-    vi.doMock("@/chat/plugins/task-runner", () => ({
-      processPluginTask,
-    }));
-
-    const { createVercelPluginTaskCallback, signPluginTaskQueueMessage } =
-      await import("@/chat/plugins/task-queue");
+    const routeHandler = vi.fn(async () => new Response());
+    mocks.handleCallback.mockReturnValueOnce(routeHandler);
 
     expect(createVercelPluginTaskCallback()).toBe(routeHandler);
-
-    type TestQueueMetadata = {
-      consumerGroup: string;
-      createdAt: Date;
-      deliveryCount: number;
-      expiresAt: Date;
-      messageId: string;
-      region: string;
-      topicName: string;
-    };
-    const metadata: TestQueueMetadata = {
-      consumerGroup: "consumer",
-      createdAt: new Date(1_000),
-      deliveryCount: 1,
-      expiresAt: new Date(2_000),
-      messageId: "msg_1",
-      region: "iad1",
-      topicName: "topic",
-    };
-    const call = handleCallback.mock.calls[0] as PluginQueueCall;
-    const handler = call?.[0];
-    const retry = call?.[1].retry;
-    expect(handler).toEqual(expect.any(Function));
-    expect(retry).toEqual(expect.any(Function));
-    if (!handler || !retry) {
-      throw new Error("Expected plugin task queue handler and retry hook");
-    }
+    const { handler, retry } = lastPushCallback();
+    const metadata = queueMetadata();
 
     await expect(
       handler({ malformed: true }, metadata),
     ).resolves.toBeUndefined();
-    expect(processPluginTask).not.toHaveBeenCalled();
+    expect(mocks.processPluginTask).not.toHaveBeenCalled();
 
     const message = {
       name: "extractMemories",
@@ -277,19 +159,19 @@ describe("plugin task Vercel queue integration", () => {
       plugin: "memory",
     };
     await expect(handler(message, metadata)).resolves.toBeUndefined();
-    expect(processPluginTask).not.toHaveBeenCalled();
+    expect(mocks.processPluginTask).not.toHaveBeenCalled();
 
-    process.env.JUNIOR_SECRET = "plugin-task-secret";
+    process.env["JUNIOR_SECRET"] = "plugin-task-secret";
     const signedMessage = signPluginTaskQueueMessage(message);
     await expect(handler(signedMessage, metadata)).resolves.toBeUndefined();
-    expect(processPluginTask).toHaveBeenCalledWith(message);
+    expect(mocks.processPluginTask).toHaveBeenCalledWith(message);
 
     await expect(
       handler({ ...signedMessage, unexpected: true }, metadata),
     ).resolves.toBeUndefined();
-    expect(processPluginTask).toHaveBeenCalledTimes(1);
+    expect(mocks.processPluginTask).toHaveBeenCalledTimes(1);
 
-    processPluginTask.mockRejectedValueOnce(new Error("task failed"));
+    mocks.processPluginTask.mockRejectedValueOnce(new Error("task failed"));
     await expect(handler(signedMessage, metadata)).rejects.toThrow(
       "task failed",
     );
@@ -300,21 +182,7 @@ describe("plugin task Vercel queue integration", () => {
   });
 
   it("sends plugin task messages with the derived idempotency key", async () => {
-    const send = vi.fn(async () => ({ messageId: "msg_1" }));
-    const QueueClient = vi.fn(function QueueClientMock() {
-      return { send };
-    });
-
-    vi.doMock("@vercel/queue", () => ({
-      QueueClient,
-      handleCallback: vi.fn(),
-      registerDevConsumer: vi.fn(),
-    }));
-
-    process.env.JUNIOR_SECRET = "plugin-task-secret";
-
-    const { PLUGIN_TASK_QUEUE_TOPIC, pluginTaskId, sendVercelPluginTask } =
-      await import("@/chat/plugins/task-queue");
+    process.env["JUNIOR_SECRET"] = "plugin-task-secret";
     const message = {
       name: "extractMemories",
       params: {
@@ -326,7 +194,7 @@ describe("plugin task Vercel queue integration", () => {
 
     await sendVercelPluginTask(message);
 
-    expect(send).toHaveBeenCalledWith(
+    expect(mocks.send).toHaveBeenCalledWith(
       PLUGIN_TASK_QUEUE_TOPIC,
       {
         ...message,
@@ -342,216 +210,33 @@ describe("plugin task Vercel queue integration", () => {
   });
 });
 
-describe("registerVercelConversationWorkDevConsumer", () => {
-  it("registers the local Nitro consumer with the Queue SDK", async () => {
-    const queueClient = {};
-    const QueueClient = vi.fn(function QueueClientMock() {
-      return queueClient;
-    });
-    const unregister = vi.fn();
-    const registerDevConsumer = vi.fn(() => unregister);
+describe("conversation work Vercel queue integration", () => {
+  it("creates the push callback with the Queue SDK", () => {
+    const routeHandler = vi.fn(async () => new Response());
+    mocks.handleCallback.mockReturnValueOnce(routeHandler);
 
-    vi.doMock("@vercel/queue", () => ({
-      QueueClient,
-      handleCallback: vi.fn(),
-      registerDevConsumer,
-    }));
-
-    process.env.NODE_ENV = "development";
-    process.env.JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC = "local_work";
-
-    const {
-      CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-      registerVercelConversationWorkDevConsumer,
-    } = await import("@/chat/task-execution/vercel-callback");
-
-    const run = vi.fn();
-    const result = registerVercelConversationWorkDevConsumer({
-      run,
-      visibilityTimeoutSeconds: 45,
-    });
-
-    expect(result).toBe(unregister);
-    expect(registerDevConsumer).toHaveBeenCalledWith({
-      client: queueClient,
-      consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-      handler: expect.any(Function),
-      retry: expect.any(Function),
-      topic: "local_work",
-      visibilityTimeoutSeconds: 45,
-    });
-  });
-
-  it("handles rejected and versioned conversation queue messages", async () => {
-    const routeHandler = vi.fn();
-    const handleCallback = vi.fn(() => routeHandler);
-
-    vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
-      handleCallback,
-      registerDevConsumer: vi.fn(),
-    }));
-
-    const { createVercelConversationWorkCallback } =
-      await import("@/chat/task-execution/vercel-callback");
-
-    const run = vi.fn(async (context: ConversationWorkerContext) => {
-      await context.attempt.ack();
-      return { status: "completed" as const };
-    });
     expect(
       createVercelConversationWorkCallback({
-        run,
+        run: vi.fn(),
         visibilityTimeoutSeconds: 45,
       }),
     ).toBe(routeHandler);
-
-    type TestQueueMetadata = {
-      consumerGroup: string;
-      createdAt: Date;
-      deliveryCount: number;
-      expiresAt: Date;
-      messageId: string;
-      region: string;
-      topicName: string;
-    };
-    const metadata: TestQueueMetadata = {
-      consumerGroup: "consumer",
-      createdAt: new Date(1_000),
-      deliveryCount: 3,
-      expiresAt: new Date(2_000),
-      messageId: "msg_1",
-      region: "iad1",
-      topicName: "topic",
-    };
-    const call = handleCallback.mock.calls[0] as ConversationQueueCall;
-    const handler = call?.[0];
-    const retry = call?.[1].retry;
-    expect(handler).toEqual(expect.any(Function));
-    expect(retry).toEqual(expect.any(Function));
-    if (!handler || !retry) {
-      throw new Error("Expected conversation queue handler and retry hook");
-    }
-
-    await expect(
-      handler(
-        {
-          conversationId: "slack:C123:1712345.0001",
-          destination: { channelId: "C123", platform: "slack", teamId: "T123" },
-        },
-        metadata,
-      ),
-    ).resolves.toBeUndefined();
-
-    const [{ appendInboundMessage }, { signConversationQueueMessage }] =
-      await Promise.all([
-        import("@/chat/task-execution/store"),
-        import("@/chat/task-execution/queue-signing"),
-      ]);
-    process.env.JUNIOR_SECRET = "conversation-work-secret";
-    await appendInboundMessage({
-      message: {
-        conversationId: "slack:C123:1712345.0001",
-        inboundMessageId: "m1",
-        delivery: "defer",
-        destination: {
-          channelId: "C123",
-          platform: "slack",
-          teamId: "T123",
-        },
-        source: "slack",
-        createdAtMs: 1_000,
-        receivedAtMs: 1_100,
-        input: {
-          authorId: "U123",
-          text: "message m1",
-        },
-      },
-      nowMs: 1_200,
+    expect(mocks.handleCallback).toHaveBeenCalledWith(expect.any(Function), {
+      retry: expect.any(Function),
+      visibilityTimeoutSeconds: 45,
     });
-    await expect(
-      handler(
-        signConversationQueueMessage({
-          schemaVersion: 2,
-          conversationId: "slack:C123:1712345.0001",
-        }),
-        metadata,
-      ),
-    ).resolves.toBeUndefined();
-    expect(run).toHaveBeenCalledOnce();
-    expect(run).toHaveBeenLastCalledWith(
-      expect.objectContaining({
-        destination: {
-          channelId: "C123",
-          platform: "slack",
-          teamId: "T123",
-        },
-      }),
-    );
-
-    delete process.env.JUNIOR_SECRET;
-    let missingSecretError: unknown;
-    await handler(
-      {
-        schemaVersion: 2,
-        conversationId: "slack:C123:1712345.0001",
-        signature: "signature",
-        signatureVersion: "v2",
-        signedAtMs: 1_000,
-      },
-      metadata,
-    ).catch((error: unknown) => {
-      missingSecretError = error;
-    });
-    expect(missingSecretError).toMatchObject({
-      message: "Queue message verification unavailable: missing_secret",
-    });
-    expect(retry(missingSecretError, metadata)).toBeUndefined();
-    expect(retry(new Error("runner failed"), metadata)).toBeUndefined();
   });
 
   it("acks disabled conversation work before sign checks", async () => {
-    const routeHandler = vi.fn();
-    const handleCallback = vi.fn(() => routeHandler);
-
-    vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
-      handleCallback,
-      registerDevConsumer: vi.fn(),
-    }));
-
-    process.env.JUNIOR_CONVERSATION_WORK_ENABLED = "false";
-    delete process.env.JUNIOR_SECRET;
-
+    process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] = "false";
+    delete process.env["JUNIOR_SECRET"];
+    // Config reads the kill switch when it loads, so load a fresh copy.
+    vi.resetModules();
     const { createVercelConversationWorkCallback } =
       await import("@/chat/task-execution/vercel-callback");
-
-    const run = vi.fn(async (context: ConversationWorkerContext) => {
-      await context.attempt.ack();
-      return { status: "completed" as const };
-    });
+    const run = vi.fn();
     createVercelConversationWorkCallback({ run });
-
-    const call = handleCallback.mock.calls[0] as
-      | [
-          (
-            message: unknown,
-            metadata: {
-              consumerGroup: string;
-              createdAt: Date;
-              deliveryCount: number;
-              expiresAt: Date;
-              messageId: string;
-              region: string;
-              topicName: string;
-            },
-          ) => Promise<void>,
-        ]
-      | undefined;
-    const handler = call?.[0];
-    if (!handler) {
-      throw new Error("Expected conversation queue handler");
-    }
+    const { handler } = lastPushCallback();
 
     await expect(
       handler(
@@ -562,39 +247,9 @@ describe("registerVercelConversationWorkDevConsumer", () => {
           signatureVersion: "v2",
           signedAtMs: 1_000,
         },
-        {
-          consumerGroup: "consumer",
-          createdAt: new Date(1_000),
-          deliveryCount: 3,
-          expiresAt: new Date(2_000),
-          messageId: "msg_disabled",
-          region: "iad1",
-          topicName: "topic",
-        },
+        queueMetadata({ deliveryCount: 3 }),
       ),
     ).resolves.toBeUndefined();
     expect(run).not.toHaveBeenCalled();
-  });
-
-  it("does not register outside local development", async () => {
-    const registerDevConsumer = vi.fn();
-
-    vi.doMock("@vercel/queue", () => ({
-      QueueClient: vi.fn(),
-      handleCallback: vi.fn(),
-      registerDevConsumer,
-    }));
-
-    process.env.NODE_ENV = "test";
-
-    const { registerVercelConversationWorkDevConsumer } =
-      await import("@/chat/task-execution/vercel-callback");
-
-    const result = registerVercelConversationWorkDevConsumer({
-      run: vi.fn(),
-    });
-
-    expect(result).toBeUndefined();
-    expect(registerDevConsumer).not.toHaveBeenCalled();
   });
 });

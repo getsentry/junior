@@ -1,10 +1,12 @@
 import type { GitHubStatusIncident } from "../github-status.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
   CodeChangePublisher,
   PluginConversationAnnotations,
-  PluginConversationReviewItems,
+  PluginConversationChanges,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginRoute,
   EventInput,
@@ -12,6 +14,7 @@ import type {
   PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
 import {
@@ -150,6 +153,7 @@ export function createGitHubWebhookRoute(args: {
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
   codeChanges: CodeChangePublisher;
+  conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   installationId(): string | undefined;
   installationIdEnv: string;
@@ -164,6 +168,12 @@ export function createGitHubWebhookRoute(args: {
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   /** Read one pull request for its mergeability. */
   loadPullRequest?(pullRequest: GitHubPullRequestRef): Promise<unknown>;
+  /** Read one pull request's history for the merge conflict policy. */
+  loadPullRequestConflictHistory?(
+    pullRequest: GitHubPullRequestRef,
+  ): Promise<unknown>;
+  /** Read the title parts of a pull request title in its repository. */
+  loadTitleParts?: LoadGitHubTitleParts;
   /** Load a repository role for `openerRole`. */
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
@@ -172,8 +182,12 @@ export function createGitHubWebhookRoute(args: {
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
   events: EventPublisher;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
+  /** Logins from the `trustedAuthors` plugin option. */
+  trustedAuthors?: readonly string[];
   webhookSecret(): string | undefined;
 }): PluginRoute {
   return {
@@ -237,6 +251,7 @@ export function createGitHubWebhookRoute(args: {
         const recordedOutcome = await applyGitHubPullRequestOutcome({
           annotations: args.annotations,
           codeChanges: args.codeChanges,
+          conversationChanges: args.conversationChanges,
           db: args.db,
           log: args.log,
           outcome: pullRequestOutcome,
@@ -352,6 +367,8 @@ export function createGitHubWebhookRoute(args: {
                 needsCheckSuitePullRequestFacts(checkSuiteMatchKeys),
               log: args.log,
               privateKeyEnv: args.privateKeyEnv,
+              responses: args.state,
+              tokens: args.tokens,
             })
           : undefined;
       const hasMatch = args.events.hasMatch;
@@ -372,6 +389,9 @@ export function createGitHubWebhookRoute(args: {
             ...(checkSuiteFacts ? { checkSuiteFacts } : undefined),
             deliveryId,
             eventName,
+            ...(args.trustedAuthors
+              ? { trustedAuthors: args.trustedAuthors }
+              : undefined),
           }),
           hasMatch,
           ...(commitPages
@@ -419,15 +439,20 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          db: args.db,
           deliveryId,
           events,
           hasMatch,
+          loadConflictHistory: args.loadPullRequestConflictHistory,
+          loadTitleParts: args.loadTitleParts,
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
+          inboxItems: args.inboxItems,
         })),
       );
       for (const event of events) {
+        // oxlint-disable-next-line no-await-in-loop -- Publish in delivery order, so watchers see events in the order they happened.
         await args.events.publish({
           ...event,
           objectType: event.eventType.startsWith("pull_request.")
@@ -439,28 +464,29 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
+      const env = {
+        appIdEnv: args.appIdEnv,
+        installationIdEnv: args.installationIdEnv,
+        privateKeyEnv: args.privateKeyEnv,
+        responses: args.state,
+        tokens: args.tokens,
+      };
       await syncGitHubPullRequestActions({
+        botEmail,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,
-        reviewItems: args.reviewItems,
+        inboxItems: args.inboxItems,
+        state: args.state,
         targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({
         body,
         db: args.db,
         deliveryId,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-        },
+        env,
         eventName,
         loadGitHubLogin: args.loadGitHubLogin,
         log: args.log,

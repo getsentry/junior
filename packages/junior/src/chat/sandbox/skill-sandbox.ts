@@ -175,6 +175,7 @@ export class SkillSandbox {
 
     while (queue.length > 0) {
       const currentDirectory = queue.shift() as string;
+      // oxlint-disable-next-line no-await-in-loop -- Walk directories breadth first, and stop at the entry limit.
       const children = await fs.readdir(currentDirectory, {
         withFileTypes: true,
       });

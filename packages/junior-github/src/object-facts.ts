@@ -20,6 +20,7 @@ const responseSchema = z.object({
   head: z.object({ ref: z.string() }).optional(),
   base: z.object({ ref: z.string() }).optional(),
   mergeable: z.boolean().nullable().optional(),
+  state: z.string().optional(),
   changed_files: z.number().int().nonnegative().optional(),
   additions: z.number().int().nonnegative().optional(),
   deletions: z.number().int().nonnegative().optional(),
@@ -62,7 +63,7 @@ function htmlImageSources(html: string): string[] {
       const src = node.attrs.find((attr) => attr.name === "src")?.value;
       if (src) sources.push(src);
     }
-    if ("childNodes" in node) node.childNodes.forEach(visit);
+    if ("childNodes" in node) for (const child of node.childNodes) visit(child);
     if ("content" in node) visit(node.content);
   };
   visit(parseFragment(html));
@@ -93,7 +94,7 @@ export function githubImageKind(
   ) {
     return "attachment";
   }
-  const baseUrl = process.env.JUNIOR_BASE_URL?.trim().replace(/\/+$/, "");
+  const baseUrl = process.env["JUNIOR_BASE_URL"]?.trim().replace(/\/+$/, "");
   if (!baseUrl || !URL.canParse(`${baseUrl}/public/artifacts/`)) {
     return undefined;
   }
@@ -121,7 +122,9 @@ export function githubPreviewImageUrls(
   body: string | null | undefined,
 ): string[] {
   const sources: string[] = [];
-  walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
+  void walkTokens(lexer(visibleBody(body), { gfm: true }), (token) => {
+    // marked's generic token types `href` as `any`.
+    // oxlint-disable-next-line typescript/no-unsafe-argument
     if (token.type === "image") sources.push(token.href);
     if (token.type === "html") sources.push(...htmlImageSources(token.raw));
   });
@@ -181,7 +184,11 @@ export function githubObjectFacts(
                 .filter(Boolean),
               sourceBranch: short(data.head?.ref),
               targetBranch: short(data.base?.ref),
-              mergeable: data.mergeable ?? undefined,
+              // A merge state matters only while the pull request is open.
+              mergeable:
+                data.state === "open"
+                  ? (data.mergeable ?? undefined)
+                  : undefined,
               changedFiles: data.changed_files,
               additions: data.additions,
               deletions: data.deletions,
@@ -196,9 +203,8 @@ export function githubObjectFacts(
               .filter(Boolean),
             labels: data.labels
               ?.slice(0, 5)
-              .map(
-                (label) =>
-                  short(typeof label === "string" ? label : label.name)!,
+              .map((label) =>
+                short(typeof label === "string" ? label : label.name)!,
               )
               .filter(Boolean),
           },

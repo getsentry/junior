@@ -11,6 +11,7 @@ import {
   type JsonValue,
 } from "vitest-evals";
 import { completeObject } from "@/chat/core-model";
+import type { GuardianDestinationFact } from "@/chat/guardian/policy";
 import { createGuardianActionReviewer } from "@/chat/guardian/reviewer";
 import type {
   ToolActionDecision,
@@ -28,6 +29,8 @@ export interface GuardianEvalInput {
    * a case where a stricter decision is also safe.
    */
   expectedDecision: ToolActionDecision | ToolActionDecision[];
+  /** Plugin destination facts, as an install declares them. */
+  destinationFacts?: GuardianDestinationFact[];
 }
 
 export interface GuardianEvalOutput extends Record<string, JsonValue> {
@@ -41,7 +44,7 @@ export interface GuardianEvalOutput extends Record<string, JsonValue> {
 }
 
 function resolveGuardianModelId(): string {
-  const configured = process.env.AI_GUARDIAN_MODEL?.trim();
+  const configured = process.env["AI_GUARDIAN_MODEL"]?.trim();
   if (configured) {
     return configured;
   }
@@ -51,10 +54,16 @@ function resolveGuardianModelId(): string {
 /** Run one Guardian proposal through the production reviewer boundary. */
 export async function reviewGuardianProposal(
   proposal: ToolActionProposal,
-  options?: { signal?: AbortSignal },
+  options?: {
+    destinationFacts?: GuardianDestinationFact[];
+    signal?: AbortSignal;
+  },
 ): Promise<ToolActionReviewDecision> {
   const reviewer = createGuardianActionReviewer({
     completeObject,
+    ...(options?.destinationFacts
+      ? { destinationFacts: options.destinationFacts }
+      : undefined),
     modelId: resolveGuardianModelId(),
   });
   return reviewer.review(proposal, options);
@@ -72,6 +81,9 @@ export const guardianHarness = createHarness<
       ? AbortSignal.any([signal, timeoutSignal])
       : timeoutSignal;
     const decision = await reviewGuardianProposal(input.proposal, {
+      ...(input.destinationFacts
+        ? { destinationFacts: input.destinationFacts }
+        : undefined),
       signal: reviewSignal,
     });
     const output: GuardianEvalOutput = {
@@ -121,7 +133,7 @@ export const guardianHarness = createHarness<
         model: resolveGuardianModelId(),
         ...(decision.costUsd !== undefined
           ? { metadata: { costUsd: decision.costUsd } }
-          : {}),
+          : undefined),
       },
     };
   },

@@ -13,15 +13,16 @@ related:
 ## Prerequisites
 
 - Node.js 24
-- pnpm
+- pnpm. It switches to the version that `packageManager` in `package.json` pins.
+- Docker
 - Vercel CLI
 - Slack app credentials
-- Redis configured for development
 
 ## Setup
 
 ```bash
 pnpm install
+pnpm build
 ```
 
 ```bash
@@ -43,9 +44,9 @@ This starts the example app on `http://localhost:3000` by default. It also rebui
 
 Before the app starts, `pnpm dev` runs `docker compose up -d --wait`. This starts Postgres, Redis and S3 from `compose.yaml` and waits until they are healthy. Docker must be running. Services that already run are left as they are. Then `pnpm dev` runs `junior upgrade` to apply missing database migrations to `DATABASE_URL`. Migrations that already ran are skipped. If either step fails, `pnpm dev` stops.
 
-`pnpm dev` delivers background work through BullMQ on the Redis in `compose.yaml` (`redis://localhost:6382`), which `pnpm dev` starts. Local work then needs no Vercel Queues access. To use Vercel Queues, set `JUNIOR_QUEUE_PROVIDER=vercel` and run `pnpm dev:env` for the Vercel token. To use another Redis, set `JUNIOR_QUEUE_REDIS_URL`.
+`pnpm dev` delivers background work through a local Vercel Queues server. The `@sentry/junior/nitro` module starts it in the `nitro dev` process and points the app at it with `JUNIOR_QUEUE_API_URL`. The server keeps messages in memory and pushes each one to its callback route, as Vercel Queues does. Local work needs no Vercel Queues access. `pnpm dev` keeps state in the Redis in `compose.yaml` (`redis://localhost:6382`) unless you set `JUNIOR_STATE_ADAPTER`. A change to `apps/example/server.ts`, `plugins.ts`, `dashboard.ts` or `apps/example/app/` makes Nitro replace its app worker. The queue server and the state in Redis are kept. A Turn that the reload stops continues when its work lease expires, after about 2 minutes. A new Junior build restarts Nitro, and the queue server loses its messages.
 
-With BullMQ, `pnpm dev` starts one queue worker process next to Nitro. Nitro accepts requests and sends jobs. The worker runs them. A new Junior build restarts both processes. A change to `apps/example/server.ts`, `plugins.ts`, `dashboard.ts` or `apps/example/app/` restarts only the worker. The worker and Nitro must share state, so `pnpm dev` keeps state in that Redis unless you set `JUNIOR_STATE_ADAPTER`. `JUNIOR_STATE_ADAPTER=memory` does not work with BullMQ. Each queue topic runs up to 4 jobs at the same time. Set `JUNIOR_QUEUE_WORKER_CONCURRENCY` to change that number.
+`pnpm dev` runs inside `sentry local run`. Nitro sends its errors, spans, and logs to one Sentry Local server on `http://localhost:8969`, and the terminal shows them. The server keeps its events when Nitro restarts. To read them as NDJSON from another terminal, run `pnpm exec sentry local serve --format json`. When `SENTRY_SPOTLIGHT` is already set, `pnpm dev` uses that server and starts none.
 
 To also open the Sentry Local UI in your browser, set `OPEN_SPOTLIGHT_WEB=1`:
 
@@ -150,23 +151,44 @@ pnpm worktree remove codex/fix-slack-retry
 
 Set `JUNIOR_WORKTREE_DIR` to change the parent directory, set `JUNIOR_WORKTREE_BASE` to change the default base ref, set `JUNIOR_WORKTREE_SOURCE` to change the checkout copied into new worktrees and `setup` runs, or pass `--path`, `--from`, `--source`, or `--no-install` for one-off overrides. Relative `JUNIOR_WORKTREE_DIR` values resolve from the primary checkout root. `--from` and `JUNIOR_WORKTREE_BASE` only apply when creating a new branch; existing branches open at their current tip.
 
-## Common checks
+## Run checks
+
+Run checks from the repo root. `pnpm install` does not build workspace packages, and typecheck and lint read the built declarations, so run `pnpm build` first:
 
 ```bash
-pnpm lint
+pnpm build
 pnpm test
 pnpm typecheck
+pnpm lint
 pnpm skills:check
 pnpm docs:check
+pnpm release:check
+pnpm package-types:check
 ```
 
+The root `AGENTS.md` lists commands for one test file or one eval. [Testing](/contribute/testing/) says which test layer to use.
+
 ## Slack tunnel
+
+Install `cloudflared`. For a random hostname, run:
 
 ```bash
 cloudflared tunnel --url http://localhost:3000
 ```
 
-Set Event Subscriptions and Interactivity URL to:
+For a stable hostname, create a named tunnel once. `pnpm cloudflare:token` writes its token to `.env.local` as `CLOUDFLARE_TUNNEL_TOKEN`, and `pnpm dev` then starts the tunnel:
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create junior-dev
+cloudflared tunnel route dns junior-dev <tunnel-host>
+pnpm cloudflare:token
+pnpm dev
+```
+
+Run `pnpm cloudflare:token` again after `vercel env pull` rewrites `.env.local`. Set `CLOUDFLARE_TUNNEL_URL` when the app does not listen on port 3000.
+
+Set the Event Subscriptions and Interactivity request URL to:
 
 ```text
 https://<tunnel-host>/api/webhooks/slack

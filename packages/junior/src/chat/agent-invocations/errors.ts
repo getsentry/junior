@@ -6,12 +6,10 @@ export class AgentNameInUseError extends Error {
   }
 }
 
-/** Parent already has the maximum number of non-terminal child invocations. */
+/** Parent already has the maximum number of active child agents. */
 export class AgentInvocationLimitError extends Error {
   constructor(limit: number) {
-    super(
-      `Parent already has ${limit} active child agent invocations (limit ${limit})`,
-    );
+    super(`Parent already has ${limit} active child agents (limit ${limit})`);
     this.name = "AgentInvocationLimitError";
   }
 }
@@ -29,11 +27,13 @@ export class AgentDepthLimitError extends Error {
   }
 }
 
-/** A child agent already has the maximum number of open tasks. */
-export class AgentMessageQueueFullError extends Error {
-  constructor(limit: number) {
-    super(`The child agent already has ${limit} open tasks`);
-    this.name = "AgentMessageQueueFullError";
+/** A stopped Conversation cannot give work to child agents. */
+export class AgentStoppedError extends Error {
+  constructor() {
+    super(
+      "This conversation is stopped, so it cannot give work to child agents",
+    );
+    this.name = "AgentStoppedError";
   }
 }
 
@@ -45,15 +45,5 @@ export class AgentMessageTargetError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "AgentMessageTargetError";
-  }
-}
-
-/** A top-level agent paused automated Turns, so it takes no agent message. */
-export class AgentMessagePausedError extends Error {
-  constructor(conversationId: string) {
-    super(
-      `${conversationId} paused automated work until a person replies there`,
-    );
-    this.name = "AgentMessagePausedError";
   }
 }

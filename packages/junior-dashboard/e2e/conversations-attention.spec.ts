@@ -1,6 +1,6 @@
 import type { Locator, Page } from "@playwright/test";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, screenshot } from "./screenshot";
 import { viewAsParticipant } from "./conversationMenu";
 
 const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
@@ -8,7 +8,7 @@ const WAITING_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
 
 const READY_TITLE = "Ready to merge · #42";
 
-const reviewItem = {
+const inboxItem = {
   assignedToEveryone: false,
   assignees: [
     {
@@ -41,16 +41,16 @@ const reviewItem = {
 };
 
 /**
- * Make one conversation wait on the viewer with two open Review items: a
+ * Make one conversation wait on the viewer with two open Inbox items: a
  * GitHub ask, then the agent's question.
  */
 async function mockWaitingConversation(
   page: Page,
   waitingId = WAITING_CONVERSATION_ID,
 ) {
-  await page.route("**/api/review-items**", async (route) => {
+  await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/api\/review-items/, "");
+    const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
     if (path === "/waiting-conversations") {
       return route.fulfill({
         json: {
@@ -59,9 +59,9 @@ async function mockWaitingConversation(
               conversationId: waitingId,
               items: [
                 { plugin: "github", title: READY_TITLE },
-                { title: reviewItem.title },
+                { title: inboxItem.title },
               ],
-              waitingSince: reviewItem.createdAt,
+              waitingSince: inboxItem.createdAt,
             },
           ],
         },
@@ -76,8 +76,9 @@ async function mockWaitingConversation(
             !conversationId || conversationId === waitingId
               ? [
                   {
-                    ...reviewItem,
-                    addedByConversationId: waitingId,
+                    ...inboxItem,
+                    owner: { id: waitingId, kind: "conversation" },
+                    rootConversationId: waitingId,
                     conversationIds: [waitingId],
                   },
                 ]
@@ -117,22 +118,23 @@ async function sidebarSectionOf(
 async function mockChangingWaiting(page: Page) {
   let waiting = false;
   const versions = {
+    conversationDetails: {},
     conversations: "feed-1",
-    reviewItems: "review-1",
+    inboxItems: "review-1",
     spend: "spend-1",
   };
   await page.route("**/api/versions*", (route) =>
     route.fulfill({ json: versions }),
   );
-  await page.route("**/api/review-items/waiting-conversations", (route) =>
+  await page.route("**/api/inbox-items/waiting-conversations", (route) =>
     route.fulfill({
       json: {
         conversations: waiting
           ? [
               {
                 conversationId: WAITING_CONVERSATION_ID,
-                items: [{ title: reviewItem.title }],
-                waitingSince: reviewItem.createdAt,
+                items: [{ title: inboxItem.title }],
+                waitingSince: inboxItem.createdAt,
               },
             ]
           : [],
@@ -142,7 +144,7 @@ async function mockChangingWaiting(page: Page) {
   /** Change who waits, and move the token the poll reads. */
   return (next: boolean) => {
     waiting = next;
-    versions.reviewItems = `review-${next ? 2 : 3}`;
+    versions.inboxItems = `review-${next ? 2 : 3}`;
   };
 }
 
@@ -152,7 +154,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await mockWaitingConversation(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -247,7 +249,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -277,7 +279,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -305,16 +307,6 @@ test.describe("conversation sections", () => {
 
     await page.reload();
     await expect(renamedRow).toBeVisible();
-
-    // The `⋯` menu renames too.
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-    );
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
-      "Investigate checkout latency",
-    );
   });
 
   test("the sidebar review chip opens details at Needs you", async ({
@@ -346,12 +338,14 @@ test.describe("conversation sections", () => {
       lightTheme: true,
       view: "desktop",
     });
-    // The tooltip lists every waiting item in full.
+    // The tooltip lists every waiting item in full. The screenshot uses this
+    // size. A resize would move the pointer off the chip and close it.
+    await page.setViewportSize(desktop);
     await chip.hover();
     const tooltip = page.getByRole("tooltip");
     await expect(tooltip.getByRole("listitem")).toHaveText([
       READY_TITLE,
-      reviewItem.title,
+      inboxItem.title,
     ]);
     await screenshot(page, "conversation-sidebar-review-chip-tooltip", {
       view: "desktop",
@@ -407,8 +401,11 @@ test.describe("stable conversation list", () => {
   }) => {
     // Real versions poll interval.
     test.setTimeout(60_000);
+    // The screenshot uses this size. A resize would move the pointer off the
+    // list and let go of the order.
+    await page.setViewportSize(desktop);
     const setWaiting = await mockChangingWaiting(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -493,7 +490,7 @@ test.describe("stable conversation list", () => {
         await route.fallback();
       },
     );
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -529,7 +526,7 @@ test.describe("stable conversation list", () => {
     const setWaiting = await mockChangingWaiting(page);
     // A narrow window with a mouse shows the home list, not the sidebar.
     await page.setViewportSize({ width: 700, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const card = page.getByRole("link", {
       name: "Open Checkout latency triage",
     });

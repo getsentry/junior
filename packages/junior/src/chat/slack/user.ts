@@ -1,4 +1,3 @@
-import pLimit from "p-limit";
 import * as z from "zod";
 import { getSlackBotToken } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
@@ -9,18 +8,19 @@ import {
   getStateValues,
   setStateValues,
 } from "@/chat/state/adapter";
+import { mapBounded } from "@/chat/fan-out";
 
 interface SlackUserLookupResult {
-  userName?: string;
-  fullName?: string;
-  email?: string;
+  userName?: string | undefined;
+  fullName?: string | undefined;
+  email?: string | undefined;
   /**
    * The photo that the person set. Slack's default photo is not included.
    * Do not copy it onto the Actor.
    */
   avatarUrl?: string;
   /** Slack profile timezone. Do not copy it onto the Actor. */
-  timezone?: string;
+  timezone?: string | undefined;
   /**
    * Whether the person is a Slack guest, who sees only the channels they
    * are in. Unset when Slack did not say.
@@ -170,8 +170,8 @@ export async function lookupSlackActor(
 
 /** Names that the dashboard shows for a mentioned Slack user. */
 export interface SlackUserNames {
-  fullName?: string;
-  userName?: string;
+  fullName?: string | undefined;
+  userName?: string | undefined;
 }
 
 // Most dashboard reads run on an instance that has never seen the user, so
@@ -218,9 +218,10 @@ export async function lookupSlackUserNames(
     }
   }
 
-  const limit = pLimit(USER_NAMES_LOOKUP_CONCURRENCY);
-  const profiles = await Promise.all(
-    missing.map((userId) => limit(() => lookupSlackUser(teamId, userId))),
+  const profiles = await mapBounded(
+    missing,
+    (userId) => lookupSlackUser(teamId, userId),
+    USER_NAMES_LOOKUP_CONCURRENCY,
   );
   const found: Array<{ key: string; value: SlackUserNames }> = [];
   for (const [index, userId] of missing.entries()) {

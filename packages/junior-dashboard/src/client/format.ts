@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./conversations/turnActivity";
 import type { BundledLanguage } from "shiki/bundle/web";
 import type {
   ActorIdentity,
@@ -12,104 +13,16 @@ import type {
   ConversationTranscript,
   TranscriptViewMessage,
   TranscriptViewPart,
-  VisualStatus,
 } from "./types";
 import { getDashboardAgentName } from "./agentName";
-import { formatDuration } from "./components/Duration";
+import { personFromActor, type Person } from "./person";
 import { conversationTranscriptMessages } from "./conversations/eventTranscript";
-
-/** Read the viewer's own browser timezone, used for absolute timestamps and charts. */
-export function getDashboardTimeZone(): string {
-  try {
-    return Intl.DateTimeFormat().resolvedOptions().timeZone;
-  } catch {
-    return "UTC";
-  }
-}
-
-function isActiveSummary(summary: ConversationSummaryReport): boolean {
-  return summary.status === "active";
-}
-
-/** Identify summaries that should appear in failed conversation filters. */
-export function isFailedConversationSummary(
-  summary: ConversationSummaryReport,
-): boolean {
-  return summary.status === "failed";
-}
-
-function isActiveConversation(conversation: Conversation): boolean {
-  return conversation.status === "active";
-}
-
-/** Whether no work runs: the Conversation finished or a person stopped it. */
-export function isIdleConversation(conversation: Conversation): boolean {
-  return (
-    conversation.status === "completed" || conversation.status === "stopped"
-  );
-}
-
-function isFailedConversation(conversation: Conversation): boolean {
-  return conversation.status === "failed";
-}
+import { formatRuntime } from "./time";
 
 function parseTime(value: string | undefined): number | null {
   if (!value) return null;
   const time = Date.parse(value);
   return Number.isFinite(time) ? time : null;
-}
-
-/** Format absolute dashboard timestamps in the viewer's browser timezone. */
-export function formatTime(
-  value: string | undefined,
-  options?: Intl.DateTimeFormatOptions,
-): string {
-  const time = parseTime(value);
-  if (time == null) return "none";
-  return new Date(time).toLocaleString(undefined, {
-    ...options,
-    timeZone: getDashboardTimeZone(),
-  });
-}
-
-/** Format conversation activity timestamps as human-relative recency labels. */
-export function formatRelativeTime(value: string | undefined): string {
-  const time = parseTime(value);
-  if (time == null) return "not updated yet";
-
-  const seconds = Math.round((time - Date.now()) / 1000);
-  const absoluteSeconds = Math.abs(seconds);
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-    ["minute", 60],
-  ];
-
-  for (const [unit, unitSeconds] of units) {
-    if (absoluteSeconds >= unitSeconds) {
-      return new Intl.RelativeTimeFormat(undefined, {
-        numeric: "auto",
-      }).format(Math.round(seconds / unitSeconds), unit);
-    }
-  }
-
-  return "just now";
-}
-
-/** Format millisecond durations for compact transcript metadata. */
-export function formatMs(value: number | undefined): string {
-  if (typeof value !== "number" || !Number.isFinite(value)) return "none";
-  const ms = Math.max(0, Math.floor(value));
-  if (ms < 1000) return `${ms}ms`;
-  const seconds = ms / 1000;
-  if (seconds < 60) return `${seconds.toFixed(seconds < 10 ? 1 : 0)}s`;
-  const roundedSeconds = Math.round(seconds);
-  const minutes = Math.floor(roundedSeconds / 60);
-  const remainingSeconds = roundedSeconds % 60;
-  return `${minutes}m ${remainingSeconds}s`;
 }
 
 /** Format a serialized payload size for compact transcript metadata. */
@@ -120,90 +33,6 @@ export function formatPayloadSize(value: unknown): string | undefined {
   const bytes = new TextEncoder().encode(serialized).byteLength;
   if (bytes < 1_000) return `${bytes}b`;
   return `${Math.round(bytes / 1_000)}kb`;
-}
-
-/** Format the elapsed duration between two transcript event timestamps. */
-export function formatElapsedDuration(
-  startedAt: number | undefined,
-  endedAt: number | undefined,
-): string | undefined {
-  if (
-    typeof startedAt !== "number" ||
-    typeof endedAt !== "number" ||
-    endedAt < startedAt
-  ) {
-    return undefined;
-  }
-  return formatMs(endedAt - startedAt);
-}
-
-/** Format a persisted conversation runtime when duration data exists. */
-export function formatRuntime(durationMs: number | undefined): string {
-  if (typeof durationMs !== "number" || !Number.isFinite(durationMs)) return "";
-  const runtime = Math.max(0, Math.floor(durationMs));
-  return runtime === 0 ? "" : formatDuration(runtime);
-}
-
-/** Format transcript event timestamps independently from conversation start. */
-export function formatMessageTimestamp(
-  value: number | undefined,
-  includeDate = false,
-): string {
-  if (typeof value !== "number" || !Number.isFinite(value))
-    return "no timestamp";
-  const date = new Date(value);
-  return includeDate
-    ? date.toLocaleString(undefined, {
-        dateStyle: "medium",
-        timeStyle: "medium",
-        timeZone: getDashboardTimeZone(),
-      })
-    : date.toLocaleTimeString(undefined, {
-        timeZone: getDashboardTimeZone(),
-      });
-}
-
-/** Format a transcript timestamp relative to the current time. */
-export function formatRelativeMessageTimestamp(
-  value: number | undefined,
-): string {
-  if (typeof value !== "number" || !Number.isFinite(value))
-    return "no timestamp";
-  const seconds = Math.round((value - Date.now()) / 1000);
-  const absoluteSeconds = Math.abs(seconds);
-  const units: Array<[Intl.RelativeTimeFormatUnit, number]> = [
-    ["year", 60 * 60 * 24 * 365],
-    ["month", 60 * 60 * 24 * 30],
-    ["week", 60 * 60 * 24 * 7],
-    ["day", 60 * 60 * 24],
-    ["hour", 60 * 60],
-  ];
-  const [unit, unitSeconds] =
-    units.find(([, threshold]) => absoluteSeconds >= threshold) ??
-    units.at(-1)!;
-  return new Intl.RelativeTimeFormat(undefined, { numeric: "auto" }).format(
-    Math.round(seconds / unitSeconds),
-    unit,
-  );
-}
-
-/** Format canonical local and UTC values for a transcript timestamp. */
-export function formatTranscriptTimestampDetails(value: number): {
-  local: string;
-  utc: string;
-} {
-  const date = new Date(value);
-  const options: Intl.DateTimeFormatOptions = {
-    dateStyle: "medium",
-    timeStyle: "long",
-  };
-  return {
-    local: date.toLocaleString(undefined, {
-      ...options,
-      timeZone: getDashboardTimeZone(),
-    }),
-    utc: date.toLocaleString(undefined, { ...options, timeZone: "UTC" }),
-  };
 }
 
 function formatNumber(value: number | undefined): string {
@@ -369,13 +198,29 @@ export function transcriptMessageActor(
   return undefined;
 }
 
+/**
+ * Return the person who wrote one transcript user message, named as its
+ * transcript row names them. Agent and child agent messages have none.
+ */
+export function transcriptMessagePerson(
+  conversation: ConversationTranscript,
+  message: TranscriptViewMessage,
+): Person | undefined {
+  const person = personFromActor(transcriptMessageActor(conversation, message));
+  return person
+    ? { ...person, name: transcriptMessageActorLabel(conversation, message) }
+    : undefined;
+}
+
 /** Return the best available actor label for one transcript message. */
 export function transcriptMessageActorLabel(
   conversation: ConversationTranscript,
   message: TranscriptViewMessage,
 ): string {
   const kind = transcriptRoleKind(message.role);
-  if (kind === "assistant") return getDashboardAgentName();
+  if (kind === "assistant") {
+    return conversation.kind === "lead" ? "Lead" : getDashboardAgentName();
+  }
   if (kind === "user") {
     // The parent agent wrote this input, and the Turn it starts reports back
     // to the parent. The conversation actor started the child but did not
@@ -463,20 +308,20 @@ export function formatActivityChartAverage(value: number | undefined): string {
 }
 
 export type TokenUsageSummary = {
-  cachedInputTokens?: number;
-  cacheCreationTokens?: number;
-  inputTokens?: number;
-  outputTokens?: number;
+  cachedInputTokens?: number | undefined;
+  cacheCreationTokens?: number | undefined;
+  inputTokens?: number | undefined;
+  outputTokens?: number | undefined;
   providerTotalTokens?: number;
-  reasoningTokens?: number;
+  reasoningTokens?: number | undefined;
   totalTokens: number;
 };
 
 export type CostUsageSummary = {
-  cacheRead?: number;
-  cacheWrite?: number;
-  input?: number;
-  output?: number;
+  cacheRead?: number | undefined;
+  cacheWrite?: number | undefined;
+  input?: number | undefined;
+  output?: number | undefined;
   total: number;
 };
 
@@ -648,14 +493,9 @@ export function formatConversationCostTotal(
 }
 
 /** Format the execution time accumulated across a conversation's runs. */
-export function formatTranscriptDuration(
-  conversation: Pick<ConversationTranscript, "cumulativeDurationMs">,
+export function formatConversationDuration(
+  conversation: Pick<Conversation, "cumulativeDurationMs">,
 ): string {
-  return formatRuntime(conversation.cumulativeDurationMs) || "none";
-}
-
-/** Format the execution time accumulated across a conversation's runs. */
-export function formatConversationDuration(conversation: Conversation): string {
   return formatRuntime(conversation.cumulativeDurationMs) || "none";
 }
 
@@ -754,26 +594,6 @@ export function slackLocationLabel(
   return name ? `${name}${idSuffix}` : channelId;
 }
 
-/** Collapse raw summary states into the dashboard's visual status language. */
-export function visualStatusForSummary(
-  summary: ConversationSummaryReport,
-): VisualStatus {
-  if (isFailedConversationSummary(summary)) return "failed";
-  if (isActiveSummary(summary)) return "active";
-  if (summary.status === "stopped") return "stopped";
-  return "idle";
-}
-
-/** Derive the dashboard status from a conversation record. */
-export function visualStatusForConversation(
-  conversation: Conversation,
-): VisualStatus {
-  if (isActiveConversation(conversation)) return "active";
-  if (isFailedConversation(conversation)) return "failed";
-  if (conversation.status === "stopped") return "stopped";
-  return "idle";
-}
-
 /** Explain why a transcript body is absent without exposing private content. */
 export function unavailableTranscriptLabel(
   conversation: ConversationTranscript,
@@ -784,8 +604,7 @@ export function unavailableTranscriptLabel(
   if (conversation.eventHistory.status === "expired") {
     return "Transcript expired for this conversation.";
   }
-  const status = visualStatusForSummary(conversation);
-  if (status === "active") {
+  if (conversationTurnIsActive(conversation)) {
     return "Transcript pending while this conversation is active.";
   }
   return "Transcript unavailable for this conversation.";
@@ -879,8 +698,9 @@ export function buildConversations(
   return summaries
     .map((summary) => ({
       activityPreview: summary.activityPreview,
-      brief: summary.brief,
-      annotations: summary.annotations,
+      summary: summary.summary,
+      media: summary.media,
+      links: summary.links,
       sidebarAnnotations: summary.sidebarAnnotations,
       archivedAt: summary.archivedAt,
       pinnedAt: summary.pinnedAt,
@@ -905,13 +725,19 @@ export function buildConversations(
       sentryTraceUrl: summary.sentryTraceUrl,
       startedAt: summary.startedAt,
       status: summary.status,
+      treeState: summary.treeState,
+      watching: summary.watching,
+      turnActive: summary.turnActive,
       surface: summary.surface,
       traceId: summary.traceId,
       isPriority: summary.isPriority,
       kind: summary.kind,
       parentConversationId: summary.parentConversationId,
       threads: summary.threads && buildConversations(summary.threads),
+      omittedThreadCount: summary.omittedThreadCount,
       awaitingAuthorization: summary.awaitingAuthorization,
+      latestTurnFailed: summary.latestTurnFailed,
+      viewerAnswer: summary.viewerAnswer,
       visibility: summary.visibility,
     }))
     .sort((a, b) => compareTimeDesc(a.lastSeenAt, b.lastSeenAt));
@@ -922,22 +748,7 @@ export function conversationFromDetail(
   detail: ConversationTranscript | undefined,
 ): Conversation | undefined {
   if (!detail) return undefined;
-  // The detail carries the whole Brief; a row keeps the feed's short form.
-  const { brief, ...summary } = detail;
-  const conversation = buildConversations([
-    {
-      ...summary,
-      ...(brief
-        ? {
-            brief: {
-              intent: brief.content.intent,
-              status: brief.content.outcome.status,
-              summary: brief.content.summary,
-            },
-          }
-        : undefined),
-    },
-  ])[0];
+  const conversation = buildConversations([detail])[0];
   return conversation
     ? { ...conversation, displayTitle: detail.displayTitle }
     : undefined;

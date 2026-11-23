@@ -1,5 +1,6 @@
 import * as z from "zod";
 import type { PluginContext } from "./context";
+import type { PluginEgress } from "./tools";
 import { nonBlankStringSchema, pluginCredentialSubjectSchema } from "./schemas";
 
 const pluginProviderNameSchema = z.string().regex(/^[a-z][a-z0-9-]*$/);
@@ -123,7 +124,7 @@ export type PluginAuthorization = z.output<typeof pluginAuthorizationSchema>;
 
 /** Interrupt sandbox egress so Junior can start provider authorization. */
 export class EgressAuthRequired extends Error {
-  authorization?: PluginAuthorization;
+  authorization?: PluginAuthorization | undefined;
 
   constructor(
     message: string,
@@ -262,6 +263,12 @@ export interface PluginEgressRequest {
   /** Plugin-declared operation this request performs, used for grant classification and diagnostics. */
   operation?: string;
   url: string;
+  /**
+   * Set when Junior adds no credential, because the Sandbox request carries
+   * its own or asks for none. The returned grant is not used. Throw
+   * `EgressPolicyDenied` here only for rules that hold for any credential.
+   */
+  withoutCredential?: true;
 }
 
 export interface EgressHookContext extends PluginContext {
@@ -324,6 +331,14 @@ export interface PluginUserTokenSlot {
 export interface PluginTokenStore {
   credentialSubject?: PluginUserTokenSlot;
   currentUser?: PluginUserTokenSlot;
+}
+
+/** Input for a search of one provider's accounts by person. */
+export interface SearchUsersHookContext extends PluginContext {
+  /** Fetch provider URLs with host-owned credentials. */
+  egress: PluginEgress;
+  /** The text to match: an ID, handle, email, mention, or name. */
+  query: string;
 }
 
 export interface ResolveOAuthAccountHookContext extends PluginContext {

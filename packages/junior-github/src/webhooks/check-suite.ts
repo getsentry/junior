@@ -1,18 +1,20 @@
 /**
  * GitHub check suite events.
  */
+import pLimit from "p-limit";
 import type {
   EventInput,
   EventPublisher,
   PluginLogger,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   githubRequest,
-  isRecord,
   issueInstallationToken,
 } from "../credential-support.js";
 import type { GitHubStatusIncident } from "../github-status.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
 import {
@@ -25,6 +27,9 @@ import {
   pullRequestTargets,
 } from "./event-targets.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
+
+// Pull requests that one check suite delivery loads at once.
+const PULL_REQUEST_LOAD_CONCURRENCY = 5;
 
 /** Match keys that need a pull request API load on check suite events. */
 const CHECK_SUITE_PULL_REQUEST_MATCH_KEYS = new Set([
@@ -295,18 +300,18 @@ const checkSuiteEventDataSchema = z
 
 /** Build the trusted data and summary for one check-suite event. */
 export function buildCheckSuiteEvent(args: {
-  appName?: string;
+  appName?: string | undefined;
   openerEmail?: string;
   openerUsername?: string;
-  checkSuiteId?: number;
+  checkSuiteId?: number | undefined;
   deliveryId: string;
   eventType: CheckSuiteEventType;
-  failingChecks?: GitHubFailingCheck[];
-  githubIncidents?: GitHubStatusIncident[];
+  failingChecks?: GitHubFailingCheck[] | undefined;
+  githubIncidents?: GitHubStatusIncident[] | undefined;
   headBranch?: string;
-  headSha?: string;
+  headSha?: string | undefined;
   isDraft?: boolean;
-  latestCheckRunsCount?: number;
+  latestCheckRunsCount?: number | undefined;
   /** Pull request number when GitHub attached one. */
   pullRequestNumber?: number;
   repo: string;
@@ -441,7 +446,7 @@ export function selectFailingChecks(
     // Drop runs that name a different suite. Keep runs with no suite id when
     // the caller already loaded by suite endpoint.
     if (options?.checkSuiteId !== undefined) {
-      const suite = record.check_suite;
+      const suite = record["check_suite"];
       const suiteId =
         suite &&
         typeof suite === "object" &&
@@ -452,17 +457,20 @@ export function selectFailingChecks(
       if (suiteId !== undefined && suiteId !== options.checkSuiteId) continue;
     }
     const conclusion =
-      typeof record.conclusion === "string" ? record.conclusion : undefined;
-    const name = typeof record.name === "string" ? record.name.trim() : "";
+      typeof record["conclusion"] === "string"
+        ? record["conclusion"]
+        : undefined;
+    const name =
+      typeof record["name"] === "string" ? record["name"].trim() : "";
     const checkRunId =
-      typeof record.id === "number" && Number.isSafeInteger(record.id)
-        ? record.id
+      typeof record["id"] === "number" && Number.isSafeInteger(record["id"])
+        ? record["id"]
         : undefined;
     if (!conclusion || !FAILING_CHECK_CONCLUSIONS.has(conclusion)) continue;
     if (!name || checkRunId === undefined) continue;
     const htmlUrl =
-      typeof record.html_url === "string" && record.html_url.length > 0
-        ? record.html_url
+      typeof record["html_url"] === "string" && record["html_url"].length > 0
+        ? record["html_url"]
         : undefined;
     failing.push({
       checkRunId,
@@ -644,7 +652,10 @@ export async function wantsCheckSuitePassed(args: {
 /** Read which check suite values still need a GitHub API load. */
 export function parseCheckSuiteFactsTarget(
   body: unknown,
-  options?: { loadCheckSuites?: boolean; loadPullRequestFacts?: boolean },
+  options?: {
+    loadCheckSuites?: boolean | undefined;
+    loadPullRequestFacts?: boolean | undefined;
+  },
 ):
   | {
       checkSuiteId: number;
@@ -709,21 +720,30 @@ function checkRunsFromResponse(value: unknown): unknown[] {
   return parsed.data.check_runs ?? [];
 }
 
+// Each field is optional on its own: a wrong field drops only that fact.
+const pullRequestFactsResponseSchema = z.object({
+  draft: z.boolean().optional().catch(undefined),
+  user: z
+    .object({
+      email: z.string().optional().catch(undefined),
+      login: z.string().optional().catch(undefined),
+    })
+    .optional()
+    .catch(undefined),
+});
+
 function pullRequestFactsFromResponse(
   value: unknown,
 ): GitHubCheckSuitePullRequestFacts | undefined {
-  if (!isRecord(value)) return undefined;
+  const parsed = pullRequestFactsResponseSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  const { draft, user } = parsed.data;
   const facts: GitHubCheckSuitePullRequestFacts = {};
-  if (typeof value.draft === "boolean") facts.isDraft = value.draft;
-  const user = value.user;
-  if (isRecord(user)) {
-    const username =
-      typeof user.login === "string" ? user.login.trim() : undefined;
-    if (username) facts.openerUsername = username;
-    const email =
-      typeof user.email === "string" ? user.email.trim() : undefined;
-    if (email) facts.openerEmail = email;
-  }
+  if (draft !== undefined) facts.isDraft = draft;
+  const username = user?.login?.trim();
+  if (username) facts.openerUsername = username;
+  const email = user?.email?.trim();
+  if (email) facts.openerEmail = email;
   return Object.keys(facts).length > 0 ? facts : undefined;
 }
 
@@ -758,6 +778,7 @@ async function loadAllCheckSuitesPassed(args: {
   let totalCount = 0;
   for (let page = 1; page <= MAX_CHECK_SUITE_PAGES; page += 1) {
     const response = checkSuitesListResponseSchema.parse(
+      // oxlint-disable-next-line no-await-in-loop -- Stop paging once every check suite is read.
       await githubRequest(
         "https://api.github.com",
         `/repos/${encodeURIComponent(args.owner)}/${encodeURIComponent(args.repoName)}/commits/${args.headSha}/check-suites?per_page=100&page=${page}`,
@@ -795,8 +816,12 @@ export async function loadCheckSuiteFacts(args: {
   /** Open or recent githubstatus.com incidents, shared through a cache. */
   loadGitHubIncidents?(): Promise<GitHubStatusIncident[]>;
   loadPullRequestFacts?: boolean;
-  log?: Pick<PluginLogger, "error" | "warn">;
+  log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   privateKeyEnv: string;
+  /** Saved GET responses, as in `sendConditionalRequest`. */
+  responses?: PluginState | undefined;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
 }): Promise<GitHubCheckSuiteFacts | undefined> {
   const target = parseCheckSuiteFactsTarget(args.body, {
     loadCheckSuites: args.loadCheckSuites,
@@ -814,6 +839,7 @@ export async function loadCheckSuiteFacts(args: {
         permissions: { checks: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
+        tokens: args.tokens,
       });
       // Load runs for this suite only. Commit-wide latest runs mix other apps.
       const response = await githubRequest(
@@ -841,6 +867,7 @@ export async function loadCheckSuiteFacts(args: {
         permissions: { checks: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
+        tokens: args.tokens,
       });
       if (
         await loadAllCheckSuitesPassed({
@@ -886,14 +913,16 @@ export async function loadCheckSuiteFacts(args: {
         permissions: { pull_requests: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
+        tokens: args.tokens,
       });
-      const loaded = await Promise.all(
-        target.pullRequestNumbers.map(async (number) => {
+      const loaded = await pLimit(PULL_REQUEST_LOAD_CONCURRENCY).map(
+        target.pullRequestNumbers,
+        async (number) => {
           try {
             const response = await githubRequest(
               "https://api.github.com",
               `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/pulls/${number}`,
-              { token: token.token },
+              { responses: args.responses, token: token.token },
             );
             const loadedFacts = pullRequestFactsFromResponse(response);
             return loadedFacts ? ([number, loadedFacts] as const) : undefined;
@@ -912,7 +941,7 @@ export async function loadCheckSuiteFacts(args: {
             }
             return undefined;
           }
-        }),
+        },
       );
       const pullRequestFactsByNumber: Record<
         number,

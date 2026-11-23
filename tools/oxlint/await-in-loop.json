@@ -1,0 +1,20 @@
+{
+  "$schema": "../../node_modules/oxlint/configuration_schema.json",
+  "overrides": [
+    {
+      "files": ["packages/*/src/**"],
+      "rules": {
+        "no-await-in-loop": "error"
+      }
+    },
+    {
+      "files": [
+        "packages/junior/src/chat/automations/edit-rules.ts",
+        "packages/junior/src/chat/automations/edit.ts"
+      ],
+      "rules": {
+        "no-await-in-loop": "off"
+      }
+    }
+  ]
+}

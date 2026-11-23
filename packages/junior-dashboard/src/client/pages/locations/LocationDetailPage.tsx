@@ -9,19 +9,16 @@ import { LoadingView } from "../../components/LoadingView";
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import { StatCard } from "../../components/metrics/StatCard";
-import {
-  formatCompactNumber,
-  formatRelativeTime,
-  peoplePath,
-} from "../../format";
+import { formatCompactNumber, peoplePath } from "../../format";
 import { SystemPageLayout } from "../system/SystemPageLayout";
 import { LocationActivityChart } from "./LocationActivityChart";
 import { SectionTitle } from "../../components/layout/SectionTitle";
+import { formatRelativeTime } from "../../time";
 
 /** Render operational activity for one persisted public location. */
 export function LocationDetailPage() {
   const params = useParams();
-  const query = useLocationDetailData(params.locationId);
+  const query = useLocationDetailData(params["locationId"]);
   return <LocationDetailPageContent data={query.data} error={query.error} />;
 }
 
@@ -58,7 +55,11 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
   return (
     <>
       <PageHeader
-        description={`${detail.provider} public ${detail.kind} / ${detail.providerDestinationId} / last active ${formatRelativeTime(detail.lastSeenAt)}`}
+        description={
+          detail.provider === "local"
+            ? `Public dashboard conversations / last active ${formatRelativeTime(detail.lastSeenAt)}`
+            : `${detail.provider} public ${detail.kind} / ${detail.providerDestinationId} / last active ${formatRelativeTime(detail.lastSeenAt)}`
+        }
         title={detail.label}
       />
 

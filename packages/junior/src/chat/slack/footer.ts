@@ -30,7 +30,7 @@ export function formatReplyAttribution(attribution: ReplyAttribution): string {
  */
 export function buildSlackReplyFooter(args: {
   conversationId?: string;
-  replyAttribution?: ReplyAttribution;
+  replyAttribution?: ReplyAttribution | undefined;
 }): SlackReplyFooter | undefined {
   const items: SlackReplyFooterItem[] = [];
 

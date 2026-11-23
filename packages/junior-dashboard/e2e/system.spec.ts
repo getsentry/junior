@@ -1,17 +1,14 @@
 import { expect, test } from "./test";
 import { NOW_MS } from "../src/mock-reporting/fixtures";
+import { expectRequestBudget } from "./request-budget";
 import { screenshot } from "./screenshot";
 
-/** Vary outcomes so the running cost lines move. */
+/** Vary merges so the running cost line moves. */
 function unitCostDay(index: number) {
   const merged = index % 5 === 3 ? 1 : 0;
-  const mergedCost = merged * (3 + (index % 7) * 0.5);
-  const answered = 2 + (index % 3);
   return {
-    mergedCodeChangeCostUsd: mergedCost,
+    mergedCodeChangeCostUsd: merged * (3 + (index % 7) * 0.5),
     mergedCodeChanges: merged,
-    outcomeCostUsd: answered * 0.5 + (index % 4) * 0.4 + mergedCost,
-    outcomes: answered + merged,
   };
 }
 
@@ -38,7 +35,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
       date: new Date(NOW_MS - (23 - index) * 3_600_000)
         .toISOString()
         .slice(0, 13),
-      ...(index === 23 ? { cacheCreationTokens: undefined } : {}),
+      ...(index === 23 ? { cacheCreationTokens: undefined } : undefined),
     }));
     await route.fulfill({
       json: { ...report, metricDays, metricHours, metricSixHours: undefined },
@@ -52,11 +49,9 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await expect(page.getByText("Conversation activity")).toBeVisible();
   await expect(page.getByLabel("Conversations per day")).toBeVisible();
   await expect(page.getByText("Input cache")).toBeVisible();
+  await expect(page.getByText(/6 merged changes\. The line is/)).toBeVisible();
   await expect(
-    page.getByText(/6 merged changes and 90 answered or done conversations/),
-  ).toBeVisible();
-  await expect(
-    page.getByLabel("7-day rolling cost per outcome per day"),
+    page.getByLabel("7-day rolling cost per merged change per day"),
   ).toBeVisible();
   await expect(
     page.getByRole("heading", { name: "Model spend", exact: true }),
@@ -80,7 +75,7 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   await screenshot(page, "system-cache-tokens", { view: "desktop" });
   await page.getByRole("button", { name: "24h", exact: true }).click();
   await expect(
-    page.getByLabel("6-hour rolling cost per outcome per hour"),
+    page.getByLabel("6-hour rolling cost per merged change per hour"),
   ).toBeVisible();
   await expect(page.getByLabel("Input cache tokens per hour")).toBeVisible();
   await page.getByText("Largest cache writes", { exact: true }).click();
@@ -135,6 +130,28 @@ test("shows system usage and plugin details", async ({ page, dashboard }) => {
   ).toBeVisible();
   await expect(page.getByText("github.organization")).toBeVisible();
   await screenshot(page, "system-plugin-github", { view: "desktop" });
+});
+
+test("loads the System overview within its request budget", async ({
+  page,
+  dashboard,
+}) => {
+  await expectRequestBudget(
+    page,
+    async () => {
+      await page.goto(`${dashboard.baseURL}/system`);
+      await expect(page.getByText("Conversation activity")).toBeVisible();
+      await expect(
+        page.getByText("Net savings", { exact: true }),
+      ).toBeVisible();
+      await expect(
+        page
+          .getByRole("region", { name: "Cache health" })
+          .getByText("Warmups sent after", { exact: true }),
+      ).toBeVisible();
+    },
+    { requests: 8, serialRounds: 2 },
+  );
 });
 
 test("lists Workspaces with the baseline snapshot", async ({
@@ -202,6 +219,15 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
     .fill("getsentry/sentry");
   await page.getByLabel("Setup script").fill("pnpm install");
   await page.getByLabel("vCPUs").fill("8");
+  // The new Workspace's page reads it and its usage.
+  const pageReads = Promise.all(
+    ["/api/workspaces/11111111-1111-4111-8111-111111111111", "/api/stats"].map(
+      (path) =>
+        page.waitForResponse(
+          (response) => new URL(response.url()).pathname === path,
+        ),
+    ),
+  );
   await page.getByRole("button", { name: "Create Workspace" }).click();
 
   await expect(page).toHaveURL(
@@ -223,6 +249,7 @@ test("creates a Workspace recipe", async ({ page, dashboard }) => {
     setupScript: "pnpm install",
     vcpus: 8,
   });
+  await pageReads;
 });
 
 test("opens Workspace details beside the list and edits on a full page", async ({
@@ -303,4 +330,211 @@ test("keeps System navigation usable on mobile", async ({
   expect(
     await page.evaluate(() => document.documentElement.scrollWidth),
   ).toBeLessThanOrEqual(390);
+});
+
+test("shows what cache warming saved in the range", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/system`);
+  const panel = page.getByRole("region", { name: "Cache warming" });
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+  await expect(panel.getByText("Effectiveness", { exact: true })).toBeVisible();
+  await expect(
+    panel.getByText(/of possible savings on live days had no warm state/),
+  ).toBeVisible();
+  await expect(panel.getByText(/Includes 4 days from history/)).toBeVisible();
+  await expect(
+    panel.getByLabel("Cache warming net savings and effectiveness per day"),
+  ).toBeVisible();
+  await expect(
+    panel
+      .getByLabel("Cache warming chart legend")
+      .getByText("Daily effectiveness", { exact: true }),
+  ).toBeVisible();
+  // Only admins can re-fill history.
+  await expect(
+    panel.getByRole("button", { name: "Re-fill history" }),
+  ).toHaveCount(0);
+  await screenshot(page, "system-cache-warming", { target: panel });
+
+  const week = page.waitForResponse("**/api/cache-warming/savings?days=7");
+  await page.getByRole("button", { name: "7d", exact: true }).click();
+  expect((await week).ok()).toBe(true);
+  await expect(panel.getByText("Net savings", { exact: true })).toBeVisible();
+});
+
+test("shows cache health and warmup outcomes from Sentry", async ({
+  page,
+  dashboard,
+}) => {
+  const day = page.waitForResponse("**/api/cache-warming/health?window=7d");
+  await page.goto(`${dashboard.baseURL}/system`);
+  expect((await day).ok()).toBe(true);
+  const health = page.getByRole("region", { name: "Cache health" });
+  await expect(
+    health.getByText(/^Write share, [\d.]+% last week$/),
+  ).toBeVisible();
+  await expect(
+    health.getByText(/^Full rewrites, [\d.]+k? of [\d.]+k? calls$/),
+  ).toBeVisible();
+  // The default 30d range shows the last 7 days.
+  await expect(health.getByText(/Shows the last 7 days/)).toBeVisible();
+  await expect(health.getByText("anthropic warming on")).toBeVisible();
+  await expect(
+    health.getByText("Warming stopped early", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    health.getByText("Unlikely return", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    health.getByLabel(
+      "Prompt cache write share and full-rewrite rate over time",
+    ),
+  ).toBeVisible();
+
+  const hourly = page.waitForResponse("**/api/cache-warming/health?window=24h");
+  await page.getByRole("button", { name: "24h", exact: true }).click();
+  expect((await hourly).ok()).toBe(true);
+  await expect(health.getByText(/Shows the last 7 days/)).toHaveCount(0);
+  await screenshot(page, "system-cache-health-24h", { target: health });
+});
+
+test("shows when cache health is not set up, loading, or old", async ({
+  page,
+  dashboard,
+}) => {
+  await page.route("**/api/cache-warming/health?*", (route) =>
+    route.fulfill({
+      json: { status: "unconfigured", missing: ["SENTRY_READ_TOKEN"] },
+    }),
+  );
+  await page.goto(`${dashboard.baseURL}/system`);
+  const health = page.getByRole("region", { name: "Cache health" });
+  await expect(
+    health.getByText(/^Set SENTRY_READ_TOKEN to read cache health from Sentry/),
+  ).toBeVisible();
+  await screenshot(page, "system-cache-health-setup", {
+    target: health,
+    view: "desktop",
+  });
+
+  // Another load is still reading Sentry, and nothing is stored yet.
+  await page.unroute("**/api/cache-warming/health?*");
+  await page.route("**/api/cache-warming/health?*", (route) =>
+    route.fulfill({ json: { status: "busy" } }),
+  );
+  await page.reload();
+  await expect(
+    health.getByText(/^Cache health is still loading from Sentry/),
+  ).toBeVisible();
+  await screenshot(page, "system-cache-health-busy", {
+    target: health,
+    view: "desktop",
+  });
+
+  // An older answer says when it is from.
+  await page.unroute("**/api/cache-warming/health?*");
+  await page.route("**/api/cache-warming/health?*", async (route) => {
+    const response = await route.fetch();
+    await route.fulfill({ json: { ...(await response.json()), stale: true } });
+  });
+  await page.reload();
+  await expect(health.getByText(/This is from /)).toBeVisible();
+  await screenshot(page, "system-cache-health-stale", {
+    target: health,
+    view: "desktop",
+  });
+});
+
+test("lets an admin re-fill cache warming savings from history", async ({
+  page,
+  dashboard,
+}) => {
+  // The page shell embeds the viewer, so make that viewer an admin.
+  await page.addInitScript(() => {
+    let bootstrap: { me?: { user?: { isAdmin?: boolean } } } | undefined;
+    Object.defineProperty(window, "__JUNIOR_DASHBOARD_BOOTSTRAP__", {
+      configurable: true,
+      get: () => bootstrap,
+      set: (value) => {
+        if (value?.me?.user) value.me.user.isAdmin = true;
+        bootstrap = value;
+      },
+    });
+  });
+  let refill: Record<string, unknown> = {
+    status: "done",
+    startedAt: new Date(NOW_MS - 3 * 60 * 60 * 1_000).toISOString(),
+    finishedAt: new Date(NOW_MS - 2 * 60 * 60 * 1_000).toISOString(),
+    scannedConversations: 1_284,
+    totalConversations: 1_284,
+  };
+  const starts: string[] = [];
+  await page.route("**/api/cache-warming/savings/refill", async (route) => {
+    if (route.request().method() === "POST") {
+      starts.push(route.request().method());
+      refill = {
+        status: "running",
+        startedAt: new Date(NOW_MS).toISOString(),
+        scannedConversations: 420,
+        totalConversations: 1_310,
+      };
+      await route.fulfill({ status: 202, json: { refill } });
+      return;
+    }
+    await route.fulfill({ json: { refill } });
+  });
+
+  await page.goto(`${dashboard.baseURL}/system`);
+  const panel = page.getByRole("region", { name: "Cache warming" });
+  const button = panel.getByRole("button", { name: "Re-fill history" });
+  await expect(button).toBeEnabled();
+  await expect(panel.getByText(/Last re-fill finished/)).toBeVisible();
+  await screenshot(page, "system-cache-warming-refill", { target: panel });
+
+  await button.click();
+  await expect(panel.getByText(/Re-filling history: 420 of/)).toBeVisible();
+  await expect(button).toBeDisabled();
+  await screenshot(page, "system-cache-warming-refill-running", {
+    target: panel,
+  });
+  expect(starts).toEqual(["POST"]);
+});
+
+test.describe("keeps the people directory across window focus", () => {
+  test.use({ controlTimers: true });
+
+  test("loads System People within its request budget", async ({
+    page,
+    dashboard,
+  }) => {
+    let directoryReads = 0;
+    page.on("request", (request) => {
+      if (new URL(request.url()).pathname === "/api/people") {
+        directoryReads += 1;
+      }
+    });
+
+    await expectRequestBudget(
+      page,
+      async () => {
+        await page.goto(`${dashboard.baseURL}/system/people`);
+        await expect(
+          page.getByText("Highest spend", { exact: true }),
+        ).toBeVisible();
+      },
+      { requests: 6, serialRounds: 2 },
+    );
+    expect(directoryReads).toBe(1);
+
+    // React Query refetches stale queries on `visibilitychange`. Go past the
+    // default stale time so a focus refetch would read the directory again.
+    await page.clock.fastForward(60_000);
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("visibilitychange"));
+    });
+    await page.waitForLoadState("networkidle");
+    expect(directoryReads).toBe(1);
+  });
 });

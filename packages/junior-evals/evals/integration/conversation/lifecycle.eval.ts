@@ -253,12 +253,15 @@ describe("Lifecycle and Resilience", () => {
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
     // The fixed copy of a rejected request. It does not yet say that the
     // conversation is too large for the model.
+    // The reply names the agent model, which `AI_MODEL` can change.
     expect(
       conversation.replies.map((reply) =>
-        reply.text.replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
+        reply.text
+          .replace(/^\S+ \([^)]+\)/, "<model>")
+          .replace(/event_id=[0-9a-f]{32}/, "event_id=<id>"),
       ),
     ).toEqual([
-      "The model provider rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
+      "<model> rejected this request as invalid. Please revise the request or ask an administrator to check the model configuration. Reference: `event_id=<id>`.",
     ]);
   });
 
@@ -278,7 +281,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env["ROACH_MODE"] === "replay" ? 10_000 : 30_000,
       },
     });
     let sentWhilePaused = false;
@@ -345,7 +348,7 @@ describe("Lifecycle and Resilience", () => {
     const { run } = await agent({
       plugins: defineJuniorPlugins([evalOperation]),
       limits: {
-        turnTimeoutMs: process.env.ROACH_MODE === "replay" ? 10_000 : 30_000,
+        turnTimeoutMs: process.env["ROACH_MODE"] === "replay" ? 10_000 : 30_000,
       },
     });
     let paused = false;
@@ -393,6 +396,8 @@ describe("Lifecycle and Resilience", () => {
     );
 
     expect(conversation.turns.map((turn) => turn.status)).toEqual(["failed"]);
+    // A failed Turn waits on its starter.
+    expect(conversation.status).toBe("needs_input");
     expect(conversation.replies.map((reply) => reply.text)).toEqual([
       expect.stringContaining("content policy"),
     ]);
@@ -406,6 +411,9 @@ describe("Lifecycle and Resilience", () => {
     );
 
     expect(next.turns.map((turn) => turn.status)).toEqual(["succeeded"]);
+    // A Turn that succeeds after a failure clears it, and Slack delivery
+    // reads the answer.
+    expect(next.status).toBe("done");
     expect(next.replies).toHaveLength(1);
     expect(next.replies[0]!.text).toMatch(/maple/i);
   });

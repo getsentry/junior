@@ -25,8 +25,8 @@ import {
 } from "../fixtures/sql";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "event-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "event-automation-test-secret";
 });
 
 let fixture: LocalJuniorSqlFixture;
@@ -133,7 +133,9 @@ describe("event automation management", () => {
         ),
         { automation_id: created.automation.id, ...input },
       );
-    await update({ status: "paused" });
+    await expect(update({ status: "paused" })).resolves.toMatchObject({
+      objectCards: [{ status: "paused", warning: undefined }],
+    });
     // The paused task still uses the creator's credentials.
     await expect(update({ status: "active" })).rejects.toThrow(
       "Only the creator can resume it or run it now.",

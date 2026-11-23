@@ -4,6 +4,7 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { githubAccountLinks } from "./account-links.js";
+import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
@@ -21,11 +22,18 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
+import {
+  GITHUB_CONFLICT_RESUME,
+  parseGitHubConflictItemKey,
+} from "./merge-conflict-checks/policy.js";
+import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
+import { loadGitHubTitleParts } from "./webhooks/title-parts.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
-import { gitHubResourceUrl } from "./events/resource-url.js";
+import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
   loadPullRequest,
+  loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
   loadPullRequestCommitPages,
   searchOpenPullRequestMergeability,
@@ -64,7 +72,7 @@ import {
   GITHUB_REPOSITORY_IDENTIFIER,
   GITHUB_REPOSITORY_SUGGESTED_EVENTS,
 } from "./events/repository.js";
-import type { GitHubDb } from "./db/database.js";
+import { gitHubDbSchema } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
@@ -153,6 +161,13 @@ export interface GitHubPluginOptions {
   privateKeyEnv?: string;
   /** App-configured pull request event behavior. */
   pullRequestEvents?: GitHubPullRequestEventOptions;
+  /**
+   * GitHub logins whose comments and reviews Junior trusts without a linked
+   * account, such as review bots like `cursor[bot]`. Logins compare without
+   * case. GitHub can give a deleted account's login to a new account, so list
+   * only logins that cannot be reused, such as GitHub App bots.
+   */
+  trustedAuthors?: readonly string[];
 }
 
 /** Register GitHub runtime hooks for repository workflows. */
@@ -178,7 +193,7 @@ export function githubPlugin(
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
     images: githubImageSource,
-    objectLinks: [githubAccountLinks],
+    objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     events: {
       resourceTypes: [
         {
@@ -226,6 +241,7 @@ export function githubPlugin(
       ),
       isEnabled: () => Boolean(readEnv("GITHUB_WEBHOOK_SECRET")),
       normalizeIdentifier: (identifier) => identifier.toLowerCase(),
+      resourceForUrl: gitHubUrlResource,
       resourceUrl: gitHubResourceUrl,
     },
     manifest: {
@@ -235,6 +251,9 @@ export function githubPlugin(
         "GitHub deployment, issue, pull request, release, and repository workflows via GitHub App",
       configKeys: ["org", "repo"],
       domains: ["api.github.com", "github.com", "uploads.github.com"],
+      // Git sends no credential, so a request without one gets the GitHub
+      // credential. `gh` sends the placeholder in `GITHUB_TOKEN`.
+      toolsSendNoCredential: true,
       envVars: {
         [appIdEnv]: {},
         [privateKeyEnv]: {},
@@ -341,14 +360,41 @@ export function githubPlugin(
           },
         ];
       },
+      async inboxItemAnswered(ctx) {
+        const ref = parseGitHubConflictItemKey(ctx.dedupeKey);
+        if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
+        const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
+        await resumeGitHubConflictFixes({
+          db: gitHubDbSchema.parse(ctx.db),
+          events: ctx.events,
+          itemId: ctx.itemId,
+          loadPullRequest: async (pullRequest) =>
+            await loadPullRequest(installationEnv, pullRequest),
+          nowMs: ctx.nowMs,
+          ref,
+          subscription: gitHubPullRequestSubscription(
+            options.pullRequestEvents?.subscribeAfterCreate,
+          ),
+          watches: ctx.watches,
+        });
+      },
       async heartbeat(ctx) {
-        const db = ctx.db as GitHubDb;
+        const db = gitHubDbSchema.parse(ctx.db);
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
           db,
           events: ctx.events,
+          loadHistory: async (ref) =>
+            await loadPullRequestConflictHistory(installationEnv, ref),
+          loadTitleParts: async (input) =>
+            await loadGitHubTitleParts(
+              { ...installationEnv, responses: ctx.state },
+              input,
+              ctx.log,
+            ),
           log: ctx.log,
           now: new Date(ctx.nowMs),
+          inboxItems: ctx.inboxItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -365,6 +411,7 @@ export function githubPlugin(
           annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
           codeChanges: ctx.codeChanges,
+          conversationChanges: ctx.conversationChanges,
           db,
           events: ctx.events,
           loadCommitPages: async (target) =>
@@ -373,11 +420,12 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
+          inboxItems: ctx.inboxItems,
           state: ctx.state,
         });
       },
       async unfinishedWork(ctx) {
-        const db = ctx.db as GitHubDb;
+        const db = gitHubDbSchema.parse(ctx.db);
         const [
           conversationIds,
           assignedConversationIds,
@@ -398,12 +446,17 @@ export function githubPlugin(
           appIdEnv,
           installationIdEnv,
           privateKeyEnv,
+          responses: ctx.state,
+          tokens: new Map(),
         };
         return [
           createGitHubWebhookRoute({
             annotations: ctx.annotations,
             appIdEnv,
             botEmail: () => readEnv(botEmailEnv),
+            ...(options.trustedAuthors
+              ? { trustedAuthors: options.trustedAuthors }
+              : undefined),
             classifyPullRequestCommits: async (pullRequest) =>
               await classifyGitHubPullRequestCommitComposition({
                 botEmail: requireEnv(botEmailEnv),
@@ -413,7 +466,8 @@ export function githubPlugin(
                 ),
               }),
             codeChanges: ctx.codeChanges,
-            db: ctx.db as GitHubDb,
+            conversationChanges: ctx.conversationChanges,
+            db: gitHubDbSchema.parse(ctx.db),
             installationId: () => readEnv(installationIdEnv),
             loadGitHubIncidents: async () =>
               await loadGitHubStatusIncidents(
@@ -429,22 +483,29 @@ export function githubPlugin(
               ),
             loadPullRequest: async (pullRequest) =>
               await loadPullRequest(installationEnv, pullRequest),
+            loadPullRequestConflictHistory: async (pullRequest) =>
+              await loadPullRequestConflictHistory(
+                installationEnv,
+                pullRequest,
+              ),
             loadPullRequestCommitPages: async (pullRequest) =>
               await loadPullRequestCommitPages(installationEnv, pullRequest),
+            loadTitleParts: async (input) =>
+              await loadGitHubTitleParts(installationEnv, input, ctx.log),
             log: ctx.log,
             markFeedbackReviewing: async (target) =>
               await markPullRequestFeedbackReviewing(installationEnv, target),
             privateKeyEnv,
             events: ctx.events,
-            reviewItems: ctx.reviewItems,
+            inboxItems: ctx.inboxItems,
             state: ctx.state,
+            tokens: installationEnv.tokens,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),
         ];
       },
-      tools(ctx) {
+      tools() {
         return createGitHubTools(
-          ctx,
           readEnv(botEmailEnv),
           gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
@@ -458,7 +519,7 @@ export function githubPlugin(
         if (ctx.tool.name !== "bash") {
           return;
         }
-        const command = ctx.tool.input.command;
+        const command = ctx.tool.input["command"];
         const commandRedirect =
           typeof command === "string"
             ? githubCloneCommandRedirect(command) ||

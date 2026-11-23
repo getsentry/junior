@@ -9,7 +9,10 @@ import {
   setSpanAttributes,
   withLogContext,
 } from "@/chat/logging";
-import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import {
+  getConversationStoppedAtMs,
+  saveHeldInput,
+} from "@/chat/conversations/session-stop";
 import type { ConversationStore } from "@/chat/conversations/store";
 import { isProviderRetryError } from "@/chat/services/provider-error";
 import { getTurnRequestDeadline } from "@/chat/runtime/request-deadline";
@@ -24,6 +27,7 @@ import {
   ackMessages,
   beginConversationResume,
   checkInConversationWork,
+  claimConversationAttempt,
   clearConsumedConversationWake,
   completeConversationStop,
   completeConversationWork,
@@ -56,7 +60,7 @@ export interface ConversationWorkerContext {
   attempt: InboxAttempt;
   checkIn(): Promise<boolean>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /** True when the current execution slice must stop at its next safe boundary. */
   shouldYield(): boolean;
   /** Return an AbortSignal backed by the durable Conversation stop request. */
@@ -71,7 +75,7 @@ export interface ConversationWorkerContext {
 export interface InboxAttempt {
   ack(): Promise<void>;
   conversationId: string;
-  destination?: Destination;
+  destination?: Destination | undefined;
   /**
    * Give pending mailbox messages to the active Turn. By default only
    * `interrupt` messages for this attempt are offered. With `deferred`, every
@@ -109,16 +113,16 @@ export interface ConversationWorkProcessResult {
 }
 
 export interface ProcessConversationWorkOptions {
-  beforeWorkStops?: BeforeWorkStops;
-  checkInIntervalMs?: number;
-  conversationStore?: ConversationStore;
+  beforeWorkStops?: BeforeWorkStops | undefined;
+  checkInIntervalMs?: number | undefined;
+  conversationStore?: ConversationStore | undefined;
   /** Slack installation lookup for work that runs after the Run ends. */
-  getSlackAdapter?: () => SlackAdapter;
-  nowMs?: () => number;
+  getSlackAdapter?: (() => SlackAdapter) | undefined;
+  nowMs?: (() => number) | undefined;
   queue: ConversationWorkQueue;
   run(context: ConversationWorkerContext): Promise<ConversationWorkerResult>;
-  softYieldAfterMs?: number;
-  state?: StateAdapter;
+  softYieldAfterMs?: number | undefined;
+  state?: StateAdapter | undefined;
 }
 
 function now(options: ProcessConversationWorkOptions): number {
@@ -500,6 +504,7 @@ async function processConversationWorkInContext(
   try {
     let hasRun = false;
     let resumeIfStopped = false;
+    /* oxlint-disable no-await-in-loop -- Each slice reads the work state that the slice before it left. */
     while (true) {
       attemptMessageIds = [];
       const leasedWork = await getConversationWorkState({
@@ -565,6 +570,26 @@ async function processConversationWorkInContext(
       attemptMessageIds = attemptMessages.map(
         (message) => message.inboundMessageId,
       );
+      // A stop can take Event input between this read and the claim. Then
+      // select again, so the Turn never runs input that the stop held.
+      if (attemptMessageIds.length > 0) {
+        const claim = await claimConversationAttempt({
+          conversationId,
+          inboundMessageIds: attemptMessageIds,
+          leaseToken: lease.leaseToken,
+          nowMs: now(options),
+          state: options.state,
+        });
+        if (claim.status === "held") {
+          await saveHeldInput(conversationId, claim.messages);
+          if (claim.pendingCount === 0 && !resumePending) {
+            break;
+          }
+        }
+        if (claim.status !== "claimed") {
+          continue;
+        }
+      }
       attemptSelectedMessageIds = new Set(attemptMessageIds);
       const ack = async (): Promise<void> => {
         const acknowledged = await ackMessages({
@@ -763,6 +788,7 @@ async function processConversationWorkInContext(
         break;
       }
     }
+    /* oxlint-enable no-await-in-loop */
 
     const completion = await completeConversationWork({
       conversationId,

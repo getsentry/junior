@@ -6,19 +6,21 @@ import {
   ATTACHMENT_TOO_LARGE_MESSAGE,
   AttachmentDownloadError,
   readAttachmentContent,
+  storeAttachmentOnFirstUse,
 } from "@/chat/attachments/download";
 import type { ReadAttachmentSource } from "@/chat/attachments/source";
 import { readLiveAttachment } from "@/chat/attachments/store";
+import { attachmentIdParam } from "@/chat/attachments/tool-params";
 import type { AttachmentStorage } from "@/chat/attachments/storage";
+import { ATTACHMENT_DIR } from "@/chat/sandbox/paths";
 import type {
   SandboxCommandInput,
   SandboxWorkspace,
 } from "@/chat/sandbox/workspace";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
-const ATTACHMENT_DIR = ".junior/attachments";
 /** Bytes held in memory and sent to the sandbox in one write. */
 const PART_BYTES = 8 * 1024 * 1024;
 
@@ -77,6 +79,7 @@ async function writeParts(args: {
   const reader = args.body.getReader();
   try {
     for (;;) {
+      // oxlint-disable-next-line no-await-in-loop -- A stream reader gives each chunk after the one before.
       const { done, value } = await reader.read();
       if (done) break;
       total += value.byteLength;
@@ -86,6 +89,7 @@ async function writeParts(args: {
         const take = PART_BYTES - pendingBytes;
         pending.push(chunk.subarray(0, take));
         pendingBytes += take;
+        // oxlint-disable-next-line no-await-in-loop -- Write the parts in order.
         await flush();
         chunk = chunk.subarray(take);
       }
@@ -116,13 +120,15 @@ async function writeParts(args: {
 /**
  * Create a tool that restores one conversation attachment to the sandbox.
  *
- * A large Slack file is never stored: each load streams it from Slack
+ * The first load of a large Slack file streams it from Slack into storage
  * through the host. The sandbox never gets a Slack URL or token.
+ *
+ * @runBuilt loadAttachment
  */
 export function createLoadAttachmentTool(args: {
   conversationId: string;
   db: JuniorSqlDatabase;
-  /** Downloads a file that Junior recorded without storing it. */
+  /** Downloads a file that Junior recorded without storing it yet. */
   readAttachmentSource?: ReadAttachmentSource;
   storage: AttachmentStorage;
   workspace: SandboxWorkspace;
@@ -133,17 +139,12 @@ export function createLoadAttachmentTool(args: {
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
-      // A large Slack file downloads from Slack on each load.
+      // A large Slack file downloads from Slack on its first load.
       openWorldHint: true,
       readOnlyHint: false,
     },
     inputSchema: z.object({
-      attachment_id: z
-        .string()
-        .min(1)
-        .describe(
-          "Stored attachment ID, as shown in attachment context or Slack read results.",
-        ),
+      attachment_id: attachmentIdParam,
     }),
     outputSchema: juniorToolOutputSchema,
     execute: async ({ attachment_id }) => {
@@ -153,16 +154,24 @@ export function createLoadAttachmentTool(args: {
         db: args.db,
       });
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
-        throw new ToolInputError("Attachment not found in this conversation.");
+        throw new ToolInputError(
+          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+        );
       }
       if (attachment.bytes > MAX_ATTACHMENT_BYTES) {
-        throw new ToolInputError(ATTACHMENT_TOO_LARGE_MESSAGE);
+        throw new ToolInputError(
+          `${ATTACHMENT_TOO_LARGE_MESSAGE} No change to the call can fix this.`,
+        );
       }
       let content;
       try {
         content = await readAttachmentContent({
-          attachment,
-          readAttachmentSource: args.readAttachmentSource,
+          attachment: await storeAttachmentOnFirstUse({
+            attachment,
+            db: args.db,
+            readAttachmentSource: args.readAttachmentSource,
+            storage: args.storage,
+          }),
           storage: args.storage,
         });
       } catch (error) {

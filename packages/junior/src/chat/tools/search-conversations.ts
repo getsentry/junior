@@ -1,34 +1,22 @@
+import { mapBounded } from "@/chat/fan-out";
 import * as z from "zod";
-import {
-  briefLinkSchema,
-  briefOutcomeStatusSchema,
-} from "@/chat/briefs/schema";
+import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   searchConversations,
+  type ConversationSearchChannelPort,
   type ConversationSearchResult,
 } from "@/chat/conversations/search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
-import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const SUMMARY_MAX_LENGTH = 1_000;
 const CONVERSATION_IDS_MAX = 25;
 const DEFAULT_LIMIT = 10;
 const MAX_LIMIT = 25;
-
-/** Provider-owned channel filter and match details for Conversation search. */
-export interface ConversationSearchChannelPort {
-  channelFilterSchema: z.ZodString;
-  describeMatch(match: ConversationSearchResult): Promise<{
-    channel_id?: string;
-    channel_name?: string;
-    permalink?: string;
-  }>;
-  resolveChannel(input: string): Promise<string>;
-}
 
 /**
  * What the agent of the Conversation does now. The words match the
@@ -49,10 +37,10 @@ const conversationMatchSchema = z
         "Pass it to searchConversationEvents to read its history. For a root conversation, pass it to messageAgent to message its agent.",
       ),
     kind: z
-      .enum(["root", "automation", "thread", "task"])
+      .enum(["root", "automation", "lead", "thread", "task"])
       .optional()
       .describe(
-        "root or automation: a root conversation. thread or task: a child agent.",
+        "root, automation, or lead: a top-level conversation. thread or task: a child agent.",
       ),
     root_conversation_id: z
       .string()
@@ -67,23 +55,30 @@ const conversationMatchSchema = z
         "What its agent does now. pending: waiting to run. running or paused: working. idle: waits for a message.",
       ),
     title: z.string().optional(),
-    summary: z.string().optional().describe("Summary from the latest Brief"),
-    outcome: briefOutcomeStatusSchema
+    summary: z
+      .string()
       .optional()
-      .describe("Outcome status from the latest Brief"),
+      .describe("What was asked and what happened, as of its last Turn"),
     excerpt: z
       .string()
       .optional()
-      .describe("Brief text that matches the query"),
+      .describe("Summary text that matches the query"),
     links: z
-      .array(briefLinkSchema)
+      .array(
+        z
+          .object({
+            label: z.string(),
+            status: z.string().optional(),
+            url: z.string(),
+          })
+          .strict(),
+      )
       .max(5)
       .optional()
-      .describe("Top links from the latest Brief, such as pull requests"),
+      .describe("Top linked resources, such as pull requests"),
     channel_id: z.string().min(1).optional(),
     channel_name: z.string().min(1).optional(),
-    permalink: z.string().url().optional(),
-    dashboard_url: z.string().url().optional(),
+    url: z.string().url().optional().describe("Link to the conversation."),
     archived: z
       .literal(true)
       .optional()
@@ -92,7 +87,7 @@ const conversationMatchSchema = z
       .literal(true)
       .optional()
       .describe(
-        "The transcript is purged. Only the title and the Brief remain.",
+        "The transcript is purged. Only the title and the summary remain.",
       ),
     updated_at: z.string().describe("Time of the latest activity"),
   })
@@ -105,8 +100,9 @@ async function conversationMatch(
   channels: ConversationSearchChannelPort | undefined,
 ): Promise<ConversationMatch> {
   const dashboardUrl = getDashboardConversationLink(match.conversationId);
+  // Link the dashboard. The provider thread is only a fallback.
   const channelFields = channels
-    ? await channels.describeMatch(match)
+    ? await channels.describeMatch(match, { includeUrl: !dashboardUrl })
     : undefined;
   return {
     conversation_id: match.conversationId,
@@ -121,11 +117,10 @@ async function conversationMatch(
     ...(match.summary
       ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
       : undefined),
-    ...(match.outcomeStatus ? { outcome: match.outcomeStatus } : undefined),
     ...(match.excerpt ? { excerpt: match.excerpt } : undefined),
     ...(match.links.length > 0 ? { links: match.links } : undefined),
     ...channelFields,
-    ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+    ...(dashboardUrl ? { url: dashboardUrl } : undefined),
     ...(match.archived ? { archived: true as const } : undefined),
     ...(match.transcriptPurged
       ? { transcript_purged: true as const }
@@ -141,7 +136,7 @@ const searchConversationsOutputSchema = juniorToolOutputSchema.extend({
 });
 
 function searchConversationsInputSchema(
-  channels?: ConversationSearchChannelPort,
+  channels?: Pick<ConversationSearchChannelPort, "channelFilterSchema">,
 ) {
   return z
     .object({
@@ -152,7 +147,7 @@ function searchConversationsInputSchema(
         .max(200)
         .nullable()
         .optional()
-        .describe("Words to match in the latest Brief or the title."),
+        .describe("Words or meaning to match in the title or summary."),
       annotation: z
         .string()
         .trim()
@@ -161,7 +156,7 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe(
-          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created, changed, or read the resource.",
+          "Linked resource key, such as owner/repo#123 for a pull request. Matches that key, or nested children that continue with #. Matches a conversation when it or one of its child agents created or changed the resource.",
         ),
       conversation_ids: z
         .array(z.string().trim().min(1))
@@ -170,10 +165,6 @@ function searchConversationsInputSchema(
         .nullable()
         .optional()
         .describe("Return only these conversation IDs."),
-      outcome: briefOutcomeStatusSchema
-        .nullable()
-        .optional()
-        .describe("Outcome status of the latest Brief."),
       after: z
         .string()
         .datetime()
@@ -194,12 +185,19 @@ function searchConversationsInputSchema(
               .describe("Channel of the conversation."),
           }
         : undefined),
+      participating: z
+        .boolean()
+        .nullable()
+        .optional()
+        .describe(
+          "Only conversations that your person takes part in: the person of this Turn, or of this Lead. Default false.",
+        ),
       roots_only: z
         .boolean()
         .nullable()
         .optional()
         .describe(
-          "Return only root conversations. Set false to also find child agents (Threads and Tasks) by their own Brief, title, or linked resources. Default true.",
+          "Return only root conversations. Set false to also find child agents (Threads and Tasks) by their own title, summary, or linked resources. Default true.",
         ),
       include_archived: z
         .boolean()
@@ -222,20 +220,15 @@ function searchConversationsInputSchema(
     .strict();
 }
 
-/**
- * Create the read-only tool that searches the Conversations, outside this
- * Conversation's tree, that it may find, with their latest Brief.
- */
-export function createSearchConversationsTool(context: {
-  channels?: ConversationSearchChannelPort;
-  conversationId: string;
-}) {
-  const { channels } = context;
-  return zodTool({
+/** Static definition of `searchConversations`, with the provider channel filter when there is one. */
+export function searchConversationsToolDefinition(
+  channels?: Pick<ConversationSearchChannelPort, "channelFilterSchema">,
+) {
+  return zodToolDefinition({
     exposure: "deferred",
     source: CONVERSATIONS_TOOL_SOURCE,
     description:
-      "Search other conversations for past or current work, with the summary, outcome, and links of their latest Brief. Finds conversations in public channels and in the same private channel or DM. A root Brief covers the work of its child agents. Briefs remain after transcripts are purged.",
+      "Search other conversations for past or current work, with their summary and links. Finds conversations in public channels and in the same private channel or DM. A root summary covers the work of its child agents. Summaries remain after public transcripts are purged.",
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
@@ -244,10 +237,27 @@ export function createSearchConversationsTool(context: {
     },
     inputSchema: searchConversationsInputSchema(channels),
     outputSchema: searchConversationsOutputSchema,
+  });
+}
+
+/**
+ * Create the read-only tool that searches the Conversations, outside this
+ * Conversation's tree, that it may find, with their summary.
+ */
+export function createSearchConversationsTool(context: {
+  channels?: ConversationSearchChannelPort;
+  conversationId: string;
+  /** Embeds a query to also match summaries by meaning. */
+  embedder?: PluginEmbedder;
+  /** Reads the User id of the person, for `participating`. */
+  resolveUserId?: () => Promise<string | undefined>;
+}) {
+  const { channels } = context;
+  return zodTool({
+    ...searchConversationsToolDefinition(channels),
     execute: async (input) => {
       const annotation = input.annotation ?? undefined;
       const conversationIds = input.conversation_ids ?? undefined;
-      const outcomeStatus = input.outcome ?? undefined;
       const query = input.query ?? undefined;
       // The schema accepts only ISO-8601 timestamps.
       const afterMs = input.after ? Date.parse(input.after) : undefined;
@@ -267,7 +277,16 @@ export function createSearchConversationsTool(context: {
         channels && channelInput
           ? await channels.resolveChannel(channelInput)
           : undefined;
+      const participantUserId = input.participating
+        ? await context.resolveUserId?.()
+        : undefined;
+      if (input.participating && !participantUserId) {
+        throw new ToolInputError(
+          "`participating` needs a person: this Turn has none. Leave out `participating`.",
+        );
+      }
       const matches = await searchConversations(getDb(), {
+        ...(context.embedder ? { embedder: context.embedder } : undefined),
         requesterConversationId: context.conversationId,
         search: {
           ...(afterMs !== undefined ? { afterMs } : undefined),
@@ -277,14 +296,14 @@ export function createSearchConversationsTool(context: {
           ...(conversationIds ? { conversationIds } : undefined),
           includeArchived: input.include_archived ?? false,
           limit: input.limit ?? DEFAULT_LIMIT,
-          ...(outcomeStatus ? { outcomeStatus } : undefined),
+          ...(participantUserId ? { participantUserId } : undefined),
           ...(query ? { query } : undefined),
           rootsOnly: input.roots_only ?? true,
         },
       });
       return {
-        conversations: await Promise.all(
-          matches.map((match) => conversationMatch(match, channels)),
+        conversations: await mapBounded(matches, (match) =>
+          conversationMatch(match, channels),
         ),
       };
     },

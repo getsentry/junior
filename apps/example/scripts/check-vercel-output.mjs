@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -56,21 +56,36 @@ function expectedPluginPackages() {
     .sort();
 }
 
-function assertQueueTrigger() {
-  const vcConfig = readJson(path.join(queueFunctionDir, ".vc-config.json"));
+// Each queue topic and the route that Vercel pushes its messages to. Keep
+// this list written out: a check that reads Junior's own table would agree
+// with any mistake in it.
+const QUEUE_TRIGGERS = [
+  { route: "/api/internal/agent/continue", topic: "junior_conversation_work" },
+  { route: "/api/internal/plugin/tasks", topic: "junior_plugin_tasks" },
+  {
+    route: "/api/internal/workspace/snapshots",
+    topic: "junior_workspace_snapshots",
+  },
+  { route: "/api/internal/cache/warmups", topic: "junior_cache_warmups" },
+  {
+    route: "/api/internal/context/compactions",
+    topic: "junior_context_compaction",
+  },
+];
+
+function assertQueueTrigger({ route, topic }) {
+  const vcConfig = readJson(
+    path.join(functionsRoot, `${route.slice(1)}.func`, ".vc-config.json"),
+  );
   const triggers = Array.isArray(vcConfig.experimentalTriggers)
     ? vcConfig.experimentalTriggers
     : [];
   if (
     !triggers.some(
-      (trigger) =>
-        trigger?.type === "queue/v2beta" &&
-        trigger?.topic === "junior_conversation_work",
+      (trigger) => trigger?.type === "queue/v2beta" && trigger?.topic === topic,
     )
   ) {
-    fail(
-      "queue callback function is missing the junior_conversation_work trigger",
-    );
+    fail(`${route} function is missing the ${topic} trigger`);
   }
 }
 
@@ -119,17 +134,6 @@ function assertFunctionHasCodemodeFiles(functionDir) {
   );
 }
 
-// The BullMQ queue provider is for local dev only. Junior imports it at run
-// time so bundlers skip it. Fail if BullMQ or its msgpackr dependency still
-// reaches a deployed function.
-function assertNoDevQueuePackages(functionDir) {
-  for (const entry of readdirSync(functionDir, { recursive: true })) {
-    if (/(^|[\\/])(bullmq|msgpackr)[^\\/]*$/.test(entry)) {
-      fail(`${path.relative(appRoot, functionDir)} contains ${entry}`);
-    }
-  }
-}
-
 if (existsSync(path.join(appRoot, "api"))) {
   fail(
     "apps/example/api exists; Vercel would route source functions before Nitro",
@@ -138,7 +142,9 @@ if (existsSync(path.join(appRoot, "api"))) {
 
 requireDirectory(serverFunctionDir);
 requireDirectory(queueFunctionDir);
-assertQueueTrigger();
+for (const trigger of QUEUE_TRIGGERS) {
+  assertQueueTrigger(trigger);
+}
 
 const pluginPackages = expectedPluginPackages();
 if (pluginPackages.length === 0) {
@@ -148,7 +154,6 @@ if (pluginPackages.length === 0) {
 for (const functionDir of [serverFunctionDir, queueFunctionDir]) {
   assertFunctionHasJuniorContent(functionDir, pluginPackages);
   assertFunctionHasCodemodeFiles(functionDir);
-  assertNoDevQueuePackages(functionDir);
 }
 
 console.log(

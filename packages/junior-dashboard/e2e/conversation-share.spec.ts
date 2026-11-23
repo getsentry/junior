@@ -1,5 +1,5 @@
 import { expect, test } from "./test";
-import { startDashboardE2eServer } from "./harness";
+import { startDashboardE2eServer, waitForOutlineRead } from "./harness";
 
 const CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 
@@ -29,7 +29,7 @@ for (const touch of [false, true]) {
             configurable: true,
             value: (data: ShareData) =>
               (
-                window as unknown as {
+                window as Window & {
                   recordShare: (data: ShareData) => Promise<void>;
                 }
               ).recordShare(data),
@@ -102,10 +102,12 @@ for (const touch of [false, true]) {
           navigator.clipboard.readText(),
         );
         expect(copied).toBe(url);
+        const outlineRead = waitForOutlineRead(page, CONVERSATION_ID);
         await page.goto(copied);
         await expect(
           page.getByRole("heading", { name: "Investigate checkout latency" }),
         ).toBeVisible();
+        await outlineRead;
       } finally {
         await dashboard.close();
       }

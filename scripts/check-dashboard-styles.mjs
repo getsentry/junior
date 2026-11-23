@@ -1,6 +1,6 @@
 import fs from "node:fs";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { readRepoFiles } from "./lib/repo-files.mjs";
 
 const LEGACY_WHITE_TEXT_PATTERN = /text-white(?:\/\d+)?\b/;
 const LEGACY_SECONDARY_TEXT_PATTERN = /text-dashboard-text-secondary/;
@@ -161,6 +161,33 @@ export function findComposerSafeAreaBottomPadding(files) {
   });
 }
 
+// The new UI fades text that does not fit, through client/textFade.ts,
+// instead of an ellipsis. These Inbox files also render in the
+// classic UI, which keeps its ellipsis.
+const NEW_UI_PATH_PATTERN = /\/client\/(?:shell|inbox)\//;
+const SHARED_WITH_CLASSIC_PATH_PATTERN =
+  /\/client\/inbox\/(?:InboxSidebar|InboxItemCard|InboxItemChangeRow|InboxItemDetails)\.tsx$/;
+const ELLIPSIS_PATTERN =
+  /(?<![\w-])(?:[a-z-]+:)*(?:truncate|text-ellipsis)(?![\w-])/;
+
+/** Report ellipsis truncation in the new UI, which fades text instead. */
+export function findNewUiEllipsis(files) {
+  return files.flatMap((file) => {
+    if (
+      !NEW_UI_PATH_PATTERN.test(file.path) ||
+      SHARED_WITH_CLASSIC_PATH_PATTERN.test(file.path)
+    ) {
+      return [];
+    }
+    return file.contents.split("\n").flatMap((line, index) => {
+      if (isCommentOnlyLine(line)) return [];
+      return ELLIPSIS_PATTERN.test(line)
+        ? [`${file.path}:${index + 1}: ${line.trim()}`]
+        : [];
+    });
+  });
+}
+
 // Structural fills, borders, and rings use dashboard tokens, not raw white or
 // black opacity steps. Shadows may still use black.
 const NEUTRAL_SURFACE_LITERAL_PATTERN =
@@ -206,32 +233,18 @@ export function findUnknownDashboardColorTokens(files, tokens) {
   );
 }
 
-function collectSourceFiles(root, directory, files = []) {
-  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
-    const absolutePath = path.join(directory, entry.name);
-    if (entry.isDirectory()) {
-      collectSourceFiles(root, absolutePath, files);
-    } else if (entry.isFile() && /\.(?:ts|tsx)$/.test(entry.name)) {
-      files.push({
-        path: path.relative(root, absolutePath).split(path.sep).join("/"),
-        contents: fs.readFileSync(absolutePath, "utf8"),
-      });
-    }
-  }
-  return files;
-}
-
-function main() {
-  const scriptDirectory = path.dirname(fileURLToPath(import.meta.url));
-  const root = path.resolve(scriptDirectory, "..");
-  const files = collectSourceFiles(
-    root,
-    path.join(root, "packages/junior-dashboard/src/client"),
-  );
-  const testFiles = collectSourceFiles(
-    root,
-    path.join(root, "packages/junior-dashboard/tests"),
-  );
+/** Check dashboard source for raw colors, type sizes, and viewport padding. */
+export async function run({ root, files: repoFiles }) {
+  const read = (directory) =>
+    readRepoFiles(
+      root,
+      repoFiles.filter(
+        (file) =>
+          file.startsWith(`${directory}/`) && /\.(?:ts|tsx)$/.test(file),
+      ),
+    );
+  const files = await read("packages/junior-dashboard/src/client");
+  const testFiles = await read("packages/junior-dashboard/tests");
   const tokens = dashboardColorTokens(
     fs.readFileSync(
       path.join(root, "packages/junior-dashboard/src/tailwind.css"),
@@ -278,27 +291,20 @@ function main() {
       lines: findComposerSafeAreaBottomPadding(files),
     },
     {
+      fix: "In the new UI, fade text that does not fit with fadeTextClass, or fadeOverflowClass and fadeWhenOverflowing, from client/textFade.ts. Do not use truncate or text-ellipsis.",
+      lines: findNewUiEllipsis(files),
+    },
+    {
       fix: "Dashboard tests must not assert CSS utility classes. Assert the visible state, role, or text, or leave the look to visual QA.",
       lines: findDashboardUtilityAssertions(testFiles),
     },
   ].filter((check) => check.lines.length > 0);
-  if (checks.length === 0) {
-    console.log(
-      "Dashboard source uses shared color tokens, type scale, and mobile-safe viewport padding.",
-    );
-    return;
-  }
-  const errors = checks.flatMap((check) => [
-    check.fix,
-    ...check.lines.map((line) => `  ${line}`),
-  ]);
-  errors.push(
+  if (checks.length === 0) return [];
+  return [
+    ...checks.flatMap((check) => [
+      check.fix,
+      ...check.lines.map((line) => `  ${line}`),
+    ]),
     "Fix the design, not the match. Do not split class strings, build class names at runtime, or move values into inline styles to pass. See policies/frontend-components.md.",
-  );
-  console.error(["Dashboard style check failed:", ...errors].join("\n"));
-  process.exitCode = 1;
-}
-
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  main();
+  ];
 }

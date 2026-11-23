@@ -5,45 +5,37 @@ import { Link } from "react-router";
 import { CollapsibleTrigger } from "../components/ui/collapsible";
 import { Button } from "../components/ui/button";
 import { Item, ItemContent, ItemMedia } from "../components/ui/item";
-import { cn, dashboardDisclosureChevronClass } from "../styles";
+import {
+  cn,
+  dashboardCountClass,
+  dashboardDisclosureChevronClass,
+} from "../styles";
 import { OutboundIcon } from "../components/OutboundLink";
 
 /**
  * Group one kind of detail in a compact card. Conversation details and event
  * details share it, so both panels read the same way. A `label` names the
- * card as a region. An `action` sits at the end of the title row.
+ * card as a region. An `action` sits at the end of the title row. Cards are
+ * flat sections, so a details panel has no nested frames.
  */
 export function DetailsCard(props: {
   action?: ReactNode;
   children: ReactNode;
-  count?: number;
-  flat?: boolean;
-  label?: string;
-  title?: string;
+  count?: number | undefined;
+  label?: string | undefined;
+  title?: string | undefined;
 }) {
   return (
     <section
       aria-label={props.label}
-      className={cn(
-        "grid min-w-0 border-dashboard-border-subtle",
-        props.flat
-          ? "gap-1.5 border-t px-1 pt-3 pb-1"
-          : "gap-2.5 rounded-lg border bg-dashboard-surface-panel p-3",
-      )}
+      className="grid min-w-0 gap-1.5 border-t border-dashboard-border-subtle px-1 pt-3 pb-1"
     >
       {props.title ? (
         <div className="flex min-w-0 items-center justify-between gap-2">
-          <h3
-            className={cn(
-              "m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs",
-              props.flat
-                ? "font-semibold text-dashboard-text"
-                : "font-medium text-dashboard-text-muted",
-            )}
-          >
+          <h3 className="m-0 flex min-w-0 items-center gap-1.5 break-words font-sans text-xs font-semibold text-dashboard-text">
             {props.title}
             {props.count ? (
-              <span className="font-normal tabular-nums text-dashboard-text-faint">
+              <span className={cn("font-normal", dashboardCountClass)}>
                 {props.count.toLocaleString("en-US")}
               </span>
             ) : null}
@@ -122,7 +114,7 @@ export function DetailsRow(props: {
   meta?: ReactNode;
   onClick?(): void;
   title: ReactNode;
-  to?: string;
+  to?: string | undefined;
   /** Native hover text with detail that the row does not show. */
   tooltip?: string;
 }) {

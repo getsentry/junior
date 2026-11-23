@@ -38,7 +38,8 @@ function conversation(
     lastProgressAt: "2026-01-01T00:00:00.000Z",
     lastSeenAt: "2026-01-01T00:00:00.000Z",
     startedAt: "2026-01-01T00:00:00.000Z",
-    status: "completed",
+    status: "done",
+    turnActive: false,
     surface: "internal",
   };
 }
@@ -849,7 +850,7 @@ describe("canonical event transcript reduction", () => {
     );
   });
 
-  it.each(["agent_invocation.completed", "agent.reply"])(
+  it.each(["agent_invocation.completed", "agent.reply", "agent.update"])(
     "shows %s inputs only for the memories their Turn recalled",
     (eventType) => {
       const result = (seq: number, messageId: string) =>

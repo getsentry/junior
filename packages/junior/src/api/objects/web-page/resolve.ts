@@ -31,13 +31,13 @@ const THUMBNAIL_WIDTH = 640;
 const MAX_THUMBNAIL_URL_CHARS = 2000;
 
 type Page = {
-  author?: string;
-  cacheAgeSeconds?: number;
-  description?: string;
+  author?: string | undefined;
+  cacheAgeSeconds?: number | undefined;
+  description?: string | undefined;
   images: string[];
-  media?: "video" | "image";
-  siteName?: string;
-  title?: string;
+  media?: "video" | "image" | undefined;
+  siteName?: string | undefined;
+  title?: string | undefined;
 };
 
 function fetchText(url: string, accept: string, truncate: boolean) {
@@ -164,7 +164,7 @@ export function webPageLinkType(): ObjectLinkType {
     canView: async () => true,
     // Junior fetches only `https`, so a plain `http` link stays a link.
     filters: [{ scheme: "https" }],
-    objectType: "web_page",
+    objectTypes: ["web_page"],
     owner: "junior",
     resolve: (_viewer, url) => resolveWebPageLink(url),
   };

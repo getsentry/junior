@@ -4,13 +4,17 @@ import { addReactionToMessage } from "@/chat/slack/outbound";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import { createOperationKey } from "@/chat/tools/idempotency";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
-import type { ToolState } from "@/chat/tools/types";
+import type { ToolState } from "@/chat/tool-support/types";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
-/** Create the tool that reacts to the current inbound Slack message. */
+/**
+ * Create the tool that reacts to the current inbound Slack message.
+ *
+ * @runBuilt addReaction
+ */
 export function createSlackMessageAddReactionTool(
   context: SlackToolContext,
   state: ToolState,
@@ -26,7 +30,7 @@ export function createSlackMessageAddReactionTool(
       readOnlyHint: false,
     },
     // The system prompt owns the no-reply protocol. This names when a
-    // reaction is the whole reply, as `addReviewItem` does for its card.
+    // reaction is the whole reply, as `addInboxItem` does for its card.
     description: `Add an emoji reaction to the current inbound Slack message. The person sees the reaction on their message. When the reaction is the whole reply, do not report it in text: end the Turn with \`${NO_REPLY_TOOL_NAME}\`.`,
     inputSchema: z.object({
       emoji: z
@@ -43,7 +47,7 @@ export function createSlackMessageAddReactionTool(
       const targetMessageTs = context.messageTs;
       if (!targetChannelId || !targetMessageTs) {
         throw new ToolInputError(
-          "No active Slack message is available for reactions.",
+          "No active Slack message is available for reactions. No change to the call can fix this in this Turn.",
         );
       }
       const normalizedEmoji = normalizeSlackEmojiName(emoji);

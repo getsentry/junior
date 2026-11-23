@@ -17,17 +17,19 @@ import { type StoredSlackActor, type WebActor } from "@/chat/actor";
 import type {
   Conversation,
   ConversationStore,
+  TopLevelConversationKind,
 } from "@/chat/conversations/store";
 import type { LegacyWebMailboxMetadata } from "@/chat/conversations/web-mailbox";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
 import { getActiveTraceContext } from "@/chat/logging";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   appendAndEnqueueInboundMessage,
   appendAndEnqueueExclusiveInboundMessage,
   type InboundMessage,
+  type InboundMessageDelivery,
 } from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { resolveConversationDestination } from "@/chat/conversations/destination";
@@ -37,7 +39,7 @@ import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 
 type EnqueueOptions = {
   attachmentStorage?: AttachmentStorage;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs?: number;
   queue: ConversationWorkQueue;
   state?: StateAdapter;
@@ -61,12 +63,14 @@ export interface CreateConversationInput {
 export interface AppendWebMessageInput {
   actor: WebActor;
   conversationId: string;
+  /** `interrupt` joins the running Turn at its next step. Default `defer`. */
+  delivery?: InboundMessageDelivery | undefined;
   message: string;
   /** Checked uploads of this Message. */
-  uploads?: VerifiedAttachmentUpload[];
+  uploads?: VerifiedAttachmentUpload[] | undefined;
   idempotencyKey: string;
-  /** Review item change that this Message reports. */
-  reviewItemChange?: ReviewItemChangeRecord;
+  /** Inbox item change that this Message reports. */
+  reviewItemChange?: InboxItemChangeRecord | undefined;
   /** Applied only when this call creates the conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
@@ -151,7 +155,7 @@ export function acceptsWebMessages(
  */
 export function webActorFromUser(
   user: Pick<User, "displayName" | "email" | "id">,
-  profile?: { userName?: string },
+  profile?: { userName?: string | undefined },
 ): WebActor {
   return {
     platform: "web",
@@ -166,16 +170,17 @@ export function webActorFromUser(
 export function buildWebInboundMessage(args: {
   actor: WebActor;
   /** Identity of the web Actor, resolved at ingress. */
-  authorIdentityId?: string;
+  authorIdentityId?: string | undefined;
   conversationId: string;
   createdAtMs?: number;
+  delivery?: InboundMessageDelivery | undefined;
   /** Existing Conversation Destination. A child's work keeps none. */
-  destination?: Destination;
+  destination?: Destination | undefined;
   message: string;
   attachments?: MessageAttachment[];
   messageId: string;
   nowMs?: number;
-  reviewItemChange?: ReviewItemChangeRecord;
+  reviewItemChange?: InboxItemChangeRecord;
 }): InboundMessage {
   const text = args.message.trim();
   if (!text && !args.attachments?.length) {
@@ -190,7 +195,7 @@ export function buildWebInboundMessage(args: {
   return {
     conversationId: args.conversationId,
     createdAtMs: args.createdAtMs ?? nowMs,
-    delivery: "defer",
+    delivery: args.delivery ?? "defer",
     // TODO(dcramer): Remove InboundMessage.destination after workers read the
     // Conversation Location and no mailbox reader requires Destination.
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -234,12 +239,14 @@ export function buildWebInboundMessage(args: {
 export async function recordWebConversationActivity(args: {
   actor: WebActor;
   conversationId: string;
-  conversationStore?: ConversationStore;
+  conversationStore?: ConversationStore | undefined;
   nowMs: number;
   /** Applied only when this call creates the Conversation root. */
   rootTitle?: string;
   /** Applied only when this call creates the Conversation root. */
   rootVisibility?: ConversationPrivacy;
+  /** Applied only when this call creates the Conversation root. */
+  rootKind?: TopLevelConversationKind;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
   const existing = await store.get({ conversationId: args.conversationId });
@@ -267,6 +274,7 @@ export async function recordWebConversationActivity(args: {
     ...(source ? { sessionSource: source } : undefined),
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
+    ...(isNewRoot && args.rootKind ? { kind: args.rootKind } : undefined),
   });
   return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
 }
@@ -356,6 +364,7 @@ export async function appendAndEnqueueWebMessage(
         actor: input.actor,
         authorIdentityId,
         conversationId: input.conversationId,
+        delivery: input.delivery,
         destination,
         message: text,
         attachments,

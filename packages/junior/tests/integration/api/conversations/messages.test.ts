@@ -32,6 +32,7 @@ function apiFor(email: string): Hono<JuniorApiEnv> {
     createConversationRoutes({
       attachmentStorage: createMemoryAttachmentStorage(),
       queue: createConversationWorkQueueTestAdapter(),
+      waitUntil: () => undefined,
     }),
   );
   return app;
@@ -71,8 +72,10 @@ describe("conversation messages API", () => {
         )
       ).json(),
     );
+    // A dashboard message steers the running Turn, like a Slack mention.
     expect(pending.messages).toContainEqual(
       expect.objectContaining({
+        delivery: "interrupt",
         messageId: accepted.messageId,
         text: "Can I help?",
       }),

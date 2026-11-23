@@ -4,7 +4,6 @@ import { jsonResponse, type JuniorApiVariables } from "@sentry/junior/api";
 import type { User } from "@sentry/junior-plugin-api";
 import {
   acceptedConversationMessageSchema,
-  apiErrorSchema,
   attachmentUploadSchema,
   createAttachmentUploadBodySchema,
   createConversationBodySchema,
@@ -12,8 +11,6 @@ import {
   forkConversationBodySchema,
   forkConversationResponseSchema,
   webMessageId,
-  actorDirectoryReportSchema,
-  actorProfileReportSchema,
   archiveConversationBodySchema,
   archiveConversationResponseSchema,
   pinConversationBodySchema,
@@ -44,22 +41,21 @@ import {
   conversationPendingMessagesReportSchema,
   conversationStatsReportSchema,
   conversationWatchesReportSchema,
+  watchParamsSchema,
+  conversationTodoSchema,
+  conversationTodosReportSchema,
+  todoStatusBodySchema,
   codeOverviewReportSchema,
-  codePersonReportSchema,
   codeRepositoryParamsSchema,
+  codeRepositoryQuerySchema,
   codeRepositoryReportSchema,
   locationDetailReportSchema,
   locationDirectoryReportSchema,
   locationParamsSchema,
-  personalSpendReportSchema,
-  personParamsSchema,
-  replyTimeSegmentsReportSchema,
+  cacheHealthQuerySchema,
+  cacheHealthReportSchema,
+  cacheWarmingSavingsReportSchema,
   pluginOperationalReportFeedSchema,
-  reviewItemActionSchema,
-  reviewItemCountSchema,
-  reviewItemListSchema,
-  reviewItemSchema,
-  reviewItemWaitingConversationsSchema,
   objectLinksQuerySchema,
   objectLinksReportSchema,
   attachObjectLinkBodySchema,
@@ -74,11 +70,16 @@ import {
   conversationCatchUpSchema,
   DEFAULT_NOTIFICATION_SCHEDULE,
   type ConversationFeed,
+  type ConversationFeedItem,
   notificationScheduleSchema,
   notificationSettingsSchema,
   type NotificationSchedule,
 } from "@sentry/junior/api/schema";
 import { mockChartPng } from "./chart-png";
+import { errorResponse } from "./errors";
+import { mountMockPeopleRoutes } from "./people-routes";
+import { registerMockCodeChangeSearchRoutes } from "./code-change-search";
+import { registerMockSearchRoutes } from "./search-routes";
 import { mockDemoMp4 } from "./demo-mp4";
 import { mockConversationFeedPage } from "./feed-page";
 import {
@@ -86,14 +87,12 @@ import {
   MOCK_AVATAR_SVG,
   readMockObjectLinks,
 } from "./objects";
+import { createMockLeadRoutes } from "./lead";
 import { readMockConversationOutline } from "./outline";
 import {
-  actOnMockReviewItem,
-  answerMockReviewItemByReply,
-  readMockReviewItem,
-  readMockReviewItems,
-  readMockWaitingConversations,
-} from "./review-items";
+  answerMockInboxItemByReply,
+  withMockViewerAnswers,
+} from "./inbox-items";
 import {
   markMockConversationRead,
   withMockReadPosition,
@@ -115,12 +114,7 @@ import {
   readMockCodeOverview,
   readMockLocationDetail,
   readMockLocationDirectory,
-  readMockPeopleCode,
-  readMockPeopleDirectory,
-  readMockPeoplePluginReports,
-  readMockPeopleProfile,
   readMockPluginReports,
-  readMockPersonalSpend,
   readMockAutomationExecutions,
   readMockAutomationList,
   setMockConversationArchived,
@@ -131,6 +125,7 @@ import {
   setMockConversationTitle,
   setMockConversationAutoArchive,
   archiveMockDoneConversations,
+  withMockImageOrigin,
 } from "./fixtures";
 import {
   createMockConversation,
@@ -138,11 +133,31 @@ import {
   keepMockQuickQuestion,
   recordMockSend,
 } from "./sends";
-import { readMockReplyTimeSegments } from "./reply-times";
-import { readMockConversationWatches } from "./watches";
+import {
+  readMockCacheHealth,
+  readMockCacheWarmingSavings,
+} from "./cache-warming";
+import {
+  cancelMockConversationWatch,
+  readMockConversationWatches,
+} from "./watches";
+import { addMockInboxItemRoutes } from "./inbox-item-routes";
+import { readMockConversationTodos, setMockTodoStatus } from "./todos";
 
-function errorResponse(error: string, status: 400 | 401 | 404 | 409): Response {
-  return jsonResponse(apiErrorSchema, { error }, { status });
+/** Keep feed row `links` and `media` only where `include=` asks, as the API does. */
+function withMockFeedIncludes(
+  feed: ConversationFeed,
+  include: readonly ("links" | "media")[],
+): ConversationFeed {
+  const strip = (item: ConversationFeedItem): ConversationFeedItem => {
+    const { links, media, threads, ...row }: ConversationFeedItem = item;
+    const kept: ConversationFeedItem = row;
+    if (links && include.includes("links")) kept.links = links;
+    if (media && include.includes("media")) kept.media = media;
+    if (threads) kept.threads = threads.map(strip);
+    return kept;
+  };
+  return { ...feed, conversations: feed.conversations.map(strip) };
 }
 
 function viewerIdentity(viewer: User) {
@@ -201,12 +216,20 @@ export function createMockReportingApi(): Hono<{
   app.get("/code", () =>
     jsonResponse(codeOverviewReportSchema, readMockCodeOverview()),
   );
+  registerMockCodeChangeSearchRoutes(app);
   app.get("/code/repositories/:repositoryId", (c) => {
     const params = codeRepositoryParamsSchema.safeParse(c.req.param());
     if (!params.success) {
       return errorResponse("Invalid route parameters.", 400);
     }
-    const report = readMockCodeRepository(params.data.repositoryId);
+    const query = codeRepositoryQuerySchema.safeParse(c.req.query());
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
+    }
+    const report = readMockCodeRepository(
+      params.data.repositoryId,
+      query.data.state,
+    );
     return report
       ? jsonResponse(codeRepositoryReportSchema, report)
       : errorResponse("Repository not found.", 404);
@@ -246,49 +269,26 @@ export function createMockReportingApi(): Hono<{
         },
       }),
   );
-  app.get("/people", () =>
-    jsonResponse(actorDirectoryReportSchema, readMockPeopleDirectory()),
-  );
-  app.get("/people/me/spend", (context) => {
-    const email = context.get("viewer")?.email;
-    const report = email ? readMockPersonalSpend(email) : undefined;
-    return report
-      ? jsonResponse(personalSpendReportSchema, report)
-      : errorResponse("Person not found.", 404);
-  });
-  app.get("/people/:email/plugin-reports", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
+  mountMockPeopleRoutes(app);
+  app.get("/cache-warming/health", (c) => {
+    const query = cacheHealthQuerySchema.safeParse(c.req.query());
+    if (!query.success) {
+      return errorResponse("Invalid query parameters.", 400);
     }
     return jsonResponse(
-      pluginOperationalReportFeedSchema,
-      readMockPeoplePluginReports(params.data.email),
+      cacheHealthReportSchema,
+      readMockCacheHealth(query.data.window),
     );
   });
-  app.get("/reply-times", () =>
-    jsonResponse(replyTimeSegmentsReportSchema, readMockReplyTimeSegments()),
-  );
-  app.get("/people/:email/code", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
+  app.get("/cache-warming/savings", (c) => {
+    const days = Number(c.req.query("days") ?? 30);
+    if (![1, 7, 30, 90].includes(days)) {
+      return errorResponse("Invalid query parameters.", 400);
     }
-    const report = readMockPeopleCode(params.data.email);
-    return report
-      ? jsonResponse(codePersonReportSchema, report)
-      : errorResponse("Person not found.", 404);
-  });
-  app.get("/people/:email", (c) => {
-    const params = personParamsSchema.safeParse(c.req.param());
-    if (!params.success) {
-      return errorResponse("Invalid route parameters.", 400);
-    }
-    const { email } = params.data;
-    const report = readMockPeopleProfile(email);
-    return report
-      ? jsonResponse(actorProfileReportSchema, report)
-      : errorResponse("Person not found.", 404);
+    return jsonResponse(
+      cacheWarmingSavingsReportSchema,
+      readMockCacheWarmingSavings(days),
+    );
   });
   app.get("/locations", () =>
     jsonResponse(locationDirectoryReportSchema, readMockLocationDirectory()),
@@ -304,6 +304,7 @@ export function createMockReportingApi(): Hono<{
       ? jsonResponse(locationDetailReportSchema, report)
       : errorResponse("Location not found.", 404);
   });
+  app.route("/lead", createMockLeadRoutes());
   app.get("/conversations", (c) => {
     const query = conversationFeedQuerySchema.safeParse(c.req.query());
     if (!query.success) {
@@ -312,9 +313,10 @@ export function createMockReportingApi(): Hono<{
     const repositoryId = query.data.codeRepositoryId;
     const readFeed = (status: "active" | "archived") => {
       const feed = readMockConversationFeed(query.data.actorEmail, status);
-      return repositoryId
-        ? filterMockConversationsByRepository(feed, repositoryId)
-        : feed;
+      // Like the API, only the viewer's own feed says what they answered.
+      if (repositoryId)
+        return filterMockConversationsByRepository(feed, repositoryId);
+      return query.data.actorEmail ? feed : withMockViewerAnswers(feed, NOW_MS);
     };
     const report = readFeed(query.data.status);
     const respond = (feed: ConversationFeed) => {
@@ -324,7 +326,13 @@ export function createMockReportingApi(): Hono<{
           !query.data.q && !repositoryId && query.data.status === "active",
       });
       return page
-        ? jsonResponse(conversationFeedSchema, page)
+        ? jsonResponse(
+            conversationFeedSchema,
+            withMockImageOrigin(
+              withMockFeedIncludes(page, query.data.include),
+              new URL(c.req.url).origin,
+            ),
+          )
         : errorResponse("Invalid conversation feed cursor.", 400);
     };
     if (!query.data.q) return respond(report);
@@ -390,7 +398,7 @@ export function createMockReportingApi(): Hono<{
     }
     // A message answers an open question, like a reply that the decision
     // model matches.
-    answerMockReviewItemByReply(
+    answerMockInboxItemByReply(
       NOW_MS,
       params.data.conversationId,
       body.data.message,
@@ -446,18 +454,26 @@ export function createMockReportingApi(): Hono<{
     if (!readMockConversationDetail(params.data.conversationId)) {
       return errorResponse("Conversation not found.", 404);
     }
-    if ("event" in query.data || "turn" in query.data) {
+    if (
+      "event" in query.data ||
+      "message" in query.data ||
+      "turn" in query.data
+    ) {
       const around = readMockConversationEventsAround(
         params.data.conversationId,
         "event" in query.data
           ? { event: query.data.event }
-          : { turn: query.data.turn },
+          : "message" in query.data
+            ? { message: query.data.message }
+            : { turn: query.data.turn },
       );
       return around === "turn-not-found"
         ? errorResponse("Turn not found.", 404)
-        : around
-          ? jsonResponse(conversationEventPageSchema, around)
-          : errorResponse("Conversation not found.", 404);
+        : around === "message-not-found"
+          ? errorResponse("Message not found.", 404)
+          : around
+            ? jsonResponse(conversationEventPageSchema, around)
+            : errorResponse("Conversation not found.", 404);
     }
     // Mock details fit one page and have no unread cursor, so mock history
     // pages only backward from cursors.
@@ -502,6 +518,49 @@ export function createMockReportingApi(): Hono<{
     return report
       ? jsonResponse(conversationWatchesReportSchema, report)
       : errorResponse("Conversation not found.", 404);
+  });
+  app.delete("/conversations/:conversationId/watches/:watchId", (c) => {
+    const params = watchParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    return cancelMockConversationWatch(
+      params.data.conversationId,
+      params.data.watchId,
+    )
+      ? new Response(null, { status: 204 })
+      : errorResponse("Watch not found.", 404);
+  });
+  app.get("/conversations/:conversationId/todos", (c) => {
+    const params = conversationParamsSchema.safeParse(c.req.param());
+    if (!params.success) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const report = readMockConversationTodos(params.data.conversationId);
+    return report
+      ? jsonResponse(conversationTodosReportSchema, report)
+      : errorResponse("Conversation not found.", 404);
+  });
+  app.patch("/conversations/:conversationId/todos/:todoId", async (c) => {
+    const params = conversationParamsSchema.safeParse({
+      conversationId: c.req.param("conversationId"),
+    });
+    const todoId = Number(c.req.param("todoId"));
+    if (!params.success || !Number.isInteger(todoId)) {
+      return errorResponse("Invalid route parameters.", 400);
+    }
+    const body = todoStatusBodySchema.safeParse(await c.req.json());
+    if (!body.success) {
+      return errorResponse("Invalid request body.", 400);
+    }
+    const todo = setMockTodoStatus(
+      params.data.conversationId,
+      todoId,
+      body.data,
+    );
+    return todo
+      ? jsonResponse(conversationTodoSchema, todo)
+      : errorResponse("To-do not found.", 404);
   });
   app.get("/conversations/:conversationId/pending-messages", (c) => {
     const params = conversationParamsSchema.safeParse(c.req.param());
@@ -570,7 +629,7 @@ export function createMockReportingApi(): Hono<{
     return jsonResponse(conversationCatchUpSchema, {
       needsYou: "Review the Safari fix on PR #12.",
       summary:
-        "CI failed on Safari after you left. Junior pushed a fix to PR #12, and the checks pass now.",
+        "CI failed on Safari after you left. A fix was pushed to PR #12, and the checks pass now.",
     });
   });
   app.post("/conversations/:conversationId/continue-in-slack", async (c) => {
@@ -751,11 +810,14 @@ export function createMockReportingApi(): Hono<{
     // A large Slack file that was deleted in Slack after Junior saw it.
     if (attachmentId === "qa-deleted-pending") {
       return errorResponse(
-        "deleted-recording.mov is no longer available: The Slack file was deleted, or Junior can no longer access it.",
+        "deleted-recording.mov is no longer available: The Slack file was deleted, or this app can no longer access it.",
         409,
       );
     }
-    if (attachmentId === "qa-chart-png") {
+    if (
+      attachmentId === "qa-chart-png" ||
+      attachmentId.startsWith("busy-image-")
+    ) {
       return new Response(mockChartPng, {
         headers: {
           "cache-control": "private, no-store",
@@ -810,43 +872,14 @@ export function createMockReportingApi(): Hono<{
   // the poll does not refresh them.
   app.get("/versions", () =>
     jsonResponse(versionsSchema, {
+      conversationDetails: {},
       conversations: "mock",
-      reviewItems: "mock",
+      inboxItems: "mock",
       spend: "mock",
     }),
   );
-  // Answer Review item reads and actions from the mock items, so the
-  // dashboard does not query a database that has no review item tables.
-  app.get("/review-items", (c) => {
-    const { conversationId, q } = c.req.query();
-    return jsonResponse(reviewItemListSchema, {
-      items: readMockReviewItems(NOW_MS, { conversationId, q: q || undefined }),
-    });
-  });
-  app.get("/review-items/count", () =>
-    jsonResponse(reviewItemCountSchema, {
-      needsViewer: readMockWaitingConversations(NOW_MS).needsViewer,
-    }),
-  );
-  app.get("/review-items/waiting-conversations", () =>
-    jsonResponse(reviewItemWaitingConversationsSchema, {
-      conversations: readMockWaitingConversations(NOW_MS).conversations,
-    }),
-  );
-  app.get("/review-items/:id", (c) => {
-    const item = readMockReviewItem(NOW_MS, c.req.param("id"));
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
-  app.post("/review-items/:id/actions", async (c) => {
-    const body = reviewItemActionSchema.safeParse(await c.req.json());
-    if (!body.success) return errorResponse("Invalid action.", 400);
-    const item = actOnMockReviewItem(NOW_MS, c.req.param("id"), body.data);
-    return item
-      ? jsonResponse(reviewItemSchema, item)
-      : errorResponse("Review item not found.", 404);
-  });
+  addMockInboxItemRoutes(app);
+  registerMockSearchRoutes(app);
   app.get("/automations", (c) => {
     const report = readMockAutomationList();
     return jsonResponse(

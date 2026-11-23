@@ -1,4 +1,4 @@
-import { eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, SQL } from "drizzle-orm";
 import type { ConversationKind } from "@/chat/conversations/store";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorConversations } from "@/db/schema";
@@ -11,6 +11,7 @@ export type ConversationTreeNode = {
   conversationId: string;
   kind: ConversationKind;
   parentConversationId?: string;
+  rootConversationId?: string;
 };
 
 /**
@@ -28,6 +29,7 @@ export async function readConversationTrees(
       conversationId: juniorConversations.conversationId,
       kind: juniorConversations.kind,
       parentConversationId: juniorConversations.parentConversationId,
+      rootConversationId: juniorConversations.rootConversationId,
     })
     .from(juniorConversations)
     .where(
@@ -42,6 +44,9 @@ export async function readConversationTrees(
         kind: conversationKindFromRow(row),
         ...(row.parentConversationId
           ? { parentConversationId: row.parentConversationId }
+          : undefined),
+        ...(row.rootConversationId
+          ? { rootConversationId: row.rootConversationId }
           : undefined),
       },
     ]),
@@ -92,17 +97,32 @@ export function conversationDescendants(
   return descendants;
 }
 
-/** Set or clear the shared archive of the given Conversations. */
+/**
+ * Set or clear the shared archive and count the rows written. This is the
+ * only write of `archived_at`. `conversations` names the rows by id or by a
+ * condition. `guard` is a condition that each row must still meet when it is
+ * written, so a stale read loses to a newer change.
+ */
 export async function setArchivedAt(
   db: JuniorDatabase,
-  conversationIds: readonly string[],
+  conversations: readonly string[] | SQL,
   archivedAt: Date | null,
-): Promise<void> {
-  if (conversationIds.length === 0) return;
-  await db
+  guard?: SQL,
+): Promise<number> {
+  if (!(conversations instanceof SQL) && conversations.length === 0) return 0;
+  const updated = await db
     .update(juniorConversations)
     .set({ archivedAt, detailVersion: nextDetailVersion })
-    .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+    .where(
+      and(
+        conversations instanceof SQL
+          ? conversations
+          : inArray(juniorConversations.conversationId, [...conversations]),
+        guard,
+      ),
+    )
+    .returning({ conversationId: juniorConversations.conversationId });
+  return updated.length;
 }
 
 /**

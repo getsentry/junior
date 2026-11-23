@@ -4,7 +4,7 @@ import {
   type OwnedObjectAnnotation,
 } from "@sentry/junior/api/schema";
 
-import { parseMarkdownBlocks } from "./codeBlocks";
+import { markdownFences, parseMarkdownBlocks } from "./codeBlocks";
 import { slackLinksToMarkdown } from "./links";
 
 /** Saved objects that display text can show for a link, by `objectUrlKey`. */
@@ -76,6 +76,73 @@ export function textHasStandaloneUrl(text: string, url: string): boolean {
         standaloneUrlKeys(block.code).includes(key),
     )
   );
+}
+
+/**
+ * Split display text into its prose and the bare URLs that stand alone in a
+ * paragraph, in their order. The Markdown renderer shows each such URL as an
+ * object card, so a clamped preview clamps only the prose and shows the
+ * cards in full after it. A URL repeated in the text gives one card. Code
+ * fences stay in the prose.
+ */
+export function splitStandaloneUrls(text: string): {
+  prose: string;
+  urls: string[];
+} {
+  const urls: string[] = [];
+  const shown = new Set<string>();
+  const parts: string[] = [];
+  const keepProse = (prose: string) => {
+    const kept = prose.split(/\n[ \t]*\n/).filter((paragraph) => {
+      const bare = standaloneUrl(
+        slackLinksToMarkdown(paragraph).replace(/^\n+/, ""),
+      );
+      const key = bare && (objectUrlKey(bare) ?? bare);
+      if (key && !shown.has(key)) {
+        shown.add(key);
+        urls.push(bare);
+      }
+      return !bare && paragraph.trim();
+    });
+    if (kept.length > 0) parts.push(kept.join("\n\n").trim());
+  };
+  let cursor = 0;
+  for (const { end, start } of markdownFences(text)) {
+    keepProse(text.slice(cursor, start));
+    parts.push(text.slice(start, end));
+    cursor = end;
+  }
+  keepProse(text.slice(cursor));
+  return { prose: parts.join("\n\n"), urls };
+}
+
+/**
+ * Drop each paragraph that is only a bare URL for `url`, so a surface that
+ * shows that object's card itself does not show it again in the text. Code
+ * fences stay.
+ */
+export function withoutStandaloneUrl(text: string, url: string): string {
+  const key = objectUrlKey(url);
+  if (!key) return text;
+  const dropUrl = (prose: string) =>
+    prose
+      .split(/\n[ \t]*\n/)
+      .filter((paragraph) => {
+        const bare = standaloneUrl(
+          slackLinksToMarkdown(paragraph).replace(/^\n+/, ""),
+        );
+        return !bare || objectUrlKey(bare) !== key;
+      })
+      .join("\n\n")
+      .trim();
+  const parts: string[] = [];
+  let cursor = 0;
+  for (const { end, start } of markdownFences(text)) {
+    parts.push(dropUrl(text.slice(cursor, start)), text.slice(start, end));
+    cursor = end;
+  }
+  parts.push(dropUrl(text.slice(cursor)));
+  return parts.filter(Boolean).join("\n\n");
 }
 
 /** Return the `objectUrlKey` of each bare URL alone in a paragraph. */

@@ -9,22 +9,19 @@ export const TURN_CONTEXT_TAG = "runtime-turn-context";
 export const SESSION_CONTEXT_SECTION_TAG = "runtime";
 
 /**
- * Turn context section with the tools a Code Mode script can call. A Turn
- * adds it only when it differs from the latest copy in history, and context
- * compaction keeps only that latest copy.
- */
-export const SCRIPT_TOOLS_SECTION_TAG = "script-tools";
-
-/**
- * Turn context sections that list what the model can use now. A Turn adds
- * one only when it differs from the latest copy in history, and context
- * compaction keeps only that latest copy.
+ * Named system prompt sections that list what the model can use now: the
+ * skills, MCP catalogs, tool guidance, Workspaces, and the tools that a Code
+ * Mode script can call. A Turn sends a changed section in a later system
+ * message (`systemSectionsUpdate`). The Turn context of older Turns held
+ * copies of them, which context compaction drops. Keep text from people and
+ * providers out of them: it goes in the context message.
  */
 export const CAPABILITY_SECTION_TAG = {
   availableSkills: "available-skills",
   activeMcpCatalogs: "active-mcp-catalogs",
   toolGuidance: "tool-guidance",
   workspaces: "workspaces",
+  scriptTools: "script-tools",
 } as const;
 
 /** One capability section tag. */
@@ -33,11 +30,14 @@ export type CapabilitySectionTag =
 
 /**
  * Turn context sections that are true only for the Turn that received them.
- * Context compaction removes them from the context of earlier Turns.
+ * Context compaction removes them from the context of earlier Turns. A fact
+ * for one request goes in one of these, never in the system prompt.
  */
 export const REQUEST_CONTEXT_SECTION_TAG = {
   pluginContext: "plugin-context",
   conversationNotes: "conversation-notes",
   disabledTools: "disabled-tools",
   userCustomization: "user-customization",
+  askerTimezone: "asker-timezone",
+  turnInput: "turn-input",
 } as const;

@@ -1,4 +1,3 @@
-import { PreviewCard } from "@base-ui/react/preview-card";
 import type {
   ConversationDetailReport,
   OwnedObjectAnnotation,
@@ -11,22 +10,25 @@ import {
   type ReactNode,
 } from "react";
 
+import { HoverPreview } from "../components/ui/hover-preview";
 import { ObjectCard } from "../conversations/ObjectCard";
 import {
-  ObjectPreviewImagesContext,
-  objectPreviewImagesFromAnnotations,
-} from "../conversations/objectPreviewImages";
+  SavedObjectsContext,
+  savedObjectsFromAnnotations,
+} from "../conversations/savedObjects";
 import {
   knownObjectsFromAnnotations,
   objectUrlKey,
   textHasStandaloneUrl,
   type KnownObjects,
 } from "./knownObjects";
-import { ANCHOR_CLASS } from "./links";
-import { PersonMention } from "./people";
+import { useAnchorClass } from "./links";
+import { SameTabLink } from "../components/SameTabLink";
+import { PersonInline, PersonReference } from "../components/PersonReference";
 
-// A pointer that only passes over a link does not open its card.
-const PREVIEW_DELAY_MS = 350;
+// Fits most live cards, such as a pull request or a task. A taller card
+// scrolls in its body.
+const RESERVED_PREVIEW_HEIGHT_CLASS = "h-[min(22rem,var(--available-height))]";
 
 type KnownObjectsValue = {
   objects: KnownObjects;
@@ -45,6 +47,11 @@ const KnownObjectsContext = createContext<KnownObjectsValue>({
  */
 export function KnownObjectsProvider(props: {
   annotations: ConversationDetailReport["annotations"];
+  /**
+   * More saved objects, such as an Inbox row's linked work, for the links
+   * that no Annotation names.
+   */
+  cards?: readonly OwnedObjectAnnotation[];
   children: ReactNode;
 }) {
   const value = useMemo(() => {
@@ -54,24 +61,29 @@ export function KnownObjectsProvider(props: {
       const key = annotation.url ? objectUrlKey(annotation.url) : undefined;
       if (key && !kinds.has(key)) kinds.set(key, annotation.kind);
     }
+    const objects = new Map(knownObjectsFromAnnotations(props.annotations));
+    for (const card of props.cards ?? []) {
+      const key = card.url ? objectUrlKey(card.url) : undefined;
+      if (key && !objects.has(key)) objects.set(key, card);
+    }
     return {
       links: new Set(
         [...kinds].flatMap(([key, kind]) =>
           kind === "resource_link" ? [key] : [],
         ),
       ),
-      objects: knownObjectsFromAnnotations(props.annotations),
+      objects,
     };
-  }, [props.annotations]);
-  const images = useMemo(
-    () => objectPreviewImagesFromAnnotations(props.annotations),
+  }, [props.annotations, props.cards]);
+  const saved = useMemo(
+    () => savedObjectsFromAnnotations(props.annotations),
     [props.annotations],
   );
   return (
     <KnownObjectsContext.Provider value={value}>
-      <ObjectPreviewImagesContext.Provider value={images}>
+      <SavedObjectsContext.Provider value={saved}>
         {props.children}
-      </ObjectPreviewImagesContext.Provider>
+      </SavedObjectsContext.Provider>
     </KnownObjectsContext.Provider>
   );
 }
@@ -146,43 +158,39 @@ export function mediaThumbnail(
     : undefined;
 }
 
-/** Show the object card when the reader hovers or focuses the link. */
+/**
+ * Show the object card when the reader hovers or focuses the link. With
+ * `reserveHeight`, the card has a fixed height, so it does not jump when a
+ * live card replaces a saved one.
+ */
 export function ObjectLinkPreview(props: {
   card: OwnedObjectAnnotation;
   children: ReactNode;
   className: string;
   href: string;
-  live?: boolean;
+  live?: boolean | undefined;
+  reserveHeight?: boolean | undefined;
 }) {
   return (
-    <PreviewCard.Root>
-      <PreviewCard.Trigger
-        delay={PREVIEW_DELAY_MS}
-        // Running text links carry no outbound icon, so a paragraph of links
-        // reads as text.
-        render={
-          <a
-            className={props.className}
-            href={props.href}
-            rel="noreferrer"
-            target="_blank"
-          />
-        }
-      >
-        {props.children}
-      </PreviewCard.Trigger>
-      <PreviewCard.Portal>
-        <PreviewCard.Positioner
-          className="isolate z-50"
-          collisionPadding={8}
-          sideOffset={6}
-        >
-          <PreviewCard.Popup className="w-[30rem] max-w-[calc(100vw-1rem)] rounded-xl shadow-2xl shadow-black/40 outline-none">
-            <ObjectCard card={props.card} live={props.live} />
-          </PreviewCard.Popup>
-        </PreviewCard.Positioner>
-      </PreviewCard.Portal>
-    </PreviewCard.Root>
+    <HoverPreview
+      className={
+        props.reserveHeight ? RESERVED_PREVIEW_HEIGHT_CLASS : undefined
+      }
+      // The hover card is the frame, so it stays whole while the card scrolls.
+      content={
+        <ObjectCard
+          card={props.card}
+          className="my-0 rounded-none border-0"
+          fill={props.reserveHeight}
+          live={props.live}
+        />
+      }
+      // Running text links carry no outbound icon, so a paragraph of links
+      // reads as text.
+      trigger={<SameTabLink className={props.className} href={props.href} />}
+    >
+      {props.children}
+    </HoverPreview>
   );
 }
 
@@ -194,13 +202,16 @@ export function ObjectTitleLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
+  const className = useAnchorClass();
   return (
     <ObjectLinkPreview
       card={props.card}
-      className={ANCHOR_CLASS}
+      className={className}
       href={props.href}
       live={props.live}
+      reserveHeight={props.reserveHeight}
     >
       {objectLinkText(props.card)}
     </ObjectLinkPreview>
@@ -240,25 +251,44 @@ export function ObjectThumbnailLink(props: {
 
 /**
  * Show a bare URL to a person in running text as a GitHub-style mention:
- * the photo, then `@Name` as a plain link that previews the card.
+ * the photo, then `@Name`. A person with a People page gets the person card;
+ * another account, such as a GitHub account, previews its own card.
  */
 export function PersonLink(props: {
   card: OwnedObjectAnnotation;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
   const { card } = props;
   const facts = card.facts?.type === "person" ? card.facts : undefined;
+  const className = useAnchorClass("person");
+  const person = {
+    avatarUrl: facts?.avatarUrl,
+    email: facts?.email,
+    name: card.label,
+  };
+  if (person.email) {
+    return (
+      <PersonReference
+        className={className}
+        highlightSelf
+        label={`@${card.label}`}
+        person={person}
+      />
+    );
+  }
   return (
-    <PersonMention avatarUrl={facts?.avatarUrl} email={facts?.email}>
+    <PersonInline person={person}>
       <ObjectLinkPreview
         card={card}
-        className={ANCHOR_CLASS}
+        className={className}
         href={props.href}
         live={props.live}
+        reserveHeight={props.reserveHeight}
       >
         @{card.label}
       </ObjectLinkPreview>
-    </PersonMention>
+    </PersonInline>
   );
 }

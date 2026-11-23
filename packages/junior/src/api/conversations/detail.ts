@@ -34,36 +34,35 @@ import {
   readConversationTreeMetricsFromSql,
 } from "./usage";
 import { readConversationAuxiliaryCostsFromSql } from "./auxiliary-costs";
-import {
-  CONVERSATION_EVENT_PAGE_LIMIT,
-  conversationDetailReportSchema,
-} from "../schema/conversation";
+import { CONVERSATION_EVENT_PAGE_LIMIT } from "../schema/conversation";
 import type { ConversationDetailReport } from "../schema/conversation";
 import { objectPreviewImages } from "@/chat/images/objects";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
-import { readLatestConversationBrief } from "@/chat/briefs/store";
 import { readConversationSourceTask } from "@/chat/automations/read";
 import { readAutomationTitlesByConversationId } from "@/chat/automations/execution-stats";
 import { readConversationAuthors } from "./participants";
+import { readConversationTreeStates } from "./tree-state";
 import { canContinueInSlack } from "@/chat/slack/continue-in-slack";
 import { canPauseConversationDelivery } from "@/chat/conversations/delivery-pause";
 
 /** Project stored metadata and a bounded event page into a signed history cursor. */
 function projectConversationDetail(args: {
-  access?: ConversationAccess;
+  access?: ConversationAccess | undefined;
   appendCursor?: string;
   /** Events hold only the events after the request's `after` cursor. */
   appended?: boolean;
   pinnedAtMs?: number;
-  automationTitle?: string;
-  auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"];
-  brief?: ConversationDetailReport["brief"];
+  automationTitle?: string | undefined;
+  auxiliaryCosts?: ConversationDetailReport["auxiliaryCosts"] | undefined;
+  summaryMentions?: ConversationDetailReport["summaryMentions"];
   childAgentTotals?: ConversationDetailReport["childAgentTotals"];
   conversation: Conversation;
   durationMs: number;
-  firstHumanMessageText?: string;
+  firstHumanMessageText?: string | undefined;
   annotations: NonNullable<ConversationDetailReport["annotations"]>;
-  sidebarAnnotations?: ConversationDetailReport["sidebarAnnotations"];
+  sidebarAnnotations?:
+    | ConversationDetailReport["sidebarAnnotations"]
+    | undefined;
   events: ConversationDetailReport["events"];
   locationId?: string;
   modelUsage: NonNullable<ConversationDetailReport["modelUsage"]>;
@@ -72,6 +71,7 @@ function projectConversationDetail(args: {
   previousSeq?: number;
   readPosition?: ConversationDetailReport["readPosition"];
   sourceTask?: ConversationDetailReport["sourceTask"];
+  status: ConversationDetailReport["status"];
   teamDomainByTeamId?: ReadonlyMap<string, string>;
   unreadAfterSeq?: number;
   unreadPage?: ConversationDetailReport["unreadPage"];
@@ -97,6 +97,7 @@ function projectConversationDetail(args: {
       durationMs: args.durationMs,
       firstHumanMessageText: args.firstHumanMessageText,
       ...(args.locationId ? { locationId: args.locationId } : undefined),
+      status: args.status,
       ...(args.teamDomainByTeamId
         ? { teamDomainByTeamId: args.teamDomainByTeamId }
         : undefined),
@@ -104,7 +105,9 @@ function projectConversationDetail(args: {
     }),
     annotations: canExposePayload ? args.annotations : [],
     sidebarAnnotations: canExposePayload ? args.sidebarAnnotations : undefined,
-    ...(canExposePayload && args.brief ? { brief: args.brief } : undefined),
+    ...(canExposePayload && args.summaryMentions
+      ? { summaryMentions: args.summaryMentions }
+      : undefined),
     events: args.events,
     ...(args.appended ? { appended: true as const } : undefined),
     ...(args.appendCursor ? { appendCursor: args.appendCursor } : undefined),
@@ -145,11 +148,11 @@ function projectConversationDetail(args: {
 async function readConversationDetailFromSql(
   conversationId: string,
   options: {
-    after?: string;
+    after?: string | undefined;
     latestTurns?: number;
     limit: number;
     stored?: DetailStateRead;
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
     viewer?: User;
   },
 ): Promise<ConversationDetailReport | undefined> {
@@ -209,13 +212,13 @@ async function readConversationDetailFromSql(
     annotations,
     automationTitleByConversation,
     auxiliaryCostsByConversation,
-    briefVersion,
     firstHumanMessageTextByConversation,
     modelUsage,
     metricsByConversation,
     people,
     sourceTask,
     teamDomainByTeamId,
+    treeStateByConversation,
     page,
   ] = await Promise.all([
     readConversationAgentTree(
@@ -235,7 +238,6 @@ async function readConversationDetailFromSql(
     ),
     readAutomationTitlesByConversationId([record.conversation]),
     readConversationAuxiliaryCostsFromSql(getDb(), [conversationId]),
-    readLatestConversationBrief(getDb(), conversationId),
     readFirstHumanMessageTexts(getDb(), [record.conversation]),
     isPurged
       ? Promise.resolve([])
@@ -251,6 +253,7 @@ async function readConversationDetailFromSql(
         ? [record.conversation.location.teamId]
         : [],
     ),
+    readConversationTreeStates(getDb(), [conversationId], options.viewer?.id),
     readPage(),
   ]);
   // Events hold the latest page. A reader who is further behind starts from
@@ -263,14 +266,14 @@ async function readConversationDetailFromSql(
     readPosition.lastReadSeq + 1 < firstSeq
       ? readPosition.lastReadSeq
       : undefined;
-  // The Brief is shown only to viewers who can see private content.
-  const brief = canExposePayload ? briefVersion?.content : undefined;
-  const [{ briefMentions, events }, unreadPage, sidebarAnnotations] =
+  // The summary is shown only to viewers who can see private content.
+  const summary = canExposePayload ? record.conversation.summary : undefined;
+  const [{ events, summaryMentions }, unreadPage, sidebarAnnotations] =
     await Promise.all([
       startSpan({ name: "Attach conversation mentions", op: "function" }, () =>
         attachConversationMentions(executor, conversationId, {
-          ...(brief ? { brief } : undefined),
           events: page.events.map(formatConversationEventText),
+          ...(summary ? { summary } : undefined),
         }),
       ),
       // Only the first read of a visit asks for this page, not each poll. The
@@ -324,18 +327,7 @@ async function readConversationDetailFromSql(
     sidebarAnnotations,
     auxiliaryCosts: auxiliaryCosts?.total,
     ...(childAgentTotals ? { childAgentTotals } : undefined),
-    ...(briefVersion
-      ? {
-          brief: {
-            content: briefVersion.content,
-            ...(briefMentions.length > 0
-              ? { mentions: briefMentions }
-              : undefined),
-            updatedAt: briefVersion.createdAt.toISOString(),
-            version: briefVersion.version,
-          },
-        }
-      : undefined),
+    ...(summaryMentions.length > 0 ? { summaryMentions } : undefined),
     durationMs: metrics?.durationMs ?? record.durationMs,
     events,
     firstHumanMessageText:
@@ -344,6 +336,7 @@ async function readConversationDetailFromSql(
     authors: people.authors,
     participants: people.participants,
     ...(sourceTask ? { sourceTask } : undefined),
+    status: record.status,
     teamDomainByTeamId,
     ...(page.previousSeq === undefined
       ? undefined
@@ -360,6 +353,7 @@ async function readConversationDetailFromSql(
   return {
     ...report,
     ...state.forks,
+    ...treeStateByConversation.get(conversationId),
     ...(agentTree ? { agentTree } : undefined),
     ...(report.isParticipant && state.autoArchive !== undefined
       ? { autoArchive: state.autoArchive }
@@ -390,16 +384,16 @@ export async function readConversationDetail(
   conversationId: string,
   options: {
     /** An `appendCursor`: return only newer events when it still applies. */
-    after?: string;
-    limit?: number;
+    after?: string | undefined;
+    limit?: number | undefined;
     /** The record and state that the route already read for the ETag. */
     stored?: DetailStateRead;
     /** Also read the page around the read position. */
-    unreadPage?: boolean;
+    unreadPage?: boolean | undefined;
     viewer?: User;
   } = {},
 ): Promise<ConversationDetailReport | undefined> {
-  const report = await readConversationDetailFromSql(conversationId, {
+  return await readConversationDetailFromSql(conversationId, {
     ...options,
     ...(options.limit === undefined
       ? {
@@ -408,9 +402,4 @@ export async function readConversationDetail(
         }
       : { limit: options.limit }),
   });
-  if (!report) return undefined;
-  return startSpan(
-    { name: "Validate conversation detail", op: "function" },
-    () => conversationDetailReportSchema.parse(report),
-  );
 }

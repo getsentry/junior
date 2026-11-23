@@ -1,3 +1,4 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import { Bot } from "lucide-react";
 import {
   useCallback,
@@ -11,9 +12,8 @@ import {
 } from "react";
 import { useLocation, useNavigate, useSearchParams } from "react-router";
 import type {
-  ConversationDetailReport,
   ConversationFeed,
-  ReviewItemPayload,
+  InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
 import type { ConversationData } from "./queries";
@@ -28,7 +28,6 @@ import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
 import { useConversationDelivery } from "./useConversationDelivery";
 import { useRenameConversation } from "./useRenameConversation";
-import { RenameConversationDialog } from "./RenameConversationDialog";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
@@ -37,30 +36,28 @@ import {
 import { buildConversationMarkdown } from "../markdownExport";
 import {
   CONVERSATION_EVENT_PARAM,
+  CONVERSATION_MESSAGE_PARAM,
   CONVERSATION_REVIEW_OPEN,
   CONVERSATION_REVIEW_PARAM,
   CONVERSATION_TURN_PARAM,
   parseConversationEventSeq,
+  parseTranscriptRowHash,
   readOpenEventLog,
   readReplyFocus,
   turnStartedEventSeq,
 } from "./conversationRoutes";
 import { ConversationHeader } from "./ConversationHeader";
 import { ContinueInSlackDialog } from "./ContinueInSlackDialog";
-import { ConversationPageDock } from "./ConversationPageDock";
+import {
+  ConversationPageDock,
+  ConversationReadOnlyDock,
+} from "./ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
 import {
   saveDetailsOpen,
   useDetailsStartOpen,
 } from "./conversationSidebarLayout";
-import {
-  ConversationMemoryContext,
-  memoryAnchorKey,
-  useConversationMemories,
-  type ConversationMemoryState,
-  type MemoryJump,
-  type OpenMemoryPopover,
-} from "./conversationMemory";
+import { showMemoryRow, useConversationMemories } from "./conversationMemory";
 import { ConversationEventDetails } from "./ConversationEventDetails";
 import { ConversationEventLogLoading } from "./ConversationEventLog";
 import {
@@ -79,12 +76,11 @@ import {
 } from "./TranscriptTurnContextView";
 import { DashboardApiError } from "../http";
 import { ConversationForkLinks } from "./ConversationForkLinks";
+import { ChildConversationStatusPill } from "./ChildConversationStatus";
 import {
-  ChildConversationStatusPill,
-  childConversationStatus,
-} from "./ChildConversationStatus";
-import { useWaitingConversations } from "../review-desk/queries";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+  itemConversationId,
+  inboxItemIdFromToolCall,
+} from "../inbox/inboxItemFormat";
 import { conversationContextTags } from "./ConversationContextTags";
 import { conversationLinks } from "./ConversationLinkedWork";
 import {
@@ -97,12 +93,19 @@ import {
   conversationDetailTitle,
   conversationDisplayTitle,
   conversationFromDetail,
-  visualStatusForConversation,
 } from "../format";
 import { useDocumentTitle } from "../documentTitle";
 import { Card } from "../components/layout/Card";
 import { useRegisterMobileHeaderBack } from "../components/layout/DashboardChrome";
 import { ArchiveChildDialog } from "./ArchiveChildDialog";
+import { useLeadPageKind } from "../lead/Lead";
+import {
+  LEAD_REPLY_PLACEHOLDER,
+  LeadFirstRun,
+  useLeadFirstRun,
+} from "../lead/LeadFirstRun";
+import { LeadHeader } from "../lead/LeadHeader";
+import { LeadPageScope } from "../lead/LeadPageProvider";
 import {
   ChatLayout,
   TranscriptColumn,
@@ -125,6 +128,7 @@ import {
 import { TranscriptLoading } from "./TranscriptLoading";
 import { recordTranscriptShown } from "../sentry";
 import {
+  readConversationLink,
   unheldLinkStart,
   useHistoryAround,
   type ConversationLink,
@@ -145,17 +149,18 @@ export { liveModelId } from "./ConversationMeta";
 /** Render the selected conversation transcript inside the workspace. */
 export function ConversationPage(props: {
   conversationId: string;
-  data?: { conversations: ConversationFeed };
+  data?: { conversations: ConversationFeed } | undefined;
   /**
    * This Conversation's data. The shell fetches it, so a direct load does
    * not wait for the dashboard core reads, and each visit fetches it once.
    */
   detail: ConversationData;
-  pendingArchiveUpdate?: PendingArchiveConversationUpdate;
+  pendingArchiveUpdate?: PendingArchiveConversationUpdate | undefined;
   sidebarToggle?: ReactNode;
 }) {
   const pageRef = useRef<HTMLDivElement>(null);
-  const replyRef = useRef<Pick<ConversationComposerHandle, "appendText">>(null);
+  const replyRef =
+    useRef<Pick<ConversationComposerHandle, "appendText" | "focus">>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const focusDetailsOnOpen = useRef(false);
   const [subagentTarget, setSubagentTarget] =
@@ -168,6 +173,8 @@ export function ConversationPage(props: {
   // A linked Turn opens the event that started it. Until that event is
   // found, it acts like a linked event that is still loading.
   const linkedTurnId = searchParams.get(CONVERSATION_TURN_PARAM) ?? undefined;
+  const linkedMessageId =
+    searchParams.get(CONVERSATION_MESSAGE_PARAM) ?? undefined;
   const eventOpen =
     selectedEventSeq !== undefined || linkedTurnId !== undefined;
   // Event details and turn context show over Conversation details. Closing
@@ -199,26 +206,23 @@ export function ConversationPage(props: {
     );
   }, [setSearchParams]);
   const [turnContext, setTurnContext] = useState<TurnContextSelection>();
-  const [memoryPopover, setMemoryPopover] = useState<OpenMemoryPopover>();
   // A memory chosen in details waits here until its transcript row renders.
-  const [memoryJump, setMemoryJump] = useState<MemoryJump>();
+  const [memoryJumpSeq, setMemoryJumpSeq] = useState<number>();
   // The transcript mounts only rows near the viewport. The rows of the last
-  // memory or outline jump stay mounted, so the jump finds its row and the
-  // popover keeps it.
+  // memory or outline jump stay mounted, so the jump finds its row.
   const [revealSeq, setRevealSeq] = useState<number>();
-  // The docked question whose transcript row shows, and the Turn that
+  // The question whose transcript card shows, and the Turn that
   // asked it, so a row outside the loaded pages can load.
   const [askReveal, setAskReveal] = useState<
     TranscriptAskReveal & { turnId?: string }
   >();
-  // The page stays mounted across Conversations. Memory state belongs to one.
-  const [memoryConversationId, setMemoryConversationId] = useState(
+  // The page stays mounted across Conversations. Reveal state belongs to one.
+  const [revealConversationId, setRevealConversationId] = useState(
     props.conversationId,
   );
-  if (memoryConversationId !== props.conversationId) {
-    setMemoryConversationId(props.conversationId);
-    setMemoryPopover(undefined);
-    setMemoryJump(undefined);
+  if (revealConversationId !== props.conversationId) {
+    setRevealConversationId(props.conversationId);
+    setMemoryJumpSeq(undefined);
     setRevealSeq(undefined);
     setAskReveal(undefined);
   }
@@ -226,8 +230,18 @@ export function ConversationPage(props: {
   // Event details and turn context also show over a Quick question.
   const showQuickQuestion =
     Boolean(quickQuestion.thread) && !eventOpen && !turnContext;
+  // A Lead has no details: it is private and never archives.
+  const { known: kindKnown, lead } = useLeadPageKind(
+    props.conversationId,
+    props.detail.data,
+  );
   const showDetails =
-    detailsOpen && !eventOpen && !turnContext && !quickQuestion.thread;
+    kindKnown &&
+    !lead &&
+    detailsOpen &&
+    !eventOpen &&
+    !turnContext &&
+    !quickQuestion.thread;
   useLayoutEffect(() => {
     if (!showDetails || !focusDetailsOnOpen.current) return;
     focusDetailsOnOpen.current = false;
@@ -239,6 +253,8 @@ export function ConversationPage(props: {
   // A sidebar row menu opens the event log with navigation state. The page
   // can be open already, so each new navigation asks once.
   const location = useLocation();
+  // A `#event-<seq>` link shows the transcript row that holds that event.
+  const linkedRowSeq = parseTranscriptRowHash(location.hash);
   const eventLogRequested = readOpenEventLog(location.state);
   const [viewState, setView] = useState<TranscriptViewMode>(() =>
     eventOpen || eventLogRequested ? "raw" : "rich",
@@ -256,7 +272,6 @@ export function ConversationPage(props: {
   const conversationId = props.conversationId;
   const summaries = props.data?.conversations.conversations ?? [];
   const conversations = buildConversations(summaries);
-  const waiting = useWaitingConversations().has(conversationId);
   // The page keeps the start preference from when the Conversation opened.
   const [startAtUnread] = useState(
     () => readConversationStartPosition() === "unread",
@@ -264,7 +279,7 @@ export function ConversationPage(props: {
   // A link at open shows its row, so the transcript does not open at the
   // latest message or the read position, unless the link fails first.
   const [startAtLink, setStartAtLink] = useState(
-    () => selectedEventSeq !== undefined || linkedTurnId !== undefined,
+    () => readConversationLink(searchParams, location.hash) !== undefined,
   );
   const detail = props.detail;
   // Jump to latest, a send, or the mobile keyboard skips the newer pages for
@@ -277,26 +292,15 @@ export function ConversationPage(props: {
   // A linked row that the transcript does not hold. The transcript opens at
   // the page around it until the reader jumps to the latest. A link at open
   // starts there, so the first render reads no other page.
-  const [linkStart, setLinkStart] = useState(() =>
-    linkedTurnId !== undefined
-      ? unheldLinkStart(detail.data?.events, { turn: linkedTurnId })
-      : selectedEventSeq === undefined
-        ? undefined
-        : unheldLinkStart(detail.data?.events, { event: selectedEventSeq }),
-  );
+  const [linkStart, setLinkStart] = useState(() => {
+    const link = readConversationLink(searchParams, location.hash);
+    return link && unheldLinkStart(detail.data?.events, link);
+  });
   const showLatestPage = useCallback(() => {
     setShowLatest(true);
     setLinkStart(undefined);
   }, []);
   const memoryList = useConversationMemories(conversationId).data;
-  const memoryState = useMemo<ConversationMemoryState>(
-    () => ({
-      list: memoryList,
-      open: memoryPopover,
-      setOpen: setMemoryPopover,
-    }),
-    [memoryList, memoryPopover],
-  );
   const archive = useArchiveConversation(conversationId);
   const [confirmChildArchive, setConfirmChildArchive] = useState(false);
   const navigate = useNavigate();
@@ -308,7 +312,7 @@ export function ConversationPage(props: {
     // Archiving hides this conversation, so go home at once. The mutation
     // keeps running after this page unmounts.
     if (archived) {
-      navigate("/", {
+      void navigate("/conversations", {
         state: {
           archivedConversation: conversation!,
         } satisfies ArchivedFromConversationState,
@@ -328,11 +332,12 @@ export function ConversationPage(props: {
   const dropLink = useCallback(() => {
     setLinkStart(undefined);
     setStartAtLink(false);
-    setMemoryJump(undefined);
+    setMemoryJumpSeq(undefined);
     setSearchParams(
       (current) => {
         const next = new URLSearchParams(current);
         next.delete(CONVERSATION_EVENT_PARAM);
+        next.delete(CONVERSATION_MESSAGE_PARAM);
         next.delete(CONVERSATION_TURN_PARAM);
         return next;
       },
@@ -419,10 +424,22 @@ export function ConversationPage(props: {
   const replyFocus = readReplyFocus(location.state);
   const replyFocusRequest =
     replyFocus && location.key !== replyFocusDoneKey
-      ? { draftFrom: replyFocus.draftFrom, key: location.key }
+      ? {
+          compose: replyFocus.compose,
+          draftFrom: replyFocus.draftFrom,
+          key: location.key,
+        }
       : undefined;
   const transcript = history.data;
   const transcriptShown = !transcriptPending && Boolean(transcript);
+  const leadFirstRun = useLeadFirstRun(
+    lead &&
+      transcriptShown &&
+      !history.hasPreviousPage &&
+      transcript?.events.length === 0 &&
+      detail.inlineMessages.length === 0,
+    replyRef,
+  );
   useEffect(() => {
     if (transcriptShown) recordTranscriptShown();
   }, [conversationId, transcriptShown]);
@@ -443,11 +460,8 @@ export function ConversationPage(props: {
     transcript?.eventHistory.status === "expired"
       ? undefined
       : transcript?.events.find((event) => event.seq === selectedEventSeq);
-  const visualStatus = conversation
-    ? visualStatusForConversation(conversation)
-    : undefined;
   // History and mailbox use the same deferred server snapshot.
-  const live = conversationIsLive(visualStatus, detail.data);
+  const live = conversationTurnIsActive(detail.data, conversation);
   const setSelectedEventSeq = useCallback(
     (seq: number | undefined) => {
       // Keep the event log after close, even when a link opened the page.
@@ -491,14 +505,13 @@ export function ConversationPage(props: {
     return Boolean(start);
   });
   const showQuestion = useCallback(
-    (item: ReviewItemPayload, arrived: boolean) =>
+    (item: InboxItemPayload) =>
       setAskReveal((current) => ({
-        arrived,
         itemId: item.id,
         // A child Conversation can add an item to this one. Its Turn is not
         // in this transcript.
         turnId:
-          item.addedByConversationId === conversationId
+          itemConversationId(item) === conversationId
             ? item.addedByTurnId
             : undefined,
         version: (current?.version ?? 0) + 1,
@@ -506,20 +519,19 @@ export function ConversationPage(props: {
     [conversationId],
   );
   // A question that the reader moves to can sit outside the loaded rows.
-  // Then the transcript opens at the page around its Turn, like a link. A
-  // question that arrives by itself is at the latest, so it needs no page.
+  // Then the transcript opens at the page around its Turn, like a link.
   const openAskTurn = useEffectEvent((itemId: string, turnId: string) => {
     const held = history.data?.events.some(
       (event) =>
         event.data.type === "tool_calls" &&
         event.data.calls.some(
-          (call) => reviewItemIdFromToolCall(call) === itemId,
+          (call) => inboxItemIdFromToolCall(call) === itemId,
         ),
     );
     if (!held) openLink({ turn: turnId });
   });
   useEffect(() => {
-    if (askReveal?.turnId && !askReveal.arrived) {
+    if (askReveal?.turnId) {
       openAskTurn(askReveal.itemId, askReveal.turnId);
     }
   }, [askReveal]);
@@ -527,8 +539,12 @@ export function ConversationPage(props: {
     if (linkedTurnId !== undefined) openLink({ turn: linkedTurnId });
     else if (selectedEventSeq !== undefined) {
       openLink({ event: selectedEventSeq });
+    } else if (linkedMessageId !== undefined) {
+      openLink({ message: linkedMessageId });
+    } else if (linkedRowSeq !== undefined) {
+      openLink({ event: linkedRowSeq });
     }
-  }, [linkedTurnId, selectedEventSeq]);
+  }, [linkedMessageId, linkedRowSeq, linkedTurnId, selectedEventSeq]);
   // Replace a found Turn link with a link to its first event.
   const linkedTurnSeq = linkedTurnId
     ? turnStartedEventSeq(transcript?.events, linkedTurnId)
@@ -536,21 +552,13 @@ export function ConversationPage(props: {
   useEffect(() => {
     if (linkedTurnSeq !== undefined) setSelectedEventSeq(linkedTurnSeq);
   }, [linkedTurnSeq, setSelectedEventSeq]);
-  // Show a chosen memory at its transcript row, once the row renders.
+  // Show a chosen memory's Turn once the page around its event loads.
   useEffect(() => {
-    if (!memoryJump || !transcript) return;
-    const anchor = pageRef.current?.querySelector(
-      `[data-memory-anchor="${CSS.escape(memoryAnchorKey(memoryJump))}"]`,
-    );
-    if (anchor) {
-      anchor.scrollIntoView({ block: "center" });
-      setMemoryPopover(memoryJump);
-      setMemoryJump(undefined);
-    } else if (!holdShown && !openLink({ event: memoryJump.seq })) {
-      // The loaded rows hold the event, but no row shows the memory.
-      setMemoryJump(undefined);
-    }
-  }, [holdShown, memoryJump, transcript, view]);
+    if (memoryJumpSeq === undefined || !transcript || holdShown) return;
+    if (openLink({ event: memoryJumpSeq })) return;
+    showMemoryRow(pageRef.current, memoryJumpSeq);
+    setMemoryJumpSeq(undefined);
+  }, [holdShown, memoryJumpSeq, transcript, view]);
   // Keep the panel while the transcript or a linked event loads, and for the
   // render before a found Turn link becomes an event link.
   const eventLoading =
@@ -626,7 +634,7 @@ export function ConversationPage(props: {
           detail={conversationDetail}
           highlightReview={reviewOpen}
           links={links}
-          memoryState={memoryState}
+          memoryList={memoryList}
           onClose={closeDetails}
           onOpenSubagent={setSubagentTarget}
           onSelectMemory={(entry) => {
@@ -635,12 +643,7 @@ export function ConversationPage(props: {
             if (view !== "rich") onViewChange("rich");
             setSearch("");
             setRevealSeq(entry.seq);
-            setMemoryJump({
-              memoryId: entry.memory.id,
-              seq: entry.seq,
-              source: entry.source,
-              turnId: entry.turnId,
-            });
+            setMemoryJumpSeq(entry.seq);
           }}
         />
       ) : null}
@@ -691,147 +694,185 @@ export function ConversationPage(props: {
             : undefined
         }
       >
-        <ChatLayout
-          header={
-            <ConversationHeader
-              agentTree={conversationDetail?.agentTree}
-              contextTags={conversationContextTags(conversation)}
-              cost={conversationCost(conversation, conversationDetail, "below")}
-              detailsOpen={showDetails}
-              errors={[
-                // A refused restore names the archived ancestor to restore
-                // first.
-                archive.error
-                  ? (archive.error instanceof DashboardApiError &&
-                      archive.error.apiError) ||
-                    "Could not update archive state."
-                  : "",
-                pin.error ? "Could not update pin." : "",
-                rename.error ? "Could not rename." : "",
-                subscription.error ? "Could not update subscription." : "",
-                delivery.error ? "Could not change Slack updates." : "",
-              ].filter(Boolean)}
-              onDetailsClick={() => {
-                if (eventOpen) setSelectedEventSeq(undefined);
-                setTurnContext(undefined);
-                quickQuestion.close();
-                if (showDetails) {
-                  closeDetails();
-                } else {
-                  focusDetailsOnOpen.current = true;
-                  setDetailsChoice(true);
-                  saveDetailsOpen(true);
-                }
-              }}
-              forks={
-                detail.data?.forkedFromConversationId ||
-                detail.data?.forks?.length ? (
-                  <ConversationForkLinks
-                    forkedFromConversationId={
-                      detail.data.forkedFromConversationId
-                    }
-                    forkedFromTitle={detail.data.forkedFromTitle}
-                    forks={detail.data.forks}
-                  />
-                ) : null
-              }
-              linkedWork={
-                links.length ? <ConversationAnnotations links={links} /> : null
-              }
-              menu={{
-                actions: {
-                  archive: () => {
-                    if (conversation?.archivedAt) {
-                      setArchived(false);
-                    } else if (!conversation!.parentConversationId) {
-                      setArchived(true);
-                    } else {
-                      setConfirmChildArchive(true);
-                    }
-                  },
-                  continueInSlack: () => setContinueInSlackOpen(true),
-                  delivery: (paused) => delivery.mutate(paused),
-                  eventLog: () => onViewChange(view === "raw" ? "rich" : "raw"),
-                  pin: (pinned) => pin.mutate(pinned),
-                  rename: () => setRenaming(true),
-                  subscription: (subscribed) => subscription.mutate(subscribed),
-                },
-                conversation,
-                conversationId,
-                detail: conversationDetail,
-                eventLogOpen: view === "raw",
-                getMarkdown: conversationDetail
-                  ? async () =>
-                      buildConversationMarkdown(
-                        await detail.loadCompleteTranscript(),
-                        conversation,
-                      )
-                  : undefined,
-                pending: {
-                  archive: archive.isPending,
-                  delivery: delivery.isPending,
-                  pin: pin.isPending,
-                  subscription: subscription.isPending,
-                },
-              }}
-              onSearchChange={setSearch}
-              onViewChange={onViewChange}
-              privacy={
-                <ConversationPrivacyChip
-                  visibility={conversation?.visibility}
+        <LeadPageScope
+          lastSeq={detail.data?.events.at(-1)?.seq}
+          lead={lead}
+          prefill={leadFirstRun.prefill}
+        >
+          <ChatLayout
+            header={
+              lead ? (
+                <LeadHeader
+                  mobileHidden={location.pathname !== "/"}
+                  sidebarToggle={props.sidebarToggle}
                 />
-              }
-              search={search}
-              searchMatch={searchMatch}
-              sidebarToggle={props.sidebarToggle}
-              status={
-                isChildConversation(conversationDetail) && conversation ? (
-                  <ChildConversationStatusPill
-                    status={childConversationStatus(conversation, waiting)}
-                  />
-                ) : null
-              }
-              title={title}
-              view={view}
-            />
-          }
-          overlay={
-            view === "rich" && !transcriptPending && outlineEvents ? (
-              <ConversationOutline
-                conversationId={conversationId}
-                events={outlineEvents}
-                onSelect={selectOutlineItem}
-                scrollRef={scrollRef}
-              />
-            ) : undefined
-          }
-          scrollMinTall
-          scrollAriaLabel="Conversation transcript"
-          scrollRef={scrollRef}
-          scrollClassName={
-            view === "raw" ? "thin-scrollbar" : transcriptScrollClassName
-          }
-          scroll={
-            <TranscriptColumn full={view === "raw"}>
-              {transcriptPending ? (
-                view === "raw" ? (
-                  <ConversationEventLogLoading />
-                ) : (
-                  <TranscriptLoading />
-                )
-              ) : detail.error && !detail.data ? (
-                <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
-                  {detail.error.message}
-                </Card>
+              ) : !kindKnown ? (
+                <div
+                  aria-hidden="true"
+                  className="hidden h-13 border-b border-dashboard-border md:block"
+                />
               ) : (
-                <>
-                  {detail.error ? (
-                    <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
-                      Transcript refresh failed. Showing the latest available
-                      data.
-                    </div>
-                  ) : null}
-                  <ConversationMemoryContext value={memoryState}>
+                <ConversationHeader
+                  agentTree={conversationDetail?.agentTree}
+                  contextTags={conversationContextTags(
+                    conversation,
+                    conversationDetail?.annotations,
+                  )}
+                  cost={conversationCost(
+                    conversation,
+                    conversationDetail,
+                    "below",
+                  )}
+                  detailsOpen={showDetails}
+                  errors={[
+                    // A refused restore names the archived ancestor to restore
+                    // first.
+                    archive.error
+                      ? (archive.error instanceof DashboardApiError &&
+                          archive.error.apiError) ||
+                        "Could not update archive state."
+                      : "",
+                    pin.error ? "Could not update pin." : "",
+                    rename.error ? "Could not rename." : "",
+                    subscription.error ? "Could not update subscription." : "",
+                    delivery.error ? "Could not change Slack updates." : "",
+                  ].filter(Boolean)}
+                  onDetailsClick={() => {
+                    if (eventOpen) setSelectedEventSeq(undefined);
+                    setTurnContext(undefined);
+                    quickQuestion.close();
+                    if (showDetails) {
+                      closeDetails();
+                    } else {
+                      focusDetailsOnOpen.current = true;
+                      setDetailsChoice(true);
+                      saveDetailsOpen(true);
+                    }
+                  }}
+                  forks={
+                    detail.data?.forkedFromConversationId ||
+                    detail.data?.forks?.length ? (
+                      <ConversationForkLinks
+                        forkedFromConversationId={
+                          detail.data.forkedFromConversationId
+                        }
+                        forkedFromTitle={detail.data.forkedFromTitle}
+                        forks={detail.data.forks}
+                      />
+                    ) : null
+                  }
+                  linkedWork={
+                    links.length ? (
+                      <ConversationAnnotations links={links} />
+                    ) : null
+                  }
+                  menu={{
+                    actions: {
+                      archive: () => {
+                        if (conversation?.archivedAt) {
+                          setArchived(false);
+                        } else if (!conversation!.parentConversationId) {
+                          setArchived(true);
+                        } else {
+                          setConfirmChildArchive(true);
+                        }
+                      },
+                      continueInSlack: () => setContinueInSlackOpen(true),
+                      delivery: (paused) => delivery.mutate(paused),
+                      eventLog: () =>
+                        onViewChange(view === "raw" ? "rich" : "raw"),
+                      pin: (pinned) => pin.mutate(pinned),
+                      rename: () => setRenaming(true),
+                      subscription: (subscribed) =>
+                        subscription.mutate(subscribed),
+                    },
+                    conversation,
+                    conversationId,
+                    detail: conversationDetail,
+                    eventLogOpen: view === "raw",
+                    getMarkdown: conversationDetail
+                      ? async () =>
+                          buildConversationMarkdown(
+                            await detail.loadCompleteTranscript(),
+                            conversation,
+                          )
+                      : undefined,
+                    pending: {
+                      archive: archive.isPending,
+                      delivery: delivery.isPending,
+                      pin: pin.isPending,
+                      subscription: subscription.isPending,
+                    },
+                  }}
+                  onSearchChange={setSearch}
+                  onViewChange={onViewChange}
+                  rename={{
+                    editing: renaming,
+                    onEditingChange: setRenaming,
+                    onSave: (next) => rename.mutate(next),
+                  }}
+                  privacy={
+                    <ConversationPrivacyChip
+                      visibility={conversation?.visibility}
+                    />
+                  }
+                  search={search}
+                  searchMatch={searchMatch}
+                  sidebarToggle={props.sidebarToggle}
+                  status={
+                    isChildConversation(conversationDetail) && conversation ? (
+                      <ChildConversationStatusPill
+                        status={conversation.status}
+                      />
+                    ) : null
+                  }
+                  title={title}
+                  view={view}
+                />
+              )
+            }
+            overlay={
+              view === "rich" &&
+              !lead &&
+              !transcriptPending &&
+              outlineEvents ? (
+                <ConversationOutline
+                  conversation={conversationDetail}
+                  conversationId={conversationId}
+                  events={outlineEvents}
+                  onSelect={selectOutlineItem}
+                  scrollRef={scrollRef}
+                />
+              ) : undefined
+            }
+            scrollMinTall
+            scrollAriaLabel="Conversation transcript"
+            scrollRef={scrollRef}
+            scrollClassName={
+              view === "raw" ? "thin-scrollbar" : transcriptScrollClassName
+            }
+            scroll={
+              <TranscriptColumn full={view === "raw"}>
+                {leadFirstRun.shown ? (
+                  <LeadFirstRun onTry={leadFirstRun.prefill} />
+                ) : transcriptPending ? (
+                  view === "raw" ? (
+                    <ConversationEventLogLoading />
+                  ) : (
+                    <TranscriptLoading />
+                  )
+                ) : detail.error && !detail.data ? (
+                  <Card className="border-dashboard-border bg-dashboard-fill-soft p-4 font-sans text-xs leading-relaxed text-dashboard-text-muted">
+                    {detail.error.message}
+                  </Card>
+                ) : (
+                  <>
+                    {detail.error ? (
+                      <div className="mb-3 rounded-lg border border-amber-300/15 bg-amber-300/[0.045] px-3 py-2 font-sans text-xs text-amber-100/65">
+                        Transcript refresh failed. Showing the latest available
+                        data.
+                      </div>
+                    ) : null}
                     <ConversationCatchUpContext value={catchUp}>
                       <Transcript
                         hasPreviousPage={history.hasPreviousPage}
@@ -852,6 +893,14 @@ export function ConversationPage(props: {
                         pinRequestVersion={pinRequestVersion}
                         onShowQuestion={showQuestion}
                         revealAsk={askReveal}
+                        linkedMessageId={linkedMessageId}
+                        linkedRowSeq={
+                          // A link past the last event shows the row that its
+                          // read lands on.
+                          linkStart && "event" in linkStart
+                            ? (aroundHistory?.shownSeq ?? linkedRowSeq)
+                            : linkedRowSeq
+                        }
                         revealSeq={revealSeq}
                         responding={
                           !detail.error &&
@@ -872,33 +921,37 @@ export function ConversationPage(props: {
                         view={view}
                       />
                     </ConversationCatchUpContext>
-                  </ConversationMemoryContext>
-                </>
-              )}
-            </TranscriptColumn>
-          }
-          dock={
-            canReply ? (
-              <div
-                className="contents"
-                onFocusCapture={engageComposer}
-                onPointerDownCapture={engageComposer}
-              >
-                <ConversationPageDock
-                  conversationId={conversationId}
-                  detail={detail}
-                  focusRequest={replyFocusRequest}
-                  hasNewerPage={Boolean(history.newer)}
-                  live={live}
-                  onFocusRequestDone={setReplyFocusDoneKey}
-                  onPinRequest={requestPin}
-                  onShowQuestion={showQuestion}
-                  ref={replyRef}
-                />
-              </div>
-            ) : undefined
-          }
-        />
+                  </>
+                )}
+              </TranscriptColumn>
+            }
+            dock={
+              canReply ? (
+                <div
+                  className="contents"
+                  onFocusCapture={engageComposer}
+                  onPointerDownCapture={engageComposer}
+                >
+                  <ConversationPageDock
+                    conversationId={conversationId}
+                    detail={detail}
+                    focusRequest={replyFocusRequest}
+                    hasNewerPage={Boolean(history.newer)}
+                    live={live}
+                    onFocusRequestDone={setReplyFocusDoneKey}
+                    onPinRequest={requestPin}
+                    placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
+                    ref={replyRef}
+                  />
+                </div>
+              ) : view === "rich" &&
+                detail.data &&
+                detail.data.kind !== "task" ? (
+                <ConversationReadOnlyDock />
+              ) : undefined
+            }
+          />
+        </LeadPageScope>
       </ConversationSidePanelLayout>
       {confirmChildArchive ? (
         <ArchiveChildDialog
@@ -933,13 +986,6 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-      {renaming ? (
-        <RenameConversationDialog
-          onClose={() => setRenaming(false)}
-          onSave={(next) => rename.mutate(next)}
-          title={title}
-        />
-      ) : null}
       {continueInSlackOpen ? (
         <ContinueInSlackDialog
           conversationId={conversationId}
@@ -948,12 +994,4 @@ export function ConversationPage(props: {
       ) : null}
     </div>
   );
-}
-
-function conversationIsLive(
-  visualStatus: ReturnType<typeof visualStatusForConversation> | undefined,
-  detail: ConversationDetailReport | undefined,
-): boolean {
-  if (detail) return detail.status === "active";
-  return visualStatus === "active";
 }

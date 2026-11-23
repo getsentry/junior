@@ -86,6 +86,7 @@ function makeSandbox(snapshotId: string) {
     name: `sbx_${snapshotId}`,
     currentSession: vi.fn(() => ({
       sessionId: `sbx_${snapshotId}_session`,
+      createdAt: new Date(),
       runCommand,
       snapshot,
       stop,
@@ -115,12 +116,12 @@ describe("snapshot resolution", () => {
     getRuntimeDependenciesMock.mockReset();
     getRuntimePostinstallMock.mockReset();
     getRuntimePostinstallMock.mockReturnValue([]);
-    delete process.env.SANDBOX_SNAPSHOT_REBUILD_EPOCH;
-    delete process.env.SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS;
-    delete process.env.SANDBOX_VCPUS;
-    delete process.env.VERCEL_TOKEN;
-    delete process.env.VERCEL_TEAM_ID;
-    delete process.env.VERCEL_PROJECT_ID;
+    delete process.env["SANDBOX_SNAPSHOT_REBUILD_EPOCH"];
+    delete process.env["SANDBOX_SNAPSHOT_FLOATING_MAX_AGE_MS"];
+    delete process.env["SANDBOX_VCPUS"];
+    delete process.env["VERCEL_TOKEN"];
+    delete process.env["VERCEL_TEAM_ID"];
+    delete process.env["VERCEL_PROJECT_ID"];
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-03-01T00:00:00.000Z"));
   });

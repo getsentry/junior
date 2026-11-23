@@ -13,6 +13,8 @@ describe("Workspace snapshot setup command", () => {
     const sandbox: SandboxSession = {
       sandboxId: "sandbox-one",
       sessionId: "session-one",
+      keepsFilesAcrossSessions: false,
+      startedAtMs: Date.now(),
       fs: {
         readFile: vi.fn(),
         readdir: vi.fn(),
@@ -91,7 +93,7 @@ describe("Workspace snapshot setup command", () => {
     );
 
     expect(command.args.at(-1)).toBe("printf ready");
-    expect(command.env.NODE_OPTIONS).toBe("--max-old-space-size=4096");
+    expect(command.env["NODE_OPTIONS"]).toBe("--max-old-space-size=4096");
     expect(command.args.join("\n")).toContain(
       "/tmp/junior-snapshot-build-build-one/lock",
     );
@@ -110,6 +112,6 @@ describe("Workspace snapshot setup command", () => {
       snapshot: null,
     });
 
-    expect(command.env.NODE_OPTIONS).toBe("--max-old-space-size=4096");
+    expect(command.env["NODE_OPTIONS"]).toBe("--max-old-space-size=4096");
   });
 });

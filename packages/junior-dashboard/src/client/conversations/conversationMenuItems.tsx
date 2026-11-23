@@ -1,8 +1,11 @@
+import { conversationTurnIsActive } from "./turnActivity";
 import type { ComponentType } from "react";
 import type { ConversationDetailReport } from "@sentry/junior/api/schema";
 import {
   Archive,
   ArchiveRestore,
+  ArrowDown,
+  ArrowUp,
   Bell,
   BellOff,
   MessageSquareShare,
@@ -15,8 +18,8 @@ import {
 } from "lucide-react";
 
 import { useCopyText } from "../components/CopyButton";
-import { visualStatusForConversation } from "../format";
 import type { Conversation } from "../types";
+import type { PinnedRowMove } from "./PinnedConversationOrder";
 import { SlackMark } from "./SlackMark";
 import { useShareConversationLink } from "./useShareConversationLink";
 
@@ -60,13 +63,15 @@ export type ConversationMenu = {
         | "deliveryPaused"
         | "isParticipant"
         | "sentryConversationUrl"
-        | "status"
         | "subscribed"
+        | "turnActive"
       >
     | undefined;
   /** The page shows its event log, so the row goes back to the conversation. */
   eventLogOpen?: boolean;
-  getMarkdown?: () => Promise<string>;
+  /** Set on a pinned row that the viewer can reorder. */
+  move?: PinnedRowMove | undefined;
+  getMarkdown?: (() => Promise<string>) | undefined;
   pending: {
     archive: boolean;
     delivery: boolean;
@@ -74,6 +79,16 @@ export type ConversationMenu = {
     subscription: boolean;
   };
 };
+
+/** The API takes pins, renames, and other changes only from participants. */
+export function isConversationParticipant(
+  menu: Pick<ConversationMenu, "conversation" | "detail">,
+): boolean {
+  const { conversation, detail } = menu;
+  return Boolean(
+    conversation && (detail?.isParticipant ?? conversation.isParticipant),
+  );
+}
 
 /**
  * List the rows of the conversation `⋯` menu and the sidebar row menu, in
@@ -92,13 +107,8 @@ export function useConversationMenuItems(
   const { actions, conversation, detail, pending } = menu;
   const archived = Boolean(conversation?.archivedAt);
   const pinned = Boolean(conversation?.pinnedAt);
-  // The API takes these changes only from participants.
-  const participant = Boolean(
-    conversation && (detail?.isParticipant ?? conversation.isParticipant),
-  );
-  const live = detail
-    ? detail.status === "active"
-    : conversation && visualStatusForConversation(conversation) === "active";
+  const participant = isConversationParticipant(menu);
+  const live = conversationTurnIsActive(detail, conversation);
 
   const conversationItems: ConversationMenuItem[] = [
     {
@@ -171,6 +181,25 @@ export function useConversationMenuItems(
       onClick: () => actions.pin(!pinned),
       toggle: true,
     });
+  }
+  // A touch has no drag, so the menu reorders pins too.
+  if (menu.move) {
+    viewerItems.push(
+      {
+        disabled: !menu.move.up,
+        icon: ArrowUp,
+        key: "move-up",
+        label: "Move up",
+        onClick: menu.move.up,
+      },
+      {
+        disabled: !menu.move.down,
+        icon: ArrowDown,
+        key: "move-down",
+        label: "Move down",
+        onClick: menu.move.down,
+      },
+    );
   }
   viewerItems.push(
     {

@@ -16,8 +16,21 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "../components/ui/tooltip";
-import { WatchDetails, WatchDetailsRow } from "./ConversationWatches";
-import { DetailsList, DetailsRow, DetailsRowLine } from "./DetailsList";
+import {
+  ConversationWatches,
+  type CancelWatch,
+  useCancelConversationWatch,
+  useConversationWatches,
+  WatchDetails,
+  WatchDetailsRow,
+} from "./ConversationWatches";
+import { objectSource } from "./objectSource";
+import {
+  DetailsCard,
+  DetailsList,
+  DetailsRow,
+  DetailsRowLine,
+} from "./DetailsList";
 
 type ConversationAnnotation = NonNullable<
   ConversationDetailReport["annotations"]
@@ -36,8 +49,6 @@ export type ConversationLink = {
   linkOnly?: boolean;
   objectType: ObjectType;
   plugin: string;
-  /** The plugin's compact row label, such as the repository name. */
-  shortLabel?: string;
   status?: string;
   url: string;
 };
@@ -65,9 +76,7 @@ export function linkStatusLabel(status: string | undefined): string {
  * annotation.
  */
 export function conversationLinks(
-  detail:
-    | Pick<ConversationDetailReport, "annotations" | "sidebarAnnotations">
-    | undefined,
+  detail: ConversationDetailReport | undefined,
 ): ConversationLink[] {
   return (detail?.annotations ?? []).flatMap(
     (annotation: ConversationAnnotation): ConversationLink[] => {
@@ -97,12 +106,67 @@ export function conversationLinks(
             : undefined),
           objectType,
           plugin: annotation.plugin,
-          ...(sidebar ? { shortLabel: sidebar.label } : undefined),
           ...(annotation.status ? { status: annotation.status } : undefined),
           url: annotation.url,
         },
       ];
     },
+  );
+}
+
+/**
+ * Show the linked work of a Conversation and what Junior waits on, as one
+ * list: a Watch waits on something. A Watch on linked work shows in that
+ * row, so the resource shows once. Participants can cancel a Watch.
+ */
+export function ConversationLinkedWorkCard(props: {
+  /** True when the viewer is a Participant, who can cancel Watches. */
+  canCancelWatches: boolean;
+  conversationId: string;
+  links: ConversationLink[];
+}) {
+  const { links } = props;
+  const allWatches =
+    useConversationWatches(props.conversationId).data?.watches ?? [];
+  const cancelWatch = useCancelConversationWatch(props.conversationId);
+  const onCancel = props.canCancelWatches
+    ? (watch: ConversationWatch) => cancelWatch.mutate(watch)
+    : undefined;
+  const linkUrls = new Set(links.map((link) => link.url));
+  const watchesByUrl = new Map<string, ConversationWatch[]>();
+  const watches: ConversationWatch[] = [];
+  for (const watch of allWatches) {
+    if (watch.url && linkUrls.has(watch.url)) {
+      watchesByUrl.set(watch.url, [
+        ...(watchesByUrl.get(watch.url) ?? []),
+        watch,
+      ]);
+    } else {
+      watches.push(watch);
+    }
+  }
+  if (links.length === 0 && watches.length === 0) return null;
+  return (
+    <DetailsCard
+      count={links.length || watches.length}
+      title={links.length > 0 ? "Linked work" : "Waiting on"}
+    >
+      {links.length > 0 ? (
+        <ConversationLinkedWork
+          links={links}
+          onCancelWatch={onCancel}
+          watchesByUrl={watchesByUrl}
+        />
+      ) : null}
+      {links.length > 0 && watches.length > 0 ? (
+        <h4 className="m-0 mb-1.5 mt-3 font-sans text-xs font-semibold text-dashboard-text-muted">
+          Also waiting on
+        </h4>
+      ) : null}
+      {watches.length > 0 ? (
+        <ConversationWatches onCancel={onCancel} watches={watches} />
+      ) : null}
+    </DetailsCard>
   );
 }
 
@@ -114,6 +178,7 @@ export function conversationLinks(
  */
 export function ConversationLinkedWork(props: {
   links: ConversationLink[];
+  onCancelWatch?: CancelWatch | undefined;
   /** Watches by the URL of the resource that they watch. */
   watchesByUrl: ReadonlyMap<string, ConversationWatch[]>;
 }) {
@@ -139,7 +204,11 @@ export function ConversationLinkedWork(props: {
           return (
             <Collapsible className="min-w-0">
               <WatchDetailsRow label={link.label}>{row}</WatchDetailsRow>
-              <WatchDetails watches={watches} />
+              <WatchDetails
+                onCancel={props.onCancelWatch}
+                showTime
+                watches={watches}
+              />
             </Collapsible>
           );
         }}
@@ -200,7 +269,7 @@ function LinkRow(props: { link: ConversationLink }) {
         )
       }
       title={link.label}
-      tooltip={[link.label, link.plugin, status, link.description]
+      tooltip={[link.label, objectSource(link.plugin), status, link.description]
         .filter(Boolean)
         .join(" · ")}
     >

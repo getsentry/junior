@@ -106,6 +106,24 @@ describe("provider retry helpers", () => {
     }
   });
 
+  it("classifies the last attempt of an AI SDK retry", () => {
+    // AI Gateway reports a failed fetch as a 500 response. Only its cause
+    // says that no response came back.
+    const lastError = Object.assign(new Error("Internal server error"), {
+      statusCode: 500,
+      cause: new Error("Cannot connect to API: other side closed"),
+    });
+    const retryError = Object.assign(
+      new Error("Failed after 3 attempts. Last error: Internal server error"),
+      { name: "AI_RetryError", lastError },
+    );
+
+    expect(createProviderError(retryError)).toMatchObject({
+      kind: "network",
+      status: 500,
+    });
+  });
+
   it("uses structured transient signals when the provider message is empty", () => {
     for (const [statusCode, kind] of [
       [503, "server"],
@@ -280,15 +298,21 @@ describe("provider retry helpers", () => {
       role: "user",
       content: [{ type: "text", text: "help" }],
     } as PiMessage;
-    const failure = assistantError("ResourceExhausted");
+    for (const message of [
+      "ResourceExhausted",
+      "520 Origin error",
+      "We are currently experiencing high demand",
+    ]) {
+      const failure = assistantError(message);
 
-    expect(
-      nextProviderRetry({
-        attempt: 0,
-        failure,
-        messages: [user, failure],
-      }),
-    ).toMatchObject({ delayMs: 2_000, messages: [user] });
+      expect(
+        nextProviderRetry({
+          attempt: 0,
+          failure,
+          messages: [user, failure],
+        }),
+      ).toMatchObject({ delayMs: 2_000, messages: [user] });
+    }
   });
 
   it("keeps explicit permanent request failures terminal", () => {
@@ -360,7 +384,7 @@ describe("provider retry helpers", () => {
       overrides: {
         attempt?: number;
         messages?: PiMessage[];
-        failure?: AssistantMessage;
+        failure?: AssistantMessage | undefined;
       } = {},
     ) =>
       nextProviderRetry({

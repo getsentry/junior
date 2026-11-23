@@ -7,7 +7,7 @@ permissions:
 
 on:
   pull_request:
-    branches: [main]
+    branches: [main, core-next]
     types: [opened, reopened, synchronize, labeled]
 
 concurrency:
@@ -34,7 +34,7 @@ jobs:
               - 'packages/junior-evals/src/fetch-setup.ts'
               - 'packages/junior-evals/src/proxy-dispatcher.ts'
               - 'packages/junior-evals/evals/classifiers/**'
-              - 'packages/junior-evals/src/review-item-reply-harness.ts'
+              - 'packages/junior-evals/src/inbox-item-reply-harness.ts'
               - 'packages/junior-evals/src/pr-description-check-harness.ts'
               - 'packages/junior-evals/src/eval-ai-gateway-dispatcher.ts'
               - 'packages/junior-evals/vitest.evals.classifiers.config.ts'
@@ -42,7 +42,7 @@ jobs:
               - 'packages/junior-evals/scripts/report.mjs'
               - 'packages/junior-evals/scripts/network-jail.sh'
               - 'packages/junior/src/chat/pi/client.ts'
-              - 'packages/junior/src/chat/review-items/reply-match.ts'
+              - 'packages/junior/src/chat/inbox-items/reply-match.ts'
               - 'packages/junior-github/src/tool-support/pull-request-description.ts'
       - id: decision
         env:
@@ -83,7 +83,19 @@ jobs:
       pull-requests: read
       actions: read
       checks: write
+    # Each Pi model call reads the enabled gateway providers from state.
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     env:
+      JUNIOR_EVAL_REDIS_URL: redis://127.0.0.1:6379
       AI_GATEWAY_API_KEY: ${{ secrets.AI_GATEWAY_API_KEY }}
       VERCEL_OIDC_TOKEN: ${{ secrets.VERCEL_OIDC_TOKEN }}
     steps:
@@ -91,6 +103,8 @@ jobs:
         with:
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
+      # Evals load the built output of some workspace packages.
+      - run: pnpm --filter "@sentry/junior-evals^..." run build
       - name: Run classifier evals
         id: run
         continue-on-error: true

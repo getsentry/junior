@@ -43,7 +43,7 @@ function readDashboardColorIcon(): ArrayBuffer {
 
   const assetUrl = new URL("./assets/junior-avatar.png", import.meta.url);
   if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard color icon was not found");
+    throw new Error("Dashboard color icon was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }
@@ -78,6 +78,9 @@ export function dashboardPagePaths(
     {
       nested: true,
       path: basePath === "/" ? "/conversations" : `${basePath}/conversations`,
+    },
+    {
+      path: basePath === "/" ? "/inbox" : `${basePath}/inbox`,
     },
     {
       path: basePath === "/" ? "/review" : `${basePath}/review`,
@@ -184,7 +187,10 @@ export function renderDashboard(
   {
     bootstrap,
     sentry,
-  }: { bootstrap?: DashboardBootstrap; sentry?: BrowserSentryConfig } = {},
+  }: {
+    bootstrap?: DashboardBootstrap | undefined;
+    sentry?: BrowserSentryConfig | undefined;
+  } = {},
 ): Response {
   const encodedAgentName = scriptJson(agentName);
   const bootstrapScript = bootstrap
@@ -193,8 +199,12 @@ export function renderDashboard(
   const client = readDashboardClientManifest();
   // Without these hints, the browser finds the chunks only after the entry
   // has downloaded and parsed, and the fonts only after the stylesheet has.
+  // The page loads only the viewer's UI shell. Without core data, it loads
+  // the current UI, which reads /api/me itself and reports the failure.
+  const shell =
+    client.shells[bootstrap?.me.experimentalUi ? "inbox" : "classic"];
   const clientPreloads = [
-    ...client.imports.map(
+    ...shell.imports.map(
       (file) =>
         `<link rel="modulepreload" href="${DASHBOARD_ASSETS_PATH}/${file}" />`,
     ),
@@ -215,6 +225,7 @@ export function renderDashboard(
   <meta name="apple-mobile-web-app-capable" content="yes" />
   <meta name="apple-mobile-web-app-title" content="${escapeHtml(agentName)}" />
   <link rel="manifest" href="${DASHBOARD_MANIFEST_PATH}" />
+  <link rel="icon" href="/favicon.ico" type="image/png" />
   <link rel="apple-touch-icon" href="${DASHBOARD_INSTALL_ICON_PATH}" />
   ${renderSentryHead(sentry)}
   <script>${conversationOpenScript(basePath)}</script>
@@ -282,7 +293,7 @@ export function renderDashboard(
       });
     })();
   </script>
-  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${client.entry}"></script>
+  <script type="module" src="${DASHBOARD_ASSETS_PATH}/${shell.entry}"></script>
 </body>
 </html>`,
     {
@@ -301,7 +312,7 @@ function readDashboardFavicon(): ArrayBuffer {
 
   const assetUrl = new URL("./assets/junior-favicon.png", import.meta.url);
   if (!existsSync(assetUrl)) {
-    throw new Error("Junior dashboard favicon was not found");
+    throw new Error("Dashboard favicon was not found");
   }
   return Uint8Array.from(readFileSync(assetUrl)).buffer;
 }

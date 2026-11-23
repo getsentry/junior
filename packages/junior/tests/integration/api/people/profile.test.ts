@@ -16,11 +16,13 @@ import {
   juniorConversationMetrics,
   juniorConversations,
   juniorIdentities,
+  juniorUsers,
 } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
+import { expectPlanCost, expectSqlBudget } from "../../../fixtures/sql-budget";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import {
   recordTurn,
@@ -203,9 +205,7 @@ describe("people profile API", () => {
           (person) => person.actor.email === "owner@example.com",
         ),
       ).toMatchObject({
-        conversations: 1,
-        durationMs: 800,
-        tokens: 8,
+        windows: { 90: { conversations: 1, durationMs: 800 } },
       });
 
       const report = await readPeopleProfileFromSql("child@example.com", {
@@ -328,8 +328,8 @@ describe("people profile API", () => {
         report.recentConversations.map((item) => item.conversationId),
       ).toEqual(["slack:C4:456", "slack:C1:123"]);
       expect(report.recentConversations.map((item) => item.status)).toEqual([
-        "failed",
-        "active",
+        "needs_input",
+        "working",
       ]);
       expect(report.recentConversations[0]).toMatchObject({
         channelName: "Private Conversation",
@@ -509,8 +509,32 @@ describe("people profile API", () => {
           .values(metrics.slice(offset, offset + 1_000));
       }
 
+      // Other people, so a plan that groups by every user in the table costs
+      // its active-days subquery once for each of them.
+      await fixture.sql
+        .db()
+        .insert(juniorUsers)
+        .values(
+          Array.from({ length: 300 }, (_, index) => ({
+            id: `other-${index}`,
+            primaryEmail: `other-${index}@example.com`,
+            primaryEmailNormalized: `other-${index}@example.com`,
+            createdAt: now,
+            updatedAt: now,
+          })),
+        );
+      await fixture.sql.query("analyze");
+
       // The seed Conversation has no Turn, so it does not count.
-      const report = await readPeopleProfileFromSql("aggregate@example.com");
+      // Aggregates in one round, then the recent rows' access and usage.
+      const report = await expectPlanCost(
+        () =>
+          expectSqlBudget(
+            () => readPeopleProfileFromSql("aggregate@example.com"),
+            { statements: 10, serialRounds: 2 },
+          ),
+        10_000,
+      );
       expect(report.totals).toMatchObject({
         conversations: 5_000,
         durationMs: 10_000,
@@ -527,11 +551,14 @@ describe("people profile API", () => {
       const directory = await readPeopleListFromSql();
       expect(directory.people).toEqual([
         expect.objectContaining({
-          conversations: 5_000,
-          durationMs: 10_000,
-          tokens: 15_000,
           actor: expect.objectContaining({
             email: "aggregate@example.com",
+          }),
+          windows: expect.objectContaining({
+            90: expect.objectContaining({
+              conversations: 5_000,
+              durationMs: 10_000,
+            }),
           }),
         }),
       ]);

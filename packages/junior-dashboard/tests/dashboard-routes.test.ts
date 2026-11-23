@@ -6,29 +6,32 @@ import type { DashboardSession } from "../src/auth";
 import { auth, resetDashboardEnv } from "./dashboard-test-helpers";
 
 const {
-  readUserAutoArchiveSettings,
+  readUserSettings,
   readViewerAvatarUrl,
   resolveViewerUser,
-  updateUserAutoArchiveSettings,
+  updateUserSettings,
   updateViewerDisplayName,
 } = vi.hoisted(() => ({
-  readUserAutoArchiveSettings: vi.fn(async (_userId: string) => ({
+  readUserSettings: vi.fn(async (_userId: string) => ({
     autoArchiveDefault: false,
     autoArchiveGraceHours: 24,
+    experimentalUi: false,
   })),
   readViewerAvatarUrl: vi.fn(
     async (): Promise<string | undefined> => undefined,
   ),
-  updateUserAutoArchiveSettings: vi.fn(
+  updateUserSettings: vi.fn(
     async (
       _userId: string,
       settings: {
         autoArchiveDefault?: boolean;
         autoArchiveGraceHours?: number;
+        experimentalUi?: boolean;
       },
     ) => ({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
+      experimentalUi: false,
       ...settings,
     }),
   ),
@@ -46,15 +49,16 @@ const {
 }));
 vi.mock("@sentry/junior/api", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@sentry/junior/api")>()),
-  readUserAutoArchiveSettings,
+  readUserSettings,
   readViewerAvatarUrl,
   resolveViewerUser,
-  updateUserAutoArchiveSettings,
+  updateUserSettings,
   updateViewerDisplayName,
 }));
 
 function dashboard(session: DashboardSession | null) {
   return createDashboardApp({
+    agentName: "Junior",
     allowedDomains: ["sentry.io"],
     auth: auth(session),
   });
@@ -120,6 +124,7 @@ describe("dashboard routes", () => {
   it("uses the requested dashboard path as the Google sign-in callback", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
@@ -151,6 +156,7 @@ describe("dashboard routes", () => {
       },
     ];
     const unauthenticatedApp = createDashboardApp({
+      agentName: "Junior",
       authenticatedRoutes,
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
@@ -170,6 +176,7 @@ describe("dashboard routes", () => {
     expect(handle).not.toHaveBeenCalled();
 
     const authenticatedApp = createDashboardApp({
+      agentName: "Junior",
       authenticatedRoutes,
       allowedDomains: ["sentry.io"],
       auth: auth({
@@ -191,6 +198,7 @@ describe("dashboard routes", () => {
   it("rejects disallowed users on authenticated host routes", async () => {
     const handle = vi.fn(() => new Response("authenticated route"));
     const app = createDashboardApp({
+      agentName: "Junior",
       authenticatedRoutes: [
         {
           handler: handle,
@@ -215,11 +223,12 @@ describe("dashboard routes", () => {
   });
 
   it("starts OAuth on the JUNIOR_BASE_URL origin", async () => {
-    process.env.BETTER_AUTH_URL = "https://legacy-auth.example.com";
-    process.env.JUNIOR_BASE_URL = "https://junior.example.com";
+    process.env["BETTER_AUTH_URL"] = "https://legacy-auth.example.com";
+    process.env["JUNIOR_BASE_URL"] = "https://junior.example.com";
     let callbackURL: string | undefined;
     let errorCallbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value, errorValue) => {
         callbackURL = value;
@@ -266,6 +275,7 @@ describe("dashboard routes", () => {
   it("preserves non-root dashboard base paths through Google sign-in", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
@@ -292,6 +302,7 @@ describe("dashboard routes", () => {
 
   it("starts sign-in when the auth prefix overlaps the login route", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null),
       authPath: "/auth",
@@ -310,6 +321,7 @@ describe("dashboard routes", () => {
   it("falls back to the dashboard root for unsafe login return paths", async () => {
     let callbackURL: string | undefined;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(null, (value) => {
         callbackURL = value;
@@ -329,6 +341,7 @@ describe("dashboard routes", () => {
   it("does not restart Google sign-in for an already authorized session", async () => {
     let startedGoogleSignIn = false;
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth(
         {
@@ -358,6 +371,7 @@ describe("dashboard routes", () => {
 
   it("can explicitly disable dashboard auth for local development", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       authRequired: false,
       allowedDomains: [],
     });
@@ -371,6 +385,7 @@ describe("dashboard routes", () => {
     expect(await me.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
+      experimentalUi: false,
       user: {
         email: "dev@example.com",
         emailVerified: true,
@@ -453,6 +468,18 @@ describe("dashboard routes", () => {
     expect(response.status).toBe(200);
   });
 
+  it("rejects a verified session whose email is not a valid email", async () => {
+    for (const email of ["@sentry.io", "sentry.io"]) {
+      const app = dashboard({ user: { email, emailVerified: true } });
+
+      const response = await app.fetch(
+        new Request("http://localhost/api/runtime"),
+      );
+
+      expect(response.status).toBe(403);
+    }
+  });
+
   it("requires a verified email for the allowed email-domain fallback", async () => {
     const app = dashboard({
       user: {
@@ -489,6 +516,7 @@ describe("dashboard routes", () => {
     expect(await response.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
+      experimentalUi: false,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -515,11 +543,28 @@ describe("dashboard routes", () => {
     await expect(autoArchive.json()).resolves.toMatchObject({
       autoArchiveDefault: true,
       autoArchiveGraceHours: 72,
+      experimentalUi: false,
       user: { name: "Person" },
     });
-    expect(updateUserAutoArchiveSettings).toHaveBeenCalledWith(
+    expect(updateUserSettings).toHaveBeenCalledWith("user:person@sentry.io", {
+      autoArchiveDefault: true,
+      autoArchiveGraceHours: 72,
+    });
+
+    const experimentalUi = await app.fetch(
+      new Request("http://localhost/api/me", {
+        body: JSON.stringify({ experimentalUi: true }),
+        headers: { "content-type": "application/json" },
+        method: "PATCH",
+      }),
+    );
+    expect(experimentalUi.status).toBe(200);
+    await expect(experimentalUi.json()).resolves.toMatchObject({
+      experimentalUi: true,
+    });
+    expect(updateUserSettings).toHaveBeenLastCalledWith(
       "user:person@sentry.io",
-      { autoArchiveDefault: true, autoArchiveGraceHours: 72 },
+      { experimentalUi: true },
     );
 
     const tooLong = await app.fetch(
@@ -556,6 +601,7 @@ describe("dashboard routes", () => {
 
   it("keeps mock profile edits process-local", async () => {
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io"],
       auth: auth({
         user: {
@@ -579,6 +625,7 @@ describe("dashboard routes", () => {
     expect(await response.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
+      experimentalUi: false,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -590,17 +637,21 @@ describe("dashboard routes", () => {
 
     await app.fetch(
       new Request("http://localhost/api/me", {
-        body: JSON.stringify({ autoArchiveDefault: true }),
+        body: JSON.stringify({
+          autoArchiveDefault: true,
+          experimentalUi: true,
+        }),
         headers: { "content-type": "application/json" },
         method: "PATCH",
       }),
     );
-    expect(updateUserAutoArchiveSettings).not.toHaveBeenCalled();
+    expect(updateUserSettings).not.toHaveBeenCalled();
 
     const me = await app.fetch(new Request("http://localhost/api/me"));
     expect(await me.json()).toEqual({
       autoArchiveDefault: true,
       autoArchiveGraceHours: 24,
+      experimentalUi: true,
       user: {
         email: "person@sentry.io",
         emailVerified: true,
@@ -628,6 +679,7 @@ describe("dashboard routes", () => {
     expect(await me.json()).toEqual({
       autoArchiveDefault: false,
       autoArchiveGraceHours: 24,
+      experimentalUi: false,
       user: {
         avatarUrl: "/api/people/avatars/identity-1",
         email: "person@sentry.io",
@@ -640,8 +692,8 @@ describe("dashboard routes", () => {
   });
 
   it("returns safe dashboard config signals", async () => {
-    process.env.SENTRY_DSN = "https://public@example.ingest.sentry.io/1";
-    process.env.SENTRY_ORG_SLUG = "sentry";
+    process.env["SENTRY_DSN"] = "https://public@example.ingest.sentry.io/1";
+    process.env["SENTRY_ORG_SLUG"] = "sentry";
     const app = dashboard({
       user: {
         email: "person@sentry.io",
@@ -697,9 +749,10 @@ describe("dashboard routes", () => {
   });
 
   it("reports the allowed domains from core", async () => {
-    process.env.JUNIOR_DASHBOARD_MOCK_CONVERSATIONS = "true";
+    process.env["JUNIOR_DASHBOARD_MOCK_CONVERSATIONS"] = "true";
 
     const app = createDashboardApp({
+      agentName: "Junior",
       allowedDomains: ["sentry.io", "example.com"],
       auth: auth({
         user: {

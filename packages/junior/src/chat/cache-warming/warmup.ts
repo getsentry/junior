@@ -17,29 +17,25 @@
  * Work for an old idle period then cannot change a newer one.
  */
 import { randomUUID } from "node:crypto";
-import type { StreamFn } from "@earendil-works/pi-agent-core";
-import {
-  streamSimple,
-  type AssistantMessage,
-} from "@earendil-works/pi-ai/compat";
-import type { Platform } from "@sentry/junior-plugin-api";
+import type { AssistantMessage } from "@earendil-works/pi-ai/compat";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { getChatConfig } from "@/chat/config";
 import { logInfo, logWarn, withSpan } from "@/chat/logging";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import type { ToolDefinitionsKey } from "@/chat/tool-support/registry";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { metrics } from "@/chat/sentry";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import type { ThinkingLevel } from "@/chat/pi/sdk";
+import { mapBounded } from "@/chat/fan-out";
+import { estimateRequestOverheadTokens } from "@/chat/services/token-estimate";
+import { usdToMicroUsd } from "@/db/micro-usd";
 import {
-  buildDeploymentSystemPrompt,
-  systemPromptHash,
-} from "@/chat/system-prompt";
-import type { PromptMode } from "@/chat/system-prompt-rules";
-import {
+  chooseIdleCompaction,
   decideWarmup,
   gapSegment,
   IDLE_HORIZON_MS,
+  idleHorizonMs,
   MINUTE_MS,
   MIN_WARMUP_PREFIX_TOKENS,
   NO_REPLY_GAP_MS,
@@ -52,13 +48,19 @@ import {
   type WaitingOn,
   type WorkState,
 } from "./model";
+import {
+  definitionsChanged,
+  publishDefinitions,
+  type IdleDefinitions,
+} from "./definitions";
+import { sendCacheWarmingHorizon } from "./horizon";
 import { sendCacheWarmup, type CacheWarmupMessage } from "./queue";
 import {
   breakerOpen,
-  CACHE_RETENTION,
   cachedPrefixTokens,
   connectedState,
   KEY_PREFIX,
+  providerCacheTtlMs,
   sendWarmup,
   cacheTtlMs,
   warmupTiming,
@@ -66,8 +68,19 @@ import {
   type ConnectedState,
   type ModelRequest,
 } from "./request";
-import { loadSnapshot, saveSnapshot, type SnapshotSize } from "./snapshot";
-import { createToolWaitWarmer } from "./tool-wait";
+import {
+  idlePeriodOutcome,
+  idlePeriodSavings,
+  recordIdlePeriodSavings,
+  recordWarmupCost,
+} from "./savings";
+import { compactOnIdle, mayCompactOnIdle } from "./idle-compaction";
+import {
+  loadSnapshot,
+  saveSnapshot,
+  type SnapshotSize,
+  type SnapshotSkipReason,
+} from "./snapshot";
 import { earliestTimerDueIdleMs, readPendingWork } from "./waiting";
 import { readSegmentState } from "./work-state";
 
@@ -79,11 +92,13 @@ const CONVERSATION_GAPS_MAX = 50;
 /** The Turn count of a Conversation resets after this long with no call. */
 export const CONVERSATION_STATE_TTL_MS = 7 * 24 * 60 * MINUTE_MS;
 /** How the Turn before an idle period ended. */
-type TurnEnding = "reply" | "no_reply" | "blocked";
-// Answer tools that end the run without a final response. A child agent
-// answers its parent with `reply`. People often answer a Turn that posted
-// nothing or that ended blocked, so it warms like a reply.
-const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
+export type TurnEnding = "reply" | "no_reply" | "blocked";
+/**
+ * Answer tools that end the run without a final response. A child agent
+ * answers its parent with `reply`. People often answer a Turn that posted
+ * nothing or that ended blocked, so it warms like a reply.
+ */
+export const ANSWER_TOOL_ENDINGS: Partial<Record<string, TurnEnding>> = {
   [REPLY_TOOL_NAME]: "reply",
   [NO_REPLY_TOOL_NAME]: "no_reply",
   [REPORT_BLOCKED_TOOL_NAME]: "blocked",
@@ -98,7 +113,7 @@ interface WarmState {
   /** The `parentGapSegment` that a thin `segment` leans on. */
   parentSegment?: string;
   /**
-   * A child agent or a Review item that the idle period also waits on. The
+   * A child agent or an Inbox item that the idle period also waits on. The
    * gap is also recorded in the segment's `waitingGapSegment` child, which
    * the decision reads first.
    */
@@ -106,10 +121,11 @@ interface WarmState {
   /** Idle time at which a timer is due, for the timer floor. */
   timerDueIdleMs?: number;
   /**
-   * The system prompt of the snapshot. Unset in snapshots from before it was
-   * stored; those warm without the check.
+   * The definitions fingerprint of the snapshot's deployment. Unset outside
+   * Vercel and in idle periods from before it was stored; those warm without
+   * the check.
    */
-  systemPrompt?: SystemPromptKey & { hash: string };
+  definitions?: IdleDefinitions;
   workState: WorkState;
   archived: boolean;
   modelId: string;
@@ -118,6 +134,18 @@ interface WarmState {
   reasoning?: ThinkingLevel;
   /** Unset in idle periods from before it was stored. */
   snapshot?: SnapshotSize;
+  /**
+   * Set when the snapshot was over a limit and nothing was stored. Such an
+   * idle period sends no warmup. Its first slot only compacts on idle or
+   * stops, because compaction on idle needs no snapshot.
+   */
+  snapshotSkipReason?: SnapshotSkipReason;
+  /**
+   * Estimated system prompt and tool tokens of the request, for the size
+   * check of a compaction on idle. Set only for a prefix at or above the
+   * background compaction mark.
+   */
+  requestOverheadTokens?: number;
 }
 
 interface IdlePeriod {
@@ -126,6 +154,11 @@ interface IdlePeriod {
   sinceMs: number;
   /** Only periods that could be warmed record gaps. */
   warm?: WarmState;
+  /**
+   * Cached prefix of a period with no warm state, for its savings. Unset in
+   * idle periods from before it was stored.
+   */
+  prefixTokens?: number;
 }
 
 interface ConversationCacheState {
@@ -206,6 +239,11 @@ async function scheduleWarmup(
 
 // The reply and the horizon can run at the same time. Only the first one to
 // claim the idle period records its gap.
+//
+// Each list records a gap past its own idle horizon as no reply. Only the
+// waiting child segment of a child agent wait has a longer horizon, so the
+// segment's own list stays comparable with its other idle periods and with
+// the backfill.
 async function recordGap(
   state: ConnectedState,
   conversationId: string,
@@ -221,15 +259,19 @@ async function recordGap(
   if (!claimed) {
     return;
   }
-  for (const segment of recordedSegments(warm)) {
-    await state.appendToList(segmentGapsKey(segment), gapMs, {
-      maxLength: GLOBAL_GAPS_MAX,
-      ttlMs: GLOBAL_GAPS_TTL_MS,
-    });
-  }
+  const gapWithin = (horizonMs: number) =>
+    gapMs >= horizonMs ? NO_REPLY_GAP_MS : gapMs;
+  const decisionGapMs = gapWithin(idleHorizonMs(warm.waitingOn));
+  await mapBounded(recordedSegments(warm), (segment) =>
+    state.appendToList(
+      segmentGapsKey(segment),
+      segment === warm.segment ? gapWithin(IDLE_HORIZON_MS) : decisionGapMs,
+      { maxLength: GLOBAL_GAPS_MAX, ttlMs: GLOBAL_GAPS_TTL_MS },
+    ),
+  );
   await state.appendToList(
     conversationGapsKey(conversationId, decisionSegment(warm)),
-    gapMs,
+    decisionGapMs,
     {
       maxLength: CONVERSATION_GAPS_MAX,
       ttlMs: CONVERSATION_STATE_TTL_MS,
@@ -244,29 +286,29 @@ async function startIdlePeriod(
   conversationId: string,
   request: ModelRequest,
   message: AssistantMessage,
-  turn: Pick<GapSegmentInput, "userActor" | "endedTurns">,
-  systemPrompt: SystemPromptKey,
+  turn: CacheWarmingTurn & Pick<GapSegmentInput, "endedTurns">,
+  definitionsKey: ToolDefinitionsKey,
   turnEnding: TurnEnding,
 ): Promise<IdlePeriod | undefined> {
-  const automation = systemPrompt.mode === "automation";
   // Read once here, not on each model call.
   const { watches, waitingOn } = await readPendingWork(
     conversationId,
     request.context.messages,
     message,
-    automation,
+    turn.idleNeedsPendingWork,
   );
-  // An Automation run almost never gets an answer. Its ending starts an idle
-  // period only while a child agent or a Watch can start its next Turn.
-  if (automation && !waitingOn) return undefined;
+  if (turn.idleNeedsPendingWork && !waitingOn) return undefined;
   const idle: IdlePeriod = {
     generation: randomUUID(),
     sinceMs: request.startedAtMs,
   };
+  // Every idle start publishes, also one that Junior cannot warm, so a new
+  // deployment stops old idle periods soon.
+  const definitions = await publishDefinitions(state, definitionsKey);
   const prefixTokens = cachedPrefixTokens(message);
   const ttlMs = cacheTtlMs(request);
   if (ttlMs === undefined || prefixTokens < MIN_WARMUP_PREFIX_TOKENS) {
-    return idle;
+    return { ...idle, prefixTokens };
   }
   const timerDueIdleMs = earliestTimerDueIdleMs(
     watches,
@@ -277,6 +319,10 @@ async function startIdlePeriod(
       cacheTtlMs: ttlMs,
     }),
   );
+  const mayCompact = mayCompactOnIdle({
+    modelId: request.model.id,
+    prefixTokens,
+  });
   const { skipReason, ...snapshot } = await saveSnapshot(
     state,
     conversationId,
@@ -284,7 +330,7 @@ async function startIdlePeriod(
     request.context,
     // The timer floor can warm after the horizon, until the timer's Turn.
     Math.max(
-      IDLE_HORIZON_MS,
+      idleHorizonMs(waitingOn),
       (timerDueIdleMs ?? 0) + TIMER_START_DELAY_MS + idle.sinceMs - Date.now(),
     ),
   );
@@ -311,10 +357,14 @@ async function startIdlePeriod(
       "app.cache_warming.prefix_tokens": prefixTokens,
       ...snapshotAttributes(snapshot),
     });
-    return idle;
+    // Compaction on idle needs no snapshot, so a large prefix keeps its
+    // first slot for that.
+    if (!mayCompact || !getChatConfig().idleCompactionEnabled) {
+      return { ...idle, prefixTokens };
+    }
   }
-  // Read here, not on each model call: only a period that Junior can warm
-  // records a gap.
+  // Read here, not on each model call: only a period that Junior can warm or
+  // compact on idle records a gap.
   const segmentState = await readSegmentState(conversationId, Date.now());
   const segmentInput = { ...turn, ...segmentState };
   const parentSegment = parentGapSegment(segmentInput);
@@ -326,28 +376,70 @@ async function startIdlePeriod(
       ...(parentSegment ? { parentSegment } : undefined),
       ...(waitingOn ? { waitingOn } : undefined),
       ...(timerDueIdleMs !== undefined ? { timerDueIdleMs } : undefined),
-      ...(request.context.systemPrompt !== undefined
-        ? {
-            systemPrompt: {
-              ...systemPrompt,
-              hash: systemPromptHash(request.context.systemPrompt),
-            },
-          }
-        : undefined),
+      ...(definitions ? { definitions } : undefined),
       ...segmentState,
       modelId: request.model.id,
       prefixTokens,
       cacheTtlMs: ttlMs,
       ...(request.reasoning ? { reasoning: request.reasoning } : undefined),
       snapshot,
+      ...(skipReason ? { snapshotSkipReason: skipReason } : undefined),
+      // The request folds leading system messages into its system prompt,
+      // so this counts them twice. That only makes the swap stricter.
+      ...(mayCompact
+        ? {
+            requestOverheadTokens: estimateRequestOverheadTokens(
+              request.context.systemPrompt ?? "",
+              request.context.tools ?? [],
+              request.model.id,
+            ),
+          }
+        : undefined),
     },
   };
 }
 
-async function recordModelCall(
+// Count the savings of the idle period that this call ends. A period with no
+// warm state counts too, so the oracle shows the gaps that were never warmed.
+// `warmups` is the count of warmups that refreshed its cache.
+async function recordSavings(
+  idle: IdlePeriod,
+  request: ModelRequest,
+  message: AssistantMessage,
+  warmups: number,
+): Promise<void> {
+  const prefixTokens = idle.warm?.prefixTokens ?? idle.prefixTokens;
+  const ttlMs = idle.warm?.cacheTtlMs ?? providerCacheTtlMs(request.model.id);
+  if (prefixTokens === undefined || ttlMs === undefined) return;
+  const gap = { cacheTtlMs: ttlMs, gapMs: request.startedAtMs - idle.sinceMs };
+  const savings = idlePeriodSavings({
+    ...gap,
+    prefixTokens,
+    cacheRead: message.usage.cacheRead,
+    cacheWrite: message.usage.cacheWrite,
+    cacheReadPrice: request.model.cost.cacheRead,
+    cacheWritePrice: request.model.cost.cacheWrite,
+  });
+  if (!savings) return;
+  await recordIdlePeriodSavings(
+    idle.warm?.modelId ?? request.model.id,
+    savings,
+    {
+      warmed:
+        idle.warm !== undefined && idle.warm.snapshotSkipReason === undefined,
+      outcome: idlePeriodOutcome(gap, savings, warmups),
+    },
+  );
+}
+
+/**
+ * Record one finished model call: end the idle period that it ends, and
+ * start the idle period of a Turn that it ends.
+ */
+export async function recordModelCall(
   conversationId: string,
-  userActor: boolean,
-  systemPrompt: SystemPromptKey,
+  turn: CacheWarmingTurn,
+  definitionsKey: ToolDefinitionsKey,
   request: ModelRequest,
   message: AssistantMessage,
   turnEnding: TurnEnding | undefined,
@@ -357,13 +449,14 @@ async function recordModelCall(
     conversationKey(conversationId),
   );
   const idle = previous?.idle;
+  let warmups = 0;
   if (idle?.warm) {
     const gapMs = request.startedAtMs - idle.sinceMs;
     if (gapMs > 0) {
       await recordGap(state, conversationId, idle.generation, idle.warm, gapMs);
     }
     await state.delete(snapshotKey(conversationId, idle.generation));
-    const warmups =
+    warmups =
       (await state.get<number>(warmupsKey(conversationId, idle.generation))) ??
       0;
     if (warmups > 0) {
@@ -377,6 +470,7 @@ async function recordModelCall(
       });
     }
   }
+  if (idle) await recordSavings(idle, request, message, warmups);
 
   // Mid-turn calls arrive seconds apart. Only the call that ends a turn
   // starts an idle period.
@@ -387,8 +481,8 @@ async function recordModelCall(
         conversationId,
         request,
         message,
-        { userActor, endedTurns },
-        systemPrompt,
+        { ...turn, endedTurns },
+        definitionsKey,
         turnEnding,
       )
     : undefined;
@@ -407,10 +501,13 @@ async function recordModelCall(
     const { generation } = next.idle;
     // Send the horizon first: a failed warmup send must not leave the idle
     // period without its no-reply gap.
-    await sendCacheWarmup(
-      { kind: "horizon", conversationId, generation },
-      request.startedAtMs + IDLE_HORIZON_MS - Date.now(),
-    );
+    await sendCacheWarmingHorizon({
+      conversationId,
+      generation,
+      sinceMs: request.startedAtMs,
+      horizonMs: idleHorizonMs(next.idle.warm.waitingOn),
+      step: 1,
+    });
     await scheduleWarmup(
       { kind: "warmup", conversationId, cycle: 1, generation },
       request.startedAtMs,
@@ -419,10 +516,13 @@ async function recordModelCall(
   }
 }
 
-// A run's first request ends the idle period of the last Turn. Delete its
-// snapshot when that request starts, so a warmup that comes due during the
-// request sends nothing. `record` ends the idle period when the call is done.
-async function stopIdleWarmups(conversationId: string): Promise<void> {
+/**
+ * A run's first request ends the idle period of the last Turn. Delete its
+ * snapshot when that request starts, so a warmup that comes due during the
+ * request sends nothing. `recordModelCall` ends the idle period when the
+ * call is done.
+ */
+export async function stopIdleWarmups(conversationId: string): Promise<void> {
   try {
     const state = await connectedState();
     const idle = (
@@ -439,159 +539,12 @@ async function stopIdleWarmups(conversationId: string): Promise<void> {
   }
 }
 
-/** Records the model calls of one agent run and schedules cache warmups. */
-export interface CacheWarmingRecorder {
-  /**
-   * Wrap the stream function so the recorder sees each model request. The
-   * wrapper also sets the cache retention that warming assumes while warming
-   * is on.
-   */
-  wrap(base?: StreamFn): StreamFn;
-  /** Record the finished assistant message of the last model request. */
-  record(message: AssistantMessage): Promise<void>;
-  /** Mark that the tools of the last request returned. */
-  toolsReturned(): void;
-  /**
-   * Mark that an answer tool call of the last request ended the run. After
-   * `reply`, `noReply` or `reportBlocked`, `stop` starts the idle period from
-   * that request, as a final response would.
-   */
-  answerToolEnded(toolName: string): void;
-  /** Stop the warmups of this run. Call it when the run ends. */
-  stop(): Promise<void>;
-}
-
-/**
- * Platform and Prompt mode of a run's system prompt. With the deployment,
- * they set the system prompt text.
- */
-export interface SystemPromptKey {
-  platform: Platform;
-  mode: PromptMode;
-}
-
-/**
- * Create a recorder for one agent run. `userActor` is true when a person
- * started the Turn. A failure to record only loses cache warming, so it is
- * logged and does not stop the run.
- */
-export function createCacheWarmingRecorder(
-  conversationId: string,
-  userActor: boolean,
-  systemPrompt: SystemPromptKey,
-): CacheWarmingRecorder {
-  let lastRequest: ModelRequest | undefined;
-  // The last finished call, for an idle period that an answer tool starts.
-  let lastCall:
-    | { request: ModelRequest; message: AssistantMessage }
-    | undefined;
-  let answerToolEnding: TurnEnding | undefined;
-  // After the first call of the run ends the idle period, the next mid-turn
-  // calls have nothing to record. This keeps them free of state reads.
-  let idleEnded = false;
-  let warmupsStopped: Promise<void> | undefined;
-  const toolWait = createToolWaitWarmer(conversationId);
-  return {
-    wrap:
-      (base = streamSimple) =>
-      (model, context, options) => {
-        if (!warmupsStopped && getChatConfig().cacheWarmingEnabled) {
-          warmupsStopped = stopIdleWarmups(conversationId);
-        }
-        // The tools returned, so this request reads the cache.
-        toolWait.stop();
-        // With warming off, Pi's own retention applies.
-        const cacheRetention =
-          options?.cacheRetention ??
-          (getChatConfig().cacheWarmingEnabled ? CACHE_RETENTION : undefined);
-        lastRequest = {
-          model,
-          // Copy the list, so later changes to the run do not change it.
-          context: { ...context, messages: [...context.messages] },
-          ...(options?.reasoning
-            ? { reasoning: options.reasoning }
-            : undefined),
-          ...(cacheRetention ? { cacheRetention } : undefined),
-          startedAtMs: Date.now(),
-        };
-        return base(
-          model,
-          context,
-          cacheRetention ? { ...options, cacheRetention } : options,
-        );
-      },
-    record: async (message) => {
-      const request = lastRequest;
-      lastRequest = undefined;
-      await warmupsStopped;
-      if (!getChatConfig().cacheWarmingEnabled || !request) {
-        return;
-      }
-      try {
-        await toolWait.record(request, message);
-      } catch (error) {
-        logWarn("cache_warming.tool_wait.record_failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
-      }
-      if (message.stopReason === "error" || message.stopReason === "aborted") {
-        return;
-      }
-      lastCall = { request, message };
-      if (idleEnded && message.stopReason !== "stop") {
-        return;
-      }
-      idleEnded = message.stopReason !== "stop";
-      try {
-        await recordModelCall(
-          conversationId,
-          userActor,
-          systemPrompt,
-          request,
-          message,
-          message.stopReason === "stop" ? "reply" : undefined,
-        );
-      } catch (error) {
-        logWarn("cache_warming.model_call.record_failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
-      }
-    },
-    toolsReturned: toolWait.toolsReturned,
-    answerToolEnded: (toolName) => {
-      answerToolEnding = ANSWER_TOOL_ENDINGS[toolName];
-    },
-    stop: async () => {
-      try {
-        await toolWait.end();
-      } catch (error) {
-        logWarn("cache_warming.tool_wait.record_failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
-      }
-      // The answer tool call stopped the run, so no final response came. Its
-      // request holds the prefix that the next Turn reads.
-      if (!answerToolEnding || !lastCall) return;
-      try {
-        await recordModelCall(
-          conversationId,
-          userActor,
-          systemPrompt,
-          lastCall.request,
-          lastCall.message,
-          answerToolEnding,
-        );
-      } catch (error) {
-        logWarn("cache_warming.model_call.record_failed", {
-          "exception.message":
-            error instanceof Error ? error.message : String(error),
-        });
-      }
-    },
-  };
+/** What the recorder reads about the Turn of one agent run. */
+export interface CacheWarmingTurn {
+  /** A person started the Turn. */
+  userActor: boolean;
+  /** From `turnBehavior`. */
+  idleNeedsPendingWork: boolean;
 }
 
 /**
@@ -605,11 +558,17 @@ export function createCacheWarmingRecorder(
  * - `missed`: the warmup call did not read the cached prefix. It logs
  *   `cache_warming.warmup.failed` and reports to Sentry.
  * - `failed`: the warmup call threw.
- * - `skipped`: `skip_reason` is `cache_expired`, `breaker_open`,
- *   `prompt_changed` (a deploy changed the system prompt, so the idle period
- *   stops), `stopped` (warming stopped or the tools returned first; no log),
+ * - `skipped`: `skip_reason` is `compacted_on_idle` (a ready background
+ *   summary replaced the history, so the idle period stops; see
+ *   `idle-compaction.ts`), `idle_compaction_stopped` (with a ready summary,
+ *   neither a warmup nor the swap pays), `cache_expired`, `breaker_open`,
+ *   `prompt_changed` (a newer deployment published another definitions
+ *   fingerprint, so the idle period stops), `stopped` (warming stopped or
+ *   the tools returned first; no log),
  *   `image_missing` (an image key of the snapshot expired, so the idle period
- *   stops), or a `decideWarmup` reason.
+ *   stops), `snapshot_too_large` or `images_too_large` (no snapshot was
+ *   stored, so the slot could only compact on idle or stop), or a
+ *   `decideWarmup` reason.
  *
  * Idle warmups carry the sizes of the idle period's snapshot:
  * `snapshot_bytes` (compressed, without images), `snapshot_image_count`
@@ -617,7 +576,9 @@ export function createCacheWarmingRecorder(
  * (their base64 data). A snapshot over a limit stores nothing and warns
  * `cache_warming.snapshot.skipped` with `prefix_tokens`, the same sizes, and
  * `skip_reason` `snapshot_too_large` (still over the limit without its
- * images) or `images_too_large` (its images are over their limit). Each
+ * images) or `images_too_large` (its images are over their limit). At or
+ * above the background compaction mark, its idle period still gets its
+ * first slot, for compaction on idle. Each
  * snapshot also records the unsampled distribution metrics
  * `cache_warming.snapshot.bytes` and `cache_warming.snapshot.image_bytes`,
  * with `app.cache_warming.stored` false for a snapshot over a limit.
@@ -626,15 +587,19 @@ export function createCacheWarmingRecorder(
  * its `gapSegment`. `turn_ending` is how the Turn before the idle period
  * ended: `reply` (a final response or `reply`), `no_reply` (`noReply`), or
  * `blocked` (`reportBlocked`). `waiting_on` is `child` (a child agent still
- * ran), `review` (the Turn asked a Review item), or `watch` (an Automation
+ * ran), `review` (the Turn asked an Inbox item), or `watch` (an Automation
  * run had an active Watch and no child agent) when the idle period starts,
  * and picks the segment's `waitingGapSegment` child. `timer_due_ms`
  * is the idle time at which a timer is due, when it is due within
  * `timerFloorMaxDueIdleMs`. The `conversation.returned` log has the same
- * five. Decision attributes are absent when the warmup skipped before the
- * decision. Of them, `timer_floor` is true for a warmup that only the timer
- * floor sends (`decideWarmup` reason `timer`). Cost and usage are absent
- * when no call completed.
+ * five. `idle_compaction` is the `IdleCompactionOutcome` of a warmup at or
+ * above the background compaction mark. With a ready summary,
+ * `compact_cost_micro_usd`, `stop_cost_micro_usd`, and
+ * `warm_cost_micro_usd` are the expected costs that `chooseIdleCompaction`
+ * compared. Decision attributes are absent
+ * when the warmup skipped before the decision. Of them, `timer_floor` is
+ * true for a warmup that only the timer floor sends (`decideWarmup` reason
+ * `timer`). Cost and usage are absent when no call completed.
  */
 export async function runCacheWarmup(
   message: CacheWarmupMessage,
@@ -653,6 +618,17 @@ export async function runCacheWarmup(
   const stop = () => state.delete(snapshotKey(conversationId, generation));
 
   if (message.kind === "horizon") {
+    const step = message.step ?? 1;
+    if (step * IDLE_HORIZON_MS < idleHorizonMs(warm.waitingOn)) {
+      await sendCacheWarmingHorizon({
+        conversationId,
+        generation,
+        sinceMs: idle.sinceMs,
+        horizonMs: idleHorizonMs(warm.waitingOn),
+        step: step + 1,
+      });
+      return;
+    }
     // The timer floor keeps warming until the timer's Turn.
     if (!timerPending(warm, Date.now() - idle.sinceMs)) {
       await stop();
@@ -701,32 +677,20 @@ export async function runCacheWarmup(
       };
       // The queue can deliver a warmup late, or a long Turn can leave no time
       // before the cache expires. The cache is gone, so this is not a miss.
-      if (warmupTooLate(message.cacheExpiresAtMs)) {
-        await skip("cache_expired");
-        return;
-      }
-      if (await breakerOpen(state, warm.modelId)) {
-        await skip("breaker_open");
-        return;
-      }
-      // A deploy can change the system prompt. The next Turn then writes a
-      // new prefix, so warming the old one buys nothing. Tool definitions can
-      // change too, but the tool set differs per Conversation, so this does
-      // not check them. Tool wait warming needs no check: it runs in the
-      // process of the run, which sends the next request with this prompt.
-      if (
-        warm.systemPrompt &&
-        warm.systemPrompt.hash !==
-          systemPromptHash(
-            await buildDeploymentSystemPrompt(
-              warm.systemPrompt.platform,
-              warm.systemPrompt.mode,
-            ),
-          )
-      ) {
-        await skip("prompt_changed");
-        return;
-      }
+      const late = warmupTooLate(message.cacheExpiresAtMs);
+      const breaker = !late && (await breakerOpen(state, warm.modelId));
+      // A deploy can change the system prompt or the tool definitions. The
+      // next Turn then writes a new prefix, so warming the old one buys
+      // nothing. The queue pins this warmup to the deployment that sent it,
+      // which builds the old definitions. So only the fingerprint that a
+      // newer deployment published can show the change (`definitions.ts`).
+      // Tool wait warming needs no check: it runs in the process of the run,
+      // which sends the next request with these definitions.
+      const promptChanged =
+        !late &&
+        !breaker &&
+        warm.definitions !== undefined &&
+        (await definitionsChanged(state, warm.definitions));
 
       const model = resolveGatewayModel(warm.modelId);
       // Most specific first: the waiting child, its segment, and the parent.
@@ -743,9 +707,10 @@ export async function runCacheWarmup(
         if (!segmentNeedsParent((priorGapsMs.at(-1) ?? globalGapsMs).length)) {
           break;
         }
+        // oxlint-disable-next-line no-await-in-loop -- Read a parent list only when the list before it is thin.
         priorGapsMs.push(await state.getList<number>(segmentGapsKey(parent)));
       }
-      const decision = decideWarmup({
+      const returns = {
         conversationGapsMs: await state.getList<number>(
           conversationGapsKey(conversationId, decisionSegment(warm)),
         ),
@@ -755,12 +720,79 @@ export async function runCacheWarmup(
           ? { timerDueIdleMs: warm.timerDueIdleMs }
           : undefined),
         idleMs: Date.now() - idle.sinceMs,
+        idleHorizonMs: idleHorizonMs(warm.waitingOn),
         cacheExpiryIdleMs: message.cacheExpiresAtMs - idle.sinceMs,
         cacheTtlMs: warm.cacheTtlMs,
         prefixTokens: warm.prefixTokens,
         cacheReadPrice: model.cost.cacheRead,
         cacheWritePrice: model.cost.cacheWrite,
+      };
+
+      // Before the skips, so a late warmup still leaves a small prefix for
+      // the return. When no summary is ready, warm as before; the next
+      // warmup checks again.
+      const idleCompaction = await compactOnIdle({
+        conversationId,
+        modelId: warm.modelId,
+        prefixTokens: warm.prefixTokens,
+        ...(warm.requestOverheadTokens !== undefined
+          ? { requestOverheadTokens: warm.requestOverheadTokens }
+          : undefined),
+        choose: (compactedTokens) =>
+          chooseIdleCompaction({
+            ...returns,
+            compactedTokens,
+            canWarm:
+              !warm.snapshotSkipReason && !late && !breaker && !promptChanged,
+            prefixChanged: promptChanged,
+          }),
       });
+      if (idleCompaction) {
+        attributes["app.cache_warming.idle_compaction"] =
+          idleCompaction.outcome;
+        const { costs } = idleCompaction;
+        // Prices are per million tokens.
+        if (costs) {
+          attributes["app.cache_warming.compact_cost_micro_usd"] =
+            usdToMicroUsd(costs.compact / 1_000_000);
+          attributes["app.cache_warming.stop_cost_micro_usd"] = usdToMicroUsd(
+            costs.stop / 1_000_000,
+          );
+          if (Number.isFinite(costs.warm)) {
+            attributes["app.cache_warming.warm_cost_micro_usd"] = usdToMicroUsd(
+              costs.warm / 1_000_000,
+            );
+          }
+        }
+      }
+      if (idleCompaction?.outcome === "applied") {
+        await skip("compacted_on_idle");
+        return;
+      }
+      if (idleCompaction?.outcome === "stopped") {
+        await skip("idle_compaction_stopped");
+        return;
+      }
+      // No snapshot to warm, so the cache expires after this slot, and the
+      // idle period stops after its one choice.
+      if (warm.snapshotSkipReason) {
+        await skip(warm.snapshotSkipReason);
+        return;
+      }
+      if (late) {
+        await skip("cache_expired");
+        return;
+      }
+      if (breaker) {
+        await skip("breaker_open");
+        return;
+      }
+      if (promptChanged) {
+        await skip("prompt_changed");
+        return;
+      }
+
+      const decision = decideWarmup(returns);
       attributes["app.cache_warming.return_probability"] =
         decision.returnProbability;
       attributes["app.cache_warming.returns_per_warmup"] =
@@ -768,7 +800,8 @@ export async function runCacheWarmup(
       attributes["app.cache_warming.threshold"] = decision.threshold;
       attributes["app.cache_warming.parent_prior"] = decision.parentPrior;
       attributes["app.cache_warming.timer_floor"] = decision.reason === "timer";
-      if (!decision.warm) {
+      // A deferred compaction warms now, so that a later slot can compact.
+      if (!decision.warm && idleCompaction?.outcome !== "deferred") {
         await skip(decision.reason);
         return;
       }
@@ -800,6 +833,7 @@ export async function runCacheWarmup(
         throw error;
       });
       Object.assign(attributes, warmup.attributes);
+      await recordWarmupCost(warm.modelId, warmup.costUsd);
       if (!warmup.refreshed) {
         // Stop this idle period. The miss already counts for the breaker.
         logWarn("cache_warming.warmup.failed", attributes);
@@ -813,7 +847,7 @@ export async function runCacheWarmup(
       await state.set(
         warmupsKey(conversationId, generation),
         message.cycle,
-        IDLE_HORIZON_MS,
+        idleHorizonMs(warm.waitingOn),
       );
       // A reply during the warmup ended the idle period and deleted its
       // snapshot. Then the next warmup would do nothing.

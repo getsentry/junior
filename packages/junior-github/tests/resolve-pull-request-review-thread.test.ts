@@ -1,3 +1,4 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it, vi } from "vitest";
 import { createGitHubResolvePullRequestReviewThreadTool } from "../src/tools/resolve-pull-request-review-thread";
 const BOT_EMAIL = "123+junior[bot]@users.noreply.github.com";
@@ -22,7 +23,10 @@ function toolContext(responses: Response[]) {
   };
   return {
     fetch,
-    tool: createGitHubResolvePullRequestReviewThreadTool(ctx, BOT_EMAIL),
+    tool: bindPluginTool(
+      createGitHubResolvePullRequestReviewThreadTool(BOT_EMAIL),
+      ctx,
+    ),
   };
 }
 
@@ -109,7 +113,7 @@ describe("resolvePullRequestReviewThread", () => {
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message:
-        "This bot can only resolve review threads on pull requests it authored.",
+        "This bot can only resolve review threads on pull requests it authored. Leave this thread for a person to resolve.",
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -133,7 +137,8 @@ describe("resolvePullRequestReviewThread", () => {
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "GitHub review thread was not found.",
+      message:
+        "GitHub review thread was not found. Set thread_id to the node id of a review thread on a pull request in repo.",
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });
@@ -155,7 +160,8 @@ describe("resolvePullRequestReviewThread", () => {
       ),
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
-      message: "GitHub review thread was not found.",
+      message:
+        "GitHub review thread was not found. Set thread_id to the node id of a review thread on a pull request in repo.",
     });
     expect(fetch).toHaveBeenCalledTimes(1);
   });

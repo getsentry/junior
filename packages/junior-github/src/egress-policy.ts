@@ -16,6 +16,7 @@ import {
   type PluginGraphqlOperation,
   type PluginGraphqlRequest,
 } from "@sentry/junior-plugin-api";
+import * as z from "zod";
 import { assertGitHubPullRequestApprovalDenied } from "./pull-request-review-policy.js";
 import { assertGitHubPushAllowed } from "./receive-pack-policy.js";
 import type { GitHubInstallationEnv } from "./webhooks/installation-requests.js";
@@ -24,8 +25,8 @@ import {
   GITHUB_GRAPHQL_RESPONSE_BODY_LIMIT_BYTES,
   HTTP_READ_METHODS,
   USER_WRITE_REQUIREMENTS,
+  githubMessageSchema,
   githubRepositoryFromUrl,
-  isRecord,
   type GitHubGrant,
   type GitHubGrantName,
   type GitHubRepository,
@@ -113,6 +114,12 @@ function githubGraphqlAccess(
   return githubGraphqlOperation(graphql)?.type === "query" ? "read" : "write";
 }
 
+const githubGraphqlErrorsSchema = z.object({ errors: z.array(z.unknown()) });
+const githubGraphqlErrorSchema = z.object({
+  message: z.string(),
+  type: z.unknown().optional(),
+});
+
 function githubGraphqlPermissionDeniedMessage(
   bodyText: string,
 ): string | undefined {
@@ -122,16 +129,18 @@ function githubGraphqlPermissionDeniedMessage(
   } catch {
     return undefined;
   }
-  if (!isRecord(parsed) || !Array.isArray(parsed.errors)) {
+  const body = githubGraphqlErrorsSchema.safeParse(parsed);
+  if (!body.success) {
     return undefined;
   }
-  for (const error of parsed.errors) {
-    if (!isRecord(error) || typeof error.message !== "string") {
+  for (const entry of body.data.errors) {
+    const error = githubGraphqlErrorSchema.safeParse(entry);
+    if (!error.success) {
       continue;
     }
-    const message = error.message;
+    const message = error.data.message;
     if (
-      error.type === "NOT_FOUND" &&
+      error.data.type === "NOT_FOUND" &&
       /\bCould not resolve to a Repository with the name\b/.test(message)
     ) {
       return `GitHub GraphQL could not access the repository: ${message}`;
@@ -182,10 +191,8 @@ function githubErrorMessage(bodyText: string | undefined): string | undefined {
     return undefined;
   }
   try {
-    const parsed: unknown = JSON.parse(bodyText);
-    return isRecord(parsed) && typeof parsed.message === "string"
-      ? parsed.message.trim()
-      : undefined;
+    const parsed = githubMessageSchema.safeParse(JSON.parse(bodyText));
+    return parsed.success ? parsed.data.message.trim() : undefined;
   } catch {
     return undefined;
   }

@@ -3,6 +3,16 @@ import * as z from "zod";
 const text = z.string().trim().min(1).max(160);
 const count = z.number().int().nonnegative();
 
+/** A code change's size as its provider counts it. Unknown parts stay unset. */
+export const codeChangeSizeSchema = z.strictObject({
+  changedFiles: count.optional(),
+  additions: count.optional(),
+  deletions: count.optional(),
+});
+export type CodeChangeSize = z.output<typeof codeChangeSizeSchema>;
+
+const duration = z.number().finite().nonnegative();
+
 // A Junior image path. Browsers never load a third-party image URL.
 const imagePath = z
   .string()
@@ -38,7 +48,9 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     checks: z
       .strictObject({ passed: count, failed: count, pending: count })
       .optional(),
+    /** False while an open change conflicts with its target branch. */
     mergeable: z.boolean().optional(),
+    // The same counts as `codeChangeSizeSchema`.
     changedFiles: count.optional(),
     additions: count.optional(),
     deletions: count.optional(),
@@ -117,6 +129,141 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     media: z.enum(["video", "image"]).optional(),
     thumbnailUrl: imagePath.optional(),
   }),
+  // Charts: up to five series over one time range, drawn the way the
+  // source page draws them. Points are oldest first and evenly spaced. A
+  // card shows the shape and the series names, not exact values.
+  z.strictObject({
+    type: z.literal("chart"),
+    summary: summary.optional(),
+    display: z.enum(["line", "bar", "area"]),
+    // What the points measure, such as `p95(span.duration)`.
+    yAxis: text,
+    // The time range, such as "Last 24 hours".
+    range: text,
+    series: z
+      .array(
+        z.strictObject({
+          label: text,
+          points: z.array(z.number().finite()).min(2).max(120),
+        }),
+      )
+      .min(1)
+      .max(5),
+  }),
+  // Events: one occurrence, such as an error. Never copy its data, tags,
+  // or user. Each surface formats `occurredAt` for its reader.
+  z.strictObject({
+    type: z.literal("event"),
+    summary: summary.optional(),
+    level: text.optional(),
+    project: text.optional(),
+    release: text.optional(),
+    environment: text.optional(),
+    occurredAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Releases: health and rollout totals. Each surface formats the times
+  // for its reader. Projects are the ones Sentry lists for the viewer.
+  z.strictObject({
+    type: z.literal("release"),
+    summary: summary.optional(),
+    version: text,
+    projects: z.array(text).max(5),
+    newIssues: count.optional(),
+    // A percentage, such as 99.42.
+    crashFreeSessions: z.number().finite().min(0).max(100).optional(),
+    deployCount: count.optional(),
+    lastDeploy: z
+      .strictObject({
+        environment: text,
+        finishedAt: z.iso.datetime({ offset: true }).optional(),
+      })
+      .optional(),
+    releasedAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Monitors: something that checks on a schedule, such as an alert on a
+  // metric, a cron job, or an uptime check. `state` is the shared state
+  // that sets the tone. The annotation status names it the provider's way.
+  z.strictObject({
+    type: z.literal("monitor"),
+    summary: summary.optional(),
+    kind: z.enum(["metric", "cron", "uptime"]),
+    state: z.enum(["ok", "failing", "pending", "paused"]),
+    project: text.optional(),
+    environment: text.optional(),
+    detail: text.optional(),
+    lastCheckedAt: z.iso.datetime({ offset: true }).optional(),
+    trend: trend.optional(),
+  }),
+  // Alerts: a rule that notifies people when something happens, such as a
+  // new issue. `trigger` says when and on what, in plain words. `notifies`
+  // names each channel and its target, never an email address.
+  z.strictObject({
+    type: z.literal("alert"),
+    summary: summary.optional(),
+    enabled: z.boolean(),
+    projects: z.array(text).max(5),
+    trigger: text.optional(),
+    notifies: z.array(text).max(5),
+    lastTriggeredAt: z.iso.datetime({ offset: true }).optional(),
+  }),
+  // Traces: the root span, totals, and the first top-level spans, which
+  // the card draws as a small waterfall. Times are milliseconds from the
+  // trace start.
+  z.strictObject({
+    type: z.literal("trace"),
+    summary: summary.optional(),
+    rootOp: text.optional(),
+    rootName: text.optional(),
+    durationMs: duration,
+    spanCount: count,
+    errorCount: count,
+    performanceIssueCount: count,
+    projects: z.array(text).max(5),
+    spans: z
+      .array(
+        z.strictObject({
+          op: text.optional(),
+          name: text,
+          startMs: duration,
+          durationMs: duration,
+          // The span has an error or a performance issue.
+          issue: z.boolean().optional(),
+        }),
+      )
+      .max(12),
+  }),
+  // Dashboards: the saved filters, the first widgets, and small charts of
+  // a few of them. Projects are the ones Sentry lists for the viewer, or a
+  // name such as "All projects". A chart shows its widget's shape, the way
+  // a chart card does.
+  z.strictObject({
+    type: z.literal("dashboard"),
+    summary: summary.optional(),
+    widgetCount: count,
+    projects: z.array(text).max(5),
+    environments: z.array(text).max(5),
+    // The time range, such as "Last 24 hours".
+    range: text,
+    // The display is a name, such as "Line chart" or "Table".
+    widgets: z.array(z.strictObject({ title: text, display: text })).max(8),
+    charts: z
+      .array(
+        z.strictObject({
+          title: text,
+          display: z.enum(["line", "bar", "area"]),
+          series: z
+            .array(
+              z.strictObject({
+                label: text,
+                points: z.array(z.number().finite()).min(2).max(60),
+              }),
+            )
+            .min(1)
+            .max(3),
+        }),
+      )
+      .max(3),
+  }),
   // People: only what the dashboard People pages already show.
   z.strictObject({
     type: z.literal("person"),
@@ -161,105 +308,194 @@ export function objectSummary(text: string): string | undefined {
   return `${cut}…`;
 }
 
+function plural(value: number, noun: string): string {
+  return `${value.toLocaleString("en-US")} ${noun}${value === 1 ? "" : "s"}`;
+}
+
+/** Format a span or trace duration, such as "850 ms" or "2.4 s". */
+export function formatDuration(ms: number): string {
+  if (ms < 1000) return `${Math.round(ms)} ms`;
+  if (ms < 60_000) return `${Number((ms / 1000).toPrecision(3))} s`;
+  return `${Number((ms / 60_000).toPrecision(3))} min`;
+}
+
 type ObjectField = { href?: string; key: string; label: string; value: string };
+
+const MONITOR_KINDS = {
+  metric: "Metric alert",
+  cron: "Cron job",
+  uptime: "Uptime check",
+} as const;
+// What `detail` holds for each kind of monitor.
+const MONITOR_DETAILS = {
+  metric: "Alerts on",
+  cron: "Schedule",
+  uptime: "Checks",
+} as const;
+
+// One card attribute: key, label, value, and an optional link. An empty
+// value is left out.
+type FactField = [
+  key: string,
+  label: string,
+  value: string | number | undefined,
+  href?: string | undefined,
+];
+type FactsOf<T extends ObjectFacts["type"]> = Extract<ObjectFacts, { type: T }>;
+type FactFieldReaders = {
+  [T in ObjectFacts["type"]]: (facts: FactsOf<T>) => FactField[];
+};
+
+function list(values: string[] | undefined): string | undefined {
+  return values?.length
+    ? `${values.join(", ")}${values.length === 5 ? " (up to 5 shown)" : ""}`
+    : undefined;
+}
+
+function dateTime(value: string | undefined): string | undefined {
+  return (
+    value &&
+    new Date(value).toLocaleString(undefined, {
+      dateStyle: "medium",
+      timeStyle: "short",
+    })
+  );
+}
+
+// The card attributes of each facts type, in priority order.
+const FACT_FIELDS = {
+  // Keep cards minimal. Review, checks, and conflicts can become stale.
+  code_change: (facts) => [["sourceBranch", "Branch", facts.sourceBranch]],
+  task: (facts) => [
+    [
+      "assignees",
+      "Assignees",
+      facts.assignees?.length === 0 ? "Unassigned" : list(facts.assignees),
+    ],
+    ["priority", "Priority", facts.priority],
+    ["project", "Project", facts.project],
+    ["cycle", "Cycle", facts.cycle],
+    ["dueDate", "Due", facts.dueDate],
+    ["labels", "Labels", list(facts.labels)],
+  ],
+  deployment: (facts) => [
+    ["environment", "Environment", facts.environment],
+    ["project", "Project", facts.project],
+    ["revision", "Revision", facts.revision],
+    ["branch", "Branch", facts.branch],
+  ],
+  calendar_event: (facts) => [
+    ["when", "When", facts.when],
+    ["attendees", "Attendees", list(facts.attendees)],
+  ],
+  conversation: (facts) => [
+    ["participants", "Participants", list(facts.participants)],
+    ["lastActivityAt", "Last activity", dateTime(facts.lastActivityAt)],
+  ],
+  document: (facts) => [
+    ["owner", "Owner", facts.owner],
+    ["modifiedAt", "Modified", dateTime(facts.modifiedAt)],
+  ],
+  message: (facts) => [
+    ["channel", "Channel", facts.channel],
+    ["author", "Author", facts.author],
+    ["sentAt", "Sent", dateTime(facts.sentAt)],
+  ],
+  web_page: (facts) => [
+    ["siteName", "Site", facts.siteName],
+    ["author", "Author", facts.author],
+  ],
+  chart: (facts) => [["range", "Range", facts.range]],
+  event: (facts) => [
+    ["level", "Level", facts.level],
+    ["project", "Project", facts.project],
+    ["release", "Release", facts.release],
+    ["environment", "Environment", facts.environment],
+  ],
+  release: (facts) => [
+    ["projects", "Projects", list(facts.projects)],
+    ["newIssues", "New issues", facts.newIssues?.toLocaleString("en-US")],
+    [
+      "crashFreeSessions",
+      "Crash-free sessions",
+      facts.crashFreeSessions === undefined
+        ? undefined
+        : `${Number(facts.crashFreeSessions.toFixed(2))}%`,
+    ],
+    [
+      "deploys",
+      "Deploys",
+      facts.deployCount === undefined
+        ? undefined
+        : facts.lastDeploy
+          ? `${facts.deployCount.toLocaleString("en-US")}, last to ${facts.lastDeploy.environment}`
+          : facts.deployCount.toLocaleString("en-US"),
+    ],
+  ],
+  monitor: (facts) => [
+    ["kind", "Kind", MONITOR_KINDS[facts.kind]],
+    ["project", "Project", facts.project],
+    ["environment", "Environment", facts.environment],
+    ["detail", MONITOR_DETAILS[facts.kind], facts.detail],
+  ],
+  alert: (facts) => [
+    [
+      "projects",
+      facts.projects.length === 1 ? "Project" : "Projects",
+      list(facts.projects),
+    ],
+    ["trigger", "When", facts.trigger],
+    ["notifies", "Notifies", list(facts.notifies)],
+    ["lastTriggeredAt", "Last triggered", dateTime(facts.lastTriggeredAt)],
+  ],
+  trace: (facts) => [
+    ["duration", "Duration", formatDuration(facts.durationMs)],
+    ["spans", "Spans", facts.spanCount.toLocaleString("en-US")],
+    [
+      "issues",
+      "Issues",
+      `${plural(facts.errorCount, "error")}, ${plural(facts.performanceIssueCount, "performance issue")}`,
+    ],
+    ["projects", "Projects", list(facts.projects)],
+  ],
+  dashboard: (facts) => [
+    ["widgets", "Widgets", facts.widgetCount.toLocaleString("en-US")],
+    ["projects", "Projects", list(facts.projects)],
+    ["environments", "Environments", list(facts.environments)],
+    ["range", "Time range", facts.range],
+  ],
+  person: (facts) => [
+    ["email", "Email", facts.email],
+    ["slackHandle", "Slack", facts.slackHandle && `@${facts.slackHandle}`],
+    [
+      "githubHandle",
+      "GitHub",
+      facts.githubHandle && `@${facts.githubHandle}`,
+      facts.githubHandle && `https://github.com/${facts.githubHandle}`,
+    ],
+  ],
+} satisfies FactFieldReaders;
+
+// The reader for `facts.type` takes facts of that type.
+function factFields<T extends ObjectFacts["type"]>(
+  facts: FactsOf<T>,
+): FactField[] {
+  const read: FactFieldReaders[T] = FACT_FIELDS[facts.type];
+  return read(facts);
+}
 
 /** Show at most four card attributes, in priority order, on every surface. */
 export function objectFactFields(
   facts: ObjectFacts | undefined,
 ): ObjectField[] {
   if (!facts) return [];
-  const fields: ObjectField[] = [];
-  const list = (values: string[] | undefined) =>
-    values?.length
-      ? `${values.join(", ")}${values.length === 5 ? " (up to 5 shown)" : ""}`
-      : undefined;
-  function add(
-    key: string,
-    label: string,
-    value: string | number | undefined,
-    href?: string,
-  ) {
-    if (value !== undefined && value !== "")
-      fields.push({ key, label, value: String(value), ...(href && { href }) });
-  }
-  switch (facts.type) {
-    case "code_change":
-      // Keep cards minimal. Review, checks, and conflicts can become stale.
-      add("sourceBranch", "Branch", facts.sourceBranch);
-      break;
-    case "task":
-      add(
-        "assignees",
-        "Assignees",
-        facts.assignees?.length === 0 ? "Unassigned" : list(facts.assignees),
-      );
-      add("priority", "Priority", facts.priority);
-      add("project", "Project", facts.project);
-      add("cycle", "Cycle", facts.cycle);
-      add("dueDate", "Due", facts.dueDate);
-      add("labels", "Labels", list(facts.labels));
-      break;
-    case "deployment":
-      add("environment", "Environment", facts.environment);
-      add("project", "Project", facts.project);
-      add("revision", "Revision", facts.revision);
-      add("branch", "Branch", facts.branch);
-      break;
-    case "calendar_event":
-      add("when", "When", facts.when);
-      add("attendees", "Attendees", list(facts.attendees));
-      break;
-    case "conversation":
-      add("participants", "Participants", list(facts.participants));
-      add(
-        "lastActivityAt",
-        "Last activity",
-        facts.lastActivityAt &&
-          new Date(facts.lastActivityAt).toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }),
-      );
-      break;
-    case "document":
-      add("owner", "Owner", facts.owner);
-      add(
-        "modifiedAt",
-        "Modified",
-        facts.modifiedAt &&
-          new Date(facts.modifiedAt).toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }),
-      );
-      break;
-    case "message":
-      add("channel", "Channel", facts.channel);
-      add("author", "Author", facts.author);
-      add(
-        "sentAt",
-        "Sent",
-        facts.sentAt &&
-          new Date(facts.sentAt).toLocaleString(undefined, {
-            dateStyle: "medium",
-            timeStyle: "short",
-          }),
-      );
-      break;
-    case "web_page":
-      add("siteName", "Site", facts.siteName);
-      add("author", "Author", facts.author);
-      break;
-    case "person":
-      add("email", "Email", facts.email);
-      add("slackHandle", "Slack", facts.slackHandle && `@${facts.slackHandle}`);
-      add(
-        "githubHandle",
-        "GitHub",
-        facts.githubHandle && `@${facts.githubHandle}`,
-        facts.githubHandle && `https://github.com/${facts.githubHandle}`,
-      );
-      break;
-  }
-  return fields.slice(0, 4);
+  return factFields(facts)
+    .filter(([, , value]) => value !== undefined && value !== "")
+    .map(([key, label, value, href]) => ({
+      key,
+      label,
+      value: String(value),
+      ...(href && { href }),
+    }))
+    .slice(0, 4);
 }

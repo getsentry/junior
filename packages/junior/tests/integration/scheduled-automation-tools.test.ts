@@ -11,7 +11,7 @@ import {
   automationToolContext,
   type AutomationToolContext,
 } from "@/chat/automations/tool-access";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 import {
   claimDueScheduledRun,
   markScheduledRunFailed,
@@ -25,10 +25,10 @@ import {
 import type { ScheduledAutomation } from "@/chat/scheduled-automations/types";
 import * as dbModule from "@/chat/db";
 import { getPluginTools, setPlugins } from "@/chat/plugins/agent-hooks";
-import { createTools } from "@/chat/tools";
+import { createTools } from "@/chat/tool-support/create-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import type { ToolExecuteOptions } from "@/chat/tools/definition";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import type { ToolExecuteOptions } from "@/chat/tool-support/definition";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { readUserTimezone } from "@/chat/identities/sql";
@@ -47,6 +47,7 @@ import {
   queueSlackApiResponse,
 } from "../msw/handlers/slack-api";
 import {
+  authTestOk,
   conversationsInfoOk,
   usersInfoOk,
 } from "../fixtures/slack/factories/api";
@@ -56,7 +57,7 @@ const rootTurnTools = turnBehavior({
   personInput: true,
 }).tools;
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 const TEST_TEAM_ID = `TSCHEDULE${Date.now()}`;
@@ -285,7 +286,7 @@ describe("Scheduled automation tools", () => {
 
   afterEach(async () => {
     vi.useRealTimers();
-    delete process.env.JUNIOR_TIMEZONE;
+    delete process.env["JUNIOR_TIMEZONE"];
     await cleanupSchedulerSqlStore();
     vi.restoreAllMocks();
     await disconnectStateAdapter();
@@ -311,7 +312,6 @@ describe("Scheduled automation tools", () => {
     expect(schema.required).toContain("trigger");
     expect(schema.properties).not.toHaveProperty("nextRunAt");
     expect(schema.properties).not.toHaveProperty("schedule_kind");
-    expect(schema.properties).not.toHaveProperty("destination");
     expect(
       (updateTool.inputSchema as { properties?: Record<string, unknown> })
         .properties,
@@ -1016,7 +1016,7 @@ describe("Scheduled automation tools", () => {
       executeTool(tool, {
         automation_id: created.automation.id,
         nextRunAt: "2026-06-01T16:00:00.000Z",
-      } as Parameters<NonNullable<typeof tool.execute>>[0]),
+      }),
     ).rejects.toThrow("Unrecognized key");
     await expect(
       readScheduledAutomation(created.automation.id),
@@ -1043,7 +1043,7 @@ describe("Scheduled automation tools", () => {
             time: "09:00",
           },
         },
-      } as Parameters<NonNullable<typeof updateTool.execute>>[0]),
+      }),
     ).rejects.toThrow("Invalid tool arguments: trigger.schedule");
     await expect(
       readScheduledAutomation(created.automation.id),
@@ -1156,8 +1156,8 @@ describe("Scheduled automation tools", () => {
         automation_id: automationId,
       }),
     ).rejects.toThrow("Only the creator can resume it or run it now.");
-    // A reader can move it to a public channel that they name. Junior joins
-    // the channel, and the move drops the creator's credentials.
+    // A reader can move it to a public channel that they name and that
+    // Junior is in. The move drops the creator's credentials.
     queueSlackApiResponse("conversations.info", {
       body: conversationsInfoOk({ channelId: "CPRIVATE", isPrivate: true }),
     });
@@ -1175,6 +1175,15 @@ describe("Scheduled automation tools", () => {
         automation_id: automationId,
         destination: "<#CPUBLIC|security-alerts>",
       }),
+    ).rejects.toThrow("You are not in that channel.");
+    queueSlackApiResponse("conversations.info", {
+      body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: true }),
+    });
+    await expect(
+      executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
+        automation_id: automationId,
+        destination: "<#CPUBLIC|security-alerts>",
+      }),
     ).resolves.toMatchObject({
       automation: {
         credential_mode: "system",
@@ -1182,9 +1191,7 @@ describe("Scheduled automation tools", () => {
         conversation_access: { audience: "channel", visibility: "public" },
       },
     });
-    expect(getCapturedSlackApiCalls("conversations.join")).toMatchObject([
-      { params: { channel: "CPUBLIC" } },
-    ]);
+    expect(getCapturedSlackApiCalls("conversations.join")).toEqual([]);
     await expect(
       executeTool(createUpdateAutomationTool(readerElsewhere, NO_EVENTS), {
         automation_id: automationId,
@@ -1694,7 +1701,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("uses JUNIOR_TIMEZONE when the creator has no timezone", async () => {
-    process.env.JUNIOR_TIMEZONE = "America/New_York";
+    process.env["JUNIOR_TIMEZONE"] = "America/New_York";
     queueSlackTimezone("UNOZONE", "");
 
     const created = await createTask(
@@ -1720,7 +1727,7 @@ describe("Scheduled automation tools", () => {
   });
 
   it("rejects invalid default timezones", async () => {
-    process.env.JUNIOR_TIMEZONE = "not/a-zone";
+    process.env["JUNIOR_TIMEZONE"] = "not/a-zone";
     queueSlackTimezone("UBADDEFAULT", "");
 
     await expect(
@@ -2316,7 +2323,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       // Create a task through the real wired tool.
       const result = await executeRegisteredTool<{
         automation: { id: string };
-      }>(tools.createAutomation!, {
+      }>(tools["createAutomation"]!, {
         instruction: "Wiring test: post a weekly digest.",
         trigger: {
           type: "schedule",
@@ -2365,9 +2372,12 @@ describe("Scheduled automation tool wiring via createTools", () => {
           slackIdentity,
         ],
       };
-      const webTurn = (conversationId: string) => ({
+      const webTurn = (
+        conversationId: string,
+        visibility: "public" | "private" = "public",
+      ) => ({
         conversationId,
-        source: createWebSource(conversationId, "public"),
+        source: createWebSource(conversationId, visibility),
         actor: {
           platform: "web" as const,
           userId: "alice@example.com",
@@ -2387,22 +2397,30 @@ describe("Scheduled automation tool wiring via createTools", () => {
       });
       // A dashboard Turn in a Conversation with a Slack Location delivers to
       // that channel. The creator is the person's linked Slack account there.
-      const located = createTools([], {}, {
-        turnTools: rootTurnTools,
-        ...webTurn("slack:DDM:1700000000.100000"),
-        location: {
-          id: `location:${TEAM_ID}:C123`,
-          provider: "slack",
-          teamId: TEAM_ID,
-          channelId: "C123",
-          threadTs: "1700000000.100000",
+      const located = createTools(
+        [],
+        {},
+        {
+          turnTools: rootTurnTools,
+          ...webTurn("slack:DDM:1700000000.100000"),
+          location: {
+            id: `location:${TEAM_ID}:C123`,
+            provider: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+            threadTs: "1700000000.100000",
+          },
+          destination: {
+            platform: "slack",
+            teamId: TEAM_ID,
+            channelId: "C123",
+          },
         },
-        destination: { platform: "slack", teamId: TEAM_ID, channelId: "C123" },
-      } as ToolRuntimeContext);
-      expect(located.createAutomation?.disabledReason).toBeUndefined();
+      );
+      expect(located["createAutomation"]?.disabledReason).toBeUndefined();
       const created = await executeRegisteredTool<{
         automation: { id: string; is_creator: boolean };
-      }>(located.createAutomation!, {
+      }>(located["createAutomation"]!, {
         instruction: "Post the weekly digest.",
         trigger: {
           type: "schedule",
@@ -2424,23 +2442,26 @@ describe("Scheduled automation tool wiring via createTools", () => {
         destination: { teamId: TEAM_ID, channelId: "C123" },
       });
 
-      // A dashboard Conversation with no Location can find and manage it, but
-      // cannot create one.
+      // A dashboard Conversation with no Location can find and manage it.
       const conversationId = "test:schedule-cards";
-      const unlocated = createTools([], {}, {
-        turnTools: rootTurnTools,
-        ...webTurn(conversationId),
-        destination: { platform: "local", conversationId },
-      } as ToolRuntimeContext);
+      const unlocated = createTools(
+        [],
+        {},
+        {
+          turnTools: rootTurnTools,
+          ...webTurn(conversationId, "private"),
+          destination: { platform: "local", conversationId },
+        },
+      );
       await expect(
-        executeRegisteredTool(unlocated.searchAutomations!, {
+        executeRegisteredTool(unlocated["searchAutomations"]!, {
           scope: "mine",
         }),
       ).resolves.toMatchObject({
         automations: [{ id: created.automation.id, is_creator: true }],
       });
       await expect(
-        executeRegisteredTool(unlocated.updateAutomation!, {
+        executeRegisteredTool(unlocated["updateAutomation"]!, {
           automation_id: created.automation.id,
           title: "Weekly digest",
         }),
@@ -2448,7 +2469,18 @@ describe("Scheduled automation tool wiring via createTools", () => {
         automation: { title: "Weekly digest", credential_mode: "system" },
       });
       await expect(
-        executeRegisteredTool(unlocated.createAutomation!, {
+        executeRegisteredTool(unlocated["updateAutomation"]!, {
+          automation_id: created.automation.id,
+          destination: "<#CPUBLIC>",
+        }),
+      ).rejects.toThrow("Move an automation from a Slack channel or DM");
+
+      // A new one never delivers to the web Conversation. It needs a public
+      // Slack channel in the person's workspace, not a DM or private channel.
+      const createFromWeb = (destination?: string) =>
+        executeRegisteredTool<{
+          automation: { id: string; is_creator: boolean };
+        }>(unlocated["createAutomation"]!, {
           instruction: "Post another digest.",
           trigger: {
             type: "schedule",
@@ -2457,10 +2489,48 @@ describe("Scheduled automation tool wiring via createTools", () => {
               timing: { type: "after", value: 1, unit: "hour" },
             },
           },
-        }),
-      ).rejects.toThrow(
+          outcomes: [
+            { action: "send_message", destination: "current_conversation" },
+          ],
+          ...(destination ? { destination } : undefined),
+        });
+      await expect(createFromWeb()).rejects.toThrow(
         "This Conversation has no channel or DM that an Automation can deliver to.",
       );
+      // Web Turns bind no workspace token, so the channel must be in the
+      // workspace of Junior's bot token.
+      queueSlackApiResponse("auth.test", {
+        body: authTestOk({ teamId: TEAM_ID }),
+      });
+      await expect(createFromWeb("dm")).rejects.toThrow(
+        "Unknown `destination` `dm`.",
+      );
+      queueSlackApiResponse("conversations.info", {
+        body: conversationsInfoOk({ channelId: "CPRIVATE", isPrivate: true }),
+      });
+      await expect(createFromWeb("<#CPRIVATE>")).rejects.toThrow(
+        "Only a public channel can be named as a destination.",
+      );
+      queueSlackApiResponse("conversations.info", {
+        body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: false }),
+      });
+      await expect(createFromWeb("<#CPUBLIC>")).rejects.toThrow(
+        "You are not in that channel.",
+      );
+      queueSlackApiResponse("conversations.info", {
+        body: conversationsInfoOk({ channelId: "CPUBLIC", isMember: true }),
+      });
+      const shared = await createFromWeb("<#CPUBLIC>");
+      expect(shared.automation.is_creator).toBe(true);
+      expect(getCapturedSlackApiCalls("conversations.join")).toEqual([]);
+      await expect(
+        readStoredTask(fixture.sql.db(), shared.automation.id),
+      ).resolves.toMatchObject({
+        creatorIdentityId: slackIdentity.id,
+        destination: { teamId: TEAM_ID, channelId: "CPUBLIC" },
+        conversationAccess: { audience: "channel", visibility: "public" },
+        outcomes: [{ destination: { channelId: "CPUBLIC" } }],
+      });
     } finally {
       await fixture.close();
     }
@@ -2494,7 +2564,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
             channelId: "C123",
             threadTs: "1700000000.100000",
           },
-          source: { kind: "agent_invocation" },
+          source: { kind: "parent_message" },
           destination: {
             platform: "slack",
             teamId: TEAM_ID,
@@ -2512,7 +2582,7 @@ describe("Scheduled automation tool wiring via createTools", () => {
       );
 
       await expect(
-        executeRegisteredTool(tools.createAutomation!, {
+        executeRegisteredTool(tools["createAutomation"]!, {
           instruction: "Post a weekly digest.",
           trigger: {
             type: "schedule",
@@ -2527,12 +2597,12 @@ describe("Scheduled automation tool wiring via createTools", () => {
         }),
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(
-        executeRegisteredTool(tools.deleteAutomation!, {
+        executeRegisteredTool(tools["deleteAutomation"]!, {
           automation_id: "sched_missing",
         }),
       ).rejects.toThrow("Automation tools need a Turn that a person started.");
       await expect(
-        executeRegisteredTool(tools.createAutomation!, {
+        executeRegisteredTool(tools["createAutomation"]!, {
           instruction: "Summarize new channel messages.",
           trigger: {
             type: "event",

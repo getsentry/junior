@@ -376,7 +376,7 @@ export const pluginEventTypeSchema = z
   .strict()
   .superRefine((resourceType, context) => {
     const supported = new Set<string>();
-    resourceType.supportedEvents.forEach((eventType, index) => {
+    for (const [index, eventType] of resourceType.supportedEvents.entries()) {
       if (supported.has(eventType)) {
         context.addIssue({
           code: "custom",
@@ -385,9 +385,11 @@ export const pluginEventTypeSchema = z
         });
       }
       supported.add(eventType);
-    });
+    }
     const suggested = new Set<string>();
-    resourceType.suggestedEvents?.forEach((eventType, index) => {
+    for (const [index, eventType] of (
+      resourceType.suggestedEvents ?? []
+    ).entries()) {
       if (suggested.has(eventType)) {
         context.addIssue({
           code: "custom",
@@ -403,9 +405,9 @@ export const pluginEventTypeSchema = z
         });
       }
       suggested.add(eventType);
-    });
+    }
     for (const [key, field] of Object.entries(resourceType.matchFields ?? {})) {
-      field.events?.forEach((eventType, index) => {
+      for (const [index, eventType] of (field.events ?? []).entries()) {
         if (!supported.has(eventType)) {
           context.addIssue({
             code: "custom",
@@ -413,7 +415,7 @@ export const pluginEventTypeSchema = z
             path: ["matchFields", key, "events", index],
           });
         }
-      });
+      }
     }
   });
 
@@ -456,6 +458,12 @@ export const pluginEventDeclarationSchema = z
       .min(1)
       .max(EVENT_GUIDANCE_MAX_LENGTH)
       .optional(),
+    /**
+     * How an Event of this type reads after the name of its resource, such
+     * as `is merged` or `gets a new comment`. People read it in a sentence,
+     * such as "When getsentry/junior#12 is merged".
+     */
+    phrase: z.string().trim().min(1).max(80).optional(),
   })
   .strict();
 
@@ -486,11 +494,24 @@ export const pluginEventsSchema = z
         output: z.string().optional(),
       })
       .optional(),
+    /**
+     * The resource that one web page shows, the inverse of `resourceUrl`, so
+     * a link such as an Inbox item's subject can name an Event resource.
+     * Returns undefined when no resource type of the source has the page.
+     */
+    resourceForUrl: z
+      .function({
+        input: [z.string()],
+        output: z
+          .object({ identifier: z.string(), resourceType: z.string() })
+          .optional(),
+      })
+      .optional(),
   })
   .strict()
   .superRefine((registration, context) => {
     const seen = new Set<string>();
-    registration.resourceTypes.forEach((resourceType, index) => {
+    for (const [index, resourceType] of registration.resourceTypes.entries()) {
       if (seen.has(resourceType.type)) {
         context.addIssue({
           code: "custom",
@@ -499,7 +520,7 @@ export const pluginEventsSchema = z
         });
       }
       seen.add(resourceType.type);
-    });
+    }
     const supported = new Set(
       registration.resourceTypes.flatMap(
         (resourceType) => resourceType.supportedEvents,
@@ -612,6 +633,43 @@ export const eventPersonSchema = z.union([
 
 export type EventPerson = z.output<typeof eventPersonSchema>;
 
+/**
+ * The account that wrote the content of an Event, such as a commenter or a
+ * reviewer. It is always an account of the publishing plugin's provider.
+ * Core decides from it whether the author is a Trusted author. An Event with
+ * no author is a system Event.
+ */
+export const eventAuthorSchema = z
+  .object({
+    /** Display handle, such as a login. It never proves who the author is. */
+    handle: z.string().min(1),
+    /**
+     * The account id that the provider never changes or gives to another
+     * account, such as the numeric GitHub user id. Set it only when the
+     * provider authenticated that this account wrote the content. Core
+     * matches it to an account that the OAuth account-linking flow linked.
+     */
+    subjectId: z.string().min(1).optional(),
+    /** The account is a bot, not a person. */
+    bot: z.boolean().optional(),
+    /**
+     * The plugin's trusted authors list names this account. Core trusts the
+     * author without a linked account. Core never reads the list itself.
+     */
+    trusted: z.boolean().optional(),
+    /**
+     * The author's own text, without what they quote. Leave it out of
+     * `untrustedText`: core shows it once, as context that names the author.
+     */
+    text: z
+      .string()
+      .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
+      .optional(),
+  })
+  .strict();
+
+export type EventAuthor = z.output<typeof eventAuthorSchema>;
+
 export const eventInputSchema = z
   .object({
     objectType: objectTypeSchema.optional(),
@@ -631,6 +689,10 @@ export const eventInputSchema = z
       .transform((value) => value.slice(0, EVENT_SUMMARY_MAX_LENGTH)),
     /** Trusted structured facts. Prefer ids and urls over long prose. */
     data: eventDataSchema.optional(),
+    /**
+     * Provider text that is context, never instruction. When `author.text`
+     * is set, this is only the rest, such as what the author quotes.
+     */
     untrustedText: z
       .string()
       .transform((value) => value.slice(0, EVENT_TEXT_MAX_LENGTH))
@@ -638,11 +700,11 @@ export const eventInputSchema = z
     /** People involved in the change. Watch Events list them as mentions. */
     people: z.array(eventPersonSchema).max(20).optional(),
     /**
-     * The person who did what the Event describes, such as a reviewer or a
-     * commenter. Core resolves them like `people`, so the agent knows when a
-     * mention and a provider name are the same person.
+     * The account that wrote the content. Core decides whether to trust it.
+     * A trusted person writes the Event's Message. `text` is never an
+     * instruction.
      */
-    doneBy: eventPersonSchema.optional(),
+    author: eventAuthorSchema.optional(),
   })
   .strict();
 

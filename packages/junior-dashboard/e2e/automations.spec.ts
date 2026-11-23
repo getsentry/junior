@@ -5,7 +5,7 @@ import { mockAutomationCollection } from "../src/mock-reporting/automation-colle
 import { NOW } from "../src/mock-reporting/fixtures";
 import { withRequestedMailbox } from "./harness";
 import { expect, test } from "./test";
-import { screenshot } from "./screenshot";
+import { desktop, screenshot } from "./screenshot";
 import type { Page } from "@playwright/test";
 
 /** One option in a filter of the Automations filter panel or sheet. */
@@ -62,7 +62,8 @@ test("opens scheduled and event automations in the native Automations view", asy
         lastProgressAt: NOW,
         lastSeenAt: NOW,
         startedAt: NOW,
-        status: "completed",
+        status: "done",
+        turnActive: false,
         surface: "internal",
       }),
     });
@@ -170,9 +171,7 @@ test("opens scheduled and event automations in the native Automations view", asy
     /\/automations\/scheduled-1\?run=scheduled-1-run-1$/,
   );
   const recentDetails = page.getByRole("dialog");
-  await expect(
-    recentDetails.getByText("completed", { exact: true }),
-  ).toBeVisible();
+  await expect(recentDetails.getByText("done", { exact: true })).toBeVisible();
   // Details show the run's Conversation, not only its numbers.
   await expect(
     recentDetails.getByText("Scheduled operation completed successfully."),
@@ -257,9 +256,6 @@ test("opens scheduled and event automations in the native Automations view", asy
       exact: true,
     }),
   ).toBeEnabled();
-  await expect(
-    page.getByText("Automation deleted", { exact: true }),
-  ).toHaveCount(0);
   await confirmation
     .getByRole("button", { name: "Cancel", exact: true })
     .click();
@@ -360,10 +356,10 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     automations: [
       ...automationReport.automations,
       ...Array.from({ length: 30 }, (_, index) => ({
-        ...automationReport.automations[0]!,
+        ...automationReport.automations[0],
         // Enough Destinations that the filter needs its search box.
         destination: {
-          ...automationReport.automations[0]!.destination,
+          ...automationReport.automations[0].destination,
           channelId: `C-extra-${index}`,
           label: `#team-${String(index).padStart(2, "0")}`,
         },
@@ -569,9 +565,6 @@ test("restores shared Automation list and page URLs, recovers failed loads, and 
     `${dashboard.baseURL}/automations?type=scheduled`,
   );
   await expect(
-    page.getByText("Automation deleted", { exact: true }),
-  ).toBeVisible();
-  await expect(
     page.getByRole("heading", { name: "Automations", exact: true }),
   ).toBeVisible();
   await expect(openWeekly).toHaveCount(0);
@@ -717,7 +710,7 @@ test("opens one automation's runs, filters by result, and redirects old history 
   // Up and Down move the selection while details are open. Stepping between
   // runs with a Conversation keeps the open drawer instead of a new one.
   await details.evaluate((element) => {
-    element.dataset.stepped = "";
+    element.dataset["stepped"] = "";
   });
   await page.keyboard.press("ArrowUp");
   await expect(page).toHaveURL(/run=scheduled-1-run-1$/);
@@ -845,9 +838,6 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await expect(
     page.getByText("No runs until resumed", { exact: true }),
   ).toBeVisible();
-  await expect(
-    page.getByText("Automation paused", { exact: true }),
-  ).toBeVisible();
   await screenshot(page, "automation-paused");
   const pauseHelp = page.getByRole("button", {
     name: "About pausing",
@@ -863,9 +853,6 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
     page.getByRole("button", { name: "Pause", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByText("Automation resumed", { exact: true }),
-  ).toBeVisible();
-  await expect(
     page.getByRole("link", { name: "Open last run", exact: true }),
   ).toBeVisible();
   await page.getByRole("link", { name: "Back to automations" }).click();
@@ -873,7 +860,6 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
   await page.route("**/api/automations/event-2/executions", (route) =>
     route.fulfill({
       json: {
-        automation: report.automations.find((item) => item.id === "event-2"),
         executions: [],
         executionDays: [],
         truncated: false,
@@ -900,8 +886,13 @@ test("pauses and resumes from the Automation page, keeps failures visible, and l
     page.getByText("Edit the trigger, or enable its plugin again."),
   ).toBeVisible();
   // The notice owns the fix, so it opens edit mode.
+  const editRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === "/api/automations/event-2/edit",
+  );
   await page.getByRole("link", { name: "Change trigger", exact: true }).click();
   await expect(page).toHaveURL(/\/automations\/event-2\/edit/);
+  await editRead;
 });
 
 test("groups automations by what needs attention on the landing page", async ({
@@ -935,6 +926,9 @@ test("groups automations by what needs attention on the landing page", async ({
   await expect(
     page.getByRole("button", { name: "Expand instruction", exact: true }),
   ).toBeVisible();
+  // The screenshot uses this size. A resize would move the pointer off the
+  // chart and close its tooltip.
+  await page.setViewportSize(desktop);
   await page
     .getByRole("region", { name: "Recent runs" })
     .getByRole("img")

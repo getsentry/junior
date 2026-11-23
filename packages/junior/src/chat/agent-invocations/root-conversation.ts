@@ -10,7 +10,7 @@
  * A message counts as the user only when its stored author Identity is one
  * of the Identities of the person behind the Run's Actor: every Identity of
  * their User, or only the Actor's own Identity when it has no User. So a
- * review desk answer from the person's web Identity counts in a Slack thread.
+ * Inbox answer from the person's web Identity counts in a Slack thread.
  * A message without a stored author Identity does not count. The local CLI is
  * the one exception, because it has no per-person Identity. A Run that an
  * agent started follows its parent agent, so the tasks and messages that the
@@ -18,6 +18,7 @@
  * person's message does. Each other message keeps its real author as a label
  * and is only context. Nothing is copied into the Run.
  */
+import * as z from "zod";
 import type { Actor } from "@/chat/actor";
 import { getConversationEventStore, getConversationStore } from "@/chat/db";
 import type { ConversationEvent } from "@/chat/conversations/history";
@@ -29,9 +30,7 @@ import {
   type RootConversationMessage,
 } from "@/chat/guardian/proposal";
 import { readActorIdentity } from "@/chat/plugins/viewer";
-import { isParentMessageMeta } from "./parent-message";
-import { AGENT_INVOCATION_STATUSES } from "./statuses";
-import { listAgentInvocationsForConversation } from "./store";
+import { isParentMessageAuthor } from "./parent-message";
 
 /**
  * Most root context messages that Guardian reads, newest first. Codex uses
@@ -50,9 +49,10 @@ type MessageData = Extract<
   { type: "message" | "message_updated" }
 >;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
-}
+const messageAuthorSchema = z.object({
+  isBot: z.unknown().optional(),
+  userId: z.string(),
+});
 
 /**
  * Build the Actor that wrote one root message, from the runtime-recorded
@@ -62,9 +62,8 @@ function messageAuthor(
   root: Conversation,
   data: MessageData,
 ): Actor | undefined {
-  const author = isRecord(data.meta?.author) ? data.meta.author : undefined;
-  const userId =
-    typeof author?.userId === "string" ? author.userId.trim() : undefined;
+  const author = messageAuthorSchema.safeParse(data.meta?.["author"]).data;
+  const userId = author?.userId.trim();
   if (!userId || author?.isBot === true) {
     return undefined;
   }
@@ -96,33 +95,12 @@ async function actorIdentityIds(actor: Actor): Promise<Set<string>> {
   return new Set(identities.map((identity) => identity.id));
 }
 
-/**
- * Ids of the agent invocations that a parent agent's spawnAgent or
- * messageAgent call started in this Conversation. Their input, and each
- * parent message that no Agent invocation names, is the instruction of a Run
- * that an agent started.
- */
-async function parentTaskInvocationIds(
-  conversationId: string,
-): Promise<Set<string>> {
-  const invocations = await listAgentInvocationsForConversation(
-    conversationId,
-    AGENT_INVOCATION_STATUSES,
-  );
-  return new Set(
-    invocations.flatMap((invocation) =>
-      invocation.parentToolCallId ? [invocation.invocationId] : [],
-    ),
-  );
-}
-
 /** Label one root message with its real author. */
 function messageLabel(
   root: Conversation,
   data: MessageData,
   actor: Actor | undefined,
   personIdentityIds: ReadonlySet<string>,
-  parentTaskIds: ReadonlySet<string> | undefined,
 ): RootConversationMessage["author"] {
   if (data.role === "assistant") {
     return "assistant";
@@ -130,18 +108,18 @@ function messageLabel(
   if (data.role !== "user") {
     return "system";
   }
-  // A parent message that no Agent invocation names is saved as an Event
-  // input, but it is the parent's task, as on an Agent invocation.
-  if (parentTaskIds && isParentMessageMeta(data.meta)) {
+  // In a Run that an agent started, a parent message is the instruction.
+  if (
+    !actor &&
+    isParentMessageAuthor(
+      messageAuthorSchema.safeParse(data.meta?.["author"]).data,
+    )
+  ) {
     return "user";
   }
   // An Event Turn input, such as a child agent result, is not a person.
-  if (data.meta?.eventType !== undefined) {
+  if (data.meta?.["eventType"] !== undefined) {
     return "event";
-  }
-  const invocationId = data.meta?.agentInvocationId;
-  if (typeof invocationId === "string" && parentTaskIds?.has(invocationId)) {
-    return "user";
   }
   if (data.authorIdentityId && personIdentityIds.has(data.authorIdentityId)) {
     return "user";
@@ -264,9 +242,6 @@ export async function readRootConversation(args: {
   const personIdentityIds = args.actor
     ? await actorIdentityIds(args.actor)
     : new Set<string>();
-  const parentTaskIds = args.actor
-    ? undefined
-    : await parentTaskInvocationIds(root.conversationId);
   const all: Array<RootConversationMessage & { messageId: string }> = [];
   for (const data of byId.values()) {
     const text = normalizeLines(data.text).trim();
@@ -276,13 +251,7 @@ export async function readRootConversation(args: {
       continue;
     }
     all.push({
-      author: messageLabel(
-        root,
-        data,
-        args.actor,
-        personIdentityIds,
-        parentTaskIds,
-      ),
+      author: messageLabel(root, data, args.actor, personIdentityIds),
       messageId: data.messageId,
       text: truncate(text, MAX_ROOT_MESSAGE_CHARS),
     });
@@ -294,13 +263,7 @@ export async function readRootConversation(args: {
     opening && openingText
       ? [
           {
-            author: messageLabel(
-              root,
-              opening,
-              args.actor,
-              personIdentityIds,
-              parentTaskIds,
-            ),
+            author: messageLabel(root, opening, args.actor, personIdentityIds),
             text: truncate(openingText, MAX_ROOT_MESSAGE_CHARS),
           },
         ]

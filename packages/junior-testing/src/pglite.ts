@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { PGlite, type Transaction } from "@electric-sql/pglite";
+import { vector } from "@electric-sql/pglite/vector";
 import { drizzle } from "drizzle-orm/pglite";
 
 type PgliteQueryClient = PGlite | Transaction;
@@ -28,6 +29,8 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
   }
 
   db(): TDatabase {
+    // Each package passes its own Drizzle database type for the same client.
+    // oxlint-disable-next-line anti-slop/no-chained-type-assertions
     return drizzle(this.queryClient() as PGlite, {
       schema: this.schema,
     }) as unknown as TDatabase;
@@ -49,7 +52,7 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
     params: readonly unknown[] = [],
   ): Promise<T[]> {
     const result = await this.queryClient().query<T>(statement, [...params]);
-    return result.rows as T[];
+    return result.rows;
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {
@@ -95,7 +98,10 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
 export async function createLocalPgliteFixture<TDatabase>(
   schema: Record<string, unknown>,
 ): Promise<LocalPgliteFixture<TDatabase>> {
-  const client = await PGlite.create(`memory://junior-sql-${randomUUID()}`);
+  // The Junior schema stores Conversation embeddings in a pgvector column.
+  const client = await PGlite.create(`memory://junior-sql-${randomUUID()}`, {
+    extensions: { vector },
+  });
 
   return new LocalPgliteExecutor<TDatabase>(client, schema);
 }

@@ -10,7 +10,9 @@ it.each([
   { id: "a\n", valid: false },
   { id: "修正", valid: false },
   { id: "a/b+==", valid: false },
-])("validates external reference ID characters: $id", ({ id, valid }) => {
+  { id: "a".repeat(128), valid: true },
+  { id: "a".repeat(129), valid: false },
+])("validates external reference IDs: $id", ({ id, valid }) => {
   const result = slackEntitySchema.safeParse({
     entity_type: "slack#/entities/item",
     external_ref: { id },

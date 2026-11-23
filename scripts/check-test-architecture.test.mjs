@@ -4,6 +4,7 @@ import {
   checkAgentTestArchitecture,
   checkDatabaseTestFixtures,
   checkIntegrationTestArchitecture,
+  DASHBOARD_SPEC_RULES,
   SOURCE_RULES,
 } from "./check-test-architecture.mjs";
 
@@ -243,6 +244,58 @@ test("scopes dashboard E2E rules to dashboard browser specs", () => {
   );
 });
 
+test("rejects page script, synthetic events, selectors, and timing in dashboard E2E specs", () => {
+  assert.deepEqual(
+    checkAgentTestArchitecture(
+      [
+        integrationTest(
+          [
+            "await page.evaluate(() => window.scrollY);",
+            "await row.evaluateHandle((node) => node.parentElement);",
+            'await input.dispatchEvent("paste");',
+            'await page.locator("[data-inbox-row]").click();',
+            "await expect(row).toBeVisible({ timeout: 15_000 });",
+          ].join("\n"),
+          DASHBOARD_E2E_PATH,
+        ),
+      ],
+      {},
+      DASHBOARD_SPEC_RULES,
+    ),
+    [
+      `${DASHBOARD_E2E_PATH}: dashboard E2E specs must not run script in the page; assert what the user sees, or move a needed read into a named helper outside the spec (2 found)`,
+      `${DASHBOARD_E2E_PATH}: dashboard E2E specs must not dispatch synthetic events; use real input such as click, fill, press, or setInputFiles (1 found)`,
+      `${DASHBOARD_E2E_PATH}: dashboard E2E specs must not pass a CSS or attribute selector to locator(); use getByRole, getByLabel, or getByText (1 found)`,
+      `${DASHBOARD_E2E_PATH}: dashboard E2E specs must not override timeouts; control time with page.clock and wait for a visible state (1 found)`,
+    ],
+  );
+});
+
+test("allows user-level dashboard E2E specs and page script in shared helpers", () => {
+  assert.deepEqual(
+    checkAgentTestArchitecture(
+      [
+        integrationTest(
+          [
+            'await page.getByRole("button", { name: "Send" }).click();',
+            'await page.getByLabel("Message").fill("hi");',
+            'await expect(page.getByText("Sent")).toBeVisible();',
+            'await page.clock.runFor("00:30");',
+          ].join("\n"),
+          DASHBOARD_E2E_PATH,
+        ),
+        integrationTest(
+          "return page.evaluate(() => window.scrollY);",
+          "packages/junior-dashboard/e2e/harness.ts",
+        ),
+      ],
+      {},
+      DASHBOARD_SPEC_RULES,
+    ),
+    [],
+  );
+});
+
 const EVAL_PATH = "packages/junior-evals/evals/conversation/new.eval.ts";
 
 test("rejects agent test contract violations above the baseline", () => {
@@ -345,6 +398,8 @@ test("counts each form of a kind branch", () => {
     "if (invocation.parentToolCallId !== undefined) {}",
     "const messages = spawnAgent || run.agentInvocationId;",
     'if (message.source === "web") {}',
+    'if (data.meta?.["source"] === "web") {}',
+    'const id = typeof meta?.["agentInvocationId"] === "string";',
     "switch (run.source.kind) {}",
     'if ("automation" === kind) {}',
     "const result = run.dispatch?.declaresResult === true;",

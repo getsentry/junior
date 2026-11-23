@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it } from "vitest";
-import { createGitHubGetDeploymentTool } from "../src/tools/get-deployment";
+import { gitHubGetDeploymentTool } from "../src/tools/get-deployment";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const COMMIT_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
@@ -9,7 +10,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
     egress: adapter.egress,
     events: { canSubscribe: true },
   };
-  return { adapter, tool: createGitHubGetDeploymentTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetDeploymentTool, ctx) };
 }
 
 describe("getDeployment", () => {
@@ -153,7 +154,8 @@ describe("getDeployment", () => {
         { toolCallId: "missing-deployment" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub deployment lookup failed with HTTP 404",
+      message:
+        "GitHub deployment lookup failed with HTTP 404. Check repo and commit_sha, and that environment is a deployment environment of the repo.",
       name: "PluginToolInputError",
     });
   });

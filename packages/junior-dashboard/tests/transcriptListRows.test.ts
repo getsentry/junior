@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  rowIndexBeforeSeq,
   rowIndexForSeq,
   liveActivityIndex,
   transcriptListRows,
@@ -42,6 +43,22 @@ describe("rowIndexForSeq", () => {
       entryRow(7),
     ];
     expect(rowIndexForSeq(rows, 5)).toBe(1);
+  });
+});
+
+describe("rowIndexBeforeSeq", () => {
+  it("finds the reply, not the question moved after it", () => {
+    const moved = { ...entryRow(3), key: "ask" };
+    const rows = [
+      entryRow(1),
+      entryRow(3),
+      { key: UNREAD_MARKER_KEY, kind: "unread_marker" } as const,
+      moved,
+      entryRow(9),
+    ];
+    expect(rowIndexBeforeSeq(rows, 5)).toBe(1);
+    expect(rowIndexBeforeSeq(rows, 2)).toBe(0);
+    expect(rowIndexBeforeSeq(rows, 1)).toBeUndefined();
   });
 });
 
@@ -92,7 +109,7 @@ function toolEntry(seq: number, name = "bash"): RenderedTranscriptEntry {
       type: "tool_call",
     },
     seq,
-  } as RenderedTranscriptEntry;
+  };
 }
 
 function captureEntry(seq: number): RenderedTranscriptEntry {
@@ -108,7 +125,7 @@ function captureEntry(seq: number): RenderedTranscriptEntry {
       version: 1,
     },
     seq,
-  } as RenderedTranscriptEntry;
+  };
 }
 
 function rowSummary(rows: TranscriptListRow[]) {
@@ -153,7 +170,7 @@ describe("transcriptListRows", () => {
     ]);
     const reply = rows[3]!;
     expect(
-      reply.kind === "entry" && reply.footer?.tasks.map((task) => task.key),
+      reply.kind === "entry" && reply.tasks?.map((task) => task.key),
     ).toEqual(["subagent:child-2", "subagent:child-5"]);
     expect(liveActivityIndex(rows)).toBeUndefined();
     // A running Turn keeps its activity live above its Tasks row.
@@ -168,11 +185,11 @@ describe("transcriptListRows", () => {
       entries: [
         messageEntry(1, "user"),
         toolEntry(2),
-        toolEntry(3, "addReviewItem"),
+        toolEntry(3, "addInboxItem"),
         toolEntry(4),
         messageEntry(5),
         messageEntry(6, "user"),
-        toolEntry(7, "addReviewItem"),
+        toolEntry(7, "addInboxItem"),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),
@@ -195,7 +212,7 @@ describe("transcriptListRows", () => {
       entries: [
         messageEntry(1, "user"),
         messageEntry(2),
-        toolEntry(3, "addReviewItem"),
+        toolEntry(3, "addInboxItem"),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),
@@ -225,15 +242,17 @@ describe("transcriptListRows", () => {
     ]);
   });
 
-  it("moves captured memories and the prompt under the reply of their Turn", () => {
+  it("drops memory capture events, so the activity around them stays one row", () => {
     const rows = transcriptListRows({
       entries: [
         messageEntry(1, "user"),
         toolEntry(2),
-        messageEntry(3),
-        captureEntry(4),
-        messageEntry(5, "user"),
+        captureEntry(3),
+        toolEntry(4),
+        messageEntry(5),
         captureEntry(6),
+        messageEntry(7, "user"),
+        captureEntry(8),
       ],
       keyPrefix: "c",
       knownActivityKeys: new Map(),
@@ -241,16 +260,9 @@ describe("transcriptListRows", () => {
 
     expect(rowSummary(rows)).toEqual([
       { keys: ["1:message:0"], kind: "entry", seq: 1 },
-      { keys: ["2:tool:0"], kind: "activity", seq: 2 },
-      { keys: ["3:message:0"], kind: "entry", seq: 4 },
+      { keys: ["2:tool:0", "4:tool:0"], kind: "activity", seq: 4 },
       { keys: ["5:message:0"], kind: "entry", seq: 5 },
-      // With no reply, the capture keeps its own row.
-      { keys: ["6:event:0"], kind: "entry", seq: 6 },
+      { keys: ["7:message:0"], kind: "entry", seq: 7 },
     ]);
-    const reply = rows[2]!;
-    expect(reply.kind === "entry" && reply.footer).toMatchObject({
-      captures: [{ key: "4:event:0" }],
-      prompt: { key: "1:message:0" },
-    });
   });
 });

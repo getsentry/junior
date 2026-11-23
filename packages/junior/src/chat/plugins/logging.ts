@@ -12,14 +12,14 @@ export function createPluginLogger(plugin: string): PluginLogger {
       });
     },
     warn(message, metadata) {
-      logWarn("plugin.log.warn", {
+      logWarn("plugin.log.warning", {
         "app.log.message": message,
         "app.plugin.name": plugin,
         ...metadata,
       });
     },
-    error(message, metadata) {
-      logException(new Error(message), "plugin.log.error", {
+    error(message, metadata, cause) {
+      logException(new Error(message, { cause }), "plugin.log.error", {
         "app.plugin.name": plugin,
         ...metadata,
       });

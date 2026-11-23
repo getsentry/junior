@@ -19,7 +19,7 @@ export interface ConversationAccess {
   destinationId?: string;
   isParticipant: boolean;
   /** Root of the Conversation tree. Missing when the stored tree is invalid. */
-  rootConversationId?: string;
+  rootConversationId?: string | undefined;
   /** Provider tenant of the root Location, such as a Slack workspace. */
   tenant?: ProviderTenant;
   visibility: JuniorDestinationVisibility | null;
@@ -37,9 +37,41 @@ export async function readConversationAccessFromSql(
   conversationIds: readonly string[],
   viewer?: User,
 ): Promise<Map<string, ConversationAccess>> {
-  if (conversationIds.length === 0) return new Map();
+  const rows = await readConversationAccessRows(db, conversationIds);
+  const membershipConversationIds = new Set<string>();
+  for (const row of rows) {
+    membershipConversationIds.add(row.conversationId);
+    if (row.storedRootConversationId) {
+      membershipConversationIds.add(row.storedRootConversationId);
+    }
+  }
+  const participantRootIds =
+    viewer !== undefined
+      ? await conversationIdsWithParticipantUser(
+          db,
+          [...membershipConversationIds],
+          viewer.id,
+        )
+      : new Set<string>();
+  return conversationAccessFromRows(rows, participantRootIds);
+}
 
-  const rows = await db
+/** The stored tree and root Destination that access reads. */
+type ConversationAccessRow = Awaited<
+  ReturnType<typeof readConversationAccessRows>
+>[number];
+
+/**
+ * Read the stored tree and root Destination of each conversation. A caller
+ * that reads the viewer's participant rows itself passes these rows to
+ * `conversationAccessFromRows`.
+ */
+export async function readConversationAccessRows(
+  db: JuniorDatabase,
+  conversationIds: readonly string[],
+) {
+  if (conversationIds.length === 0) return [];
+  return await db
     .select({
       conversationId: juniorConversations.conversationId,
       parentConversationId: juniorConversations.parentConversationId,
@@ -65,23 +97,17 @@ export async function readConversationAccessFromSql(
       eq(rootDestination.id, rootConversation.destinationId),
     )
     .where(inArray(juniorConversations.conversationId, [...conversationIds]));
+}
 
-  const membershipConversationIds = new Set<string>();
-  for (const row of rows) {
-    membershipConversationIds.add(row.conversationId);
-    if (row.storedRootConversationId) {
-      membershipConversationIds.add(row.storedRootConversationId);
-    }
-  }
-  const participantRootIds =
-    viewer !== undefined
-      ? await conversationIdsWithParticipantUser(
-          db,
-          [...membershipConversationIds],
-          viewer.id,
-        )
-      : new Set<string>();
-
+/**
+ * Resolve access from `readConversationAccessRows`. `participantRootIds`
+ * holds the viewer's participant roots among the conversations and their
+ * stored roots, and is empty without a viewer.
+ */
+export function conversationAccessFromRows(
+  rows: readonly ConversationAccessRow[],
+  participantRootIds: ReadonlySet<string>,
+): Map<string, ConversationAccess> {
   return new Map(
     rows.map((row) => {
       const hasValidRoot =
@@ -149,6 +175,18 @@ export function canAddConversationMessages(
   return Boolean(access?.isParticipant || access?.visibility === "public");
 }
 
+/**
+ * The Slack workspace of a Conversation that the viewer can read. A mention
+ * in it must name a Slack user of that workspace.
+ */
+export function readableSlackTeamId(
+  access: ConversationAccess | undefined,
+): string | undefined {
+  return access?.canViewPrivateContent && access.tenant?.provider === "slack"
+    ? access.tenant.providerTenantId
+    : undefined;
+}
+
 /** Read viewer access for a bounded set of Conversations. */
 export type ConversationAccessReader = (
   conversationIds: readonly string[],
@@ -175,6 +213,7 @@ export function createConversationAccessReader(
       }
     }
     const entries = await Promise.all(
+      // oxlint-disable-next-line junior/bounded-fan-out -- It waits on the reads above and starts no query.
       conversationIds.map(async (id) => [id, await byId.get(id)] as const),
     );
     return new Map(
@@ -218,4 +257,28 @@ export function canAccessConversation(args: {
   }
   // Missing or unknown visibility is private.
   return target.visibility === "public";
+}
+
+/**
+ * Whether work in `requesterConversationId` may read `conversationId`, by
+ * `canAccessConversation`. A missing target is not readable. A requester that
+ * is not stored yet reaches only public targets.
+ */
+export async function canReadConversation(
+  db: JuniorDatabase,
+  requesterConversationId: string,
+  conversationId: string,
+): Promise<boolean> {
+  const access = await readConversationAccessFromSql(db, [
+    requesterConversationId,
+    conversationId,
+  ]);
+  const target = access.get(conversationId);
+  return (
+    target !== undefined &&
+    canAccessConversation({
+      requester: access.get(requesterConversationId) ?? { visibility: null },
+      target,
+    })
+  );
 }

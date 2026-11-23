@@ -1,5 +1,5 @@
 import { Duration } from "../../components/Duration";
-import { Hash } from "lucide-react";
+import { Hash, LayoutDashboard } from "lucide-react";
 import type { LocationSummaryReport } from "@sentry/junior/api/schema";
 
 import { SearchInput } from "../../components/SearchInput";
@@ -14,11 +14,8 @@ import {
 import { DirectoryMetric } from "../../components/directory/DirectoryMetric";
 import { Card } from "../../components/layout/Card";
 import { CardHeader } from "../../components/layout/CardHeader";
-import {
-  formatCompactNumber,
-  formatRelativeTime,
-  locationPath,
-} from "../../format";
+import { formatCompactNumber, locationPath } from "../../format";
+import { formatRelativeTime } from "../../time";
 
 export type LocationSort = "conversations" | "recent" | "runtime" | "tokens";
 
@@ -75,7 +72,17 @@ export function LocationDirectory(props: {
               description={
                 <>Last active {formatRelativeTime(location.lastSeenAt)}</>
               }
-              icon={<Hash aria-hidden="true" size={16} strokeWidth={1.8} />}
+              icon={
+                location.provider === "local" ? (
+                  <LayoutDashboard
+                    aria-hidden="true"
+                    size={16}
+                    strokeWidth={1.8}
+                  />
+                ) : (
+                  <Hash aria-hidden="true" size={16} strokeWidth={1.8} />
+                )
+              }
               iconClassName="bg-dashboard-accent/[0.06] text-dashboard-accent group-hover:border-dashboard-accent/25"
               title={location.label}
             />

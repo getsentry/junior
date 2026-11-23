@@ -2,8 +2,8 @@ import * as z from "zod";
 import { actorIdentitySchema } from "./conversation";
 
 /**
- * Longest outline item text. The outline previews each message, so the
- * server cuts the text and does not send whole messages.
+ * Longest outline item text and reply. The outline previews each message,
+ * so the server cuts the text and does not send whole messages.
  */
 export const CONVERSATION_OUTLINE_TEXT_LENGTH = 200;
 
@@ -18,7 +18,15 @@ export const conversationOutlineSchema = z
       z
         .object({
           seq: z.number().int().nonnegative(),
+          createdAt: z.string().datetime(),
+          /** Identity id of the author. Detail `authors` maps it to the person. */
+          actorIdentityId: z.string().min(1).optional(),
+          /** Set on input that an earlier release's agent wrote. */
+          agentInvocationId: z.string().min(1).optional(),
           text: z.string().min(1),
+          /** The last Junior text before the next item. */
+          reply: z.string().min(1).optional(),
+          /** People that the text or the reply mention. */
           mentions: z.array(actorIdentitySchema).optional(),
         })
         .strict(),

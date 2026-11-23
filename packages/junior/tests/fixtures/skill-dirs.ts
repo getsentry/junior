@@ -36,11 +36,11 @@ export async function installTestSkills(
       ].join("\n"),
     );
   }
-  const previous = process.env.SKILL_DIRS;
-  process.env.SKILL_DIRS = root;
+  const previous = process.env["SKILL_DIRS"];
+  process.env["SKILL_DIRS"] = root;
   return async () => {
-    if (previous === undefined) delete process.env.SKILL_DIRS;
-    else process.env.SKILL_DIRS = previous;
+    if (previous === undefined) delete process.env["SKILL_DIRS"];
+    else process.env["SKILL_DIRS"] = previous;
     await fs.rm(root, { recursive: true, force: true });
   };
 }

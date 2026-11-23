@@ -1,5 +1,7 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
-import { createGitHubGetPullRequestTool } from "../src/tools/get-pull-request";
+import type { PluginConversationMatch } from "@sentry/junior-plugin-api";
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
+import { describe, expect, it } from "vitest";
+import { gitHubGetPullRequestTool } from "../src/tools/get-pull-request";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 const HEAD_SHA = "c610b5d6a88c9da5d65627a1cdb3829b05c14f75";
 
@@ -92,40 +94,19 @@ function toolContext(
     egress: adapter.egress,
     events: { canSubscribe },
   };
-  return { adapter, tool: createGitHubGetPullRequestTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetPullRequestTool, ctx) };
 }
 
 describe("getPullRequest", () => {
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
   it("returns a subscribable hint for an existing pull request", async () => {
     const { adapter, tool } = toolContext();
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "get-pr" },
       ),
     ).resolves.toMatchObject({
-      objectAnnotations: [
-        {
-          displayType: "Pull request",
-          description: "Add **events**.",
-          sourceUpdatedAt: "2026-09-25T13:00:00Z",
-          facts: {
-            type: "code_change",
-            author: "alex",
-            reviewers: ["sam"],
-            sourceBranch: "feat/events",
-            targetBranch: "main",
-            changedFiles: 8,
-            additions: 120,
-            deletions: 30,
-          },
-        },
-      ],
       head_sha: HEAD_SHA,
       number: 691,
       subscribable: {
@@ -147,96 +128,68 @@ describe("getPullRequest", () => {
     ]);
   });
 
-  it("saves the artifact and GitHub attachment images as previews", async () => {
-    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
-    const artifact =
-      "https://junior.example.com/public/artifacts/0123456789abcdef.png";
-    const after =
-      "https://junior.example.com/public/artifacts/fedcba9876543210.png";
-    const attachment =
-      "https://github.com/user-attachments/assets/0f8c2d6e-5a4b-4c3d-9e8f-7a6b5c4d3e2f";
-    const withBody = (body: string) => {
-      const response = pullRequestResponse();
-      return { body: { ...response.body, body } };
-    };
-    const checks = checksResponse({ contexts: [] });
-    const { tool } = toolContext(true, [
-      withBody(
-        [
-          "![Unknown](https://github.com/user-attachments/assets/1)",
-          // A signed attachment URL expires in minutes.
-          "![Signed](https://private-user-images.githubusercontent.com/1/2.png?jwt=signed)",
-          `![Attachment](${attachment})`,
-          "![Other](https://example.com/public/artifacts/0123456789abcdef.png)",
-          "```md",
-          "![Example](https://junior.example.com/public/artifacts/code.png)",
-          "```",
-          // A `src=` inside another attribute value is not the image.
-          `| Before | After |\n| --- | --- |\n| ![Before][before] | <img alt=" src=https://junior.example.com/public/artifacts/alt.png" src="${after}"> |`,
-          `![Again](${artifact})`,
-          "",
-          `[before]: ${artifact}`,
-        ].join("\n"),
-      ),
-      checks,
-      withBody("![Private](https://github.com/user-attachments/assets/1)"),
-      checks,
-      withBody("No image."),
-      checks,
-    ]);
-    const preview = async () => {
-      const result = (await tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
-        { toolCallId: "get-pr" },
-      )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
-      return result.objectAnnotations[0]?.facts.previewImageUrls;
-    };
-
-    expect(await preview()).toEqual([attachment, artifact, after]);
-    expect(await preview()).toBeUndefined();
-    expect(await preview()).toBeUndefined();
-  });
-
-  it("saves as many preview images as fit in the facts limit", async () => {
-    vi.stubEnv("JUNIOR_BASE_URL", "https://junior.example.com");
-    const images = Array.from(
-      { length: 80 },
-      (_, index) =>
-        `https://junior.example.com/public/artifacts/${String(index).padStart(16, "0")}.png`,
-    );
-    const response = pullRequestResponse();
-    const { tool } = toolContext(true, [
+  it("lists other conversations on the pull request", async () => {
+    const searches: unknown[] = [];
+    let matches: PluginConversationMatch[] = [
       {
-        body: {
-          ...response.body,
-          body: images.map((url) => `![Step](${url})`).join("\n"),
-          // 180 extra UTF-8 bytes, more than one image entry, so counting
-          // characters instead of bytes would save one image too many.
-          user: { login: "ü".repeat(60) },
-          head: { ...response.body.head, ref: "ü".repeat(60) },
-          base: { ...response.body.base, ref: "ü".repeat(60) },
-        },
+        conversationId: "agent:child",
+        rootConversationId: "slack:C1:1700000000.100000",
+        status: "running",
+        summary: "x".repeat(400),
+        title: "Fix the flaky test",
+        updatedAt: "2026-09-01T12:00:00.000Z",
       },
+      {
+        conversationId: "slack:C2:1700000000.100000",
+        status: "idle",
+        updatedAt: "2026-09-25T12:00:00.000Z",
+      },
+    ];
+    const adapter = createGitHubApiTestAdapter([
+      pullRequestResponse(),
+      checksResponse({ contexts: [] }),
+      pullRequestResponse(),
       checksResponse({ contexts: [] }),
     ]);
+    const tool = bindPluginTool(gitHubGetPullRequestTool, {
+      conversations: {
+        async search(input) {
+          searches.push(input);
+          return matches;
+        },
+      },
+      egress: adapter.egress,
+      events: { canSubscribe: false },
+    });
+    const execute = async () =>
+      (await tool.execute?.(
+        { repo: "GetSentry/Junior", pull_request: 691 },
+        { toolCallId: "get-pr" },
+      )) as { related_conversations?: unknown[] };
 
-    const result = (await tool.execute?.(
-      { repo: "getsentry/junior", number: 691 },
-      { toolCallId: "get-pr" },
-    )) as { objectAnnotations: Array<{ facts: Record<string, unknown> }> };
-    const facts = result.objectAnnotations[0]!.facts;
-    const saved = facts.previewImageUrls as string[];
+    const result = await execute();
 
-    const bytes = (value: unknown) =>
-      new TextEncoder().encode(JSON.stringify(value)).length;
+    expect(searches).toEqual([
+      { annotation: "getsentry/junior#691", limit: 10 },
+    ]);
+    expect(result.related_conversations).toEqual([
+      {
+        conversation_id: "agent:child",
+        root_conversation_id: "slack:C1:1700000000.100000",
+        status: "running",
+        summary: `${"x".repeat(300)}…`,
+        title: "Fix the flaky test",
+        updated_at: "2026-09-01T12:00:00.000Z",
+      },
+      {
+        conversation_id: "slack:C2:1700000000.100000",
+        status: "idle",
+        updated_at: "2026-09-25T12:00:00.000Z",
+      },
+    ]);
 
-    // More than the old fixed 4, in body order, and the next one would not fit.
-    expect(saved.length).toBeGreaterThan(4);
-    expect(saved).toEqual(images.slice(0, saved.length));
-    expect(bytes(facts)).toBeLessThanOrEqual(4096);
-    expect(
-      bytes({ ...facts, previewImageUrls: images.slice(0, saved.length + 1) }),
-    ).toBeGreaterThan(4096);
+    matches = [];
+    expect(await execute()).not.toHaveProperty("related_conversations");
   });
 
   it("returns the required checks and the merge state", async () => {
@@ -266,7 +219,7 @@ describe("getPullRequest", () => {
     ]);
 
     const result = await tool.execute?.(
-      { repo: "getsentry/junior", number: 691 },
+      { repo: "getsentry/junior", pull_request: 691 },
       { toolCallId: "get-pr-checks" },
     );
 
@@ -282,7 +235,7 @@ describe("getPullRequest", () => {
         review_decision: "APPROVED",
       },
     });
-    expect(await adapter.requests()[1]!.request.clone().json()).toMatchObject({
+    expect(await adapter.requests()[1].request.clone().json()).toMatchObject({
       operationName: "PullRequestChecks",
       variables: { name: "junior", number: 691, owner: "getsentry" },
     });
@@ -334,7 +287,7 @@ describe("getPullRequest", () => {
     ]);
 
     const result = await tool.execute?.(
-      { repo: "getsentry/junior", number: 691 },
+      { repo: "getsentry/junior", pull_request: 691 },
       { toolCallId: "get-draft-code-owners" },
     );
 
@@ -388,7 +341,7 @@ describe("getPullRequest", () => {
     // marked ready and ask them.
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "get-draft-without-files" },
       ),
     ).rejects.toThrow(
@@ -413,7 +366,7 @@ describe("getPullRequest", () => {
       ]);
 
       const result = await tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "get-pr-no-required-checks" },
       );
 
@@ -435,7 +388,7 @@ describe("getPullRequest", () => {
     const { tool } = toolContext(false);
 
     const result = await tool.execute?.(
-      { repo: "getsentry/junior", number: 691 },
+      { repo: "getsentry/junior", pull_request: 691 },
       { toolCallId: "get-pr-without-subscriptions" },
     );
 
@@ -450,11 +403,12 @@ describe("getPullRequest", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 999999 },
+        { repo: "getsentry/junior", pull_request: 999999 },
         { toolCallId: "missing-pr" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub pull request lookup failed with HTTP 404",
+      message:
+        "GitHub pull request lookup failed with HTTP 404. Check repo and pull_request. If they are correct, the GitHub App cannot see the repository.",
       name: "PluginToolInputError",
     });
   });
@@ -466,7 +420,7 @@ describe("getPullRequest", () => {
 
     await expect(
       tool.execute?.(
-        { repo: "getsentry/junior", number: 691 },
+        { repo: "getsentry/junior", pull_request: 691 },
         { toolCallId: "pr-lookup-500" },
       ),
     ).rejects.toMatchObject({

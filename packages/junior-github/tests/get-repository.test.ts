@@ -1,5 +1,6 @@
+import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { describe, expect, it } from "vitest";
-import { createGitHubGetRepositoryTool } from "../src/tools/get-repository";
+import { gitHubGetRepositoryTool } from "../src/tools/get-repository";
 import { createGitHubApiTestAdapter } from "./github-api-adapter";
 function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
   const adapter = createGitHubApiTestAdapter(responses);
@@ -7,7 +8,7 @@ function toolContext(responses: Array<{ body?: unknown; status?: number }>) {
     egress: adapter.egress,
     events: { canSubscribe: true },
   };
-  return { adapter, tool: createGitHubGetRepositoryTool(ctx) };
+  return { adapter, tool: bindPluginTool(gitHubGetRepositoryTool, ctx) };
 }
 
 describe("getRepository", () => {
@@ -101,8 +102,25 @@ describe("getRepository", () => {
         { toolCallId: "missing-repository" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub repository lookup failed with HTTP 404",
+      message:
+        "GitHub repository lookup failed with HTTP 404. Check repo. If it is correct, the GitHub App cannot see the repository.",
       name: "PluginToolInputError",
+    });
+  });
+
+  it("reports other lookup failures as system errors", async () => {
+    const { tool } = toolContext([
+      { body: { message: "Server Error" }, status: 503 },
+    ]);
+
+    await expect(
+      tool.execute?.(
+        { repo: "getsentry/junior" },
+        { toolCallId: "failed-repository" },
+      ),
+    ).rejects.toMatchObject({
+      message: "GitHub repository lookup failed with HTTP 503",
+      name: "Error",
     });
   });
 });

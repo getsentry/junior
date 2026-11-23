@@ -14,3 +14,6 @@ domains:
 
 api-headers:
   X-Figma-Token: ${FIGMA_ACCESS_TOKEN}
+
+# The skill sends no credential header. Junior adds it.
+tools-send-no-credential: true

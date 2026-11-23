@@ -4,6 +4,7 @@ import type {
 } from "@/chat/mcp/tool-manager";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
+import { summarizeModelVisibleDescription } from "@/chat/tool-support/catalog-search";
 import { toExposedToolSummary } from "@/chat/tool-support/skill/mcp-tool-summary";
 import { zodTool } from "@/chat/tool-support/zod-tool";
 
@@ -179,12 +180,10 @@ function searchMcpCatalog(
   }
 
   return tools
-    .map(
-      (toolDef): RankedTool => ({
-        tool: toolDef,
-        score: scoreTool(toolDef, query),
-      }),
-    )
+    .map((toolDef): RankedTool => ({
+      tool: toolDef,
+      score: scoreTool(toolDef, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -207,12 +206,10 @@ function searchProviderCatalog(
   }
 
   return sorted
-    .map(
-      (provider): RankedProvider => ({
-        provider,
-        score: scoreProvider(provider, query),
-      }),
-    )
+    .map((provider): RankedProvider => ({
+      provider,
+      score: scoreProvider(provider, query),
+    }))
     .filter((ranked) => ranked.score > 0)
     .sort((left, right) => {
       if (right.score !== left.score) {
@@ -243,9 +240,30 @@ function unknownProviderSuggestions(
   return matches.length > 0 ? matches : searchProviderCatalog(configured, "");
 }
 
-/** Create the progressive MCP catalog search tool used before callMcpTool. */
+/**
+ * Name the configured providers in the description, as searchTools names its
+ * sources. Without the list, a provider that no skill names is invisible
+ * until a search finds it. The list leaves out connection state so the
+ * description stays the same on every Turn of a deployment.
+ */
+function renderSearchMcpToolsDescription(providers: ProviderSummary[]): string {
+  return [
+    "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, the runtime connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
+    "Configured providers:",
+    ...providers.map(
+      (entry) =>
+        `- ${entry.provider}: ${summarizeModelVisibleDescription(entry.description)}`,
+    ),
+  ].join("\n");
+}
+
 // TODO(dcramer): Fold MCP discovery into searchTools once the shared catalog can
 // connect a selected provider and return its full tool schemas.
+/**
+ * Create the progressive MCP catalog search tool used before callMcpTool.
+ *
+ * @runBuilt searchMcpTools
+ */
 export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
   return zodTool({
     annotations: {
@@ -254,8 +272,9 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
       openWorldHint: true,
       readOnlyHint: true,
     },
-    description:
-      "List or search MCP providers and active MCP tools. When provider is supplied and not yet active, the runtime connects to it on demand and returns tool descriptors including schemas. Without provider, returns active tools plus matching configured providers without connecting. Use when choosing a provider tool or when callMcpTool arguments are unclear.",
+    description: renderSearchMcpToolsDescription(
+      mcpToolManager.getAvailableProviderCatalog(),
+    ),
     inputSchema: z
       .object({
         query: z
@@ -276,7 +295,7 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
           .string()
           .min(1)
           .describe(
-            'Set this when you pass provider. A short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
+            'Required with provider. A short purpose to show the user if this call needs them to connect their account, for example "search Notion for the Q3 offsite doc".',
           )
           .optional(),
         max_results: z
@@ -287,7 +306,13 @@ export function createSearchMcpToolsTool(mcpToolManager: SearchMcpToolManager) {
           .describe("Maximum matching tool descriptors to return.")
           .optional(),
       })
-      .strict(),
+      .strict()
+      // The intent explains a provider connection to the person, so a call
+      // that can connect a provider must carry one.
+      .refine((input) => !input.provider || Boolean(input.intent), {
+        message: "Pass intent with provider.",
+        path: ["intent"],
+      }),
     outputSchema: searchMcpToolsOutputSchema,
     privateTraceResult: (result) => ({
       total_active_tools: result.total_active_tools,

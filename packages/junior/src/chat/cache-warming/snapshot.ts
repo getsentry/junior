@@ -30,6 +30,8 @@ import type {
   Message,
   TextContent,
 } from "@earendil-works/pi-ai/compat";
+import { mapBounded } from "@/chat/fan-out";
+import { setStateValues } from "@/chat/state/adapter";
 import { KEY_PREFIX, type ConnectedState } from "./request";
 
 // Compress off the event loop, so a large snapshot does not delay other work.
@@ -108,6 +110,9 @@ function snapshotContext(
   };
 }
 
+/** Why a snapshot over a limit stored nothing. */
+export type SnapshotSkipReason = "snapshot_too_large" | "images_too_large";
+
 /**
  * Store the snapshot of a request context with its images under hash keys.
  * Stores nothing and returns a `skipReason` when the snapshot without its
@@ -119,9 +124,7 @@ export async function saveSnapshot(
   key: string,
   context: Context,
   ttlMs: number,
-): Promise<
-  SnapshotSize & { skipReason?: "snapshot_too_large" | "images_too_large" }
-> {
+): Promise<SnapshotSize & { skipReason?: SnapshotSkipReason }> {
   const images = new Map<string, string>();
   // Spreading the part keeps `data` at its key position, so the loaded
   // snapshot serializes the same way as the original context.
@@ -154,10 +157,13 @@ export async function saveSnapshot(
   }
   // Write the images after the snapshot, so they expire after it.
   await state.set(key, snapshot, ttlMs);
-  await Promise.all(
-    [...images].map(([sha256, data]) =>
-      state.set(imageKey(conversationId, sha256), data, ttlMs),
-    ),
+  await setStateValues(
+    state,
+    [...images].map(([sha256, data]) => ({
+      key: imageKey(conversationId, sha256),
+      value: data,
+    })),
+    ttlMs,
   );
   return size;
 }
@@ -178,11 +184,17 @@ export async function loadSnapshot(
   const context = JSON.parse(
     (await zstdDecompress(Buffer.from(snapshot, "base64"))).toString("utf8"),
   ) as Context;
-  for (const part of context.messages.flatMap(imageParts)) {
-    if (!part.data.startsWith(IMAGE_REF_PREFIX)) continue;
-    const sha256 = part.data.slice(IMAGE_REF_PREFIX.length);
-    const data = await state.get<string>(imageKey(conversationId, sha256));
-    if (data === null) {
+  const parts = context.messages
+    .flatMap(imageParts)
+    .filter((part) => part.data.startsWith(IMAGE_REF_PREFIX));
+  const images = await mapBounded(parts, (part) =>
+    state.get<string>(
+      imageKey(conversationId, part.data.slice(IMAGE_REF_PREFIX.length)),
+    ),
+  );
+  for (const [index, part] of parts.entries()) {
+    const data = images[index];
+    if (data === null || data === undefined) {
       return "image_missing";
     }
     part.data = data;

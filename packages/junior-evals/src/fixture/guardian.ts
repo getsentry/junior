@@ -4,8 +4,11 @@
  *
  * `guardianReviews()` returns the reviews of the test, so a test can check
  * what Guardian was shown. `forceNextGuardianDecision()` is an injected
- * fault: the next review gets a fixed answer instead of the model's, so the
- * allow, ask, and deny paths run the same way each time.
+ * fault: the next review, or the next review of one tool, gets a fixed answer
+ * instead of the model's, so the allow, ask, and deny paths run the same way
+ * each time.
+ * `failGuardianReviews()` is an injected fault too: every review gets the
+ * AI Gateway failure of an upstream provider outage.
  */
 import { HttpResponse } from "msw";
 import { onTestFinished } from "vitest";
@@ -49,8 +52,29 @@ const FORCED_ASSESSMENTS = {
   },
 } as const;
 
+// AI Gateway responses of a Guardian model call in an upstream outage.
+const GUARDIAN_FAULTS = {
+  server_error: () =>
+    HttpResponse.json(
+      {
+        error: {
+          message: "Service temporarily unavailable. Please try again shortly.",
+          type: "internal_server_error",
+        },
+      },
+      { status: 503 },
+    ),
+  unreachable: () => HttpResponse.error(),
+};
+
+export type GuardianFault = keyof typeof GUARDIAN_FAULTS;
+
 let reviews: GuardianReview[] = [];
-const forcedDecisions: Array<keyof typeof FORCED_ASSESSMENTS> = [];
+const forcedDecisions: Array<{
+  decision: keyof typeof FORCED_ASSESSMENTS;
+  tool?: string;
+}> = [];
+let guardianFault: GuardianFault | undefined;
 
 /** The Guardian reviews of tool calls in this test, oldest first. */
 export function guardianReviews(): GuardianReview[] {
@@ -59,17 +83,32 @@ export function guardianReviews(): GuardianReview[] {
 
 /**
  * Injected fault: Guardian answers its next review with this decision, as if
- * the model chose it. Return its reason. After ask or deny, the tool call does
- * not run and the agent gets the reason in the tool error.
+ * the model chose it. With `tool`, only the next review of that tool name,
+ * such as `mcp__<provider>__<tool>`, gets it. Return its reason. After ask or
+ * deny, the tool call does not run and the agent gets the reason in the tool
+ * error.
  */
 export function forceNextGuardianDecision(
   decision: keyof typeof FORCED_ASSESSMENTS,
+  options: { tool?: string } = {},
 ): string {
-  forcedDecisions.push(decision);
+  forcedDecisions.push({ decision, tool: options.tool });
   onTestFinished(() => {
     forcedDecisions.length = 0;
   });
   return FORCED_ASSESSMENTS[decision].reason;
+}
+
+/**
+ * Injected fault: every Guardian review in this test fails at the AI Gateway,
+ * as in an upstream outage of the Guardian model. Required review fails
+ * closed, so the reviewed tool call does not run.
+ */
+export function failGuardianReviews(fault: GuardianFault): void {
+  guardianFault = fault;
+  onTestFinished(() => {
+    guardianFault = undefined;
+  });
 }
 
 /** Forget the reviews of an earlier test. The observer calls it for each test. */
@@ -91,7 +130,12 @@ export async function answerGuardianReview(
     prompt?: Array<{ content?: unknown; role?: string }>;
   };
   const [system, ...messages] = payload.prompt ?? [];
-  if (system?.content !== GUARDIAN_ACTION_POLICY) return undefined;
+  if (
+    typeof system?.content !== "string" ||
+    !system.content.startsWith(GUARDIAN_ACTION_POLICY)
+  ) {
+    return undefined;
+  }
   const text = messages
     .flatMap((message) =>
       Array.isArray(message.content) ? message.content : [],
@@ -115,11 +159,18 @@ export async function answerGuardianReview(
     input: proposal.input,
     tool: proposal.tool.name,
   });
-  const forced = forcedDecisions.shift();
+  if (guardianFault) return GUARDIAN_FAULTS[guardianFault]();
+  const forced = forcedDecisions.find(
+    (entry) => entry.tool === undefined || entry.tool === proposal.tool.name,
+  );
   if (!forced) return undefined;
+  forcedDecisions.splice(forcedDecisions.indexOf(forced), 1);
   return HttpResponse.json({
     content: [
-      { type: "text", text: JSON.stringify(FORCED_ASSESSMENTS[forced]) },
+      {
+        type: "text",
+        text: JSON.stringify(FORCED_ASSESSMENTS[forced.decision]),
+      },
     ],
     finishReason: { unified: "stop" },
     usage: {

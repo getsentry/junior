@@ -108,7 +108,7 @@ describe("attach a linked object", () => {
           objectLinks: [
             {
               filters: [{ host: "docs.test", pathPrefix: "/d/" }],
-              objectType: "document",
+              objectTypes: ["document"],
               readTool: () => "readDocsFile",
               // Only `canView` checks access: Junior must not call
               // `resolve` for anyone else.
@@ -117,7 +117,7 @@ describe("attach a linked object", () => {
             },
             {
               filters: [{ host: "docs.test", pathPrefix: "/e/" }],
-              objectType: "calendar_event",
+              objectTypes: ["calendar_event"],
               // Only `canView` checks access: Junior must not call
               // `resolve` for anyone else.
               canView: async (ctx) => READERS.has(ctx.viewer.email),
@@ -177,7 +177,6 @@ describe("attach a linked object", () => {
     const notes = await nextTurnNotes("next-turn");
     expect(notes).toHaveLength(1);
     const context = buildTurnContextPrompt({
-      availableSkills: [],
       conversationNotes: notes,
       includeSessionContext: false,
     });

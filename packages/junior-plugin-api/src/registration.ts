@@ -32,7 +32,7 @@ export type PluginRegistrationInput = {
   model?: PluginModelConfig;
   /** URLs that this plugin shows as object cards. */
   objectLinks?: PluginObjectLinkDefinition[];
-  packageName?: string;
+  packageName?: string | undefined;
   events?: PluginEvents;
   tasks?: PluginTasks;
   userPages?: PluginUserPageDefinition[];
@@ -63,49 +63,43 @@ export function defineJuniorPlugin(
   }
   const name = manifest.name;
   if (!name) {
-    throw new Error("Junior plugin manifest.name is required.");
+    throw new Error("Plugin manifest.name is required.");
   }
   if (!PLUGIN_NAME_RE.test(name)) {
     throw new Error(
-      `Junior plugin registration name "${name}" must be a lowercase plugin identifier.`,
+      `Plugin registration name "${name}" must be a lowercase plugin identifier.`,
     );
   }
   if (name === "junior") {
     throw new Error(
-      'Junior plugin registration name "junior" is reserved for native host events.',
+      'Plugin registration name "junior" is reserved for native host events.',
     );
   }
   if (
     typeof manifest.displayName !== "string" ||
     !manifest.displayName.trim()
   ) {
-    throw new Error(
-      `Junior plugin "${name}" manifest.displayName is required.`,
-    );
+    throw new Error(`Plugin "${name}" manifest.displayName is required.`);
   }
   if (
     typeof manifest.description !== "string" ||
     !manifest.description.trim()
   ) {
-    throw new Error(
-      `Junior plugin "${name}" manifest.description is required.`,
-    );
+    throw new Error(`Plugin "${name}" manifest.description is required.`);
   }
   if (plugin.userPages !== undefined && !Array.isArray(plugin.userPages)) {
-    throw new Error(`Junior plugin "${name}" userPages must be an array.`);
+    throw new Error(`Plugin "${name}" userPages must be an array.`);
   }
   if (
     plugin.conversationEvents !== undefined &&
     !Array.isArray(plugin.conversationEvents)
   ) {
-    throw new Error(
-      `Junior plugin "${name}" conversationEvents must be an array.`,
-    );
+    throw new Error(`Plugin "${name}" conversationEvents must be an array.`);
   }
   if (plugin.events !== undefined) {
     const parsed = pluginEventsSchema.safeParse(plugin.events);
     if (!parsed.success) {
-      throw new Error(`Junior plugin "${name}" events is invalid.`, {
+      throw new Error(`Plugin "${name}" events is invalid.`, {
         cause: parsed.error,
       });
     }
@@ -115,9 +109,7 @@ export function defineJuniorPlugin(
     plugin.images !== undefined &&
     typeof plugin.images.resolve !== "function"
   ) {
-    throw new Error(
-      `Junior plugin "${name}" images must have a resolve function.`,
-    );
+    throw new Error(`Plugin "${name}" images must have a resolve function.`);
   }
   const conversationEventIds = new Set<string>();
   for (const event of plugin.conversationEvents ?? []) {
@@ -128,18 +120,18 @@ export function defineJuniorPlugin(
       typeof event.renderEvent !== "function"
     ) {
       throw new Error(
-        `Junior plugin "${name}" conversation event definitions must be created with defineConversationEvent().`,
+        `Plugin "${name}" conversation event definitions must be created with defineConversationEvent().`,
       );
     }
     if (isPluginModelCostEventName(event.eventName)) {
       throw new Error(
-        `Junior plugin "${name}" cannot register host-owned conversation event "${event.eventName}".`,
+        `Plugin "${name}" cannot register host-owned conversation event "${event.eventName}".`,
       );
     }
     const id = `${event.eventName}@${event.version}`;
     if (conversationEventIds.has(id)) {
       throw new Error(
-        `Junior plugin "${name}" has duplicate conversation event "${id}".`,
+        `Plugin "${name}" has duplicate conversation event "${id}".`,
       );
     }
     conversationEventIds.add(id);
@@ -147,7 +139,7 @@ export function defineJuniorPlugin(
   const userPageIds = new Set<string>();
   for (const page of plugin.userPages ?? []) {
     if (!page || typeof page !== "object") {
-      throw new Error(`Junior plugin "${name}" user pages must be objects.`);
+      throw new Error(`Plugin "${name}" user pages must be objects.`);
     }
     if (
       typeof page.id !== "string" ||
@@ -155,12 +147,12 @@ export function defineJuniorPlugin(
       !USER_PAGE_ID_RE.test(page.id)
     ) {
       throw new Error(
-        `Junior plugin "${name}" user page id "${page.id}" must be a lowercase identifier.`,
+        `Plugin "${name}" user page id "${page.id}" must be a lowercase identifier.`,
       );
     }
     if (userPageIds.has(page.id)) {
       throw new Error(
-        `Junior plugin "${name}" has duplicate user page id "${page.id}".`,
+        `Plugin "${name}" has duplicate user page id "${page.id}".`,
       );
     }
     if (
@@ -172,7 +164,7 @@ export function defineJuniorPlugin(
       page.description.length > 500
     ) {
       throw new Error(
-        `Junior plugin "${name}" user page "${page.id}" requires label and description.`,
+        `Plugin "${name}" user page "${page.id}" requires label and description.`,
       );
     }
     if (
@@ -182,12 +174,12 @@ export function defineJuniorPlugin(
       page.navigation !== "admin"
     ) {
       throw new Error(
-        `Junior plugin "${name}" user page "${page.id}" navigation must be "primary", "profile", or "admin".`,
+        `Plugin "${name}" user page "${page.id}" navigation must be "primary", "profile", or "admin".`,
       );
     }
     if (typeof page.read !== "function") {
       throw new Error(
-        `Junior plugin "${name}" user page "${page.id}" requires a read function.`,
+        `Plugin "${name}" user page "${page.id}" requires a read function.`,
       );
     }
     userPageIds.add(page.id);
@@ -203,25 +195,29 @@ function validateObjectLinks(
 ): void {
   if (links === undefined) return;
   if (!Array.isArray(links)) {
-    throw new Error(`Junior plugin "${name}" objectLinks must be an array.`);
+    throw new Error(`Plugin "${name}" objectLinks must be an array.`);
   }
   for (const link of links) {
     if (
-      !objectTypeSchema.safeParse(link?.objectType).success ||
+      !Array.isArray(link?.objectTypes) ||
+      link.objectTypes.length === 0 ||
+      !link.objectTypes.every(
+        (type) => objectTypeSchema.safeParse(type).success,
+      ) ||
       typeof link.canView !== "function" ||
       typeof link.resolve !== "function" ||
       !Array.isArray(link.filters) ||
       link.filters.length === 0
     ) {
       throw new Error(
-        `Junior plugin "${name}" object links need an objectType, filters, a canView function, and a resolve function.`,
+        `Plugin "${name}" object links need objectTypes, filters, a canView function, and a resolve function.`,
       );
     }
     for (const filter of link.filters) {
       const parsed = objectLinkFilterSchema.safeParse(filter);
       if (!parsed.success) {
         throw new Error(
-          `Junior plugin "${name}" has an invalid ${link.objectType} link filter.`,
+          `Plugin "${name}" has an invalid ${link.objectTypes.join("/")} link filter.`,
           { cause: parsed.error },
         );
       }

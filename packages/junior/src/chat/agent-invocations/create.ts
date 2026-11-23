@@ -1,168 +1,79 @@
+import { randomUUID } from "node:crypto";
+import type { StateAdapter } from "chat";
+import { eq } from "drizzle-orm";
+import { addConversationNote } from "@/chat/conversations/notes";
 import { getConversationStoppedAtMs } from "@/chat/conversations/session-stop";
+import type { ConversationStore } from "@/chat/conversations/store";
+import { loadTurnStart } from "@/chat/conversations/turn-lifecycle";
+import type { CredentialContext } from "@/chat/credentials/context";
 import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { juniorAgentBindings, juniorAgentInvocations } from "@/db/schema";
+import type { Actor } from "@/chat/actor";
+import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
+import {
+  ensureConversationWake,
+  getConversationWorkState,
+  hasConversationStop,
+} from "@/chat/task-execution/store";
+import { juniorAgentBindings, juniorConversations } from "@/db/schema";
 import { getAgentBinding } from "./bindings";
 import { readChildConversationSender } from "./child-input";
+import { listOpenChildAgents } from "./list";
+import { recordSubagentStartedMarker, type SubagentStart } from "./markers";
 import {
-  countOpenParentMessages,
-  listOpenChildAgentsWithoutAgentInvocations,
-} from "./list";
-import { readAgentConfig } from "@/chat/conversations/agent-config";
+  agentConfigSchema,
+  readAgentConfig,
+  type AgentConfig,
+} from "@/chat/conversations/agent-config";
+import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
 import {
   AgentInvocationLimitError,
-  AgentMessageQueueFullError,
   AgentNameInUseError,
+  AgentStoppedError,
 } from "./errors";
+import { getChildAgentLockName, getSpawnedChildConversationId } from "./ids";
 import {
-  getAgentInvocationId,
-  getChildAgentLockName,
-  getNamedAgentConversationId,
-  getUnnamedAgentConversationId,
-} from "./ids";
-import {
-  getAgentInvocation,
-  getLatestAgentInvocationForConversation,
-  isStoppedAgentInvocation,
-  listOpenAgentInvocations,
-} from "./store";
-import {
-  createAgentInvocationSchema,
-  type AgentInvocation,
-  type CreateAgentInvocationInput,
-} from "./types";
+  appendParentMessage,
+  buildParentMessage,
+  type ParentMessageDelivery,
+} from "./parent-message";
+import { spawnChildAgentInputSchema, type SpawnChildAgentInput } from "./types";
 
-/** Cap concurrent non-terminal children one parent can keep in flight. */
+/** Cap concurrent active children one parent can keep in flight. */
 export const MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT = 8;
-/**
- * Cap the non-terminal agent invocations of one child, including the one that
- * runs. Each message to a busy child queues one more.
- */
-const MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD = 4;
 
-type NewAgentInvocation = Pick<
-  AgentInvocation,
-  | "actor"
-  | "agentName"
-  | "agentType"
-  | "childConversationId"
-  | "credentialContext"
-  | "destination"
-  | "fork"
-  | "input"
-  | "invocationId"
-  | "parentConversationId"
-  | "parentToolCallId"
-  | "reasoningLevel"
-  | "title"
-> & { source?: AgentInvocation["source"] };
-
-/**
- * Insert one pending agent invocation and read it back. An existing row with
- * the same id wins, so the caller checks that the row it reads is its own.
- */
-async function insertAgentInvocation(
-  invocation: NewAgentInvocation,
-  nowMs: number,
-): Promise<AgentInvocation | undefined> {
-  await getSqlExecutor()
-    .db()
-    .insert(juniorAgentInvocations)
-    .values({
-      ...invocation,
-      agentName: invocation.agentName ?? null,
-      agentType: invocation.agentType ?? null,
-      fork: invocation.fork ?? false,
-      credentialContext: invocation.credentialContext ?? null,
-      parentToolCallId: invocation.parentToolCallId ?? null,
-      reasoningLevel: invocation.reasoningLevel ?? null,
-      source: invocation.source ?? { kind: "agent_invocation" },
-      title: invocation.title ?? null,
-      status: "pending",
-      mailboxStatus: "pending",
-      createdAt: new Date(nowMs),
-      updatedAt: new Date(nowMs),
-      terminalAt: null,
-    })
-    .onConflictDoNothing();
-  return await getAgentInvocation(invocation.invocationId);
-}
-
-/**
- * Require every durable creation input to match before replaying one key.
- * The title is not compared: a retry can generate a different one, and the
- * stored title wins.
- */
-function sameCreateInput(
-  invocation: AgentInvocation,
-  input: ReturnType<typeof createAgentInvocationSchema.parse>,
-): boolean {
-  return (
-    invocation.parentConversationId === input.parentConversationId &&
-    invocation.agentName === input.agentName &&
-    invocation.input === input.input &&
-    invocation.agentType === input.agentType &&
-    invocation.fork === input.fork &&
-    invocation.reasoningLevel === input.reasoningLevel &&
-    JSON.stringify(invocation.actor) === JSON.stringify(input.actor) &&
-    JSON.stringify(invocation.credentialContext) ===
-      JSON.stringify(input.credentialContext) &&
-    JSON.stringify(invocation.destination) === JSON.stringify(input.destination)
-  );
-}
+type SpawnInput = ReturnType<typeof spawnChildAgentInputSchema.parse>;
 
 /**
  * A stopped child agent cannot start or give work to child agents until its
- * parent gives it new work. A Turn on the child's Conversation loop
- * has no open agent invocation, but it can. A root Conversation has no agent
- * invocation or agent config, so it always passes. `open` is the parent's open work from
- * `listOpenAgentInvocations`.
+ * parent gives it new work, which ends the stop. A root Conversation has no
+ * agent config, so it always passes.
  */
 async function assertCanGiveChildWork(
   parentConversationId: string,
-  open: readonly AgentInvocation[],
 ): Promise<void> {
-  if (open.some((row) => row.childConversationId === parentConversationId)) {
-    return;
-  }
-  const latest =
-    await getLatestAgentInvocationForConversation(parentConversationId);
-  // A child that no Agent invocation names stays stopped until new work
-  // from its parent ends the stop.
-  const stopped = latest
-    ? isStoppedAgentInvocation(latest)
-    : (await readAgentConfig(parentConversationId)) !== undefined &&
-      (await getConversationStoppedAtMs(parentConversationId)) !== undefined;
-  if (stopped) {
-    throw new Error(
-      `Agent conversation ${parentConversationId} is stopped and cannot give work to child agents`,
-    );
+  if (
+    (await readAgentConfig(parentConversationId)) !== undefined &&
+    (await getConversationStoppedAtMs(parentConversationId)) !== undefined
+  ) {
+    throw new AgentStoppedError();
   }
 }
 
 /**
  * Throw when giving work to one child agent would put its parent over
- * `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT`. A child agent is active while it
- * has open work, so a busy child already counts and messages queued for it
- * do not count again. A new or idle child becomes active. This is the only
- * place the rule for which child agents count lives. `open` is the parent's
- * open work from `listOpenAgentInvocations`. A child that no agent
- * invocation names is active while its listing shows open work.
+ * `MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT`. A child agent is active while
+ * its listing shows open work, so a busy child already counts and messages
+ * queued for it do not count again. A new or idle child becomes active. This
+ * is the only place the rule for which child agents count lives. `active` is
+ * the parent's active children from `listOpenChildAgents`.
  */
-async function assertChildAgentCapacity(
-  open: readonly AgentInvocation[],
-  args: { childConversationId: string; parentConversationId: string },
-): Promise<void> {
-  const active = new Set([
-    ...open
-      .filter((row) => row.parentConversationId === args.parentConversationId)
-      .map((row) => row.childConversationId),
-    ...(await listOpenChildAgentsWithoutAgentInvocations(
-      args.parentConversationId,
-    )),
-  ]);
+function assertChildAgentCapacity(
+  active: readonly string[],
+  childConversationId: string,
+): void {
   if (
-    !active.has(args.childConversationId) &&
-    active.size >= MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT
+    !active.includes(childConversationId) &&
+    active.length >= MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT
   ) {
     throw new AgentInvocationLimitError(
       MAX_ACTIVE_AGENT_INVOCATIONS_PER_PARENT,
@@ -171,251 +82,301 @@ async function assertChildAgentCapacity(
 }
 
 /**
- * Create or replay the first invocation of one new child agent. A name gives
- * the child a stable Conversation id that later messages can address. A name
- * that is already used throws: later work for that child goes through
- * `createAgentInvocationForMessage`.
+ * Create the Conversation of one new child agent and bind its name, after
+ * the checks that every new child passes: its parent can give work, the name
+ * is free, and the parent has room. Call it under the parent lock, in the
+ * same transaction, so no other create can take this name or room first.
  */
-export async function createAgentInvocation(
-  rawInput: CreateAgentInvocationInput,
-  nowMs = Date.now(),
-): Promise<AgentInvocation> {
-  const input = createAgentInvocationSchema.parse(rawInput);
-  const invocationId = getAgentInvocationId(
-    input.parentConversationId,
-    input.idempotencyKey,
+async function createChildAgentConversation(
+  input: SpawnInput,
+  childConversationId: string,
+  nowMs: number,
+): Promise<void> {
+  await assertCanGiveChildWork(input.parentConversationId);
+  if (
+    input.agentName &&
+    (await getAgentBinding({
+      name: input.agentName,
+      parentConversationId: input.parentConversationId,
+    }))
+  ) {
+    throw new AgentNameInUseError(input.agentName);
+  }
+  assertChildAgentCapacity(
+    await listOpenChildAgents(input.parentConversationId),
+    childConversationId,
   );
-  const childConversationId = input.agentName
-    ? getNamedAgentConversationId(input.parentConversationId, input.agentName)
-    : getUnnamedAgentConversationId(invocationId);
-  // Parent-scoped lock so concurrent creates share one active-count check.
-  // A stop of the parent's tree takes the same lock.
-  const lockName = getChildAgentLockName(input.parentConversationId);
-  return await getSqlExecutor().withLock(lockName, async () => {
-    const existing = await getAgentInvocation(invocationId);
-    if (existing) {
-      const child = await getConversationStore().get({
-        conversationId: existing.childConversationId,
-      });
-      if (!sameCreateInput(existing, input) || child?.kind !== input.kind) {
-        throw new Error(
-          `Agent invocation idempotency key was reused with different input for ${invocationId}`,
-        );
+  await getConversationStore().createChild({
+    childConversationId,
+    kind: input.kind,
+    parentConversationId: input.parentConversationId,
+    nowMs,
+    source: "internal",
+    // The spawn title names the child, so title generation skips it.
+    ...(input.title ? { title: input.title } : undefined),
+  });
+  if (input.agentName) {
+    await getSqlExecutor().db().insert(juniorAgentBindings).values({
+      childConversationId,
+      name: input.agentName,
+      parentConversationId: input.parentConversationId,
+    });
+  }
+}
+
+type ChildAgentWorkOptions = {
+  conversationStore?: ConversationStore | undefined;
+  queue: ConversationWorkQueue;
+  state?: StateAdapter | undefined;
+};
+
+/**
+ * Give one task or message to a child agent. Under
+ * the parent lock, `prepare` runs the checks of its caller. Unless it finds
+ * a spawn replay or leaves a note, the parent's `subagent_started` marker
+ * and the parent message are written. The message reaches the mailbox under
+ * the lock, so the next spawn counts the child as active. The wake runs
+ * after the lock commits, so the child's worker reads the new Conversation;
+ * a lost wake is recovered like any other stranded mailbox input.
+ */
+async function giveChildAgentWork<T>(
+  work: Parameters<typeof buildParentMessage>[0] &
+    Pick<SubagentStart, "agentName" | "reasoningLevel" | "title">,
+  options: ChildAgentWorkOptions,
+  prepare: () => Promise<{
+    delivery: ParentMessageDelivery | "noted" | "replay";
+    value: T;
+  }>,
+): Promise<T> {
+  const message = buildParentMessage(work);
+  const prepared = await getSqlExecutor().withLock(
+    getChildAgentLockName(work.parentConversationId),
+    async () => {
+      const prepared = await prepare();
+      if (prepared.delivery === "noted" || prepared.delivery === "replay") {
+        return prepared;
       }
-      return existing;
-    }
-    const open = await listOpenAgentInvocations(input.parentConversationId);
-    await assertCanGiveChildWork(input.parentConversationId, open);
-    if (
-      input.agentName &&
-      (await getAgentBinding({
-        name: input.agentName,
-        parentConversationId: input.parentConversationId,
-      }))
-    ) {
-      throw new AgentNameInUseError(input.agentName);
-    }
-    await assertChildAgentCapacity(open, {
-      childConversationId,
-      parentConversationId: input.parentConversationId,
-    });
-
-    await getConversationStore().createChild({
-      childConversationId,
-      kind: input.kind,
-      parentConversationId: input.parentConversationId,
-      nowMs,
-      source: "internal",
-      // The spawn title names the child, so title generation skips it.
-      ...(input.title ? { title: input.title } : undefined),
-    });
-
-    // The name check above runs under the parent lock, in the same
-    // transaction, so no other create can take this name first.
-    if (input.agentName) {
-      await getSqlExecutor().db().insert(juniorAgentBindings).values({
-        childConversationId,
-        name: input.agentName,
-        parentConversationId: input.parentConversationId,
+      // The marker pairs by the parent message id, so the child's end finds
+      // it by key.
+      await recordSubagentStartedMarker({
+        agentName: work.agentName,
+        childConversationId: work.childConversationId,
+        createdAtMs: work.nowMs,
+        input: work.text,
+        markerId: message.inboundMessageId,
+        parentConversationId: work.parentConversationId,
+        parentToolCallId: work.parentToolCallId,
+        reasoningLevel: work.reasoningLevel,
+        title: work.title,
       });
-    }
+      await appendParentMessage(message, prepared.delivery, options);
+      return prepared;
+    },
+  );
+  if (prepared.delivery === "noted") {
+    return prepared.value;
+  }
+  await ensureConversationWake({
+    conversationId: work.childConversationId,
+    conversationStore: options.conversationStore,
+    // The only earlier wake of a new child came from a spawn that rolled
+    // back, and it may be spent, so a new child gets its own.
+    ...(prepared.delivery === "new_child"
+      ? {
+          idempotencyKey: `${message.inboundMessageId}:${randomUUID()}`,
+          ignoreEnqueueMarker: true,
+        }
+      : { idempotencyKey: message.inboundMessageId }),
+    queue: options.queue,
+    state: options.state,
+  });
+  return prepared.value;
+}
 
-    const invocation = await insertAgentInvocation(
-      {
-        actor: input.actor,
-        agentName: input.agentName,
-        agentType: input.agentType,
-        childConversationId,
-        credentialContext: input.credentialContext,
-        destination: input.destination,
-        fork: input.fork,
-        input: input.input,
-        invocationId,
-        parentConversationId: input.parentConversationId,
-        parentToolCallId: input.parentToolCallId,
-        reasoningLevel: input.reasoningLevel,
-        title: input.title,
-      },
-      nowMs,
-    );
-    if (!invocation || !sameCreateInput(invocation, input)) {
-      throw new Error(`Agent invocation creation raced for ${invocationId}`);
-    }
-    return invocation;
+/** Build the agent config that a spawn stores. */
+function spawnAgentConfig(input: SpawnInput): AgentConfig {
+  return agentConfigSchema.parse({
+    ...(input.agentType ? { agentType: input.agentType } : undefined),
+    ...(input.fork ? { fork: true } : undefined),
+    ...(input.reasoningLevel
+      ? { reasoningLevel: input.reasoningLevel }
+      : undefined),
   });
 }
 
 /**
- * Create or replay the agent invocation that gives one input to a child
- * Conversation: a result or message from its own child agent, or its own
- * watch events. It continues that Conversation for the same parent as
- * `latest`, and for the same Actor and credentials unless `runAs` sets them.
- * It skips the queue and active-count checks because it continues work that
- * already passed them.
+ * Return whether a Conversation's current Turn is stopped: its run has a stop
+ * request, or the stop came after the Turn started. A stop's time is when its
+ * message was sent, so a Turn that started before the stop arrived still has
+ * the stop request. Any other stop from before the Turn does not count: a
+ * later Turn runs past it, such as one for the reply of a Thread that a
+ * person resumed. With no record of the Turn's start, any stop counts.
  */
-export async function createAgentInvocationFromLatest(
-  args: {
-    input: string;
-    invocationId: string;
-    latest: AgentInvocation;
-    /**
-     * Actor, credentials, and Source for watch events and results. A parent
-     * message also sets its tool call, which makes it the instruction.
-     */
-    runAs?: Pick<AgentInvocation, "actor" | "credentialContext"> &
-      Partial<Pick<AgentInvocation, "fork" | "parentToolCallId" | "source">>;
-  },
-  nowMs = Date.now(),
-): Promise<AgentInvocation> {
-  const { latest } = args;
-  const { actor, credentialContext } = args.runAs ?? latest;
-  const invocation = await insertAgentInvocation(
-    {
-      actor,
-      agentName: latest.agentName,
-      agentType: latest.agentType,
-      childConversationId: latest.childConversationId,
-      credentialContext,
-      destination: latest.destination,
-      fork: args.runAs?.fork,
-      input: args.input,
-      invocationId: args.invocationId,
-      parentConversationId: latest.parentConversationId,
-      parentToolCallId: args.runAs?.parentToolCallId,
-      reasoningLevel: latest.reasoningLevel,
-      source: args.runAs?.source,
-    },
-    nowMs,
-  );
-  if (
-    !invocation ||
-    invocation.childConversationId !== latest.childConversationId
-  ) {
-    throw new Error(`Agent invocation creation raced for ${args.invocationId}`);
+async function isStoppedInTurn(
+  conversationId: string,
+  turnId: string,
+  state: StateAdapter | undefined,
+): Promise<boolean> {
+  // A stop request on the current run stops it even after a person resumed
+  // the Conversation.
+  const runId = (await getConversationWorkState({ conversationId, state }))
+    ?.execution.runId;
+  if (runId && (await hasConversationStop({ conversationId, runId, state }))) {
+    return true;
   }
-  return invocation;
+  const stoppedAtMs = await getConversationStoppedAtMs(conversationId);
+  if (stoppedAtMs === undefined) {
+    return false;
+  }
+  const start = await loadTurnStart(conversationId, turnId);
+  return start === undefined || stoppedAtMs >= start.startedAtMs;
 }
 
 /**
- * Create or replay the agent invocation for one message from a parent to one
- * of its child agents. The child continues its history. If the child already
- * has open work, the new agent invocation waits for that work and the parent
- * gets one report for both. A stopped child starts again.
+ * Check a spawn replay against the child that the first spawn stored: its
+ * kind, its name, and its agent config. A replay sends nothing, so the first
+ * task, Actor, and credentials stay, and other input there gains no
+ * authority.
  */
-export async function createAgentInvocationForMessage(
+async function assertSameSpawn(
+  input: SpawnInput,
+  child: { conversationId: string; kind: string },
+): Promise<void> {
+  const [sender, config] = await Promise.all([
+    readChildConversationSender(child.conversationId),
+    readAgentConfig(child.conversationId),
+  ]);
+  const expected = spawnAgentConfig(input);
+  if (
+    child.kind !== input.kind ||
+    sender?.agentName !== input.agentName ||
+    config?.agentType !== expected.agentType ||
+    config?.fork !== expected.fork ||
+    config?.reasoningLevel !== expected.reasoningLevel
+  ) {
+    throw new Error(
+      `Spawn idempotency key was reused with different input for ${child.conversationId}`,
+    );
+  }
+}
+
+/**
+ * Create or replay one child agent: its Conversation, its binding, its agent
+ * config, and its task as a parent message. The spawn's idempotency key
+ * names the child Conversation, so a replay finds it in SQL and sends
+ * nothing. The child exists in SQL only when its task reached its mailbox in
+ * the same transaction.
+ */
+export async function spawnChildAgent(
+  rawInput: SpawnChildAgentInput & { parentTurnId: string },
+  options: ChildAgentWorkOptions,
+  nowMs = Date.now(),
+): Promise<{ childConversationId: string }> {
+  const { parentTurnId, ...spawnInput } = rawInput;
+  const input = spawnChildAgentInputSchema.parse(spawnInput);
+  const childConversationId = getSpawnedChildConversationId(
+    input.parentConversationId,
+    input.idempotencyKey,
+  );
+  await giveChildAgentWork(
+    {
+      ...input,
+      childConversationId,
+      nowMs,
+      text: input.input,
+    },
+    options,
+    async () => {
+      const child = await getConversationStore().get({
+        conversationId: childConversationId,
+      });
+      if (child) {
+        await assertSameSpawn(input, child);
+        return { delivery: "replay", value: undefined };
+      }
+      // A new child has no Turn to read a note, so a stopped parent cannot
+      // start one.
+      if (
+        await isStoppedInTurn(
+          input.parentConversationId,
+          parentTurnId,
+          options.state,
+        )
+      ) {
+        throw new AgentStoppedError();
+      }
+      await createChildAgentConversation(input, childConversationId, nowMs);
+      await getSqlExecutor()
+        .db()
+        .update(juniorConversations)
+        .set({
+          agentConfig: spawnAgentConfig(input),
+          detailVersion: nextDetailVersion,
+        })
+        .where(eq(juniorConversations.conversationId, childConversationId));
+      return { delivery: "new_child", value: undefined };
+    },
+  );
+  return { childConversationId };
+}
+
+/**
+ * Give one `messageAgent` message to a child agent, as a parent message. `findChildAgentConversationId` must have found
+ * the child under this parent. `queued` means the child already has open
+ * work, so it reads the message after that work. While the parent is
+ * stopped, the message becomes a Conversation note on the child instead: it
+ * starts no work and ends no stop, and the child's next Turn shows it.
+ */
+export async function messageChildAgent(
   input: {
-    actor: AgentInvocation["actor"];
+    actor: Actor;
     childConversationId: string;
-    credentialContext?: AgentInvocation["credentialContext"];
-    destination: AgentInvocation["destination"];
+    credentialContext?: CredentialContext | undefined;
     idempotencyKey: string;
     input: string;
     parentConversationId: string;
     parentToolCallId: string;
+    parentTurnId: string;
   },
+  options: ChildAgentWorkOptions,
   nowMs = Date.now(),
-): Promise<{ invocation: AgentInvocation; queued: boolean }> {
-  const invocationId = getAgentInvocationId(
-    input.parentConversationId,
-    input.idempotencyKey,
-  );
-  return await getSqlExecutor().withLock(
-    getChildAgentLockName(input.parentConversationId),
+): Promise<{ delivery: "noted" | "queued" | "started" }> {
+  const { parentTurnId, ...work } = input;
+  const sender = await readChildConversationSender(input.childConversationId);
+  const delivery = await giveChildAgentWork(
+    {
+      ...work,
+      agentName: sender?.agentName,
+      nowMs,
+      text: input.input,
+      title: sender?.title,
+    },
+    options,
     async () => {
-      const existing = await getAgentInvocation(invocationId);
-      if (existing) {
-        if (
-          existing.childConversationId !== input.childConversationId ||
-          existing.input !== input.input
-        ) {
-          throw new Error(
-            `Agent invocation idempotency key was reused with different input for ${invocationId}`,
-          );
-        }
-        // A replayed pending agent invocation is queued while older open
-        // work on the child runs.
-        const queued =
-          existing.status === "pending" &&
-          (await listOpenAgentInvocations(input.parentConversationId)).some(
-            (row) =>
-              row.childConversationId === input.childConversationId &&
-              row.createdAtMs < existing.createdAtMs,
-          );
-        return { invocation: existing, queued };
+      if (
+        await isStoppedInTurn(
+          input.parentConversationId,
+          parentTurnId,
+          options.state,
+        )
+      ) {
+        await addConversationNote({
+          conversationId: input.childConversationId,
+          createdAtMs: nowMs,
+          key: `stopped-parent-message:${input.parentConversationId}:${input.idempotencyKey}`,
+          text: `Your parent agent sent this message while it was stopped, so it started no work: ${input.input}`,
+        });
+        return { delivery: "noted", value: "noted" as const };
       }
-      // A child that no agent invocation names reads its name from its
-      // binding and its model settings from its agent config.
-      const latest = await getLatestAgentInvocationForConversation(
-        input.childConversationId,
-      );
-      const child =
-        latest ??
-        (await readChildConversationSender(input.childConversationId));
-      if (!child || child.parentConversationId !== input.parentConversationId) {
-        throw new Error(
-          `${input.childConversationId} is not a child agent of ${input.parentConversationId}`,
-        );
-      }
-      const agentConfig =
-        latest ?? (await readAgentConfig(input.childConversationId)) ?? {};
-      const open = await listOpenAgentInvocations(input.parentConversationId);
-      await assertCanGiveChildWork(input.parentConversationId, open);
-      // A child that no Agent invocation names counts its open parent
-      // messages instead.
-      const openCount =
-        open.filter(
-          (row) => row.childConversationId === input.childConversationId,
-        ).length +
-        (latest ? 0 : await countOpenParentMessages(input.childConversationId));
-      if (openCount >= MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD) {
-        throw new AgentMessageQueueFullError(
-          MAX_OPEN_AGENT_INVOCATIONS_PER_CHILD,
-        );
-      }
-      await assertChildAgentCapacity(open, {
-        childConversationId: input.childConversationId,
-        parentConversationId: input.parentConversationId,
-      });
-      const invocation = await insertAgentInvocation(
-        {
-          actor: input.actor,
-          agentName: child.agentName,
-          agentType: agentConfig.agentType,
-          childConversationId: input.childConversationId,
-          credentialContext: input.credentialContext,
-          destination: input.destination,
-          input: input.input,
-          invocationId,
-          parentConversationId: input.parentConversationId,
-          parentToolCallId: input.parentToolCallId,
-          reasoningLevel: agentConfig.reasoningLevel,
-        },
-        nowMs,
-      );
-      if (!invocation) {
-        throw new Error(`Agent invocation creation raced for ${invocationId}`);
-      }
-      return { invocation, queued: openCount > 0 };
+      await assertCanGiveChildWork(input.parentConversationId);
+      const active = await listOpenChildAgents(input.parentConversationId);
+      assertChildAgentCapacity(active, input.childConversationId);
+      const queued = active.includes(input.childConversationId);
+      return {
+        delivery: "message",
+        value: queued ? ("queued" as const) : ("started" as const),
+      };
     },
   );
+  return { delivery };
 }

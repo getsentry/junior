@@ -32,7 +32,7 @@ import { SidebarMenuButton, SidebarMenuItem } from "./ui/sidebar";
 type ProfileMenuProps = {
   identity: Identity;
   onSignOut(): Promise<void>;
-  spend?: PersonalSpendReport;
+  spend?: PersonalSpendReport | undefined;
   /** Pages that live in this menu instead of the primary nav. */
   pages: DashboardHeaderNavItem[];
   /**
@@ -81,7 +81,7 @@ function ProfileAvatar({
     >
       <AvatarImage alt="User avatar" src={user.avatarUrl} />
       <AvatarFallback className="font-bold tracking-wide">
-        {initials(user.name, user.email!)}
+        {initials(user.name, user.email)}
       </AvatarFallback>
     </Avatar>
   );
@@ -93,7 +93,7 @@ const SPEND_COUNT_UP_MS = 700;
  * Show one spend total. When the total changes, count up from the last shown
  * value and tint the figure until the count ends.
  */
-function SpendAmount({ value }: { value?: number }) {
+function SpendAmount({ value }: { value?: number | undefined }) {
   const [shown, setShown] = useState(value);
   const [counting, setCounting] = useState(false);
   const shownRef = useRef(value);
@@ -152,7 +152,7 @@ export function ProfileMenu({
   variant = "popover",
 }: ProfileMenuProps) {
   const [open, setOpen] = useState(false);
-  const email = identity.user.email!;
+  const email = identity.user.email;
   const name = identity.user.name?.trim() || email;
   const sevenDaySpend = spend
     ? formatCostSummary({ total: spend.sevenDaysUsd })

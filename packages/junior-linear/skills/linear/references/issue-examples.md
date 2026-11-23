@@ -14,7 +14,7 @@ Good body (flat bullets, no headings):
 > - Proxy logs show `payload_too_large` but no alert fires
 > - Reported by the oncall engineer during weekend incident
 >
-> Action taken on behalf of Alice.
+> Action taken by Junior.
 
 Bad body (over-structured for a simple bug):
 
@@ -44,7 +44,7 @@ Good body:
 >
 > - Flagged by Bob during PR #312 review
 >
-> Action taken on behalf of Bob.
+> Action taken by Junior.
 
 Bad title: "Clean up some auth code"
 
@@ -60,9 +60,9 @@ Good body:
 >
 > Requested by the platform team after repeated incident delays.
 >
-> Action taken on behalf of Carol.
+> Action taken by Junior.
 
-## Distinct reporter/actor
+## Distinct reporter/requester
 
 Good body:
 
@@ -74,7 +74,7 @@ Good body:
 > - The related PR remained blocked
 > - No evidence in the thread showed that the underlying condition had cleared
 >
-> Action taken on behalf of David Cramer.
+> Action taken by Junior.
 
 ## Anti-patterns
 
@@ -84,4 +84,4 @@ Good body:
 - Inventing fixes, implementation steps, approaches, or options, even when diagnosis is strong
 - Mixing user-provided proposals into verified diagnosis without attribution
 - Dumping a list of URLs without inline context
-- Conflating the reporter with the action actor when they differ
+- Conflating the reporter with the person who asked when they differ

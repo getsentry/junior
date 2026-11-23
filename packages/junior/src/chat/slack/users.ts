@@ -10,23 +10,23 @@ import type { SlackBotId, SlackUserId } from "@/chat/slack/ids";
 /** Normalized Slack user profile with custom fields from the Slack workspace. */
 export interface SlackUserProfile {
   id: string;
-  team_id?: string;
-  name?: string;
-  real_name?: string;
-  display_name?: string;
-  title?: string;
-  email?: string;
-  status_text?: string;
-  status_emoji?: string;
-  avatar_url?: string;
+  team_id?: string | undefined;
+  name?: string | undefined;
+  real_name?: string | undefined;
+  display_name?: string | undefined;
+  title?: string | undefined;
+  email?: string | undefined;
+  status_text?: string | undefined;
+  status_emoji?: string | undefined;
+  avatar_url?: string | undefined;
   is_bot: boolean;
   is_deleted: boolean;
-  timezone?: string;
+  timezone?: string | undefined;
   profile_fields?: Array<{
     id: string;
-    label?: string;
-    value?: string;
-    alt?: string;
+    label?: string | undefined;
+    value?: string | undefined;
+    alt?: string | undefined;
   }>;
 }
 
@@ -120,6 +120,36 @@ export async function lookupSlackUserProfile(
   }
 
   return normalizeUser(user);
+}
+
+/**
+ * Look up one Slack user who is a current human member of a workspace.
+ *
+ * Returns undefined for a user that Slack cannot find, a deleted user, a bot,
+ * or a user of another workspace. Other lookup errors propagate.
+ */
+export async function lookupActiveSlackWorkspaceMember(
+  userId: SlackUserId,
+  teamId: string,
+): Promise<SlackUserProfile | undefined> {
+  let user: SlackUserProfile;
+  try {
+    user = await lookupSlackUserProfile(userId);
+  } catch (error: unknown) {
+    if (
+      error instanceof SlackActionError &&
+      error.apiError === "user_not_found"
+    ) {
+      return undefined;
+    }
+    throw error;
+  }
+  return user.id === userId &&
+    user.team_id === teamId &&
+    !user.is_deleted &&
+    !user.is_bot
+    ? user
+    : undefined;
 }
 
 /** Look up a Slack bot by ID. Returns undefined when Slack has no such bot. */
@@ -256,6 +286,7 @@ async function listWorkspaceUsers(options: {
   let pages = 0;
   let totalScanned = 0;
 
+  /* oxlint-disable no-await-in-loop -- Each page starts at the cursor of the page before. */
   while (pages < options.maxPages) {
     pages++;
 
@@ -289,6 +320,7 @@ async function listWorkspaceUsers(options: {
     }
     cursor = nextCursor;
   }
+  /* oxlint-enable no-await-in-loop */
 
   return {
     matches,

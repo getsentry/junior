@@ -365,6 +365,7 @@ test("opens at new messages after earlier pages were cached", async ({
   await expect.poll(() => pageRequests).toContain("?before=160");
   expect(new Set(pageRequests).size).toBe(pageRequests.length);
   releaseNewer();
+  await mock.pageReadsLanded();
 });
 
 test("jumps to the latest page without the newer pages", async ({
@@ -405,7 +406,7 @@ test("jumps to the latest page without the newer pages", async ({
   await expect(
     transcript.getByRole("button", { name: "Load newer events" }),
   ).toHaveCount(0);
-  expect(pageRequests).toEqual(["?around=20", "?after=40"]);
+  expect(pageRequests).toEqual(["?around=20&limit=300", "?after=40&limit=119"]);
 
   // Earlier pages load above the latest page as the reader scrolls up.
   await transcript.evaluate((element) => {
@@ -414,6 +415,7 @@ test("jumps to the latest page without the newer pages", async ({
   await expect(transcript.getByText("Transcript message 159 ")).toBeAttached();
   expect(pageRequests.slice(2)).toEqual(["?before=160"]);
   releaseNewer();
+  await mock.pageReadsLanded();
 });
 
 test("opens far behind at the read position and loads newer pages after it", async ({
@@ -433,7 +435,8 @@ test("opens far behind at the read position and loads newer pages after it", asy
     lastSeenAt: generatedAt,
     startedAt: generatedAt,
     // Active Conversations poll every 2s, so new events reach the page.
-    status: "active",
+    status: "working",
+    turnActive: true,
     surface: "internal",
   };
   let latestSeq = 139;
@@ -639,5 +642,5 @@ test("opens far behind at the read position and loads newer pages after it", asy
       ].map((match) => Number(match[1])),
     ),
   ]);
-  expect(shown.at(-1)! - shown[0]! + 1).toBe(shown.length);
+  expect(shown.at(-1)! - shown[0] + 1).toBe(shown.length);
 });

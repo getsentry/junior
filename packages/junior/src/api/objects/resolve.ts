@@ -1,8 +1,10 @@
+import { mapBounded } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import {
   objectAnnotationSchema,
   ownedObjectAnnotationSchema,
   type ObjectLinkContext,
+  type ObjectType,
   type OwnedObjectAnnotation,
   type PluginRegistration,
   type User,
@@ -14,6 +16,7 @@ import { webActorFromUser } from "@/chat/conversations/web-input";
 import { createPluginEgress } from "@/chat/egress/plugin";
 import { imagePath } from "@/chat/images/ids";
 import { logException } from "@/chat/logging";
+import { createViewerMcp } from "@/chat/mcp/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
@@ -26,6 +29,7 @@ import {
 import {
   assertNoObjectLinkConflicts,
   findObjectLinkType,
+  linkTypeName,
   type ObjectLinkType,
 } from "./link-types";
 import { resolvePersonByAccount, resolvePersonLink } from "./person";
@@ -53,7 +57,7 @@ function coreLinkTypes(): ObjectLinkType[] {
     // workspace, so it shares one Slack installation with the check.
     canView: async () => true,
     filters: [SLACK_MESSAGE_LINK_FILTER],
-    objectType: "message",
+    objectTypes: ["message"],
     owner: "junior",
     resolve: resolveSlackMessageLink,
   };
@@ -69,7 +73,7 @@ function coreLinkTypes(): ObjectLinkType[] {
     {
       canView: canViewConversationLink,
       filters: [conversations],
-      objectType: "conversation",
+      objectTypes: ["conversation"],
       owner: "junior",
       resolve: resolveConversationLink,
     },
@@ -79,7 +83,7 @@ function coreLinkTypes(): ObjectLinkType[] {
       // Every signed-in viewer sees the People pages.
       canView: async () => true,
       filters: [people, { scheme: "mailto" }],
-      objectType: "person",
+      objectTypes: ["person"],
       owner: "junior",
       resolve: (_viewer, url) => resolvePersonLink(url),
     },
@@ -108,6 +112,7 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
       pluginAuth: { async handleAuthRequired() {} },
       userOAuthOnly: true,
     }),
+    viewerMcp: createViewerMcp(name, viewer.id),
   };
 }
 
@@ -117,11 +122,12 @@ function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
     canView: (viewer, url) =>
       link.canView(objectLinkContext(name, viewer), url),
     filters: link.filters,
-    objectType: link.objectType,
+    objectTypes: link.objectTypes,
     owner: name,
     readTool: link.readTool,
     resolve: (viewer, url) =>
       link.resolve(objectLinkContext(name, viewer), url),
+    ...(link.webPageFallback ? { webPageFallback: true } : undefined),
   }));
 }
 
@@ -137,24 +143,53 @@ export function readObjectLinkTypes(
   return linkTypes;
 }
 
+/**
+ * Return the object type of the link type that claims a URL, such as
+ * `code_change` for a pull request link from the GitHub plugin. The plugin
+ * that owns the link type decides; core only reads its filters. A link type
+ * that can open more than one type, such as a GitHub issue URL that can open
+ * a pull request, names no type from the URL alone.
+ */
+export function readLinkObjectType(
+  url: string,
+  linkTypes: readonly ObjectLinkType[] = readObjectLinkTypes(),
+): ObjectType | undefined {
+  if (!URL.canParse(url)) return undefined;
+  const objectTypes = findObjectLinkType(linkTypes, new URL(url))?.objectTypes;
+  return objectTypes?.length === 1 ? objectTypes[0] : undefined;
+}
+
+type ResolvedObjectLink = {
+  linkType: ObjectLinkType;
+  object: OwnedObjectAnnotation;
+};
+
 async function resolveWithLinkType(
   linkType: ObjectLinkType,
   viewer: User,
   url: URL,
-): Promise<OwnedObjectAnnotation | null> {
-  if (!(await linkType.canView(viewer, url))) return null;
+): Promise<ResolvedObjectLink | null> {
+  if (!(await linkType.canView(viewer, url))) {
+    // The web page card reads only what anyone can read signed out.
+    return linkType.webPageFallback
+      ? await resolveWithLinkType(webPageLinkType(), viewer, url)
+      : null;
+  }
   const resolved = await linkType.resolve(viewer, url);
   if (!resolved) return null;
   const object = objectAnnotationSchema.parse(resolved);
-  if (object.objectType !== linkType.objectType) {
+  if (!linkType.objectTypes.includes(object.objectType)) {
     throw new Error(
-      `Link type "${linkType.owner}/${linkType.objectType}" returned a ${object.objectType} object.`,
+      `Link type "${linkTypeName(linkType)}" returned a ${object.objectType} object.`,
     );
   }
-  return ownedObjectAnnotationSchema.parse({
-    ...object,
-    plugin: linkType.owner,
-  });
+  return {
+    linkType,
+    object: ownedObjectAnnotationSchema.parse({
+      ...object,
+      plugin: linkType.owner,
+    }),
+  };
 }
 
 /**
@@ -165,13 +200,29 @@ async function resolveWithLinkType(
 export async function resolveObjectLinkNow(
   viewer: User,
   url: URL,
-): Promise<
-  { linkType: ObjectLinkType; object: OwnedObjectAnnotation } | undefined
-> {
+): Promise<ResolvedObjectLink | undefined> {
   const linkType = findObjectLinkType(readObjectLinkTypes(), url);
   if (!linkType) return undefined;
-  const object = await resolveWithLinkType(linkType, viewer, url);
-  return object ? { linkType, object } : undefined;
+  return (await resolveWithLinkType(linkType, viewer, url)) ?? undefined;
+}
+
+/**
+ * Return whether a link type of `plugin` claims the URL, lets the viewer
+ * see it now, and reads an object there. A missing or deleted object does
+ * not count. Neither does the web page card: it shows what anyone can read
+ * signed out, not what the viewer can see.
+ */
+export async function viewerCanViewPluginLink(
+  viewer: User,
+  url: URL,
+  plugin: string,
+): Promise<boolean> {
+  const linkType = findObjectLinkType(readObjectLinkTypes(), url);
+  return (
+    linkType?.owner === plugin &&
+    (await linkType.canView(viewer, url)) &&
+    Boolean(await linkType.resolve(viewer, url))
+  );
 }
 
 /**
@@ -185,31 +236,30 @@ export async function resolveObjectLinks(
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
   const cache = createCache(getStateAdapter(), "object-links");
-  const results = await Promise.all(
-    [...new Set(urls)].map(async (url) => {
-      const parsed = URL.canParse(url) ? new URL(url) : undefined;
-      const linkType = parsed && findObjectLinkType(linkTypes, parsed);
-      if (!parsed || !linkType) return [];
-      // Each viewer has their own entry: a card holds only what they see.
-      const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
-      const resolve = () => resolveWithLinkType(linkType, viewer, parsed);
-      try {
-        const object =
-          linkType.cacheCards === false
-            ? await resolve()
-            : await cache.getOrLoad(key, async () => ({
-                value: await resolve(),
-                ttlMs: OBJECT_LINK_TTL_MS,
-              }));
-        return object ? [{ object, url }] : [];
-      } catch (error) {
-        // One failed provider read must not hide the other cards.
-        logException(error, "object_link.resolve.failed", {
-          "app.plugin.name": linkType.owner,
-        });
-        return [];
-      }
-    }),
-  );
+  const results = await mapBounded([...new Set(urls)], async (url) => {
+    const parsed = URL.canParse(url) ? new URL(url) : undefined;
+    const linkType = parsed && findObjectLinkType(linkTypes, parsed);
+    if (!parsed || !linkType) return [];
+    // Each viewer has their own entry: a card holds only what they see.
+    const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
+    const resolve = async () =>
+      (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
+    try {
+      const object =
+        linkType.cacheCards === false
+          ? await resolve()
+          : await cache.getOrLoad(key, async () => ({
+              value: await resolve(),
+              ttlMs: OBJECT_LINK_TTL_MS,
+            }));
+      return object ? [{ object, url }] : [];
+    } catch (error) {
+      // One failed provider read must not hide the other cards.
+      logException(error, "object_link.resolve.failed", {
+        "app.plugin.name": linkType.owner,
+      });
+      return [];
+    }
+  });
   return results.flat();
 }

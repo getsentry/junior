@@ -4,9 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
+    "./clock": "./src/clock.ts",
     "./event-filters": "./src/event-filters.ts",
     "./http": "./src/http/index.ts",
     "./pglite": "./src/pglite.ts",
+    "./plugin-tool": "./src/plugin-tool.ts",
     "./postgres": "./src/postgres/index.ts",
     "./postgres/fixture": "./src/postgres/fixture.ts",
     "./postgres/global-setup": "./src/postgres/global-setup.ts",
@@ -23,10 +25,10 @@
     "zod": "catalog:"
   },
   "devDependencies": {
-    "@types/node": "^25.9.1",
+    "@types/node": "catalog:",
     "@types/pg": "^8.15.6",
-    "typescript": "^7.0.2",
-    "vitest": "^4.1.12"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "vitest": "^4.1.12"

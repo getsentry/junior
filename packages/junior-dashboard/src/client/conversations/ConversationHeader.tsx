@@ -14,7 +14,15 @@ import {
   HeaderIconButton,
   TranscriptSearchToggle,
 } from "./ConversationHeaderActions";
-import type { ConversationMenu } from "./conversationMenuItems";
+import {
+  isConversationParticipant,
+  type ConversationMenu,
+} from "./conversationMenuItems";
+import {
+  EditableConversationTitle,
+  MobileEditableConversationTitle,
+  type ConversationTitleEdit,
+} from "./EditableConversationTitle";
 import { ChildAgentTags } from "./ChildAgentTags";
 import { ConversationBreadcrumb } from "./ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "./ConversationOverflowMenu";
@@ -25,14 +33,14 @@ import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 
 /**
  * Keep the conversation title and frequently used controls in the header.
- * Run facts and the Brief live in Conversation details.
+ * Run facts and the summary live in Conversation details.
  */
 export function ConversationHeader(props: {
   /** Agent tree of a child Conversation. Root Conversations omit it. */
-  agentTree?: readonly ConversationAgentTreeNode[];
+  agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   contextTags?: ReactNode;
   /** Estimated cost. Desktop only; mobile shows it in Conversation details. */
-  cost?: ReactNode;
+  cost?: ReactNode | undefined;
   detailsOpen: boolean;
   /** Messages of failed menu actions, shown below the title bar. */
   errors: readonly string[];
@@ -50,9 +58,11 @@ export function ConversationHeader(props: {
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
+  /** Renames the Conversation in place. Only participants get it. */
+  rename?: ConversationTitleEdit | undefined;
   search: string;
   searchMatch: TranscriptSearchMatch;
-  sidebarToggle?: ReactNode;
+  sidebarToggle?: ReactNode | undefined;
   /** Status pill of a child Conversation, after its title. */
   status?: ReactNode;
   title: string;
@@ -113,8 +123,15 @@ export function ConversationHeader(props: {
     />
   );
 
+  const rename = isConversationParticipant(props.menu)
+    ? props.rename
+    : undefined;
+  const titleText = <span className="min-w-0 truncate">{props.title}</span>;
+  const titleClass =
+    "font-display text-base font-medium leading-6 tracking-tight";
+
   const title =
-    props.view === "raw" ? (
+    props.view === "raw" && !rename?.editing ? (
       // Event log is a debug view reached from the `⋯` menu. The title leads
       // back to the Conversation.
       <>
@@ -141,9 +158,28 @@ export function ConversationHeader(props: {
     ) : (
       <h2
         aria-current="page"
-        className="m-0 min-w-0 truncate font-display text-base font-medium leading-6 tracking-tight"
+        className={cn(
+          "m-0 flex min-w-0",
+          titleClass,
+          // The title names the Conversation, so it keeps its width and the
+          // tags after it truncate first. A long title still leaves them room.
+          !props.agentTree &&
+            Boolean(props.contextTags) &&
+            "md:max-w-[70%] md:shrink-0",
+          rename?.editing && "min-w-1/2 flex-1",
+        )}
       >
-        {props.title}
+        {rename ? (
+          <EditableConversationTitle
+            {...rename}
+            className={titleClass}
+            title={props.title}
+          >
+            {titleText}
+          </EditableConversationTitle>
+        ) : (
+          titleText
+        )}
       </h2>
     );
 
@@ -168,6 +204,11 @@ export function ConversationHeader(props: {
           ) : null}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
+      {rename ? (
+        <MobileEditableConversationTitle {...rename} title={props.title}>
+          {titleText}
+        </MobileEditableConversationTitle>
+      ) : null}
       {props.contextTags || props.linkedWork ? (
         <MobileHeaderTagsPortal>
           {/* One row. Tags keep their width; the slot scrolls. */}
@@ -188,7 +229,8 @@ export function ConversationHeader(props: {
         )}
       >
         <div className="hidden h-13 min-w-0 items-center justify-between gap-1.5 px-1 md:flex">
-          <div className="flex min-w-0 items-center gap-1.5">
+          {/* Fill the free width, so the title's max width is a share of it. */}
+          <div className="flex min-w-0 flex-1 items-center gap-1.5">
             {props.sidebarToggle ? (
               <div className="shrink-0">{props.sidebarToggle}</div>
             ) : null}

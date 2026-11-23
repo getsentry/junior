@@ -13,10 +13,6 @@ import {
   recordWebConversationActivity,
 } from "@/chat/conversations/web-input";
 import { createConversationTurnWorker } from "@/chat/task-execution/conversation-turn";
-import {
-  resolveMailboxTurnWork,
-  type MailboxTurnWork,
-} from "@/chat/task-execution/mailbox-turn";
 import type { AgentRun } from "@/chat/agent/types";
 import { getConversationEventStore } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -24,10 +20,6 @@ import { createEventInboundMessage } from "@/chat/events/notification";
 import { bindTimerWatchCredentialSubject } from "@/chat/credentials/subject";
 import { appendAndEnqueueInboundMessage } from "@/chat/task-execution/store";
 import { processConversationQueueMessage } from "@/chat/task-execution/vercel-callback";
-import type {
-  ConversationWorkerContext,
-  ConversationWorkerResult,
-} from "@/chat/task-execution/worker";
 import {
   getTurnRecord,
   saveTurnCheckpoint,
@@ -36,26 +28,10 @@ import { turnCursorKey } from "@/chat/task-execution/turn-cursor-keys";
 import {
   closeConversationFixture,
   createConversationFixture,
+  requireConversationTurn,
 } from "../fixtures/conversation";
 import { createModelAgentRunnerForRun } from "../fixtures/agent-runner";
 import { createModelStream } from "../fixtures/model-stream";
-
-function requireConversationTurn(
-  worker: (
-    context: ConversationWorkerContext,
-    resolved: MailboxTurnWork,
-  ) => Promise<ConversationWorkerResult>,
-) {
-  return async (
-    context: ConversationWorkerContext,
-  ): Promise<ConversationWorkerResult> => {
-    const resolved = await resolveMailboxTurnWork(context);
-    if (!resolved) {
-      throw new Error("Expected Conversation mailbox work");
-    }
-    return await worker(context, resolved);
-  };
-}
 
 describe("Conversation mailbox Turn work", () => {
   afterEach(async () => {
@@ -619,10 +595,10 @@ describe("Conversation mailbox Turn work", () => {
         ? [
             {
               role: event.data.role,
-              source: event.data.meta?.source,
-              eventType: event.data.meta?.eventType,
-              trustedSummary: event.data.meta?.trustedSummary,
-              quiet: event.data.meta?.quiet,
+              source: event.data.meta?.["source"],
+              eventType: event.data.meta?.["eventType"],
+              trustedSummary: event.data.meta?.["trustedSummary"],
+              quiet: event.data.meta?.["quiet"],
               text: event.data.text,
             },
           ]
@@ -637,15 +613,7 @@ describe("Conversation mailbox Turn work", () => {
         quiet: undefined,
         text: "Code change checks failed",
       },
-      {
-        role: "assistant",
-        source: undefined,
-        eventType: undefined,
-        trustedSummary: undefined,
-        // The noReply note, kept as a Quiet message.
-        quiet: true,
-        text: "Handled the event.",
-      },
+      // The noReply note stays in agent history only. It is not a Message.
     ]);
   }, 10_000);
 

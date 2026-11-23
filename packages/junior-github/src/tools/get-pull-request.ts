@@ -1,7 +1,7 @@
-import { githubObjectAnnotation } from "../annotations.js";
+import { githubObjectKey } from "../annotations.js";
 import { readDraftReadiness } from "../draft-readiness.js";
-import { githubObjectFacts } from "../object-facts.js";
 import {
+  type PluginConversationToolContext,
   type PluginEgress,
   definePluginTool,
   PluginToolInputError,
@@ -13,13 +13,16 @@ import * as z from "zod";
 import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import { PULL_REQUEST_CHECKS } from "../graphql-documents.js";
+import { checkContextState } from "../pull-request-review-again.js";
 import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
+const RELATED_CONVERSATIONS_MAX = 10;
+const SUMMARY_MAX_LENGTH = 300;
 const inputSchema = z
   .object({
     repo: z.string().describe('Repository in "owner/name" format.'),
-    number: z.number().int().positive().describe("Pull request number."),
+    pull_request: z.number().int().positive().describe("Pull request number."),
   })
   .strict();
 const checksSchema = z.object({
@@ -55,6 +58,22 @@ const checksSchema = z.object({
     .describe("true when auto-merge is on for the pull request."),
 });
 type Checks = z.output<typeof checksSchema>;
+const relatedConversationSchema = z.object({
+  conversation_id: z.string(),
+  root_conversation_id: z
+    .string()
+    .optional()
+    .describe("Root of a child agent."),
+  status: z
+    .enum(["pending", "running", "paused", "idle"])
+    .describe(
+      "What its agent does now. pending: waiting to run. running or paused: working. idle: waits for a message.",
+    ),
+  title: z.string().optional(),
+  summary: z.string().optional().describe("Summary from the latest Brief."),
+  updated_at: z.string().describe("Time of the latest activity."),
+});
+type RelatedConversation = z.output<typeof relatedConversationSchema>;
 const pullRequestSchema = z.object({
   base: z.string(),
   agents_md: z
@@ -75,6 +94,12 @@ const pullRequestSchema = z.object({
   head_sha: commitShaSchema,
   merged: z.boolean(),
   number: z.number(),
+  related_conversations: z
+    .array(relatedConversationSchema)
+    .optional()
+    .describe(
+      "Other conversations about this pull request, working ones first. While one is working, do not push to or comment on the pull request; first messageAgent its root (root_conversation_id, else conversation_id).",
+    ),
   state: z.string(),
   subscribable: subscribableResourceSchema.optional(),
   title: z.string(),
@@ -83,7 +108,7 @@ const pullRequestSchema = z.object({
 type PullRequest = z.output<typeof pullRequestSchema>;
 interface Result extends PluginToolOutput, PullRequest {
   target: "getPullRequest";
-  subscribable?: SubscribableResource;
+  subscribable?: SubscribableResource | undefined;
 }
 const outputSchema = pluginToolOutputSchema.merge(
   pullRequestSchema.extend({
@@ -132,26 +157,6 @@ const checksResponseSchema = z.object({
     }),
   }),
 });
-type CheckContext = z.output<typeof checkContextSchema>;
-
-// A check run that completed with one of these conclusions does not block a
-// merge. Every other conclusion does.
-const PASSING_CONCLUSIONS = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
-
-function contextState(
-  context: CheckContext,
-): "passing" | "failing" | "pending" {
-  if (context.__typename === "CheckRun") {
-    if (context.status !== "COMPLETED") return "pending";
-    return PASSING_CONCLUSIONS.has(context.conclusion ?? "")
-      ? "passing"
-      : "failing";
-  }
-  if (context.state === "SUCCESS") return "passing";
-  return context.state === "PENDING" || context.state === "EXPECTED"
-    ? "pending"
-    : "failing";
-}
 
 /** Read the required checks and merge state of one pull request. */
 async function readPullRequestChecks(
@@ -182,7 +187,7 @@ async function readPullRequestChecks(
   >;
   for (const context of rollup?.contexts.nodes ?? []) {
     if (!context.isRequired) continue;
-    checks[contextState(context)].push(
+    checks[checkContextState(context)].push(
       context.__typename === "CheckRun" ? context.name : context.context,
     );
   }
@@ -205,102 +210,126 @@ async function readPullRequestChecks(
   };
 }
 
-/** Read one PR and expose its stable subscription identity when webhooks are enabled. */
-export function createGitHubGetPullRequestTool(ctx: {
-  egress: PluginEgress;
-  events: { canSubscribe: boolean };
-}) {
-  return definePluginTool({
-    annotations: {
-      destructiveHint: false,
-      idempotentHint: true,
-      openWorldHint: true,
-      readOnlyHint: true,
-    },
-    description:
-      "Get a GitHub pull request with its required checks and merge state, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
-    inputSchema,
-    outputSchema,
-    async execute(input): Promise<Result> {
-      const repo = parseRepo(input.repo);
-      const response = await githubApi(ctx.egress, {
-        operation: "github.pull.get",
-        path: `${repoPath(repo)}/pulls/${input.number}`,
-      });
-      if (!response.ok) {
-        const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
-        // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
-        if (response.status === 404) {
-          throw new PluginToolInputError(message);
-        }
-        throw new Error(message);
-      }
-      const providerResult = z
-        .object({
-          base: z.object({ ref: z.string() }),
-          draft: z.boolean(),
-          head: z.object({ ref: z.string(), sha: commitShaSchema }),
-          html_url: z.string(),
-          merged: z.boolean().optional().default(false),
-          number: z.number(),
-          state: z.string(),
-          title: z.string(),
-        })
-        .parse(response.body);
-      const checks = await readPullRequestChecks(
-        ctx.egress,
-        repo,
-        providerResult.number,
-      );
-      // Only a draft can still ask its code owners by being marked ready.
-      const readiness =
-        providerResult.draft && providerResult.state === "open"
-          ? await readDraftReadiness(ctx.egress, repo, {
-              base: providerResult.base.ref,
-              number: providerResult.number,
-            })
-          : undefined;
-      const subscribable = gitHubPullRequestSubscribable({
-        canSubscribe: ctx.events.canSubscribe,
-        number: providerResult.number,
-        repo: repo.ref,
-      });
-      const data: PullRequest = {
-        base: providerResult.base.ref,
-        ...(readiness?.agentsMd
-          ? { agents_md: readiness.agentsMd }
-          : undefined),
-        checks,
-        ...(readiness ? { code_owners: readiness.codeOwners } : undefined),
-        draft: providerResult.draft,
-        head: providerResult.head.ref,
-        head_sha: providerResult.head.sha.toLowerCase(),
-        merged: providerResult.merged,
-        number: providerResult.number,
-        state: providerResult.state,
-        ...(subscribable ? { subscribable } : undefined),
-        title: providerResult.title,
-        url: providerResult.html_url,
-      };
-      return {
-        objectAnnotations: [
-          githubObjectAnnotation({
-            repo: repo.ref,
-            number: data.number,
-            title: data.title,
-            url: data.url,
-            objectType: "code_change",
-            status: data.merged
-              ? "merged"
-              : data.state === "open" && data.draft
-                ? "draft"
-                : data.state,
-            ...githubObjectFacts("code_change", response.body),
-          }),
-        ],
-        target: "getPullRequest",
-        ...data,
-      };
-    },
-  });
+function truncate(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength)}…` : text;
 }
+
+/**
+ * Other Conversations that touched one pull request: working ones first,
+ * then newest activity.
+ */
+async function readRelatedConversations(
+  conversations: PluginConversationToolContext | undefined,
+  annotation: string,
+): Promise<RelatedConversation[]> {
+  if (!conversations) return [];
+  const matches = await conversations.search({
+    annotation,
+    limit: RELATED_CONVERSATIONS_MAX,
+  });
+  return matches.map((match) => ({
+    conversation_id: match.conversationId,
+    ...(match.rootConversationId
+      ? { root_conversation_id: match.rootConversationId }
+      : undefined),
+    status: match.status,
+    ...(match.title ? { title: match.title } : undefined),
+    ...(match.summary
+      ? { summary: truncate(match.summary, SUMMARY_MAX_LENGTH) }
+      : undefined),
+    updated_at: match.updatedAt,
+  }));
+}
+
+/** Read one PR and expose its stable subscription identity when webhooks are enabled. */
+export const gitHubGetPullRequestTool = definePluginTool({
+  annotations: {
+    destructiveHint: false,
+    idempotentHint: true,
+    openWorldHint: true,
+    readOnlyHint: true,
+  },
+  description:
+    "Get a GitHub pull request with its required checks, merge state, and related conversations, and for a draft, what to check before marking it ready. Use this when an existing PR may need event monitoring; the result includes a subscribable hint when GitHub webhooks are configured.",
+  inputSchema,
+  outputSchema,
+  async execute(
+    input,
+    _options,
+    ctx: {
+      conversations?: PluginConversationToolContext;
+      egress: PluginEgress;
+      events: { canSubscribe: boolean };
+    },
+  ): Promise<Result> {
+    const repo = parseRepo(input.repo);
+    const response = await githubApi(ctx.egress, {
+      operation: "github.pull.get",
+      path: `${repoPath(repo)}/pulls/${input.pull_request}`,
+    });
+    if (!response.ok) {
+      const message = `GitHub pull request lookup failed with HTTP ${response.status}`;
+      // Missing PR/repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+      if (response.status === 404) {
+        throw new PluginToolInputError(
+          `${message}. Check repo and pull_request. If they are correct, the GitHub App cannot see the repository.`,
+        );
+      }
+      throw new Error(message);
+    }
+    const providerResult = z
+      .object({
+        base: z.object({ ref: z.string() }),
+        draft: z.boolean(),
+        head: z.object({ ref: z.string(), sha: commitShaSchema }),
+        html_url: z.string(),
+        merged: z.boolean().optional().default(false),
+        number: z.number(),
+        state: z.string(),
+        title: z.string(),
+      })
+      .parse(response.body);
+    const [checks, relatedConversations] = await Promise.all([
+      readPullRequestChecks(ctx.egress, repo, providerResult.number),
+      readRelatedConversations(
+        ctx.conversations,
+        githubObjectKey(repo.ref, providerResult.number),
+      ),
+    ]);
+    // Only a draft can still ask its code owners by being marked ready.
+    const readiness =
+      providerResult.draft && providerResult.state === "open"
+        ? await readDraftReadiness(ctx.egress, repo, {
+            base: providerResult.base.ref,
+            number: providerResult.number,
+          })
+        : undefined;
+    const subscribable = gitHubPullRequestSubscribable({
+      canSubscribe: ctx.events.canSubscribe,
+      number: providerResult.number,
+      repo: repo.ref,
+    });
+    const data: PullRequest = {
+      base: providerResult.base.ref,
+      ...(readiness?.agentsMd ? { agents_md: readiness.agentsMd } : undefined),
+      checks,
+      ...(readiness ? { code_owners: readiness.codeOwners } : undefined),
+      draft: providerResult.draft,
+      head: providerResult.head.ref,
+      head_sha: providerResult.head.sha.toLowerCase(),
+      merged: providerResult.merged,
+      number: providerResult.number,
+      ...(relatedConversations.length > 0
+        ? { related_conversations: relatedConversations }
+        : undefined),
+      state: providerResult.state,
+      ...(subscribable ? { subscribable } : undefined),
+      title: providerResult.title,
+      url: providerResult.html_url,
+    };
+    return {
+      target: "getPullRequest",
+      ...data,
+    };
+  },
+});

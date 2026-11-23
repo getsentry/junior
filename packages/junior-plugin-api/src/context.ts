@@ -44,10 +44,7 @@ export type EventAutomationSource = Extract<
   { kind: "event_automation" }
 >;
 export type PluginDispatchSource = Extract<Source, { kind: "plugin_dispatch" }>;
-export type AgentInvocationSource = Extract<
-  Source,
-  { kind: "agent_invocation" }
->;
+export type ParentMessageSource = Extract<Source, { kind: "parent_message" }>;
 export type SourceVisibility = z.output<typeof sourceVisibilitySchema>;
 
 export type Destination = z.output<typeof destinationSchema>;
@@ -61,7 +58,12 @@ export interface PluginMetadata {
 }
 
 export interface PluginLogger {
-  error(message: string, metadata?: Record<string, unknown>): void;
+  /** Report an error. `cause` is the caught error, which the report keeps. */
+  error(
+    message: string,
+    metadata?: Record<string, unknown>,
+    cause?: unknown,
+  ): void;
   info(message: string, metadata?: Record<string, unknown>): void;
   warn(message: string, metadata?: Record<string, unknown>): void;
 }
@@ -69,6 +71,7 @@ export interface PluginLogger {
 export interface PluginModel {
   /** Run a host-owned structured model call without exposing provider credentials. */
   completeObject<TSchema extends ZodTypeAny>(input: {
+    /** Tokens for the object itself. The host adds room for reasoning. */
     maxTokens?: number;
     prompt: string;
     schema: TSchema;
@@ -147,13 +150,13 @@ interface BaseInvocationContext {
    */
   conversationId?: string;
   /** Location associated with this Conversation. */
-  locationId?: string;
+  locationId?: string | undefined;
 }
 
 export interface SlackInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: SlackDestination;
-  actor?: SlackActor;
+  actor?: SlackActor | undefined;
   /** Runtime-owned source where the invocation came from. */
   source: SlackSource;
 }
@@ -161,7 +164,7 @@ export interface SlackInvocationContext extends BaseInvocationContext {
 export interface LocalInvocationContext extends BaseInvocationContext {
   /** Runtime-owned default outbound destination for this invocation. */
   destination: LocalDestination;
-  actor?: LocalActor;
+  actor?: LocalActor | undefined;
   /** Runtime-owned source where the invocation came from. */
   source: LocalSource;
 }
@@ -169,7 +172,7 @@ export interface LocalInvocationContext extends BaseInvocationContext {
 export interface WebInvocationContext extends BaseInvocationContext {
   /** Existing conversation destination used for location and tool context. */
   destination: Destination;
-  actor?: WebActor;
+  actor?: WebActor | undefined;
   /** Runtime-owned dashboard/web source for this invocation. */
   source: WebSource;
 }
@@ -188,9 +191,9 @@ export type InvocationContext =
   | WebInvocationContext
   | (BaseInvocationContext & {
       destination: Destination;
-      actor?: Actor;
+      actor?: Actor | undefined;
       source:
-        | AgentInvocationSource
+        | ParentMessageSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource
@@ -200,9 +203,9 @@ export type InvocationContext =
 /** Build a normalized Slack source from runtime-owned Slack coordinates. */
 export function createSlackSource(input: {
   channelId: string;
-  messageTs?: string;
+  messageTs?: string | undefined;
   teamId: string;
-  threadTs?: string;
+  threadTs?: string | undefined;
   /** Runtime-normalized source visibility. */
   visibility: SourceVisibility;
 }): SlackSource {
@@ -276,7 +279,7 @@ export function getSourceKey(source: Source): string | undefined {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return undefined;
   }
 }

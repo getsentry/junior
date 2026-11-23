@@ -1,17 +1,24 @@
 import { describe, expect, test, vi } from "vitest";
 import { createJuniorApi } from "@/api";
-import { appendConversationBrief } from "@/chat/briefs/store";
 import { recordCodeChange } from "@/chat/code/store";
+import { readConversationStatsFromSql } from "@/api/conversations/stats.query";
 import { conversationStatsReportSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { cacheKeyPrefix } from "@/chat/state/cache";
 import { juniorConversations } from "@/db/schema";
 import {
   buildJuniorSqlConversation,
   createConfiguredJuniorSqlFixture,
 } from "../../../fixtures/sql";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import {
+  expectNoFullScan,
+  expectSqlBudget,
+  measureSql,
+} from "../../../fixtures/sql-budget";
+import { createWaitUntilCollector } from "../../../fixtures/wait-until";
 
 describe("conversation stats API", () => {
   test("aggregates normalized SQL conversation dimensions", async () => {
@@ -274,38 +281,21 @@ describe("conversation stats API", () => {
           updatedAt: new Date(mergedAt),
         });
       }
-      // Only a root without code changes counts its finished Brief. An
-      // unfinished Brief counts nothing.
-      for (const [conversationId, status] of [
-        ["slack:C1:recent", "done"],
-        ["slack:D1:failed", "answered"],
-        ["local:test:current-hour", "in_progress"],
-      ] as const) {
-        await appendConversationBrief(fixture.sql.db(), {
-          content: conversationBriefFixture({ status }),
-          conversationId,
-          modelId: "test-model",
-          searchText: "test",
-          throughSeq: 1,
-          turnId: `brief-${conversationId}`,
-        });
-      }
 
-      const response = await createJuniorApi().request(
-        "http://localhost/api/conversations/stats",
+      // One round of hour-grained reads when the report is not cached.
+      const response = await expectNoFullScan(() =>
+        expectSqlBudget(
+          () =>
+            createJuniorApi().request(
+              "http://localhost/api/conversations/stats",
+            ),
+          { statements: 4, serialRounds: 1 },
+        ),
       );
       expect(response.status).toBe(200);
       const report = conversationStatsReportSchema.parse(await response.json());
 
       expect(report).toMatchObject({
-        active: 1,
-        cachedInputTokens: 300,
-        cacheCreationTokens: 7,
-        conversations: 7,
-        costUsd: 0.0075,
-        durationMs: 2_304,
-        failed: 1,
-        inputTokens: 100,
         guardian: {
           allow: 4,
           ask: 1,
@@ -313,39 +303,8 @@ describe("conversation stats API", () => {
           deny: 1,
           requests: 6,
         },
-        tokens: 494,
         source: "conversation_index",
       });
-      expect(report.actors).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({
-            conversations: 1,
-            costUsd: 0.003,
-            durationMs: 1_504,
-            label: "alice@example.com",
-            tokens: 434,
-          }),
-          expect.objectContaining({
-            conversations: 1,
-            costUsd: 0.0015,
-            durationMs: 500,
-            failed: 1,
-            label: "bob@example.com",
-            tokens: 30,
-          }),
-          expect.objectContaining({
-            conversations: 1,
-            label: "Scheduler",
-          }),
-        ]),
-      );
-      expect(report.locations).toEqual(
-        expect.arrayContaining([
-          expect.objectContaining({ label: "#proj-alpha" }),
-          expect.objectContaining({ label: "Direct Message" }),
-          expect.objectContaining({ label: "Scheduler" }),
-        ]),
-      );
       expect(report.guardian.metricDays.at(-1)).toEqual({
         allow: 2,
         ask: 1,
@@ -414,8 +373,6 @@ describe("conversation stats API", () => {
           inputTokens: 100,
           mergedCodeChangeCostUsd: 0.003,
           mergedCodeChanges: 2,
-          outcomeCostUsd: 0.0045,
-          outcomes: 3,
           tokens: 444,
         }),
       );
@@ -447,8 +404,6 @@ describe("conversation stats API", () => {
         date: "2026-06-15T12",
         mergedCodeChangeCostUsd: 0.0015,
         mergedCodeChanges: 1,
-        outcomeCostUsd: 0.0015,
-        outcomes: 1,
       });
       expect(
         report.metricHours?.find((hour) => hour.date === "2026-06-14T23"),
@@ -474,8 +429,6 @@ describe("conversation stats API", () => {
           inputTokens: 100,
           mergedCodeChangeCostUsd: 0.0015,
           mergedCodeChanges: 1,
-          outcomeCostUsd: 0.003,
-          outcomes: 2,
           tokens: 434,
         }),
       );
@@ -484,6 +437,45 @@ describe("conversation stats API", () => {
           ?.filter((hour) => hour.conversations > 0)
           .reduce((sum, hour) => sum + hour.conversations, 0),
       ).toBe(6);
+
+      // A later read keeps the Guardian hours of the last read and reads only
+      // the reviews after it, plus the hour where its late-commit overlap
+      // starts.
+      const review = (at: string, toolCallId: string) => ({
+        createdAtMs: Date.parse(at),
+        data: {
+          type: "guardian_action_reviewed" as const,
+          turnId: "turn-later",
+          toolCallId,
+          toolName: "publishReport",
+          costUsd: 0.005,
+          decision: "deny" as const,
+          riskLevel: "high" as const,
+          userAuthorization: "low" as const,
+        },
+      });
+      await eventStore.append("slack:C1:recent", [
+        // Before the overlap, so the later read does not see it.
+        review("2026-06-08T13:30:00.000Z", "tool-backdated"),
+        // Before the last read, but committed after it.
+        review("2026-06-15T12:34:00.000Z", "tool-late-commit"),
+        review("2026-06-15T12:44:00.000Z", "tool-after"),
+      ]);
+      vi.setSystemTime(new Date("2026-06-15T12:45:00.000Z"));
+      const later = await measureSql(readConversationStatsFromSql);
+      expect(later.sql.statements).toBe(4);
+      expect(later.result.guardian.metricHours?.at(0)).toEqual(
+        report.guardian.metricHours?.at(0),
+      );
+      expect(later.result.guardian.metricHours?.at(-1)).toEqual({
+        allow: 1,
+        ask: 0,
+        costUsd: 0.014,
+        date: "2026-06-15T12",
+        deny: 2,
+        requests: 3,
+      });
+      expect(later.result.guardian.requests).toBe(8);
     } finally {
       vi.useRealTimers();
       await fixture.close();
@@ -523,11 +515,83 @@ describe("conversation stats API", () => {
       expect(response.status).toBe(200);
       const report = conversationStatsReportSchema.parse(await response.json());
 
-      expect(report).toMatchObject({
-        conversations: 5_001,
-        durationMs: 10_002,
-        tokens: 15_003,
+      expect(report.metricDays.at(-1)?.conversations).toBe(5_001);
+    } finally {
+      vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+  test("serves a cached report and refreshes it once when stale", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-06-15T12:00:00.000Z"));
+    const fixture = createConfiguredJuniorSqlFixture();
+    const background = createWaitUntilCollector();
+    const api = createJuniorApi({ waitUntil: background.fn });
+    const readStats = async () =>
+      conversationStatsReportSchema.parse(
+        await (
+          await api.request("http://localhost/api/conversations/stats")
+        ).json(),
+      );
+    const addConversation = async (index: number) => {
+      const at = new Date();
+      await fixture.sql
+        .db()
+        .insert(juniorConversations)
+        .values(
+          buildJuniorSqlConversation({
+            conversationId: `internal:stats-cache:${index}`,
+            source: "internal",
+            destination: null,
+            actor: null,
+            createdAt: at,
+            lastActivityAt: at,
+            updatedAt: at,
+          }),
+        );
+    };
+
+    try {
+      await migrateSchema(fixture.sql);
+      await addConversation(1);
+      // An entry from an older report shape is reloaded once.
+      const state = getStateAdapter();
+      await state.connect();
+      await state.set(
+        `${cacheKeyPrefix("core")}conversation-stats`,
+        { value: { refreshAtMs: 0, report: { totals: {} } } },
+        60_000,
+      );
+      const reloaded = await measureSql(() =>
+        Promise.all([readStats(), readStats()]),
+      );
+      expect(reloaded.sql.statements).toBe(4);
+      const [first] = reloaded.result;
+      expect(reloaded.result).toEqual([first, first]);
+      expect(first?.metricDays.at(-1)?.conversations).toBe(1);
+
+      await addConversation(2);
+      vi.setSystemTime(new Date("2026-06-15T12:04:00.000Z"));
+      const fresh = await measureSql(readStats);
+      expect(fresh.sql.statements).toBe(0);
+      expect(fresh.result).toEqual(first);
+      expect(background.pendingCount()).toBe(0);
+
+      // A stale report is served at once. Concurrent requests start one
+      // refresh between them.
+      vi.setSystemTime(new Date("2026-06-15T12:06:00.000Z"));
+      const stale = await measureSql(async () => {
+        const reports = await Promise.all([readStats(), readStats()]);
+        expect(background.pendingCount()).toBe(2);
+        await background.flush();
+        return reports;
       });
+      expect(stale.result).toEqual([first, first]);
+      expect(stale.sql.statements).toBe(4);
+
+      const refreshed = await readStats();
+      expect(refreshed.generatedAt).toBe("2026-06-15T12:06:00.000Z");
+      expect(refreshed.metricDays.at(-1)?.conversations).toBe(2);
     } finally {
       vi.useRealTimers();
       await fixture.close();

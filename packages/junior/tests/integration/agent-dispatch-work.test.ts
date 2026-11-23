@@ -1,4 +1,3 @@
-import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOrGetDispatch,
@@ -10,7 +9,6 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
@@ -32,6 +30,10 @@ import {
   persistConversationMessages,
 } from "@/chat/conversations/messages";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
+import {
+  getPersistedThreadState,
+  persistThreadStateById,
+} from "@/chat/runtime/thread-state";
 import { getUserMessageInstructionText } from "@/chat/pi/transcript";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
@@ -58,7 +60,7 @@ import {
 } from "../fixtures/conversation-work";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
 });
 
 /** Model output that ends an Automation run with a `reply` call. */
@@ -322,8 +324,10 @@ describe("agent dispatch conversation work", () => {
     const threadPosts = () =>
       slackApiOutbox
         .messages()
-        .filter((message) => message.params.thread_ts === "1700000000.000200")
-        .map((message) => message.params.text);
+        .filter(
+          (message) => message.params["thread_ts"] === "1700000000.000200",
+        )
+        .map((message) => message.params["text"]);
     const watchEvent = async (eventKey: string, eventType: string) => {
       await appendAndEnqueueInboundMessage({
         message: createEventInboundMessage({
@@ -346,6 +350,14 @@ describe("agent dispatch conversation work", () => {
       await processNext();
     };
 
+    // The thread already has state from a person's Conversation. The run
+    // keeps its own state under its Conversation id.
+    const slackThreadId = `slack:${destination.channelId}:1700000000.000200`;
+    await persistThreadStateById(slackThreadId, {
+      sandboxRef: { id: "sandbox-person" },
+    });
+    const personThreadState = await getPersistedThreadState(slackThreadId);
+
     await enqueueAgentDispatch(dispatch, { queue, state });
     await processNext();
 
@@ -354,6 +366,12 @@ describe("agent dispatch conversation work", () => {
       channel: destination.channelId,
       thread_ts: "1700000000.000200",
     });
+    await expect(getPersistedThreadState(slackThreadId)).resolves.toEqual(
+      personThreadState,
+    );
+    const runThreadState = await getPersistedThreadState(conversationId);
+    expect(runThreadState).not.toEqual({});
+    expect(runThreadState).not.toHaveProperty("app_sandbox_id");
     // The first reply binds the thread, so a person's reply before any later
     // Turn reaches this Conversation.
     await expect(
@@ -373,15 +391,18 @@ describe("agent dispatch conversation work", () => {
     expect(modelStream).toHaveBeenCalledTimes(6);
 
     // A Turn on a child's reply replies in the run's thread.
-    const child = await createAgentInvocation({
-      actor: { name: "automation-run", platform: "system" },
-      destination,
-      idempotencyKey: "watch-follow-up-child",
-      input: "Check the release.",
+    const child = {
+      childConversationId: `${conversationId}:watch-follow-up-child`,
       parentConversationId: conversationId,
-      reasoningLevel: "medium",
+    };
+    await getConversationStore().createChild({
+      childConversationId: child.childConversationId,
+      kind: "task",
+      nowMs: Date.now() - 120_000,
+      parentConversationId: conversationId,
     });
     await enqueueChildResultToParent({
+      actor: { name: "automation-run", platform: "system" },
       nowMs: Date.now() - 60_000,
       queue,
       result: {
@@ -393,7 +414,7 @@ describe("agent dispatch conversation work", () => {
       },
       messageKey: "call-child-reply",
       sender: child,
-      turnId: getAgentInvocationTurnId(child.invocationId),
+      turnId: "turn_watch-follow-up-child",
       state,
     });
     await processNext();
@@ -478,7 +499,7 @@ describe("agent dispatch conversation work", () => {
     });
 
     expect(
-      slackApiOutbox.messages().map((message) => message.params.channel),
+      slackApiOutbox.messages().map((message) => message.params["channel"]),
     ).toEqual(["D123", "C456"]);
     // The run stores its reply, and the thread stays with the person's
     // Conversation.
@@ -578,6 +599,23 @@ describe("agent dispatch conversation work", () => {
 
     expect(slackApiOutbox.messages()).toEqual([]);
     expect(modelStream).toHaveBeenCalledTimes(5);
+    // Top-level runs in one channel share its channel-level Slack thread id,
+    // but each keeps state under its own Conversation.
+    await expect(
+      getPersistedThreadState(`slack:${destination.channelId}:`),
+    ).resolves.toEqual({});
+    for (const answered of [quietDispatch, blockedDispatch]) {
+      const conversationId = getDispatchConversationId(answered);
+      await expect(getPersistedThreadState(conversationId)).resolves.toEqual({
+        conversation: expect.objectContaining({ schemaVersion: 1 }),
+      });
+      const stored = coerceThreadConversationState({});
+      await hydrateConversationMessages({
+        conversation: stored,
+        conversationId,
+      });
+      expect(stored.messages.filter((m) => m.role === "user")).toHaveLength(1);
+    }
     await expect(getDispatchRecord(quietDispatch.id)).resolves.toMatchObject({
       status: "completed",
     });

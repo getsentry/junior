@@ -1,6 +1,11 @@
 import http from "node:http";
+import { normalizeContext } from "@earendil-works/pi-ai";
 import { afterEach, describe, expect, it } from "vitest";
-import { streamAnthropic, type Message as PiAiMessage } from "@/chat/pi/sdk";
+import {
+  streamAnthropic,
+  type Message as PiAiMessage,
+  type Model,
+} from "@/chat/pi/sdk";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import type { PiMessage } from "@/chat/pi/messages";
 import { nextProviderRetry } from "@/chat/services/provider-retry";
@@ -74,8 +79,11 @@ describe("eval AI Gateway dispatcher", () => {
 
     try {
       const stream = streamAnthropic(
-        resolveGatewayModel("openai/gpt-5.6-sol"),
-        { messages: [userMessage] },
+        // The gateway serves every model through the Anthropic Messages API.
+        resolveGatewayModel(
+          "openai/gpt-5.6-sol",
+        ) as Model<"anthropic-messages">,
+        normalizeContext({ messages: [userMessage] }),
         {
           client: {
             beta: {
@@ -93,7 +101,7 @@ describe("eval AI Gateway dispatcher", () => {
       expect(failedAssistant).toMatchObject({
         role: "assistant",
         stopReason: "error",
-        errorMessage: "terminated",
+        errorMessage: "terminated: Body Timeout Error (UND_ERR_BODY_TIMEOUT)",
       });
       expect(
         nextProviderRetry({

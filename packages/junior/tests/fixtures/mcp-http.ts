@@ -112,7 +112,8 @@ export async function openMcpConsentPage(
   consentUrl: string,
   email: string,
 ): Promise<{
-  csrf?: string;
+  contentSecurityPolicy: string | null;
+  csrf?: string | undefined;
   html: string;
   referrerPolicy: string | null;
   status: number;
@@ -122,6 +123,7 @@ export async function openMcpConsentPage(
   });
   const html = await response.text();
   return {
+    contentSecurityPolicy: response.headers.get("content-security-policy"),
     csrf: html.match(/name="csrf" value="([^"]+)"/)?.[1],
     html,
     referrerPolicy: response.headers.get("referrer-policy"),

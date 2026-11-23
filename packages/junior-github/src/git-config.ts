@@ -110,7 +110,7 @@ export function additionalActorCoauthorTrailers(args: {
   actors?: Actor[];
   botEmail: string;
   /** Linked user for the current run actor, when already resolved. */
-  currentUser?: User;
+  currentUser?: User | undefined;
 }): string[] {
   if (!args.actors || args.actors.length === 0) {
     return [];
@@ -341,7 +341,7 @@ if [ "$#" -ge 3 ]; then
   source_commit=$3
 fi
 
-# Run the repository hook first so Junior's trailers stay final.
+# Run the repository hook first so the runtime's trailers stay final.
 ${findRepositoryHook("prepare-commit-msg")}
 if [ -n "$repository_hook" ]; then
   "$repository_hook" "$@"

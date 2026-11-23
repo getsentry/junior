@@ -1,9 +1,12 @@
+import type { Page } from "@playwright/test";
+
 import { expect, test } from "./test";
 import {
-  DASHBOARD_SERVICE_WORKER_PATH,
   NOTIFICATION_TARGET_CACHE,
   NOTIFICATION_TARGET_KEY,
 } from "../src/service-worker";
+import { waitForSettingsReads } from "./harness";
+import { showPlainTextPush } from "./push-notification";
 import { screenshot } from "./screenshot";
 import { DASHBOARD_QA_CONVERSATION_ID } from "../src/mock-reporting/fixtures";
 
@@ -37,9 +40,7 @@ test("saves notification working hours and the Slack schedule choice", async ({
     page.getByRole("heading", { name: "Push notifications" }),
   ).toBeVisible();
   await expect(
-    page.getByText(
-      "Push notifications are not set up for this Junior install.",
-    ),
+    page.getByText("Push notifications are not set up for this app."),
   ).toBeVisible();
   await screenshot(page, "settings-notifications");
 
@@ -82,7 +83,8 @@ test("saves notification working hours and the Slack schedule choice", async ({
   await expect(saturday).toHaveAttribute("aria-pressed", "true");
 });
 
-test("turns on push notifications from a one-time tip", async ({
+// The tip follows a home create, which only the inbox shell has.
+test("turns on push notifications from a one-time tip @new", async ({
   page,
   dashboard,
 }) => {
@@ -92,6 +94,8 @@ test("turns on push notifications from a one-time tip", async ({
   await page.addInitScript(() => {
     PushManager.prototype.getSubscription = async () => null;
     PushManager.prototype.subscribe = async () =>
+      // A partial PushSubscription stub holds only what the app reads.
+      // oxlint-disable-next-line anti-slop/no-chained-type-assertions
       ({
         toJSON: () => ({
           endpoint: "https://fcm.googleapis.com/fcm/send/e2e",
@@ -140,7 +144,7 @@ test("turns on push notifications from a one-time tip", async ({
   });
   async function startConversation(message: string) {
     await page.goto(dashboard.baseURL);
-    await page.getByPlaceholder("Message Junior…").fill(message);
+    await page.locator('[aria-placeholder="Message Junior…"]').fill(message);
     await page.keyboard.press("Enter");
     await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
   }
@@ -221,8 +225,12 @@ test("opens a tapped notification that the app did not open", async ({
   await saveTappedNotification("/settings", 0);
   await page.reload();
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
-  await page.reload();
+  // Wait from the commit of the new document, so a Settings read from the
+  // page before the reload does not count.
+  await page.reload({ waitUntil: "commit" });
+  const settingsRead = waitForSettingsReads(page);
   await expect(page).toHaveURL(`${dashboard.baseURL}/settings`);
+  await settingsRead;
 });
 
 test("shows a push notification that has no tag", async ({
@@ -233,40 +241,15 @@ test("shows a push notification that has no tag", async ({
   // renotify without a tag, so the worker must still show the notification.
   // The push opens "/", so stay on another page: there the worker alerts.
   await page.context().grantPermissions(["notifications"]);
+  const settingsRead = waitForSettingsReads(page);
   await page.goto(`${dashboard.baseURL}/settings`);
+  // A skip ends the test, so the page reads must be done first.
+  await settingsRead;
   test.skip(
     (await page.evaluate(() => Notification.permission)) !== "granted",
     "Chromium headless shell denies notifications. CI runs Chrome.",
   );
-  const cdp = await page.context().newCDPSession(page);
-  const registrationId = new Promise<string>((resolve) => {
-    cdp.on("ServiceWorker.workerVersionUpdated", ({ versions }) => {
-      const active = versions.find((version) => version.status === "activated");
-      if (active) resolve(active.registrationId);
-    });
-  });
-  await cdp.send("ServiceWorker.enable");
-  await page.evaluate(async (path) => {
-    await navigator.serviceWorker.register(path, { scope: "/" });
-    await navigator.serviceWorker.ready;
-  }, DASHBOARD_SERVICE_WORKER_PATH);
-
-  await cdp.send("ServiceWorker.deliverPushMessage", {
-    data: "Test push message from DevTools.",
-    origin: new URL(dashboard.baseURL).origin,
-    registrationId: await registrationId,
-  });
-
-  await expect
-    .poll(() =>
-      page.evaluate(async () => {
-        const registration = await navigator.serviceWorker.ready;
-        return (await registration.getNotifications()).map(
-          (notification) => notification.title,
-        );
-      }),
-    )
-    .toEqual(["Junior"]);
+  expect(await showPlainTextPush(page)).toEqual(["Junior"]);
 });
 
 test("follows the system theme until the user picks one", async ({
@@ -310,7 +293,7 @@ test("turns on composer autocorrect for this browser", async ({
   dashboard,
 }) => {
   await page.goto(dashboard.baseURL);
-  const composer = page.getByPlaceholder("Message Junior…");
+  const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("autocorrect", "off");
   await expect(composer).toHaveAttribute("autocapitalize", "off");
   await expect(composer).toHaveAttribute("spellcheck", "false");
@@ -380,4 +363,109 @@ test("links to a settings section", async ({ page, dashboard }) => {
   await expect(
     page.getByRole("heading", { exact: true, name: "Conversations" }),
   ).toBeInViewport();
+
+  // The Interface section holds the dashboard choices, and links
+  // to each choice still work.
+  await page.goto(`${dashboard.baseURL}/settings#open-conversations-at`);
+  const openAt = page.getByRole("heading", {
+    exact: true,
+    name: "Open conversations at",
+  });
+  await expect(openAt).toBeInViewport();
+  const ui = page.getByRole("region", { exact: true, name: "Interface" });
+  await expect(ui).toContainText("New dashboard");
+  await expect(ui).toContainText("Open conversations at");
+  await expect(ui).toContainText("Scroll conversations with");
+  await expect(ui).toContainText("Message box");
+  await expect(ui).toContainText("Browser tab");
+  await screenshot(page, "settings-interface", {
+    target: ui,
+    view: "desktop",
+  });
+});
+
+// Hold the API token list until `release`, so the sections above MCP grow
+// after the page opens.
+async function holdTokenList(page: Page): Promise<() => void> {
+  let release!: () => void;
+  const loaded = new Promise<void>((resolve) => (release = resolve));
+  await page.route("**/api/personal-tokens", async (route) => {
+    await loaded;
+    await route.fulfill({
+      json: {
+        tokens: Array.from({ length: 12 }, (_, index) => ({
+          createdAt: "2026-08-01T00:00:00.000Z",
+          expiresAt: "2026-10-30T00:00:00.000Z",
+          id: `00000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+          lastUsedAt: null,
+          name: `Token ${index + 1}`,
+          tokenSuffix: "abcd",
+        })),
+      },
+    });
+  });
+  return release;
+}
+
+test("lets the reader scroll away from a linked section while it loads", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "MCP" }),
+  ).toBeInViewport();
+
+  // Scroll to the top over a few frames with no input event, as a
+  // scrollbar drag does.
+  await page.evaluate(async () => {
+    for (let frame = 0; frame < 10; frame++) {
+      window.scrollTo(0, 0);
+      await new Promise(requestAnimationFrame);
+    }
+  });
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(
+    page.getByRole("heading", { exact: true, name: "General" }),
+  ).toBeInViewport();
+});
+
+test("keeps a linked section in view while the sections above load", async ({
+  page,
+  dashboard,
+}) => {
+  const release = await holdTokenList(page);
+  await page.goto(`${dashboard.baseURL}/settings/mcp`);
+  const heading = page.getByRole("heading", { exact: true, name: "MCP" });
+  await expect(heading).toBeInViewport();
+
+  release();
+  await expect(page.getByText("Token 12", { exact: true })).toBeAttached();
+  await expect(heading).toBeInViewport();
+});
+
+test("opens an old Settings page as its section and keeps the query", async ({
+  page,
+  dashboard,
+}) => {
+  await page.goto(`${dashboard.baseURL}/settings/api-tokens?name=Review`);
+  await expect(page).toHaveURL(
+    `${dashboard.baseURL}/settings?name=Review#api-tokens`,
+  );
+  await expect(
+    page.getByRole("heading", { exact: true, name: "API Tokens" }),
+  ).toBeInViewport();
+
+  // The page reads the viewer's connections.
+  const connectionsRead = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/connections",
+  );
+  await page.goto(`${dashboard.baseURL}/settings/connections`);
+  await expect(page).toHaveURL(`${dashboard.baseURL}/settings#identities`);
+  await expect(
+    page.getByRole("heading", { exact: true, name: "Identities" }),
+  ).toBeInViewport();
+  await connectionsRead;
 });

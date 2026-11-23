@@ -6,11 +6,27 @@ import {
   type ToolCall,
 } from "@junior-evals/fixture/results";
 import { test } from "@junior-evals/fixture/test";
+import { mockWebPages } from "@junior-evals/fixture/web";
 
 type SpawnInput = { fork?: boolean | null; kind?: string | null };
 
 function spawnInput(call: ToolCall): SpawnInput {
   return (call.input as SpawnInput | undefined) ?? {};
+}
+
+type TodosInput = {
+  add?: Array<{ assignee?: string | null }> | null;
+  update?: Array<{ assignee?: string | null }> | null;
+};
+
+/** Assignees that `updateTodos` calls set on new or changed To-dos. */
+function todoAssignees(calls: ToolCall[]): string[] {
+  return calls.flatMap((call) => {
+    const input = (call.input as TodosInput | undefined) ?? {};
+    return [...(input.add ?? []), ...(input.update ?? [])].flatMap((todo) =>
+      todo.assignee ? [todo.assignee] : [],
+    );
+  });
 }
 
 // The user never names spawnAgent here. These cases measure whether Junior
@@ -37,6 +53,46 @@ describe("Implicit Delegation", () => {
     );
     // A brief can carry each track, so no child needs this conversation.
     expect(spawned.map((call) => spawnInput(call).fork)).not.toContain(true);
+  });
+
+  test("when a request queues more work for a child agent, keep that work on a To-do with the child as assignee", async ({
+    agent,
+  }) => {
+    const { run } = await agent({ limits: { maxToolCallsPerTurn: 6 } });
+    mockDatabaseDocs();
+    const conversation = await run(
+      slackMention(
+        "have a background agent look up how PostgreSQL handles adding a NOT NULL column with a default to a huge table, from the postgres docs. when it's done, have that same agent turn what it found into a short migration checklist for us. then send me the checklist",
+      ),
+    );
+
+    expect(completedToolCalls("spawnAgent", conversation)).not.toEqual([]);
+    // The checklist waits on the first task. Only a To-do keeps it if
+    // history is compacted before the result arrives.
+    expect(
+      todoAssignees(completedToolCalls("updateTodos", conversation)),
+    ).toEqual(expect.arrayContaining([expect.not.stringMatching(/^self$/i)]));
+  });
+
+  test("when a multi-step request finishes in this Turn, add no To-dos", async ({
+    run,
+  }) => {
+    const index = "https://example.com/runbooks";
+    mockWebPages({
+      [index]: `<html><body><h1>Runbooks</h1><ul><li><a href="${index}/rotate-keys">Rotate API keys</a></li><li><a href="${index}/restore-backup">Restore a backup</a></li></ul></body></html>`,
+      [`${index}/rotate-keys`]: `<html><body><h1>Rotate API keys</h1><p>See <a href="${index}/rotate-keys/verify">verification</a>.</p></body></html>`,
+      [`${index}/rotate-keys/verify`]: `<html><body><h1>Verify a key rotation</h1><p>Run the smoke test, then confirm that the old key returns 401.</p></body></html>`,
+      [`${index}/restore-backup`]: `<html><body><h1>Restore a backup</h1></body></html>`,
+    });
+    const conversation = await run(
+      slackMention(
+        `${index} lists our runbooks. Open the key rotation one, follow its link to the verification page, and tell me how to verify a rotation.`,
+      ),
+    );
+
+    // To-dos hold only work that outlives the Turn.
+    expect(completedToolCalls("updateTodos", conversation)).toEqual([]);
+    expect(conversation.replies).toHaveLength(1);
   });
 
   test("when a request needs only a few direct tool calls, do the work without a child agent", async ({

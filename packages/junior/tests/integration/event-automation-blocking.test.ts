@@ -41,8 +41,8 @@ import {
 } from "../msw/handlers/slack-api";
 
 vi.hoisted(() => {
-  process.env.JUNIOR_STATE_ADAPTER = "memory";
-  process.env.JUNIOR_SECRET = "event-automation-test-secret";
+  process.env["JUNIOR_STATE_ADAPTER"] = "memory";
+  process.env["JUNIOR_SECRET"] = "event-automation-test-secret";
 });
 
 let fixture: LocalJuniorSqlFixture;
@@ -112,7 +112,7 @@ describe("event automation blocking", () => {
       markDispatchBlocked(
         queue
           .sentRecords()
-          [index]!.conversationId!.replace(/^agent-dispatch:/, ""),
+          [index]!.conversationId.replace(/^agent-dispatch:/, ""),
         reason,
       );
 
@@ -124,13 +124,13 @@ describe("event automation blocking", () => {
     // Nothing posts to the Destination. The creator gets one private notice.
     expect(
       getCapturedSlackApiCalls("conversations.open").map(
-        ({ params }) => params.users,
+        ({ params }) => params["users"],
       ),
     ).toEqual(["U123"]);
     expect(
       slackApiOutbox.messages().map(({ params }) => ({
-        channel: params.channel,
-        text: params.text,
+        channel: params["channel"],
+        text: params["text"],
       })),
     ).toEqual([
       {
@@ -174,7 +174,9 @@ describe("event automation blocking", () => {
     });
     // The dashboard shows paused, so no second notice says blocked.
     expect(getCapturedSlackApiCalls("conversations.open")).toHaveLength(1);
-    await setStatus("active");
+    await expect(setStatus("active")).resolves.toMatchObject({
+      objectCards: [{ status: "blocked", warning: reason }],
+    });
     expect(await read()).toMatchObject({
       status: "blocked",
       statusReason: reason,
@@ -192,7 +194,7 @@ describe("event automation blocking", () => {
         },
       ]);
     try {
-      const create = (skill: string) =>
+      const create = (skill: string, fields: Record<string, string> = {}) =>
         execute(
           createAutomationTool(
             automationToolContext(context()),
@@ -200,6 +202,7 @@ describe("event automation blocking", () => {
           ),
           {
             skill,
+            ...fields,
             outcomes: [],
             trigger: {
               type: "event",
@@ -211,6 +214,15 @@ describe("event automation blocking", () => {
           },
           `skill-create-${skill}`,
         ) as Promise<{ automation: { id: string } }>;
+      // One rejection names every problem, so one more call can fix them.
+      await expect(
+        create("release-check", {
+          instruction: "Post the review summary in this channel.",
+          context: "Only check getsentry/junior.",
+        }),
+      ).rejects.toThrow(
+        'Set instruction or skill, not both. Context goes only with a skill: for an instruction, drop skill and context and put everything in the instruction. The run does not see this conversation, and its outcomes already set where it posts. Remove "this channel"',
+      );
       await expect(create("unknown-check")).rejects.toThrow(
         "The skill unknown-check is not installed.",
       );
@@ -250,7 +262,7 @@ describe("event automation blocking", () => {
       expect(await ingest("github:skill-1")).toEqual({ dispatched: 1 });
       const dispatchId = queue
         .sentRecords()[0]!
-        .conversationId!.replace(/^agent-dispatch:/, "");
+        .conversationId.replace(/^agent-dispatch:/, "");
       await expect(getDispatchRecord(dispatchId)).resolves.toMatchObject({
         skill: "release-check",
       });

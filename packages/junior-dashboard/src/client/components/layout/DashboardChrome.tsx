@@ -19,7 +19,11 @@ import { cn } from "../../styles";
  * a Conversation that has no route yet. `title` names it when the route
  * cannot. Without `onClick`, back shows but waits.
  */
-type MobileHeaderBack = { label: string; onClick?(): void; title?: string };
+type MobileHeaderBack = {
+  label: string;
+  onClick?(): void;
+  title?: string | undefined;
+};
 
 type DashboardChromeContextValue = {
   mobileHeaderBack: MobileHeaderBack | null;
@@ -27,6 +31,8 @@ type DashboardChromeContextValue = {
   mobileHeaderActionsSlotRef: RefCallback<HTMLDivElement>;
   mobileHeaderTagsSlot: HTMLElement | null;
   mobileHeaderTagsSlotRef: RefCallback<HTMLDivElement>;
+  mobileHeaderTitleSlot: HTMLElement | null;
+  mobileHeaderTitleSlotRef: RefCallback<HTMLDivElement>;
   mobileSecondarySlot: HTMLElement | null;
   mobileSecondarySlotRef: RefCallback<HTMLDivElement>;
   openMobileNavigation(): void;
@@ -48,30 +54,11 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     useState<HTMLElement | null>(null);
   const [mobileHeaderTagsSlot, setMobileHeaderTagsSlot] =
     useState<HTMLElement | null>(null);
+  const [mobileHeaderTitleSlot, setMobileHeaderTitleSlot] =
+    useState<HTMLElement | null>(null);
   const [mobileHeaderBack, setMobileHeaderBack] =
     useState<MobileHeaderBack | null>(null);
   const openMobileNavigationRef = useRef<(() => void) | null>(null);
-  const secondarySlotRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
-    setSecondarySlot(node);
-  }, []);
-  const mobileSecondarySlotRef = useCallback<RefCallback<HTMLDivElement>>(
-    (node) => {
-      setMobileSecondarySlot(node);
-    },
-    [],
-  );
-  const mobileHeaderActionsSlotRef = useCallback<RefCallback<HTMLDivElement>>(
-    (node) => {
-      setMobileHeaderActionsSlot(node);
-    },
-    [],
-  );
-  const mobileHeaderTagsSlotRef = useCallback<RefCallback<HTMLDivElement>>(
-    (node) => {
-      setMobileHeaderTagsSlot(node);
-    },
-    [],
-  );
   const registerOpenMobileNavigation = useCallback(
     (open: (() => void) | null) => {
       openMobileNavigationRef.current = open;
@@ -81,34 +68,33 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
   const openMobileNavigation = useCallback(() => {
     openMobileNavigationRef.current?.();
   }, []);
+  // A state setter is a stable ref callback, so each slot ref is its setter.
   const value = useMemo(
     () => ({
       mobileHeaderBack,
       mobileHeaderActionsSlot,
-      mobileHeaderActionsSlotRef,
+      mobileHeaderActionsSlotRef: setMobileHeaderActionsSlot,
       mobileHeaderTagsSlot,
-      mobileHeaderTagsSlotRef,
+      mobileHeaderTagsSlotRef: setMobileHeaderTagsSlot,
+      mobileHeaderTitleSlot,
+      mobileHeaderTitleSlotRef: setMobileHeaderTitleSlot,
       mobileSecondarySlot,
-      mobileSecondarySlotRef,
+      mobileSecondarySlotRef: setMobileSecondarySlot,
       openMobileNavigation,
       registerOpenMobileNavigation,
       secondarySlot,
-      secondarySlotRef,
+      secondarySlotRef: setSecondarySlot,
       setMobileHeaderBack,
     }),
     [
       mobileHeaderBack,
       mobileHeaderActionsSlot,
-      mobileHeaderActionsSlotRef,
       mobileHeaderTagsSlot,
-      mobileHeaderTagsSlotRef,
+      mobileHeaderTitleSlot,
       mobileSecondarySlot,
-      mobileSecondarySlotRef,
       openMobileNavigation,
       registerOpenMobileNavigation,
       secondarySlot,
-      secondarySlotRef,
-      setMobileHeaderBack,
     ],
   );
 
@@ -160,6 +146,50 @@ export function DashboardChrome(props: {
   );
 }
 
+/**
+ * The new UI's sticky shell chrome: mobile header, secondary navigation
+ * slot, and banner. One bottom border closes the header and page links, so page link
+ * underlines sit on it. Banners render below that border. Desktop has no
+ * app header, so there the border shows only under page links.
+ */
+export function InboxDashboardChrome(props: {
+  banner?: ReactNode;
+  /** Desktop controls before the page links, such as the hidden pane's. */
+  desktopControls?: ReactNode;
+  header: ReactNode;
+}) {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome) {
+    throw new Error("DashboardChrome requires DashboardChromeProvider");
+  }
+
+  return (
+    <div
+      className="sticky top-0 z-30 bg-dashboard-bg/95 pt-[env(safe-area-inset-top)]"
+      data-dashboard-chrome=""
+    >
+      <div className="border-b border-dashboard-border-strong md:border-b-0 md:has-[[data-secondary-slot]>*]:border-b">
+        {props.header}
+        {/* One header row on desktop: the hidden pane's controls, then the
+            page links, so hiding the pane does not add a row. */}
+        <div className="md:flex md:items-center">
+          {props.desktopControls ? (
+            <div className="hidden h-header shrink-0 items-center pl-6 md:flex md:empty:hidden">
+              {props.desktopControls}
+            </div>
+          ) : null}
+          <div
+            className="hidden min-w-0 md:block md:flex-1"
+            data-secondary-slot=""
+            ref={chrome.secondarySlotRef}
+          />
+        </div>
+      </div>
+      {props.banner}
+    </div>
+  );
+}
+
 /** Provide the current page navigation target inside the mobile drawer. */
 export function MobileSecondaryNavigationSlot() {
   const chrome = useContext(DashboardChromeContext);
@@ -201,6 +231,31 @@ export function MobileHeaderTagsSlot() {
       ref={chrome.mobileHeaderTagsSlotRef}
     />
   );
+}
+
+/**
+ * Slot for a mobile conversation title that the page owns, such as one that
+ * it renames in place. It goes before the shell's own title, which shows
+ * only while the slot is empty (`peer-empty/title:block`).
+ */
+export function MobileHeaderTitleSlot() {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome) {
+    throw new Error("MobileHeaderTitleSlot requires DashboardChromeProvider");
+  }
+  return (
+    <div
+      className="peer/title contents"
+      ref={chrome.mobileHeaderTitleSlotRef}
+    />
+  );
+}
+
+/** Mount the page's conversation title into the mobile shell header. */
+export function MobileHeaderTitlePortal(props: { children: ReactNode }) {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome?.mobileHeaderTitleSlot) return null;
+  return createPortal(props.children, chrome.mobileHeaderTitleSlot);
 }
 
 /** Mount conversation tools into the mobile shell header trailing slot. */

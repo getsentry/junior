@@ -1,16 +1,19 @@
-import { Agent, type StreamFn } from "@earendil-works/pi-agent-core";
+import { Agent } from "@earendil-works/pi-agent-core";
 import {
   createAssistantMessageEventStream,
   type AssistantMessage,
   type Context,
   type Model,
+  type SystemMessage,
 } from "@earendil-works/pi-ai";
 import { Type } from "@sinclair/typebox";
 import { describe, expect, it } from "vitest";
 import {
+  foldSystemMessages,
   readAgentHistory,
   withAgentRequest,
   writeAgentHistory,
+  type AgentRequestStreamFn,
 } from "@/chat/pi/agent-history";
 import type { PiMessage } from "@/chat/pi/messages";
 
@@ -20,15 +23,11 @@ const model = {
   provider: "vercel-ai-gateway",
 } as Model<"anthropic-messages">;
 
-// Later Pi versions keep the prompt and tools in system messages. The
-// installed Pi has no such type, so build one by shape.
-function system(text: string): PiMessage {
-  const message: Record<string, unknown> = {
-    role: "system",
-    systemPrompt: text,
-    timestamp: 0,
-  };
-  return message as PiMessage & Record<string, unknown>;
+function system(
+  content: string,
+  fields: Partial<SystemMessage> = {},
+): SystemMessage {
+  return { role: "system", content, timestamp: 0, ...fields };
 }
 
 function user(text: string): PiMessage {
@@ -56,10 +55,14 @@ function assistant(text: string): AssistantMessage {
 }
 
 describe("agent history", () => {
-  it("reads history without system messages", () => {
-    const messages = [system("prompt"), user("a"), system("tools"), user("b")];
+  it("reads history without the leading system message", () => {
+    const messages = [system("prompt"), user("a"), system("rules"), user("b")];
 
-    expect(readAgentHistory(messages)).toEqual([user("a"), user("b")]);
+    expect(readAgentHistory(messages)).toEqual([
+      user("a"),
+      system("rules"),
+      user("b"),
+    ]);
   });
 
   it("writes history after the leading system message of the agent", () => {
@@ -67,7 +70,7 @@ describe("agent history", () => {
 
     expect(
       writeAgentHistory(current, [system("saved"), user("a"), user("b")]),
-    ).toEqual([system("prompt"), user("a"), user("b")]);
+    ).toEqual([system("prompt"), system("saved"), user("a"), user("b")]);
   });
 
   it("writes a copy of history when the agent has no system message", () => {
@@ -76,6 +79,39 @@ describe("agent history", () => {
 
     expect(written).toEqual(history);
     expect(written).not.toBe(history);
+  });
+
+  it("folds system messages into their current content and sections", () => {
+    const tool = {
+      name: "lookup",
+      description: "Look up a record.",
+      parameters: Type.Object({}),
+    };
+
+    expect(
+      foldSystemMessages([
+        user("a"),
+        system("Use the rules.", {
+          sections: { skills: "<skills>a</skills>", tools: "<tools></tools>" },
+          timestamp: 1,
+        }),
+        user("b"),
+        system("", {
+          sections: { skills: "<skills>b</skills>", tools: null },
+          toolsAdded: [tool],
+          timestamp: 2,
+        }),
+      ]),
+    ).toEqual(
+      system("Use the rules.", {
+        sections: { skills: "<skills>b</skills>" },
+        timestamp: 1,
+      }),
+    );
+    expect(foldSystemMessages([user("a")])).toBeUndefined();
+    expect(
+      foldSystemMessages([system("", { toolsAdded: [tool] })]),
+    ).toBeUndefined();
   });
 
   it("sends Junior's prompt, tools, and history to the stream path", async () => {
@@ -89,7 +125,7 @@ describe("agent history", () => {
       },
     ];
     const contexts: Context[] = [];
-    const base: StreamFn = (_model, context) => {
+    const base: AgentRequestStreamFn = (_model, context) => {
       contexts.push(context);
       const message = assistant("Done.");
       const stream = createAssistantMessageEventStream();
@@ -108,12 +144,24 @@ describe("agent history", () => {
       initialState: { model, systemPrompt: "You are a helper.", tools },
     });
 
+    const saved = system("Use the rules.", {
+      sections: { skills: "<skills>a</skills>" },
+    });
+    agent.state.messages = writeAgentHistory(agent.state.messages, [
+      user("Check CI."),
+      assistant("Checked."),
+      saved,
+    ]);
+
     await agent.prompt("Fix the failing check.");
 
     expect(contexts).toEqual([
       {
         systemPrompt: "You are a helper.",
         messages: [
+          user("Check CI."),
+          assistant("Checked."),
+          saved,
           {
             role: "user",
             content: [{ type: "text", text: "Fix the failing check." }],

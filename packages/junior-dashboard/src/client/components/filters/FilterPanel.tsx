@@ -17,7 +17,7 @@ export type FilterOption = { label: string; value: string };
 const SHOWN_OPTIONS = 6;
 
 /**
- * Lay out a search bar and a list with the open `FilterPanel` on the right
+ * Lay out a filter bar and a list with the open `FilterPanel` on the right
  * of both. The panel takes room from them, so they narrow instead of being
  * covered.
  */
@@ -192,7 +192,7 @@ export function FilterOptions(props: {
 
 function FilterOptionButton(props: {
   label: string;
-  matches?: number[];
+  matches?: number[] | undefined;
   onClick(): void;
   selected: boolean;
   subtle: boolean;

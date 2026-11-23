@@ -16,16 +16,18 @@ import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
   MobileHeaderTagsSlot,
+  MobileHeaderTitleSlot,
   MobileSecondaryNavigationSlot,
   useMobileHeaderBack,
   useRegisterOpenMobileNavigation,
 } from "./DashboardChrome";
 import { cn, dashboardInteractiveTextClass } from "../../styles";
 import { MOBILE_LAYOUT_QUERY } from "../../layoutMedia";
+import { splitLeadNavItem } from "../../primaryNav";
 
 export type DashboardHeaderNavItem = {
   /** Shown beside the label when it is above zero. */
-  count?: number;
+  count?: number | undefined;
   key: string;
   label: string;
   to: string;
@@ -34,7 +36,7 @@ export type DashboardHeaderNavItem = {
 const mobileBackClass =
   "grid size-10 place-items-center rounded-lg text-dashboard-text no-underline transition-colors hover:bg-dashboard-fill-hover focus-visible:outline focus-visible:outline-2 focus-visible:outline-dashboard-focus/70";
 
-function NavCount(props: { count?: number }) {
+function NavCount(props: { count?: number | undefined }) {
   if (!props.count) return null;
   return (
     <Badge className="ml-1.5 py-0.5" variant="highlight">
@@ -52,22 +54,22 @@ export function DashboardHeader(props: {
   /** Show the desktop top bar instead of the nav sidebar. */
   desktopTopBar: boolean;
   /** Back target used on mobile conversation detail. */
-  mobileBackTo?: string;
+  mobileBackTo?: string | undefined;
   mobileNavigationOpen: boolean;
-  mobileTitle?: string;
+  mobileTitle?: string | undefined;
   /** Quiet signed-in strip pinned above the sheet version footer. */
-  mobileIdentity?: ReactNode;
+  mobileIdentity?: ReactNode | undefined;
   /** Plain account destinations inside the mobile navigation sheet. */
-  mobileProfile?: ReactNode;
+  mobileProfile?: ReactNode | undefined;
   /** Vertical spend callout pinned above every mobile sheet destination. */
-  mobileSpend?: ReactNode;
+  mobileSpend?: ReactNode | undefined;
   navItems: DashboardHeaderNavItem[];
   onMobileNavigationOpenChange(open: boolean): void;
   /** Open the command palette. */
   onSearch(): void;
   /** Spend and account control at the right of the desktop top bar. */
-  profile?: ReactNode;
-  version?: string;
+  profile?: ReactNode | undefined;
+  version?: string | undefined;
   workspaceActive: boolean;
 }) {
   const closeRef = useRef<HTMLButtonElement>(null);
@@ -84,6 +86,8 @@ export function DashboardHeader(props: {
   useRegisterOpenMobileNavigation(() => {
     onOpenChangeRef.current(true);
   });
+  // Home, the Lead, comes before Conversations.
+  const { lead, rest } = splitLeadNavItem(props.navItems);
 
   const navLinkClass = ({ isActive }: { isActive: boolean }) =>
     cn(
@@ -140,14 +144,19 @@ export function DashboardHeader(props: {
               aria-label="Primary"
               className="flex items-center gap-1 [scrollbar-width:none] max-lg:min-w-0 max-lg:overflow-x-auto [&::-webkit-scrollbar]:hidden"
             >
+              {lead ? (
+                <NavLink className={navLinkClass} end to={lead.to}>
+                  {lead.label}
+                </NavLink>
+              ) : null}
               <Link
                 aria-current={props.workspaceActive ? "page" : undefined}
                 className={navLinkClass({ isActive: props.workspaceActive })}
-                to="/"
+                to="/conversations"
               >
                 Conversations
               </Link>
-              {props.navItems.map((item) => (
+              {rest.map((item) => (
                 <NavLink className={navLinkClass} key={item.key} to={item.to}>
                   {item.label}
                   <NavCount count={item.count} />
@@ -214,8 +223,9 @@ export function DashboardHeader(props: {
         )}
         {conversationMode ? (
           <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
+            <MobileHeaderTitleSlot />
             {mobileTitle ? (
-              <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
+              <h1 className="m-0 hidden min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text peer-empty/title:block">
                 {mobileTitle}
               </h1>
             ) : null}
@@ -273,16 +283,21 @@ export function DashboardHeader(props: {
                   <Search aria-hidden="true" className="size-4" />
                   {COMMAND_PALETTE_LABEL}
                 </Button>
+                {lead ? (
+                  <NavLink className={sheetLinkClass} end to={lead.to}>
+                    {lead.label}
+                  </NavLink>
+                ) : null}
                 <Link
                   aria-current={props.workspaceActive ? "page" : undefined}
                   className={sheetLinkClass({
                     isActive: props.workspaceActive,
                   })}
-                  to="/"
+                  to="/conversations"
                 >
                   Conversations
                 </Link>
-                {props.navItems.map((item) => (
+                {rest.map((item) => (
                   <NavLink
                     className={sheetLinkClass}
                     key={item.key}

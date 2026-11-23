@@ -4,15 +4,17 @@ import {
   SquarePen,
   type LucideIcon,
 } from "lucide-react";
+import { cn, dashboardCountClass } from "../styles";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router";
 
 import { useConversationsData } from "../api";
-import { formatCompactAge } from "../conversations/conversationAge";
 import {
+  COMPOSE_REPLY_STATE,
   FOCUS_REPLY_STATE,
   NEW_CONVERSATION_PATH,
   conversationPath,
+  type ReplyFocusState,
 } from "../conversations/conversationRoutes";
 import { useDebouncedValue } from "../debouncedValue";
 import { buildConversations, conversationDisplayTitle } from "../format";
@@ -32,6 +34,7 @@ import {
   CommandList,
 } from "./ui/command";
 import { Kbd } from "./ui/kbd";
+import { formatCompactAge } from "../time";
 
 const RECENT_LIMIT = 8;
 const MORE_LIMIT = 8;
@@ -48,11 +51,11 @@ type PaletteItem = {
   id: string;
   label: string;
   /** Label indices that the typed text matched. */
-  matches?: number[];
+  matches?: number[] | undefined;
   meta?: string;
   score: number;
   /** Navigation state for the destination page. */
-  state?: typeof FOCUS_REPLY_STATE;
+  state?: ReplyFocusState;
   to: string;
 };
 
@@ -63,7 +66,7 @@ type PaletteItem = {
  */
 export function CommandPalette(props: {
   /** Left out of the rows: the viewer is already there. */
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   navItems: DashboardHeaderNavItem[];
   open: boolean;
   onOpenChange(open: boolean): void;
@@ -96,14 +99,15 @@ export function CommandPalette(props: {
 
 /** Mounted only while open, so the server search runs only then. */
 function CommandPaletteBody(props: {
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   navItems: DashboardHeaderNavItem[];
   onClose(): void;
 }) {
   const [query, setQuery] = useState("");
   const search = useDebouncedValue(query.trim());
   // The shell already holds the feed, so rows filter on each keystroke with
-  // no request. The server search only reaches conversations outside it.
+  // no request. The server search adds matches that the title filter
+  // misses, such as a Brief or an Annotation match.
   const feed = useConversationsData();
   const searched = useConversationsData(search);
   const navigate = useNavigate();
@@ -167,7 +171,7 @@ function CommandPaletteBody(props: {
                 <CommandItem
                   key={item.id}
                   onSelect={() => {
-                    navigate(item.to, { state: item.state });
+                    void navigate(item.to, { state: item.state });
                     props.onClose();
                   }}
                   value={item.id}
@@ -177,7 +181,7 @@ function CommandPaletteBody(props: {
                     <MatchedLabel label={item.label} matches={item.matches} />
                   </span>
                   {item.meta ? (
-                    <span className="text-xs tabular-nums text-dashboard-text-faint">
+                    <span className={cn("text-xs", dashboardCountClass)}>
                       {item.meta}
                     </span>
                   ) : null}
@@ -194,11 +198,11 @@ function CommandPaletteBody(props: {
 /**
  * Build palette rows. With no typed text: the most recently active
  * conversations, then pages. With typed text: feed conversations and pages
- * ranked by match, the group with the best match first, then server matches
- * outside the feed. The open conversation is never a row.
+ * ranked by title match, the group with the best match first, then the
+ * other server matches. The open conversation is never a row.
  */
 function paletteItems(input: {
-  currentConversationId?: string;
+  currentConversationId?: string | undefined;
   feed: Conversation[];
   navItems: DashboardHeaderNavItem[];
   query: string;
@@ -208,11 +212,19 @@ function paletteItems(input: {
     conversations.filter(
       (conversation) => conversation.id !== input.currentConversationId,
     );
-  const pages = [
+  const pages: {
+    icon: LucideIcon;
+    key: string;
+    label: string;
+    state?: ReplyFocusState;
+    to: string;
+  }[] = [
     {
       icon: SquarePen,
       key: "new-conversation",
       label: "New conversation",
+      // The reader chose to type a new request.
+      state: COMPOSE_REPLY_STATE,
       to: NEW_CONVERSATION_PATH,
     },
     ...input.navItems.map((item) => ({
@@ -228,6 +240,7 @@ function paletteItems(input: {
     id: `page-${page.key}`,
     label: page.label,
     score: 0,
+    state: page.state,
     to: page.to,
   });
 
@@ -259,13 +272,13 @@ function paletteItems(input: {
       };
     }),
   );
-  const shown = new Set(input.feed.map((conversation) => conversation.id));
+  const shown = new Set(conversations.map((row) => row.id));
   const more = others(input.searched)
-    .filter((conversation) => !shown.has(conversation.id))
-    .slice(0, MORE_LIMIT)
     .map((conversation) =>
       conversationItem(conversation, "More conversations", input.query),
-    );
+    )
+    .filter((row) => !shown.has(row.id))
+    .slice(0, MORE_LIMIT);
   const pagesFirst =
     (matchedPages[0]?.score ?? 0) > (conversations[0]?.score ?? 0);
   return pagesFirst

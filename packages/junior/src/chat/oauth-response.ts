@@ -44,7 +44,7 @@ export class OAuthProviderError extends Error {
   readonly phase: OAuthProviderErrorPhase;
   readonly provider: string;
   readonly resourceHost: string;
-  readonly status?: number;
+  readonly status?: number | undefined;
 
   constructor(details: OAuthProviderErrorDetails) {
     super(`OAuth provider ${details.phase.replace("_", " ")} failed`);
@@ -88,6 +88,7 @@ export async function readBoundedOAuthErrorBody(
   let text = "";
 
   try {
+    /* oxlint-disable no-await-in-loop -- Stream chunks arrive one at a time. */
     while (
       bytesRead < MAX_OAUTH_ERROR_BODY_BYTES &&
       reads < MAX_OAUTH_ERROR_BODY_READS
@@ -108,6 +109,7 @@ export async function readBoundedOAuthErrorBody(
         return text + decoder.decode();
       }
     }
+    /* oxlint-enable no-await-in-loop */
 
     await reader.cancel();
     return text + decoder.decode();
@@ -121,7 +123,7 @@ export function fetchWithBoundedOAuthErrorBodies(
   fetchFn: typeof fetch = globalThis.fetch,
   onErrorResponseStatus?: (status: number) => void,
 ): typeof fetch {
-  return (async (input: RequestInfo | URL, init?: RequestInit) => {
+  return async (input: RequestInfo | URL, init?: RequestInit) => {
     const response = await fetchFn(input, init);
     if (response.ok) {
       return response;
@@ -144,5 +146,5 @@ export function fetchWithBoundedOAuthErrorBodies(
       status: response.status,
       statusText: response.statusText,
     });
-  }) as typeof fetch;
+  };
 }

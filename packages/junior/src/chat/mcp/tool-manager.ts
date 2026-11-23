@@ -15,6 +15,7 @@ import {
   type PluginMcpContent,
   type ToolAnnotations,
 } from "@sentry/junior-plugin-api";
+import pLimit from "p-limit";
 import {
   logAudit,
   logWarn,
@@ -33,6 +34,7 @@ import {
   estimateTextTokens,
   textCharsForTokens,
 } from "@/chat/services/token-estimate";
+import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import {
   McpAuthorizationRequiredError,
   PluginMcpClient,
@@ -66,8 +68,8 @@ function summarizeStructuredContent(value: unknown): string | undefined {
 function summarizeResourcePart(part: {
   type: "resource";
   resource:
-    | { uri: string; text: string; mimeType?: string }
-    | { uri: string; blob: string; mimeType?: string };
+    | { uri: string; text: string; mimeType?: string | undefined }
+    | { uri: string; blob: string; mimeType?: string | undefined };
 }): string {
   if ("text" in part.resource) {
     return part.resource.text;
@@ -456,19 +458,17 @@ export class McpToolManager {
   }
 
   async close(): Promise<void> {
-    let firstError: unknown;
-
-    for (const client of [
-      ...this.clientsByProvider.values(),
-      ...this.actorClientsByProvider.values(),
-      ...this.forgottenClients,
-    ]) {
-      try {
-        await client.close();
-      } catch (error) {
-        firstError ??= error;
-      }
-    }
+    const limit = pLimit(FAN_OUT_CONCURRENCY);
+    const closed = await Promise.allSettled(
+      [
+        ...this.clientsByProvider.values(),
+        ...this.actorClientsByProvider.values(),
+        ...this.forgottenClients,
+      ].map((client) => limit(() => client.close())),
+    );
+    const firstError: unknown = closed.find(
+      (result) => result.status === "rejected",
+    )?.reason;
 
     this.clientsByProvider.clear();
     this.actorClientsByProvider.clear();
@@ -664,6 +664,8 @@ export class McpToolManager {
     client: PluginMcpClient,
     tool: PluginMcpListedTool,
   ): ManagedMcpTool {
+    // The provider's schema describes the MCP result. It is not a Junior
+    // result schema: Junior's wrappers, such as `callMcpTool`, own theirs.
     const outputSchema = toOptionalRecord(tool.outputSchema);
     const annotations = tool.annotations;
     const missingAnnotationKeys = missingToolAnnotationKeys(annotations);
@@ -677,7 +679,7 @@ export class McpToolManager {
     return {
       name: normalizeMcpToolName(plugin.manifest.name, tool.name),
       description: describeMcpTool(plugin.manifest.name, tool),
-      parameters: tool.inputSchema as Record<string, unknown>,
+      parameters: tool.inputSchema,
       provider: plugin.manifest.name,
       rawName: tool.name,
       ...(tool.title?.trim() ? { title: tool.title.trim() } : undefined),

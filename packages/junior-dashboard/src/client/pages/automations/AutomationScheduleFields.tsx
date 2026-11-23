@@ -23,11 +23,12 @@ import {
   weekdays,
   type AutomationScheduleDraft,
 } from "./automationDraft";
+import { formatTime } from "../../time";
 
 /** Edit calendar fields and preview the next run without saving. */
 export function AutomationScheduleFields(props: {
   automation: Extract<AutomationEdit, { kind: "scheduled" }>;
-  value?: AutomationScheduleDraft;
+  value?: AutomationScheduleDraft | undefined;
   onChange(value: AutomationScheduleDraft | undefined): void;
 }) {
   const value = props.value ?? scheduleDraft(props.automation);
@@ -235,10 +236,10 @@ export function AutomationScheduleFields(props: {
                   >
                     {Array.from({ length: 12 }, (_, index) => (
                       <option key={index} value={index + 1}>
-                        {new Intl.DateTimeFormat("en", {
+                        {formatTime(Date.UTC(2026, index, 1), {
                           month: "long",
                           timeZone: "UTC",
-                        }).format(new Date(Date.UTC(2026, index, 1)))}
+                        })}
                       </option>
                     ))}
                   </NativeSelect>
@@ -312,7 +313,7 @@ export function AutomationScheduleFields(props: {
           ) : nextRun ? (
             <>
               Next run{" "}
-              {new Intl.DateTimeFormat(undefined, {
+              {formatTime(nextRun, {
                 year: "numeric",
                 month: "short",
                 day: "numeric",
@@ -322,7 +323,7 @@ export function AutomationScheduleFields(props: {
                 timeZone: props.value
                   ? (preview.data?.schedule.timezone ?? "UTC")
                   : props.automation.schedule.timezone,
-              }).format(nextRun)}
+              })}
             </>
           ) : (
             "No next run."

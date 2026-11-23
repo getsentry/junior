@@ -14,14 +14,11 @@ import {
   ConversationListStatusIcon,
   ConversationStatusText,
 } from "../../conversations/ConversationListStatusIcon";
+import { conversationTurnIsActive } from "../../conversations/turnActivity";
 import { conversationPath } from "../../conversations/conversationRoutes";
-import {
-  conversationDisplayTitle,
-  formatRelativeTime,
-  slackLocationLabel,
-  visualStatusForConversation,
-} from "../../format";
+import { conversationDisplayTitle, slackLocationLabel } from "../../format";
 import type { Conversation } from "../../types";
+import { formatRelativeTime } from "../../time";
 
 /** Titled repository card with an optional "View all" link to its tab. */
 export function RepositorySection(props: {
@@ -56,7 +53,7 @@ export function RepositorySection(props: {
  */
 export function RecentConversationRow(props: { conversation: Conversation }) {
   const conversation = props.conversation;
-  const status = visualStatusForConversation(conversation);
+  const status = conversation.status;
   const title = conversationDisplayTitle(conversation);
   const location = slackLocationLabel(conversation, { includeId: false });
   const hasAnnotations = Boolean(conversation.sidebarAnnotations?.length);
@@ -69,7 +66,10 @@ export function RecentConversationRow(props: { conversation: Conversation }) {
       />
       <div className="pointer-events-none relative z-[1] grid min-w-0 grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-x-2">
         <span className="mt-1.5 grid size-3 shrink-0 place-items-center">
-          <ConversationListStatusIcon status={status} waitingOnViewer={false} />
+          <ConversationListStatusIcon
+            turnActive={conversationTurnIsActive(conversation)}
+            waitingOnViewer={false}
+          />
         </span>
         <div className="min-w-0 truncate font-display text-sm text-dashboard-text">
           {title}

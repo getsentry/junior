@@ -3,8 +3,9 @@ import { Bot } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "../components/ui/avatar";
 import { Message, MessageContent } from "../components/ui/message";
 import { transcriptRoleKind } from "../format";
-import { cn } from "../styles";
+import { cn, dashboardSurfaceRadiusClass } from "../styles";
 import juniorAvatarUrl from "../../assets/junior-avatar.webp";
+import { LeadMark } from "../lead/LeadMark";
 import {
   transcriptAvatarClass,
   transcriptColumnsClass,
@@ -14,10 +15,12 @@ import {
 export function TranscriptMessageShell(props: {
   actor: string;
   /** Junior API path of the author photo. Initials show without it. */
-  avatarUrl?: string;
+  avatarUrl?: string | undefined;
   children: ReactNode;
   /** The parent agent wrote this input, so it shows an agent, not a person. */
   fromAgent?: boolean;
+  /** A Lead wrote this reply, so it shows the Lead mark. */
+  lead?: boolean | undefined;
   onCopy?: ClipboardEventHandler<HTMLElement>;
   role: string;
 }) {
@@ -28,7 +31,10 @@ export function TranscriptMessageShell(props: {
       className={cn(
         hasAvatar && cn(transcriptColumnsClass, "text-dashboard-text"),
         kind === "system" &&
-          "rounded-xl bg-dashboard-surface-panel px-4 py-3 text-dashboard-text max-md:ml-4",
+          cn(
+            "bg-dashboard-surface-panel px-4 py-3 text-dashboard-text max-md:ml-4",
+            dashboardSurfaceRadiusClass,
+          ),
         kind === "tool" &&
           "rounded-none px-0 text-dashboard-text-muted max-md:ml-8",
         kind === "other" &&
@@ -44,7 +50,9 @@ export function TranscriptMessageShell(props: {
             transcriptAvatarClass,
           )}
         >
-          {kind === "assistant" ? (
+          {kind === "assistant" && props.lead ? (
+            <LeadMark size="avatar" />
+          ) : kind === "assistant" ? (
             <img
               alt=""
               className="size-full object-contain"

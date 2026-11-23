@@ -1,6 +1,6 @@
-import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
+import { getTurnLifecycle } from "@/chat/conversations/turn-lifecycle";
 import { deleteWebAuthorization } from "@/chat/conversations/web-authorization";
-import { getConversationEventStore } from "@/chat/db";
+
 import { hydrateConversationMessages } from "@/chat/conversations/messages";
 import {
   getPersistedThreadState,
@@ -59,6 +59,7 @@ export async function supersedeTurns(args: {
     if (args.isStopped?.()) {
       return false;
     }
+    // oxlint-disable-next-line no-await-in-loop -- Check for a stop before each Turn ends.
     await abandonTurnRecord({
       conversationId: args.conversationId,
       turnId: stale.turnId,
@@ -66,9 +67,8 @@ export async function supersedeTurns(args: {
     });
     // The Turn ends without a reply, like a stopped Turn, so the
     // Conversation report does not show it as running.
-    await new ConversationTurnLifecycleService(
-      getConversationEventStore(),
-    ).complete({
+    // oxlint-disable-next-line no-await-in-loop -- Check for a stop before each Turn ends.
+    await getTurnLifecycle().complete({
       conversationId: args.conversationId,
       createdAtMs: Date.now(),
       outcome: "cancelled",

@@ -9,7 +9,6 @@ import {
 } from "@/chat/guardian/gate";
 import type { ToolActionReviewer } from "@/chat/guardian/proposal";
 import { createReportProgressTool } from "@/chat/tools/runtime/report-progress";
-import { createUpdatePlanTool } from "@/chat/tools/runtime/update-plan";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import type { Skill } from "@/chat/skills";
@@ -21,7 +20,7 @@ const { handleToolExecutionError } = vi.hoisted(() => ({
   }),
 }));
 
-vi.mock("@/chat/tools/execution/tool-error-handler", () => ({
+vi.mock("@/chat/tool-support/tool-error-handler", () => ({
   handleToolExecutionError,
 }));
 
@@ -65,34 +64,6 @@ describe("Pi tool adapter", () => {
     handleToolExecutionError.mockClear();
   });
 
-  it("emits assistant status for updatePlan only", async () => {
-    const sandbox = new SkillSandbox([], []);
-    const onStatus = vi.fn(async () => undefined);
-    const [updatePlanTool, bashTool] = createPiAgentTools(
-      {
-        updatePlan: createUpdatePlanTool(),
-        bash: {
-          description: "bash",
-          inputSchema: {} as any,
-          execute: async () => ({ ok: true }),
-        },
-      },
-      sandbox,
-      { spanContext: {}, searchToolsCost: { owner: "none" }, onStatus },
-    );
-
-    await updatePlanTool!.execute("tool-plan", {
-      plan: [
-        { step: "Inspect current behavior", status: "completed" },
-        { step: "Implement the MVP", status: "in_progress" },
-      ],
-    });
-    await bashTool!.execute("tool-bash", { command: "pwd" });
-
-    expect(onStatus).toHaveBeenCalledOnce();
-    expect(onStatus).toHaveBeenCalledWith({ text: "Implement the MVP" });
-  });
-
   it("emits assistant status when reportProgress runs through executeTool", async () => {
     const sandbox = new SkillSandbox([], []);
     const onStatus = vi.fn(async () => undefined);
@@ -129,7 +100,7 @@ describe("Pi tool adapter", () => {
       supports: (toolName: string) => toolName === "bash",
       execute: vi.fn(async ({ input }) => ({
         ok: true,
-        command: (input as Record<string, unknown>).command,
+        command: (input as Record<string, unknown>)["command"],
         cwd: "/vercel/sandbox",
         exit_code: 0,
         signal: null,
@@ -145,7 +116,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -196,7 +167,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -236,7 +207,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -281,7 +252,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -318,7 +289,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -349,7 +320,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -378,7 +349,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -505,7 +476,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -561,7 +532,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the recurring report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute,
         },
       },
@@ -667,7 +638,7 @@ describe("Pi tool adapter", () => {
         demo: {
           approvalMode: "review",
           description: "Create the report.",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: vi.fn(),
         },
       },
@@ -695,7 +666,7 @@ describe("Pi tool adapter", () => {
       {
         demo: {
           description: "demo",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => {
             throw new Error("Thing not found.");
           },
@@ -730,7 +701,7 @@ describe("Pi tool adapter", () => {
       {
         editFile: {
           description: "edit",
-          inputSchema: {} as any,
+          inputSchema: {},
           prepareArguments,
           executionMode: "sequential",
           execute: async () => ({ ok: true }),
@@ -755,14 +726,14 @@ describe("Pi tool adapter", () => {
         automaticReview: {
           approvalMode: "auto",
           description: "automatic review",
-          inputSchema: {} as any,
+          inputSchema: {},
           executionMode: "parallel",
           execute: async () => ({ ok: true }),
         },
         requiredReview: {
           approvalMode: "review",
           description: "required review",
-          inputSchema: {} as any,
+          inputSchema: {},
           executionMode: "parallel",
           execute: async () => ({ ok: true }),
         },
@@ -834,7 +805,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },
@@ -886,7 +857,7 @@ describe("Pi tool adapter", () => {
       {
         bash: {
           description: "bash",
-          inputSchema: {} as any,
+          inputSchema: {},
           execute: async () => ({ ok: true }),
         },
       },

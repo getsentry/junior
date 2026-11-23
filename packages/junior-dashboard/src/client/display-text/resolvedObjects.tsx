@@ -4,6 +4,7 @@ import {
   type OwnedObjectAnnotation,
 } from "@sentry/junior/api/schema";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import pLimit from "p-limit";
 import {
   createContext,
   useCallback,
@@ -33,24 +34,28 @@ const NO_OBJECTS: MessageObjects = {
 
 const MessageObjectsContext = createContext<MessageObjects>(NO_OBJECTS);
 
+// Object reads that one message sends at once.
+const OBJECT_READS = 4;
+
 async function fetchObjects(urls: readonly string[]) {
   const chunks: string[][] = [];
   for (let start = 0; start < urls.length; start += MAX_OBJECT_LINKS) {
     chunks.push(urls.slice(start, start + MAX_OBJECT_LINKS));
   }
-  const reports = await Promise.all(
-    chunks.map((chunk) =>
-      fetchDashboardJson(
-        objectLinksReportSchema,
-        `/api/objects?${new URLSearchParams(chunk.map((url) => ["url", url]))}`,
-      ),
+  const reports = await pLimit(OBJECT_READS).map(chunks, (chunk) =>
+    fetchDashboardJson(
+      objectLinksReportSchema,
+      `/api/objects?${new URLSearchParams(chunk.map((url) => ["url", url]))}`,
     ),
   );
-  return new Map(
-    reports.flatMap((report) =>
-      report.objects.map((item) => [item.url, item.object] as const),
-    ),
+  // Every asked link has an entry, so a link without a card is answered too.
+  const objects = new Map<string, OwnedObjectAnnotation | undefined>(
+    urls.map((url) => [url, undefined]),
   );
+  for (const report of reports) {
+    for (const item of report.objects) objects.set(item.url, item.object);
+  }
+  return objects;
 }
 
 /**
@@ -105,11 +110,14 @@ export function resolvableUrl(href: string | undefined): string | undefined {
  * Return the object card that the API resolves for a link, for this viewer.
  * The request starts only after `request()`, such as when the link scrolls
  * into view or the reader hovers it. Until then, and on failure, there is
- * no card.
+ * no card. `settled` turns true once an answer covers the link, or a request
+ * fails, and stays true for later requests, such as a refetch or one for new
+ * links.
  */
 export function useResolvedObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;
   request: () => void;
+  settled: boolean;
 } {
   const url = resolvableUrl(href);
   const { register, request, requested } = useContext(MessageObjectsContext);
@@ -118,7 +126,7 @@ export function useResolvedObject(href: string | undefined): {
   }, [register, url]);
   // Every link of the message reads the same query, so they share one
   // request.
-  const { data } = useQuery({
+  const { data, isError } = useQuery({
     queryKey: ["object-links", requested],
     queryFn: () => fetchObjects(requested!),
     enabled: requested !== undefined,
@@ -127,15 +135,40 @@ export function useResolvedObject(href: string | undefined): {
     staleTime: 60_000,
     retry: false,
   });
-  return { card: url ? data?.get(url) : undefined, request };
+  // A new query key starts without an error or data, so keep the first
+  // answer for this link.
+  const [settled, setSettled] = useState(false);
+  if (!settled && (isError || (url !== undefined && data?.has(url)))) {
+    setSettled(true);
+  }
+  return { card: url ? data?.get(url) : undefined, request, settled };
+}
+
+/**
+ * Ask for the cards of the links inside once the text first shows. Clamped
+ * text, such as a row preview, needs this: a link past the clamp never
+ * scrolls into view on its own.
+ */
+export function ResolveWhenVisible(props: {
+  block: boolean;
+  children: ReactNode;
+}) {
+  const observe = useWhenVisible(useContext(MessageObjectsContext).request);
+  return props.block ? (
+    <div className="min-w-0" ref={observe}>
+      {props.children}
+    </div>
+  ) : (
+    <span ref={observe}>{props.children}</span>
+  );
 }
 
 /** Return a ref that calls `onVisible` once, when its element first shows. */
 export function useWhenVisible(
   onVisible: () => void,
-): RefCallback<HTMLAnchorElement> {
+): RefCallback<HTMLElement> {
   return useCallback(
-    (element: HTMLAnchorElement | null) => {
+    (element: HTMLElement | null) => {
       if (!element || typeof IntersectionObserver === "undefined") return;
       const observer = new IntersectionObserver((entries) => {
         if (entries.some((entry) => entry.isIntersecting)) {

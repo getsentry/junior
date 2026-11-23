@@ -55,7 +55,7 @@ describe("context compaction projection reset", () => {
   });
 
   it("compares repeated commits in their durable JSON form", async () => {
-    const { commitMessages, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const conversationId = "conversation-json-normalization";
     const priorMessages = [
@@ -85,7 +85,9 @@ describe("context compaction projection reset", () => {
       ...assistant("Lookup complete.", 2),
       usage: { input: 5 },
     });
-    await expect(loadProjection({ conversationId })).resolves.toHaveLength(3);
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toHaveLength(3);
   });
 
   it("keeps earlier user asks before the summary at Turn start", async () => {
@@ -104,6 +106,12 @@ describe("context compaction projection reset", () => {
     } as const;
     const history = [
       user("Please remember the deploy blocker.", 1),
+      {
+        role: "system",
+        content: "Track blockers.",
+        sections: { plan: "<plan>a</plan>", repo: "<repo>x</repo>" },
+        timestamp: 1,
+      } as PiMessage,
       assistant("The blocker is missing migration approval.", 2),
       // A Turn's context is its own message, paired with the instruction.
       user("<thread-context>Earlier thread.</thread-context>", 3),
@@ -117,6 +125,12 @@ describe("context compaction projection reset", () => {
         toolName: "oversized",
         content: [{ type: "text", text: "x".repeat(1_600_000) }],
         isError: false,
+        timestamp: 4,
+      } as PiMessage,
+      {
+        role: "system",
+        content: "",
+        sections: { plan: "<plan>b</plan>", repo: null },
         timestamp: 4,
       } as PiMessage,
       assistant("Tracking both.", 5),
@@ -133,7 +147,7 @@ describe("context compaction projection reset", () => {
       newMessageProvenance: { authority: "instruction", actor: alice },
     });
     const askProvenance = (await loadConversationProjection({ conversationId }))
-      .provenance[3];
+      .provenance[4];
 
     const result = await compactActiveContextIfNeeded(
       {
@@ -153,12 +167,19 @@ describe("context compaction projection reset", () => {
     );
 
     expect(result.compacted).toBe(true);
-    const texts = result.piMessages!.map(textOf);
+    const texts = result.piMessages!.slice(0, 3).map(textOf);
     expect(texts.slice(0, 2)).toEqual([
       "Please remember the deploy blocker.",
       "<current-instruction>Also track the rollback plan.</current-instruction>",
     ]);
     expect(texts[2]).toContain("Open: migration approval and rollback plan.");
+    // The latest system state follows the summary.
+    expect(result.piMessages![3]).toEqual({
+      role: "system",
+      content: "Track blockers.",
+      sections: { plan: "<plan>b</plan>" },
+      timestamp: 1,
+    });
     expect(result.piMessages!.at(-1)).toEqual(prompt);
     const projection = await loadConversationProjection({ conversationId });
     expect(projection.messages).toEqual(result.piMessages);
@@ -174,7 +195,7 @@ describe("context compaction projection reset", () => {
   it("counts retained runtime context in the replacement hard limit", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");
-    const { commitMessages, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const conversationId = "conversation-active-pending-hard-limit";
     const original = [user("Keep this committed history.", 1)];
@@ -222,42 +243,50 @@ describe("context compaction projection reset", () => {
         async () => ({ summary: "s".repeat(200_000) }),
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
-    await expect(loadProjection({ conversationId })).resolves.toEqual(original);
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual(original);
   });
 
   it("retains split host context during active compaction", async () => {
     const { compactActiveContextIfNeeded } =
       await import("@/chat/services/context-compaction");
-    const { buildScriptToolsSection, buildTurnContextPrompt } =
+    const { buildCapabilitySections, buildTurnContextPrompt } =
       await import("@/chat/prompt");
+    const { systemSectionsUpdate } = await import("@/chat/pi/agent-history");
     const conversationId = "conversation-active-split-context";
     const skill = (name: string) => ({
       name,
       description: `Use ${name}.`,
       skillPath: `/skills/${name}`,
     });
-    const catalogs = [{ provider: "notion", available_tool_count: 3 }];
-    const section = (text: string, tag: string) =>
-      text.match(new RegExp(`<${tag}>\\n[\\s\\S]*?\\n</${tag}>`))![0];
-    const count = (text: string, tag: string) =>
-      text.split(`<${tag}>\n`).length - 1;
-    // An earlier Turn sent session context. A later Turn that no person
-    // started got request context, changed script tools, and a new skill.
-    // Neither request context applies now.
+    const sections = (skills: string[]) =>
+      buildCapabilitySections({
+        availableSkills: skills.map(skill),
+        activeMcpCatalogs: [{ provider: "notion", available_tool_count: 3 }],
+        scriptTools: "tools.b",
+        toolGuidance: [],
+        workspaces: [],
+      });
+    // An earlier Turn sent session context. A Turn from before capability
+    // sections moved to system messages also put a copy in it. A later Turn
+    // that no person started got request context and a new skill. Neither
+    // request context applies now.
     const sessionContext = buildTurnContextPrompt({
-      availableSkills: [skill("skill-a")],
-      activeMcpCatalogs: catalogs,
       disabledTools: [{ name: "firstTurnTool", reason: "First Turn only." }],
       runtime: { conversationId },
-      scriptTools: "tools.a",
-    })!;
+    })!.replace(
+      "\n\n</runtime-turn-context>",
+      "\n\n<script-tools>\ntools.a\n</script-tools>\n\n</runtime-turn-context>",
+    );
+    const firstSections = systemSectionsUpdate([], sections(["skill-a"]), 1)!;
+    const laterSections = systemSectionsUpdate(
+      [firstSections],
+      sections(["skill-a", "skill-b"]),
+      2,
+    )!;
     const earlierRequestContext = buildTurnContextPrompt({
-      availableSkills: [skill("skill-a"), skill("skill-b")],
-      activeMcpCatalogs: catalogs,
-      latestCapabilitySections: {
-        "available-skills": section(sessionContext, "available-skills"),
-        "active-mcp-catalogs": section(sessionContext, "active-mcp-catalogs"),
-      },
+      askerTimezone: "America/New_York",
       includeSessionContext: false,
       disabledTools: [
         { name: "createAutomation", reason: "No person started it." },
@@ -265,12 +294,13 @@ describe("context compaction projection reset", () => {
       pluginPromptContributions: [
         { pluginName: "memory", id: "userPrompt:0", text: "Earlier memory." },
       ],
-      scriptTools: "tools.b",
     })!;
     const earlierTurns = [
+      firstSections,
       user(sessionContext, 1),
       user("<current-instruction>\nPlan it.\n</current-instruction>", 1),
       assistant("Planned.", 1),
+      laterSections,
       {
         role: "user",
         content: [
@@ -340,67 +370,49 @@ describe("context compaction projection reset", () => {
             instruction,
             agents,
           ],
-          turnStartMessageIndex: earlierTurns.length,
+          isTurnMessage: (_messages, index) => index >= earlierTurns.length,
         },
         async () => ({ summary: "Short summary." }),
       );
     const result = await compact(contextMessage);
 
     expect(result.compacted).toBe(true);
-    expect(result.piMessages?.map(textOf)).toEqual([
+    expect(result.piMessages?.slice(0, 3).map(textOf)).toEqual([
       expect.stringContaining("<runtime-turn-context>"),
       expect.stringContaining("<current-instruction>"),
       expect.stringContaining("Short summary."),
+    ]);
+    // The section state of both Turns follows the summary.
+    expect(result.piMessages?.slice(3)).toEqual([
+      {
+        role: "system",
+        content: "",
+        sections: Object.fromEntries(
+          Object.entries(sections(["skill-a", "skill-b"])).filter(
+            ([, value]) => value !== null,
+          ),
+        ),
+        timestamp: 1,
+      },
     ]);
     const context = textOf(result.piMessages![0]!);
     expect(context).toContain(`- gen_ai.conversation.id: ${conversationId}`);
     expect(context).not.toContain("firstTurnTool");
     expect(context).not.toContain("createAutomation");
     expect(context).not.toContain("Earlier memory.");
+    expect(context).not.toContain("America/New_York");
+    expect(context).not.toContain("<script-tools>");
     expect(context).toContain("Use the repository formatter.");
     expect(context).toContain("Keep the API stable.");
     expect(context).toContain("Use the new formatter.");
     expect(context).not.toContain("Use the old formatter.");
     expect(context).not.toContain(AGENTS_REPLACEMENT_NOTICE);
-    // A Turn sends script tools only when they differ from the latest copy,
-    // so exactly that copy stays.
-    const scriptToolsCount = (text: string) =>
-      text.split("<script-tools>").length - 1;
-    expect(scriptToolsCount(context)).toBe(1);
-    expect(context).toContain(buildScriptToolsSection("tools.b"));
-    // The same holds for each capability section: the newer skills and the
-    // MCP catalogs that did not change.
-    expect(count(earlierRequestContext, "active-mcp-catalogs")).toBe(0);
-    expect(count(context, "available-skills")).toBe(1);
-    expect(context).toContain(
-      section(earlierRequestContext, "available-skills"),
-    );
-    expect(count(context, "active-mcp-catalogs")).toBe(1);
-    expect(context).toContain(section(sessionContext, "active-mcp-catalogs"));
-
-    const changed = await compact({
-      ...contextMessage,
-      content: [
-        {
-          type: "text",
-          text: buildTurnContextPrompt({
-            availableSkills: [],
-            includeSessionContext: false,
-            scriptTools: "tools.c",
-          })!,
-        },
-        ...(contextMessage as { content: unknown[] }).content,
-      ],
-    } as PiMessage);
-    const changedContext = textOf(changed.piMessages![0]!);
-    expect(scriptToolsCount(changedContext)).toBe(1);
-    expect(changedContext).toContain(buildScriptToolsSection("tools.c"));
   });
 
   it("blocks the next provider request when hard-limit compaction fails", async () => {
     const { compactActiveContextIfNeeded, ContextInputLimitExceededError } =
       await import("@/chat/services/context-compaction");
-    const { commitMessages, loadProjection } =
+    const { commitMessages, loadConversationProjection } =
       await import("@/chat/conversations/projection");
     const conversationId = "conversation-active-hard-limit";
     const original = [user("Keep this committed history.", 1)];
@@ -429,6 +441,8 @@ describe("context compaction projection reset", () => {
         },
       ),
     ).rejects.toBeInstanceOf(ContextInputLimitExceededError);
-    await expect(loadProjection({ conversationId })).resolves.toEqual(original);
+    expect(
+      (await loadConversationProjection({ conversationId })).messages,
+    ).toEqual(original);
   });
 });

@@ -146,7 +146,7 @@ export function conversationsHistoryPage(
 
 export function conversationsRepliesPage(
   input: {
-    messages?: Array<Record<string, unknown>>;
+    messages?: Array<Record<string, unknown>> | undefined;
     nextCursor?: string;
     threadTs?: string;
   } = {},
@@ -231,26 +231,26 @@ export function slackListsCreateOk(
           id: input.titleColumnId ?? "COL_TITLE",
           key: "task",
           name: "Task",
-          type: "rich_text",
+          type: "text",
           is_primary_column: true,
         },
         {
           id: input.completedColumnId ?? "COL_DONE",
-          key: "completed",
+          key: "todo_completed",
           name: "Completed",
-          type: "checkbox",
+          type: "todo_completed",
         },
         {
           id: input.assigneeColumnId ?? "COL_ASSIGNEE",
-          key: "assignee",
+          key: "todo_assignee",
           name: "Assignee",
-          type: "user",
+          type: "todo_assignee",
         },
         {
           id: input.dueDateColumnId ?? "COL_DUE",
-          key: "due_date",
+          key: "todo_due_date",
           name: "Due Date",
-          type: "date",
+          type: "todo_due_date",
         },
       ],
     },
@@ -475,9 +475,21 @@ export function dndInfoOk(window?: { startMs: number; endMs: number }) {
   });
 }
 
+/**
+ * Model https://docs.slack.dev/reference/methods/users.getPresence/ for
+ * another user: Slack returns only `presence`.
+ */
+export function usersGetPresenceOk(presence: "active" | "away" = "away") {
+  return slackOk({ presence });
+}
+
 /** Model the bot fields from https://docs.slack.dev/reference/methods/bots.info/. */
 export function botsInfoOk(
-  input: { botId?: string; deleted?: boolean; userId?: string } = {},
+  input: {
+    botId?: string | undefined;
+    deleted?: boolean;
+    userId?: string;
+  } = {},
 ): { ok: true; bot: Record<string, unknown> } {
   return slackOk({
     bot: {
@@ -494,12 +506,12 @@ export function botsInfoOk(
 /** Model the user fields from https://docs.slack.dev/reference/methods/users.info/. */
 export function usersInfoOk(
   input: {
-    userId?: string;
+    userId?: string | undefined;
     userName?: string;
     realName?: string;
     displayName?: string;
     title?: string;
-    email?: string;
+    email?: string | undefined;
     statusText?: string;
     statusEmoji?: string;
     isBot?: boolean;

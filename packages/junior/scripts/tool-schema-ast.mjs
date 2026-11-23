@@ -4,7 +4,12 @@ import ts from "@typescript/typescript6";
 
 // Shared AST walk for the tool contract checks. It finds tool definitions and
 // follows schema names across files to the object literals that define them.
-const TOOL_CONSTRUCTORS = new Set(["definePluginTool", "tool", "zodTool"]);
+const TOOL_CONSTRUCTORS = new Set([
+  "definePluginTool",
+  "tool",
+  "zodTool",
+  "zodToolDefinition",
+]);
 const OBJECT_SCHEMA_CALLS = new Set([
   "Object",
   "extend",
@@ -34,11 +39,13 @@ function callName(call) {
 }
 
 function resolveModule(fromFile, specifier, packageSrcRoot) {
+  // Plugin packages import TypeScript sources with a `.js` extension.
+  const source = specifier.replace(/\.js$/, "");
   let base;
-  if (specifier.startsWith("./") || specifier.startsWith("../")) {
-    base = path.join(path.dirname(fromFile), specifier);
-  } else if (specifier.startsWith("@/")) {
-    base = path.join(packageSrcRoot, specifier.slice(2));
+  if (source.startsWith("./") || source.startsWith("../")) {
+    base = path.join(path.dirname(fromFile), source);
+  } else if (source.startsWith("@/")) {
+    base = path.join(packageSrcRoot, source.slice(2));
   } else {
     return undefined;
   }
@@ -175,10 +182,16 @@ export function createToolSourceIndex(files, packageSrcRoots = {}) {
         );
         return;
       }
+      if (ts.isArrowFunction(node) && !ts.isBlock(node.body)) {
+        visit(filePath, node.body, key);
+        return;
+      }
       if (ts.isFunctionLike(node)) return;
       if (ts.isIdentifier(node)) {
         for (const found of lookup(filePath, node.text) ?? []) {
-          const id = `${found.filePath}#${found.node.pos}`;
+          // One schema can serve several keys, such as a shared param, so
+          // each key walks it once.
+          const id = `${found.filePath}#${found.node.pos}#${key ?? ""}`;
           if (seen.has(id)) continue;
           seen.add(id);
           visit(found.filePath, found.node, key);

@@ -21,7 +21,6 @@ import type { RepositoryInstructions } from "@/chat/repository-instructions";
 import {
   agentsInstructionsUpdatedEvent,
   authenticationLinkedEvent,
-  authenticationUnlinkedEvent,
   JUNIOR_NATIVE_EVENT_NAMESPACE,
 } from "@/chat/conversations/structured-events";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
@@ -96,6 +95,10 @@ function durableMessageIdentity(message: PiMessage): unknown {
     toolName?: unknown;
     isError?: unknown;
   };
+  // A system message is never changed after it is sent, so all of it counts.
+  if (record.role === "system") {
+    return message;
+  }
   if (record.role === "toolResult") {
     return {
       role: "toolResult",
@@ -203,11 +206,11 @@ function resolveCommitProvenance(args: {
     // input keeps its committed provenance; only new messages take the
     // trailing provenance.
     const start = provenance.length - args.trailingMessageProvenance.length;
-    args.trailingMessageProvenance.forEach((entry, offset) => {
+    for (const [offset, entry] of args.trailingMessageProvenance.entries()) {
       if (start + offset >= matchingPrefix) {
         provenance[start + offset] = entry;
       }
-    });
+    }
   }
   return provenance;
 }
@@ -232,16 +235,6 @@ function storedProjection(events: ConversationEvent[]): StoredProjection {
     historyVersion: last?.historyVersion ?? 0,
     throughSeq: last?.seq ?? -1,
   };
-}
-
-/** Load the current Pi agent history for a conversation. */
-export async function loadProjection(
-  args: ScopedConversation,
-): Promise<PiMessage[]> {
-  const events = await getConversationEventStore().loadCurrentHistory(
-    args.conversationId,
-  );
-  return projectConversationEvents(events).messages;
 }
 
 /** Load current Pi context with aligned provenance and source event sequences. */
@@ -322,10 +315,11 @@ function messageTimestamp(message: PiMessage): number {
  * Append newly stable native history items.
  *
  * Checkpoints are append-only against the durable identity of the committed
- * prefix (role, timestamp, content; tool results also match call id). A shorter
- * history or a true content branch is rejected — only compaction may
- * intentionally replace active model history. In-place Pi mutations of already
- * committed assistant envelopes (usage/stopReason) do not block the suffix.
+ * prefix (role, timestamp, content; tool results also match call id; system
+ * messages match in full). A shorter history or a true content branch is
+ * rejected — only compaction may intentionally replace active model history.
+ * In-place Pi mutations of already committed assistant envelopes
+ * (usage/stopReason) do not block the suffix.
  */
 export async function commitMessages(args: {
   conversationId: string;
@@ -377,7 +371,7 @@ export async function commitAcceptedReply(args: {
   conversation: ThreadConversationState;
   conversationMessageId: string;
   conversationId: string;
-  providerConversationBindings?: ProviderConversationReference[];
+  providerConversationBindings?: ProviderConversationReference[] | undefined;
   repliedAtMs?: number;
 }): Promise<void> {
   const executor = getSqlExecutor();
@@ -406,6 +400,7 @@ export async function commitAcceptedReply(args: {
             : { repliedAtMs: args.repliedAtMs }),
         },
       );
+      /* oxlint-disable no-await-in-loop -- Claims share one transaction and run in binding order. */
       for (const reference of args.providerConversationBindings ?? []) {
         const binding = { conversationId: args.conversationId, ...reference };
         // A Conversation claims its thread when it starts. A reply into a
@@ -414,6 +409,7 @@ export async function commitAcceptedReply(args: {
           await startLocationThread(executor, binding);
         }
       }
+      /* oxlint-enable no-await-in-loop */
     }),
   );
 }
@@ -536,6 +532,7 @@ async function appendHostFactOnce(args: {
   data: ConversationEventData & {
     type:
       | "mcp_provider_connected"
+      | "skill_loaded"
       | "authorization_requested"
       | "authorization_completed";
   };
@@ -583,6 +580,37 @@ export async function recordMcpProviderConnected(args: {
       data.provider === args.provider &&
       data.credentialSubjectId === args.credentialSubjectId,
   });
+}
+
+/** Record once that `loadSkill` loaded a manual-only skill in this Conversation. */
+export async function recordSkillLoaded(args: {
+  conversationId: string;
+  skillName: string;
+}): Promise<void> {
+  await appendHostFactOnce({
+    conversationId: args.conversationId,
+    idempotencyKey: `skill_loaded:${args.skillName}`,
+    data: { type: "skill_loaded", skillName: args.skillName },
+    isSameFact: (data) =>
+      data.type === "skill_loaded" && data.skillName === args.skillName,
+  });
+}
+
+/** Load the manual-only skills that `loadSkill` loaded in this Conversation. */
+export async function loadConversationSkillNames(
+  conversationId: string,
+): Promise<string[]> {
+  const events = await getConversationEventStore().loadEventsOfType(
+    conversationId,
+    "skill_loaded",
+  );
+  return [
+    ...new Set(
+      events.flatMap((event) =>
+        event.data.type === "skill_loaded" ? [event.data.skillName] : [],
+      ),
+    ),
+  ];
 }
 
 /** Record that an OAuth/MCP authorization link was delivered or reused. */
@@ -635,7 +663,7 @@ export async function recordAuthorizationCompleted(args: {
   });
 }
 
-type AuthenticationAccountChangeArgs = {
+type AuthenticationLinkedArgs = {
   accountLabel?: string;
   actorId: string;
   authorizationId?: string;
@@ -645,30 +673,25 @@ type AuthenticationAccountChangeArgs = {
   turnId?: string;
 };
 
-function authenticationEventIdempotencyKey(args: {
-  action: "linked" | "unlinked";
+function authenticationLinkedIdempotencyKey(args: {
   actorId: string;
-  authorizationId?: string;
+  authorizationId?: string | undefined;
   provider: string;
 }): string {
   if (args.authorizationId) {
-    return `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_${args.action}:authorization:${args.authorizationId}`;
+    return `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_linked:authorization:${args.authorizationId}`;
   }
   return (
-    `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_${args.action}:` +
+    `native:${JUNIOR_NATIVE_EVENT_NAMESPACE}:authentication_linked:` +
     `${args.provider}:actor:${args.actorId}`
   );
 }
 
-async function recordAuthenticationAccountChange(
-  action: "linked" | "unlinked",
-  args: AuthenticationAccountChangeArgs,
+/** Record a successful conversation-bound account link as host transcript metadata. */
+export async function recordAuthenticationLinked(
+  args: AuthenticationLinkedArgs,
 ): Promise<void> {
-  const definition =
-    action === "linked"
-      ? authenticationLinkedEvent
-      : authenticationUnlinkedEvent;
-  const content = definition.parse({
+  const content = authenticationLinkedEvent.parse({
     actorId: args.actorId,
     provider: args.provider,
     ...(args.accountLabel ? { accountLabel: args.accountLabel } : undefined),
@@ -680,17 +703,12 @@ async function recordAuthenticationAccountChange(
   await getConversationEventStore().append(args.conversationId, [
     {
       createdAtMs: Date.now(),
-      idempotencyKey: authenticationEventIdempotencyKey({
-        action,
-        actorId: args.actorId,
-        authorizationId: args.authorizationId,
-        provider: args.provider,
-      }),
+      idempotencyKey: authenticationLinkedIdempotencyKey(args),
       data: {
         type: "structured_event",
         namespace: JUNIOR_NATIVE_EVENT_NAMESPACE,
-        name: definition.eventName,
-        version: definition.version,
+        name: authenticationLinkedEvent.eventName,
+        version: authenticationLinkedEvent.version,
         ...(args.turnId ? { turnId: args.turnId } : undefined),
         content,
       },
@@ -698,23 +716,9 @@ async function recordAuthenticationAccountChange(
   ]);
 }
 
-/** Record a successful conversation-bound account link as host transcript metadata. */
-export async function recordAuthenticationLinked(
-  args: AuthenticationAccountChangeArgs,
-): Promise<void> {
-  await recordAuthenticationAccountChange("linked", args);
-}
-
-/** Record a successful conversation-bound account unlink as host transcript metadata. */
-export async function recordAuthenticationUnlinked(
-  args: AuthenticationAccountChangeArgs,
-): Promise<void> {
-  await recordAuthenticationAccountChange("unlinked", args);
-}
-
 type AgentsInstructionsTransitionArgs = {
   conversationId: string;
-  instructions?: RepositoryInstructions;
+  instructions?: RepositoryInstructions | undefined;
   turnId: string;
 };
 
@@ -748,7 +752,7 @@ async function loadAgentsEvent(conversationId: string): Promise<
 function agentsInstructionsIdempotencyKey(args: {
   action: "loaded" | "replaced" | "cleared";
   fingerprint: string;
-  previousSeq?: number;
+  previousSeq?: number | undefined;
   turnId: string;
 }): string {
   const previous = args.previousSeq ?? "none";
@@ -933,7 +937,7 @@ export async function recordGuardianActionReviewed(args: {
   turnId: string;
   toolCallId: string;
   toolName: string;
-  costUsd?: number;
+  costUsd?: number | undefined;
   decision: "allow" | "ask" | "deny";
   riskLevel: "low" | "medium" | "high" | "critical";
   userAuthorization: "high" | "medium" | "low" | "unknown";

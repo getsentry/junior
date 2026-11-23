@@ -4,9 +4,10 @@ import {
   getConversationEventStore,
   getConversationStore,
 } from "@/chat/db";
+import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { parseSlackTeamId } from "@/chat/slack/ids";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { chatGetPermalinkOk } from "../fixtures/slack/factories/api";
 import { queueSlackApiResponse } from "../msw/handlers/slack-api";
 
@@ -24,6 +25,7 @@ async function executeTool<TInput>(tool: any, input: TInput) {
 
 describe("searchConversationMessages", () => {
   afterEach(async () => {
+    setDashboardConversationLinkOptions(undefined);
     await closeDb();
   });
 
@@ -89,8 +91,7 @@ describe("searchConversationMessages", () => {
           excerpt: expect.stringContaining("rollback owner"),
           channel_id: "CARCHIVE",
           channel_name: "archive",
-          permalink:
-            "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+          url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
         },
       ],
     });
@@ -112,6 +113,17 @@ describe("searchConversationMessages", () => {
           conversation_id: "slack:CARCHIVE:1700000000.100000",
         }),
       ],
+    });
+
+    // With the dashboard, its link replaces the Slack thread link.
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    const withDashboard = await executeTool(tool, {
+      query: "launch checklist",
+    });
+    expect(withDashboard.matches[0]).toMatchObject({
+      url: `https://junior.example.com/conversations/${encodeURIComponent("slack:CARCHIVE:1700000000.100000")}`,
     });
 
     await expect(

@@ -6,6 +6,10 @@
  * cached per issue for every viewer. The card shows the title, the
  * culprit, the state, who owns it, and events per hour for the last day.
  * It never shows event data, tags, or stack frames.
+ *
+ * A user feedback is an issue too. Its card shows the feedback's title and
+ * message, the state, who owns it, and the project. It never shows who sent
+ * the feedback.
  */
 import {
   objectSummary,
@@ -14,6 +18,7 @@ import {
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
+import { sentryApi, sentryData } from "./api.js";
 import { sentryRegionOrigin } from "./region.js";
 import {
   parseSentryIssueLink,
@@ -29,9 +34,19 @@ const issueSchema = z.object({
   count: z.union([z.string(), z.number()]).optional(),
   culprit: z.string().nullish(),
   id: z.string(),
+  issueCategory: z.string().nullish(),
   lastSeen: z.string().nullish(),
   level: z.string().nullish(),
-  metadata: z.object({ value: z.string().nullish() }).partial().nullish(),
+  // Feedback adds `message` and `summary`, a title without the
+  // "User Feedback: " prefix.
+  metadata: z
+    .object({
+      message: z.string().nullish(),
+      summary: z.string().nullish(),
+      value: z.string().nullish(),
+    })
+    .partial()
+    .nullish(),
   priority: z.string().nullish(),
   project: z.object({ slug: z.string() }),
   shortId: z.string(),
@@ -55,6 +70,12 @@ const STATUS_LABELS: Record<string, string> = {
   unresolved: "unresolved",
 };
 
+// Sentry's feedback UI calls an ignored feedback spam.
+const FEEDBACK_STATUS_LABELS: Record<string, string> = {
+  ...STATUS_LABELS,
+  ignored: "spam",
+};
+
 // Only substatuses that say something new about an unresolved issue.
 const SUBSTATUS_LABELS: Record<string, string> = {
   escalating: "escalating",
@@ -62,8 +83,8 @@ const SUBSTATUS_LABELS: Record<string, string> = {
   regressed: "regressed",
 };
 
-function issueApiUrl(origin: string, link: SentryIssueLink): string {
-  return `${origin}/api/0/organizations/${encodeURIComponent(link.org)}/issues/${encodeURIComponent(link.issueId)}/`;
+function issuePath(link: SentryIssueLink) {
+  return { organization_id_or_slug: link.org, issue_id: link.issueId };
 }
 
 function text(value: string | null | undefined): string | undefined {
@@ -148,6 +169,35 @@ function sentryIssueCard(
   };
 }
 
+/** Map a Sentry user feedback to a Ticket card. Unknown values are left out. */
+function sentryFeedbackCard(
+  issue: SentryIssue,
+  link: SentryIssueLink,
+  url: URL,
+): ObjectAnnotation {
+  const title =
+    issue.metadata?.summary?.trim() ||
+    issue.title.replace(/^User Feedback: /, "").trim();
+  const message = issue.metadata?.message?.trim() ?? "";
+  const assignee = text(issue.assignedTo?.name);
+  return {
+    kind: "object",
+    objectType: "task",
+    key: `${link.org}/${issue.id}`,
+    label: issue.shortId.slice(0, 80),
+    title: title.slice(0, 512) || issue.shortId,
+    url: url.href,
+    displayType: "User feedback",
+    status: FEEDBACK_STATUS_LABELS[issue.status],
+    facts: {
+      type: "task",
+      summary: message === title ? undefined : objectSummary(message),
+      assignees: assignee ? [assignee] : [],
+      project: text(issue.project.slug),
+    },
+  };
+}
+
 /**
  * Return whether the viewer's own Sentry account can open the issue. A
  * viewer who has not connected Sentry gets 401.
@@ -157,18 +207,12 @@ async function viewerCanSeeIssue(
   origin: string,
   link: SentryIssueLink,
 ): Promise<boolean> {
-  const response = await ctx.viewerEgress.fetch({
-    operation: "sentry.issue.access",
-    provider: "sentry",
-    request: new Request(issueApiUrl(origin, link)),
-  });
-  // Drain the body so the connection is free. Only the status counts.
-  await response.arrayBuffer();
-  if (response.ok) return true;
-  if ([401, 403, 404].includes(response.status)) return false;
-  throw new Error(
-    `Sentry issue access check failed with HTTP ${response.status}`,
-  );
+  const result = await sentryApi(
+    ctx.viewerEgress,
+    origin,
+    "sentry.issue.access",
+  ).getOrganizationIssue({ path: issuePath(link) });
+  return sentryData(result, [401, 403, 404], "issue access check") !== null;
 }
 
 /** Read an issue with Junior's own token. Nothing for a missing issue. */
@@ -177,18 +221,15 @@ async function readIssue(
   origin: string,
   link: SentryIssueLink,
 ): Promise<SentryIssue | null> {
-  const response = await ctx.egress.fetch({
-    operation: "sentry.issue.get",
-    provider: "sentry",
-    request: new Request(issueApiUrl(origin, link)),
-  });
+  const result = await sentryApi(
+    ctx.egress,
+    origin,
+    "sentry.issue.get",
+  ).getOrganizationIssue({ path: issuePath(link) });
   // A token for another org gets 403. A merged-away or deleted issue is 404.
-  if ([401, 403, 404].includes(response.status)) return null;
-  if (!response.ok) {
-    throw new Error(`Sentry issue read failed with HTTP ${response.status}`);
-  }
-  const parsed = issueSchema.safeParse(await response.json());
-  return parsed.success ? parsed.data : null;
+  const data = sentryData(result, [401, 403, 404], "issue read");
+  const parsed = data === null ? undefined : issueSchema.safeParse(data);
+  return parsed?.success ? parsed.data : null;
 }
 
 async function canViewSentryIssueLink(
@@ -215,13 +256,16 @@ async function resolveSentryIssueLink(
       ttlMs: ISSUE_CACHE_TTL_MS,
     }),
   );
-  return issue ? sentryIssueCard(issue, link, url) : undefined;
+  if (!issue) return undefined;
+  return issue.issueCategory === "feedback"
+    ? sentryFeedbackCard(issue, link, url)
+    : sentryIssueCard(issue, link, url);
 }
 
-/** Sentry issue links, on sentry.io and on customer domains. */
+/** Sentry issue and feedback links, on sentry.io and on customer domains. */
 export const sentryIssueLinks: PluginObjectLinkDefinition = {
   canView: canViewSentryIssueLink,
   filters: SENTRY_ISSUE_LINK_FILTERS,
-  objectType: "task",
+  objectTypes: ["task"],
   resolve: resolveSentryIssueLink,
 };

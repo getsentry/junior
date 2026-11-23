@@ -13,7 +13,7 @@ export interface AttachmentSourceFile {
 }
 
 /**
- * Look up a source file that Junior recorded without storing it.
+ * Look up a source file that Junior recorded without storing it yet.
  *
  * Throw `AttachmentSourceUnavailableError` when the source no longer has the
  * file or Junior cannot read it.

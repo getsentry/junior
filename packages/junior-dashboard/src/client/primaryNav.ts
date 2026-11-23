@@ -9,6 +9,8 @@ const AUTH_PRIMARY_NAV_PREFIXES = [
   "/memories",
   "/settings",
   "/plugins/",
+  "/inbox",
+  // The old Inbox path renders once before it redirects to /inbox.
   "/review",
 ] as const;
 
@@ -19,6 +21,12 @@ export function isAuthPrimaryNavPath(pathname: string): boolean {
   );
 }
 
+// Home is the viewer's Lead, so its item goes to `/`.
+const LEAD_NAV_ITEM: DashboardHeaderNavItem = {
+  key: "lead",
+  label: "Lead",
+  to: "/",
+};
 const CODE_NAV_ITEM: DashboardHeaderNavItem = {
   key: "code",
   label: "Code",
@@ -36,8 +44,8 @@ export function buildPrimaryNavItems(input: {
   loggedIn: boolean;
   pathname: string;
   primaryUserPages: PluginUserPageLink[];
-  /** Open Review items assigned to the viewer. */
-  reviewCount?: number;
+  /** Open Inbox items assigned to the viewer. */
+  reviewCount?: number | undefined;
 }): DashboardHeaderNavItem[] {
   // Auth-only routes already imply the signed-in primary nav. Hold the Inbox
   // and Automations slots while core data catches up so the header does not jump.
@@ -51,11 +59,12 @@ export function buildPrimaryNavItems(input: {
   return [
     ...(showTasksNav
       ? [
+          LEAD_NAV_ITEM,
           {
             count: input.reviewCount,
-            key: "review",
+            key: "inbox",
             label: "Inbox",
-            to: "/review",
+            to: "/inbox",
           },
           { key: "automations", label: "Automations", to: "/automations" },
         ]
@@ -81,5 +90,19 @@ function userPageNavItem(page: PluginUserPageLink): DashboardHeaderNavItem {
     key: `${page.pluginName}:${page.id}`,
     label: page.label,
     to: pluginUserPagePath(page.pluginName, page.id),
+  };
+}
+
+/**
+ * Split the Lead item from the rest, so nav can show it before
+ * Conversations.
+ */
+export function splitLeadNavItem(items: DashboardHeaderNavItem[]): {
+  lead: DashboardHeaderNavItem | undefined;
+  rest: DashboardHeaderNavItem[];
+} {
+  return {
+    lead: items.find((item) => item.key === LEAD_NAV_ITEM.key),
+    rest: items.filter((item) => item.key !== LEAD_NAV_ITEM.key),
   };
 }

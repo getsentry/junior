@@ -13,6 +13,7 @@ import type {
   SandboxSession,
   SandboxSessionOptions,
 } from "@/chat/sandbox/workspace";
+import { mapBounded } from "@/chat/fan-out";
 
 /**
  * Sandbox client options. Since 4.0, a client without `fetch` uses the SDK's
@@ -68,6 +69,8 @@ function adaptSession(
   return {
     sandboxId: sandbox.name,
     sessionId: session.sessionId,
+    keepsFilesAcrossSessions: sandbox.persistent,
+    startedAtMs: (session.startedAt ?? session.createdAt).getTime(),
     fs,
     createPreview(port) {
       return run(async () => {
@@ -78,6 +81,9 @@ function adaptSession(
         }
         return session.domain(port);
       });
+    },
+    previewUrls() {
+      return session.routes.map((route) => session.domain(route.port));
     },
     extendTimeout(duration) {
       return run(async () => await session.extendTimeout(duration));
@@ -125,6 +131,28 @@ function adaptSession(
   };
 }
 
+/**
+ * Each new VM session runs `update-ca-trust` from the guest init process, and
+ * the session accepts commands before it finishes. While it rebuilds
+ * `/etc/pki/ca-trust/extracted`, `/etc/ssl/certs/ca-certificates.crt` is
+ * briefly missing, and an HTTPS client that starts then fails, such as curl
+ * with exit 77. The `[u]` keeps the pattern from matching this command.
+ */
+const WAIT_FOR_BOOT_CA_REFRESH =
+  "while grep -qsa '[u]pdate-ca-trust' /proc/[0-9]*/cmdline; do sleep 0.05; done";
+
+/** Wait until the guest's boot CA refresh is done, so HTTPS works. */
+async function waitForBootCaRefresh(
+  session: SandboxSession,
+  signal?: AbortSignal,
+): Promise<void> {
+  await session.runCommand({
+    cmd: "sh",
+    args: ["-c", WAIT_FOR_BOOT_CA_REFRESH],
+    signal,
+  });
+}
+
 /** Create a Sandbox and return a session pinned to its first VM session. */
 async function createSandboxSession(
   input: CreateSandboxSessionInput,
@@ -153,7 +181,9 @@ async function createSandboxSession(
           ...(input.runtime ? { runtime: input.runtime } : undefined),
         },
   );
-  return adaptSession(sandbox, input);
+  const session = adaptSession(sandbox, input);
+  await waitForBootCaRefresh(session, input.signal);
+  return session;
 }
 
 /** Resume a named Sandbox and return a session pinned to its VM session. */
@@ -165,7 +195,9 @@ async function getSandboxSession(
     resume: true,
     ...clientOptions(input.scopeSignal),
   });
-  return adaptSession(sandbox, input);
+  const session = adaptSession(sandbox, input);
+  await waitForBootCaRefresh(session);
+  return session;
 }
 
 /** Create the named, persistent Sandbox that owns one Workspace snapshot build. */
@@ -219,7 +251,7 @@ async function deleteWorkspaceSnapshotBuilders(
 ): Promise<void> {
   let hasError = false;
   let firstError: unknown;
-  for (const name of new Set(names)) {
+  await mapBounded([...new Set(names)], async (name) => {
     try {
       const sandbox = await Sandbox.get({
         name,
@@ -233,7 +265,7 @@ async function deleteWorkspaceSnapshotBuilders(
         hasError = true;
       }
     }
-  }
+  });
   if (hasError) throw firstError;
 }
 

@@ -17,7 +17,7 @@ runtime. Harness mechanics live in `packages/junior-evals/src/`.
 - **Guardian** (`evals/guardian/**`): exact `allow` / `ask` / `deny`
   decisions. Hard pass/fail.
 - **Classifiers** (`evals/classifiers/**`): exact choices of a decision model
-  classifier, such as the Review items that a thread reply answers. Hard
+  classifier, such as the Inbox items that a thread reply answers. Hard
   pass/fail.
 
 ### Scenarios
@@ -53,7 +53,7 @@ runtime. Harness mechanics live in `packages/junior-evals/src/`.
 ### Failures and prompts
 
 - When an eval fails, state the general product rule it exposed, then fix at
-  that level. Follow `agent-steering.md`.
+  that level. Follow `../design/prompts.md`.
 - Product prompts must not contain eval fixture names, user messages,
   expected answers, or scenario phrases. Use neutral examples.
 

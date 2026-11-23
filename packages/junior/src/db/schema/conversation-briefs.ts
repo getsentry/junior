@@ -1,5 +1,6 @@
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   doublePrecision,
   foreignKey,
   index,
@@ -10,11 +11,14 @@ import {
   text,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
-import type { ConversationBrief } from "@/chat/briefs/schema";
 import { juniorConversations } from "./conversations";
 import { timestamptz } from "./timestamps";
 
-/** Append-only Brief versions produced for completed Conversation turns. */
+/**
+ * Legacy Brief versions. Conversation metadata replaced Briefs; only purge
+ * still deletes rows here.
+ * TODO(dcramer): Drop this table after the metadata backfill ships.
+ */
 export const juniorConversationBriefs = pgTable(
   "junior_conversation_briefs",
   {
@@ -22,10 +26,15 @@ export const juniorConversationBriefs = pgTable(
     version: integer("version").notNull(),
     turnId: text("turn_id").notNull(),
     throughSeq: integer("through_seq").notNull(),
-    content: jsonb("content").$type<ConversationBrief>().notNull(),
+    content: jsonb("content").notNull(),
+    // `content.outcome.status`. Null on rows that older runtimes wrote.
+    outcomeStatus: text("outcome_status"),
     searchText: text("search_text").notNull(),
     modelId: text("model_id").notNull(),
-    costUsd: doublePrecision("cost_usd"),
+    costMicroUsd: bigint("cost_micro_usd", { mode: "number" }),
+    // TODO: drop in the release after micro-USD. Only the runtime before it
+    // writes this USD cost, and a repair migration converts those rows.
+    legacyCostUsd: doublePrecision("cost_usd"),
     createdAt: timestamptz("created_at").defaultNow().notNull(),
   },
   (table) => [
@@ -45,6 +54,12 @@ export const juniorConversationBriefs = pgTable(
     index("junior_conversation_briefs_conversation_version_idx").on(
       table.conversationId,
       table.version.desc(),
+    ),
+    // The System page counts the Briefs and Conversations of a recent
+    // window from this index alone.
+    index("junior_conversation_briefs_created_at_idx").on(
+      table.createdAt,
+      table.conversationId,
     ),
     index("junior_conversation_briefs_search_idx").using(
       "gin",

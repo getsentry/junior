@@ -14,6 +14,7 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { AutomationSkillPicker } from "./AutomationSkillPicker";
 import { taskDraft, type AutomationTaskDraft } from "./automationDraft";
+import { getDashboardAgentName } from "../../agentName";
 
 type InputState = {
   "aria-invalid"?: true;
@@ -91,7 +92,7 @@ export function AutomationTaskFields(props: {
             className="resize-y text-base leading-relaxed sm:text-sm"
           />
           <p className="m-0 text-right text-xs text-dashboard-text-muted">
-            {task.instruction.length.toLocaleString()} / 4,000
+            {task.instruction.length.toLocaleString("en-US")} / 4,000
           </p>
           <FieldError id="task.instruction-error">
             {props.fieldError("task.instruction")}
@@ -137,7 +138,7 @@ function SkillFields(props: {
           id="skill-hint"
           className="flex flex-wrap items-center justify-between gap-2"
         >
-          Junior loads this skill at the start of each run.
+          {getDashboardAgentName()} loads this skill at the start of each run.
           {selected ? (
             <SkillLink name={selected.name}>View skill</SkillLink>
           ) : null}
@@ -172,10 +173,10 @@ function SkillFields(props: {
           />
           <div className="flex items-start justify-between gap-3">
             <FieldDescription>
-              Junior gets this with the skill on every run.
+              {getDashboardAgentName()} gets this with the skill on every run.
             </FieldDescription>
             <p className="m-0 shrink-0 text-xs text-dashboard-text-muted">
-              {task.context.length.toLocaleString()} / 4,000
+              {task.context.length.toLocaleString("en-US")} / 4,000
             </p>
           </div>
           <FieldError id="task.context-error">

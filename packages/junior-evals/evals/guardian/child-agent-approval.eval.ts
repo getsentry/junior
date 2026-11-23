@@ -52,7 +52,7 @@ function childProposal(args: {
   return proposal({
     context: slackContext(args.intent, {
       conversationId: "agent:guardian-eval-child",
-      source: { kind: "agent_invocation" },
+      source: { kind: "parent_message" },
       ...args.context,
     }),
     evidence: evidence(args.entries),
@@ -270,7 +270,7 @@ describeEval("Guardian Child Agent Approval Snapshots", guardianEvals, (it) => {
   }) => {
     const input = {
       body: "Wait for the retry timer with the shared fake clock helper instead of a fixed sleep, so the retry test no longer flakes.",
-      number: prNumber,
+      pull_request: prNumber,
       repo,
     };
     const review = `A reviewer commented on ${repo}#${prNumber} (review comment ${reviewCommentId}, thread ${reviewThreadId}): "${reviewComment}" Address it.`;

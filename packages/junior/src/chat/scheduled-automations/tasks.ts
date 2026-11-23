@@ -1,7 +1,9 @@
 import { requireAutomationRevision } from "@/chat/automations/revision";
 import { automationTaskColumns } from "@/chat/automations/task";
 import { recordAutomationVersion } from "@/chat/automations/versions";
-import { and, asc, eq, inArray, ne, sql } from "drizzle-orm";
+import { syncAutomationAlert } from "@/chat/automations/alert-items";
+import { refreshAutomationLastRun } from "@/chat/automations/execution-stats";
+import { and, asc, eq, ne, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorAutomations } from "@/db/schema/automations";
 import { juniorAutomationRuns } from "@/db/schema/automation-runs";
@@ -127,33 +129,6 @@ export async function readScheduledAutomation(
   return rows[0] ? parseScheduledAutomationRow(rows[0]) : undefined;
 }
 
-/** Read live scheduled automations by ID, in the given order. */
-export async function readScheduledAutomations(
-  db: JuniorDatabase,
-  ids: readonly string[],
-): Promise<ScheduledAutomation[]> {
-  if (ids.length === 0) return [];
-  const rows = await db
-    .select()
-    .from(juniorAutomations)
-    .where(
-      and(
-        inArray(juniorAutomations.id, [...ids]),
-        eq(juniorAutomations.kind, "scheduled"),
-      ),
-    );
-  const tasks = new Map(
-    rows
-      .map(parseScheduledAutomationRow)
-      .filter(isListedScheduledAutomation)
-      .map((task) => [task.id, task]),
-  );
-  return ids.flatMap((id) => {
-    const task = tasks.get(id);
-    return task ? [task] : [];
-  });
-}
-
 async function readListedScheduledAutomations(
   db: JuniorDatabase,
   teamId?: string,
@@ -213,6 +188,7 @@ async function writeScheduledAutomation(
           eq(juniorAutomationRuns.status, "blocked"),
         ),
       );
+    await refreshAutomationLastRun(db, task.id);
   }
   // A deleted task must not start another occurrence. Skip pending claims now;
   // already-running dispatches finish and then stop because due times are cleared.
@@ -221,6 +197,7 @@ async function writeScheduledAutomation(
   }
   await upsertScheduledAutomation(db, task);
   await recordAutomationVersion(db, task, current, editedBy);
+  await syncAutomationAlert(db, task.id);
 }
 
 async function skipPendingRunsForDeletedTask(

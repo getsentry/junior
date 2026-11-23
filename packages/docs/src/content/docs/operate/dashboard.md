@@ -124,11 +124,12 @@ The current authenticated product API slices are:
 | `/api/skills`                             | Discovered skill list.                                                                                                                                                                                |
 | `/api/skills/:name`                       | One skill with its `SKILL.md` body, without frontmatter.                                                                                                                                              |
 | `/api/conversations`                      | Recent SQL conversation feed; optional `actorEmail` is a normalized presentation filter, not authorization; optional `codeRepositoryId` lists conversations linked to that repository's code changes. |
-| `/api/conversations/stats`                | Complete 90-day conversation stats and people/place leaderboards aggregated by SQL.                                                                                                                   |
+| `/api/conversations/stats`                | Conversation, usage, outcome, and Guardian activity for 90 days, by UTC day, hour, and six hours. A report can be up to 5 minutes old.                                                                |
 | `/api/code`                               | Native code-change overview across repositories.                                                                                                                                                      |
 | `/api/code/repositories/:repository`      | One repository's code-change summary, recent changes, and Workspaces.                                                                                                                                 |
 | `/api/people`                             | Actor directory.                                                                                                                                                                                      |
 | `/api/people/:email`                      | Actor profile and recent conversation resources.                                                                                                                                                      |
+| `/api/people/:email/card`                 | Person card: the person object card, recently merged pull requests, and recent activity in Conversations the viewer may read.                                                                         |
 | `/api/people/:email/code`                 | Person-scoped native code-change summary for one profile.                                                                                                                                             |
 | `/api/people/:email/plugin-reports`       | Person-scoped sanitized plugin operational summaries.                                                                                                                                                 |
 | `/api/locations`                          | Public location directory and generic private-activity totals.                                                                                                                                        |
@@ -176,10 +177,14 @@ Dashboard callbacks use `dashboard.baseURL`, `JUNIOR_BASE_URL`, Vercel URL envs,
 ## Configure push notifications
 
 The dashboard can send push notifications through Web Push. When Junior
-replies in a dashboard Conversation, the person who sent the message gets a
-notification on each device that they turned on. A Conversation in a Slack
-thread does not send these notifications. Slack notifies people there. A
-quiet reply to a watch event sends no notification.
+replies in a dashboard Conversation, the person who started it gets a notice
+in the Inbox and a notification on each device that they turned on. The notice
+holds the latest reply and closes when they read it. When Junior asks a person
+a question in the Inbox, each assigned person gets one notification for it. A
+question for everyone and other notices do not send one. After a question or
+a reply notice closes, the next notification removes it from the device. A
+Conversation in a Slack thread does not send these notifications or add a
+reply notice. Slack notifies people there.
 
 1. Create one VAPID key pair for the deployment:
 

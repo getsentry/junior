@@ -1,12 +1,12 @@
 import { useNavigate } from "react-router";
 
 import { conversationPath } from "../conversations/conversationRoutes";
-import { formatTime, visualStatusForConversation } from "../format";
 import { cn } from "../styles";
-import type { Conversation, VisualStatus } from "../types";
+import type { Conversation, ConversationStatus } from "../types";
 import { ConversationRowStats } from "./ConversationRowStats";
 import { ConversationSummary } from "./ConversationSummary";
 import { EmptyTelemetry } from "./EmptyTelemetry";
+import { formatTime } from "../time";
 
 /** Render the full conversation table used by the conversations page. */
 export function ConversationList(props: {
@@ -48,16 +48,16 @@ export function ConversationList(props: {
 
 function ConversationTableRow(props: {
   conversation: Conversation;
-  search?: string;
+  search?: string | undefined;
   selected?: boolean;
 }) {
-  const visualStatus = visualStatusForConversation(props.conversation);
+  const visualStatus = props.conversation.status;
   const navigate = useNavigate();
   const href = {
     pathname: conversationPath(props.conversation.id),
     search: props.search ?? "",
   };
-  const openConversation = () => navigate(href);
+  const openConversation = () => void navigate(href);
   return (
     <div
       className={conversationRecordClass(visualStatus, props.selected)}
@@ -81,12 +81,12 @@ function ConversationTableRow(props: {
 }
 
 function conversationRecordClass(
-  status: VisualStatus,
+  status: ConversationStatus,
   selected: boolean | undefined,
 ): string {
   return cn(
     "group grid min-w-0 cursor-pointer grid-cols-[minmax(13rem,1.7fr)_minmax(13rem,1fr)] items-center gap-3 overflow-hidden border-b border-b-dashboard-border-subtle px-3 py-3 text-left text-inherit no-underline transition-colors hover:bg-dashboard-fill-soft max-md:grid-cols-1 max-md:px-4 max-md:py-4",
-    (status === "idle" || status === "stopped") && "saturate-50",
+    status === "done" && "saturate-50",
     selected && "bg-dashboard-accent/[0.045]",
   );
 }

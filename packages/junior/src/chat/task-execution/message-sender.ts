@@ -3,12 +3,10 @@ import * as z from "zod";
 /**
  * The Conversation and Turn that sent one inbound message, such as a child's
  * reply to its parent. The sender writes it at `input.metadata.sender`, so
- * readers never take meaning from the message id. `agentInvocationId` names
- * the Agent invocation that the message comes from, when there is one.
+ * readers never take meaning from the message id.
  */
 export const inboundMessageSenderSchema = z
   .object({
-    agentInvocationId: z.string().min(1).optional(),
     conversationId: z.string().min(1),
     turnId: z.string().min(1),
   })
@@ -21,10 +19,10 @@ export type InboundMessageSenders = Record<string, InboundMessageSender>;
 
 /** Read the sender fields that one inbound message stores, if any. */
 export function readInboundMessageSender(message: {
-  input: { metadata?: Record<string, unknown> };
+  input: { metadata?: Record<string, unknown> | undefined };
 }): InboundMessageSender | undefined {
   const parsed = inboundMessageSenderSchema.safeParse(
-    message.input.metadata?.sender,
+    message.input.metadata?.["sender"],
   );
   return parsed.success ? parsed.data : undefined;
 }
@@ -37,7 +35,7 @@ export function withMessageSenders(
   senders: InboundMessageSenders | undefined,
   messages: readonly {
     inboundMessageId: string;
-    input: { metadata?: Record<string, unknown> };
+    input: { metadata?: Record<string, unknown> | undefined };
   }[],
 ): InboundMessageSenders | undefined {
   let next = senders;

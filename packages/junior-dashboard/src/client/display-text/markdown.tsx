@@ -17,12 +17,11 @@ import {
   useTranscriptSearch,
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
-import { usePlainLinks } from "./linkMode";
-import { ANCHOR_CLASS, safeHref, slackLinksToMarkdown } from "./links";
+import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
+import { SameTabLink } from "../components/SameTabLink";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
-import { OutboundLink } from "../components/OutboundLink";
-import { ObjectCard } from "../conversations/ObjectCard";
+import { ObjectRow } from "../conversations/ObjectRow";
 import {
   mediaThumbnail,
   ObjectLinkPreview,
@@ -51,17 +50,22 @@ import {
  * hover. Other links ask the API for a card when they scroll into view or
  * the reader hovers them, and stay plain links until a card arrives.
  * Outside document mode, a bare URL in running text shows as a plain link
- * with the object title, or a mention for a person. The first bare URL alone
- * in a top-level paragraph shows the full card, or only the thumbnail of a
- * video or image page, unless the browser chose plain links. `shownCardUrls`
- * lists the `objectUrlKey` of cards that earlier text of the same message
- * already shows.
+ * with the object title, or a chip for a person. The first bare URL alone in
+ * a top-level paragraph shows the full card, or only the thumbnail of a
+ * video or image page. `shownCardUrls` lists the `objectUrlKey` of cards that
+ * earlier text of the same message already shows. Inline mode shows links
+ * only with `chips`, outside a link or a button. With `paragraphs` too, it
+ * keeps the text's paragraphs, line breaks, and lists.
  */
 export function MarkdownText(props: {
-  chat?: boolean;
-  compact?: boolean;
+  chat?: boolean | undefined;
+  /** Inline mode: show links, with object titles and person chips. */
+  chips?: boolean | undefined;
+  compact?: boolean | undefined;
   document?: boolean;
   inline?: boolean;
+  /** Inline mode with chips: keep paragraphs, line breaks, and lists. */
+  paragraphs?: boolean | undefined;
   shownCardUrls?: readonly string[];
   text: string;
 }): ReactNode {
@@ -73,8 +77,20 @@ export function MarkdownText(props: {
   if (props.inline) {
     return (
       <Markdown
-        components={INLINE_COMPONENTS}
-        remarkPlugins={[remarkGfm]}
+        components={
+          props.paragraphs
+            ? PARAGRAPH_CHIP_COMPONENTS
+            : props.chips
+              ? INLINE_CHIP_COMPONENTS
+              : INLINE_COMPONENTS
+        }
+        remarkPlugins={
+          props.paragraphs
+            ? [remarkGfm, remarkBreaks, remarkBareUrlStops]
+            : props.chips
+              ? [remarkGfm, remarkBareUrlStops]
+              : [remarkGfm]
+        }
         urlTransform={safeHref}
       >
         {source}
@@ -121,7 +137,7 @@ function normalizeSlackBullets(text: string): string {
 }
 
 type MarkdownNode = {
-  children?: MarkdownNode[];
+  children?: MarkdownNode[] | undefined;
   data?: { hProperties?: Record<string, unknown> };
   depth?: number;
   position?: { start: { offset?: number } };
@@ -302,7 +318,9 @@ const COMPONENTS: Components = {
     </ol>
   ),
   p: ({ children, node }) => (
-    <Paragraph objectUrl={node?.properties.dataObjectUrl}>{children}</Paragraph>
+    <Paragraph objectUrl={node?.properties["dataObjectUrl"]}>
+      {children}
+    </Paragraph>
   ),
   pre: ({ children }) => (
     <pre className="m-0 min-w-0 overflow-x-auto rounded-md border border-dashboard-border-subtle bg-dashboard-surface-panel px-3 py-2.5 font-mono text-sm [&>code]:bg-transparent [&>code]:p-0">
@@ -405,6 +423,30 @@ const INLINE_COMPONENTS: Components = {
   ul: InlineContainer,
 };
 
+const INLINE_CHIP_COMPONENTS: Components = {
+  ...INLINE_COMPONENTS,
+  a: COMPONENTS.a,
+};
+
+// Plain block boxes, not grids, so a line clamp counts the lines in them.
+const PARAGRAPH_CLASS = "m-0 min-w-0 [&:not(:first-child)]:mt-1.5";
+
+const PARAGRAPH_CHIP_COMPONENTS: Components = {
+  ...INLINE_CHIP_COMPONENTS,
+  li: ({ children }) => <li className="min-w-0">{renderText(children)}</li>,
+  ol: ({ children, start }) => (
+    <ol className={cn(PARAGRAPH_CLASS, "list-decimal pl-5")} start={start}>
+      {children}
+    </ol>
+  ),
+  p: ({ children }) => (
+    <p className={PARAGRAPH_CLASS}>{renderText(children)}</p>
+  ),
+  ul: ({ children }) => (
+    <ul className={cn(PARAGRAPH_CLASS, "list-disc pl-5")}>{children}</ul>
+  ),
+};
+
 function alignClass(align: unknown): string | undefined {
   if (align === "center") return "text-center";
   if (align === "right") return "text-right";
@@ -415,12 +457,10 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const objectUrl =
     typeof props.objectUrl === "string" ? props.objectUrl : undefined;
   const known = useKnownObject(objectUrl);
-  // Plain links show a URL alone on its line as titled link text too.
-  const plain = usePlainLinks();
-  if (objectUrl && !plain && known.card && !known.linkOnly) {
+  if (objectUrl && known.card && !known.linkOnly) {
     return <StandaloneObject card={known.card} href={objectUrl} />;
   }
-  if (objectUrl && !plain && resolvableUrl(objectUrl)) {
+  if (objectUrl && resolvableUrl(objectUrl)) {
     return (
       <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
         {props.children}
@@ -435,7 +475,7 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
 function ResolvedParagraph(props: {
   children: ReactNode;
   objectUrl: string;
-  saved?: OwnedObjectAnnotation;
+  saved?: OwnedObjectAnnotation | undefined;
 }) {
   const { card, request } = useResolvedObject(props.objectUrl);
   useRequestWhenSaved(props.saved, request);
@@ -448,7 +488,7 @@ function ResolvedParagraph(props: {
   return <PlainParagraph>{props.children}</PlainParagraph>;
 }
 
-// A link alone on its line shows the full card. A video or image page shows
+// A link alone on its line shows a compact row. A video or image page shows
 // only its thumbnail.
 function StandaloneObject(props: {
   card: OwnedObjectAnnotation;
@@ -459,7 +499,7 @@ function StandaloneObject(props: {
   if (thumbnail) {
     return <ObjectThumbnailLink {...props} src={thumbnail} />;
   }
-  return <ObjectCard card={props.card} live={props.live} />;
+  return <ObjectRow card={props.card} live={props.live} />;
 }
 
 // The saved card replaces the link, so no visible link asks for the card.
@@ -483,7 +523,7 @@ function PlainParagraph(props: { children: ReactNode }) {
 function TranscriptAnchor(props: {
   bare?: boolean;
   children: ReactNode;
-  href?: string;
+  href?: string | undefined;
 }) {
   const known = useKnownObject(props.href);
   // `safeHref` removes unsafe destinations. Keep their label text.
@@ -512,26 +552,40 @@ function TranscriptAnchor(props: {
 }
 
 // A link without a saved object asks the API for a card when it scrolls
-// into view or the reader hovers it. A saved link shows until then.
+// into view or the reader hovers it. A saved link shows until then. Its hover
+// card keeps one height while the live card can still replace it.
 function ResolvedAnchor(props: {
-  bare?: boolean;
+  bare?: boolean | undefined;
   children: ReactNode;
   href: string;
-  saved?: OwnedObjectAnnotation;
+  saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request } = useResolvedObject(props.href);
+  const { card, request, settled } = useResolvedObject(props.href);
   const observe = useWhenVisible(request);
   useRequestWhenSaved(props.saved, request);
+  const reserveHeight =
+    props.saved !== undefined && (card !== undefined || !settled);
   if (card) {
     return (
-      <ObjectAnchor bare={props.bare} card={card} href={props.href} live>
+      <ObjectAnchor
+        bare={props.bare}
+        card={card}
+        href={props.href}
+        live
+        reserveHeight={reserveHeight}
+      >
         {props.children}
       </ObjectAnchor>
     );
   }
   if (props.saved) {
     return (
-      <ObjectAnchor bare={props.bare} card={props.saved} href={props.href}>
+      <ObjectAnchor
+        bare={props.bare}
+        card={props.saved}
+        href={props.href}
+        reserveHeight={reserveHeight}
+      >
         {props.children}
       </ObjectAnchor>
     );
@@ -544,28 +598,24 @@ function ResolvedAnchor(props: {
 }
 
 function ObjectAnchor(props: {
-  bare?: boolean;
+  bare?: boolean | undefined;
   card: OwnedObjectAnnotation;
   children: ReactNode;
   href: string;
   live?: boolean;
+  reserveHeight?: boolean;
 }) {
-  if (props.bare && props.card.objectType === "person") {
-    return <PersonLink card={props.card} href={props.href} live={props.live} />;
+  const { bare, children, ...link } = props;
+  const className = useAnchorClass();
+  if (bare && link.card.objectType === "person") {
+    return <PersonLink {...link} />;
   }
-  if (props.bare) {
-    return (
-      <ObjectTitleLink card={props.card} href={props.href} live={props.live} />
-    );
+  if (bare) {
+    return <ObjectTitleLink {...link} />;
   }
   return (
-    <ObjectLinkPreview
-      card={props.card}
-      className={ANCHOR_CLASS}
-      href={props.href}
-      live={props.live}
-    >
-      {props.children}
+    <ObjectLinkPreview {...link} className={className}>
+      {children}
     </ObjectLinkPreview>
   );
 }
@@ -576,28 +626,16 @@ function PlainAnchor(props: {
   observe?: RefCallback<HTMLAnchorElement>;
   onPointerEnter?: () => void;
 }) {
-  const scheme = props.href.slice(0, 6).toLowerCase();
-  if (!scheme.startsWith("https:") && !scheme.startsWith("http:")) {
-    return (
-      <a
-        className={ANCHOR_CLASS}
-        href={props.href}
-        onPointerEnter={props.onPointerEnter}
-        ref={props.observe}
-      >
-        {props.children}
-      </a>
-    );
-  }
+  const className = useAnchorClass();
   return (
-    <OutboundLink
-      className={ANCHOR_CLASS}
+    <SameTabLink
+      className={className}
       href={props.href}
       onPointerEnter={props.onPointerEnter}
       ref={props.observe}
     >
       {props.children}
-    </OutboundLink>
+    </SameTabLink>
   );
 }
 

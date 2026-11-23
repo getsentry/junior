@@ -2,26 +2,22 @@ import { memo, useMemo } from "react";
 import { TriangleAlert, Wrench } from "lucide-react";
 
 import { HighlightedCode } from "../code";
-import {
-  formatElapsedDuration,
-  formatMessageTimestamp,
-  formatPayloadSize,
-  stringifyPartValue,
-} from "../format";
+import { formatPayloadSize, stringifyPartValue } from "../format";
 import type { TranscriptViewToolCallPart } from "../types";
 import { ShimmerText } from "../components/ShimmerText";
-import { ReviewItemAskRow } from "../review-desk/ReviewItemChangeRow";
-import { reviewItemIdFromToolCall } from "../review-desk/reviewItemFormat";
+import { InboxItemAskRow } from "../inbox/InboxItemChangeRow";
+import { inboxItemIdFromToolCall } from "../inbox/inboxItemFormat";
 import { cn } from "../styles";
 import { ToolFrame } from "./ToolFrame";
 import { toolCallPreview } from "./toolCallPreview";
 import { HighlightText, useTranscriptSearch } from "./transcriptSearch";
+import { formatElapsedDuration, formatMessageTimestamp } from "../time";
 
 /** Render one tool invocation as it advances from running to a terminal result. */
 export const TranscriptToolView = memo(function TranscriptToolView(props: {
   conversationId: string;
   part: TranscriptViewToolCallPart;
-  timestamp?: number;
+  timestamp?: number | undefined;
 }) {
   const timestamp = formatMessageTimestamp(props.timestamp);
   const duration = formatElapsedDuration(
@@ -69,13 +65,13 @@ export const TranscriptToolView = memo(function TranscriptToolView(props: {
 
   // A question that Junior asked shows as its one-line record. The tool call
   // shows only when the viewer cannot read the item.
-  const reviewItemId = reviewItemIdFromToolCall(props.part);
-  if (reviewItemId) {
+  const inboxItemId = inboxItemIdFromToolCall(props.part);
+  if (inboxItemId) {
     return (
-      <ReviewItemAskRow
+      <InboxItemAskRow
         conversationId={props.conversationId}
         fallback={frame}
-        itemId={reviewItemId}
+        itemId={inboxItemId}
       />
     );
   }

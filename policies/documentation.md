@@ -17,9 +17,10 @@ current.
 - Code defines its own design. Put an invariant, a boundary, or a rule that is
   easy to break in a comment next to the code that it governs (see
   `code-comments.md`). Put a repo-wide rule in a policy.
-- Do not write feature descriptions, tool-by-tool behavior, step lists that
-  repeat the code, schemas, test inventories, history, or rollout notes. The
-  code, types, and tests own those.
+- Do not write feature descriptions. Do not write
+  tool-by-tool behavior, step lists that repeat the code, schemas, test
+  inventories, history, or rollout notes. The code, types, and tests own
+  those.
 - Put a fact that one symbol owns in the JSDoc of that symbol.
 - Put procedures (how to run, record, or debug something) in a command table
   or a skill, not in prose.
@@ -39,6 +40,9 @@ current.
 
 ## Exceptions
 
+- `design/` has one intent doc per major system: its goals, entry points,
+  the rules users rely on, and its gaps. It follows the `create-design-docs`
+  skill, and `automate-design-doc-updates` keeps it true.
 - Public product docs live in `packages/docs` and follow the `public-docs`
   skill.
 - Skills follow the `skill-writer` skill.
