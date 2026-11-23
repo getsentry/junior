@@ -28,21 +28,21 @@ export function serializeConversationFeed(
   // field's size is known.
   const measured = [
     "activityPreview",
-    "annotations",
     "participants",
+    "sidebarAnnotations",
     "threads",
   ] as const satisfies readonly (keyof ConversationFeedItem)[];
   const chars = {
     activityPreview: 0,
-    annotations: 0,
     participants: 0,
+    sidebarAnnotations: 0,
     threads: 0,
   };
   const rows = feed.conversations.map((row) => {
     const {
       activityPreview: _activityPreview,
-      annotations: _annotations,
       participants: _participants,
+      sidebarAnnotations: _sidebarAnnotations,
       threads: _threads,
       ...rest
     } = row;
@@ -64,8 +64,8 @@ export function serializeConversationFeed(
   metrics.distribution("conversation_feed.response.chars", body.length);
   for (const [field, value] of [
     ["activity_preview", chars.activityPreview],
-    ["annotations", chars.annotations],
     ["participants", chars.participants],
+    ["sidebar_annotations", chars.sidebarAnnotations],
     ["threads", chars.threads],
   ] as const) {
     metrics.distribution("conversation_feed.response.field_chars", value, {
@@ -78,8 +78,9 @@ export function serializeConversationFeed(
   return {
     attributes: {
       "app.api.response.field_chars.activity_preview": chars.activityPreview,
-      "app.api.response.field_chars.annotations": chars.annotations,
       "app.api.response.field_chars.participants": chars.participants,
+      "app.api.response.field_chars.sidebar_annotations":
+        chars.sidebarAnnotations,
       "app.api.response.field_chars.threads": chars.threads,
       "app.conversation_feed.rows": feed.conversations.length,
       "app.conversation_feed.threads": threads,

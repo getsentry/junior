@@ -1,7 +1,7 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
 import { PluginToolInputError } from "@sentry/junior-plugin-api";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { googlePlugin } from "../src";
+import { googlePlugin } from "../src/index";
 import { ACCOUNT_EMAIL, stubGoogleEnv } from "./fixture";
 
 const REQUESTER = "alice@example.com";

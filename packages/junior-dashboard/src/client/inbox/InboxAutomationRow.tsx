@@ -58,7 +58,7 @@ function attentionStatus(automation: AutomationListItem): string {
  * "Automation" with the ages. A click expands it in place with its
  * attention details (`AutomationAttentionDetails`). It leaves when the
  * Automation is fixed or resumed. In the Inbox, the Automation's alert is a
- * Review item instead, with the same details.
+ * Inbox item instead, with the same details.
  */
 export function InboxAutomationRow(props: {
   automation: AutomationListItem;

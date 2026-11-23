@@ -1,0 +1,45 @@
+# A first-party tool is built with `zodTool` (core) or `definePluginTool`
+# (plugins), so its schema, result, and errors take the shared path. An
+# object with `inputSchema` and `execute` outside those calls is a raw tool
+# definition. Adapters that build Pi tools use `parameters`, not this shape.
+id: no-raw-tool-definitions
+language: TypeScript
+severity: error
+message: Define a tool with zodTool (core) or definePluginTool (plugins), not as a raw object with inputSchema and execute.
+files:
+  - packages/*/src/**/*.ts
+  - apps/**/src/**/*.ts
+utils:
+  input-schema-member:
+    any:
+      - kind: pair
+        has:
+          field: key
+          regex: ^inputSchema$
+      - kind: shorthand_property_identifier
+        regex: ^inputSchema$
+  execute-member:
+    any:
+      - kind: pair
+        has:
+          field: key
+          regex: ^execute$
+      - kind: method_definition
+        has:
+          field: name
+          regex: ^execute$
+rule:
+  kind: object
+  all:
+    - has:
+        matches: input-schema-member
+    - has:
+        matches: execute-member
+  not:
+    inside:
+      kind: call_expression
+      stopBy:
+        kind: statement_block
+      has:
+        field: function
+        regex: ^(zodTool|definePluginTool|zodToolDefinition|tool)$

@@ -408,6 +408,8 @@ function githubToolsContext(input?: {
     request: Request;
   }) => Promise<Response>;
   resolveActor?: ToolRegistrationHookContext["users"]["resolveActor"];
+  findLinkedHandle?: ToolRegistrationHookContext["users"]["findLinkedHandle"];
+  replaceSlackMentions?: ToolRegistrationHookContext["users"]["replaceSlackMentions"];
   /** Overrides the host's work owner. By default a person runs the Turn. */
   workOwner?: PluginWorkOwner | undefined;
   source?: ToolRegistrationHookContext["source"];
@@ -473,8 +475,12 @@ function githubToolsContext(input?: {
         })),
     },
     users: {
-      replaceSlackMentions: async (value) => value,
+      replaceSlackMentions:
+        input?.replaceSlackMentions ?? (async (value) => value),
       resolveActor: input?.resolveActor ?? (async () => undefined),
+      findLinkedHandle:
+        input?.findLinkedHandle ??
+        (async () => ({ status: "not_found" }) as const),
     },
     state: {
       async delete(key: string) {
@@ -1065,7 +1071,7 @@ describe("github plugin", () => {
     );
     expect(result).toMatchObject({
       target: "createIssue",
-      // A person started the Turn, so the result names the Review item that
+      // A person started the Turn, so the result names the Inbox item that
       // asks whether to implement the issue.
       note: expect.stringContaining(
         '"github-issue-implement:getsentry/junior#660"',
@@ -1275,7 +1281,7 @@ describe("github plugin", () => {
     );
 
     // No person started the run, so the issue gets no Watch, and no one
-    // could answer a Review item about implementing it.
+    // could answer an Inbox item about implementing it.
     expect(subscribe).not.toHaveBeenCalled();
     expect(result).not.toHaveProperty("subscription");
     expect(result).not.toHaveProperty("note");
@@ -2149,9 +2155,32 @@ Conversation: \`local:test:old-conversation\`
     },
   );
 
-  it("asks the named reviewers and keeps the requester as the assignee", async () => {
+  it.each([
+    {
+      name: "asks the named reviewers and keeps the requester as the assignee",
+      named: { reviewers: ["@octocat", "jane"] },
+      assignees: ["dcramer"],
+      reviewers: ["octocat", "jane"],
+    },
+    {
+      name: "assigns the named assignees and keeps the requester as the reviewer",
+      named: { assignees: ["@octocat", "jane"] },
+      assignees: ["octocat", "jane"],
+      reviewers: ["dcramer"],
+    },
+    {
+      name: "assigns the linked GitHub login of a person named by email",
+      named: { assignees: ["jane@example.com"] },
+      assignees: ["jane-gh"],
+      reviewers: ["dcramer"],
+    },
+  ])("$name", async ({ named, assignees, reviewers }) => {
     const ctx = githubToolsContext({
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
+      findLinkedHandle: async (query, provider) =>
+        query === "jane@example.com" && provider === "github"
+          ? { status: "found", handle: "jane-gh" }
+          : { status: "not_found" },
       resolveActor: async () => ({
         identity: {
           id: "slack-id",
@@ -2192,7 +2221,7 @@ Conversation: \`local:test:old-conversation\`
         title: "Typed PR",
         head: "feature",
         base: "main",
-        reviewers: ["@octocat", "jane"],
+        ...named,
       },
       { toolCallId: "call-create-pull-request-reviewers" },
     );
@@ -2203,38 +2232,114 @@ Conversation: \`local:test:old-conversation\`
       "github.pull.request_reviewers",
     ]);
     await expect(ctx.egressRequests()[1].request.json()).resolves.toEqual({
-      assignees: ["dcramer"],
+      assignees,
     });
     const reviewRequest = ctx.egressRequests()[2].request;
     expect(reviewRequest.url).toBe(
       "https://api.github.com/repos/getsentry/junior/pulls/693/requested_reviewers",
     );
     await expect(reviewRequest.json()).resolves.toEqual({
-      reviewers: ["octocat", "jane"],
+      reviewers,
     });
   });
 
-  it("rejects an invalid reviewer before it opens the pull request", async () => {
-    const ctx = githubToolsContext();
-    const tool = bindPluginTool(
-      githubPlugin().hooks?.tools?.()?.["createPullRequest"],
-      ctx as any,
-    );
+  it.each([
+    { role: "reviewer", named: { reviewers: ["not a login"] } },
+    { role: "assignee", named: { assignees: ["not a login"] } },
+  ])(
+    "rejects an invalid $role before it opens the pull request",
+    async ({ role, named }) => {
+      const ctx = githubToolsContext();
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+        ctx as any,
+      );
+
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Typed PR",
+            head: "feature",
+            base: "main",
+            ...named,
+          },
+          { toolCallId: `call-create-pull-request-bad-${role}` },
+        ),
+      ).rejects.toThrow(
+        `No person matches ${role} not a login. Pass a GitHub login.`,
+      );
+      expect(ctx.egressRequests()).toEqual([]);
+    },
+  );
+
+  it("looks up a Slack mention before it rewrites Slack text", async () => {
+    const lookups: string[] = [];
+    const ctx = githubToolsContext({
+      findLinkedHandle: async (query) => {
+        lookups.push(query);
+        return { status: "unlinked" };
+      },
+      // An unlinked person's mention becomes their name, which is also a
+      // valid GitHub login.
+      replaceSlackMentions: async <T>(value: T) =>
+        JSON.parse(JSON.stringify(value).replaceAll("<@U2>", "jane")) as T,
+    });
+    const tool = githubPlugin().hooks?.tools?.()?.["createPullRequest"];
 
     await expect(
-      tool?.execute?.(
+      bindPluginTool(tool, ctx as any)?.execute?.(
         {
           repo: "getsentry/junior",
           title: "Typed PR",
           head: "feature",
           base: "main",
-          reviewers: ["not a login"],
+          assignees: ["<@U2>"],
         },
-        { toolCallId: "call-create-pull-request-bad-reviewer" },
+        { toolCallId: "call-create-pull-request-mention" },
       ),
-    ).rejects.toThrow("Invalid GitHub reviewer login: not a login");
+    ).rejects.toThrow("assignee <@U2> has no linked GitHub account.");
+    expect(lookups).toEqual(["<@U2>"]);
     expect(ctx.egressRequests()).toEqual([]);
   });
+
+  it.each([
+    {
+      status: "unlinked" as const,
+      error:
+        "reviewer jane@example.com has no linked GitHub account. Pass their GitHub login.",
+    },
+    {
+      status: "ambiguous" as const,
+      error:
+        "More than one person matches reviewer jane@example.com. Name one person.",
+    },
+  ])(
+    "rejects a $status person before it opens the pull request",
+    async ({ status, error }) => {
+      const ctx = githubToolsContext({
+        findLinkedHandle: async () => ({ status }),
+      });
+      const tool = bindPluginTool(
+        githubPlugin().hooks?.tools?.()?.["createPullRequest"],
+        ctx as any,
+      );
+
+      await expect(
+        tool?.execute?.(
+          {
+            repo: "getsentry/junior",
+            title: "Typed PR",
+            head: "feature",
+            base: "main",
+            reviewers: ["jane@example.com"],
+          },
+          { toolCallId: `call-create-pull-request-${status}-reviewer` },
+        ),
+      ).rejects.toThrow(error);
+      expect(ctx.egressRequests()).toEqual([]);
+    },
+  );
 
   it.each([
     {
@@ -2899,7 +3004,7 @@ via **Pat Requester**.
     ).rejects.toMatchObject({
       name: "PluginToolInputError",
       message:
-        "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid",
+        "GitHub pull request creation failed with HTTP 422: Validation Failed: resource=PullRequest field=base code=invalid. Check repo, head, and base, and fix any field that GitHub names.",
     });
 
     await expect(

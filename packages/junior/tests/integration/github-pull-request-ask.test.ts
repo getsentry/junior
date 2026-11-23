@@ -14,7 +14,7 @@ import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import { migratePluginSchemas } from "@/chat/plugins/migrations";
 import { readActorIdentity } from "@/chat/plugins/viewer";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { juniorReviewItems } from "@/db/schema";
+import { juniorInboxItems } from "@/db/schema";
 import {
   prepareSlackParentConversation,
   slackDestination,
@@ -80,9 +80,9 @@ async function readerView() {
     await listConversationAnnotations(getDb(), slackParentConversationId)
   ).find((annotation) => annotation.key === "getsentry/junior#1592");
   const [ask] = await getDb()
-    .select({ status: juniorReviewItems.status })
-    .from(juniorReviewItems)
-    .where(eq(juniorReviewItems.subjectId, PULL_URL));
+    .select({ status: juniorInboxItems.status })
+    .from(juniorInboxItems)
+    .where(eq(juniorInboxItems.subjectId, PULL_URL));
   return { ask: ask?.status, chip: chip?.status };
 }
 
@@ -105,7 +105,7 @@ async function openPullRequest(): Promise<string> {
       },
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
-    source: { kind: "agent_invocation" },
+    source: { kind: "parent_message" },
     turnTools: turnBehavior({ kind: "task", personInput: false }).tools,
     workspace: {} as never,
   })["github_createPullRequest"]!.execute!(

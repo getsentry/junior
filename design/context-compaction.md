@@ -17,20 +17,18 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   whole prefix to the cache again.
 - An idle Conversation costs as little as possible for the return that
   comes next. Junior warms the cache only when the chance of a return pays
-  for the warmup. With Claude Opus 5.5 prices for one million tokens (input
-  $4, 5-minute cache write $5, cache read $0.20), a warmup costs about 1.1
-  reads of the prefix ($0.22), and a warm return saves one write minus one
-  read. So warming pays when more than 0.22 / (5 − 0.2), about 4.6%, of
-  warmups reach a return. `design/cache-warming.md` owns that rule.
+  for the warmup ([Cache warming](./cache-warming.md)).
 - At or above the background compaction mark, an idle Conversation compacts
   instead of warming when that costs less. A returning Turn at that size is
   close to the compaction threshold, so it can compact in the Turn, and
-  then pays for the full prefix and the compacted one. A compacted prefix of 120K tokens, against 360K, also
-  makes each model call of the returning Turn about $0.05 cheaper to read.
+  then pays for the full prefix and the compacted one. A compacted prefix
+  of 120K tokens, against 360K, also makes each model call of the returning
+  Turn about $0.05 cheaper to read.
 - Junior accepts a quality cost for that saving. A Conversation that
   compacts on idle may not have compacted in its returning Turn. It then
   gets a summary in place of history that it would have kept, which can
-  make an answer worse.
+  make an answer worse. This is a good trade: the mark is 306K tokens for
+  a 400K context window, and the Turn compacts at 360K anyway.
 
 ## Entry points
 
@@ -41,6 +39,9 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
 
 ## Rules
 
+- Compaction on idle starts at the background compaction mark, 0.85 × the
+  compaction threshold. The background summary uses the same mark, so the
+  two cannot diverge.
 - Compaction on idle uses only a background summary that is ready. It
   makes no summary call. When no summary is ready, Junior warms as it does
   below the mark, and the next warmup checks again.
@@ -55,17 +56,20 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   - Compact: a return writes C, and P gets no more warmups.
   - Stop: a return before the cache expires reads P. A later return
     writes P.
-- For P = 360K and C = 120K tokens, a compacted return costs
-  5 × 0.12 = $0.60, a warmup 0.22 × 0.36 ≈ $0.08, a warm return
-  0.2 × 0.36 = $0.072, and a cold return of P $1.80. So warming wins only while a return is likely
-  before the warmups cost more than the write of C. A Conversation with a
-  likely quick return, such as one that waits for a child agent, warms
-  first and compacts at a later slot. Stop wins only when the return
-  likely comes before the current cache expires. On a tie, compaction
-  wins, because a return after the horizon also writes less.
+- Warming wins only while a return is likely before the warmups cost more
+  than the write of C. A Conversation with a likely quick return, such as
+  one that waits for a child agent, warms first and compacts at a later
+  slot. Stop wins only when the return likely comes before the current
+  cache expires. On a tie, compaction wins, because a return after the
+  horizon also writes less.
 - A slot that the timer floor covers warms, so the timer's Turn reads the
   cache. With too few gaps, the warmup rule does not warm, so a return
   writes P either way, and compaction wins.
+- An idle period whose request snapshot is too large to store gets no
+  warmups. At or above the background compaction mark, it still gets its
+  first warmup slot, because compaction on idle needs no snapshot. That
+  slot can only compact or stop, and it sends no warmup. Then the idle
+  period stops.
 - After compaction on idle, Junior sends no warmups in that idle period.
   The compacted prefix is not in the cache, so its warmup would be a cache
   write. A return writes it once either way, so no return chance pays for
@@ -74,13 +78,3 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   Run holds the Conversation, Junior warms instead.
 - Compaction on idle runs only while cache warming is on.
   `JUNIOR_IDLE_COMPACTION_ENABLED=false` turns off only compaction on idle.
-
-## Gaps
-
-- An idle period whose request snapshot is too large to store gets no
-  warmups, so it does not compact on idle either. This breaks "at or above
-  the background compaction mark, an idle Conversation compacts instead of
-  warming".
-- The quality cost of compaction on idle is not measured, so nothing shows
-  when it outweighs the saving. This breaks "Junior accepts a quality cost
-  for that saving", which needs that cost to be known.

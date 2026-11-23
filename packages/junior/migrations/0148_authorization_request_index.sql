@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversation_events_authorization_request_idx" ON "junior_conversation_events" USING btree ("conversation_id","created_at") WHERE "junior_conversation_events"."type" = 'authorization_requested';

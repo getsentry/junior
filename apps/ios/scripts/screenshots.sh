@@ -26,8 +26,10 @@ set -- \
   "conversations-threads__dark|/?q=Dashboard%20QA|dark" \
   "conversation__dark|$conversation|dark" \
   "conversation-details__dark|$conversation?details=1|dark" \
+  "conversation-rename__dark|$conversation?rename=1|dark" \
+  "conversation-rename__light|$conversation?rename=1|light" \
   "inbox__dark|/inbox|dark" \
-  "review-item__dark|/inbox?item=qa-rollout|dark" \
+  "inbox-item__dark|/inbox?item=qa-rollout|dark" \
   "automations__dark|/automations|dark" \
   "automation__dark|/automations/scheduled-1|dark" \
   "drawer__dark|/?drawer=1|dark" \

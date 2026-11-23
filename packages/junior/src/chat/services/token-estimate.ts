@@ -196,6 +196,11 @@ export function estimateTextTokens(text: string): number {
   return tokensForChars(text.length, DEFAULT_TOKEN_ESTIMATE);
 }
 
+/** Estimate the tokens of request text, such as a prompt section, for one model. */
+export function estimateModelTextTokens(text: string, modelId: string): number {
+  return tokensForChars(text.length, getTokenEstimateProfile(modelId));
+}
+
 /** Convert a local text token budget to the characters it allows. */
 export function textCharsForTokens(tokens: number): number {
   return tokens * DEFAULT_TOKEN_ESTIMATE.charsPerToken;

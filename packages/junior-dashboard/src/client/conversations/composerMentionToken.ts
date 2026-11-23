@@ -1,5 +1,5 @@
 import type { MentionablePerson } from "@sentry/junior/api/schema";
-import type { ComposerToken } from "./composerSkillToken";
+import type { ComposerToken } from "./skillReferences";
 
 // A letter, digit, `_` or `@` before the `@` makes it part of an email
 // address or a handle, so `me@example.com` and `müller@…` open no menu.

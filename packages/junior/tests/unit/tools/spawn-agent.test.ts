@@ -4,7 +4,7 @@ import {
   AgentNameInUseError,
 } from "@/chat/agent-invocations/errors";
 import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 describe("spawnAgent", () => {
   it("normalizes nullable optional fields before invoking the runtime control", async () => {
@@ -114,7 +114,7 @@ describe("spawnAgent", () => {
     ).rejects.toSatisfy(
       (error) =>
         error instanceof ToolInputError &&
-        error.message.includes("active child agent invocations") &&
+        error.message.includes("active child agents") &&
         error.message.includes("Wait for active children"),
     );
   });

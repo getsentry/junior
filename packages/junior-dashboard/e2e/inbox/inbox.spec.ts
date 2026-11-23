@@ -9,7 +9,7 @@ import {
   digest,
   license,
   migration,
-  mockReviewItems,
+  mockInboxItems,
   mockViewerCodeChanges,
   prMerge,
   prReady,
@@ -28,7 +28,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     // One row, or one stack of rows, per Conversation.
@@ -71,28 +71,29 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       open: [rollout, license, audit, prReady, migration, prMerge, prReview],
     });
     await page.goto(`${dashboard.baseURL}/`);
     const nav = page.getByRole("navigation", { name: "Primary" });
-    // An entry counts what waits on the viewer, like the badge: the
-    // "Pull request ready for review" notice does not.
     await expect(nav.getByRole("link")).toHaveText([
+      /^Lead$/,
       /^Inbox/,
       /^Snoozed/,
       /^Done$/,
       /^Conversations$/,
       /^Automations/,
-      /^Pull requests\s*2$/,
-      /^Decisions\s*4$/,
       new RegExp(checkout),
     ]);
+    // A filter counts what waits on the viewer, like the badge: the
+    // "Pull request ready for review" notice does not.
+    await expect(
+      page.getByRole("navigation", { name: "Asks to show" }).getByRole("link"),
+    ).toHaveText([/^All\s*6$/, /^PRs\s*2$/, /^Decisions\s*4$/, /^Pinned$/]);
     const sections = page.locator("section[aria-label] section[aria-label]");
 
     // Pull requests list the viewer's open changes, with their asks.
-    await nav.getByRole("link", { name: /^Pull requests/ }).click();
-    await expect(page).toHaveURL(/\/\?view=prs$/);
+    await page.goto(`${dashboard.baseURL}/?view=prs`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Pull requests" }),
     ).toBeVisible();
@@ -100,13 +101,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Waiting on you/,
       /^Waiting on others/,
     ]);
-    await expect(
-      nav.getByRole("link", { name: /^Pull requests/ }),
-    ).toHaveAttribute("aria-current", "page");
     await screenshot(page, "inbox-pull-requests", { lightTheme: true });
 
     // Decisions group by Conversation, the longest wait first.
-    await nav.getByRole("link", { name: /^Decisions/ }).click();
+    await page.goto(`${dashboard.baseURL}/?view=decisions`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Decisions" }),
     ).toBeVisible();
@@ -136,7 +134,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   });
 
   test("a row answers its ask in place", async ({ dashboard, page }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [rollout, license, audit],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -207,7 +205,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       id: "item-team-ask",
       title: "Pick the on-call rotation",
     };
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [license, prReady, digest, teamAsk],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -247,7 +245,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.clock.setFixedTime(NOW_MS);
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       open: [license, prReady, digest],
     });
     await page.goto(`${dashboard.baseURL}/`);
@@ -282,7 +280,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       failActions: [digest.id],
       open: [license, digest],
     });
@@ -328,7 +326,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       license,
       automationAlert("scheduled-1", "Weekly project summary"),
     ];
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () =>
         mockAutomationCollection(
           report,
@@ -385,7 +383,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, { open: [prReview] });
+    const actions = await mockInboxItems(page, { open: [prReview] });
     await mockViewerCodeChanges(page, [
       {
         idleDays: 0,
@@ -418,12 +416,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("region", { name: "Waiting on you" })
       .getByRole("listitem", { name: "Pin the release train" });
     await expect(
-      waiting.getByRole("link", { name: "Pin the release train" }),
+      waiting.getByRole("link", { exact: true, name: "Pin the release train" }),
     ).toHaveAttribute("href", "https://github.com/getsentry/payments/pull/91");
     // The ask stays with its pull request.
-    await expect(
-      waiting.getByRole("link", { name: new RegExp(prReview.title) }),
-    ).toBeVisible();
+    await expect(waiting.locator("[data-inbox-head]")).toHaveAccessibleName(
+      /^Review Pin the release train/,
+    );
     // The rest wait on a reviewer, CI or Junior: newest activity first, so
     // the idle one comes last.
     await expect(
@@ -468,7 +466,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(`${dashboard.baseURL}/`);
     await page
       .getByRole("navigation", { name: "Primary" })
@@ -496,7 +494,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     // The linked item is past the first page, so its row loads on its own.
-    await mockReviewItems(page, { open: [audit, rollout], pageSize: 1 });
+    await mockInboxItems(page, { open: [audit, rollout], pageSize: 1 });
     await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     await expect(
@@ -522,7 +520,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [rollout, license] });
+    await mockInboxItems(page, { open: [rollout, license] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
     await todo.getByRole("button", { name: /^To do/ }).click();
@@ -542,7 +540,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { open: [prReady, license, audit] });
+    await mockInboxItems(page, { open: [prReady, license, audit] });
     await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
@@ -581,13 +579,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveCount(3);
   });
 
-  test("an item row's second line names its subject, not its own title", async ({
+  test("a code change row's head names its subject, not its own title", async ({
     dashboard,
     page,
   }) => {
     // The Conversation that added the item is not in the feed, and its title
     // does not load.
-    await mockReviewItems(page, { open: [prReview] });
+    await mockInboxItems(page, { open: [prReview] });
     await page.route(
       `**/api/conversations/${encodeURIComponent(prReview.owner.id)}**`,
       (route) => route.fulfill({ json: { error: "Not found" }, status: 404 }),
@@ -595,9 +593,16 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/?view=prs`);
     const row = page
       .locator("[data-inbox-row]")
-      .filter({ hasText: prReview.title });
-    await expect(row).toContainText(prReview.subject.title);
-    await expect(row.getByText(prReview.title, { exact: true })).toHaveCount(1);
+      .filter({ hasText: prReview.subject.title });
+    // The head leads with the subject's title, so the second line does not
+    // say it again.
+    await expect(
+      row.getByText(prReview.subject.title, { exact: true }),
+    ).toHaveCount(0);
+    await expect(row.locator("[data-code-change-title]")).toContainText(
+      prReview.subject.title,
+    );
+    await expect(row).not.toContainText(prReview.title);
   });
 
   test("an item's text clamps only its prose, and its cards show in full", async ({
@@ -621,9 +626,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       kind: "notice" as const,
       request: undefined,
     };
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    await rowHead(page, "Pin the release train").click();
     const toggle = page.getByRole("button", { name: `Expand ${item.title}` });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
     const clamp = page.locator(
@@ -659,9 +664,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       kind: "notice" as const,
       request: undefined,
     };
-    await mockReviewItems(page, { open: [item] });
+    await mockInboxItems(page, { open: [item] });
     await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await rowHead(page, item.title).click();
+    await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
     });
@@ -688,7 +693,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ],
       },
     };
-    await mockReviewItems(page, { open: [asked] });
+    await mockInboxItems(page, { open: [asked] });
     const event = (seq: number, data: Record<string, unknown>) => ({
       createdAt: new Date(NOW_MS - (60 - seq) * 1000).toISOString(),
       data,
@@ -761,8 +766,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The message names the person it mentions, as the transcript does.
     await expect(message).toContainText("Ada Lovelace");
     await expect(message).not.toContainText("U0MOCKADA");
-    // Junior's message comes first, then its question, then the form, which
-    // ends with Send on the right.
+    // The question comes first, right under its label, then Junior's
+    // message, then the form, which ends with Send on the right.
     const ask = page.locator("[data-inbox-item]").filter({ has: message });
     const send = ask.getByRole("button", { name: "Send" });
     const order = await ask.evaluate((section, asked) => {
@@ -780,9 +785,9 @@ test.describe("new UI", { tag: "@new" }, () => {
         form: at(form),
       };
     }, asked.request.question);
-    expect(order.message).toBeGreaterThanOrEqual(0);
-    expect(order.message).toBeLessThan(order.question);
-    expect(order.question).toBeLessThan(order.form);
+    expect(order.question).toBeGreaterThanOrEqual(0);
+    expect(order.question).toBeLessThan(order.message);
+    expect(order.message).toBeLessThan(order.form);
     expect(order.last).toBe("Send");
     await expect(send).toBeVisible();
     await expect(message).not.toContainText("Checking the canary first.");
@@ -817,73 +822,5 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goBack();
     await expect(message).toContainText("The canary error rate is flat");
     expect(reads).toBe(1);
-  });
-
-  test("cards grow near the pointer in both densities, except for reduced motion", async ({
-    dashboard,
-    page,
-  }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
-    await page.evaluate(() => {
-      localStorage.setItem("junior:density", "comfortable");
-      // The magnifier is off until the viewer turns it on.
-      localStorage.setItem("junior:inbox:magnify", "true");
-    });
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    await page.reload();
-    const card = page.locator("[data-inbox-row]").first();
-    await card.hover();
-    // Let a frame pass, so a scale that was going to apply has applied.
-    await page.evaluate(
-      () => new Promise((done) => requestAnimationFrame(done)),
-    );
-    await expect(card).not.toHaveAttribute("style", /scale/);
-
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.mouse.move(0, 0);
-    await card.hover();
-    // Up to 5% under the pointer, less for a neighbor.
-    await expect(card).toHaveAttribute("style", /scale\(1\.0[1-5]/);
-    await page.mouse.move(0, 0);
-    await expect(card).not.toHaveAttribute("style", /scale/);
-
-    // Compact rows grow too, up to 2%.
-    await page.evaluate(() => {
-      localStorage.setItem("junior:density", "compact");
-    });
-    await page.reload();
-    await card.hover();
-    await expect(card).toHaveAttribute("style", /scale\(1\.0[0-2]/);
-  });
-
-  test("an open ask holds its pull request still under the pointer", async ({
-    dashboard,
-    page,
-  }) => {
-    // Both changes wait on the viewer, so they share one list.
-    await mockReviewItems(page, { open: [prReview, prMerge] });
-    await mockViewerCodeChanges(page, [
-      { idleDays: 1, number: 91, title: "Pin the release train" },
-      { idleDays: 0, number: 42, title: "Tune the retry backoff" },
-    ]);
-    await page.addInitScript(() => {
-      localStorage.setItem("junior:density", "comfortable");
-      localStorage.setItem("junior:inbox:magnify", "true");
-    });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    const change = page.getByRole("listitem", {
-      name: "Pin the release train",
-    });
-    await change
-      .getByRole("link", { name: new RegExp(prReview.title) })
-      .click();
-    await expect(change.locator("[data-expanded]")).toHaveCount(1);
-    await page.mouse.move(0, 0);
-    await change.hover();
-    // The other change still grows, so the pointer counts.
-    await expect(
-      page.getByRole("listitem", { name: "Tune the retry backoff" }),
-    ).toHaveAttribute("style", /scale/);
-    await expect(change).not.toHaveAttribute("style", /scale/);
   });
 });

@@ -164,6 +164,7 @@ export function NewConversationPending(props: {
           header={
             <ConversationHeader
               detailsOpen={showDetails}
+              lead={false}
               errors={[]}
               menu={{
                 actions: PENDING_MENU_ACTIONS,

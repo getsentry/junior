@@ -9,7 +9,7 @@ import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
 import { createToolActionReview } from "@/chat/guardian/gate";
 import { McpToolManager } from "@/chat/mcp/tool-manager";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
-import { tool, type AnyToolDefinition } from "@/chat/tools/definition";
+import { tool, type AnyToolDefinition } from "@/chat/tool-support/definition";
 import { createCallMcpToolTool } from "@/chat/tools/skill/call-mcp-tool";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import {

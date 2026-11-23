@@ -10,6 +10,7 @@ import {
   type ConversationOutline,
 } from "../schema/conversation-outline";
 import { readConversationAccessFromSql } from "./access";
+import { reportParentAgentInput } from "./events";
 
 const payload = juniorConversationEvents.payload;
 
@@ -58,9 +59,8 @@ export async function readConversationOutline(
         ...(row.authorIdentityId && row.authorIdentityId !== SYSTEM_IDENTITY_ID
           ? { actorIdentityId: row.authorIdentityId }
           : undefined),
-        ...(row.agentInvocationId
-          ? { agentInvocationId: row.agentInvocationId }
-          : undefined),
+        // The same parent agent rule as the transcript events.
+        ...reportParentAgentInput(row),
       },
     ];
   });
@@ -108,7 +108,9 @@ function readMessages(
       authorIdentityId: sql<
         string | null
       >`coalesce(${payload}->>'authorIdentityId', ${juniorConversationEvents.actorIdentityId})`,
+      authorUserId: sql<string | null>`${payload}->'meta'->'author'->>'userId'`,
       createdAt: juniorConversationEvents.createdAt,
+      messageId: sql<string>`${payload}->>'messageId'`,
       seq: juniorConversationEvents.seq,
       text: sql<string>`coalesce(left(${payload}->>'text', ${CONVERSATION_OUTLINE_TEXT_LENGTH}), '')`,
     })

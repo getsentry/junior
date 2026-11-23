@@ -47,7 +47,9 @@ export function registerSearchConversationsTool(
       description:
         "Search your conversations and return up to 50, newest activity first. Only conversations that you started or take part in match.",
       inputSchema: {
-        q: feedQuery.q.describe("Text to search for in titles and Briefs."),
+        q: feedQuery.q.describe(
+          "Text to search for in titles, summaries, and Annotation labels and titles.",
+        ),
         status: feedQuery.status.describe(
           "Return conversations that are not archived (default) or that are archived. A search ignores this filter.",
         ),

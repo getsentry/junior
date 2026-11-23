@@ -1,6 +1,5 @@
 import { sql } from "drizzle-orm";
 import {
-  boolean,
   index,
   integer,
   jsonb,
@@ -100,11 +99,13 @@ export const juniorGitHubPullRequests = pgTable(
       .array()
       .notNull()
       .default(sql`ARRAY[]::text[]`),
-    /** The daily reconcile compares this with GitHub. */
-    draft: boolean("draft").notNull().default(false),
     openedAt: timestamp("opened_at", { withTimezone: true }).notNull(),
-    mergedAt: timestamp("merged_at", { withTimezone: true }),
-    closedAt: timestamp("closed_at", { withTimezone: true }),
+    /**
+     * When the pull request merged or closed. Null while it is open. The
+     * finished work of a Conversation needs this time for every pull
+     * request of every candidate, so it is stored and not read from GitHub.
+     */
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull(),
     /**
      * The requester's next action that Junior last derived from GitHub, and
@@ -149,8 +150,6 @@ export const juniorGitHubPullRequests = pgTable(
   },
   (table) => [
     index("junior_github_pull_requests_opened_at_idx").on(table.openedAt),
-    index("junior_github_pull_requests_merged_at_idx").on(table.mergedAt),
-    index("junior_github_pull_requests_closed_at_idx").on(table.closedAt),
     index("junior_github_pull_requests_open_idx")
       .on(table.pullRequestId)
       .where(sql`${table.state} = 'open'`),

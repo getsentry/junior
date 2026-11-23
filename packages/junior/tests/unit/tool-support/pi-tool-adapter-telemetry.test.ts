@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 
 const { endAttributes, startAttributes } = vi.hoisted(() => ({
   endAttributes: { value: {} as Record<string, unknown> },

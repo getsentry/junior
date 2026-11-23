@@ -233,7 +233,7 @@ describe("conversation cancel pending messages API", () => {
         method: "DELETE",
       },
     );
-    expect(response.status).toBe(403);
+    expect(response.status).toBe(404);
 
     const work = await getConversation({
       conversationId: created.conversationId,

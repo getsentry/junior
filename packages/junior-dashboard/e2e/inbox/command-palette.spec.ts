@@ -2,9 +2,12 @@ import { CONVERSATION_DETAIL_VERSION_HEADER } from "@sentry/junior/api/schema";
 import type { Page } from "@playwright/test";
 
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
-import { expandRow, mockReviewItems, rollout, rowHead } from "./inbox-fixture";
+import { expandRow, mockInboxItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
-import { mobile, screenshot } from "../screenshot";
+import { waitForSettingsReads } from "../harness";
+import { desktop, mobile, screenshot } from "../screenshot";
+import { pickOption } from "../pick-option";
+import { expectRequestBudget } from "../request-budget";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -48,12 +51,12 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   /**
    * Make the viewer a participant, so the Conversation has a reply box. With
-   * `reviewItemId`, Junior added that Review item last.
+   * `inboxItemId`, Junior added that Inbox item last.
    */
   async function routeAsParticipant(
     page: Page,
     conversationId: string,
-    reviewItemId?: string,
+    inboxItemId?: string,
   ) {
     await page.route(
       `**/api/conversations/${encodeURIComponent(conversationId)}*`,
@@ -66,7 +69,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         });
         const detail = await response.json();
         const last = detail.events.at(-1);
-        const events = reviewItemId
+        const events = inboxItemId
           ? [
               ...detail.events,
               {
@@ -74,10 +77,10 @@ test.describe("new UI", { tag: "@new" }, () => {
                 data: {
                   calls: [
                     {
-                      name: "addReviewItem",
-                      output: { item: { id: reviewItemId } },
+                      name: "addInboxItem",
+                      output: { item: { id: inboxItemId } },
                       status: "completed",
-                      toolCallId: "add-review-item",
+                      toolCallId: "add-inbox-item",
                     },
                   ],
                   type: "tool_calls",
@@ -146,25 +149,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(palette).toHaveCount(0);
   });
 
-  test("a palette switch focuses the question while Junior waits for an answer", async ({
+  test("a palette switch focuses the message box, and a question that loads later leaves it there", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize({ height: 800, width: 1280 });
     await routeAsParticipant(page, CLOSED_ISSUE_ID, question.id);
     // The question sits on a second page that loads after the reply box
-    // shows.
+    // shows, and a third page loads after the reader starts to type.
     let releaseQuestion = () => {};
     const questionHeld = new Promise<void>((resolve) => {
       releaseQuestion = resolve;
     });
-    // A third page loads after the reader starts to type.
     let lastPageSent = false;
     let releaseLastPage = () => {};
     const lastPageHeld = new Promise<void>((resolve) => {
       releaseLastPage = resolve;
     });
-    await page.route(`**/api/review-items?*`, async (route) => {
+    await page.route(`**/api/inbox-items?*`, async (route) => {
       const url = new URL(route.request().url());
       if (url.searchParams.get("conversationId") !== CLOSED_ISSUE_ID) {
         return route.fallback();
@@ -194,17 +196,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     const composer = page.getByLabel("Continue this conversation");
     await expect(composer).toBeVisible();
 
-    // The question takes focus, so a number key answers it at once.
-    releaseQuestion();
-    const docked = page.getByRole("region", {
-      name: `Question: ${question.title}`,
-    });
-    await expect(docked).toBeFocused();
-    await expect(composer).toBeVisible();
-
-    // The last page does not take the focus back from the message box.
-    await composer.click();
+    // The message box takes the focus at once. The question shows in the
+    // transcript when its page loads, and does not take the focus.
+    await expect(composer).toBeFocused();
     await composer.pressSequentially("Hold on");
+    releaseQuestion();
     releaseLastPage();
     await expect.poll(() => lastPageSent).toBe(true);
     // Let the app render the last page before the next keys.
@@ -268,12 +264,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-palette-pages", { lightTheme: true });
 
     await input.fill("API Tokens");
+    const settingsRead = waitForSettingsReads(page);
     await input.press("Enter");
     await expect(palette).toHaveCount(0);
     await expect(page).toHaveURL(/\/settings#api-tokens$/);
     await expect(
       page.getByRole("heading", { name: "API Tokens" }),
     ).toBeVisible();
+    await settingsRead;
   });
 
   test("sends feedback from the command palette", async ({
@@ -314,13 +312,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.setViewportSize(mobile);
     await page.keyboard.press("ControlOrMeta+k");
     await palette.getByRole("combobox").fill("feedback");
-    await palette.getByRole("option", { name: "Send feedback" }).click();
+    await pickOption(palette.getByRole("option", { name: "Send feedback" }));
     await expect(dialog).toBeVisible();
   });
 
   test("ranks the active tab's results first", async ({ page, dashboard }) => {
     await page.setViewportSize({ height: 800, width: 1280 });
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await mockLandingAutomationApis(page);
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     for (const [path, group] of [
@@ -355,7 +353,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const inbox = palette.getByRole("group", { exact: true, name: "Inbox" });
     const match = inbox.getByRole("option").first();
     await expect(match).toHaveAccessibleName(new RegExp(rollout.title));
-    await match.click();
+    await pickOption(match);
     await expect(page).toHaveURL(/\/\?view=inbox$/);
     await expect(
       // In its stack, the item's own row opens, under its question.
@@ -370,7 +368,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await page.setViewportSize({ height: 800, width: 1280 });
-    await mockReviewItems(page, { open: [rollout] });
+    await mockInboxItems(page, { open: [rollout] });
     await page.goto(dashboard.baseURL);
     await expandRow(rowHead(page, "Investigate checkout latency"));
     await page.getByRole("button", { name: "Snooze" }).click();
@@ -384,10 +382,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
     await page.keyboard.press("ControlOrMeta+k");
     await palette.getByRole("combobox").fill("canary error");
-    await palette
-      .getByRole("group", { exact: true, name: "Inbox" })
-      .getByRole("option", { name: new RegExp(rollout.title) })
-      .click();
+    await pickOption(
+      palette
+        .getByRole("group", { exact: true, name: "Inbox" })
+        .getByRole("option", { name: new RegExp(rollout.title) }),
+    );
     await expect(page).toHaveURL(/\/\?view=snoozed$/);
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(
@@ -473,7 +472,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
-    await mockReviewItems(page);
+    await mockInboxItems(page);
     await page.goto(dashboard.baseURL);
     await page.keyboard.press("ControlOrMeta+k");
     const palette = page.getByRole("dialog", { name: "Go to conversation" });
@@ -483,7 +482,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(groups.nth(1)).toHaveAccessibleName("Done");
     const closed = groups.nth(1).getByRole("option").first();
     await expect(closed).toHaveAccessibleName(/initech license entry/);
-    await closed.click();
+    await pickOption(closed);
     // Done opens with the item's row expanded.
     await expect(page).toHaveURL(/\/\?view=done$/);
     await expect(
@@ -493,13 +492,122 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
+  test("finds To-dos, with closed ones under Done, and opens their Conversation", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(dashboard.baseURL);
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    await palette.getByRole("combobox").fill("dashboard");
+    const group = (name: string) =>
+      palette.getByRole("group", { exact: true, name }).getByRole("option");
+    await expect(group("To-dos")).toHaveText([
+      /Fix the failing dashboard checks/,
+      /Review the dashboard plan before editing/,
+    ]);
+    await expect(group("Done")).toHaveText([/Port the old dashboard theme/]);
+    await expect(group("Done")).toContainText("To-do");
+    for (const view of [desktop, mobile]) {
+      await page.setViewportSize({ height: view.height, width: view.width });
+      await group("To-dos").first().hover();
+      await expect(group("To-dos").first()).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await screenshot(page, "inbox-palette-todos", {
+        lightTheme: true,
+        view: view.name,
+      });
+    }
+
+    await pickOption(group("To-dos").first());
+    await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
+    await expect(
+      page.getByRole("heading", { name: "Dashboard QA edge cases" }),
+    ).toBeVisible();
+  });
+
+  test("finds Inbox items, Automations, and Memories with one search for each typed query", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.setViewportSize({ height: 800, width: 1280 });
+    await mockInboxItems(page);
+    await mockLandingAutomationApis(page);
+    await page.goto(dashboard.baseURL);
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    await expect(palette.getByRole("group").first()).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const group = (name: string) =>
+      palette.getByRole("group", { exact: true, name }).getByRole("option");
+    const listSearches: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (
+        url.searchParams.has("q") &&
+        [
+          "/api/automations",
+          "/api/inbox-items",
+          "/api/user-pages/memory/memories",
+        ].includes(url.pathname)
+      )
+        listSearches.push(url.pathname);
+    });
+
+    await expectRequestBudget(
+      page,
+      async () => {
+        // A half-typed word finds the text with a word that it starts: a
+        // title match first, then a match in an instruction.
+        await palette.getByRole("combobox").fill("revie");
+        await expect(group("Automations")).toHaveText([
+          /Fair Source PR review/,
+          /Post-merge cleanup/,
+        ]);
+      },
+      { requests: 6, serialRounds: 2 },
+    );
+
+    expect(listSearches).toEqual([]);
+    await expect(group("Memories")).toHaveText([
+      /Start incident reviews with the customer impact/,
+    ]);
+    await expect(group("Inbox")).toHaveCount(3);
+    await expect(group("To-dos")).toHaveText([
+      /Review the dashboard plan before editing/,
+    ]);
+    await expect(group("Done")).toHaveText([
+      /Review the initech license entry/,
+      /Read the review feedback/,
+    ]);
+    // Conversations lead the list, so show the server-matched groups.
+    // A resize resets the scroll, so each size gets its own shot.
+    const shot = async (view: typeof desktop | typeof mobile) => {
+      await page.setViewportSize({ height: view.height, width: view.width });
+      // Highlight the row, since the palette keeps the highlight in view.
+      await group("Memories").first().hover();
+      await expect(group("Memories").first()).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await screenshot(page, "inbox-palette-search", {
+        lightTheme: true,
+        view: view.name,
+      });
+    };
+    await shot(desktop);
+    await shot(mobile);
+  });
+
   test("waits for every server search before it says nothing matches", async ({
     page,
     dashboard,
   }) => {
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/user-pages/memory/memories?q=*", async (route) => {
+    await page.route(/\/api\/search\?/, async (route) => {
       await released;
       await route.fallback();
     });
@@ -510,15 +618,12 @@ test.describe("new UI", { tag: "@new" }, () => {
       response.url().includes("/api/conversations?q="),
     );
     await palette.getByRole("combobox").fill("zzqx nothing");
-    // The conversation search has answered; Memories still reads.
+    // The conversation search has answered; `/api/search` still reads.
     await conversationsSearched;
     await expect(palette.getByText("Searching…")).toBeVisible();
     await expect(palette.getByText("No matches.")).toHaveCount(0);
-    // The mock memories ignore the text, so the server's matches then show.
     release();
-    await expect(
-      palette.getByRole("group", { name: "Memories" }).getByRole("option"),
-    ).not.toHaveCount(0);
+    await expect(palette.getByText("No matches.")).toBeVisible();
     await expect(palette.getByText("Searching…")).toHaveCount(0);
   });
 
@@ -608,7 +713,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(match).toHaveAccessibleName(/Deploy the payments service/);
     expect(queries).toContain("deploy");
 
-    await match.click();
+    await pickOption(match);
     await expect(page).toHaveURL(
       `${dashboard.baseURL}/plugins/fixture/checklists#record-checklist-21`,
     );

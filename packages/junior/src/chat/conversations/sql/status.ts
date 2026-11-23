@@ -2,9 +2,9 @@ import { and, desc, eq, gt, gte, or, sql, type SQL } from "drizzle-orm";
 import { alias, type AnyPgColumn } from "drizzle-orm/pg-core";
 import type { ConversationReportStatus } from "@/api/schema/conversation";
 import {
-  reviewItemNeedsInput,
-  reviewItemOwnedByConversation,
-} from "@/chat/review-items/access";
+  inboxItemNeedsInput,
+  inboxItemOwnedByConversation,
+} from "@/chat/inbox-items/access";
 import { awaitsAuthorization } from "./authorization-wait";
 import { conversationKindSql } from "./conversation-row";
 import {
@@ -13,7 +13,7 @@ import {
   juniorConversationReadPositions,
   juniorConversations,
   juniorIdentities,
-  juniorReviewItems,
+  juniorInboxItems,
 } from "@/db/schema";
 
 /** The `junior_conversations` columns, or an alias's, that status reads. */
@@ -107,7 +107,9 @@ function conversationStarterUserIdSql(
  * `working`, not waiting. One of these applies:
  *
  * - The latest Turn failed.
- * - The latest Brief outcome is `partial` or `blocked`.
+ * - The latest Brief outcome is `partial` or `blocked`, and that Brief
+ *   covers the latest assistant Message. Turns no longer store Briefs, so a
+ *   legacy Brief stops deciding once the Conversation moves on.
  * - The latest assistant Message is an answer that the starter has not
  *   read. It is an answer when the latest Brief is `answered` or does not
  *   cover it. A `done` Brief that covers it needs no read. The starter read
@@ -119,36 +121,34 @@ function conversationWaitsOnStarterSql(
   conversation: ConversationStatusColumns,
 ): SQL<boolean> {
   const id = conversation.conversationId;
+  // Postgres runs a subquery each place that names it, so each fact below
+  // is read once, in one row, and the rule reads it by name. `offset 0`
+  // keeps Postgres from copying the starter lookup back into each use.
+  const starter = sql.identifier("status_starter");
+  const brief = sql.identifier("status_brief");
+  const reply = sql.identifier("status_reply");
+  const starterUserId = sql`${starter}.user_id`;
+  const briefStatus = sql`${brief}.status`;
+  const briefThroughSeq = sql`${brief}.through_seq`;
+  const replySeq = sql`${reply}.seq`;
+  const replyInSlack = sql`${reply}.in_slack`;
   // Reads `junior_conversation_briefs_conversation_version_idx`.
-  const latestBrief = (column: SQL) =>
-    sql`(select ${column} from ${juniorConversationBriefs} where ${eq(
-      juniorConversationBriefs.conversationId,
-      id,
-    )} order by ${desc(juniorConversationBriefs.version)} limit 1)`;
-  const briefStatus = latestBrief(
-    sql`${juniorConversationBriefs.content}->'outcome'->>'status'`,
-  );
-  const briefThroughSeq = latestBrief(
-    sql`${juniorConversationBriefs.throughSeq}`,
-  );
+  const latestBrief = sql`(select ${juniorConversationBriefs.content}->'outcome'->>'status' as status, ${juniorConversationBriefs.throughSeq} as through_seq from ${juniorConversationBriefs} where ${eq(
+    juniorConversationBriefs.conversationId,
+    id,
+  )} order by ${desc(juniorConversationBriefs.version)} limit 1)`;
   // Transcript order, the order of read positions, is `seq`, not time.
   // Reads `junior_conversation_events_message_role_idx` and sorts the
   // Conversation's assistant Messages by `seq`.
-  const latestReply = (column: SQL) =>
-    sql`(select ${column} from ${juniorConversationEvents} where ${and(
-      eq(juniorConversationEvents.conversationId, id),
-      eq(juniorConversationEvents.type, "message"),
-      sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
-    )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
-  const replySeq = latestReply(sql`${juniorConversationEvents.seq}`);
   // A reply has source `slack` only when Slack accepted it. A reply that a
   // delivery pause held back has no source and no other mark. Pauses started
   // with #3050, so a reply with no source from before then reached Slack.
   // TODO(dcramer): Drop the date once no root's latest reply predates it.
-  const replyInSlack = latestReply(
-    sql`coalesce(${juniorConversationEvents.payload}->'meta'->>'source' = 'slack', ${juniorConversationEvents.createdAt} < ${DELIVERY_PAUSE_START})`,
-  );
-  const starterUserId = conversationStarterUserIdSql(conversation);
+  const latestReply = sql`(select ${juniorConversationEvents.seq} as seq, coalesce(${juniorConversationEvents.payload}->'meta'->>'source' = 'slack', ${juniorConversationEvents.createdAt} < ${DELIVERY_PAUSE_START}) as in_slack from ${juniorConversationEvents} where ${and(
+    eq(juniorConversationEvents.conversationId, id),
+    eq(juniorConversationEvents.type, "message"),
+    sql`${juniorConversationEvents.payload}->>'role' = 'assistant'`,
+  )} order by ${desc(juniorConversationEvents.seq)} limit 1)`;
   const readByStarter = or(
     and(
       sql`${conversation.parentConversationId} is null`,
@@ -173,13 +173,16 @@ function conversationWaitsOnStarterSql(
   );
   // With no starter, nobody can read the answer, so nothing waits on it.
   const unreadAnswer = sql`${replySeq} is not null and ${starterUserId} is not null and (coalesce(${briefStatus}, 'answered') = 'answered' or ${briefThroughSeq} < ${replySeq}) and not (${readByStarter})`;
+  const waitsOnFacts = sql`(select (${briefStatus} in ('partial', 'blocked') and (${replySeq} is null or ${briefThroughSeq} >= ${replySeq})) or (${unreadAnswer})
+    from (select ${conversationStarterUserIdSql(conversation)} as user_id offset 0) as ${starter}
+    left join lateral ${latestBrief} as ${brief} on true
+    left join lateral ${latestReply} as ${reply} on true)`;
   return sql<boolean>`(${conversation.stoppedAt} is null
     and ${conversationKindSql(conversation)} <> 'task'
     and not ${conversationIsActiveSql(conversation)}
     and (
       ${conversationTurnFailedSql(conversation)}
-      or ${briefStatus} in ('partial', 'blocked')
-      or (${unreadAnswer})
+      or ${waitsOnFacts}
     ))`;
 }
 
@@ -188,7 +191,7 @@ function conversationWaitsOnStarterSql(
  * This is the only place that derives it; readers, counts, and feed tokens
  * select it. When more than one applies: `needs_input` > `working` > `done`.
  *
- * - `needs_input`: an open action Review item that this Conversation added
+ * - `needs_input`: an open action Inbox item that this Conversation added
  *   waits on its assignees or Everyone, a Turn waits on a person to sign in
  *   (`awaitsAuthorization`), or the work waits on its starter
  *   (`conversationWaitsOnStarterSql`).
@@ -199,9 +202,9 @@ function conversationWaitsOnStarterSql(
 export function conversationStatusSql(
   conversation: ConversationStatusColumns,
 ): SQL<ConversationReportStatus> {
-  const needsInput = sql`exists (select 1 from ${juniorReviewItems} where ${and(
-    reviewItemOwnedByConversation(conversation.conversationId),
-    reviewItemNeedsInput(),
+  const needsInput = sql`exists (select 1 from ${juniorInboxItems} where ${and(
+    inboxItemOwnedByConversation(conversation.conversationId),
+    inboxItemNeedsInput(),
   )})`;
   return sql<ConversationReportStatus>`case
     when ${needsInput} or ${awaitsAuthorization(conversation.conversationId)} or ${conversationWaitsOnStarterSql(conversation)} then 'needs_input'

@@ -24,11 +24,19 @@ describe("thread sandbox state", () => {
     }
   });
 
-  it("clears a stale profile hash when the replacement reference omits one", async () => {
+  it("keeps the last tool session and clears stale fields when the replacement reference omits them", async () => {
     const conversationId = "local:test:thread-sandbox-state";
+    const toolSession = { sandboxId: "sandbox-old", sessionId: "session-old" };
     await persistThreadStateById(conversationId, {
-      sandboxRef: { id: "sandbox-old", profileHash: "profile-old" },
+      sandboxRef: {
+        id: "sandbox-old",
+        profileHash: "profile-old",
+        toolSession,
+      },
     });
+    expect(
+      getPersistedSandboxState(await getPersistedThreadState(conversationId)),
+    ).toEqual({ id: "sandbox-old", profileHash: "profile-old", toolSession });
 
     await persistThreadStateById(conversationId, {
       sandboxRef: { id: "sandbox-new" },
@@ -38,6 +46,7 @@ describe("thread sandbox state", () => {
     expect(state).toMatchObject({
       app_sandbox_id: "sandbox-new",
       app_sandbox_dependency_profile_hash: "",
+      app_sandbox_tool_session_id: "",
     });
     expect(getPersistedSandboxState(state)).toEqual({ id: "sandbox-new" });
   });
