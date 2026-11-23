@@ -179,7 +179,9 @@ private struct InboxRow: View {
   private var selected: Bool { window.path.first == .inboxItem(item.id) }
 
   private var subtitle: String {
-    var parts = [item.kind == "notice" ? "Notice" : "Question"]
+    // The dashboard names an action without a question by its source, such
+    // as "To do for you". MCP does not send the source, so the row names none.
+    var parts: [String] = item.kind == "notice" ? ["Notice"] : item.question == nil ? [] : ["Question"]
     if let subject = item.subject?.title { parts.append(subject) }
     if let date = item.createdAt.date { parts.append(app.clock.relative(date)) }
     return parts.joined(separator: " · ")
