@@ -265,9 +265,13 @@ test.describe("on a touch screen", () => {
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
+    const homeRead = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/lead",
+    );
     await page.goto(dashboard.baseURL);
     const entries = page.getByRole("navigation", { name: "Primary" });
     await expect(entries.getByRole("link").first()).toHaveText("Lead");
+    await homeRead;
     await entries.getByRole("link", { name: "Lead", exact: true }).click();
     await expect(
       page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
