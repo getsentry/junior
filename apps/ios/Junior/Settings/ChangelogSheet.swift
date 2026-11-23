@@ -21,12 +21,10 @@ struct ChangelogPage: Identifiable {
 
   /// The releases since the version that last launched, once per update. It
   /// records this version as the last one. A fresh install shows nothing, and
-  /// Debug builds always have one version (`project.yml`), so UI tests and
-  /// screenshots never get this sheet.
+  /// Debug builds always have one version (`project.yml`) and no Upcoming
+  /// section, so UI tests and screenshots never get this sheet.
   static func whatsNew(_ defaults: UserDefaults = .standard) -> ChangelogPage? {
-    guard let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String else {
-      return nil
-    }
+    let version = AppBuild.current.changelogVersion
     let last = defaults.string(forKey: "lastSeenVersion")
     guard last != version else { return nil }
     defaults.set(version, forKey: "lastSeenVersion")

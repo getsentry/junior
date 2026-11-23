@@ -50,7 +50,7 @@ struct SettingsScreen: View {
               .buttonStyle(.dashboard(.outline))
               .accessibilityIdentifier("sign-out")
           }
-          card("Changelog", description: "Version \(appVersion)") {
+          card("Changelog", description: "Version \(AppBuild.current.label)") {
             Button("Show changelog") { window.changelog = .full() }
               .buttonStyle(.dashboard(.outline))
               .accessibilityIdentifier("show-changelog")
@@ -91,7 +91,7 @@ struct SettingsScreen: View {
     do {
       let lines = try recentLogLines()
       let header = [
-        "Junior iOS \(appVersion)",
+        "Junior iOS \(AppBuild.current.label)",
         "Server \(app.server.baseURL.absoluteString), junior \(app.serverVersion ?? "unknown")",
       ]
       UIPasteboard.general.string = (header + lines).joined(separator: "\n")
@@ -99,12 +99,6 @@ struct SettingsScreen: View {
     } catch {
       logsResult = "Could not read the logs. \(error.localizedDescription)"
     }
-  }
-
-  /// This app's version and build, such as `0.1.0 (42)`.
-  private var appVersion: String {
-    let info = Bundle.main.infoDictionary
-    return "\(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))"
   }
 
   /// A raised card: `text-lg font-bold` title, `text-sm` description.

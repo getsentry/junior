@@ -7,7 +7,6 @@
 
 require "json"
 require "tmpdir"
-require "yaml"
 
 BUNDLE_ID = "io.sentry.junior"
 TEAM_ID = "97JCY7859U"
@@ -25,35 +24,28 @@ end
 
 IOS_DIR = File.expand_path("..", __dir__)
 
-# Earlier betas with their "What to Test" notes. TestFlight is the record of
-# what shipped, because a beta commits nothing. The list includes expired builds.
-def testflight_history
+# The newest TestFlight build's "What to Test" notes. Their last line names
+# the commit of that beta, where this beta's notes start.
+def latest_beta_notes
   app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
-  builds = Spaceship::ConnectAPI::Build.all(
-    app_id: app.id, includes: "preReleaseVersion,betaBuildLocalizations", limit: 200
-  )
-  history = builds.map do |build|
-    notes = (build.beta_build_localizations || []).map(&:whats_new).find { |text| !text.to_s.empty? }
-    { version: build.app_version, build: build.version.to_i, date: build.uploaded_date.to_s[0, 10], notes: notes.to_s }
-  end
-  # Logged to show whether expired builds keep their notes.
-  noted = builds.zip(history).reject { |_, entry| entry[:notes].empty? }
-  UI.message("TestFlight: #{builds.size} builds, #{noted.size} with notes, #{noted.count { |b, _| b.expired }} of those expired")
-  history
+  build = Spaceship::ConnectAPI.get_builds(
+    filter: { app: app.id }, includes: "betaBuildLocalizations", sort: "-uploadedDate", limit: 1
+  ).to_models.first
+  (build&.beta_build_localizations || []).map(&:whats_new).find { |text| !text.to_s.empty? }.to_s
 end
 
-# Version this build from [Unreleased] in CHANGELOG.md and the TestFlight
-# history (Packages/JuniorKit/Sources/junior-changelog). It rewrites
-# CHANGELOG.md in this checkout only, and returns the version and the notes.
-def prepare_changelog(build)
+# The version, channel, commit, and notes of this beta, from the release tags
+# and the `(ios)` commits since the last beta
+# (Packages/JuniorKit/Sources/junior-changelog). It adds those commits to the
+# root CHANGELOG.md in this checkout only, which the app bundles.
+def prepare_beta
   Dir.mktmpdir do |dir|
-    history = File.join(dir, "history.json")
+    previous = File.join(dir, "previous-notes.txt")
     result = File.join(dir, "result.json")
-    File.write(history, JSON.generate(testflight_history))
-    base_version = YAML.load_file(File.join(IOS_DIR, "project.yml")).dig("settings", "base", "MARKETING_VERSION")
+    File.write(previous, latest_beta_notes)
     sh(
-      "swift", "run", "--package-path", File.join(IOS_DIR, "Packages/JuniorKit"), "junior-changelog", "prepare",
-      File.join(IOS_DIR, "CHANGELOG.md"), history, build.to_s, base_version, result
+      "swift", "run", "--package-path", File.join(IOS_DIR, "Packages/JuniorKit"), "junior-changelog", "beta",
+      File.join(IOS_DIR, "../../CHANGELOG.md"), previous, result
     )
     JSON.parse(File.read(result))
   end
@@ -66,11 +58,11 @@ platform :ios do
     key = api_key
     match(type: "appstore", api_key: key)
 
-    # TestFlight owns the build number and the record of what shipped, so a
-    # beta commits no version bump and no changelog change.
+    # TestFlight owns the build number, and the latest server release tag is
+    # the version, so a beta commits nothing.
     build = latest_testflight_build_number(api_key: key, initial_build_number: 0) + 1
-    release = prepare_changelog(build)
-    UI.message("Junior #{release["version"]} (#{build})")
+    beta = prepare_beta
+    UI.message("Junior #{beta["version"]} #{beta["channel"]} #{build} (#{beta["commit"]})")
 
     # `sh` runs in fastlane/; the project is generated and not committed.
     sh("make -C .. xcodegen")
@@ -91,14 +83,15 @@ platform :ios do
       export_method: "app-store",
       clean: true,
       xcodebuild_formatter: "xcbeautify",
-      xcargs: "CURRENT_PROJECT_VERSION=#{build} MARKETING_VERSION=#{release["version"]}",
+      xcargs: "CURRENT_PROJECT_VERSION=#{build} MARKETING_VERSION=#{beta["version"]} " \
+        "JUNIOR_CHANNEL=#{beta["channel"]} JUNIOR_COMMIT=#{beta["commit"]}",
       export_options: { provisioningProfiles: { BUNDLE_ID => PROFILE } }
     )
 
     upload_to_testflight(
       api_key: key,
       # With notes, it waits until the build shows in App Store Connect to set them.
-      changelog: release["notes"].empty? ? nil : release["notes"],
+      changelog: beta["notes"],
       skip_waiting_for_build_processing: true,
       skip_submission: true
     )

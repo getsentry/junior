@@ -125,28 +125,36 @@ public enum ChangelogParser {
     }
   }
 
-  /// What's New after an update: the releases since the version that the
-  /// person last saw. Empty on a first launch (no last version) and when the
-  /// version did not change, so a fresh install shows nothing.
+  /// The section that a TestFlight beta adds on top, with the iOS entries
+  /// since the previous beta (`fastlane/Fastfile`).
+  public static let upcoming = "Upcoming"
+
+  /// What's New after an update: the Upcoming section and the releases since
+  /// the version that the person last saw. A version can end in `+commit`
+  /// (`0.313.0+abc1234`), so each beta shows its Upcoming section once. Empty
+  /// on a first launch (no last version) and when the version did not change,
+  /// so a fresh install shows nothing.
   public static func whatsNew(
     in releases: [ChangelogRelease], lastSeenVersion: String?, currentVersion: String
   ) -> [ChangelogRelease] {
     guard let lastSeenVersion, lastSeenVersion != currentVersion else { return [] }
-    return self.releases(since: lastSeenVersion, upTo: currentVersion, from: releases)
+    func release(_ version: String) -> String { String(version.prefix { $0 != "+" }) }
+    return releases.filter { $0.version == upcoming }
+      + self.releases(since: release(lastSeenVersion), upTo: release(currentVersion), from: releases)
   }
 }
 
 /// `MAJOR.MINOR.PATCH`, ordered by number.
-struct SemanticVersion: Comparable {
+public struct SemanticVersion: Comparable, Sendable {
   let parts: [Int]
 
-  init?(_ text: String) {
+  public init?(_ text: String) {
     let parts = text.split(separator: ".").map { Int($0) }
     guard parts.count == 3, !parts.contains(nil) else { return nil }
     self.parts = parts.compactMap { $0 }
   }
 
-  static func < (lhs: Self, rhs: Self) -> Bool { lhs.parts.lexicographicallyPrecedes(rhs.parts) }
+  public static func < (lhs: Self, rhs: Self) -> Bool { lhs.parts.lexicographicallyPrecedes(rhs.parts) }
 }
 
 extension String {
