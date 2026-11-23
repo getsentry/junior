@@ -1,7 +1,7 @@
 // The harness of core's Turn engine integration tests. It runs the real path
 // from an input to a Slack post: `scheduleInput`, the host's Turn step
-// consumer with the host's `prepare`, and the host's delivery consumer. Only
-// the edges outside Junior are fakes: the AI emulator answers the model
+// consumer with the host's prompt layout, and the host's delivery consumer.
+// Only the edges outside Junior are fakes: the AI emulator answers the model
 // requests, MSW captures the Slack API calls, and an in-process queue holds
 // each message until the test delivers it. Postgres is real. Each harness has
 // its own Conversation, Actor and queue, so the ids keep tests apart in the
@@ -25,7 +25,7 @@ import {
 } from "@/db/schema";
 import { turnStepConsumer } from "@/turn-steps/consumer";
 import { deliveryConsumer } from "@/turn-steps/delivery";
-import type { TurnInputPayload } from "@/turn-steps/prepare";
+import type { TurnInputPayload } from "@/turn-steps/prompt";
 import { emulatedModelClient } from "./ai-emulator";
 import { createInProcessQueue, type InProcessQueue } from "./in-process-queue";
 import { slackApiOutbox } from "./slack-api-outbox";
@@ -87,7 +87,7 @@ export type TurnHarness = {
 
 /**
  * Creates a root Slack Conversation and its queue for one test. The host's
- * `prepare` gives the model `tools`.
+ * Turn steps give the model `tools`.
  */
 export async function createTurnHarness({
   tools = [],
@@ -127,7 +127,7 @@ export async function createTurnHarness({
     leaseMs: LEASE_MS,
   };
   queue.mount(
-    turnStepConsumer(engineCtx, {
+    await turnStepConsumer(engineCtx, {
       client: emulatedModelClient(),
       bot: getChatConfig().bot,
       tools,

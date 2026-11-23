@@ -54,11 +54,8 @@ import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { EngineContext } from "@/core/engine-context";
-import {
-  findUnreadInputs,
-  inputEventKey,
-  type InputMessage,
-} from "@/core/turn/inbox";
+import type { PromptMessage } from "@/core/prompt/assemble";
+import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
@@ -253,12 +250,24 @@ function stepEventKey(turnId: string, stepSeq: number, index: number): string {
 }
 
 /**
- * Commits a step in one transaction: it appends the inputs that the step
- * read, then the step's messages keyed by Turn and step, to the Conversation
- * history and releases the lease. A Turn that continues goes back to queued
- * for its next step, which needs a new claim. A Turn that the step completed
- * ends, unless it still has unread inputs: then it continues, so the next
- * step reads them.
+ * The idempotency key of one new message that a step's prompt added from a
+ * message fragment. It is not a step event key, so Delivery does not read it.
+ */
+function promptEventKey(
+  turnId: string,
+  stepSeq: number,
+  index: number,
+): string {
+  return `prompt:${turnId}:${stepSeq}:${index}`;
+}
+
+/**
+ * Commits a step in one transaction: it appends the prompt's new messages in
+ * layout order, which hold the inputs that the step read, then the step's
+ * messages keyed by Turn and step, to the Conversation history and releases
+ * the lease. A Turn that continues goes back to queued for its next step,
+ * which needs a new claim. A Turn that the step completed ends, unless it
+ * still has unread inputs: then it continues, so the next step reads them.
  * Returns what the Turn does next. Undefined when the lease is lost or the
  * step is already committed, and then nothing is written.
  */
@@ -266,7 +275,7 @@ export async function commitStep(
   { executor }: Pick<EngineContext, "executor">,
   turn: TurnLease & { conversationId: string; stepSeq: number },
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
-  inputs: InputMessage[],
+  prompt: PromptMessage[],
 ): Promise<"continue" | "completed" | undefined> {
   const nextStep = {
     stepSeq: sql`${juniorTurns.stepSeq} + 1`,
@@ -281,7 +290,7 @@ export async function commitStep(
         { executor },
         turn.turnId,
         step,
-        inputs,
+        prompt,
       );
       const rows = await executor
         .db()
@@ -305,11 +314,29 @@ export async function commitStep(
       await createSqlConversationEventStore(executor).append(
         turn.conversationId,
         [
-          ...inputs.map(({ inputId, message, provenance }) => ({
-            data: historyItemFromPiMessage(message, provenance),
-            idempotencyKey: inputEventKey(inputId),
-            createdAtMs: message.timestamp,
-          })),
+          ...prompt.map((entry, index) =>
+            entry.source === "input"
+              ? {
+                  data: historyItemFromPiMessage(
+                    entry.message,
+                    entry.provenance,
+                  ),
+                  idempotencyKey: inputEventKey(entry.inputId),
+                  createdAtMs: entry.message.timestamp,
+                }
+              : {
+                  data: historyItemFromPiMessage(
+                    entry.message,
+                    contextProvenance,
+                  ),
+                  idempotencyKey: promptEventKey(
+                    turn.turnId,
+                    turn.stepSeq,
+                    index,
+                  ),
+                  createdAtMs: entry.message.timestamp,
+                },
+          ),
           ...step.messages.map((message, index) => ({
             data: historyItemFromPiMessage(message, contextProvenance),
             idempotencyKey: stepEventKey(turn.turnId, turn.stepSeq, index),
@@ -331,12 +358,16 @@ async function commitOutcome(
   { executor }: Pick<EngineContext, "executor">,
   turnId: string,
   step: Extract<StepResult, { outcome: "continue" | "completed" }>,
-  inputs: InputMessage[],
+  prompt: PromptMessage[],
 ): Promise<"continue" | "completed"> {
   if (step.outcome === "continue") {
     return "continue";
   }
-  const read = new Set(inputs.map((input) => input.inputId));
+  const read = new Set(
+    prompt.flatMap((entry) =>
+      entry.source === "input" ? [entry.inputId] : [],
+    ),
+  );
   const unread = await findUnreadInputs({ executor }, turnId);
   return unread.every((input) => read.has(input.inputId))
     ? "completed"

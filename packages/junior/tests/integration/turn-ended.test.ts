@@ -1,3 +1,4 @@
+import type { UserMessage } from "@earendil-works/pi-ai";
 import { eq, sql } from "drizzle-orm";
 import {
   afterEach,
@@ -9,6 +10,7 @@ import {
   vi,
 } from "vitest";
 import type { EngineContext } from "@/core/engine-context";
+import { fragment, loader } from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
@@ -27,10 +29,12 @@ import {
   LEASE_MS,
   MAX_ATTEMPTS,
   messageTurnId,
-  prepareWith,
+  stepWith,
   sendTool,
   startTurnEngine,
   storedReply,
+  testInputs,
+  testPrompt,
   userText,
   type TurnEngine,
 } from "../fixtures/turn-engine";
@@ -90,7 +94,7 @@ function danglingResult(toolCallId: string, text: string) {
 // The real path: an input goes through scheduleInput, and the host's Turn
 // step consumer runs each step from the queue.
 describe("advanceTurn at the end of a Turn", () => {
-  /** Starts this test's harness, whose `prepare` gives the model `tools`. */
+  /** Starts this test's harness, whose steps give the model `tools`. */
   async function startHarness(tools: ToolDefinition[] = []) {
     harness = await createTurnHarness({ tools });
     onTestFinished(() => harness.close());
@@ -176,8 +180,8 @@ describe("advanceTurn at the end of a Turn", () => {
 });
 
 // These cases need a fault or a timing that no edge can give: an input that
-// arrives while the model request runs, a `prepare` that throws, or tools.
-describe("advanceTurn at the end of a Turn, with a test prepare", () => {
+// arrives while the model request runs, or a prompt loader that fails.
+describe("advanceTurn at the end of a Turn, with a test step", () => {
   beforeEach(async () => {
     engine = await startTurnEngine();
     ({ fixture, turnId } = engine);
@@ -190,11 +194,11 @@ describe("advanceTurn at the end of a Turn, with a test prepare", () => {
   it("drops the inputs a failed attempt claimed, and moves an input that came after it only once", async () => {
     const claimedId = await engine.addTestInput("How many Turns?");
     // Injected fault: the model provider is overloaded.
-    const step = prepareWith([modelOverloaded()]);
+    const step = stepWith([modelOverloaded()]);
     let lateId: string | undefined;
 
     await engine.advance({
-      prepare: step.prepare,
+      ...step,
       client: {
         complete: async (request, signal) => {
           lateId = await engine.addTestInput("And how many failed?");
@@ -217,7 +221,7 @@ describe("advanceTurn at the end of a Turn, with a test prepare", () => {
 
     // The new Turn's attempt claims the moved input, so its failure drops it.
     // Injected fault: the model provider is overloaded.
-    await engine.advance(prepareWith([modelOverloaded()]), LEASE_MS, next!.id);
+    await engine.advance(stepWith([modelOverloaded()]), LEASE_MS, next!.id);
 
     await expect(
       readInputs(engine.engineCtx, CONVERSATION_ID),
@@ -229,14 +233,30 @@ describe("advanceTurn at the end of a Turn, with a test prepare", () => {
 
   it("drops the inputs when every try of a step throws, and moves none", async () => {
     const inputId = await engine.addTestInput("How many Turns?");
-    const failure = new Error("The system prompt could not be built");
+    // Injected fault: a loader of the prompt fails each time.
+    const memory = loader(
+      "memory",
+      () => Promise.reject(new Error("The memory store is down")),
+      { timeoutMs: 1_000 },
+    );
+    const prompt = testPrompt([
+      testInputs(),
+      fragment("memory", {
+        loader: memory,
+        format: (text): UserMessage => ({
+          role: "user",
+          content: text,
+          timestamp: 0,
+        }),
+      }),
+    ]);
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      await expect(
-        engine.advance({ prepare: () => Promise.reject(failure) }),
-      ).rejects.toBe(failure);
+      await expect(engine.advance({ prompt })).rejects.toThrow(
+        'Loader "memory" failed',
+      );
     }
 
-    await engine.advance(prepareWith([]));
+    await engine.advance(stepWith([]));
 
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "failed",

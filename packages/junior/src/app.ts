@@ -888,7 +888,7 @@ export async function createApp(
   // timeout use this app's functionMaxDurationSeconds.
   const chatConfig = getChatConfig();
   const engineCtx = createEngineContext(chatConfig);
-  const turnSteps = turnStepConsumer(engineCtx, {
+  const turnSteps = await turnStepConsumer(engineCtx, {
     client: createGatewayModelClient(),
     bot: chatConfig.bot,
     // Core Turns have no tools yet.

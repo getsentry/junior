@@ -3,7 +3,7 @@
 // the AI emulator for the model requests. Each test gets its own queue, so
 // tests read its messages instead of a worker's.
 import { randomUUID } from "node:crypto";
-import type { AssistantMessage } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Message } from "@earendil-works/pi-ai";
 import { eq } from "drizzle-orm";
 import { expect } from "vitest";
 import * as z from "zod";
@@ -12,9 +12,16 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import type { EngineContext } from "@/core/engine-context";
 import type { ModelClient, ModelSettings } from "@/core/model/client";
+import {
+  definePromptLayout,
+  inputs,
+  type Fragment,
+  type InputPrompt,
+  type PromptLayout,
+} from "@/core/prompt/layout";
 import type { ToolDefinition } from "@/core/tool";
 import { advanceTurn } from "@/core/turn/advance";
-import type { InputMessage, UnreadInput } from "@/core/turn/inbox";
+import type { UnreadInput } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import {
   juniorConversations,
@@ -46,10 +53,14 @@ export const MODEL: ModelSettings = {
   privacy: "private",
 };
 
-export type Prepare = Parameters<typeof advanceTurn>[2]["prepare"];
-
-/** How a test prepares a step, and the model client that the step uses. */
-export type Step = { prepare: Prepare; client?: ModelClient };
+/**
+ * What a test step runs with: the model client, the prompt layout, the model
+ * settings and the tools. Each one that a test leaves out has a default:
+ * no model reply, `testPrompt()`, `MODEL` and no tools.
+ */
+export type Step = Partial<
+  Omit<Parameters<typeof advanceTurn>[2], "maxAttempts">
+>;
 
 /** The Conversation, its Turn, and the queue of one test. */
 export type TurnEngine = {
@@ -144,7 +155,9 @@ export async function startTurnEngine(): Promise<TurnEngine> {
       { turnId: forTurnId },
       {
         client: step.client ?? replyingClient([]),
-        prepare: step.prepare,
+        prompt: step.prompt ?? testPrompt(),
+        modelSettings: step.modelSettings ?? (() => Promise.resolve(MODEL)),
+        tools: step.tools ?? [],
         maxAttempts: MAX_ATTEMPTS,
       },
     );
@@ -180,9 +193,8 @@ async function loadMessages(fixture: LocalJuniorSqlFixture) {
 }
 
 /** Formats an input as an instruction of the test Actor with its text. */
-function inputMessage(input: UnreadInput): InputMessage {
+function inputMessage(input: UnreadInput): InputPrompt {
   return {
-    inputId: input.inputId,
     message: {
       role: "user",
       content: [{ type: "text", text: String(input.payload["text"]) }],
@@ -236,21 +248,27 @@ export function userText(text: string) {
   });
 }
 
-/** A step whose model gives the replies in order. */
-export function prepareWith(
+/** The test inputs fragment: each input as the test Actor's text. */
+export function testInputs() {
+  return inputs({ format: inputMessage });
+}
+
+/** The test layout: a short system prompt, and `messages` after the history. */
+export function testPrompt(
+  messages: Fragment<Message | Message[]>[] = [testInputs()],
+): PromptLayout {
+  return definePromptLayout({
+    systemPrompt: [{ name: "identity", text: "You are Junior." }],
+    messages,
+  });
+}
+
+/** A step whose model gives the replies in order, with `tools`. */
+export function stepWith(
   replies: Array<AssistantMessage | ModelRule>,
   tools: ToolDefinition[] = [],
-): Required<Step> {
-  return {
-    prepare: (_turn, inputs) =>
-      Promise.resolve({
-        systemPrompt: "You are Junior.",
-        tools,
-        model: MODEL,
-        inputs: inputs.map(inputMessage),
-      }),
-    client: replyingClient(replies),
-  };
+): { client: ModelClient; tools: ToolDefinition[] } {
+  return { client: replyingClient(replies), tools };
 }
 
 /** A tool that must not run twice, which records each call it runs. */

@@ -1,6 +1,7 @@
 // The API that host code uses to declare how core builds the prompt of each
 // model request. `definePromptLayout` states the rules and shows an example.
-import type { Message } from "@earendil-works/pi-ai";
+import type { Message, UserMessage } from "@earendil-works/pi-ai";
+import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { UnreadInput } from "@/core/turn/inbox";
 import type { ClaimedTurn } from "@/core/turn/state";
 
@@ -178,6 +179,45 @@ export function fragment(
   };
 }
 
+/** One unread input as a user message, and the authority it has. */
+export type InputPrompt = {
+  message: UserMessage;
+  provenance: ConversationMessageProvenance;
+};
+
+type FormatInput = (input: UnreadInput) => InputPrompt;
+
+// The `format` of each `inputs()` fragment. Core finds the inputs fragment of
+// a layout by identity, so no field of a fragment can fake one.
+const inputFormats = new WeakMap<Fragment, FormatInput>();
+
+/**
+ * Declares where the Turn's unread inputs go in the messages. `format` turns
+ * each input into a user message and its provenance. A layout has exactly
+ * one, named `inputs`. It has no loader: it reads `ctx.inputs`. Core keeps
+ * each input's id with its message, so the commit marks the input read.
+ */
+export function inputs({
+  format,
+}: {
+  format: FormatInput;
+}): Fragment<UserMessage[]> {
+  const item: Fragment<UserMessage[]> = {
+    name: "inputs",
+    render: (values) => values.ctx.inputs.map((input) => format(input).message),
+  };
+  inputFormats.set(item, format);
+  return item;
+}
+
+/**
+ * The `format` of an `inputs()` fragment, or undefined for any other
+ * fragment. Core calls it.
+ */
+export function inputFormatOf(item: Fragment): FormatInput | undefined {
+  return inputFormats.get(item);
+}
+
 /** One named, static section of the system prompt. */
 export type SystemPromptSection = { name: string; text: string };
 
@@ -195,16 +235,18 @@ export type PromptLayout = {
 /**
  * Checks a layout and returns the copy that core builds each prompt from. It
  * throws on an empty or repeated system prompt section name, on two
- * fragments with one name, on one fragment used twice, and on two loaders
- * with one label. It freezes the system prompt sections and the messages
- * list.
+ * fragments with one name, on one fragment used twice, on two loaders with
+ * one label, and unless the messages hold exactly one `inputs()` fragment.
+ * It freezes the system prompt sections and the messages list.
  *
  * The rules:
  * - Loaders do all of the I/O. Core runs each needed loader once per step.
  * - Fragments are pure. `enabled` and `format` do no I/O, and read no clock
  *   and no random value, so the same inputs give the same prompt.
  * - Message fragments only append. Their messages go after the history, and
- *   a later step sees them in its history.
+ *   a later step sees them in its history. Core builds them only for a step
+ *   that sends a model request, not for a step that runs tool calls.
+ * - The `inputs()` fragment sets where the Turn's unread inputs go.
  * - The system prompt holds no Conversation data. The host builds its
  *   sections once at startup, so the model provider can cache that part of
  *   the request.
@@ -233,7 +275,19 @@ export type PromptLayout = {
  *     { name: "identity", text: "You are Junior, Sentry's Slack bot." },
  *     { name: "personality", text: soul },
  *   ],
- *   messages: [recalled],
+ *   messages: [
+ *     recalled,
+ *     inputs({
+ *       format: (input) => ({
+ *         message: {
+ *           role: "user",
+ *           content: String(input.payload["text"]),
+ *           timestamp: input.sentAt.getTime(),
+ *         },
+ *         provenance: { authority: "instruction" },
+ *       }),
+ *     }),
+ *   ],
  * });
  */
 export function definePromptLayout(layout: PromptLayout): PromptLayout {
@@ -246,6 +300,15 @@ export function definePromptLayout(layout: PromptLayout): PromptLayout {
       throw new Error(`Two system prompt sections are named "${name}"`);
     }
     sectionNames.add(name);
+  }
+
+  const inputFragments = layout.messages.filter((item) =>
+    inputFormats.has(item),
+  ).length;
+  if (inputFragments !== 1) {
+    throw new Error(
+      `A prompt layout needs exactly one inputs() fragment, not ${inputFragments}`,
+    );
   }
 
   const seenFragments = new Set<Fragment>();

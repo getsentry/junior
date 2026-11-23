@@ -1,4 +1,3 @@
-import { randomUUID } from "node:crypto";
 import { eq, sql } from "drizzle-orm";
 import {
   afterEach,
@@ -10,7 +9,10 @@ import {
   vi,
 } from "vitest";
 import type { ToolDefinition } from "@/core/tool";
-import { findUnreadInputs, type InputMessage } from "@/core/turn/inbox";
+import type { UserMessage } from "@earendil-works/pi-ai";
+import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { fragment } from "@/core/prompt/layout";
+import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { cancelTurn, claimTurn } from "@/core/turn/state";
 import { juniorTurns } from "@/db/schema";
@@ -31,19 +33,26 @@ import {
   type TurnHarness,
 } from "../fixtures/turn-harness";
 import {
+  CONVERSATION_ID,
   MAX_ATTEMPTS,
   MODEL,
   messageTurnId,
-  prepareWith,
+  stepWith,
   sendCallReply,
   sendTool,
   startTurnEngine,
   storedReply,
+  testInputs,
+  testPrompt,
   userText,
-  type Prepare,
   type Step,
   type TurnEngine,
 } from "../fixtures/turn-engine";
+
+/** A fragment message with context authority. */
+function contextNote(text: string): UserMessage {
+  return { role: "user", content: [{ type: "text", text }], timestamp: 0 };
+}
 
 // A lease that has expired by the next statement.
 const EXPIRED_LEASE_MS = 0;
@@ -61,12 +70,11 @@ afterEach(() => {
  * A step whose model request runs `interrupt`, then waits until the step's
  * signal aborts. The request ends only through the abort.
  */
-function prepareInterrupted(interrupt: () => Promise<unknown>): Step {
+function interruptedStep(interrupt: () => Promise<unknown>): Step {
   const model = fakeModelClient([
     { type: "text", text: "Too late.", waitFor: "abort" },
   ]);
   return {
-    prepare: prepareWith([]).prepare,
     client: {
       complete: async (request, signal) => {
         await interrupt();
@@ -115,7 +123,7 @@ function pendingSteps(forTurnId: string) {
 }
 
 // The real path: an input goes through scheduleInput, and the host's Turn
-// step consumer runs each step from the queue with the host's `prepare`.
+// step consumer runs each step from the queue with the host's prompt layout.
 describe("advanceTurn", () => {
   beforeEach(async () => {
     harness = await createTurnHarness();
@@ -282,10 +290,10 @@ describe("advanceTurn", () => {
   });
 });
 
-// The real path with tools: the host's `prepare` gives the model the test's
-// tools.
+// The real path with tools: the host's Turn step consumer gives the model
+// the test's tools.
 describe("advanceTurn with tools", () => {
-  /** Starts this test's harness, whose `prepare` gives the model `tools`. */
+  /** Starts this test's harness, whose steps give the model `tools`. */
   async function startHarness(tools: ToolDefinition[]) {
     const started = await createTurnHarness({ tools });
     onTestFinished(() => started.close());
@@ -463,12 +471,12 @@ describe("advanceTurn with tools", () => {
   });
 });
 
-// These cases need a fault or a timing that no edge can give, so they run
-// one step at a time with a test `prepare` and model client: a `prepare`
-// that throws or changes its inputs, tools, an input or a change to the Turn
-// while the model request runs, or a model request that ends only through
-// its abort.
-describe("advanceTurn with a test prepare", () => {
+// These cases need a fault, a timing or a layout that no edge can give, so
+// they run one step at a time with a test step: model settings that throw,
+// a layout with fragments around the inputs, an input or a change to the
+// Turn while the model request runs, or a model request that ends only
+// through its abort.
+describe("advanceTurn with a test step", () => {
   beforeEach(async () => {
     engine = await startTurnEngine();
     ({ fixture, turnId } = engine);
@@ -478,9 +486,106 @@ describe("advanceTurn with a test prepare", () => {
     await engine.close();
   });
 
+  /** A layout with a fragment message before the inputs and one after them. */
+  function promptAroundInputs() {
+    return testPrompt([
+      fragment("before", { format: () => contextNote("Before the inputs.") }),
+      testInputs(),
+      fragment("after", { format: () => contextNote("After the inputs.") }),
+    ]);
+  }
+
+  async function eventKeys() {
+    const events = await loadEvents();
+    return events.map((event) => event.idempotencyKey);
+  }
+
+  function loadEvents() {
+    return createSqlConversationEventStore(fixture.sql).loadCurrentHistory(
+      CONVERSATION_ID,
+    );
+  }
+
+  it("writes the layout's messages around the inputs in layout order", async () => {
+    const inputId = await engine.addTestInput("How many Turns?");
+    const reply = createAssistantMessage({ type: "text", text: "Three." });
+
+    await engine.advance({
+      ...stepWith([reply]),
+      prompt: promptAroundInputs(),
+    });
+
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("Before the inputs."),
+      userText("How many Turns?"),
+      userText("After the inputs."),
+      storedReply(reply),
+    ]);
+    const events = await loadEvents();
+    expect(events.map((event) => event.idempotencyKey)).toEqual([
+      `prompt:${turnId}:0:0`,
+      `inbox:${inputId}`,
+      `prompt:${turnId}:0:2`,
+      `step:${turnId}:0:0`,
+    ]);
+    expect(events.map((event) => event.data)).toEqual([
+      expect.objectContaining({ provenance: { authority: "context" } }),
+      expect.objectContaining({
+        provenance: { authority: "instruction", actor: ACTOR },
+      }),
+      expect.objectContaining({ provenance: { authority: "context" } }),
+      expect.anything(),
+    ]);
+  });
+
+  it("writes a step's fragment messages once when its message is delivered again", async () => {
+    await engine.addTestInput("How many Turns?");
+    const reply = createAssistantMessage({ type: "text", text: "Three." });
+    const prompt = promptAroundInputs();
+    await engine.advance({ ...stepWith([reply]), prompt });
+    const written = await eventKeys();
+
+    // The queue delivers the same message again after the step committed.
+    await engine.advance({ ...stepWith([reply]), prompt });
+
+    await expect(eventKeys()).resolves.toEqual(written);
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("Before the inputs."),
+      userText("How many Turns?"),
+      userText("After the inputs."),
+      storedReply(reply),
+    ]);
+  });
+
+  it("adds no fragment or input messages in a tool step", async () => {
+    await engine.addTestInput("How many Turns?");
+    const executed: string[] = [];
+    const prompt = promptAroundInputs();
+    const reply = sendCallReply();
+    await engine.advance({
+      ...stepWith([reply], [sendTool(executed)]),
+      prompt,
+    });
+    const inputId = await engine.addTestInput("Also send it to Sam.");
+
+    await engine.advance({ ...stepWith([], [sendTool(executed)]), prompt });
+
+    expect(executed).toEqual(["call-1"]);
+    await expect(engine.loadHistory()).resolves.toEqual([
+      userText("Before the inputs."),
+      userText("How many Turns?"),
+      userText("After the inputs."),
+      storedReply(reply),
+      expect.objectContaining({ role: "toolResult", isError: false }),
+    ]);
+    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
+      expect.objectContaining({ inputId }),
+    ]);
+  });
+
   it("stops the step when the Turn is cancelled during it, and writes nothing", async () => {
     await engine.advance(
-      prepareInterrupted(() => cancelTurn(engine.engineCtx, turnId)),
+      interruptedStep(() => cancelTurn(engine.engineCtx, turnId)),
     );
 
     await expect(engine.readTurn()).resolves.toMatchObject({
@@ -499,7 +604,6 @@ describe("advanceTurn with a test prepare", () => {
     ]);
 
     await engine.advance({
-      prepare: prepareWith([]).prepare,
       client: {
         complete: async (request, signal) => {
           await cancelTurn(engine.engineCtx, turnId);
@@ -519,7 +623,7 @@ describe("advanceTurn with a test prepare", () => {
 
   it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
     // The lease of this invocation has expired, so a redelivery claims it.
-    const step = prepareInterrupted(() =>
+    const step = interruptedStep(() =>
       claimTurn({ ...engine.engineCtx, owner: "worker-b" }, turnId),
     );
 
@@ -538,10 +642,10 @@ describe("advanceTurn with a test prepare", () => {
   it("goes on with the step when a lease check fails", async () => {
     await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "All done." });
-    const step = prepareWith([reply]);
+    const step = stepWith([reply]);
     let abortedAfterFailedCheck: boolean | undefined;
     const failingCheck: Step = {
-      prepare: step.prepare,
+      ...step,
       client: {
         complete: async (request, signal) => {
           // Injected fault: a lease check fails. A table lock holds the
@@ -580,11 +684,11 @@ describe("advanceTurn with a test prepare", () => {
   it("queues the Turn again when the invocation throws, so the retry runs the step at once", async () => {
     await engine.addTestInput("How many Turns?");
     const executed: string[] = [];
-    await engine.advance(prepareWith([sendCallReply()]));
-    const failure = new Error("The system prompt could not be built");
+    await engine.advance(stepWith([sendCallReply()]));
+    const failure = new Error("The model settings could not be read");
 
     await expect(
-      engine.advance({ prepare: () => Promise.reject(failure) }),
+      engine.advance({ modelSettings: () => Promise.reject(failure) }),
     ).rejects.toBe(failure);
 
     await expect(engine.readTurn()).resolves.toMatchObject({
@@ -594,12 +698,13 @@ describe("advanceTurn with a test prepare", () => {
       leaseOwner: null,
       leaseExpiresAt: null,
     });
-    const retryStep = prepareWith([], [sendTool(executed)]);
-    const retry = vi.fn(retryStep.prepare);
-    await engine.advance({ ...retryStep, prepare: retry });
+    const retry = vi.fn(() => Promise.resolve(MODEL));
+    await engine.advance({
+      ...stepWith([], [sendTool(executed)]),
+      modelSettings: retry,
+    });
     expect(retry).toHaveBeenCalledWith(
       expect.objectContaining({ stepSeq: 1, attempts: 2 }),
-      [],
     );
     // The retry is a replay, so it skips the tool that must not run twice.
     expect(executed).toEqual([]);
@@ -610,16 +715,16 @@ describe("advanceTurn with a test prepare", () => {
   });
 
   it("fails the Turn when every try of a step throws, and runs it no more", async () => {
-    const failure = new Error("The system prompt could not be built");
-    const prepare = vi.fn(() => Promise.reject(failure));
+    const failure = new Error("The model settings could not be read");
+    const modelSettings = vi.fn(() => Promise.reject(failure));
     // Each try queues the Turn again, as the queue's redelivery would find it.
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
-      await expect(engine.advance({ prepare })).rejects.toBe(failure);
+      await expect(engine.advance({ modelSettings })).rejects.toBe(failure);
     }
 
-    await engine.advance({ prepare });
+    await engine.advance({ modelSettings });
 
-    expect(prepare).toHaveBeenCalledTimes(MAX_ATTEMPTS);
+    expect(modelSettings).toHaveBeenCalledTimes(MAX_ATTEMPTS);
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "failed",
       endReason: "attempts_exhausted",
@@ -634,22 +739,20 @@ describe("advanceTurn with a test prepare", () => {
   });
 
   it("commits a step that succeeds on its last try, and resets the attempts", async () => {
-    const inputId = await engine.addTestInput("How many Turns?");
-    const failure = new Error("The system prompt could not be built");
+    await engine.addTestInput("How many Turns?");
+    const failure = new Error("The model settings could not be read");
     for (let attempt = 1; attempt < MAX_ATTEMPTS; attempt += 1) {
       await expect(
-        engine.advance({ prepare: () => Promise.reject(failure) }),
+        engine.advance({ modelSettings: () => Promise.reject(failure) }),
       ).rejects.toBe(failure);
     }
     const reply = sendCallReply();
-    const lastStep = prepareWith([reply]);
-    const last = vi.fn(lastStep.prepare);
+    const last = vi.fn(() => Promise.resolve(MODEL));
 
-    await engine.advance({ ...lastStep, prepare: last });
+    await engine.advance({ ...stepWith([reply]), modelSettings: last });
 
     expect(last).toHaveBeenCalledWith(
       expect.objectContaining({ attempts: MAX_ATTEMPTS }),
-      [expect.objectContaining({ inputId })],
     );
     await expect(engine.readTurn()).resolves.toMatchObject({
       state: "queued",
@@ -673,17 +776,17 @@ describe("advanceTurn with a test prepare", () => {
     "leaves a Turn that was %s alone when the invocation throws",
     async (_change, interrupt) => {
       let changed: Awaited<ReturnType<TurnEngine["readTurn"]>> | undefined;
-      const failure = new Error("The system prompt could not be built");
-      const prepare = async () => {
+      const failure = new Error("The model settings could not be read");
+      const modelSettings = async () => {
         await interrupt();
         changed = await engine.readTurn();
         throw failure;
       };
 
       // The lease of this invocation has expired, so a redelivery can claim it.
-      await expect(engine.advance({ prepare }, EXPIRED_LEASE_MS)).rejects.toBe(
-        failure,
-      );
+      await expect(
+        engine.advance({ modelSettings }, EXPIRED_LEASE_MS),
+      ).rejects.toBe(failure);
 
       await expect(engine.readTurn()).resolves.toEqual(changed);
       await expect(engine.loadHistory()).resolves.toEqual([]);
@@ -693,11 +796,11 @@ describe("advanceTurn with a test prepare", () => {
   it("continues a completed Turn when an input arrives during the step, and sends the next step", async () => {
     await engine.addTestInput("How many Turns?");
     const reply = createAssistantMessage({ type: "text", text: "Three." });
-    const step = prepareWith([reply]);
+    const step = stepWith([reply]);
     let lateInputId: string | undefined;
 
     await engine.advance({
-      prepare: step.prepare,
+      ...step,
       client: {
         complete: async (request, signal) => {
           lateInputId = await engine.addTestInput("And how many failed?");
@@ -717,38 +820,5 @@ describe("advanceTurn with a test prepare", () => {
       expect.objectContaining({ inputId: lateInputId }),
     ]);
     expect(engine.sentStepMessages()).toBe(1);
-  });
-
-  it.each([
-    ["misses an input", (inputs: InputMessage[]) => inputs.slice(1)],
-    [
-      "adds an input",
-      (inputs: InputMessage[]) => [
-        ...inputs,
-        { ...inputs[0]!, inputId: randomUUID() },
-      ],
-    ],
-  ])("throws when prepare %s, and writes nothing", async (_change, change) => {
-    await engine.addTestInput("How many Turns?");
-    const step = prepareWith([
-      createAssistantMessage({ type: "text", text: "Three." }),
-    ]);
-    const prepare: Prepare = async (turn, inputs) => {
-      const prepared = await step.prepare(turn, inputs);
-      return { ...prepared, inputs: change(prepared.inputs) };
-    };
-
-    await expect(engine.advance({ ...step, prepare })).rejects.toThrow(
-      "prepare must return each unread input once",
-    );
-
-    await expect(engine.readTurn()).resolves.toMatchObject({
-      state: "queued",
-      stepSeq: 0,
-    });
-    await expect(engine.loadHistory()).resolves.toEqual([]);
-    await expect(
-      findUnreadInputs(engine.engineCtx, turnId),
-    ).resolves.toHaveLength(1);
   });
 });

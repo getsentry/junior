@@ -1,6 +1,6 @@
 // Runs the core Turn engine on this deployment: the queue consumer of Turn
-// step messages, with the host's `prepare` and the model client, bot settings
-// and tools that the host passes in.
+// step messages, with the host's prompt layout and model settings, and the
+// model client, bot settings and tools that the host passes in.
 // oxlint-disable-next-line no-restricted-imports -- The core Turn's model stream. Each reply keeps its usage in history; Conversation cost metrics do not count it yet.
 import { streamSimple } from "@earendil-works/pi-ai/compat";
 import { getGatewayApiKey, resolveGatewayModel } from "@/chat/pi/client";
@@ -11,7 +11,7 @@ import { modelClient, type ModelClient } from "@/core/model/client";
 import { advanceTurn } from "@/core/turn/advance";
 import { createTurnStepConsumer } from "@/core/turn/queue";
 import type { ToolDefinition } from "@/core/tool";
-import { createPrepareTurnStep } from "./prepare";
+import { buildTurnPromptLayout, turnModelSettings } from "./prompt";
 
 // A step that throws this many times fails its Turn. A failed model request
 // does not count: it fails the Turn at once. These tries are for crashes and
@@ -30,25 +30,27 @@ export function createGatewayModelClient(): ModelClient {
 /**
  * The queue consumer of Turn step messages. The host mounts it on
  * `engineCtx.queue`, and gives the model client, the bot settings and the
- * tools that its steps use.
+ * tools that its steps use. It builds the prompt layout once.
  */
-export function turnStepConsumer(
+export async function turnStepConsumer(
   engineCtx: EngineContext,
   {
     client,
     bot,
     tools,
   }: { client: ModelClient; bot: BotConfig; tools: ToolDefinition[] },
-): QueueConsumer {
-  const prepare = createPrepareTurnStep({
+): Promise<QueueConsumer> {
+  const prompt = await buildTurnPromptLayout();
+  const modelSettings = turnModelSettings({
     executor: engineCtx.executor,
     bot,
-    tools,
   });
   return createTurnStepConsumer(engineCtx, (message) =>
     advanceTurn(engineCtx, message, {
       client,
-      prepare,
+      prompt,
+      modelSettings,
+      tools,
       maxAttempts: MAX_ATTEMPTS,
     }),
   );

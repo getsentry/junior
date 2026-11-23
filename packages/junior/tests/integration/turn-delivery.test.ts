@@ -23,7 +23,7 @@ import {
 import {
   CONVERSATION_ID,
   messageTurnId,
-  prepareWith,
+  stepWith,
   startTurnEngine,
   type TurnEngine,
 } from "../fixtures/turn-engine";
@@ -290,7 +290,7 @@ describe("Turn delivery", () => {
 // These cases need a fault or a timing that no edge can give: an input that
 // arrives while the model request runs, which makes a Turn with two replies,
 // or a child Conversation.
-describe("Turn delivery with a test prepare", () => {
+describe("Turn delivery with a test step", () => {
   const THREAD_TS = "1718123456.000000";
   const LOCATION = {
     id: "location:slack:T123:C123",
@@ -343,10 +343,10 @@ describe("Turn delivery with a test prepare", () => {
 
   /** Runs a step that replies `text` and commits "continue". */
   function advanceContinuingStep(text: string) {
-    const step = prepareWith([reply(text)]);
+    const step = stepWith([reply(text)]);
     // An input during the step continues the Turn, so it gets a next step.
     return engine.advance({
-      prepare: step.prepare,
+      ...step,
       client: {
         complete: async (request, signal) => {
           await engine.addTestInput("And how many failed?");
@@ -360,7 +360,7 @@ describe("Turn delivery with a test prepare", () => {
   async function advanceTwoReplies(first: string, second: string) {
     await engine.addTestInput("How many Turns?");
     await advanceContinuingStep(first);
-    await engine.advance(prepareWith([reply(second)]));
+    await engine.advance(stepWith([reply(second)]));
   }
 
   it("posts the replies of one Turn to its Slack thread in order", async () => {
@@ -463,11 +463,7 @@ describe("Turn delivery with a test prepare", () => {
         sentAt: new Date(),
       });
 
-    await engine.advance(
-      prepareWith([reply("Three.")]),
-      undefined,
-      childTurnId,
-    );
+    await engine.advance(stepWith([reply("Three.")]), undefined, childTurnId);
     await deliver();
     expect(handledDeliveries(engine.queue, childTurnId)).toBe(1);
 
@@ -486,7 +482,7 @@ describe("Turn delivery with a test prepare", () => {
     // The queue delivers the same step message again. It claims the queued
     // Turn, and the next step fails.
     // Injected fault: the model provider is overloaded.
-    await engine.advance(prepareWith([modelOverloaded()]));
+    await engine.advance(stepWith([modelOverloaded()]));
     await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
     await deliver();
     await expect(allSent(engine.engineCtx, CONVERSATION_ID)).resolves.toBe(

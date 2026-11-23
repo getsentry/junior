@@ -4,9 +4,13 @@ import { assemblePrompt } from "@/core/prompt/assemble";
 import {
   definePromptLayout,
   fragment,
+  inputs,
   loader,
   skip,
+  type Fragment,
+  type InputPrompt,
   type PromptBuildContext,
+  type PromptLayout,
   type Skip,
 } from "@/core/prompt/layout";
 import type { UnreadInput } from "@/core/turn/inbox";
@@ -25,6 +29,41 @@ const CTX: PromptBuildContext = {
 
 function userText(content: string): UserMessage {
   return { role: "user", content, timestamp: 0 };
+}
+
+const INPUT: UnreadInput = {
+  inputId: "input-1",
+  actorIdentityId: "identity-1",
+  payload: { text: "How many Turns?" },
+  sentAt: new Date(0),
+  traceContext: null,
+  attemptedAt: null,
+};
+
+function formatInput(input: UnreadInput): InputPrompt {
+  return {
+    message: userText(String(input.payload["text"])),
+    provenance: { authority: "instruction" },
+  };
+}
+
+/** `messages` with the inputs fragment after them, which a layout needs. */
+function withInputs(
+  messages: Fragment<Message | Message[]>[],
+): Fragment<Message | Message[]>[] {
+  return [...messages, inputs({ format: formatInput })];
+}
+
+/** The diagnostics entry of the inputs fragment. */
+const INPUTS_INCLUDED = {
+  name: "inputs",
+  field: "messages",
+  status: "included",
+} as const;
+
+/** Builds a prompt for a step whose signal does not abort. */
+function assemble(layout: PromptLayout, ctx: PromptBuildContext) {
+  return assemblePrompt(layout, ctx, { signal: new AbortController().signal });
 }
 
 /** A load that ends only when core aborts its signal. */
@@ -58,14 +97,16 @@ describe("assemblePrompt", () => {
       );
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: ["first", "second"].map((label) =>
-        fragment(label, { loader: waitForBoth(label), format: userText }),
+      messages: withInputs(
+        ["first", "second"].map((label) =>
+          fragment(label, { loader: waitForBoth(label), format: userText }),
+        ),
       ),
     });
 
-    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
+    const { messages, diagnostics } = await assemble(layout, CTX);
 
-    expect(newMessages).toEqual([userText("first"), userText("second")]);
+    expect(messages).toEqual([userText("first"), userText("second")]);
     expect(diagnostics.loaders).toEqual([
       expect.objectContaining({ label: "first", status: "ok" }),
       expect.objectContaining({ label: "second", status: "ok" }),
@@ -84,18 +125,20 @@ describe("assemblePrompt", () => {
     );
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: ["first", "second", "third"].map((name) =>
-        fragment(name, {
-          loader: turnRow,
-          format: (row) => userText(`${name} ${row.turnId}`),
-        }),
+      messages: withInputs(
+        ["first", "second", "third"].map((name) =>
+          fragment(name, {
+            loader: turnRow,
+            format: (row) => userText(`${name} ${row.turnId}`),
+          }),
+        ),
       ),
     });
 
-    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
+    const { messages, diagnostics } = await assemble(layout, CTX);
 
     expect(loads).toBe(1);
-    expect(newMessages).toEqual([
+    expect(messages).toEqual([
       userText("first turn-1"),
       userText("second turn-1"),
       userText("third turn-1"),
@@ -117,16 +160,16 @@ describe("assemblePrompt", () => {
     );
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: [
+      messages: withInputs([
         fragment("memory", {
           loader: memory,
           enabled: (ctx) => ctx.inputs.length > 0,
           format: (text) => userText(text),
         }),
-      ],
+      ]),
     });
 
-    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
+    const { newMessages, diagnostics } = await assemble(layout, CTX);
 
     expect(loads).toBe(0);
     expect(newMessages).toEqual([]);
@@ -150,26 +193,27 @@ describe("assemblePrompt", () => {
     );
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: [
+      messages: withInputs([
         fragment("off", {
           loader: memory,
           enabled: () => false,
           format: userText,
         }),
         fragment("on", { loader: memory, format: userText }),
-      ],
+      ]),
     });
 
-    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
+    const { messages, diagnostics } = await assemble(layout, CTX);
 
     expect(loads).toBe(1);
-    expect(newMessages).toEqual([userText("Thomas likes short replies.")]);
+    expect(messages).toEqual([userText("Thomas likes short replies.")]);
     expect(diagnostics).toEqual({
       systemPrompt: [],
       loaders: [expect.objectContaining({ label: "memory", status: "ok" })],
       fragments: [
         { name: "off", field: "messages", status: "disabled" },
         { name: "on", field: "messages", status: "included" },
+        INPUTS_INCLUDED,
       ],
     });
   });
@@ -192,7 +236,7 @@ describe("assemblePrompt", () => {
     const values: unknown[] = [];
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: [
+      messages: withInputs([
         fragment("slow", {
           loader: slow,
           format: (value) => {
@@ -200,13 +244,13 @@ describe("assemblePrompt", () => {
             return skip("not checked");
           },
         }),
-      ],
+      ]),
     });
 
-    const first = await assemblePrompt(layout, CTX);
+    const first = await assemble(layout, CTX);
     resolveLate("Late value");
     await late;
-    await assemblePrompt(layout, CTX);
+    await assemble(layout, CTX);
 
     expect(first.diagnostics.loaders).toEqual([
       expect.objectContaining({ label: "slow", status: "timed_out" }),
@@ -219,16 +263,16 @@ describe("assemblePrompt", () => {
     const cause = new Error("The turn row has no id");
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: [
+      messages: withInputs([
         fragment("turn", {
           format: () => {
             throw cause;
           },
         }),
-      ],
+      ]),
     });
 
-    const result = assemblePrompt(layout, CTX);
+    const result = assemble(layout, CTX);
 
     await expect(result).rejects.toThrow('Fragment "turn" failed');
     await expect(result).rejects.toMatchObject({ cause });
@@ -252,18 +296,20 @@ describe("assemblePrompt", () => {
     const values: unknown[] = [];
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: [failing, slow].map((source) =>
-        fragment(source.label, {
-          loader: source,
-          format: (value) => {
-            values.push(value);
-            return skip("no value");
-          },
-        }),
+      messages: withInputs(
+        [failing, slow].map((source) =>
+          fragment(source.label, {
+            loader: source,
+            format: (value) => {
+              values.push(value);
+              return skip("no value");
+            },
+          }),
+        ),
       ),
     });
 
-    const { diagnostics } = await assemblePrompt(layout, CTX);
+    const { diagnostics } = await assemble(layout, CTX);
 
     expect(values).toEqual([undefined, undefined]);
     expect(timeoutSignal?.aborted).toBe(true);
@@ -282,19 +328,23 @@ describe("assemblePrompt", () => {
     const slow = loader("memory", waitForAbort, { timeoutMs: 5 });
 
     await expect(
-      assemblePrompt(
+      assemble(
         definePromptLayout({
           systemPrompt: [],
-          messages: [fragment("soul", { loader: failing, format: userText })],
+          messages: withInputs([
+            fragment("soul", { loader: failing, format: userText }),
+          ]),
         }),
         CTX,
       ),
     ).rejects.toThrow('Loader "soul" failed');
     await expect(
-      assemblePrompt(
+      assemble(
         definePromptLayout({
           systemPrompt: [],
-          messages: [fragment("memory", { loader: slow, format: userText })],
+          messages: withInputs([
+            fragment("memory", { loader: slow, format: userText }),
+          ]),
         }),
         CTX,
       ),
@@ -304,25 +354,26 @@ describe("assemblePrompt", () => {
   it("reports the reason of a skipped fragment", async () => {
     const layout = definePromptLayout({
       systemPrompt: [],
-      messages: [
-        fragment("inputs", {
+      messages: withInputs([
+        fragment("summary", {
           format: (_value, ctx) =>
             ctx.inputs.length === 0
               ? skip("no unread inputs")
               : userText("Inputs"),
         }),
-      ],
+      ]),
     });
 
-    const { diagnostics } = await assemblePrompt(layout, CTX);
+    const { diagnostics } = await assemble(layout, CTX);
 
     expect(diagnostics.fragments).toEqual([
       {
-        name: "inputs",
+        name: "summary",
         field: "messages",
         status: "skipped",
         reason: "no unread inputs",
       },
+      INPUTS_INCLUDED,
     ]);
   });
 
@@ -335,22 +386,35 @@ describe("assemblePrompt", () => {
       ],
       messages: [
         fragment("first", { format: () => userText("First") }),
+        inputs({ format: formatInput }),
         fragment("pair", {
           format: () => [userText("Second"), userText("Third")],
         }),
       ],
     });
 
-    const newMessages = [
-      userText("First"),
-      userText("Second"),
-      userText("Third"),
-    ];
-
-    expect(await assemblePrompt(layout, { ...CTX, history })).toEqual({
+    expect(
+      await assemble(layout, { ...CTX, history, inputs: [INPUT] }),
+    ).toEqual({
       systemPrompt: "You are Junior.\n\nYou work at Sentry.",
-      messages: [...history, ...newMessages],
-      newMessages,
+      messages: [
+        ...history,
+        userText("First"),
+        userText("How many Turns?"),
+        userText("Second"),
+        userText("Third"),
+      ],
+      newMessages: [
+        { source: "fragment", fragment: "first", message: userText("First") },
+        {
+          source: "input",
+          inputId: "input-1",
+          message: userText("How many Turns?"),
+          provenance: { authority: "instruction" },
+        },
+        { source: "fragment", fragment: "pair", message: userText("Second") },
+        { source: "fragment", fragment: "pair", message: userText("Third") },
+      ],
       diagnostics: {
         systemPrompt: [
           { name: "identity", chars: 15 },
@@ -359,10 +423,44 @@ describe("assemblePrompt", () => {
         loaders: [],
         fragments: [
           { name: "first", field: "messages", status: "included" },
+          INPUTS_INCLUDED,
           { name: "pair", field: "messages", status: "included" },
         ],
       },
     });
+  });
+
+  it("aborts each load when the step's signal aborts", async () => {
+    let loadSignal: AbortSignal | undefined;
+    let markStarted = () => {};
+    const started = new Promise<void>((resolve) => {
+      markStarted = resolve;
+    });
+    const memory = loader(
+      "memory",
+      (ctx, signal) => {
+        loadSignal = signal;
+        markStarted();
+        return waitForAbort(ctx, signal);
+      },
+      { timeoutMs: 60_000, optional: true },
+    );
+    const layout = definePromptLayout({
+      systemPrompt: [],
+      messages: withInputs([
+        fragment("memory", { loader: memory, format: () => skip("unused") }),
+      ]),
+    });
+    const step = new AbortController();
+    const stopped = new Error("The Turn was cancelled or taken over");
+
+    const result = assemblePrompt(layout, CTX, { signal: step.signal });
+    await started;
+    step.abort(stopped);
+
+    await expect(result).rejects.toBe(stopped);
+    expect(loadSignal?.aborted).toBe(true);
+    expect(loadSignal?.reason).toBe(stopped);
   });
 
   it("builds the layout of the `definePromptLayout` example", async () => {
@@ -395,29 +493,48 @@ describe("assemblePrompt", () => {
         { name: "identity", text: "You are Junior, Sentry's Slack bot." },
         { name: "personality", text: soul },
       ],
-      messages: [recalled],
+      messages: [
+        recalled,
+        inputs({
+          format: (input) => ({
+            message: {
+              role: "user",
+              content: String(input.payload["text"]),
+              timestamp: input.sentAt.getTime(),
+            },
+            provenance: { authority: "instruction" },
+          }),
+        }),
+      ],
     });
-    const input: UnreadInput = {
-      inputId: "input-1",
-      actorIdentityId: "identity-1",
-      payload: {},
-      sentAt: new Date(0),
-      traceContext: null,
-      attemptedAt: null,
-    };
-    const withInput = { ...CTX, inputs: [input] };
+    const withInput = { ...CTX, inputs: [INPUT] };
 
-    const recall = await assemblePrompt(layout, withInput);
-    const noInputs = await assemblePrompt(layout, CTX);
-    const noMemories = await assemblePrompt(layout, {
+    const recall = await assemble(layout, withInput);
+    const noInputs = await assemble(layout, CTX);
+    const noMemories = await assemble(layout, {
       ...withInput,
       turn: { ...CTX.turn, conversationId: "conversation-2" },
     });
 
     expect(recall).toEqual({
       systemPrompt: "You are Junior, Sentry's Slack bot.\n\nBe direct.",
-      messages: [userText("Thomas likes short replies.")],
-      newMessages: [userText("Thomas likes short replies.")],
+      messages: [
+        userText("Thomas likes short replies."),
+        userText("How many Turns?"),
+      ],
+      newMessages: [
+        {
+          source: "fragment",
+          fragment: "recalled-memories",
+          message: userText("Thomas likes short replies."),
+        },
+        {
+          source: "input",
+          inputId: "input-1",
+          message: userText("How many Turns?"),
+          provenance: { authority: "instruction" },
+        },
+      ],
       diagnostics: {
         systemPrompt: [
           { name: "identity", chars: 35 },
@@ -426,6 +543,7 @@ describe("assemblePrompt", () => {
         loaders: [expect.objectContaining({ label: "memories", status: "ok" })],
         fragments: [
           { name: "recalled-memories", field: "messages", status: "included" },
+          INPUTS_INCLUDED,
         ],
       },
     });

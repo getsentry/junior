@@ -151,8 +151,9 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Fragment**: a named piece of a core prompt. It formats one Loader's value
   into messages. It does no I/O, and reads no clock or random value.
 - **Prompt layout**: the System prompt sections and the message Fragments
-  of a core prompt, in order. The host checks it once at startup with
-  `definePromptLayout`.
+  of a core prompt, in order. It has exactly one inputs Fragment, made with
+  `inputs()`, which sets where the Turn's unread inputs go. The host checks
+  it once at startup with `definePromptLayout`.
 - **System prompt section**: a named, static piece of the system prompt in a
   core prompt. The host builds it once at startup. It holds no Conversation
   data.

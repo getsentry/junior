@@ -2,6 +2,7 @@ import { describe, expect, expectTypeOf, it } from "vitest";
 import {
   definePromptLayout,
   fragment,
+  inputs,
   loader,
   type PromptLayout,
 } from "@/core/prompt/layout";
@@ -16,12 +17,21 @@ function userText(content: string) {
   return { role: "user" as const, content, timestamp: 0 };
 }
 
+function inputsFragment() {
+  return inputs({
+    format: (input) => ({
+      message: userText(String(input.payload["text"])),
+      provenance: { authority: "instruction" },
+    }),
+  });
+}
+
 describe("definePromptLayout", () => {
   it("throws on an empty or repeated system prompt section name", () => {
     expect(() =>
       definePromptLayout({
         systemPrompt: [{ name: "", text: "You are Junior." }],
-        messages: [],
+        messages: [inputsFragment()],
       }),
     ).toThrow("A system prompt section has no name");
     expect(() =>
@@ -30,23 +40,24 @@ describe("definePromptLayout", () => {
           { name: "identity", text: "You are Junior." },
           { name: "identity", text: "You work at Sentry." },
         ],
-        messages: [],
+        messages: [inputsFragment()],
       }),
     ).toThrow('Two system prompt sections are named "identity"');
   });
 
   it("freezes the system prompt sections", () => {
     const sections = [{ name: "identity", text: "You are Junior." }];
+    const unread = inputsFragment();
     const layout = definePromptLayout({
       systemPrompt: sections,
-      messages: [],
+      messages: [unread],
     });
 
     sections[0]!.text = "You are someone else.";
 
     expect(layout).toEqual({
       systemPrompt: [{ name: "identity", text: "You are Junior." }],
-      messages: [],
+      messages: [unread],
     });
     expect(Object.isFrozen(layout.systemPrompt)).toBe(true);
     expect(Object.isFrozen(layout.systemPrompt[0])).toBe(true);
@@ -54,12 +65,13 @@ describe("definePromptLayout", () => {
 
   it("freezes the messages list", () => {
     const first = fragment("first", { format: () => userText("First") });
-    const messages = [first];
+    const unread = inputsFragment();
+    const messages = [first, unread];
     const layout = definePromptLayout({ systemPrompt: [], messages });
 
     messages.push(fragment("second", { format: () => userText("Second") }));
 
-    expect(layout.messages).toEqual([first]);
+    expect(layout.messages).toEqual([first, unread]);
     expect(Object.isFrozen(layout.messages)).toBe(true);
   });
 
@@ -70,6 +82,7 @@ describe("definePromptLayout", () => {
         messages: [
           fragment("turn", { loader: turnRow, format: () => userText("A") }),
           fragment("turn", { format: () => userText("B") }),
+          inputsFragment(),
         ],
       }),
     ).toThrow('Two fragments are named "turn"');
@@ -82,7 +95,10 @@ describe("definePromptLayout", () => {
     });
 
     expect(() =>
-      definePromptLayout({ systemPrompt: [], messages: [turn, turn] }),
+      definePromptLayout({
+        systemPrompt: [],
+        messages: [turn, turn, inputsFragment()],
+      }),
     ).toThrow('Fragment "turn" is used more than once');
   });
 
@@ -100,9 +116,24 @@ describe("definePromptLayout", () => {
             format: (row) => userText(row.turnId),
           }),
           fragment("second", { loader: otherTurnRow, format: userText }),
+          inputsFragment(),
         ],
       }),
     ).toThrow('Two loaders are labeled "turn-row"');
+  });
+
+  it("throws unless the messages hold exactly one inputs fragment", () => {
+    const first = fragment("first", { format: () => userText("First") });
+
+    expect(() =>
+      definePromptLayout({ systemPrompt: [], messages: [first] }),
+    ).toThrow("A prompt layout needs exactly one inputs() fragment, not 0");
+    expect(() =>
+      definePromptLayout({
+        systemPrompt: [],
+        messages: [inputsFragment(), first, inputsFragment()],
+      }),
+    ).toThrow("A prompt layout needs exactly one inputs() fragment, not 2");
   });
 
   it("takes only static sections in the system prompt", () => {
@@ -115,7 +146,7 @@ describe("definePromptLayout", () => {
     definePromptLayout({
       // @ts-expect-error A fragment is not a system prompt section.
       systemPrompt: [fragment("identity", { format: () => "You are Junior." })],
-      messages: [],
+      messages: [inputsFragment()],
     });
     // Message fragments must give messages.
     expectTypeOf(
