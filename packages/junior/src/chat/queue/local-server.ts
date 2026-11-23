@@ -288,7 +288,11 @@ export async function startLocalVercelQueueServer(
       key === undefined
         ? undefined
         : messages.get(idempotencyKeys.get(key) ?? "");
-    if (original) {
+    // The expiry timer can fire late. An expired message no longer dedupes.
+    if (original && Date.now() >= original.expiresAt) {
+      clearTimeout(original.expiryTimer);
+      expire(original);
+    } else if (original) {
       // Vercel accepts a duplicate with its own ID and drops it.
       original.duplicateIds.push(id);
       duplicates.set(id, original.id);

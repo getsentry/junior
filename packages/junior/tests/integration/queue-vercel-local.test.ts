@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import {
   startLocalVercelQueueServer,
   type LocalVercelQueueServer,
@@ -12,7 +12,7 @@ import {
 
 // Chat config reads the queue API URL when it loads, so pick the port first.
 // Each test starts its own server on this port.
-const { port } = await vi.hoisted(async () => {
+const { port, previousEnv } = await vi.hoisted(async () => {
   const { createServer: createPortProbe } = await import("node:net");
   const probe = createPortProbe();
   await new Promise<void>((resolve) => probe.listen(0, "127.0.0.1", resolve));
@@ -21,9 +21,24 @@ const { port } = await vi.hoisted(async () => {
   if (!address || typeof address === "string") {
     throw new Error("No free port for the local queue server");
   }
+  const previousEnv = {
+    JUNIOR_QUEUE_API_URL: process.env["JUNIOR_QUEUE_API_URL"],
+    JUNIOR_QUEUE_PROVIDER: process.env["JUNIOR_QUEUE_PROVIDER"],
+  };
   process.env["JUNIOR_QUEUE_PROVIDER"] = "vercel";
   process.env["JUNIOR_QUEUE_API_URL"] = `http://127.0.0.1:${address.port}`;
-  return { port: address.port };
+  return { port: address.port, previousEnv };
+});
+
+// Later test files in this worker read chat config again.
+afterAll(() => {
+  for (const [name, value] of Object.entries(previousEnv)) {
+    if (value === undefined) {
+      delete process.env[name];
+    } else {
+      process.env[name] = value;
+    }
+  }
 });
 
 let server: LocalVercelQueueServer | undefined;
