@@ -2,6 +2,7 @@
   "conversation": {
     "conversationId": "slack:CQA123:1770003600.000200",
     "title": "Investigate checkout latency",
+    "summary": "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
     "status": "working",
     "turnActive": true,
     "surface": "slack",
@@ -10,44 +11,6 @@
     "startedAt": "2026-08-07T11:54:00.000Z",
     "lastSeenAt": "2026-08-07T11:59:50.000Z",
     "url": "http://127.0.0.1:4317/conversations/slack%3ACQA123%3A1770003600.000200"
-  },
-  "brief": {
-    "summary": "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
-    "intent": "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans.",
-    "outcome": {
-      "status": "in_progress",
-      "text": "The deployment correlation is confirmed. The span comparison is still running."
-    },
-    "decisions": [
-      {
-        "text": "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
-        "by": "Morgan Lee",
-        "kind": "stated"
-      },
-      {
-        "text": "Use checkout.complete p95 as the primary comparison signal.",
-        "kind": "assumed"
-      }
-    ],
-    "facts": [
-      "Checkout p95 increased from 210ms to 890ms.",
-      "Error volume stayed flat during the latency increase."
-    ],
-    "links": [
-      {
-        "kind": "code_change",
-        "label": "getsentry/payments#42",
-        "url": "https://github.com/getsentry/payments/pull/42",
-        "status": "open"
-      },
-      {
-        "kind": "resource",
-        "label": "Checkout latency dashboard",
-        "url": "https://sentry.example.com/organizations/acme/explore/traces/",
-        "status": "open"
-      }
-    ],
-    "updatedAt": "2026-08-07T11:59:00.000Z"
   },
   "lastReply": {
     "seq": 6,

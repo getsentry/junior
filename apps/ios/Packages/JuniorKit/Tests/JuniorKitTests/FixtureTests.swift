@@ -15,6 +15,7 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     let list = try fixture("searchConversations", as: ConversationList.self)
     #expect(!list.conversations.isEmpty)
     let state = try fixture("getConversation", as: ConversationState.self)
+    #expect(state.conversation.summary?.isEmpty == false)
     #expect(state.lastReply?.isAssistant == true)
     #expect(state.messages == nil)
     let after = try fixture("getConversation-after", as: ConversationState.self)

@@ -167,6 +167,7 @@ export function createMockMcpTools({ app, origin }) {
     return {
       conversationId: id,
       title: summary.displayTitle,
+      summary: summary.summary,
       status: stopped.has(id) ? "done" : summary.status,
       turnActive: summary.turnActive && !stopped.has(id),
       treeState: summary.treeState,
@@ -341,7 +342,8 @@ export function createMockMcpTools({ app, origin }) {
           trim: true,
           max: 200,
           optional: true,
-          description: "Text to search for in titles and Briefs.",
+          description:
+            "Text to search for in titles, summaries, and Annotation labels and titles.",
         },
         status: {
           enum: ["active", "archived"],
@@ -362,7 +364,7 @@ export function createMockMcpTools({ app, origin }) {
       scope: "conversations:read",
       title: "Get conversation",
       description:
-        "Get one conversation: its metadata, its Brief (a summary of intent, outcome, and state), the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
+        "Get one conversation: its metadata, including its summary, the messages that no turn has read yet, and a `cursor`. Without `after`, it returns the last assistant reply. With `after`, it returns the messages after that point instead. To follow a conversation, call it again with the newest `cursor` until `turnActive` is false and `hasMore` is not set. Use listConversationMessages for older messages.",
       annotations: READ_ONLY,
       input: {
         conversationId,
@@ -389,20 +391,8 @@ export function createMockMcpTools({ app, origin }) {
           : mcpMessages(detail.events)
               .filter((message) => message.role === "assistant")
               .at(-1);
-        const brief = detail.brief?.content;
         return {
           conversation: mcpConversation(detail),
-          brief: brief
-            ? {
-                summary: brief.summary,
-                intent: brief.intent,
-                outcome: brief.outcome,
-                decisions: brief.decisions,
-                facts: brief.facts,
-                links: brief.links,
-                updatedAt: detail.brief.updatedAt,
-              }
-            : undefined,
           lastReply,
           messages: newer?.messages,
           hasMore: newer?.hasMore ? true : undefined,

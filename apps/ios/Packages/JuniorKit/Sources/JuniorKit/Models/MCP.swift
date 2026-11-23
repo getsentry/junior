@@ -7,6 +7,8 @@ import Foundation
 public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   public var conversationId: String
   public var title: String
+  /// What was asked and what happened, as of the last Turn.
+  public var summary: String?
   public var status: ConversationStatus
   /// A Turn runs or waits to start. `status` can read `needs_input` meanwhile,
   /// so live views poll and show work on this, not on `status`.
@@ -25,7 +27,7 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   public var id: String { conversationId }
 
   private enum CodingKeys: String, CodingKey {
-    case conversationId, title, status, turnActive, surface, channelName, locationUrl, startedAt, lastSeenAt
+    case conversationId, title, summary, status, turnActive, surface, channelName, locationUrl, startedAt, lastSeenAt
     case archivedAt, pinnedAt, url
   }
 
@@ -33,6 +35,7 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
     let container = try decoder.container(keyedBy: CodingKeys.self)
     conversationId = try container.decode(String.self, forKey: .conversationId)
     title = try container.decode(String.self, forKey: .title)
+    summary = try container.decodeIfPresent(String.self, forKey: .summary)
     status = try container.decode(ConversationStatus.self, forKey: .status)
     // Junior 0.310 and older send no `turnActive`; their `active` status
     // covers a running Turn, so a phone stays usable against an older server.
@@ -61,37 +64,6 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
 
 public struct ConversationList: Decodable, Sendable {
   public var conversations: [MCPConversation]
-}
-
-/// A Conversation's Brief: its summary, intent, outcome, and state.
-public struct Brief: Decodable, Sendable, Hashable {
-  public struct Outcome: Decodable, Sendable, Hashable {
-    /// `in_progress`, `answered`, `done`, `partial`, `blocked`, or `abandoned`.
-    public var status: String
-    public var text: String
-  }
-
-  public struct Decision: Decodable, Sendable, Hashable {
-    public var text: String
-    public var by: String?
-    public var kind: String
-  }
-
-  public struct Link: Decodable, Sendable, Hashable {
-    /// `code_change`, `resource`, or `url`.
-    public var kind: String
-    public var label: String
-    public var url: String
-    public var status: String?
-  }
-
-  public var summary: String
-  public var intent: String
-  public var outcome: Outcome
-  public var decisions: [Decision]
-  public var facts: [String]
-  public var links: [Link]
-  public var updatedAt: Timestamp
 }
 
 public struct Attachment: Decodable, Sendable, Hashable {
@@ -138,7 +110,6 @@ public struct PendingAuthorization: Decodable, Sendable, Hashable {
 /// `getConversation`: the state of one Conversation and a cursor to follow it.
 public struct ConversationState: Decodable, Sendable {
   public var conversation: MCPConversation
-  public var brief: Brief?
   /// Newest assistant message. Set only without `after`.
   public var lastReply: MCPMessage?
   /// Messages after `after`, oldest first. Set only with `after`.
