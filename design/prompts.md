@@ -55,7 +55,3 @@ and facts about their world. Plugins add guidance.
   "briefly", and "as short as the job allows". The rules for child agents,
   Automation runs, and Quick questions use them. This breaks "length,
   count, and time are numbers".
-- The rules of a child agent tell it to ask a person with `addInboxItem`.
-  A child agent cannot use the Inbox, so that tool is disabled in its Turn.
-  This breaks "text names only the tools, arguments, and modes that exist
-  where it shows".
