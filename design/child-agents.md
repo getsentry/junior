@@ -78,3 +78,4 @@ child chooses to report reaches the parent.
   breaks "a parent manages the lifecycle of its child agents".
 - A parent cannot archive a Task. Only a Thread can be archived. This
   breaks "a parent manages the lifecycle of its child agents".
+- A child whose last Watch expires with no Turn never reports to its parent.
