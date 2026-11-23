@@ -1,11 +1,12 @@
 import { fuseRankedLists, type RankedEntry } from "./rank-fusion";
 
 /** One way that a search finds matches. Each way ranks its own matches. */
-export type SearchLeg = "exact" | "fuzzy" | "lexical" | "vector";
+export type SearchLeg = "exact" | "fuzzy" | "lexical" | "prefix" | "vector";
 
 const SEARCH_LEGS: readonly SearchLeg[] = [
   "exact",
   "lexical",
+  "prefix",
   "fuzzy",
   "vector",
 ];

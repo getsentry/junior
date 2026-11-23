@@ -18,6 +18,7 @@ import {
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
 import { juniorMemoryMemories } from "@/db/schema/memory";
+import { readStats } from "@/stats";
 import { mockEmbeddings } from "../../fixtures/retrieval-models";
 import { expectResponseBudget } from "../../fixtures/response-budget";
 import {
@@ -393,6 +394,53 @@ describe("search API", () => {
     expect(await ids("zebra")).toEqual(["memory-visible"]);
   });
 
+  it("finds a memory by a half-typed inflected word", async () => {
+    mockEmbeddings((text) =>
+      text === "runn" ? UNRELATED_VECTOR : MEMORY_VECTOR,
+    );
+    const viewer = await person(VIEWER);
+    await memory("memory-running", "Running the deploy checklist first.");
+    const ids = async (q: string) =>
+      (await report(signedIn(viewer)(q, "memories"))).memories?.map(
+        ({ id }) => id,
+      );
+
+    // `english` stems "running" to "run", which "runn" does not start.
+    expect(await ids("runn")).toEqual(["memory-running"]);
+  });
+
+  it("embeds typed text of 3 or more characters once, and records its cost", async () => {
+    // 50 tokens of the default embedding model cost 1 micro-USD.
+    const calls = mockEmbeddings(() => MEMORY_VECTOR, { tokensPerText: 50 });
+    const viewer = await person(VIEWER);
+    await memory("memory-release", "Release notes go in the changelog.");
+    calls.length = 0;
+    const search = signedIn(viewer);
+    const ids = async (q: string) =>
+      (await report(search(q, "memories"))).memories?.map(({ id }) => id);
+
+    // Words alone match 2 characters.
+    expect(await ids("re")).toEqual(["memory-release"]);
+    expect(calls).toEqual([]);
+    expect(await ids("release")).toEqual(["memory-release"]);
+    expect(await ids("release")).toEqual(["memory-release"]);
+    expect(calls).toEqual([["release"]]);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(
+      (await readStats(today, today)).filter(
+        ({ namespace }) => namespace === "search",
+      ),
+    ).toEqual([
+      {
+        count: 1,
+        date: today,
+        metric: "embedding_cost_micro_usd",
+        name: "openai/text-embedding-3-small",
+        namespace: "search",
+      },
+    ]);
+  });
+
   it("reads every source at once from its index, within a size budget", async () => {
     const viewer = await person(VIEWER);
     await inboxItem({
@@ -408,7 +456,8 @@ describe("search API", () => {
       title: `Deploy ${"x".repeat(SHORT_TITLE_MAX_LENGTH - 7)}`,
       visibility: "private",
     });
-    mockEmbeddings(() => MEMORY_VECTOR);
+    // The query embedding costs 1 micro-USD, so its cost is always recorded.
+    mockEmbeddings(() => MEMORY_VECTOR, { tokensPerText: 50 });
     // As long as a stored id: a UUID.
     await memory(randomUUID(), `Deploy ${"x".repeat(1_000)}`);
     const search = signedIn(viewer);
@@ -418,7 +467,7 @@ describe("search API", () => {
       () =>
         expectNoFullScan(() =>
           expectSqlBudget(() => search("deploy", sources), {
-            statements: 4,
+            statements: 6,
             serialRounds: 1,
           }),
         ),
