@@ -19,7 +19,11 @@ import {
   resolveMailboxTurnWork,
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
-import type { DeliverToParent, ParentResult } from "./parent-result";
+import {
+  parentResultActor,
+  type DeliverToParent,
+  type ParentResult,
+} from "./parent-result";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationWorkState,
@@ -262,11 +266,12 @@ export async function enqueueChildResultToParent(args: {
     args.result.kind === "reply"
       ? { output: args.result.reply.text, status: "completed" as const }
       : { output: args.result.text, status: args.result.kind };
-  // A child may message its parent more than once. A `reply` while the
-  // child still works is a message, not its result, and does not count as
-  // the child's answer for `waiting_on`.
+  // A child may message its parent more than once. A `reply`, or a person's
+  // final text, while the child still works is a message, not its result,
+  // and does not count as the child's answer for `waiting_on`.
   const stillWorks =
-    args.result.kind === "reply" && (await childAgentStillWorks(senderId));
+    (args.result.kind === "reply" || args.result.kind === "completed") &&
+    (await childAgentStillWorks(senderId));
   const text = stillWorks
     ? renderMessageInput(args.sender, rendered.output)
     : renderResultInput(args.sender, rendered, []);
@@ -425,7 +430,10 @@ export function createEndStoppedChildWork(options: {
     }
     const [turn] = turns;
     await deliverToParent({
-      actor: turn?.actor ?? EVENT_SYSTEM_ACTOR,
+      actor: parentResultActor(
+        turn?.actor ?? EVENT_SYSTEM_ACTOR,
+        turn?.source?.kind,
+      ),
       result: {
         kind: "failed",
         text: `This ${conversation.kind} stopped because its worker failed repeatedly.`,
