@@ -1,6 +1,7 @@
 import * as z from "zod";
 import type { ConversationMessageSearchFilters } from "@/chat/conversations/message-search";
 import { CONVERSATIONS_TOOL_SOURCE } from "@/chat/conversations/tool-source";
+import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationMessageSearchStore } from "@/chat/db";
 import { parseSlackThreadId } from "@/chat/slack/context";
 import type { SlackTeamId } from "@/chat/slack/ids";
@@ -29,11 +30,20 @@ const conversationMessageSearchOutputSchema = juniorToolOutputSchema.extend({
         channel_id: z.string().min(1),
         channel_name: z.string().min(1).optional(),
         conversation_id: z.string().min(1),
+        dashboard_url: z
+          .string()
+          .url()
+          .optional()
+          .describe("Link to the conversation."),
         excerpt: z.string(),
         message_id: z.string().min(1),
         message_role: z.enum(["assistant", "user"]),
         message_timestamp: z.string().datetime(),
-        permalink: z.string().url().optional(),
+        permalink: z
+          .string()
+          .url()
+          .optional()
+          .describe("Slack thread link. Only set when dashboard_url is not."),
         thread_ts: z.string().min(1),
       })
       .strict(),
@@ -185,10 +195,16 @@ export function createSlackConversationMessageSearchTool(
               "Stored Slack conversation search returned an invalid destination",
             );
           }
-          const permalink = await getSlackMessagePermalink({
-            channelId: reference.channelId,
-            messageTs: reference.threadTs,
-          });
+          // Link the Junior dashboard. The Slack thread is only a fallback.
+          const dashboardUrl = getDashboardConversationLink(
+            match.conversationId,
+          );
+          const permalink = dashboardUrl
+            ? undefined
+            : await getSlackMessagePermalink({
+                channelId: reference.channelId,
+                messageTs: reference.threadTs,
+              });
           return {
             conversation_id: match.conversationId,
             thread_ts: reference.threadTs,
@@ -200,6 +216,7 @@ export function createSlackConversationMessageSearchTool(
             ...(match.channelName
               ? { channel_name: match.channelName }
               : undefined),
+            ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
             ...(permalink ? { permalink } : undefined),
           };
         }),
