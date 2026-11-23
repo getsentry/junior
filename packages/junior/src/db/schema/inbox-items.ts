@@ -1,4 +1,4 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -7,6 +7,7 @@ import {
   pgTable,
   primaryKey,
   text,
+  type AnyPgColumn,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
@@ -23,6 +24,22 @@ import { juniorUsers } from "./users";
  * a value here and to the owner check.
  */
 export type InboxItemOwnerKind = "conversation" | "automation";
+
+/**
+ * The words of an Inbox item for search: its title, ranked above its body.
+ * The `simple` config keeps each word as typed, so a prefix of it matches.
+ */
+export function inboxItemSearchDocument(table: {
+  body: AnyPgColumn;
+  title: AnyPgColumn;
+}): SQL {
+  return sql`(setweight(to_tsvector('simple', ${table.title}), 'A') || setweight(to_tsvector('simple', ${table.body}), 'B'))`;
+}
+
+/** The lowercase title of an Inbox item, for typo-tolerant search. */
+export function inboxItemFuzzyTitle(table: { title: AnyPgColumn }): SQL {
+  return sql`lower(${table.title})`;
+}
 
 /**
  * One Inbox item: something that needs a person. An action item stores its
@@ -143,6 +160,14 @@ export const juniorInboxItems = pgTable(
     index("junior_inbox_items_answered_idx")
       .on(table.ownerId, table.closedByUserId, table.closedAt)
       .where(sql`${table.answer} is not null`),
+    index("junior_inbox_items_search_idx").using(
+      "gin",
+      inboxItemSearchDocument(table),
+    ),
+    index("junior_inbox_items_title_trgm_idx").using(
+      "gin",
+      sql`${inboxItemFuzzyTitle(table)} gin_trgm_ops`,
+    ),
   ],
 );
 

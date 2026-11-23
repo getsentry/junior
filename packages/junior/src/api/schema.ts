@@ -493,5 +493,12 @@ export type {
   InboxSnoozeTrigger,
   InboxSnoozeWake,
 } from "./schema/inbox-snooze";
+export { searchQuerySchema, searchReportSchema } from "./schema/search";
+export type {
+  SearchAutomation,
+  SearchInboxItem,
+  SearchReport,
+  SearchSource,
+} from "./schema/search";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

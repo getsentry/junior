@@ -17,6 +17,7 @@ import { createImageRoutes } from "./api/images/routes";
 import { createLeadRoutes } from "./api/lead/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
+import { createSearchRoutes } from "./api/search/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
 import { createCacheWarmingRoutes } from "./api/cache-warming/routes";
 import { createGatewayProviderRoutes } from "./api/gateway-providers/routes";
@@ -162,6 +163,7 @@ export function createJuniorApi(
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
+  app.route("/api/search", createSearchRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

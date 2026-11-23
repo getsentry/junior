@@ -1,4 +1,4 @@
-import { fuseRankedLists } from "@/search/rank-fusion";
+import { rankSearchMatches } from "@/search/match-ranking";
 import type { MemoryRecord } from "./store";
 
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
@@ -45,22 +45,22 @@ export function rankMemoryMatches(
     vectorWeight?: number;
   },
 ): MemoryMatch[] {
-  const vector = matches.flatMap((match) =>
-    match.vector ? [{ item: match, rank: match.vector.rank }] : [],
+  return rankSearchMatches(
+    matches.map((match) => ({
+      item: match,
+      ranks: { lexical: match.lexical?.rank, vector: match.vector?.rank },
+    })),
+    {
+      key: (match) => match.memory.id,
+      weights: {
+        lexical: positiveWeight(options.lexicalWeight, DEFAULT_RRF_WEIGHT),
+        vector: positiveWeight(options.vectorWeight, DEFAULT_RRF_WEIGHT),
+      },
+      tiebreak: (left, right) =>
+        observedAgeRank(right.memory, options.nowMs) -
+          observedAgeRank(left.memory, options.nowMs) ||
+        right.memory.observedAtMs - left.memory.observedAtMs ||
+        left.memory.id.localeCompare(right.memory.id),
+    },
   );
-  const lexical = matches.flatMap((match) =>
-    match.lexical ? [{ item: match, rank: match.lexical.rank }] : [],
-  );
-  return fuseRankedLists([vector, lexical], {
-    key: (match) => match.memory.id,
-    weights: [
-      positiveWeight(options.vectorWeight, DEFAULT_RRF_WEIGHT),
-      positiveWeight(options.lexicalWeight, DEFAULT_RRF_WEIGHT),
-    ],
-    tiebreak: (left, right) =>
-      observedAgeRank(right.memory, options.nowMs) -
-        observedAgeRank(left.memory, options.nowMs) ||
-      right.memory.observedAtMs - left.memory.observedAtMs ||
-      left.memory.id.localeCompare(right.memory.id),
-  });
 }

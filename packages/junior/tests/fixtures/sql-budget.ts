@@ -211,9 +211,11 @@ async function explainPlans(
 
 // Tables that grow with use, so a full read of one gets slower over time.
 const BIG_TABLES = [
+  "junior_automations",
   "junior_code_changes",
   "junior_conversation_briefs",
   "junior_conversation_metrics",
+  "junior_inbox_items",
 ];
 
 /**

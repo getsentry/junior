@@ -46,6 +46,7 @@ import {
   type MemoryEmbedding,
   type MemoryEmbeddingProvider,
 } from "./embedding";
+import { withDenseRanks } from "@/search/match-ranking";
 import { rankMemoryMatches, type MemoryMatch } from "./ranking";
 import {
   MEMORY_SCOPES,
@@ -650,22 +651,6 @@ async function archiveExpiredRows(args: {
     return idsToClean;
   });
   return { archivedCount: archivedIds.length };
-}
-
-function withDenseRanks<T>(
-  values: T[],
-  key: (value: T) => string | number,
-): Array<{ rank: number; value: T }> {
-  let previous: string | number | undefined;
-  let rank = 0;
-  return values.map((value, index) => {
-    const current = key(value);
-    if (index === 0 || current !== previous) {
-      rank = index + 1;
-      previous = current;
-    }
-    return { rank, value };
-  });
 }
 
 async function embedOne(
