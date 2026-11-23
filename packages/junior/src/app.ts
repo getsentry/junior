@@ -141,7 +141,7 @@ import {
   createProductionSlackWebhookServices,
   getProductionSlackAdapter,
 } from "@/chat/app/production";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
@@ -626,7 +626,7 @@ export async function createApp(
     pluginRoutes = getPluginRoutes({
       dispatchForIdentity,
       events,
-      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
@@ -920,7 +920,7 @@ export async function createApp(
       conversationWorkQueue,
       dispatchForIdentity,
       events,
-      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
   });
 

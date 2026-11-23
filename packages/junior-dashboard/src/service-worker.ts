@@ -64,6 +64,13 @@ self.addEventListener("push", (event) => {
   event.waitUntil(
     (async () => {
       const payload = readPayload(event);
+      // Close the notifications of items that closed since the last push.
+      if (Array.isArray(payload.close) && payload.close.length > 0) {
+        const closed = new Set(payload.close);
+        for (const notification of await self.registration.getNotifications()) {
+          if (closed.has(notification.tag)) notification.close();
+        }
+      }
       const url = targetUrl(payload.url);
       const tag =
         typeof payload.tag === "string" && payload.tag ? payload.tag : undefined;

@@ -50,6 +50,7 @@ import {
   inboxItemVisibleTo,
   type InboxItemReader,
 } from "./access";
+import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
 import type { InboxItemRequest } from "./evidence";
 
 type InboxItemKind = "notice" | "action";
@@ -517,8 +518,10 @@ export async function closeInboxItem(
       ),
     )
     .returning(ownerColumns);
+  if (updated.length === 0) return false;
+  await clearInboxItemDeliveries(db, [input.id], input.nowMs);
   await touchConversationDetail(db, ownerConversationIds(updated));
-  return updated.length > 0;
+  return true;
 }
 
 /**
@@ -563,7 +566,12 @@ export async function dismissOpenInboxItems(
               ),
       ),
     )
-    .returning(ownerColumns);
+    .returning({ ...ownerColumns, id: juniorInboxItems.id });
+  await clearInboxItemDeliveries(
+    db,
+    dismissed.map((item) => item.id),
+    input.nowMs,
+  );
   await touchConversationDetail(db, ownerConversationIds(dismissed));
 }
 
@@ -593,6 +601,13 @@ export async function takeInboxItem(
     await tx
       .insert(juniorInboxItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
+    // The taker is now an assignee, but needs no push for their own take.
+    await claimInboxItemPush(tx, {
+      itemId: input.id,
+      nowMs: input.nowMs,
+      skipReason: "taken",
+      userId: input.userId,
+    });
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });

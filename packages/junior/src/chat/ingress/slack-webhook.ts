@@ -80,7 +80,7 @@ import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-ident
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
@@ -497,7 +497,7 @@ async function routeParsedMessage(args: {
       conversationId,
       delivery: {
         queue: args.queue,
-        show: createSlackInboxItemShow(() => args.adapter),
+        show: createInboxItemShow(() => args.adapter),
       },
       resolveUser: async () => {
         const teamId = args.installation.teamId;

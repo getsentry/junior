@@ -34,7 +34,7 @@ import {
 } from "@/chat/inbox-items/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
@@ -522,7 +522,7 @@ describe("Slack webhook: Inbox item cards", () => {
     await createPluginInboxItems({
       conversationId: THREAD,
       plugin: "deploys",
-      show: createSlackInboxItemShow(createSlackAdapterFixture),
+      show: createInboxItemShow(createSlackAdapterFixture),
     }).upsert({
       assigneeIdentityIds: ["identity:U123"],
       body: "Deploys of `api` stopped after 3 failures.",
@@ -744,7 +744,7 @@ describe("Slack webhook: Inbox item cards", () => {
       await actOnInboxItem({
         action: "submit",
         answer: { requestId: item.id, values: { notes: ["x".repeat(3_000)] } },
-        delivery: { queue, show: createSlackInboxItemShow() },
+        delivery: { queue, show: createInboxItemShow() },
         id: item.id,
         user: ana,
       });
