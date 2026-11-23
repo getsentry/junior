@@ -166,6 +166,34 @@ public struct InboxItem: Decodable, Sendable, Hashable, Identifiable {
   public var createdAt: Timestamp
   public var updatedAt: Timestamp
   public var url: String?
+
+  private enum CodingKeys: String, CodingKey {
+    case id, kind, status, title, body, question, assignees, canAct, needsViewer, conversationIds, subject
+    case createdAt, updatedAt, url
+  }
+
+  public init(from decoder: Decoder) throws {
+    let container = try decoder.container(keyedBy: CodingKeys.self)
+    id = try container.decode(String.self, forKey: .id)
+    kind = try container.decode(String.self, forKey: .kind)
+    status = try container.decode(String.self, forKey: .status)
+    title = try container.decode(String.self, forKey: .title)
+    body = try container.decode(String.self, forKey: .body)
+    question = try container.decodeIfPresent(String.self, forKey: .question)
+    assignees = try container.decode([String].self, forKey: .assignees)
+    canAct = try container.decode(Bool.self, forKey: .canAct)
+    // Junior 0.313 and older send no `needsViewer`. A named assignee with
+    // `canAct` is the viewer, so a phone stays usable against an older
+    // server. It misses an item for Everyone that also names the viewer.
+    needsViewer =
+      try container.decodeIfPresent(Bool.self, forKey: .needsViewer)
+      ?? (status == "open" && kind == "action" && canAct && !assignees.isEmpty)
+    conversationIds = try container.decode([String].self, forKey: .conversationIds)
+    subject = try container.decodeIfPresent(Subject.self, forKey: .subject)
+    createdAt = try container.decode(Timestamp.self, forKey: .createdAt)
+    updatedAt = try container.decode(Timestamp.self, forKey: .updatedAt)
+    url = try container.decodeIfPresent(String.self, forKey: .url)
+  }
 }
 
 public struct InboxItemList: Decodable, Sendable {
