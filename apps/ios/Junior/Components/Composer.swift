@@ -51,24 +51,28 @@ struct ComposerSurface<Content: View>: View {
   }
 }
 
-/// The message field: 16pt text, 1.625 line height, 48-112pt tall.
+/// The message field: 16pt text, 1.625 line height, 48-112pt tall. Return
+/// calls `onSubmit`, which sends when the composer can.
 struct ComposerField: View {
   @Binding var text: String
   let placeholder: String
-  var focused: FocusState<Bool>.Binding
+  @Binding var focused: Bool
+  let onSubmit: () -> Void
 
   var body: some View {
-    TextField(
-      "", text: $text, prompt: Text(placeholder).foregroundStyle(Tokens.textFaint), axis: .vertical
-    )
-    .type(.base, lineHeight: 1.625)
-    .foregroundStyle(Tokens.text)
-    .lineLimit(1...4)
-    .focused(focused)
-    .padding(.horizontal, 12)
-    .padding(.vertical, 12)
-    .frame(minHeight: 48, alignment: .topLeading)
-    .accessibilityLabel(placeholder)
+    MessageTextView(text: $text, focused: $focused, placeholder: placeholder, onSubmit: onSubmit)
+      .overlay(alignment: .topLeading) {
+        if text.isEmpty {
+          Text(placeholder)
+            .type(.base, lineHeight: 1.625)
+            .foregroundStyle(Tokens.textFaint)
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+      }
+      .padding(.horizontal, 12)
+      .padding(.vertical, 12)
+      .frame(minHeight: 48, alignment: .topLeading)
   }
 }
 
@@ -118,7 +122,7 @@ struct NewConversationComposer: View {
   @State private var sending = false
   @State private var error: String?
   @State private var idempotencyKey = UUID()
-  @FocusState private var focused: Bool
+  @State private var focused = false
 
   private var canSend: Bool {
     !sending && !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -137,7 +141,9 @@ struct NewConversationComposer: View {
       if let error { InlineError(text: error).padding(.horizontal, 4) }
       ComposerSurface(focused: focused) {
         VStack(alignment: .leading, spacing: 0) {
-          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused) {
+            if canSend { send() }
+          }
           HStack(spacing: 12) {
             VisibilityMenu(visibility: $visibility)
             Spacer()
