@@ -20,7 +20,7 @@ export const noReplyToolDefinition = zodToolDefinition({
         .nullable()
         .optional()
         .describe(
-          "Outcome to keep in the conversation, such as a routine fix that worked. It is not posted as a reply. A parent agent or a watcher of this conversation can get it. Omit it when a person asked for no reply. Null is the same as omitted.",
+          "Outcome to keep in the conversation, such as a routine fix that worked. A parent agent or a watcher of this conversation can get it, but it is not delivered to people. Omit it when a person asked for no reply. Null is the same as omitted.",
         ),
     })
     .strict(),
