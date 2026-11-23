@@ -40,7 +40,6 @@ import {
 import { getAgentReplyMessageId, getTurnReplyKey } from "./ids";
 import {
   childMessageSenderMetadata,
-  childResultMetadata,
   listChildMessages,
   type ChildMessage,
 } from "./child-message";
@@ -243,16 +242,15 @@ export async function enqueueChildResultToParent(args: {
       ? { output: args.result.reply.text, status: "completed" as const }
       : { output: args.result.text, status: args.result.kind };
   // A child may message its parent more than once. A `reply`, or a person's
-  // final text, while the child still works is a message, not its result.
-  // It does not count as the child's answer for `waiting_on`, and it carries
-  // no result status.
+  // final text, while the child still works is a message, not its result,
+  // and does not count as the child's answer for `waiting_on`.
   const stillWorks =
     (args.result.kind === "reply" || args.result.kind === "completed") &&
     (await childAgentStillWorks(senderId));
   const text = stillWorks
     ? renderMessageInput(args.sender, rendered.output)
     : renderResultInput(args.sender, rendered, []);
-  const sent = {
+  const metadata = {
     ...senderEventMetadata(args.actor, {
       eventKey: inboundMessageId,
       eventType: AGENT_UPDATE_EVENT_TYPE,
@@ -266,9 +264,6 @@ export async function enqueueChildResultToParent(args: {
       turnId: args.turnId,
     }),
   };
-  const metadata = stillWorks
-    ? sent
-    : { ...sent, ...childResultMetadata(rendered.status) };
   await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,

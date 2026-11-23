@@ -169,8 +169,6 @@ describe("child agent task work", () => {
               }),
               // The reply stores who sent it, so no reader parses its id.
               sender: { conversationId: childConversationId, turnId },
-              // It is the child's result, and it stores how the work ended.
-              result: { status: "completed" },
             }),
             text: expect.stringMatching(
               /^<agent-result [^>]*status="completed">\n[\s\S]*\nDurable child result\n<\/agent-result>$/,

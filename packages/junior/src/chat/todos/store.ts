@@ -15,7 +15,7 @@ import {
   juniorTodoVersionSeq,
   juniorUsers,
 } from "@/db/schema";
-import { readChildResultStatus } from "@/chat/agent-invocations/child-message";
+import { isEventMailboxMetadata } from "@/chat/events/notification";
 import { readInboundMessageSender } from "@/chat/task-execution/message-sender";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
@@ -400,7 +400,10 @@ async function readReceivedChildResults(
   const work = await getConversationWorkState({ conversationId });
   return (work?.execution.pendingMessages ?? []).flatMap((message) => {
     const sender = readInboundMessageSender(message);
-    const result = readChildResultStatus(message);
+    const metadata = message.input.metadata;
+    const result = isEventMailboxMetadata(metadata)
+      ? metadata.event.status
+      : undefined;
     const status =
       result === "completed"
         ? "done"
