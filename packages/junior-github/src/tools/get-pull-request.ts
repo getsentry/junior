@@ -14,7 +14,12 @@ import { subscribableResourceSchema } from "@sentry/junior-plugin-api";
 import { gitHubPullRequestSubscribable } from "../events/pull-request.js";
 import { PULL_REQUEST_CHECKS } from "../graphql-documents.js";
 import { checkContextState } from "../pull-request-review-again.js";
-import { githubApi, parseRepo, repoPath } from "../tool-support/github-api.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "../tool-support/github-api.js";
 
 const commitShaSchema = z.string().regex(/^[0-9a-f]{40}$/i);
 const RELATED_CONVERSATIONS_MAX = 10;
@@ -157,6 +162,12 @@ const checksResponseSchema = z.object({
     }),
   }),
 });
+// GitHub reports GraphQL errors with HTTP 200, such as when the installation
+// is rate limited, so an `ok` reply can still have errors and no data.
+const checksFailureSchema = z.object({
+  data: z.null().optional(),
+  errors: z.array(z.unknown()).min(1),
+});
 
 /** Read the required checks and merge state of one pull request. */
 async function readPullRequestChecks(
@@ -176,6 +187,11 @@ async function readPullRequestChecks(
   if (!response.ok) {
     throw new Error(
       `GitHub pull request checks lookup failed with HTTP ${response.status}`,
+    );
+  }
+  if (checksFailureSchema.safeParse(response.body).success) {
+    throw new Error(
+      `GitHub pull request checks lookup failed: ${githubErrorMessage(response.body)}`,
     );
   }
   const pullRequest = checksResponseSchema.parse(response.body).data.repository
