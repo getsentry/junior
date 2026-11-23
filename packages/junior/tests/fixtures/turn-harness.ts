@@ -1,6 +1,6 @@
 // The harness of core's Turn engine integration tests. It runs the real path
 // from an input to a Slack post: `scheduleInput`, the host's Turn step
-// consumer with the host's prompt layout, and the host's delivery consumer.
+// consumer with the host's prompt layouts, and the host's delivery consumer.
 // Only the edges outside Junior are fakes: the AI emulator answers the model
 // requests, MSW captures the Slack API calls, and an in-process queue holds
 // each message until the test delivers it. Postgres is real. Each harness has

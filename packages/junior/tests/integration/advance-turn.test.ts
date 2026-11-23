@@ -15,16 +15,19 @@ import {
   loader,
   skip,
   type FragmentMessage,
+  type PromptLayout,
 } from "@/core/prompt/layout";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/queue";
 import { cancelTurn, claimTurn } from "@/core/turn/state";
-import { juniorTurns } from "@/db/schema";
+import { juniorConversations, juniorTurns } from "@/db/schema";
+import { buildTurnPromptLayouts } from "@/turn-steps/prompt";
 import {
   modelCalls,
   modelOverloaded,
   setModelReplies,
   streamDisconnected,
+  systemPromptOf,
 } from "../fixtures/ai-emulator";
 import type { LocalJuniorSqlFixture } from "../fixtures/sql";
 import {
@@ -47,6 +50,7 @@ import {
   startTurnEngine,
   storedReply,
   testInputs,
+  promptForEveryTurn,
   testPrompt,
   userText,
   type Step,
@@ -119,6 +123,11 @@ async function blockedLeaseCheck(after?: string) {
   }
 }
 
+/** The system prompt that core builds from a layout: its sections in order. */
+function layoutSystemPrompt(layout: PromptLayout): string {
+  return layout.systemPrompt.map((section) => section.text).join("\n\n");
+}
+
 /** The step messages that wait for a delivery, for one Turn. */
 function pendingSteps(forTurnId: string) {
   return harness.queue
@@ -127,7 +136,8 @@ function pendingSteps(forTurnId: string) {
 }
 
 // The real path: an input goes through scheduleInput, and the host's Turn
-// step consumer runs each step from the queue with the host's prompt layout.
+// step consumer runs each step from the queue with the host's prompt layout
+// of the Turn's platform.
 describe("advanceTurn", () => {
   beforeEach(async () => {
     harness = await createTurnHarness();
@@ -178,6 +188,38 @@ describe("advanceTurn", () => {
       storedReply(reply),
     ]);
     expect(pendingSteps(turnId)).toBe(0);
+  });
+
+  it("gives a Turn with a Slack Location the slack layout's system prompt", async () => {
+    const layouts = await buildTurnPromptLayouts();
+    await setModelReplies([
+      createAssistantMessage({ type: "text", text: "Three." }),
+    ]);
+    await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+
+    const [call] = await modelCalls();
+    expect(systemPromptOf(call)).toBe(layoutSystemPrompt(layouts.slack));
+    expect(systemPromptOf(call)).not.toBe(layoutSystemPrompt(layouts.local));
+  });
+
+  it("gives a Turn with no Location the local layout's system prompt", async () => {
+    const layouts = await buildTurnPromptLayouts();
+    await harness.engineCtx.executor
+      .db()
+      .update(juniorConversations)
+      .set({ location: null })
+      .where(eq(juniorConversations.conversationId, harness.conversationId));
+    await setModelReplies([
+      createAssistantMessage({ type: "text", text: "Three." }),
+    ]);
+    await harness.send({ text: "How many Turns?" });
+
+    await harness.runStep();
+
+    const [call] = await modelCalls();
+    expect(systemPromptOf(call)).toBe(layoutSystemPrompt(layouts.local));
   });
 
   it("fails the Turn with the model error and writes no history", async () => {
@@ -492,11 +534,13 @@ describe("advanceTurn with a test step", () => {
 
   /** A layout with a fragment message before the inputs and one after them. */
   function promptAroundInputs() {
-    return testPrompt([
-      fragment("before", { format: () => contextNote("Before the inputs.") }),
-      testInputs(),
-      fragment("after", { format: () => contextNote("After the inputs.") }),
-    ]);
+    return promptForEveryTurn(
+      testPrompt([
+        fragment("before", { format: () => contextNote("Before the inputs.") }),
+        testInputs(),
+        fragment("after", { format: () => contextNote("After the inputs.") }),
+      ]),
+    );
   }
 
   async function eventKeys() {
@@ -584,18 +628,25 @@ describe("advanceTurn with a test step", () => {
     const load = vi.fn(() => Promise.resolve("Thomas likes short replies."));
     const memory = loader("memory", load, { timeoutMs: 1_000 });
     const modelSettings = vi.fn(() => Promise.resolve(MODEL));
+    const pickPrompt = vi.fn(
+      promptForEveryTurn(
+        testPrompt([
+          fragment("memory", { loader: memory, format: () => skip("unused") }),
+          testInputs(),
+        ]),
+      ),
+    );
 
     await engine.advance({
       ...stepWith([], [sendTool(executed)]),
-      prompt: testPrompt([
-        fragment("memory", { loader: memory, format: () => skip("unused") }),
-        testInputs(),
-      ]),
+      prompt: pickPrompt,
       modelSettings,
     });
 
     expect(executed).toEqual(["call-1"]);
-    // A tool step builds no prompt and reads no model settings.
+    // A tool step picks no prompt layout, so the host reads no Location. It
+    // builds no prompt and reads no model settings.
+    expect(pickPrompt).not.toHaveBeenCalled();
     expect(load).not.toHaveBeenCalled();
     expect(modelSettings).not.toHaveBeenCalled();
     await expect(engine.loadHistory()).resolves.toEqual([

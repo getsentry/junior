@@ -49,11 +49,12 @@ const LEASE_CHECK_INTERVAL_MS = 1_000;
 type AdvanceTurnOptions = {
   client: ModelClient;
   /**
-   * How core builds the prompt of each model request: the system prompt,
-   * and the messages after the history, with the unread inputs where its
-   * `inputs()` fragment is.
+   * Gives the prompt layout of the claimed Turn, which says how core builds
+   * the prompt of each model request: the system prompt, and the messages
+   * after the history, with the unread inputs where its `inputs()` fragment
+   * is. Only a model request calls it.
    */
-  prompt: PromptLayout;
+  prompt: (turn: ClaimedTurn) => Promise<PromptLayout>;
   /** Gives the model settings of the claimed Turn, at each step. */
   modelSettings: (turn: ClaimedTurn) => Promise<ModelSettings>;
   /** The tools of the Turn's steps. */
@@ -146,12 +147,12 @@ async function runClaimedStep(
   const step = await whileLeased({ executor }, claim, (signal) =>
     runStep({
       history,
-      // Only a model request builds the prompt and reads the model settings.
-      // A tool batch must follow its tool calls, so the inputs wait for the
-      // model request after the batch.
+      // Only a model request picks and builds the prompt and reads the model
+      // settings. A tool batch must follow its tool calls, so the inputs wait
+      // for the model request after the batch.
       request: async () => ({
         ...(await assemblePrompt(
-          prompt,
+          await prompt(claim),
           { turn: claim, history, inputs: unread },
           { signal },
         )),
