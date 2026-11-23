@@ -7,12 +7,10 @@ import type {
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
 import { recordGitHubPullRequestRequester } from "../src/pull-request-requesters/store";
+import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
@@ -109,11 +107,7 @@ function route(
         };
       },
     },
-    codeChanges: {
-      async associateConversations() {},
-      async recordActivity() {},
-      async record() {},
-    },
+    codeChanges: fixture.codeIndex.codeChanges,
     db: fixture.db(),
     events: { hasMatch: async () => false, async publish() {} },
     log: {
@@ -142,19 +136,13 @@ function route(
 
 async function seedJuniorPullRequest(fixture: GitHubFixture): Promise<void> {
   const at = new Date("2026-07-01T12:00:00.000Z");
-  await fixture
-    .db()
-    .insert(juniorGitHubPullRequests)
-    .values({
-      conversationIds: [CONVERSATION_ID],
-      number: 946,
-      openedAt: at,
-      pullRequestId: "1001",
-      repositoryFullName: "getsentry/junior",
-      repositoryId: "2001",
-      state: "open",
-      updatedAt: at,
-    });
+  await recordJuniorPullRequest(fixture, {
+    conversationIds: [CONVERSATION_ID],
+    number: 946,
+    pullRequestId: "1001",
+    repositoryId: "2001",
+    updatedAt: at,
+  });
   await fixture.db().insert(juniorGitHubPullRequestRequesters).values({
     conversationId: CONVERSATION_ID,
     createdAt: at,

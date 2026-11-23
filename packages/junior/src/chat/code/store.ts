@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { and, eq, inArray, lte, sql } from "drizzle-orm";
+import { and, arrayOverlaps, eq, inArray, lt, lte, sql } from "drizzle-orm";
 import {
+  codeChangeFilterSchema,
   codeChangeInputSchema,
+  type CodeChange,
+  type CodeChangeFilter,
   type CodeChangeInput,
 } from "@sentry/junior-plugin-api";
 import { setSpanAttributes } from "@/chat/logging";
@@ -169,4 +172,62 @@ export async function associateCodeChangeConversations(
         eq(juniorCodeChanges.providerId, input.providerId),
       ),
     );
+}
+
+/**
+ * List one provider's code changes that match every part of the filter,
+ * oldest update first, in one query.
+ */
+export async function listCodeChanges(
+  db: JuniorDatabase,
+  provider: string,
+  input: CodeChangeFilter,
+): Promise<CodeChange[]> {
+  const filter = codeChangeFilterSchema.parse(input);
+  const changes = juniorCodeChanges;
+  const repositories = juniorCodeRepositories;
+  const rows = await db
+    .select({
+      closedAt: changes.closedAt,
+      conversationIds: changes.conversationIds,
+      mergedAt: changes.mergedAt,
+      number: changes.number,
+      providerId: changes.providerId,
+      repositoryName: repositories.name,
+      repositoryProviderId: repositories.providerId,
+      state: changes.state,
+    })
+    .from(changes)
+    .innerJoin(repositories, eq(repositories.id, changes.repositoryId))
+    .where(
+      and(
+        eq(changes.provider, provider),
+        filter.conversationIds
+          ? arrayOverlaps(changes.conversationIds, filter.conversationIds)
+          : undefined,
+        filter.repository
+          ? sql`lower(${repositories.name}) = ${filter.repository.name.toLowerCase()}`
+          : undefined,
+        filter.repository?.numbers
+          ? inArray(changes.number, filter.repository.numbers)
+          : undefined,
+        filter.state ? eq(changes.state, filter.state) : undefined,
+        filter.updatedBefore
+          ? lt(changes.updatedAt, filter.updatedBefore)
+          : undefined,
+      ),
+    )
+    .orderBy(changes.updatedAt, changes.id);
+  return rows.map((row) => ({
+    closedAt: row.closedAt ?? undefined,
+    conversationIds: row.conversationIds,
+    mergedAt: row.mergedAt ?? undefined,
+    number: row.number,
+    providerId: row.providerId,
+    repository: {
+      name: row.repositoryName,
+      providerId: row.repositoryProviderId,
+    },
+    state: row.state,
+  }));
 }

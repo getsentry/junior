@@ -3,7 +3,7 @@ import type { InstallationTokens } from "../installation-tokens.js";
 import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
-  CodeChangePublisher,
+  PluginCodeChanges,
   PluginConversationAnnotations,
   PluginConversationChanges,
   PluginConversationInboxItems,
@@ -23,7 +23,6 @@ import {
 } from "../issue-outcomes/store.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
-  recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
   recordGitHubPullRequestOutcome,
 } from "../pull-request-outcomes/store.js";
@@ -152,7 +151,7 @@ export function createGitHubWebhookRoute(args: {
     number: number;
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
-  codeChanges: CodeChangePublisher;
+  codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   installationId(): string | undefined;
@@ -218,7 +217,7 @@ export function createGitHubWebhookRoute(args: {
       if (eventName === "push") {
         const scheduled = await scheduleGitHubPushConflictCheck({
           body,
-          db: args.db,
+          codeChanges: args.codeChanges,
           now: new Date(),
           state: args.state,
         });
@@ -306,13 +305,7 @@ export function createGitHubWebhookRoute(args: {
       const recordedIssueConversations = issueConversations
         ? await recordGitHubIssueConversations(args.db, issueConversations)
         : false;
-      const recordedPullRequestConversations = pullRequestConversations
-        ? await recordGitHubPullRequestConversations(
-            args.db,
-            pullRequestConversations,
-          )
-        : false;
-      if (recordedPullRequestConversations && pullRequestConversations) {
+      if (pullRequestConversations) {
         await args.codeChanges.associateConversations({
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
@@ -322,7 +315,7 @@ export function createGitHubWebhookRoute(args: {
         await refreshGitHubPullRequestPreview({
           annotations: args.annotations,
           body,
-          db: args.db,
+          codeChanges: args.codeChanges,
           log: args.log,
         });
       }
@@ -439,6 +432,7 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          codeChanges: args.codeChanges,
           db: args.db,
           deliveryId,
           events,
@@ -473,6 +467,7 @@ export function createGitHubWebhookRoute(args: {
       };
       await syncGitHubPullRequestActions({
         botEmail,
+        codeChanges: args.codeChanges,
         db: args.db,
         deliveryId,
         env,
@@ -496,7 +491,7 @@ export function createGitHubWebhookRoute(args: {
         !pullRequestOutcome &&
         !issueOutcome &&
         !recordedIssueConversations &&
-        !recordedPullRequestConversations &&
+        !pullRequestConversations &&
         !recordedPullRequestLinkedIssues &&
         events.length === 0
       ) {

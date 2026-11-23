@@ -103,7 +103,7 @@ import {
   getWorkspace,
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
-import { createCodeChangePublisher } from "@/chat/code/publisher";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
@@ -1229,7 +1229,7 @@ export function getPluginRoutes(options: {
             plugin: pluginName,
           }),
       },
-      codeChanges: createCodeChangePublisher(pluginName),
+      codeChanges: createPluginCodeChanges(pluginName),
       conversationChanges: createPluginConversationChanges({
         plugin: pluginName,
         show: options.showInboxItem ?? (async () => {}),

@@ -38,12 +38,48 @@ export const codeChangeInputSchema = z
 
 export type CodeChangeInput = z.input<typeof codeChangeInputSchema>;
 
-/** Write code changes from a plugin to Junior's code records. */
-export interface CodeChangePublisher {
+export const codeChangeFilterSchema = z
+  .object({
+    /** Code changes linked to any of these Conversations. */
+    conversationIds: z.array(z.string().min(1)).min(1).optional(),
+    repository: z
+      .object({
+        /** The repository name. Junior matches it in any case. */
+        name: z.string().min(1),
+        numbers: z.array(z.number().int().positive()).min(1).optional(),
+      })
+      .strict()
+      .optional(),
+    state: codeChangeStateSchema.optional(),
+    /** Code changes whose last update is before this time. */
+    updatedBefore: z.date().optional(),
+  })
+  .strict();
+
+export type CodeChangeFilter = z.input<typeof codeChangeFilterSchema>;
+
+/** A code change of a plugin, as Junior's code records hold it now. */
+export interface CodeChange {
+  closedAt: Date | undefined;
+  conversationIds: string[];
+  mergedAt: Date | undefined;
+  number: number;
+  providerId: string;
+  repository: { name: string; providerId: string };
+  state: CodeChangeState;
+}
+
+/** A plugin's code changes in Junior's code records. */
+export interface PluginCodeChanges {
   associateConversations(input: {
     conversationIds: string[];
     providerId: string;
   }): Promise<void>;
+  /**
+   * List the code changes of this plugin that match every part of the
+   * filter, oldest update first, in one read.
+   */
+  list(filter: CodeChangeFilter): Promise<CodeChange[]>;
   record(input: CodeChangeInput): Promise<void>;
   /**
    * Record a push, review, or comment by a person on a code change. Junior

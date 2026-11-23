@@ -5,7 +5,7 @@
  */
 import type {
   CodeChangeInput,
-  CodeChangePublisher,
+  PluginCodeChanges,
   PluginConversationAnnotations,
   PluginConversationChanges,
   PluginLogger,
@@ -18,18 +18,20 @@ import type { GitHubDb } from "../db/database.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import { endedGitHubPullRequestItemChanges } from "../webhooks/pull-request-action.js";
 import {
+  findGitHubPullRequest,
   type GitHubPullRequestOutcomeInput,
   recordGitHubPullRequestOutcome,
 } from "./store.js";
 
-/** Write a pull request outcome as a code change in Junior's code index. */
+/**
+ * Write a pull request outcome as a code change in Junior's code index. It
+ * names no Conversations, so the linked ones stay.
+ */
 export function githubCodeChange(
   outcome: GitHubPullRequestOutcomeInput,
-  conversationIds: string[],
 ): CodeChangeInput {
   return {
     closedAt: outcome.closedAt,
-    conversationIds,
     draft: outcome.draft,
     mergedAt: outcome.mergedAt,
     number: outcome.number,
@@ -52,14 +54,14 @@ export function githubCodeChange(
  * Record one pull request outcome. When the stored row changes, update the
  * code index. A merged or closed pull request then marks the chip of the
  * conversation that asked for it and closes its Inbox items in one batch, so
- * no reader sees a merged chip next to an open item. Each other linked
- * conversation gets its chip in its own write, so a stale conversation id
- * breaks only its own chip. The chips and items are optional UI, so a
+ * no reader sees a merged chip next to an open item. Each other conversation
+ * that the code index links gets its chip in its own write, so a stale
+ * conversation id breaks only its own chip. The chips and items are optional UI, so a
  * failed write is logged and does not stop the work after it.
  */
 export async function applyGitHubPullRequestOutcome(args: {
   annotations: PluginConversationAnnotations;
-  codeChanges: CodeChangePublisher;
+  codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
@@ -84,10 +86,11 @@ export async function applyGitHubPullRequestOutcome(args: {
     : undefined;
   const recorded = await recordGitHubPullRequestOutcome(args.db, outcome);
   if (!recorded.applied) return recorded;
-  await args.codeChanges.record(
-    githubCodeChange(outcome, recorded.conversationIds),
-  );
+  await args.codeChanges.record(githubCodeChange(outcome));
   if (state) {
+    const conversationIds =
+      (await findGitHubPullRequest(args.codeChanges, outcome))
+        ?.conversationIds ?? [];
     const update = {
       repo: outcome.repositoryFullName,
       number: outcome.number,
@@ -97,7 +100,7 @@ export async function applyGitHubPullRequestOutcome(args: {
     if (ended) {
       try {
         await args.conversationChanges.apply({
-          annotations: recorded.conversationIds.includes(ended.conversationId)
+          annotations: conversationIds.includes(ended.conversationId)
             ? [
                 await githubAnnotationChange({
                   annotations: args.annotations,
@@ -119,7 +122,7 @@ export async function applyGitHubPullRequestOutcome(args: {
     }
     await updateGitHubAnnotations({
       annotations: args.annotations,
-      conversationIds: recorded.conversationIds.filter(
+      conversationIds: conversationIds.filter(
         (id) => id !== ended?.conversationId,
       ),
       log: args.log,

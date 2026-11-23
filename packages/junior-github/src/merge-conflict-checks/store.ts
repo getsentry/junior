@@ -8,11 +8,8 @@
  * burst of pushes gives one check, and GitHub has time to calculate
  * mergeability.
  */
-import type { PluginState } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import type { PluginCodeChanges, PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { GitHubDb } from "../db/database.js";
-import { juniorGitHubPullRequests } from "../db/schema.js";
 
 /** A key that waits longer than this was lost and expires. */
 const CHECK_TTL_MS = 30 * 60_000;
@@ -48,23 +45,16 @@ function repeatKey(repositoryFullName: string): string {
 
 /** Return the repositories that have open Junior pull requests. */
 export async function listGitHubRepositoriesWithOpenPullRequests(
-  db: GitHubDb,
+  codeChanges: Pick<PluginCodeChanges, "list">,
   repositoryFullName?: string,
 ): Promise<string[]> {
-  const t = juniorGitHubPullRequests;
-  const rows = await db
-    .selectDistinct({ repositoryFullName: t.repositoryFullName })
-    .from(t)
-    .where(
-      and(
-        eq(t.state, "open"),
-        repositoryFullName
-          ? eq(t.repositoryFullName, repositoryFullName)
-          : undefined,
-      ),
-    )
-    .orderBy(t.repositoryFullName);
-  return rows.map((row) => row.repositoryFullName);
+  const changes = await codeChanges.list({
+    ...(repositoryFullName
+      ? { repository: { name: repositoryFullName } }
+      : undefined),
+    state: "open",
+  });
+  return [...new Set(changes.map((change) => change.repository.name))].sort();
 }
 
 /**
@@ -73,13 +63,13 @@ export async function listGitHubRepositoriesWithOpenPullRequests(
  * coming do not delay it. Return whether a check waits.
  */
 export async function scheduleGitHubConflictCheck(args: {
-  db: GitHubDb;
+  codeChanges: Pick<PluginCodeChanges, "list">;
   dueAtMs: number;
   repositoryFullName: string;
   state: PluginState;
 }): Promise<boolean> {
   const open = await listGitHubRepositoriesWithOpenPullRequests(
-    args.db,
+    args.codeChanges,
     args.repositoryFullName,
   );
   if (open.length === 0) return false;

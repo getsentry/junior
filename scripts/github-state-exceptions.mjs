@@ -70,22 +70,8 @@ export const githubStateExceptions = {
 
   "junior_github_pull_requests.pull_request_id":
     "Junior-owned: the key of the facts that Junior records for its pull request.",
-  "junior_github_pull_requests.repository_id":
-    "Mirror awaiting cleanup: core code changes hold the repository.",
-  "junior_github_pull_requests.repository_full_name":
-    "Mirror awaiting cleanup: core code changes hold the repository.",
-  "junior_github_pull_requests.number":
-    "Mirror awaiting cleanup: core code changes hold the number.",
-  "junior_github_pull_requests.state":
-    "Mirror awaiting cleanup: core code changes hold the lifecycle.",
-  "junior_github_pull_requests.opened_at":
-    "Mirror awaiting cleanup: core code changes hold the lifecycle.",
-  "junior_github_pull_requests.finished_at":
-    "Mirror awaiting cleanup: core code changes hold the lifecycle.",
   "junior_github_pull_requests.commit_composition":
     "Too expensive to derive: it needs every commit of the pull request.",
-  "junior_github_pull_requests.conversation_ids":
-    "Junior-owned: the Conversations that worked on the pull request.",
   "junior_github_pull_requests.updated_at":
     "Junior-owned: when Junior last wrote the row.",
   "junior_github_pull_requests.next_action":

@@ -1,10 +1,8 @@
 import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
@@ -351,19 +349,21 @@ describe("merge conflict check on webhook events", () => {
           });
         }),
       );
-      const row = (number: number, state: "merged" | "open") => ({
-        number,
-        openedAt: new Date(pushedAt - 60 * minute),
-        pullRequestId: `${number}0`,
-        repositoryFullName: "getsentry/junior",
-        repositoryId: "1",
-        state,
-        updatedAt: new Date(pushedAt - 60 * minute),
+      const updatedAt = new Date(pushedAt - 60 * minute);
+      await recordJuniorPullRequest(fixture, {
+        number: 946,
+        updatedAt,
       });
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequests)
-        .values([row(946, "open"), row(947, "open"), row(948, "merged")]);
+      await recordJuniorPullRequest(fixture, {
+        number: 947,
+        updatedAt,
+      });
+      await recordJuniorPullRequest(fixture, {
+        finishedAt: updatedAt,
+        number: 948,
+        state: "merged",
+        updatedAt,
+      });
     });
 
     afterEach(() => {
