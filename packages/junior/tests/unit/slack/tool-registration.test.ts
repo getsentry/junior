@@ -354,7 +354,7 @@ describe("Slack tool registration", () => {
     expect(tools["addInboxItem"]?.exposure).not.toBe("deferred");
     expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
 
-    // An Agent invocation reports the need to its parent.
+    // A child agent reports the need to its parent.
     const childTools = createTools(
       [],
       {},
