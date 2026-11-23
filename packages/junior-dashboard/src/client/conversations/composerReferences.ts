@@ -37,6 +37,15 @@ export const composerReferenceSchema = z.discriminatedUnion("kind", [
       name: z.string().min(1),
     })
     .strict(),
+  z
+    .object({
+      kind: z.literal("memory"),
+      // The same-origin link of the memory page.
+      url: z.string().min(1),
+      // The memory text on one line, cut to `MEMORY_LABEL_CHARS`.
+      title: z.string().min(1),
+    })
+    .strict(),
   z.object({ kind: z.literal("file"), name: z.string().min(1) }).strict(),
 ]);
 
@@ -67,6 +76,7 @@ export function referenceText(reference: ComposerReference): string {
   switch (reference.kind) {
     case "conversation":
     case "task":
+    case "memory":
       return `<${reference.url}|${reference.title}>`;
     case "code_change":
       return `<${reference.url}|${codeChangeLabel(reference)}>`;
@@ -90,6 +100,18 @@ export function linkLabel(title: string): string {
   return title.replace(/[<>\s]+/g, " ").trim();
 }
 
+// A memory can hold 4,000 characters. Its link label needs only enough to
+// recognize it, and the link leads to the rest.
+const MEMORY_LABEL_CHARS = 120;
+
+/** The link label of a memory: its text on one line, cut with an ellipsis. */
+export function memoryLabel(content: string): string {
+  const label = linkLabel(content);
+  return label.length > MEMORY_LABEL_CHARS
+    ? `${label.slice(0, MEMORY_LABEL_CHARS - 1).trimEnd()}…`
+    : label;
+}
+
 /** One part of composer text: plain text, a person, or a reference. */
 export type ComposerTextPart =
   | { text: string }
@@ -102,11 +124,13 @@ export type ComposerTextPart =
 const TOKEN =
   /<@([A-Z0-9]+)>|<#(C[A-Z0-9]+)\|([^<>|]+)>|<(https?:\/\/[^\s|<>]+)\|([^<>]+)>/g;
 const PULL_REQUEST_PATH = /^\/([^/]+\/[^/]+)\/pull\/(\d+)$/;
+const MEMORY_PATH = /^\/memories\/[^/]+$/;
 
 /**
  * Split message text into plain text, mentions, and references. A link is
- * a reference only when it is a Conversation link of `origin`, or a GitHub
- * pull request link labeled `owner/repo#123`. Other links stay text.
+ * a reference only when it is a Conversation or memory link of `origin`, or
+ * a GitHub pull request link labeled `owner/repo#123`. Other links stay
+ * text.
  */
 export function splitComposerText(
   text: string,
@@ -143,6 +167,9 @@ function linkReference(
   if (parsed.origin === origin && CONVERSATION_PATH.test(parsed.pathname)) {
     return { reference: { kind: "conversation", url, title: label } };
   }
+  if (parsed.origin === origin && MEMORY_PATH.test(parsed.pathname)) {
+    return { reference: { kind: "memory", url, title: label } };
+  }
   const pull =
     parsed.origin === "https://github.com"
       ? PULL_REQUEST_PATH.exec(parsed.pathname)
@@ -162,7 +189,12 @@ function linkReference(
 export function linkedWorkUrls(text: string, origin: string): string[] {
   const urls = new Set<string>();
   for (const part of splitComposerText(text, origin)) {
-    if ("reference" in part && "url" in part.reference) {
+    // A memory is not work, so it links to nothing.
+    if (
+      "reference" in part &&
+      "url" in part.reference &&
+      part.reference.kind !== "memory"
+    ) {
       urls.add(part.reference.url);
     }
   }

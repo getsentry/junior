@@ -1,7 +1,8 @@
 import { embeddingVector } from "@/db/embeddings";
 import { tsvector } from "./tsvector";
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
+  type AnyPgColumn,
   bigint,
   check,
   index,
@@ -20,6 +21,15 @@ import {
   MEMORY_SUBJECT_TYPES,
   MEMORY_KINDS,
 } from "@/chat/memory/types";
+
+/**
+ * The words of a memory, unstemmed, for the prefix search of the composer
+ * `@` menu. The `english` search vector stems words, so a partly typed word
+ * would not match it.
+ */
+export function memoryMentionDocument(table: { content: AnyPgColumn }): SQL {
+  return sql`to_tsvector('simple', ${table.content})`;
+}
 
 export const juniorMemoryMemories = pgTable(
   "junior_memory_memories",
@@ -64,6 +74,11 @@ export const juniorMemoryMemories = pgTable(
       ),
     index("junior_memory_memories_search_idx")
       .using("gin", table.scope, table.scopeKey, table.searchVector)
+      .where(
+        sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
+      ),
+    index("junior_memory_memories_mention_idx")
+      .using("gin", table.scope, table.scopeKey, memoryMentionDocument(table))
       .where(
         sql`${table.archivedAtMs} IS NULL AND ${table.supersededAtMs} IS NULL AND ${table.supersededById} IS NULL`,
       ),

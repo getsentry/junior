@@ -245,6 +245,21 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
+    // ⌘K reads the memory search, not the page list.
+    await page.route("**/api/memory/search?*", (route) =>
+      route.fulfill({
+        json: {
+          memories: forgotMemory
+            ? []
+            : [
+                {
+                  content: "Deploy runbooks live in Notion.",
+                  id: "memory-search",
+                },
+              ],
+        },
+      }),
+    );
     await page.route("**/api/memory/memories/memory-search", async (route) => {
       if (route.request().method() === "GET") {
         if (forgotMemory) {

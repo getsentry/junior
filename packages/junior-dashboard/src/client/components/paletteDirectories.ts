@@ -38,6 +38,7 @@ import {
 } from "../conversations/transcript";
 import { locationPath, memoryPath, peoplePath } from "../format";
 import { fetchDashboardJson } from "../http";
+import { searchMemories } from "../pages/memory/memorySearch";
 import { AUTOMATION_RUN_PARAM } from "../pages/automations/AutomationRunDetails";
 import { codeRepositoryPath } from "../pages/code/codeRepositoryRoutes";
 import {
@@ -139,12 +140,21 @@ export function useDirectoryPaletteItems(input: {
   const memories = useQuery({
     enabled: wanted("Memories"),
     queryKey: ["dashboard", "palette", "memories", input.search],
-    queryFn: ({ signal }) =>
-      fetchDashboardJson(
-        pluginUserPageContentSchema,
-        `/api/user-pages/memory/memories${input.search ? `?${new URLSearchParams({ q: input.search })}` : ""}`,
-        signal,
-      ),
+    // Typed text uses the indexed memory search. With no text, on the
+    // Memories page, the group lists the newest memories, as the page does.
+    queryFn: async ({ signal }) =>
+      input.search
+        ? (await searchMemories(input.search, signal)).map((memory) => ({
+            id: memory.id,
+            label: memory.content,
+          }))
+        : (
+            await fetchDashboardJson(
+              pluginUserPageContentSchema,
+              "/api/user-pages/memory/memories",
+              signal,
+            )
+          ).records.map((record) => ({ id: record.id, label: record.title })),
     placeholderData: (previous) => previous,
     retry: false,
   });
@@ -248,13 +258,13 @@ export function useDirectoryPaletteItems(input: {
     ),
     ...rows(
       "Memories",
-      (memoriesCurrent ? (memories.data?.records ?? []) : []).map((record) => {
+      (memoriesCurrent ? (memories.data ?? []) : []).map((memory) => {
         const item = {
           group: "Memories",
           icon: Brain,
-          id: `memory-${record.id}`,
-          label: record.title.slice(0, LABEL_LENGTH),
-          to: memoryPath(record.id),
+          id: `memory-${memory.id}`,
+          label: memory.label.slice(0, LABEL_LENGTH),
+          to: memoryPath(memory.id),
         };
         // The server matched the text, so every row stays.
         return matchedItem(item, query) ?? { ...item, score: 1 };

@@ -129,6 +129,36 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   await cardRead;
 });
 
+test("@ finds memories and sends each as a labeled link to its page", async ({
+  page,
+  dashboard,
+}) => {
+  const { linked, sent } = recordWrites(page);
+  const composer = await openThread(page, dashboard.baseURL);
+  const mentions = page.getByRole("listbox", { name: "Mentions" });
+
+  // `@` takes one word, which must start a word of the memory.
+  await composer.pressSequentially("Follow @runb");
+  const memories = mentions.getByRole("group", { name: "Memories" });
+  await expect(memories.getByRole("option")).toHaveText([
+    /^Deploy runbooks live in Notion/,
+  ]);
+  await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  await composer.press("Enter");
+  await expect(mentions).toBeHidden();
+  // A long memory is cut to the start of its text.
+  const label =
+    "Deploy runbooks live in Notion under Engineering, then Releases. Start with the rollback checklist before any productio…";
+  await expect(composer).toHaveText(`Follow ${label}`);
+  await composer.press("Enter");
+
+  const memory = `${new URL(dashboard.baseURL).origin}/memories/memory-deploy-runbook`;
+  await expect.poll(() => sent).toEqual([`Follow <${memory}|${label}>`]);
+  await expect(composer).toHaveText("");
+  // A memory is not work, so the Conversation links nothing.
+  expect(linked).toEqual([]);
+});
+
 test("the active row stays put when a source above it loads", async ({
   page,
   dashboard,

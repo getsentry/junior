@@ -22,6 +22,7 @@ import * as z from "zod";
 import {
   juniorMemoryEmbeddings,
   juniorMemoryMemories,
+  memoryMentionDocument,
 } from "@/db/schema/memory";
 import { publicMemoryScope } from "./scope";
 import { parseMemoryRow, type MemoryDb, type MemoryRecord } from "./store";
@@ -264,6 +265,47 @@ export async function getMemories(
       ),
     );
   return rows.map(toMemoryView);
+}
+
+// One menu of memories. More rows do not help a person who is still typing.
+const MEMORY_SEARCH_LIMIT = 8;
+// More words only narrow the match further.
+const MEMORY_SEARCH_TERMS = 4;
+
+/**
+ * Find active public memory for quick pickers, such as the composer `@`
+ * menu and Cmd+K, newest first. Each word of the query must start a word of
+ * the memory. It reads the index `junior_memory_memories_mention_idx`.
+ */
+export async function searchMemories(
+  db: MemoryDb,
+  query: string,
+): Promise<Array<{ content: string; id: string }>> {
+  const terms = (query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []).slice(
+    0,
+    MEMORY_SEARCH_TERMS,
+  );
+  if (terms.length === 0) return [];
+  // The terms hold only letters and digits, so they cannot add tsquery
+  // syntax.
+  const everyTerm = terms.map((term) => `${term}:*`).join(" & ");
+  return await db
+    .select({
+      content: juniorMemoryMemories.content,
+      id: juniorMemoryMemories.id,
+    })
+    .from(juniorMemoryMemories)
+    .where(
+      and(
+        activeMemoryPredicate(Date.now()),
+        sql`${memoryMentionDocument(juniorMemoryMemories)} @@ to_tsquery('simple', ${everyTerm})`,
+      ),
+    )
+    .orderBy(
+      desc(juniorMemoryMemories.createdAtMs),
+      asc(juniorMemoryMemories.id),
+    )
+    .limit(MEMORY_SEARCH_LIMIT);
 }
 
 /** List one stable page of active memory visible to the authenticated User. */

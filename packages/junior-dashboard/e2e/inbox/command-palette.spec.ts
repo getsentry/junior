@@ -465,6 +465,30 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("dialog", { name: "Weekly project summary" }),
     ).toBeVisible();
+
+    // Memories come from the memory search, which matches word prefixes.
+    await page.route("**/api/memory/memories/memory-deploy-runbook", (route) =>
+      route.fulfill({
+        json: {
+          content: "Deploy runbooks live in Notion.",
+          createdAt: "2026-07-30T12:00:00.000Z",
+          id: "memory-deploy-runbook",
+          kind: "knowledge",
+          observedAt: "2026-07-30T12:00:00.000Z",
+          origin: "explicit",
+          sourcePlatform: "slack",
+        },
+      }),
+    );
+    await (
+      await firstMatch(
+        "/memories",
+        "deploy run",
+        "Memories",
+        /Deploy runbooks live in Notion/,
+      )
+    ).click();
+    await expect(page).toHaveURL(/\/memories\/memory-deploy-runbook$/);
   });
 
   test("closed Inbox matches show under Done, after the open ones", async ({
@@ -497,7 +521,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     let release!: () => void;
     const released = new Promise<void>((resolve) => (release = resolve));
-    await page.route("**/api/user-pages/memory/memories?q=*", async (route) => {
+    await page.route("**/api/memory/search?q=*", async (route) => {
       await released;
       await route.fallback();
     });
@@ -512,11 +536,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     await conversationsSearched;
     await expect(palette.getByText("Searching…")).toBeVisible();
     await expect(palette.getByText("No matches.")).toHaveCount(0);
-    // The mock memories ignore the text, so the server's matches then show.
     release();
-    await expect(
-      palette.getByRole("group", { name: "Memories" }).getByRole("option"),
-    ).not.toHaveCount(0);
+    await expect(palette.getByText("No matches.")).toBeVisible();
     await expect(palette.getByText("Searching…")).toHaveCount(0);
   });
 

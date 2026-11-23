@@ -13,7 +13,9 @@ import {
 import { ActorAvatar } from "../components/ActorAvatar";
 import { quickOpenMatch } from "../components/quickOpenMatch";
 import { useDebouncedValue } from "../debouncedValue";
+import { memoryPath } from "../format";
 import { fetchDashboardJson } from "../http";
+import { searchMemories } from "../pages/memory/memorySearch";
 import { formatRelativeTime } from "../time";
 import {
   ComposerMenu,
@@ -29,7 +31,11 @@ import { conversationDisplayState } from "./ConversationStateIcon";
 import { formatAttachmentBytes } from "./TranscriptAttachment";
 import { mentionName } from "./composerMentionToken";
 import { rankPeople } from "./composerPeopleSearch";
-import { linkLabel, type ComposerReference } from "./composerReferences";
+import {
+  linkLabel,
+  memoryLabel,
+  type ComposerReference,
+} from "./composerReferences";
 import { conversationUrl } from "./conversationRoutes";
 import {
   conversationDetailQueryKey,
@@ -40,14 +46,15 @@ import {
 const SEARCH_STALE_MS = 60_000;
 // Each source shows at most this many rows.
 const SOURCE_ROW_LIMIT = 8;
-// A Conversation search costs the server more than a people search.
-const CONVERSATION_SEARCH_DEBOUNCE_MS = 150;
+// A Conversation or memory search costs the server more than a people
+// search.
+const SERVER_SEARCH_DEBOUNCE_MS = 150;
 
 /**
  * Suggest what the reader can mention while they type `@name`: people,
- * their Conversations, and this Conversation's Tasks and files, under one
- * heading each. A person sends as `<@U…>`, a Conversation or Task as a
- * labeled link, and a file as its name.
+ * their Conversations, this Conversation's Tasks and files, and memories,
+ * under one heading each. A person sends as `<@U…>`, a Conversation, Task,
+ * or memory as a labeled link, and a file as its name.
  */
 export function ComposerMentionMenu(props: { typeahead: ComposerTypeahead }) {
   const query = props.typeahead.query?.trim() ?? "";
@@ -59,6 +66,7 @@ export function ComposerMentionMenu(props: { typeahead: ComposerTypeahead }) {
     useConversationSource(query, conversationId),
     useTaskSource(query, conversationId),
     useFileSource(query, conversationId),
+    useMemorySource(query),
   ];
   return (
     <ComposerMenu
@@ -124,7 +132,7 @@ function useConversationSource(
   query: string,
   conversationId: string | undefined,
 ): ComposerMenuSource {
-  const debounced = useDebouncedValue(query, CONVERSATION_SEARCH_DEBOUNCE_MS);
+  const debounced = useDebouncedValue(query, SERVER_SEARCH_DEBOUNCE_MS);
   const search = useQuery({
     enabled: debounced.length > 0,
     placeholderData: keepPreviousData,
@@ -273,6 +281,50 @@ function useFileSource(
       };
     });
   return { pending: false, rows };
+}
+
+// Active public memories, which every signed-in person can read. The agent
+// gets the link of the memory page, labeled with the start of its text.
+function useMemorySource(query: string): ComposerMenuSource {
+  const debounced = useDebouncedValue(query, SERVER_SEARCH_DEBOUNCE_MS);
+  const search = useQuery({
+    enabled: debounced.length > 0,
+    placeholderData: keepPreviousData,
+    queryKey: ["dashboard", "memories", "composer-search", debounced],
+    queryFn: ({ signal }) => searchMemories(debounced, signal),
+    staleTime: SEARCH_STALE_MS,
+  });
+  const stale = search.isPlaceholderData || debounced !== query;
+  const rows = (search.data ?? []).map((memory): ComposerMenuRow => {
+    const title = memoryLabel(memory.content);
+    const reference: ComposerReference = {
+      kind: "memory",
+      url: `${window.location.origin}${memoryPath(memory.id)}`,
+      title,
+    };
+    return {
+      key: `memory:${memory.id}`,
+      group: "Memories",
+      icon: <ReferenceIcon reference={reference} />,
+      label: title,
+      labelMatches: quickOpenMatch(title, query)?.indices,
+      details: (
+        // The label is only the start of a long memory, so the card shows
+        // all of it.
+        <ComposerMenuDetails
+          body={memory.content}
+          icon={<ReferenceIcon reference={reference} />}
+          title="Memory"
+        />
+      ),
+      insertion: { reference },
+      stale,
+    };
+  });
+  return {
+    pending: Boolean(query) && (stale || search.isLoading),
+    rows,
+  };
 }
 
 /** True from the first render where `value` is true. */

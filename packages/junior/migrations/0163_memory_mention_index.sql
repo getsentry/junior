@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_memory_memories_mention_idx" ON "junior_memory_memories" USING gin ("scope","scope_key",to_tsvector('simple', "content")) WHERE "junior_memory_memories"."archived_at_ms" IS NULL AND "junior_memory_memories"."superseded_at_ms" IS NULL AND "junior_memory_memories"."superseded_by_id" IS NULL;

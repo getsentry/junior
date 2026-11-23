@@ -214,6 +214,7 @@ const BIG_TABLES = [
   "junior_code_changes",
   "junior_conversation_briefs",
   "junior_conversation_metrics",
+  "junior_memory_memories",
 ];
 
 /**
