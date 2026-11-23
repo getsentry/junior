@@ -29,9 +29,11 @@ import {
 export interface InboxSnoozeTriggerMatch {
   eventType: string;
   identifier: string;
+  inboxItemId: string;
   match: EventMatch | null;
   outcome: "wake" | "resolve";
   snoozeId: string;
+  userId: string;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -242,9 +244,11 @@ export async function listFiringInboxSnoozeTriggers(
     .select({
       eventType: juniorInboxSnoozeTriggers.eventType,
       identifier: juniorInboxSnoozeTriggers.identifier,
+      inboxItemId: juniorInboxSnoozes.inboxItemId,
       match: juniorInboxSnoozeTriggers.match,
       outcome: juniorInboxSnoozeTriggers.outcome,
       snoozeId: juniorInboxSnoozeTriggers.snoozeId,
+      userId: juniorInboxSnoozes.userId,
     })
     .from(juniorInboxSnoozeTriggers)
     .innerJoin(

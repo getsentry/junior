@@ -87,10 +87,10 @@ async function fireTriggers(
       namespace: event.namespace,
     })
   ).filter((trigger) => eventMatches(trigger.match ?? undefined, event.data));
-  const resolving = new Set(
+  const resolving = new Map(
     triggers
       .filter((trigger) => trigger.outcome === "resolve")
-      .map((trigger) => trigger.snoozeId),
+      .map((trigger) => [trigger.snoozeId, trigger]),
   );
   const waking = new Set(
     triggers
@@ -100,13 +100,27 @@ async function fireTriggers(
   if (resolving.size === 0 && waking.size === 0) {
     return 0;
   }
-  const { todos, woken } = await db.transaction(async (tx) => {
+  // A To-do changes under its own lock, so it cannot join the snooze
+  // transaction. It changes first: if it fails, the snooze stays, so a
+  // redelivered Event fires it again. A repeat finds the To-do closed and
+  // changes nothing. Its change closes its item (`syncTodoInboxItems`).
+  const todos = await resolvedTodos(db, [...resolving.values()]);
+  await mapBounded(todos, (todo) =>
+    setTodoStatusByUser(getSqlExecutor(), {
+      assignedOnly: true,
+      conversationId: todo.conversationId,
+      id: todo.id,
+      nowMs,
+      status: "done",
+      userId: todo.userId,
+    }),
+  );
+  const todoItemIds = new Set(todos.map((todo) => todo.inboxItemId));
+  return await db.transaction(async (tx) => {
     const resolved = await settleInboxSnoozes(tx, {
-      snoozeIds: [...resolving],
+      snoozeIds: [...resolving.keys()],
       state: "cancelled",
     });
-    const todos = await resolvedTodos(tx, resolved);
-    const todoItemIds = new Set(todos.map((todo) => todo.inboxItemId));
     await dismissOpenInboxItems(tx, {
       ids: resolved
         .map((row) => row.inboxItemId)
@@ -119,21 +133,8 @@ async function fireTriggers(
       snoozeIds: [...waking],
       state: "woken",
     });
-    return { todos, woken: wokenItems.length };
+    return wokenItems.length;
   });
-  // A To-do changes under its own lock, after the snoozes commit. Its
-  // change closes its item (`syncTodoInboxItems`).
-  await mapBounded(todos, (todo) =>
-    setTodoStatusByUser(getSqlExecutor(), {
-      assignedOnly: true,
-      conversationId: todo.conversationId,
-      id: todo.id,
-      nowMs,
-      status: "done",
-      userId: todo.userId,
-    }),
-  );
-  return woken;
 }
 
 /** Fire the snooze triggers that one published Event matches. */
