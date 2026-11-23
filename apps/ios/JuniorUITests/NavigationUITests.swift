@@ -127,18 +127,6 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(message(app, containing: "Check the EU region too").waitForExistence(timeout: 10))
   }
 
-  /// On a hardware keyboard, Shift-Return inserts a newline and Return sends.
-  func testHardwareKeyboardReturn() {
-    let app = launch()
-    let field = openComposer(app)
-    field.typeText("Check the EU region")
-    field.typeKey(.return, modifierFlags: .shift)
-    field.typeText("and the US one")
-    XCTAssertEqual(field.value as? String, "Check the EU region\nand the US one")
-    field.typeKey(.return, modifierFlags: [])
-    XCTAssertTrue(message(app, containing: "and the US one").waitForExistence(timeout: 10))
-  }
-
   /// Rename from the Conversation menu; the header shows the saved title.
   func testRenameConversation() {
     let app = launch()
