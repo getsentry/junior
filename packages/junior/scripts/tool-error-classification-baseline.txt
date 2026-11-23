@@ -22,6 +22,7 @@ packages/junior-github/src/tools/get-issue.ts	throw new Error(message);
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error( `GitHub pull request checks lookup failed with HTTP ${response.status}`, );
 packages/junior-github/src/tools/get-pull-request.ts	throw new Error(message);
 packages/junior-github/src/tools/get-release.ts	throw new Error( `GitHub release lookup failed with HTTP ${response.status}`, );
+packages/junior-github/src/tools/get-repository.ts	throw new Error(message);
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread lookup failed with HTTP ${lookupResponse.status}: ${githubErrorMessage(lookupPayload)}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error( `GitHub review thread resolution failed with HTTP ${resolveResponse.status}: ${githubErrorMessage(resolvePayload)}`, );
 packages/junior-github/src/tools/resolve-pull-request-review-thread.ts	throw new Error("GitHub App bot identity is not configured.");
