@@ -208,7 +208,7 @@ export const juniorInboxItemSlackCards = pgTable(
 
 /**
  * One notification of one Inbox item event to one assigned User on one
- * channel. The key stops a second send for the same event, also on a
+ * channel: a Slack card in a thread of the item, or a web push. The key stops a second send for the same event, also on a
  * retry. `skip_reason` says why a `skipped` row sent nothing. A `sent` row
  * becomes `cleared` when the item closes, so the devices can close it.
  */
@@ -221,7 +221,7 @@ export const juniorInboxItemDeliveries = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => juniorUsers.id, { onDelete: "cascade" }),
-    channel: text("channel").$type<"web_push">().notNull(),
+    channel: text("channel").$type<"slack" | "web_push">().notNull(),
     event: text("event").$type<"created" | "reply">().notNull(),
     status: text("status").$type<"sent" | "skipped" | "cleared">().notNull(),
     skipReason: text("skip_reason"),

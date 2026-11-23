@@ -5,10 +5,12 @@ import { juniorInboxItemDeliveries } from "@/db/schema";
 
 /**
  * Why a delivery sent nothing. `taken`: the User took the item themselves,
- * so they already know about it.
+ * so they already know about it. `slack_active`: the User was active in
+ * Slack after its card posted, so Slack's own notification reached them.
  */
 export type InboxItemDeliverySkipReason =
   | NotificationPause
+  | "slack_active"
   | "snoozed"
   | "taken";
 
@@ -62,6 +64,35 @@ export async function claimInboxItemPush(
     .onConflictDoNothing()
     .returning({ itemId: juniorInboxItemDeliveries.itemId });
   return inserted.length > 0;
+}
+
+/**
+ * Record that a Slack card shows an item to these Users. Return the Users
+ * that had no record yet, so only the first card starts their wait for a
+ * push.
+ */
+export async function recordInboxItemSlackCard(
+  db: JuniorDatabase,
+  input: { itemId: string; nowMs: number; userIds: readonly string[] },
+): Promise<string[]> {
+  if (input.userIds.length === 0) return [];
+  const now = new Date(input.nowMs);
+  const inserted = await db
+    .insert(juniorInboxItemDeliveries)
+    .values(
+      input.userIds.map((userId) => ({
+        channel: "slack" as const,
+        createdAt: now,
+        event: "created" as const,
+        itemId: input.itemId,
+        status: "sent" as const,
+        updatedAt: now,
+        userId,
+      })),
+    )
+    .onConflictDoNothing()
+    .returning({ userId: juniorInboxItemDeliveries.userId });
+  return inserted.map((row) => row.userId);
 }
 
 /**
