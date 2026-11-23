@@ -19,7 +19,10 @@ import type { EngineContext } from "@/core/engine-context";
 import { scheduleInput } from "@/core/turn/schedule";
 import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
-import { turnStepConsumer } from "@/turn-steps/consumer";
+import {
+  createGatewayModelClient,
+  turnStepConsumer,
+} from "@/turn-steps/consumer";
 import { createEngineContext } from "@/turn-steps/engine-context";
 import type { TurnInputPayload } from "@/turn-steps/prepare";
 
@@ -104,7 +107,9 @@ export async function runCoreEnginePrompt(args: {
       "--engine core runs its steps on a BullMQ worker. Set JUNIOR_QUEUE_PROVIDER=bullmq and JUNIOR_QUEUE_REDIS_URL.",
     );
   }
-  const worker = await queue.startWorker([turnStepConsumer(engineCtx)]);
+  const worker = await queue.startWorker([
+    turnStepConsumer(engineCtx, { client: createGatewayModelClient() }),
+  ]);
   try {
     await getConversationStore().recordActivity({
       conversationId: args.conversationId,

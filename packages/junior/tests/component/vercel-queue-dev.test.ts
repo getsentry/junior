@@ -30,7 +30,10 @@ import {
   createVercelConversationWorkCallback,
   registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
-import { turnStepConsumer } from "@/turn-steps/consumer";
+import {
+  createGatewayModelClient,
+  turnStepConsumer,
+} from "@/turn-steps/consumer";
 import { createEngineContext } from "@/turn-steps/engine-context";
 
 // Mock the SDK once for the file and import statically. Per-test
@@ -331,7 +334,9 @@ describe("Turn step Vercel queue integration", () => {
     resetRuntimeConfig(600);
 
     const engineCtx = createEngineContext(getChatConfig());
-    engineCtx.queue.createCallback(turnStepConsumer(engineCtx));
+    engineCtx.queue.createCallback(
+      turnStepConsumer(engineCtx, { client: createGatewayModelClient() }),
+    );
 
     expect(mocks.handleCallback).toHaveBeenCalledWith(expect.any(Function), {
       retry: expect.any(Function),

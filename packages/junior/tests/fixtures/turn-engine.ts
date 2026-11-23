@@ -29,18 +29,15 @@ import {
 } from "./sql";
 import {
   emulatedModelClient,
+  replyRule,
   setModelRules,
   type ModelRule,
 } from "./ai-emulator";
 import { createInProcessQueue, type InProcessQueue } from "./in-process-queue";
 import { createAssistantMessage } from "./model-stream";
+import { ACTOR } from "./turn-harness";
 
 export const CONVERSATION_ID = "slack:C123:1718123456.000000";
-export const ACTOR = {
-  platform: "slack",
-  teamId: "T123",
-  userId: "U123",
-} as const;
 export const LEASE_MS = 60_000;
 export const MAX_ATTEMPTS = 3;
 export const MODEL: ModelSettings = {
@@ -192,32 +189,6 @@ function inputMessage(input: UnreadInput): InputMessage {
       timestamp: input.sentAt.getTime(),
     },
     provenance: instructionProvenanceFor(ACTOR),
-  };
-}
-
-/**
- * The emulator rule that answers with the text and tool calls of a reply.
- * Tool calls keep their ids.
- */
-function replyRule(reply: AssistantMessage): ModelRule {
-  if (reply.stopReason !== "stop" && reply.stopReason !== "toolUse") {
-    throw new Error(`The emulator cannot end a reply with ${reply.stopReason}`);
-  }
-  return {
-    reply: reply.content.map((part) => {
-      if (part.type === "text") {
-        return { type: "text", text: part.text };
-      }
-      if (part.type === "toolCall") {
-        return {
-          type: "tool_call",
-          name: part.name,
-          arguments: part.arguments,
-          id: part.id,
-        };
-      }
-      throw new Error(`The emulator cannot reply with ${part.type}`);
-    }),
   };
 }
 
