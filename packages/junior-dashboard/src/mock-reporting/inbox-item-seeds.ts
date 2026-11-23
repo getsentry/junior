@@ -51,6 +51,9 @@ const SENTAUR_LOGS_THREAD_ID = "slack:CQA456:1770028800.000902";
 // payments-v42, the other rolled it back.
 const LATENCY_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
 const ROLLBACK_CONVERSATION_ID = "slack:CQA123:1770000000.000100";
+// The Dashboard QA Conversation (`todos.ts`). It is not one the Lead started,
+// so its To-do for the viewer leaves the Lead's cards as they are.
+const DASHBOARD_QA_CONVERSATION_ID = "internal:dashboard-qa";
 const PAYMENTS_V42 = { id: "release:payments-v42", title: "payments-v42" };
 const DAY = 24 * 60;
 
@@ -70,7 +73,7 @@ export type MockItemSeed = Pick<
   Partial<
     Pick<
       InboxItemPayload,
-      "assignedToEveryone" | "closeReason" | "closedAt" | "kind"
+      "assignedToEveryone" | "closeReason" | "closedAt" | "kind" | "todoId"
     >
   > & {
     /** The Automation that owns an alert. An alert has no Conversation. */
@@ -459,6 +462,16 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: PAYMENTS_V42,
       title: "Checkout p95 rose after payments-v42",
+    },
+    // To-do 43 of the Dashboard QA Conversation (`todos.ts`) is the viewer's.
+    {
+      body: "Check the preview before the deploy goes out.",
+      conversationId: DASHBOARD_QA_CONVERSATION_ID,
+      createdAt: at(6),
+      id: "qa-todo-preview-deploy",
+      status: "open",
+      title: "Approve the preview deploy",
+      todoId: 43,
     },
     {
       assignedToEveryone: true,

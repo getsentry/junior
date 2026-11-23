@@ -141,11 +141,12 @@ struct InboxScreen: View {
 
 private struct InboxRow: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let item: InboxItem
 
   var body: some View {
     Button {
-      app.path = [.inboxItem(item.id)]
+      window.path = [.inboxItem(item.id)]
     } label: {
       HStack(alignment: .top, spacing: 8) {
         Dot(color: item.kind == "notice" ? Tokens.textFaint : Tokens.accent, size: 8)
@@ -175,7 +176,7 @@ private struct InboxRow: View {
   }
 
   /// Open beside the list.
-  private var selected: Bool { app.path.first == .inboxItem(item.id) }
+  private var selected: Bool { window.path.first == .inboxItem(item.id) }
 
   private var subtitle: String {
     var parts = [item.kind == "notice" ? "Notice" : "Question"]

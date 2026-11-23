@@ -27,6 +27,10 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `spawnAgent` `task` field) keep their meaning.
+- **Team**: an agent and the agents that it started: its child agents, and
+  the roots that a Lead starts. It sets who manages an agent, not access.
+- **Agent update**: the one Event (`agent.update`) that every agent sends
+  when a Turn ends, or when it waits, is blocked, fails, or stops.
 - **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
   bindings, Parent messages). Not a UI word.
 - **Conversation metadata**: the stored facts about a Conversation: its
@@ -212,7 +216,9 @@ Canonical words for Junior code and docs. One concept, one word.
   one Conversation, changed with `updateTodos`. Not a Task or a Plan. Its
   status is open, in progress, done, or dropped. It has one Assignee: the
   Conversation's own agent, one of its child agents, or a User. Each change
-  gets a new version. In code: `todo`.
+  gets a new version. In code: `todo`. A User's open To-do shows in their
+  Inbox as a **To do for you** item. **Done** on that row marks the To-do
+  done; it has no Dismiss.
 
 ## Naming
 

@@ -667,6 +667,7 @@ describe("inbox item tools", () => {
       ["automation:sched_1", "an Automation alert"],
       ["plugin:github:pr", "a plugin"],
       ["reply:local:web:1", "a reply notice"],
+      ["todo:slack:CPUB:1.000001:1", "a To-do"],
     ]) {
       expect(() =>
         agent.add.prepareArguments!({ ...notice, dedupe_key: key }),

@@ -5,6 +5,7 @@ import SwiftUI
 /// activity, in a sheet or in a panel beside a wide transcript.
 struct ConversationDetailsSheet: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let state: ConversationState
   let close: () -> Void
 
@@ -55,7 +56,7 @@ struct ConversationDetailsSheet: View {
         if let location = conversation.locationLabel {
           if let url = conversation.locationUrl {
             Button {
-              app.openLink(url)
+              window.openLink(url)
             } label: {
               stat("Location", location)
             }

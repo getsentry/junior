@@ -17,8 +17,8 @@ import {
   countInboxItemsNeedingUserBySubject,
   getOpenInboxItemByDedupeKey,
   getInboxItem,
-  listWaitingConversations,
 } from "@/chat/inbox-items/store";
+import { listWaitingConversations } from "@/chat/inbox-items/waiting";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";

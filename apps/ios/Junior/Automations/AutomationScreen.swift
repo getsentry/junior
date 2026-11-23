@@ -6,6 +6,7 @@ import SwiftUI
 /// the web; the public API reads Automations only.
 struct AutomationScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @Environment(\.dismiss) private var dismiss
   @Environment(\.splitColumn) private var column
   let automationId: String
@@ -97,7 +98,7 @@ struct AutomationScreen: View {
         MarkdownView(blocks: parseMarkdown(automation.task.text), step: .sm, color: Tokens.text)
       }
       if let url = automation.url {
-        Button("Edit on the web") { app.openLink(url) }
+        Button("Edit on the web") { window.openLink(url) }
           .buttonStyle(.dashboard(.outline))
       }
     }
@@ -146,11 +147,12 @@ struct AutomationScreen: View {
 /// One run: time and status, its error, and its Conversation.
 private struct RunRow: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let run: AutomationRun
 
   var body: some View {
     Button {
-      if let id = run.conversationId { app.path.append(.conversation(id)) }
+      if let id = run.conversationId { window.path.append(.conversation(id)) }
     } label: {
       HStack(alignment: .top, spacing: 10) {
         Dot(color: color, size: 8).padding(.top, 5)

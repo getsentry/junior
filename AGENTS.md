@@ -21,6 +21,7 @@ the check first. A rule that only review enforces is a judgment call.
 | No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
 | Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
 | Store money in Postgres as whole micro-USD: a `bigint` column or an integer metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`. | `money-units:check` |
+| Read GitHub state from GitHub through the plugin cache. Do not copy it into tables. | `provider-state:check` |
 | Group files by feature and name paths by role. No feature-directory barrels. | Review |
 | Exported functions get a brief JSDoc that states intent. | Review |
 | Docs use ASD-STE100 English: common words, active voice, short sentences. | Review |

@@ -29,6 +29,7 @@ import { cn, dashboardCountClass } from "../styles";
 import type { Conversation } from "../types";
 import { useInboxData } from "./inboxData";
 import { useInboxReturnHere, useInFlightExpanded } from "./inboxListState";
+import { inboxViewPath } from "./inboxModel";
 import { paneEntryClass, PaneDestinations } from "./PaneDestinations";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../textFade";
 
@@ -131,7 +132,7 @@ export function InboxNav(props: {
   const data = useInboxData();
   // On a phone the entries are a screen of their own, so Back from what
   // they open returns here.
-  useInboxReturnHere(props.phone ? "/" : undefined);
+  useInboxReturnHere(props.phone ? inboxViewPath("inbox") : undefined);
   const reorderPins = useReorderPinnedConversations();
   const { showActionError } = useConversationActionToasts();
   const onReorderError = useCallback(

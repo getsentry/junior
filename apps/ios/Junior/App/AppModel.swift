@@ -29,16 +29,15 @@ enum Route: Hashable {
   case settings
 }
 
-/// App-wide state: the server and its sign-in, the Inbox count, navigation,
-/// and the refresh tick that tells screens to reload. The app uses only
+/// App-wide state, shared by every window: the server and its sign-in, the
+/// Inbox count, and the refresh tick that tells screens to reload. The app uses only
 /// Junior's public API, the MCP server at `/api/mcp`.
 @MainActor
 @Observable
 final class AppModel {
-  /// The app's OAuth client: the URL of its Client ID Metadata Document,
-  /// which names the app and lists its loopback redirect URI.
-  static let oauthClientID =
-    "https://raw.githubusercontent.com/getsentry/junior/refs/heads/gricha/ios-app/apps/ios/oauth-client.json"
+  /// The app's OAuth client ID. Junior knows this client (`JUNIOR_IOS_CLIENT`
+  /// in `packages/junior/src/api/mcp/oauth/client-metadata.ts`).
+  static let oauthClientID = "https://junior.sentry.dev/clients/ios"
 
   private(set) var server: JuniorServer
   private(set) var client: MCPClient
@@ -51,18 +50,6 @@ final class AppModel {
   var inboxCount = 0
   var shellError: JuniorAPIError?
 
-  var place: Place = .conversations
-  var path: [Route] = []
-  var drawerOpen = false
-  var webPage: URL?
-  /// A demo link to a dashboard page was opened.
-  var demoWebNotice = false
-  /// Focus the home search field ("Go to conversation").
-  var focusSearch = false
-  /// Open the Conversation's details on arrival (`?details=1`).
-  var openDetails = false
-  /// Open the rename prompt on arrival (`?rename=1`).
-  var openRename = false
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
 
@@ -102,7 +89,6 @@ final class AppModel {
     self.signedIn = store.load()?.server == server
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
     self.fixedNow = launch.fixedNow
-    if let open = launch.open { self.open(dashboardPath: open) }
   }
 
   var clock: DisplayClock {
@@ -163,68 +149,6 @@ final class AppModel {
     signedIn = false
     inboxCount = 0
     serverVersion = nil
-    path = []
-    drawerOpen = false
-  }
-
-  /// Open a dashboard path (`/`, `/inbox?item=…`, `/conversations/…`,
-  /// `/automations/…`, `/settings`) the way the web router does.
-  func open(dashboardPath: String) {
-    guard let components = URLComponents(string: dashboardPath) else { return }
-    let parts = components.path.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
-    let item = components.queryItems?.first { $0.name == "item" }?.value
-    drawerOpen = false
-    switch parts.first {
-    case "conversations" where parts.count > 1:
-      place = .conversations
-      path = [.conversation(parts[1])]
-    case "inbox":
-      place = .inbox
-      path = item.map { [.inboxItem($0)] } ?? []
-    case "automations" where parts.count > 1 && parts[1] != "runs":
-      place = .automations
-      path = [.automation(parts[1])]
-    case "automations":
-      place = .automations
-      path = []
-    case "settings":
-      path = [.settings]
-    default:
-      place = .conversations
-      path = []
-    }
-    // `?drawer=1` opens the navigation drawer over the page (screenshots).
-    drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
-    openDetails = components.queryItems?.contains { $0.name == "details" } == true
-    openRename = components.queryItems?.contains { $0.name == "rename" } == true
-  }
-
-  func go(_ place: Place) {
-    self.place = place
-    path = []
-    drawerOpen = false
-  }
-
-  /// Open a dashboard page in the in-app browser, for what the public API
-  /// cannot do (answer an Inbox item, change an Automation).
-  func openOnWeb(_ dashboardPath: String) {
-    show(server.page(dashboardPath))
-  }
-
-  /// Open a link from a tool result, such as a dashboard or Slack URL.
-  func openLink(_ link: String?) {
-    guard let link, let url = URL(string: link) else { return }
-    show(url)
-  }
-
-  /// The demo has no dashboard, so its pages show a notice instead.
-  private func show(_ url: URL?) {
-    drawerOpen = false
-    if server.isDemo, url?.host() == server.baseURL.host() {
-      demoWebNotice = true
-    } else {
-      webPage = url
-    }
   }
 
   func refreshShell() async {

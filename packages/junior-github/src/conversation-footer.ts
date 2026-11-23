@@ -54,10 +54,15 @@ export function sentryConversationUrl(
   return `${parsed.protocol}//${parsed.hostname}${port}/organizations/${orgSlug}/${path}`;
 }
 
-/** Build the conversation session footer, preferring a host-provided dashboard link. */
+/**
+ * Build the conversation session footer, preferring a host-provided dashboard
+ * link. `earlierConversationIds` keeps the markers of Conversations that wrote
+ * the body before, so the footer names every one of them.
+ */
 export function githubConversationFooter(
   conversationId: string,
   dashboardUrl?: string,
+  earlierConversationIds: string[] = [],
 ): string | undefined {
   const id = nonEmptyString(conversationId, "conversationId");
   const normalizedDashboardUrl = dashboardUrl?.trim();
@@ -70,8 +75,13 @@ export function githubConversationFooter(
   if (!sessionLinks) {
     return undefined;
   }
-  const conversationMarker = `<!-- ${GITHUB_CONVERSATION_ID_MARKER}${encodeURIComponent(id)} -->`;
-  return `${GITHUB_SESSION_FOOTER_START}\n${conversationMarker}\n\n--\n\n${sessionLinks}\n\n${GITHUB_SESSION_FOOTER_END}`;
+  const markers = [...new Set([id, ...earlierConversationIds])]
+    .map(
+      (markerId) =>
+        `<!-- ${GITHUB_CONVERSATION_ID_MARKER}${encodeURIComponent(markerId)} -->`,
+    )
+    .join("\n");
+  return `${GITHUB_SESSION_FOOTER_START}\n${markers}\n\n--\n\n${sessionLinks}\n\n${GITHUB_SESSION_FOOTER_END}`;
 }
 
 /** Read opaque native conversation ids from runtime-owned GitHub footers. */
@@ -101,40 +111,6 @@ export function githubConversationIds(
   return [...ids];
 }
 
-/** Read same- and cross-repository issue references from a pull request body. */
-export function githubLinkedIssues(
-  body: string | null | undefined,
-  repositoryFullName: string,
-): { number: number; repositoryFullName: string }[] {
-  if (!body) return [];
-  const references = new Map<
-    string,
-    { number: number; repositoryFullName: string }
-  >();
-  const add = (linkedRepository: string, rawNumber: string) => {
-    const number = Number.parseInt(rawNumber, 10);
-    if (!Number.isInteger(number) || number <= 0) return;
-    const normalizedRepository = linkedRepository.toLowerCase();
-    references.set(`${normalizedRepository}#${number}`, {
-      number,
-      repositoryFullName: linkedRepository,
-    });
-  };
-
-  for (const match of body.matchAll(/\b([\w.-]+\/[\w.-]+)#(\d+)\b/g)) {
-    add(match[1] ?? "", match[2] ?? "");
-  }
-  for (const match of body.matchAll(/(?:^|[^\w/])#(\d+)\b/g)) {
-    add(repositoryFullName, match[1] ?? "");
-  }
-
-  return [...references.values()].sort(
-    (left, right) =>
-      left.repositoryFullName.localeCompare(right.repositoryFullName) ||
-      left.number - right.number,
-  );
-}
-
 /**
  * Append (or replace an existing) conversation session footer to a GitHub body string.
  * Without a dashboard or Sentry link, returns the body unchanged (existing footer stripped).
@@ -143,9 +119,16 @@ export function appendGitHubFooter(
   body: string,
   conversationId: string,
   dashboardUrl?: string,
+  currentBody?: string,
 ): string {
-  const footer = githubConversationFooter(conversationId, dashboardUrl);
   const normalizedBody = body.trimEnd();
+  // A replacement body keeps the Conversations of the body on GitHub, so a
+  // close still reaches each one.
+  const footer = githubConversationFooter(
+    conversationId,
+    dashboardUrl,
+    githubConversationIds(currentBody),
+  );
   const existingFooter = new RegExp(
     `${escapeRegExp(GITHUB_SESSION_FOOTER_START)}[\\s\\S]*?${escapeRegExp(GITHUB_SESSION_FOOTER_END)}`,
   );

@@ -49,7 +49,7 @@ test.describe("snooze times", { tag: "@new" }, () => {
     const polled = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith("/api/versions"),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await polled;
     await expandRow(rowHead(todo(page), checkout));
     await openMenu(page);

@@ -14,7 +14,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
     dashboard,
   }) => {
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page.getByRole("button", { name: /Open profile menu/ }).click();
     await page.getByRole("menuitem", { name: "Settings", exact: true }).click();
     await expect(
@@ -225,10 +225,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       );
     }
 
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await saveTappedNotification("/settings", 10 * 60_000);
     await page.reload();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
 
     await saveTappedNotification("/settings", 0);
     await page.reload();
@@ -266,7 +266,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const root = page.locator("html");
     await page.emulateMedia({ colorScheme: "light" });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(root).toHaveAttribute("data-theme", "light");
 
     await page.getByRole("button", { name: /Open profile menu/ }).click();

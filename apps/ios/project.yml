@@ -18,7 +18,6 @@ fileGroups:
   - Gemfile.lock
   - .ruby-version
   - .swift-format
-  - oauth-client.json
   - fastlane/Appfile
   - fastlane/Fastfile
   - fastlane/Matchfile
@@ -59,6 +58,9 @@ targets:
         # Only standard HTTPS, so TestFlight asks no export-compliance question.
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true
+        # More than one window on iPad, each with its own navigation.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         # Every orientation, which iPad multitasking requires.

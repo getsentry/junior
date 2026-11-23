@@ -1,5 +1,7 @@
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { personCardReportSchema } from "@/api/schema";
@@ -76,12 +78,10 @@ async function anaChange(args: {
     repository: {
       name: "getsentry/junior",
       providerId: "repository-1",
-      url: "https://github.com/getsentry/junior",
     },
     state: args.mergedAtMs ? "merged" : "open",
     title: `Change ${args.number}`,
     updatedAt: new Date(args.mergedAtMs ?? args.openedAtMs),
-    url: `https://github.com/getsentry/junior/pull/${args.number}`,
   });
 }
 
@@ -106,7 +106,9 @@ async function cardApi(email: string) {
 describe("person card API", () => {
   let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
 
-  beforeEach(() => {
+  beforeEach(async () => {
+    // The GitHub plugin builds the code links.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     previousDashboard = setDashboardConversationLinkOptions({
       baseURL: DASHBOARD,
     });

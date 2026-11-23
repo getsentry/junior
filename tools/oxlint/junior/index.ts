@@ -12,6 +12,7 @@ import { noRecordTypeGuardRule } from "./rules/no-record-type-guard.ts";
 import { noRegexMarkdownRule } from "./rules/no-regex-markdown.ts";
 import { noRegexUrlParsingRule } from "./rules/no-regex-url-parsing.ts";
 import { noServiceFallbackRule } from "./rules/no-service-fallback.ts";
+import { noSplitUrlQueryRule } from "./rules/no-split-url-query.ts";
 import { noValueSwitchRule } from "./rules/no-value-switch.ts";
 import { preferMapBoundedRule } from "./rules/prefer-map-bounded.ts";
 import { promptTagAttributesRule } from "./rules/prompt-tag-attributes.ts";
@@ -35,6 +36,7 @@ const juniorPlugin = definePlugin({
     "no-regex-markdown": noRegexMarkdownRule,
     "no-regex-url-parsing": noRegexUrlParsingRule,
     "no-service-fallback": noServiceFallbackRule,
+    "no-split-url-query": noSplitUrlQueryRule,
     "no-value-switch": noValueSwitchRule,
     "prefer-map-bounded": preferMapBoundedRule,
     "prompt-tag-attributes": promptTagAttributesRule,
