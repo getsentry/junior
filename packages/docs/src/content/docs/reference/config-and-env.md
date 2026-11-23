@@ -55,6 +55,7 @@ related:
 | `JUNIOR_S3_SECRET_ACCESS_KEY`               | Conditional | S3 secret access key. Required when the provider is `s3`.                                                                                                                   |
 | `JUNIOR_S3_REGION`                          | No          | S3 signing region. Defaults to `us-east-1`.                                                                                                                                 |
 | `JUNIOR_QUEUE_PROVIDER`                     | No          | Queue that delivers background work: `vercel` or `bullmq`. Defaults to `vercel`. Use `bullmq` only for local development.                                                   |
+| `JUNIOR_QUEUE_API_URL`                      | No          | Vercel Queues API base URL, such as `http://127.0.0.1:3100`. Use it only to point the `vercel` provider at a local queue server for development or tests.                   |
 | `JUNIOR_QUEUE_REDIS_URL`                    | Conditional | Redis for the BullMQ queue, such as `redis://localhost:6382`. Required when the provider is `bullmq`.                                                                       |
 | `JUNIOR_QUEUE_WORKER_CONCURRENCY`           | No          | Jobs that the BullMQ worker runs at the same time for each queue topic. A positive integer. Defaults to `4`.                                                                |
 
@@ -73,6 +74,13 @@ visible after you change to another provider.
 `JUNIOR_ATTACHMENT_STORAGE_PROVIDER=memory` keeps objects in process memory.
 Junior loses them when the process stops, and each process has its own copy.
 Do not use it for a deployed app.
+
+`JUNIOR_QUEUE_API_URL` sends the `vercel` provider's queue API calls to a
+local server instead of Vercel Queues. Junior then sends a placeholder token
+and does not get a Vercel OIDC token. The local server is
+`startLocalVercelQueueServer` in the private `@sentry/junior-testing` package.
+It keeps messages in memory and pushes each one to its callback route. Do not
+set this variable for a deployed app.
 
 `JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
 Redis. Local development then needs no Vercel Queues access. The app only
