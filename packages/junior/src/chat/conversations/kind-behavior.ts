@@ -154,15 +154,18 @@ const PERSON_IN_THREAD: TurnBehavior = {
 
 // A child agent's Turn comes from its parent, its child agents, or its
 // Watches. Its final response stays in its Conversation, and only a `reply`
-// reaches the parent.
+// reaches the parent. The child does work for its parent, so its parent
+// learns when it fails, ends without an answer, or ends its work with
+// `noReply`.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
   gated: true,
-  failureNotice: "none",
-  quietResult: "none",
+  missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
+  quietResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -190,15 +193,6 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
-};
-
-// A Task does work for its parent, so its parent learns when it fails, ends
-// without an answer, or ends its work with `noReply`.
-const AGENT_IN_TASK: TurnBehavior = {
-  ...CHILD_AGENT_TURN,
-  missingAnswerError: "No reply was sent.",
-  failureNotice: "parent",
-  quietResult: "parent",
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -290,7 +284,7 @@ export function turnBehavior(args: {
     case "thread":
       return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
-      if (!args.personInput) return AGENT_IN_TASK;
+      if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
       throw new Error("A task Conversation cannot have a person's input");
     case "lead":
@@ -308,7 +302,7 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
     case "automation":
       return AUTOMATION_RUN.tools;
     case "child_agent":
-      return AGENT_IN_TASK.tools;
+      return CHILD_AGENT_TURN.tools;
     case "thread":
       return THREAD_TOOLS;
     case "conversation":

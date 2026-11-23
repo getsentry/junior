@@ -1,6 +1,10 @@
 import type { Actor } from "@sentry/junior-plugin-api";
+import { isPersonInput } from "@/chat/conversations/kind-behavior";
+import { legacyWebMailboxMetadataSchema } from "@/chat/conversations/web-mailbox";
 import { listWatches } from "@/chat/events/store";
+import type { InboundMessage } from "@/chat/task-execution/state";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import type { TurnRecord } from "@/chat/task-execution/turn-cursor";
 import type { Reply } from "@/chat/turn-answer";
 import { readChildConversationSender } from "./child-input";
 import { listChildMessages } from "./child-message";
@@ -54,5 +58,28 @@ export async function childWorkEnded(
     (message) =>
       message.sender.conversationId === conversationId &&
       message.sender.turnId === turnId,
+  );
+}
+
+/**
+ * Return whether a child's open Turn runs a person's input, such as a
+ * person's Message in a Thread. Its parent did not give that work, so the
+ * parent hears nothing when it fails or a person stops it. Before its first
+ * save, a Turn has no record, and its input is still pending.
+ */
+export function runsPersonInput(
+  turn: TurnRecord | undefined,
+  pending: readonly InboundMessage[],
+): boolean {
+  if (turn) {
+    return isPersonInput(turn.source?.kind);
+  }
+  return (
+    pending.length > 0 &&
+    pending.every(
+      (message) =>
+        legacyWebMailboxMetadataSchema.safeParse(message.input.metadata)
+          .success,
+    )
   );
 }

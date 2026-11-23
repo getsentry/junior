@@ -389,8 +389,8 @@ export function createConversationTurnWorker(
         turnId,
       });
     };
-    // A child that sends no failure notice, such as a Thread, ends its
-    // dashboard markers with the failure.
+    // A Turn that sends no failure notice, such as a person's Turn in a
+    // Thread, ends the child's dashboard markers with the failure.
     const reportFailure = async (text: string): Promise<void> => {
       if (behavior.failureNotice === "parent") {
         await sendToParent({ kind: "failed", text });

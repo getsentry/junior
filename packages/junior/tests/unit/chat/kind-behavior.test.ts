@@ -43,8 +43,9 @@ const agentInThreadTurn = {
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
   gated: true,
-  failureNotice: "none",
-  quietResult: "none",
+  missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
+  quietResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -58,15 +59,8 @@ const agentInThreadTurn = {
   },
 };
 
-// A Task's parent learns that it failed or that no reply was sent.
 const { sender: _sender, ...childAgentTurn } = agentInThreadTurn;
-const agentInTaskTurn = {
-  ...childAgentTurn,
-  promptMode: "child_agent",
-  missingAnswerError: "No reply was sent.",
-  failureNotice: "parent",
-  quietResult: "parent",
-};
+const agentInTaskTurn = { ...childAgentTurn, promptMode: "child_agent" };
 
 // An Automation run almost never gets an answer, so only pending work keeps
 // its cache warm.
