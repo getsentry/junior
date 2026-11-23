@@ -1,6 +1,5 @@
 import { eq, sql } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
-import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import {
   conversationDetailReportSchema,
@@ -17,7 +16,7 @@ import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
-import { expectSqlBudget } from "../../../fixtures/sql-budget";
+import { expectSqlBudget, explainNodes } from "../../../fixtures/sql-budget";
 import { closeConversationFixture } from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
@@ -36,25 +35,6 @@ import {
 } from "../../../fixtures/conversation-status";
 
 type StatusFixture = Awaited<ReturnType<typeof createStatusFixture>>;
-
-type PlanNode = {
-  "Node Type": string;
-  "Plan Rows": number;
-  Plans?: PlanNode[] | undefined;
-};
-const planNode: z.ZodType<PlanNode> = z.lazy(() =>
-  z.object({
-    "Node Type": z.string(),
-    "Plan Rows": z.number(),
-    Plans: z.array(planNode).optional(),
-  }),
-);
-const planRoot = z.object({ Plan: planNode });
-
-/** Every node of an EXPLAIN plan. */
-function planNodes(node: PlanNode): PlanNode[] {
-  return [node, ...(node.Plans ?? []).flatMap(planNodes)];
-}
 
 /** Read the viewer's feed version token. */
 async function feedToken(fixture: StatusFixture): Promise<string> {
@@ -367,17 +347,15 @@ describe("conversation tree state", () => {
       [conversationId],
     );
     await getSqlExecutor().execute("analyze junior_conversations");
-    const [explained] = z
-      .object({ rows: z.array(z.object({ "QUERY PLAN": z.array(planRoot) })) })
-      .parse(
-        await getDb().execute(
-          sql`explain (format json) select * from ${conversationSubtree([conversationId])}`,
-        ),
-      ).rows;
+    const [nodes] = await explainNodes(() =>
+      getDb().execute(
+        sql`select * from ${conversationSubtree([conversationId])}`,
+      ),
+    );
     // Postgres guesses each recursive step from the rows that start the
     // walk. A guess that holds the root's tree prices the read high enough
     // to turn on JIT.
-    const walks = planNodes(explained!["QUERY PLAN"][0]!.Plan).filter(
+    const walks = nodes!.filter(
       (node) => node["Node Type"] === "Recursive Union",
     );
     expect(walks.length).toBeGreaterThan(0);
