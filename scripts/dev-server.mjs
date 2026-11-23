@@ -155,16 +155,17 @@ const tunnelUrl =
 applyJuniorDevelopmentDefaults(process.env, {
   baseUrl: `http://localhost:${devPort}`,
   // The Redis service in `compose.yaml`.
-  queueRedisUrl: "redis://localhost:6382",
+  redisUrl: "redis://localhost:6382",
 });
-// With BullMQ, one separate worker process pulls the queue jobs.
+// With BullMQ, which is opt-in, one separate worker process pulls the queue
+// jobs. Otherwise `nitro dev` starts a local queue that pushes them.
 const runQueueWorker = process.env.JUNIOR_QUEUE_PROVIDER?.trim() === "bullmq";
 if (
   runQueueWorker &&
   process.env.JUNIOR_STATE_ADAPTER?.trim().toLowerCase() === "memory"
 ) {
   console.error(
-    "JUNIOR_STATE_ADAPTER=memory does not work with the BullMQ queue: its worker runs in a separate process. Use JUNIOR_STATE_ADAPTER=redis or JUNIOR_QUEUE_PROVIDER=vercel.",
+    "JUNIOR_STATE_ADAPTER=memory does not work with the BullMQ queue: its worker runs in a separate process. Use JUNIOR_STATE_ADAPTER=redis, or unset JUNIOR_QUEUE_PROVIDER to use the local queue.",
   );
   process.exit(1);
 }

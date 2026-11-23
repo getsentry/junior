@@ -144,10 +144,3 @@ export function createVercelPluginTaskCallback(): (
 export function pluginTaskQueueConsumer(): QueueConsumer {
   return pluginTaskCallback().consumer;
 }
-
-/** Register the local-dev consumer for plugin tasks. */
-export function registerVercelPluginTaskDevConsumer():
-  | (() => void)
-  | undefined {
-  return pluginTaskCallback().registerDev();
-}

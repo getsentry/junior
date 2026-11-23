@@ -2,6 +2,7 @@ import path from "node:path";
 import { withSentryConfig as withSentryNitroConfig } from "@sentry/nitro";
 import { sentryOrchestrionPlugin } from "@sentry/server-utils/orchestrion/rollup";
 import type { Nitro } from "nitro/types";
+import { startDevQueue } from "@/build/dev-queue";
 import { applyRolldownTreeshakeWorkaround } from "@/build/rolldown-workarounds";
 import {
   copyIncludedFiles,
@@ -249,7 +250,7 @@ function dropRoutedServerEntry(nitro: Nitro): void {
 
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
-  nitro: { setup(nitro: unknown): void };
+  nitro: { setup(nitro: unknown): void | Promise<void> };
 } {
   return {
     nitro: {
@@ -345,6 +346,8 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             },
           });
         });
+
+        return nitro.options.dev ? startDevQueue(nitro) : undefined;
       },
     },
   };

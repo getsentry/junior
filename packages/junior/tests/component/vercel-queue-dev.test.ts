@@ -1,9 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type {
-  MessageMetadata,
-  QueueClient,
-  registerDevConsumer,
-} from "@vercel/queue";
+import type { MessageMetadata, QueueClient } from "@vercel/queue";
 import {
   PLUGIN_TASK_QUEUE_TOPIC,
   createVercelPluginTaskCallback,
@@ -11,19 +7,12 @@ import {
   sendVercelPluginTask,
   signPluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
-import {
-  createVercelWorkspaceSnapshotJobCallback,
-  registerVercelWorkspaceSnapshotJobDevConsumer,
-} from "@/chat/sandbox/snapshot/job-callback";
+import { createVercelWorkspaceSnapshotJobCallback } from "@/chat/sandbox/snapshot/job-callback";
 import {
   sendNextWorkspaceSnapshotJob,
   sendWorkspaceSnapshotJob,
 } from "@/chat/sandbox/snapshot/job-queue";
-import {
-  CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-  createVercelConversationWorkCallback,
-  registerVercelConversationWorkDevConsumer,
-} from "@/chat/task-execution/vercel-callback";
+import { createVercelConversationWorkCallback } from "@/chat/task-execution/vercel-callback";
 
 // Mock the SDK once for the file and import statically. Per-test
 // `vi.doMock` needs `vi.resetModules`, and then a parallel import can load
@@ -41,7 +30,6 @@ const mocks = vi.hoisted(() => {
     send,
     queueClient: { handleCallback, send },
     handleCallback,
-    registerDevConsumer: vi.fn<typeof registerDevConsumer>(),
     processPluginTask: vi.fn(async (_message: unknown) => undefined),
     processWorkspaceSnapshotJob: vi.fn(async (_message: unknown) => undefined),
   };
@@ -51,7 +39,6 @@ vi.mock("@vercel/queue", () => ({
   QueueClient: vi.fn(function QueueClientMock() {
     return mocks.queueClient;
   }),
-  registerDevConsumer: mocks.registerDevConsumer,
 }));
 vi.mock("@/chat/plugins/task-runner", () => ({
   processPluginTask: mocks.processPluginTask,
@@ -60,14 +47,12 @@ vi.mock("@/chat/sandbox/snapshot/job-runner", () => ({
   processWorkspaceSnapshotJob: mocks.processWorkspaceSnapshotJob,
 }));
 
-const originalNodeEnv = process.env["NODE_ENV"];
 const originalJuniorSecret = process.env["JUNIOR_SECRET"];
 const originalConversationWorkEnabled =
   process.env["JUNIOR_CONVERSATION_WORK_ENABLED"];
 
 afterEach(() => {
   vi.clearAllMocks();
-  process.env["NODE_ENV"] = originalNodeEnv;
   if (originalJuniorSecret === undefined) {
     delete process.env["JUNIOR_SECRET"];
   } else {
@@ -109,8 +94,6 @@ describe("Workspace snapshot Vercel queue integration", () => {
   it("runs only messages signed by the snapshot queue sender", async () => {
     const routeHandler = vi.fn(async () => new Response());
     mocks.handleCallback.mockReturnValueOnce(routeHandler);
-    const unregister = vi.fn();
-    mocks.registerDevConsumer.mockReturnValueOnce(unregister);
 
     expect(createVercelWorkspaceSnapshotJobCallback()).toBe(routeHandler);
     const { handler, retry } = lastPushCallback();
@@ -150,18 +133,6 @@ describe("Workspace snapshot Vercel queue integration", () => {
     expect(
       retry(new Error("build failed"), { ...metadata, deliveryCount: 5 }),
     ).toBeUndefined();
-
-    process.env["NODE_ENV"] = "development";
-    expect(registerVercelWorkspaceSnapshotJobDevConsumer()).toBe(unregister);
-    expect(mocks.registerDevConsumer).toHaveBeenCalledWith(
-      expect.objectContaining({
-        client: mocks.queueClient,
-        consumerGroup: "junior_workspace_snapshots_dev",
-        handler: expect.any(Function),
-        retry: expect.any(Function),
-        topic: "junior_workspace_snapshots",
-      }),
-    );
   });
 });
 
@@ -256,28 +227,6 @@ describe("conversation work Vercel queue integration", () => {
     });
   });
 
-  it("registers the local Nitro consumer with the Queue SDK", () => {
-    const unregister = vi.fn();
-    mocks.registerDevConsumer.mockReturnValueOnce(unregister);
-    process.env["NODE_ENV"] = "development";
-
-    const result = registerVercelConversationWorkDevConsumer({
-      run: vi.fn(),
-      topic: "local_work",
-      visibilityTimeoutSeconds: 45,
-    });
-
-    expect(result).toBe(unregister);
-    expect(mocks.registerDevConsumer).toHaveBeenCalledWith({
-      client: mocks.queueClient,
-      consumerGroup: CONVERSATION_WORK_DEV_CONSUMER_GROUP,
-      handler: expect.any(Function),
-      retry: expect.any(Function),
-      topic: "local_work",
-      visibilityTimeoutSeconds: 45,
-    });
-  });
-
   it("acks disabled conversation work before sign checks", async () => {
     process.env["JUNIOR_CONVERSATION_WORK_ENABLED"] = "false";
     delete process.env["JUNIOR_SECRET"];
@@ -300,14 +249,5 @@ describe("conversation work Vercel queue integration", () => {
       ),
     ).resolves.toBeUndefined();
     expect(run).not.toHaveBeenCalled();
-  });
-
-  it("does not register outside local development", () => {
-    process.env["NODE_ENV"] = "test";
-
-    expect(
-      registerVercelConversationWorkDevConsumer({ run: vi.fn() }),
-    ).toBeUndefined();
-    expect(mocks.registerDevConsumer).not.toHaveBeenCalled();
   });
 });

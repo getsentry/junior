@@ -66,11 +66,6 @@ export interface QueueProvider {
     consumer: QueueConsumer,
   ): (request: Request) => Promise<Response>;
   /**
-   * Receive messages in the process that sends them during local development.
-   * Only providers that deliver this way implement it.
-   */
-  registerDevConsumer?(consumer: QueueConsumer): () => void;
-  /**
    * Pull messages for these consumers in this process until `close()`.
    * Only providers whose consumers pull messages implement it.
    */

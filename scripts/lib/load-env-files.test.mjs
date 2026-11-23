@@ -119,13 +119,13 @@ describe("applyJuniorDevelopmentDefaults", () => {
     assert.equal(env.JUNIOR_QUEUE_PROVIDER, undefined);
   });
 
-  test("selects the BullMQ queue when the dev server gives a Redis URL", () => {
+  test("keeps dev server state in the local Redis", () => {
     const env = { NODE_ENV: "development" };
     applyJuniorDevelopmentDefaults(env, {
-      queueRedisUrl: "redis://localhost:6382",
+      redisUrl: "redis://localhost:6382",
     });
-    assert.equal(env.JUNIOR_QUEUE_PROVIDER, "bullmq");
-    assert.equal(env.JUNIOR_QUEUE_REDIS_URL, "redis://localhost:6382");
+    assert.equal(env.JUNIOR_QUEUE_PROVIDER, undefined);
+    assert.equal(env.JUNIOR_QUEUE_REDIS_URL, undefined);
     assert.equal(env.JUNIOR_STATE_ADAPTER, "redis");
     assert.equal(env.REDIS_URL, "redis://localhost:6382");
 
@@ -134,40 +134,40 @@ describe("applyJuniorDevelopmentDefaults", () => {
       REDIS_URL: "redis://preview.example:6379",
     };
     applyJuniorDevelopmentDefaults(sharedStateEnv, {
-      queueRedisUrl: "redis://localhost:6382",
+      redisUrl: "redis://localhost:6382",
     });
     assert.equal(sharedStateEnv.REDIS_URL, "redis://localhost:6382");
 
     const explicitStateEnv = {
       NODE_ENV: "development",
-      JUNIOR_STATE_ADAPTER: "redis",
-      REDIS_URL: "redis://localhost:6390",
+      JUNIOR_STATE_ADAPTER: "memory",
     };
     applyJuniorDevelopmentDefaults(explicitStateEnv, {
-      queueRedisUrl: "redis://localhost:6382",
+      redisUrl: "redis://localhost:6382",
     });
-    assert.equal(explicitStateEnv.REDIS_URL, "redis://localhost:6390");
+    assert.equal(explicitStateEnv.JUNIOR_STATE_ADAPTER, "memory");
+    assert.equal(explicitStateEnv.REDIS_URL, undefined);
+  });
 
-    const vercelEnv = {
-      NODE_ENV: "development",
-      JUNIOR_QUEUE_PROVIDER: "vercel",
-    };
-    applyJuniorDevelopmentDefaults(vercelEnv, {
-      queueRedisUrl: "redis://localhost:6382",
+  test("uses the local Redis for an explicit BullMQ queue", () => {
+    const env = { NODE_ENV: "development", JUNIOR_QUEUE_PROVIDER: "bullmq" };
+    applyJuniorDevelopmentDefaults(env, {
+      redisUrl: "redis://localhost:6382",
     });
-    assert.equal(vercelEnv.JUNIOR_QUEUE_PROVIDER, "vercel");
-    assert.equal(vercelEnv.JUNIOR_QUEUE_REDIS_URL, undefined);
-    assert.equal(vercelEnv.JUNIOR_STATE_ADAPTER, "memory");
+    assert.equal(env.JUNIOR_QUEUE_REDIS_URL, "redis://localhost:6382");
+    assert.equal(env.JUNIOR_STATE_ADAPTER, "redis");
+    assert.equal(env.REDIS_URL, "redis://localhost:6382");
 
     const customEnv = {
       NODE_ENV: "development",
+      JUNIOR_QUEUE_PROVIDER: "bullmq",
       JUNIOR_QUEUE_REDIS_URL: "redis://localhost:6390",
     };
     applyJuniorDevelopmentDefaults(customEnv, {
-      queueRedisUrl: "redis://localhost:6382",
+      redisUrl: "redis://localhost:6382",
     });
-    assert.equal(customEnv.JUNIOR_QUEUE_PROVIDER, "bullmq");
     assert.equal(customEnv.JUNIOR_QUEUE_REDIS_URL, "redis://localhost:6390");
+    assert.equal(customEnv.REDIS_URL, "redis://localhost:6390");
   });
 
   test("preserves explicit config values", () => {
@@ -196,7 +196,7 @@ describe("applyJuniorDevelopmentDefaults", () => {
 
     applyJuniorDevelopmentDefaults(env, {
       baseUrl: "http://localhost:3000",
-      queueRedisUrl: "redis://localhost:6382",
+      redisUrl: "redis://localhost:6382",
     });
 
     assert.equal(env.JUNIOR_SECRET, undefined);

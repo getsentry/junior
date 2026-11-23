@@ -88,7 +88,6 @@ import {
   consumeConversationQueueMessage,
   conversationWorkQueueConsumer,
   createVercelConversationWorkCallback,
-  registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
 import type {
   ConversationQueueMessage,
@@ -100,7 +99,6 @@ import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
   pluginTaskQueueConsumer,
-  registerVercelPluginTaskDevConsumer,
   sendVercelPluginTask,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
@@ -111,17 +109,14 @@ import {
 import {
   cacheWarmupQueueConsumer,
   createVercelCacheWarmupCallback,
-  registerVercelCacheWarmupDevConsumer,
 } from "@/chat/cache-warming/queue";
 import {
   createVercelWorkspaceSnapshotJobCallback,
-  registerVercelWorkspaceSnapshotJobDevConsumer,
   workspaceSnapshotJobQueueConsumer,
 } from "@/chat/sandbox/snapshot/job-callback";
 import {
   backgroundCompactionQueueConsumer,
   createVercelBackgroundCompactionCallback,
-  registerVercelBackgroundCompactionDevConsumer,
 } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
 import {
@@ -876,13 +871,6 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env["NODE_ENV"] === "development") {
-    registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
-    registerVercelPluginTaskDevConsumer();
-    registerVercelWorkspaceSnapshotJobDevConsumer();
-    registerVercelCacheWarmupDevConsumer();
-    registerVercelBackgroundCompactionDevConsumer();
-  }
   app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),

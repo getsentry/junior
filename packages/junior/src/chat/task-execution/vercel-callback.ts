@@ -230,10 +230,3 @@ export function conversationWorkQueueConsumer(
 ): QueueConsumer {
   return conversationWorkCallback(options).consumer;
 }
-
-/** Register the Vercel Queue local-dev consumer for Nitro's central route dispatcher. */
-export function registerVercelConversationWorkDevConsumer(
-  options: VercelConversationWorkCallbackOptions,
-): (() => void) | undefined {
-  return conversationWorkCallback(options).registerDev();
-}

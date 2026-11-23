@@ -79,14 +79,15 @@ Do not use it for a deployed app.
 local server instead of Vercel Queues. Junior then sends a placeholder token
 and does not get a Vercel OIDC token. The local server is
 `startLocalVercelQueueServer` in `packages/junior/src/chat/queue/local-server.ts`.
-It keeps messages in memory and pushes each one to its callback route. Do not
-set this variable for a deployed app.
+It keeps messages in memory and pushes each one to its callback route. In
+`nitro dev`, the `@sentry/junior/nitro` module starts this server and sets the
+variable, unless the variable is already set or the provider is `bullmq`. Do
+not set this variable for a deployed app.
 
 `JUNIOR_QUEUE_PROVIDER=bullmq` delivers background work through BullMQ on
-Redis. Local development then needs no Vercel Queues access. The app only
-sends jobs. One separate worker process runs them. `pnpm dev` starts that
-process, and the worker logs `queue.bullmq.worker.started` with its
-concurrency for each queue topic. Because the worker is a separate process,
+Redis. The app only sends jobs. One separate worker process runs them. With
+this provider, `pnpm dev` starts that process, and the worker logs
+`queue.bullmq.worker.started` with its concurrency for each queue topic. Because the worker is a separate process,
 state must be in Redis, not memory. Install the optional `bullmq` and `redis` packages to use
 it. Junior loads them only when this provider is selected, so they never enter a
 deployed bundle. Give the queue its own Redis URL. If two dev servers share one

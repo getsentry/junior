@@ -49,10 +49,3 @@ export function createVercelWorkspaceSnapshotJobCallback(): (
 export function workspaceSnapshotJobQueueConsumer(): QueueConsumer {
   return workspaceSnapshotJobCallback().consumer;
 }
-
-/** Receive snapshot build messages during local development. */
-export function registerVercelWorkspaceSnapshotJobDevConsumer():
-  | (() => void)
-  | undefined {
-  return workspaceSnapshotJobCallback().registerDev();
-}
