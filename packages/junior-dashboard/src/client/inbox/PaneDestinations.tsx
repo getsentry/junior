@@ -1,7 +1,6 @@
 import {
   CircleCheck,
   Clock3,
-  GitPullRequest,
   Inbox,
   MessageCircleQuestion,
   MessagesSquare,
@@ -14,6 +13,7 @@ import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
 import {
   isLeadPath,
+  isCodePath,
   type PaneRow,
   type PaneRowMark,
 } from "../components/layout/paneRows";
@@ -33,7 +33,6 @@ const ICONS: Record<InboxView, LucideIcon> = {
   decisions: MessageCircleQuestion,
   done: CircleCheck,
   inbox: Inbox,
-  prs: GitPullRequest,
   snoozed: Clock3,
 };
 
@@ -125,16 +124,18 @@ function Entry(props: {
 
 /**
  * The pane's destinations, in one list: the Lead, the Inbox, Snoozed, and
- * Done; then Conversations, Automations, and the primary plugin pages. The
- * Inbox filters its asks by type itself. Each row reopens where the reader
- * left it, and the Inbox and Automations rows count what waits on the viewer.
+ * Done; then Conversations, Code, Automations, and the primary plugin pages.
+ * The Inbox filters its asks by type itself. Each row reopens where the
+ * reader left it, and the Inbox and Automations rows count what waits on the
+ * viewer.
  */
 export function PaneDestinations(props: { phone?: boolean }) {
   const { pathname } = useLocation();
   const [params] = useSearchParams();
   const data = useInboxData();
   const navItems = usePaneNavItems();
-  const onList = pathname === "/" && (!props.phone || params.has("view"));
+  const onList =
+    pathname === inboxViewPath("inbox") && (!props.phone || params.has("view"));
   const current = onList ? parseInboxView(params.get("view")) : undefined;
   const view = (row: InboxView, strong?: boolean) => (
     <Entry
@@ -143,22 +144,28 @@ export function PaneDestinations(props: { phone?: boolean }) {
       key={row}
       label={INBOX_VIEW_LABELS[row]}
       phone={props.phone}
-      // On a phone the Inbox entry needs `?view=`, since `/` alone lists
-      // the entries.
-      phoneTo={row === "inbox" ? "/?view=inbox" : inboxViewPath(row)}
+      // On a phone the Inbox entry needs `?view=`, since `/inbox` alone
+      // lists the entries.
+      phoneTo={
+        row === "inbox"
+          ? `${inboxViewPath("inbox")}?view=inbox`
+          : inboxViewPath(row)
+      }
       row={row}
       phoneSelected={current === row}
       strong={strong}
     />
   );
-  // Automations shows where its page does. Primary plugin pages, and Code
-  // and System without an account, follow it.
+  // Code and Automations show where their pages do. Primary plugin pages,
+  // and System without an account, follow them.
   const automationsItem = navItems.find((item) => item.key === "automations");
+  const codeItem = navItems.find((item) => item.key === "code");
   const leadItem = navItems.find((item) => item.key === LEAD_NAV_KEY);
   const pages = navItems.filter(
     (item) =>
       item.key !== "inbox" &&
       item.key !== "automations" &&
+      item.key !== "code" &&
       item.key !== LEAD_NAV_KEY,
   );
   return (
@@ -184,6 +191,16 @@ export function PaneDestinations(props: { phone?: boolean }) {
       </ul>
       <ul className="m-0 mt-3 grid gap-0.5 border-t border-dashboard-border-subtle p-0 pt-3">
         {view("conversations")}
+        {codeItem ? (
+          <Entry
+            icon={navItemIcon("code")}
+            label={codeItem.label}
+            phone={props.phone}
+            phoneSelected={isCodePath(pathname)}
+            phoneTo={codeItem.to}
+            row="code"
+          />
+        ) : null}
         {automationsItem ? (
           <Entry
             count={data.counts.automations}

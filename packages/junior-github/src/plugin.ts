@@ -192,6 +192,11 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    codeLinks: {
+      change: ({ number, repository }) =>
+        `https://github.com/${repository}/pull/${number}`,
+      repository: (name) => `https://github.com/${name}`,
+    },
     images: githubImageSource,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
     events: {

@@ -12,7 +12,7 @@ import {
   inboxItemReaderForUserInConversation,
   inboxItemVisibleTo,
 } from "@/chat/inbox-items/access";
-import { getInboxItem } from "@/chat/inbox-items/store";
+import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorInboxItems } from "@/db/schema/inbox-items";
 import {
@@ -76,7 +76,7 @@ async function rootConversationIds(
 
 /** An open item of an Inbox row, as a snooze of it reads it. */
 interface RowItem {
-  /** The viewer can dismiss it (`canActOnInboxItem`). */
+  /** The viewer can close it (`canActOnInboxItem`). */
   canAct: boolean;
   id: string;
   subjectUrl: string | null;
@@ -95,11 +95,16 @@ async function visibleRowItems(
 ): Promise<RowItem[]> {
   if (inboxItemId) {
     const item = await getInboxItem(getDb(), inboxItemId);
+    const owner = item && ownerConversationId(item);
     const inRow =
       root === undefined ||
-      (item ? await rootConversationIds(item.conversationIds) : []).includes(
-        root,
-      );
+      (item
+        ? await rootConversationIds([
+            ...item.conversationIds,
+            ...(owner ? [owner] : []),
+          ])
+        : []
+      ).includes(root);
     if (
       item?.status === "open" &&
       inRow &&
@@ -174,8 +179,8 @@ async function namedResources(
 /**
  * Aim each trigger at its named resource, or at the resource of the item's
  * subject. A viewer waits on the subject without a check, as the item
- * already names it. A `resolve` dismisses the item, so it needs a viewer
- * who can dismiss it. Returns undefined when a trigger does not apply to
+ * already names it. A `resolve` closes the item, so it needs a viewer
+ * who can close it. Returns undefined when a trigger does not apply to
  * the item.
  */
 function itemTriggers(

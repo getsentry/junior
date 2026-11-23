@@ -112,6 +112,7 @@ extension View {
 /// bottom of the screen, under the list.
 struct NewConversationComposer: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   var docked = true
   @State private var text = ""
   @State private var visibility: ConversationVisibility = .private
@@ -167,7 +168,7 @@ struct NewConversationComposer: View {
         idempotencyKey = UUID()
         focused = false
         app.didWrite()
-        app.path = [.conversation(accepted.conversationId)]
+        window.path = [.conversation(accepted.conversationId)]
       } catch {
         self.error = (error as? JuniorAPIError)?.localizedDescription ?? "Message failed to send. Try again."
       }

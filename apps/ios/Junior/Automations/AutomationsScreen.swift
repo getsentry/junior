@@ -197,11 +197,12 @@ struct PageTitle: View {
 
 private struct AutomationRow: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let automation: Automation
 
   var body: some View {
     Button {
-      app.path = [.automation(automation.id)]
+      window.path = [.automation(automation.id)]
     } label: {
       HStack(alignment: .center, spacing: 24) {
         VStack(alignment: .leading, spacing: 4) {
@@ -241,7 +242,7 @@ private struct AutomationRow: View {
   }
 
   /// Open beside the list.
-  private var selected: Bool { app.path.first == .automation(automation.id) }
+  private var selected: Bool { window.path.first == .automation(automation.id) }
 
   private var statusLine: String {
     switch automation.status {

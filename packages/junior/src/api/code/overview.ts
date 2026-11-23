@@ -18,6 +18,7 @@ import type {
   CodeChangeSize,
   CodeChangeState,
 } from "@sentry/junior-plugin-api";
+import { codeChangeUrl, codeRepositoryUrl } from "@/chat/code/links";
 import { getDb } from "@/chat/db";
 import {
   juniorCodeChanges,
@@ -303,7 +304,6 @@ export const codeChangeReportColumns = {
   repository: juniorCodeRepositories.name,
   state: juniorCodeChanges.state,
   title: juniorCodeChanges.title,
-  url: juniorCodeChanges.url,
 };
 
 /** Convert one code change row to its report shape. */
@@ -327,7 +327,6 @@ export function codeChangeReport({
   repository: string;
   state: CodeChangeState;
   title: string | null;
-  url: string | null;
 }) {
   // Each part is set only when known, so an unknown count never reads as 0.
   const size: CodeChangeSize = {};
@@ -342,7 +341,7 @@ export function codeChangeReport({
     mergedAt: change.mergedAt?.toISOString(),
     openedAt: change.openedAt.toISOString(),
     title: change.title ?? undefined,
-    url: change.url ?? undefined,
+    url: codeChangeUrl(change),
   };
 }
 
@@ -384,7 +383,6 @@ export async function readCodeOverview(
           Number,
         ),
         provider: repositories.provider,
-        url: repositories.url,
       })
       .from(repositories)
       .innerJoin(changes, eq(changes.repositoryId, repositories.id))
@@ -438,7 +436,7 @@ export async function readCodeOverview(
       ...repository,
       medianCostUsd: median(repositoryCosts.get(repository.id) ?? []),
       mergeRate: mergeRate(repository.merged, repository.closed),
-      url: repository.url ?? undefined,
+      url: codeRepositoryUrl(repository),
     })),
     summary: windows.summary,
     windowEnd: windows.windowEnd.toISOString(),

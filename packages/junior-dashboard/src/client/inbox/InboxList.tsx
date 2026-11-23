@@ -19,7 +19,6 @@ import {
   type InboxFeedPages,
 } from "./inboxData";
 import { InboxDoneView } from "./InboxDoneView";
-import { PullRequestChange, usePullRequestSections } from "./InboxPullRequests";
 import {
   DOCK_GUTTER,
   InboxFocusProvider,
@@ -153,11 +152,6 @@ export function InboxList(props: {
     setExpandedKey: state.setExpandedKey,
   });
 
-  const pullRequests = usePullRequestSections(
-    viewRows(data.awake, "prs"),
-    data.itemPages,
-    view === "prs",
-  );
   // `?type=` shows the Inbox asks of one type, and `?pinned=1` only the
   // rows of the viewer's pins, in their places. The feed's first page holds
   // every pin, so Pinned reads no more of it. `?state=` shows the
@@ -610,7 +604,7 @@ export function InboxList(props: {
         ? pinnedOnly
           ? []
           : [data.feed]
-        : view === "prs" || view === "decisions"
+        : view === "decisions"
           ? [data.itemPages]
           : view === "done"
             ? [donePages]
@@ -827,46 +821,6 @@ export function InboxList(props: {
           <RowsLoading />
         )))
       );
-  } else if (view === "prs") {
-    body = pullRequests.loading ? (
-      <RowsLoading />
-    ) : pullRequests.sections.length === 0 ? (
-      <InboxEmptyState label="Nothing left here" />
-    ) : (
-      pullRequests.sections.map((section) => (
-        <InboxSection
-          action={sweepControl(
-            [...section.changes.flatMap((row) => row.items), ...section.items],
-            section.label,
-          )}
-          collapsed={
-            collapsed.has(section.key) !== Boolean(section.collapsedByDefault)
-          }
-          count={section.changes.length + section.items.length}
-          key={section.key}
-          label={section.label}
-          onToggle={() => toggleSection(section.key)}
-        >
-          {section.changes.map((row) => (
-            <PullRequestChange
-              expanded={row.items.some(
-                (item) => state.expandedKey === item.key,
-              )}
-              key={row.change.id}
-              nowMs={pullRequests.nowMs}
-              row={row}
-            >
-              {row.items.length > 0
-                ? row.items.map((item) =>
-                    bundleRow(item, { itemRow: true, subjectShown: true }),
-                  )
-                : null}
-            </PullRequestChange>
-          ))}
-          {section.items.map((row) => bundleRow(row, { itemRow: true }))}
-        </InboxSection>
-      ))
-    );
   } else {
     const sections = viewSections(viewRows(data.awake, view), titleOf);
     body =

@@ -501,6 +501,11 @@ agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
 `ctx.events`, `ctx.annotations`, `ctx.codeChanges`, `ctx.inboxItems`, and
 `ctx.conversationChanges` as from a plugin route.
 
+A plugin that records code changes with `ctx.codeChanges` also sets
+`codeLinks` in its registration. Junior does not store links. It calls
+`codeLinks.change({ repository, number })` and `codeLinks.repository(name)` to
+link each code change and repository.
+
 Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
 Inbox item changes together, such as a chip that shows a merged pull request
 and the close of its ask. Junior saves the batch in one write. When one entry

@@ -8,7 +8,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     const actions = await mockInboxItems(page, { open: [license] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const question = asks.getByRole("region", { name: license.title });
     const expand = () =>

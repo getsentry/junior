@@ -10,7 +10,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     await page
       .getByRole("button", {

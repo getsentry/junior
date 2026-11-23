@@ -2,16 +2,15 @@
 
 An agent starts a child agent to do work for it: a Task for work that it
 delegates, or a Thread for one work item that people own, message, and
-steer. Each child agent is a Conversation below its parent. Only what the
-child chooses to report reaches the parent.
+steer. Each child agent is a Conversation below its parent. A child agent
+follows `./agent-teams.md`. This file holds only what the parent and child
+relation adds: authority, kinds, limits, stops, and lifecycle.
 
 ## Intent
 
 - One execution path runs every Conversation. A child agent has no path of
   its own, so a fix to that path applies to every kind.
-- A parent wakes only when a child messages it. A `reply`, a
-  `messageAgent` message, a blocked report, and a failure are all messages.
-  A child owns its Watch work, so the parent does not steer each Event.
+- A child owns its Watch work, so the parent does not steer each Event.
 - Work never runs with the access of another party. A child, its parent,
   and a grandchild never borrow the authority of a different Actor.
 - A parent can plan around its child agents. It knows which ones still
@@ -21,9 +20,6 @@ child chooses to report reaches the parent.
 
 ## Entry points
 
-- Slack and the dashboard: ask Junior to start a Thread or to delegate work.
-  The agent uses `spawnAgent`, `messageAgent`, `stopAgent`, `listAgents`,
-  and `archiveAgent`.
 - Dashboard: the Threads and Tasks lists of a Conversation, and the page of
   each child agent. People message a Thread on its page.
 - Config: `limits.maxAgentDepth`.
@@ -35,18 +31,9 @@ child chooses to report reaches the parent.
 - Each Turn of a child acts for exactly one Actor, with no more authority
   than the parent Turn that gave the work. A person's Turn in a Thread
   cannot start or message child agents.
-- A child agent works like any other agent, and it can ask a person.
 - A child accepts a parent message only when it comes from its stored
   parent. It drops all other parent messages.
-- Child output reaches the parent as data, not as instructions. It never
-  gives user approval.
-- Every Conversation reports with one agent Event, whatever its kind: done,
-  waiting on a person, blocked, failed, or stopped, with its reply, its
-  `noReply` note, or its question. A parent gets this Event from its child
-  agents, and a Watch on a Conversation gets the same Event.
 - Only a root delivers to its Location. A Thread shows its Turns to people.
-  A child's Turn sends its parent only its `reply`, its blocked report, or
-  its result.
 - One stop stops the whole tree below it. When a parent stops a child, it
   gets no result. When a person stops a child, the parent gets `stopped`.
   New work from the parent, or a person's input, ends the stop. While
@@ -54,12 +41,8 @@ child chooses to report reaches the parent.
   skipped Messages that start no Turn. Only a stop holds input.
 - A stopped parent gives no new work. Its message to a child becomes a note
   that the child sees when it next runs, and it cannot start a child.
-- A parent never waits forever, and never sees a running child as done.
-  Each result names the siblings that did not report yet. A child that
-  fails, or still has no answer after one reminder, tells its parent
-  `failed`.
-- A child always sends its parent a result when its work ends, whoever
-  started its last Turn, even when that Turn ends with `noReply`.
+- A parent never sees a running child as done. Each result names the
+  siblings that did not report yet.
 - A parent has at most 8 active child agents. Only `limits.maxAgentDepth`
   levels of child agents can start their own. The default is 1, so a
   root's child can start children. With 0, only a root can.
@@ -81,13 +64,14 @@ child chooses to report reaches the parent.
   breaks "a parent manages the lifecycle of its child agents".
 - A parent cannot archive a Task. Only a Thread can be archived. This
   breaks "a parent manages the lifecycle of its child agents".
-- A child whose last Watch expires with no Turn never reports to its parent.
-  This breaks "a parent never waits forever".
 - A parent message that arrives while a person stops its child does not
   run, and a retried spawn can lose its task to a worker that holds the
   task of the failed spawn. In both cases the parent was told that the work
-  started. This breaks "a parent never waits forever".
+  started. This breaks "a parent can plan around its child agents".
   getsentry/junior#3060 tracks it.
-- A Turn that a parent starts in a child agent has no Inbox and does not
-  wait for a sign-in. This breaks "a child agent works like any other
-  agent".
+- A stop of a child that ended its last Turn with `noReply`, by a person or
+  by the limit of automated Turns, sends its parent no `stopped`. This
+  breaks "when a person stops a child, the parent gets `stopped`".
+- A Task cannot take a person's input, and a Turn that a parent starts in a
+  child does not wait for a sign-in. This breaks "a child agent follows
+  `./agent-teams.md`".
