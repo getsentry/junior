@@ -49,7 +49,7 @@ class GitHubIssueCreateRejectedError extends Error {
 }
 
 const REVIEW_BY_DESCRIPTION =
-  'People whose review or decision the issue waits on, such as for a design issue or a proposal: GitHub logins, emails, Slack mentions, or names. Each gets a "Review requested" Inbox item. Leave it out for tracking issues and bug reports.';
+  'People whose review or decision the issue waits on, as for a design issue or proposal: GitHub logins, emails, Slack mentions, or names. Each is assigned and gets a "Review requested" Inbox item. Leave it out for tracking issues and bugs.';
 
 const createIssueInputSchema = Type.Object(
   {

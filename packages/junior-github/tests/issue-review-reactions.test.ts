@@ -1,7 +1,7 @@
 import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { juniorGitHubIssueReviewers } from "../src/db/schema";
+import { juniorGitHubIssues } from "../src/db/schema";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import { createPluginHarness, type PluginHarness } from "./plugin-harness";
@@ -9,7 +9,9 @@ import { createPluginHarness, type PluginHarness } from "./plugin-harness";
 describe("issue review items and reactions", () => {
   let fixture: GitHubFixture;
   let h: PluginHarness;
-  let reads: number;
+  let issueReads: number[];
+  let reactionReads: number;
+  let reactionCount: number;
   const now = Date.parse("2026-11-09T12:00:00.000Z");
   const key = (login: string) => `issue-review:getsentry/junior#77:${login}`;
 
@@ -28,7 +30,9 @@ describe("issue review items and reactions", () => {
       "GITHUB_APP_BOT_EMAIL",
       "1234+sentry-junior[bot]@users.noreply.github.com",
     );
-    reads = 0;
+    issueReads = [];
+    reactionReads = 0;
+    reactionCount = 2;
     mswServer.use(
       http.post(
         "https://api.github.com/app/installations/456/access_tokens",
@@ -39,28 +43,43 @@ describe("issue review items and reactions", () => {
           }),
       ),
       http.get(
-        "https://api.github.com/repos/getsentry/junior/issues/77/reactions",
+        "https://api.github.com/repos/getsentry/junior/issues/:number",
+        ({ params }) => {
+          issueReads.push(Number(params["number"]));
+          return HttpResponse.json({
+            // A claim assignee without an item reacts too. Its close does
+            // nothing.
+            assignees: [{ login: "Pat-GH" }, { login: "sam-gh" }],
+            reactions: { total_count: reactionCount },
+            state: "open",
+          });
+        },
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/issues/:number/reactions",
         () => {
-          reads += 1;
+          reactionReads += 1;
           return HttpResponse.json([
-            { content: "+1", user: { login: "Pat-GH" } },
+            { content: "+1", user: { login: "pat-gh" } },
             { content: "eyes", user: null },
+            { content: "heart", user: { login: "someone-else" } },
           ]);
         },
       ),
     );
     await fixture
       .db()
-      .insert(juniorGitHubIssueReviewers)
-      .values(
-        ["pat-gh", "sam-gh"].map((login) => ({
-          conversationId: "slack:C1:1.0",
-          createdAt: new Date(now - 60_000),
-          login,
-          number: 77,
-          repositoryFullName: "getsentry/junior",
-        })),
-      );
+      .insert(juniorGitHubIssues)
+      .values({
+        conversationIds: ["slack:C1:1.0"],
+        issueId: "9077",
+        number: 77,
+        openedAt: new Date(now - 60_000),
+        repositoryFullName: "getsentry/junior",
+        repositoryId: "1",
+        state: "open",
+        updatedAt: new Date(now - 60_000),
+      });
     for (const login of ["pat-gh", "sam-gh"]) {
       await h.inboxItems.forConversation("slack:C1:1.0").upsert({
         assigneeIdentityIds: [`identity-${login}`],
@@ -77,31 +96,46 @@ describe("issue review items and reactions", () => {
     vi.unstubAllEnvs();
   });
 
-  it("closes the item of a reviewer who reacted, and reads again later", async () => {
+  it("closes the item of an assignee who reacted", async () => {
     await h.heartbeat(now);
     expect(h.closedNotices).toEqual([key("pat-gh")]);
-    const rows = await fixture.db().select().from(juniorGitHubIssueReviewers);
-    expect(rows.map((row) => row.login)).toEqual(["sam-gh"]);
-
-    // A read waits a few minutes, so the next heartbeat reads nothing.
-    await h.heartbeat(now + 60_000);
-    expect(reads).toBe(1);
-    await h.heartbeat(now + 6 * 60_000);
-    expect(reads).toBe(2);
-    expect(h.closedNotices).toEqual([key("pat-gh")]);
+    expect(issueReads).toEqual([77]);
+    expect(reactionReads).toBe(1);
   });
 
-  it("dismisses the items of an issue that is gone", async () => {
-    mswServer.use(
-      http.get(
-        "https://api.github.com/repos/getsentry/junior/issues/77/reactions",
-        () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
-      ),
-    );
+  it("skips the reactions of an issue that has none", async () => {
+    reactionCount = 0;
     await h.heartbeat(now);
-    expect(h.closedNotices).toEqual([key("pat-gh"), key("sam-gh")]);
-    expect(
-      await fixture.db().select().from(juniorGitHubIssueReviewers),
-    ).toEqual([]);
+    expect(issueReads).toEqual([77]);
+    expect(reactionReads).toBe(0);
+    expect(h.closedNotices).toEqual([]);
+  });
+
+  it("reads the next issues on each heartbeat, then starts over", async () => {
+    await fixture
+      .db()
+      .insert(juniorGitHubIssues)
+      .values(
+        Array.from({ length: 10 }, (_, index) => ({
+          conversationIds: ["slack:C1:1.0"],
+          issueId: `91${index}`,
+          number: 100 + index,
+          openedAt: new Date(now - 50_000 + index),
+          repositoryFullName: "getsentry/junior",
+          repositoryId: "1",
+          state: "open" as const,
+          updatedAt: new Date(now),
+        })),
+      );
+    await h.heartbeat(now);
+    expect(issueReads.sort((a, b) => a - b)).toEqual([
+      77, 100, 101, 102, 103, 104, 105, 106, 107, 108,
+    ]);
+    issueReads = [];
+    await h.heartbeat(now + 60_000);
+    expect(issueReads).toEqual([109]);
+    issueReads = [];
+    await h.heartbeat(now + 120_000);
+    expect(issueReads).toHaveLength(10);
   });
 });

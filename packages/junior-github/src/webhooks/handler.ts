@@ -485,7 +485,7 @@ export function createGitHubWebhookRoute(args: {
       });
       await closeGitHubIssueReviewsForWebhook({
         body,
-        db: args.db,
+        botEmail: args.botEmail(),
         deliveryId,
         eventName,
         inboxItems: args.inboxItems,

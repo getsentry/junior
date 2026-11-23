@@ -2,6 +2,7 @@ import type { InboxItemPayload } from "@sentry/junior/api/schema";
 import type { InboxItemSubjectTitleParts } from "@sentry/junior-plugin-api";
 
 import type { Conversation } from "../types";
+import { isIssueReviewItem } from "./inboxModel";
 
 /**
  * The head of an Inbox row for one code change item, as "Review requested ·
@@ -58,8 +59,9 @@ function shortRepo(
 }
 
 /**
- * The head of a row for one item about a code change, or undefined for
- * another item, which keeps its own title.
+ * The head of a row for one item about a code change, or about an issue
+ * that waits on a review, or undefined for another item, which keeps its
+ * own title.
  */
 export function codeChangeHead(
   item: Pick<InboxItemPayload, "status" | "subject" | "title">,
@@ -69,7 +71,8 @@ export function codeChangeHead(
   const match = STATE_TITLE.exec(item.title);
   if (
     item.status !== "open" ||
-    subject?.objectType !== "code_change" ||
+    !subject ||
+    (subject.objectType !== "code_change" && !isIssueReviewItem(item)) ||
     !subject.url ||
     !subject.title ||
     !match

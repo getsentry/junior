@@ -58,15 +58,40 @@ async function sendGitHubWebhook(
   expect(response.status).toBe(202);
 }
 
-/** Open an issue from the person's Turn, as Junior does. */
+/** The issue bodies and the assignees that Junior sent to GitHub. */
+const sent = {
+  assignees: new Map<number, string[]>(),
+  bodies: new Map<number, string>(),
+};
+
+/**
+ * Open an issue from the person's Turn, as Junior does. GitHub assigns each
+ * login that Junior sends.
+ */
 async function createIssue(number: number, reviewBy: string[]) {
   return await getPluginTools({
     actor: person,
     conversationId: slackParentConversationId,
     destination: slackDestination,
     egress: {
-      fetch: async () =>
-        Response.json({ html_url: issueUrl(number), number }, { status: 201 }),
+      fetch: async ({ request }) => {
+        const body = (await request.json()) as {
+          assignees?: string[];
+          body?: string;
+        };
+        if (new URL(request.url).pathname.endsWith("/assignees")) {
+          sent.assignees.set(number, body.assignees ?? []);
+          return Response.json({
+            assignees: (body.assignees ?? []).map((login) => ({ login })),
+            number,
+          });
+        }
+        sent.bodies.set(number, body.body ?? "");
+        return Response.json(
+          { html_url: issueUrl(number), number },
+          { status: 201 },
+        );
+      },
     },
     resolveActorIdentity: async () => await readActorIdentity(person),
     source: { kind: "parent_message" },
@@ -186,6 +211,8 @@ describe("an issue that Junior opens for a person's review", () => {
         ],
         review_requested: ["pat-gh"],
       });
+      // Only the reviewer in this Conversation is assigned on GitHub.
+      expect(sent.assignees.get(77)).toEqual(["pat-gh"]);
       expect(await reviewItem(77)).toEqual({
         assignees: [reviewer],
         kind: "action",
@@ -198,7 +225,12 @@ describe("an issue that Junior opens for a person's review", () => {
         sendGitHubWebhook("issue_comment", {
           action: "created",
           comment: { body: "Looks fine", id: 1, user: { login } },
-          issue: { body: "", number: 77, user: { login: BOT } },
+          issue: {
+            assignees: [{ login: "pat-gh" }],
+            body: sent.bodies.get(77),
+            number: 77,
+            user: { login: BOT },
+          },
         });
       await comment("someone-else");
       expect(await reviewItem(77)).toMatchObject({ status: "open" });
@@ -211,7 +243,10 @@ describe("an issue that Junior opens for a person's review", () => {
         sendGitHubWebhook("issues", {
           action,
           issue: {
-            body: "",
+            // Someone who claimed the issue has no item, so nothing closes
+            // for them.
+            assignees: [{ login: "pat-gh" }, { login: "claimer-gh" }],
+            body: sent.bodies.get(78),
             closed_at: action === "closed" ? "2026-07-02T12:00:00Z" : null,
             created_at: "2026-07-01T12:00:00Z",
             id: 78_000,

@@ -1,4 +1,4 @@
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, asc, eq, gt, lte, or, sql } from "drizzle-orm";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
@@ -125,4 +125,54 @@ export async function recordGitHubIssueConversations(
     .where(eq(juniorGitHubIssues.issueId, association.issueId))
     .returning({ issueId: juniorGitHubIssues.issueId });
   return updated.length > 0;
+}
+
+/** An open Junior-owned issue, with the Conversations that its footer names. */
+export interface OpenGitHubIssue {
+  conversationIds: string[];
+  issueId: string;
+  number: number;
+  openedAt: Date;
+  repositoryFullName: string;
+}
+
+/**
+ * Read open Junior-owned issues opened after `since`, oldest first. With
+ * `after`, start past that issue, so repeated reads go through every issue.
+ */
+export async function listOpenGitHubIssues(
+  db: GitHubDb,
+  input: {
+    after?: { issueId: string; openedAt: Date };
+    limit: number;
+    since: Date;
+  },
+): Promise<OpenGitHubIssue[]> {
+  const { after } = input;
+  return await db
+    .select({
+      conversationIds: juniorGitHubIssues.conversationIds,
+      issueId: juniorGitHubIssues.issueId,
+      number: juniorGitHubIssues.number,
+      openedAt: juniorGitHubIssues.openedAt,
+      repositoryFullName: juniorGitHubIssues.repositoryFullName,
+    })
+    .from(juniorGitHubIssues)
+    .where(
+      and(
+        eq(juniorGitHubIssues.state, "open"),
+        gt(juniorGitHubIssues.openedAt, input.since),
+        after
+          ? or(
+              gt(juniorGitHubIssues.openedAt, after.openedAt),
+              and(
+                eq(juniorGitHubIssues.openedAt, after.openedAt),
+                gt(juniorGitHubIssues.issueId, after.issueId),
+              ),
+            )
+          : undefined,
+      ),
+    )
+    .orderBy(asc(juniorGitHubIssues.openedAt), asc(juniorGitHubIssues.issueId))
+    .limit(input.limit);
 }

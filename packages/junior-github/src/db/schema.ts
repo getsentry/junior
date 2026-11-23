@@ -210,34 +210,7 @@ export const juniorGitHubPullRequestRequesters = pgTable(
   ],
 );
 
-/**
- * A person whose review or decision a Junior issue waits on, while their
- * "Review requested" Inbox item can be open. The row goes when the issue
- * closes or the person comments or reacts on it.
- */
-export const juniorGitHubIssueReviewers = pgTable(
-  "junior_github_issue_reviewers",
-  {
-    /** Lowercase `owner/name`. */
-    repositoryFullName: text("repository_full_name").notNull(),
-    number: integer("number").notNull(),
-    /** Lowercase GitHub login of the person. */
-    login: text("login").notNull(),
-    /** The Conversation that owns the Inbox item. */
-    conversationId: text("conversation_id").notNull(),
-    createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
-    /** When the heartbeat last read the issue's reactions for this person. */
-    checkedAt: timestamp("checked_at", { withTimezone: true }),
-  },
-  (table) => [
-    primaryKey({
-      columns: [table.repositoryFullName, table.number, table.login],
-    }),
-  ],
-);
-
 export const githubSqlSchema = {
-  juniorGitHubIssueReviewers,
   juniorGitHubIssues,
   juniorGitHubPullRequestIssues,
   juniorGitHubPullRequestRequesters,

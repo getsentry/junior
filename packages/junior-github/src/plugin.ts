@@ -33,6 +33,7 @@ import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.j
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
+  loadIssue,
   loadIssueReactions,
   loadPullRequest,
   loadPullRequestConflictHistory,
@@ -428,6 +429,11 @@ export function githubPlugin(
         await checkGitHubIssueReviewReactions({
           db,
           inboxItems: ctx.inboxItems,
+          loadIssue: async (issue) =>
+            await loadIssue(
+              { ...installationEnv, responses: ctx.state },
+              issue,
+            ),
           loadReactions: async (issue) =>
             await loadIssueReactions(
               { ...installationEnv, responses: ctx.state },
@@ -435,6 +441,7 @@ export function githubPlugin(
             ),
           log: ctx.log,
           now: new Date(ctx.nowMs),
+          state: ctx.state,
         });
       },
       async unfinishedWork(ctx) {

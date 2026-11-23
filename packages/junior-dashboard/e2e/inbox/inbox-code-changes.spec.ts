@@ -50,6 +50,21 @@ const conflict = {
   title: "Merge conflict · #57",
 };
 
+// A review ask about an issue that Junior opened shows as a code change row,
+// though it is not a code change.
+const issueReview = {
+  ...prReview,
+  body: "#77 waits on your review.\n\nhttps://github.com/getsentry/payments/issues/77",
+  id: "item-issue-review",
+  subject: {
+    id: "https://github.com/getsentry/payments/issues/77",
+    objectType: "task" as const,
+    title: "Design: Split the release train by region (#77)",
+    url: "https://github.com/getsentry/payments/issues/77",
+  },
+  title: "Review requested · #77",
+};
+
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   const row = (page: Page, text: string) =>
@@ -59,7 +74,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockInboxItems(page, { open: [breakingReview, prMerge, conflict] });
+    await mockInboxItems(page, {
+      open: [breakingReview, prMerge, conflict, issueReview],
+    });
     await page.goto(`${dashboard.baseURL}/`);
     const review = row(page, "Pin the release train");
     const head = review.locator("[data-inbox-head]");
@@ -91,6 +108,14 @@ test.describe("new UI", { tag: "@new" }, () => {
       "Conflict",
     );
     await expect(conflictRow.getByTitle("Question")).toHaveCount(0);
+
+    // An issue that waits on a review leads with its title too, after the
+    // same state pill, and its number moves to the second line.
+    const issueRow = row(page, "Split the release train by region");
+    await expect(issueRow.getByTitle("Review requested")).toHaveText("Review");
+    await expect(issueRow.getByText("#77", { exact: true })).toBeVisible();
+    await expect(issueRow).not.toContainText("Review requested · #77");
+    await expect(issueRow).not.toContainText("waits on your review");
     await screenshot(page, "inbox-code-change-rows", { lightTheme: true });
   });
 

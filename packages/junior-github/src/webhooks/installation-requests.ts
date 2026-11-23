@@ -216,18 +216,13 @@ export async function loadPullRequestConflictHistory(
   });
 }
 
-/**
- * Read the first 100 reactions on one issue, with a read-only token. A saved
- * response makes a repeat read conditional.
- */
-export async function loadIssueReactions(
+/** Read one issue path with a read-only token, conditional on a saved response. */
+async function loadIssuePath(
   env: GitHubInstallationEnv,
   issue: { number: number; repositoryFullName: string },
+  suffix: string,
 ): Promise<unknown> {
-  const { owner, name } = splitRepository(
-    issue.repositoryFullName,
-    "issue reactions",
-  );
+  const { owner, name } = splitRepository(issue.repositoryFullName, "issue");
   const token = await issueInstallationToken({
     ...env,
     permissions: { issues: "read" },
@@ -235,9 +230,25 @@ export async function loadIssueReactions(
   });
   return await githubRequest(
     "https://api.github.com",
-    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${issue.number}/reactions?per_page=100`,
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${issue.number}${suffix}`,
     { responses: env.responses, token: token.token },
   );
+}
+
+/** Read one issue, such as its assignees and reaction count. */
+export async function loadIssue(
+  env: GitHubInstallationEnv,
+  issue: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  return await loadIssuePath(env, issue, "");
+}
+
+/** Read the first 100 reactions on one issue. */
+export async function loadIssueReactions(
+  env: GitHubInstallationEnv,
+  issue: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  return await loadIssuePath(env, issue, "/reactions?per_page=100");
 }
 
 /** Ask people to review one pull request, with a pull request write token. */

@@ -75,6 +75,20 @@ export function isCodeChangeItem(item: InboxItemPayload): boolean {
   return item.subject?.objectType === "code_change";
 }
 
+/**
+ * An ask about an issue that waits on the viewer's review, as the GitHub
+ * plugin titles it: "Review requested · #77". Its row shows as a code
+ * change row does, but it is not a code change.
+ */
+export function isIssueReviewItem(
+  item: Pick<InboxItemPayload, "subject" | "title">,
+): boolean {
+  return (
+    item.subject?.objectType === "task" &&
+    item.title.startsWith("Review requested · ")
+  );
+}
+
 /** A question or approval that Junior asks with a form. */
 export function isDecisionItem(item: InboxItemPayload): boolean {
   return Boolean(item.request);
@@ -239,22 +253,27 @@ const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 function pullRequestState(
   item: InboxItemPayload,
 ): (typeof PULL_REQUEST_STATES)[number] | "Other" {
-  if (!isCodeChangeItem(item)) return "Other";
+  if (!isCodeChangeItem(item) && !isIssueReviewItem(item)) return "Other";
   const state = item.title.split(" · ")[0];
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
 }
 
-// The GitHub plugin's text for each state names the pull request by its
-// number only (`junior-github` `showAction`). Under a head that shows the
-// state and the number, it says nothing new. Text that says more, such as
-// "#91 has new commits since you requested changes.", stays.
+// The GitHub plugin's text for each state names the pull request or issue
+// by its number only (`junior-github` `showAction` and `issue-reviewers`).
+// Under a head that shows the state and the number, it says nothing new.
+// Text that says more, such as "#91 has new commits since you requested
+// changes.", stays.
 const PULL_REQUEST_STATE_TEXT: Record<
   (typeof PULL_REQUEST_STATES)[number],
-  (number: string) => string
+  (number: string) => string[]
 > = {
-  "Ready to merge": (number) =>
+  "Ready to merge": (number) => [
     `${number} is approved, and GitHub says that it can merge.`,
-  "Review requested": (number) => `GitHub asks you to review ${number}.`,
+  ],
+  "Review requested": (number) => [
+    `GitHub asks you to review ${number}.`,
+    `${number} waits on your review.`,
+  ],
 };
 
 /**
@@ -268,7 +287,7 @@ export function textRepeatsHead(item: InboxItemPayload, text: string): boolean {
   const number = item.title.slice(item.title.indexOf(" · ") + 3);
   return (
     /^#\d+$/.test(number) &&
-    text.trim() === PULL_REQUEST_STATE_TEXT[state](number)
+    PULL_REQUEST_STATE_TEXT[state](number).includes(text.trim())
   );
 }
 

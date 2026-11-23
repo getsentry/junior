@@ -1,8 +1,14 @@
 import type { ToolRegistrationHookContext } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
-import { gitHubDbSchema } from "../db/database.js";
+import * as z from "zod";
 import { requestGitHubIssueReviews } from "../issue-reviewers/items.js";
 import { parseGitHubLogin } from "./attribution.js";
+import {
+  githubApi,
+  githubErrorMessage,
+  parseRepo,
+  repoPath,
+} from "./github-api.js";
 
 // Each lookup can search Slack, so a long list does not fan out at once.
 const PERSON_LOOKUP_CONCURRENCY = 4;
@@ -68,10 +74,47 @@ async function resolveReviewers(
   return { leftOut, reviewers: [...byLogin.values()] };
 }
 
+const assignedIssueSchema = z.object({
+  assignees: z.array(z.object({ login: z.string().min(1) })).default([]),
+});
+
 /**
- * Add a "Review requested" Inbox item for each person whose review a new
- * issue waits on. An item goes only to a person in this Conversation, so
- * the others are left out, with the reason.
+ * Assign the reviewers on GitHub, so the issue shows whom it waits on.
+ * GitHub skips a person who cannot be assigned in the repo, so only the
+ * logins that it assigned are returned.
+ */
+async function assignReviewers(
+  ctx: ToolRegistrationHookContext,
+  issue: { number: number; repo: string },
+  logins: string[],
+): Promise<{ assigned: Set<string>; error?: string }> {
+  // This endpoint adds assignees. A PATCH with `assignees` replaces them.
+  const response = await githubApi(ctx.egress, {
+    operation: "github.issue.assign",
+    method: "POST",
+    path: `${repoPath(parseRepo(issue.repo))}/issues/${issue.number}/assignees`,
+    body: { assignees: logins },
+  });
+  if (!response.ok) {
+    return {
+      assigned: new Set(),
+      error: `GitHub assignment failed with HTTP ${response.status}: ${githubErrorMessage(response.body)}`,
+    };
+  }
+  return {
+    assigned: new Set(
+      assignedIssueSchema
+        .parse(response.body)
+        .assignees.map((assignee) => assignee.login.toLowerCase()),
+    ),
+  };
+}
+
+/**
+ * Assign each person whose review a new issue waits on, and add a "Review
+ * requested" Inbox item for them. An item goes only to a person in this
+ * Conversation whom GitHub assigned, so the others are left out, with the
+ * reason.
  */
 export async function requestIssueReviews(
   ctx: ToolRegistrationHookContext,
@@ -83,8 +126,8 @@ export async function requestIssueReviews(
 }> {
   if (!people?.length) return {};
   const { leftOut, reviewers } = await resolveReviewers(ctx, people);
-  const { conversationId, inboxItems } = ctx;
-  const inConversation = inboxItems && conversationId;
+  const { inboxItems } = ctx;
+  const inConversation = inboxItems && ctx.conversationId;
   const assignable = new Set(
     inConversation && reviewers.length > 0
       ? await inboxItems.assignable(
@@ -92,23 +135,34 @@ export async function requestIssueReviews(
         )
       : [],
   );
-  const requested = reviewers.filter((reviewer) =>
+  const candidates = reviewers.filter((reviewer) =>
     assignable.has(reviewer.identityId),
   );
+  const assignment =
+    inConversation && candidates.length > 0
+      ? await assignReviewers(
+          ctx,
+          issue,
+          candidates.map((reviewer) => reviewer.login),
+        )
+      : { assigned: new Set<string>() };
+  const requested = candidates.filter((reviewer) =>
+    assignment.assigned.has(reviewer.login.toLowerCase()),
+  );
   for (const reviewer of reviewers) {
-    if (!assignable.has(reviewer.identityId)) {
-      leftOut.push({
-        person: reviewer.person,
-        reason: inConversation
+    if (requested.includes(reviewer)) continue;
+    leftOut.push({
+      person: reviewer.person,
+      reason: !inConversation
+        ? "This run has no Conversation, so nobody can get an item."
+        : !assignable.has(reviewer.identityId)
           ? "Is not in this Conversation, so they cannot get an item."
-          : "This run has no Conversation, so nobody can get an item.",
-      });
-    }
+          : (assignment.error ??
+            `GitHub did not assign @${reviewer.login}. They may not have access to ${issue.repo}.`),
+    });
   }
-  if (inConversation && requested.length > 0) {
+  if (inboxItems && requested.length > 0) {
     await requestGitHubIssueReviews({
-      conversationId,
-      db: gitHubDbSchema.parse(ctx.db),
       inboxItems,
       issue: {
         number: issue.number,
