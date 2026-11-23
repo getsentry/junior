@@ -144,6 +144,7 @@ export async function checkGitHubIssueReviewReactions(
           issue,
           logins,
           reason: "They reacted to the issue.",
+          status: "done",
         });
       } catch (error) {
         logFailOpenFailure(

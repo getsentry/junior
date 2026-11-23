@@ -282,6 +282,26 @@ describe("an issue that Junior opens for a person's review", () => {
         createIssue(79, [`<@${person.userId}>`]),
       ).resolves.toMatchObject({ number: 79, review_requested: ["pat-gh"] });
       expect(sent.creates.get(79)).toBe(1);
+
+      // Unassigning the reviewer withdraws the ask, so their item is
+      // dismissed, not done.
+      await createIssue(80, [`<@${person.userId}>`]);
+      expect(await reviewItem(80)).toMatchObject({ status: "open" });
+      await sendGitHubWebhook("issues", {
+        action: "unassigned",
+        assignee: { login: "pat-gh" },
+        issue: {
+          assignees: [],
+          body: sent.bodies.get(80),
+          closed_at: null,
+          created_at: "2026-07-01T12:00:00Z",
+          id: 80_000,
+          number: 80,
+          updated_at: "2026-07-02T12:00:00Z",
+          user: { login: BOT },
+        },
+      });
+      expect(await reviewItem(80)).toMatchObject({ status: "dismissed" });
     } finally {
       setDashboardConversationLinkOptions(previousDashboard);
       await fixture.close();

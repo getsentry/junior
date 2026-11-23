@@ -5,8 +5,9 @@
  * `review_by` adds items, so an assignment that claims an issue has no item.
  * The item closes as done when the issue closes, or when that person
  * comments on the issue (`webhooks.ts`) or reacts to it (`reactions.ts`).
- * A close for a person who has no item does nothing. A reopen does not
- * bring an item back.
+ * Unassigning the person withdraws the ask, so it dismisses their item. A
+ * close for a person who has no item does nothing. A reopen does not bring
+ * an item back.
  */
 import type {
   PluginConversationInboxItems,
@@ -60,6 +61,7 @@ export async function closeGitHubIssueReviews(args: {
   issue: GitHubIssueRef;
   logins: readonly string[];
   reason: string;
+  status: "done" | "dismissed";
 }): Promise<void> {
   const closes = args.conversationIds.flatMap((conversationId) =>
     args.logins.map((login) => ({ conversationId, login })),
@@ -70,7 +72,7 @@ export async function closeGitHubIssueReviews(args: {
       args.inboxItems.forConversation(conversationId).close({
         dedupeKey: issueReviewDedupeKey(args.issue, login),
         reason: args.reason,
-        status: "done",
+        status: args.status,
       }),
   );
 }

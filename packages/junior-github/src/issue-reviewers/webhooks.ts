@@ -28,6 +28,13 @@ const issueClosedSchema = z.object({
   repository: repositorySchema,
 });
 
+const issueUnassignedSchema = z.object({
+  action: z.literal("unassigned"),
+  assignee: loginSchema.nullable(),
+  issue: issueSchema,
+  repository: repositorySchema,
+});
+
 const issueCommentSchema = z.object({
   action: z.literal("created"),
   comment: z.object({ user: loginSchema.nullable() }),
@@ -40,12 +47,14 @@ interface CloseTarget {
   issue: GitHubIssueRef;
   logins: string[];
   reason: string;
+  status: "done" | "dismissed";
 }
 
 /**
  * The review items that one webhook delivery closes: each assignee's item
- * when the issue closes, or the commenter's item. Only an issue that Junior
- * opened has items, in the Conversations that its footer names.
+ * when the issue closes, the commenter's item, or the dismissed item of a
+ * person who was unassigned. Only an issue that Junior opened has items, in
+ * the Conversations that its footer names.
  */
 function closeTarget(
   eventName: string,
@@ -58,12 +67,20 @@ function closeTarget(
   };
   let logins: string[];
   let reason: string;
-  if (eventName === "issues") {
-    const closed = issueClosedSchema.safeParse(body);
-    if (!closed.success) return undefined;
+  let status: CloseTarget["status"] = "done";
+  const closed = issueClosedSchema.safeParse(body);
+  const unassigned = issueUnassignedSchema.safeParse(body);
+  if (eventName === "issues" && closed.success) {
     parsed = closed.data;
     logins = closed.data.issue.assignees.map((assignee) => assignee.login);
     reason = "The issue closed.";
+  } else if (eventName === "issues" && unassigned.success) {
+    // Unassigning withdraws the ask. Assigning never adds an item.
+    parsed = unassigned.data;
+    const login = unassigned.data.assignee?.login;
+    logins = login ? [login] : [];
+    reason = "They were unassigned from the issue.";
+    status = "dismissed";
   } else if (eventName === "issue_comment") {
     const comment = issueCommentSchema.safeParse(body);
     if (!comment.success) return undefined;
@@ -88,6 +105,7 @@ function closeTarget(
     issue: { number: issue.number, repositoryFullName: repository.full_name },
     logins,
     reason,
+    status,
   };
 }
 
