@@ -42,6 +42,7 @@ import { findLinkedHandle } from "@/chat/identities/user-lookup";
 import { parseSlackTeamId } from "@/chat/slack/ids";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import {
   annotateToolResult,
   saveObjectAnnotations,
@@ -1229,6 +1230,10 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      conversationChanges: createPluginConversationChanges({
+        plugin: pluginName,
+        show: options.showInboxItem ?? (async () => {}),
+      }),
       state: createPluginState(pluginName),
       inboxItems: {
         forConversation: (conversationId) =>

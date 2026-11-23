@@ -168,8 +168,8 @@ describe("next action item", () => {
       releaseMerge();
       await Promise.all([failing, queued]);
       expect(errors).toEqual([
-        "GitHub ended pull request item close failed",
-        "GitHub ended pull request item close failed",
+        "GitHub ended pull request change failed",
+        "GitHub ended pull request change failed",
         "GitHub pull request action failed",
       ]);
       expect(calls.at(-1)).toEqual({

@@ -7,6 +7,7 @@ import {
   type ConversationAnnotationInput,
   type EventInput,
   type EventMatch,
+  type PluginConversationAnnotations,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -24,6 +25,7 @@ import {
   listGitHubUnfinishedWork,
 } from "../src/pull-request-outcomes/store";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
+import { conversationChangesThrough } from "./conversation-changes";
 import {
   buildCheckSuiteUrl,
   needsCheckSuitePullRequestFacts,
@@ -338,20 +340,21 @@ function webhookRoute(
   hasMatch: () => Promise<boolean> = async () => true,
   codeChanges: CodeChangeInput[] = [],
 ) {
-  return createGitHubWebhookRoute({
-    annotations: {
-      forConversation(conversationId) {
-        return {
-          async upsert(annotation) {
-            annotations.push({ annotation, conversationId });
-          },
-          async remove() {},
-          async list() {
-            return [];
-          },
-        };
-      },
+  const stores: PluginConversationAnnotations = {
+    forConversation(conversationId) {
+      return {
+        async upsert(annotation) {
+          annotations.push({ annotation, conversationId });
+        },
+        async remove() {},
+        async list() {
+          return [];
+        },
+      };
     },
+  };
+  return createGitHubWebhookRoute({
+    annotations: stores,
     appIdEnv: "GITHUB_APP_ID",
     botEmail,
     classifyPullRequestCommits,
@@ -362,6 +365,7 @@ function webhookRoute(
         codeChanges.push(input);
       },
     },
+    conversationChanges: conversationChangesThrough({ annotations: stores }),
     db: fixture.db(),
     installationId: () => "456",
     installationIdEnv: "GITHUB_INSTALLATION_ID",
@@ -3658,34 +3662,35 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       ],
     ]);
+    const annotations: PluginConversationAnnotations = {
+      forConversation(conversationId) {
+        return {
+          async upsert(annotation) {
+            chips.set(
+              conversationId,
+              conversationAnnotationInputSchema.parse(annotation),
+            );
+          },
+          async remove() {},
+          async list() {
+            const chip = chips.get(conversationId);
+            return chip
+              ? [
+                  {
+                    ...chip,
+                    createdAt: "2026-07-01T12:00:00.000Z",
+                    plugin: "github",
+                    updatedAt: "2026-07-01T12:00:00.000Z",
+                  },
+                ]
+              : [];
+          },
+        };
+      },
+    };
     try {
       const route = createGitHubWebhookRoute({
-        annotations: {
-          forConversation(conversationId) {
-            return {
-              async upsert(annotation) {
-                chips.set(
-                  conversationId,
-                  conversationAnnotationInputSchema.parse(annotation),
-                );
-              },
-              async remove() {},
-              async list() {
-                const chip = chips.get(conversationId);
-                return chip
-                  ? [
-                      {
-                        ...chip,
-                        createdAt: "2026-07-01T12:00:00.000Z",
-                        plugin: "github",
-                        updatedAt: "2026-07-01T12:00:00.000Z",
-                      },
-                    ]
-                  : [];
-              },
-            };
-          },
-        },
+        annotations,
         appIdEnv: "GITHUB_APP_ID",
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
         classifyPullRequestCommits: async () => "mixed",
@@ -3694,6 +3699,7 @@ describe("GitHub-owned pull request outcomes", () => {
           async recordActivity() {},
           async record() {},
         },
+        conversationChanges: conversationChangesThrough({ annotations }),
         db: fixture.db(),
         installationId: () => "456",
         installationIdEnv: "GITHUB_INSTALLATION_ID",
