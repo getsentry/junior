@@ -55,6 +55,19 @@
       "createdAt": "2026-08-07T11:18:00.000Z",
       "updatedAt": "2026-08-07T11:18:00.000Z",
       "url": "http://127.0.0.1:4317/inbox?item=qa-migration-window"
+    },
+    {
+      "id": "qa-reply-dashboard-qa",
+      "kind": "notice",
+      "status": "open",
+      "title": "Dashboard QA edge cases",
+      "body": "I mean the empty, loading, and failed transcript states.",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["internal:dashboard-qa"],
+      "createdAt": "2026-08-07T07:00:58.000Z",
+      "updatedAt": "2026-08-07T07:01:09.000Z",
+      "url": "http://127.0.0.1:4317/inbox?item=qa-reply-dashboard-qa"
     }
   ],
   "truncated": false

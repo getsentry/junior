@@ -163,6 +163,12 @@ public struct InboxItem: Decodable, Sendable, Hashable, Identifiable {
   public var createdAt: Timestamp
   public var updatedAt: Timestamp
   public var url: String?
+
+  /// The dashboard's `needsViewer` rule (`itemNeedsUser`): an open `action`
+  /// item assigned to the viewer. Notices, such as a reply notice, and items
+  /// for Everyone do not count. MCP sends no `assignees` for Everyone and for
+  /// no one, so a listed assignee and `canAct` mean the viewer is one.
+  public var needsViewer: Bool { status == "open" && kind == "action" && canAct && !assignees.isEmpty }
 }
 
 public struct InboxItemList: Decodable, Sendable {

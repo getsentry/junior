@@ -18,6 +18,23 @@ const AFTER_MESSAGE_LIMIT = 20;
 const EVENT_SCAN_LIMIT = 200;
 const RECENT_RUN_LIMIT = 10;
 
+// The dashboard mock has no reply notice: the Inbox item that a reply in a
+// Conversation without a Location adds for its starter (`reply-notice.ts`).
+// Its body is the preview of the latest reply.
+const REPLY_NOTICE = {
+  id: "qa-reply-dashboard-qa",
+  kind: "notice",
+  status: "open",
+  title: "Dashboard QA edge cases",
+  body: "I mean the empty, loading, and failed transcript states.",
+  assignedToEveryone: false,
+  assignees: [{ displayName: "Dashboard User" }],
+  canAct: true,
+  conversationIds: ["internal:dashboard-qa"],
+  createdAt: "2026-08-07T07:00:58.000Z",
+  updatedAt: "2026-08-07T07:01:09.000Z",
+};
+
 /** A tool error that the client model can read, like `mcpToolError`. */
 class ToolError extends Error {}
 
@@ -805,7 +822,11 @@ export function createMockMcpTools({ app, origin }) {
         if (id) query.set("conversationId", id);
         const list = await apiJson("GET", `/inbox-items?${query}`);
         const words = q?.toLowerCase();
-        const items = list.items
+        const notice =
+          !id || REPLY_NOTICE.conversationIds.includes(id)
+            ? [REPLY_NOTICE]
+            : [];
+        const items = [...list.items, ...notice]
           .filter(
             (item) =>
               item.status === "open" &&
@@ -833,6 +854,7 @@ export function createMockMcpTools({ app, origin }) {
         },
       },
       async run({ id }) {
+        if (id === REPLY_NOTICE.id) return { item: mcpInboxItem(REPLY_NOTICE) };
         const result = await api("GET", `/inbox-items/${enc(id)}`);
         if (result.status === 404) {
           throw new ToolError("Inbox item not found.");

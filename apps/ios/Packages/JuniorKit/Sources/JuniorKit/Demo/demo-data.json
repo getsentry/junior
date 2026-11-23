@@ -1302,6 +1302,19 @@
       "url": "https://demo.junior.invalid/review?item=qa-review-91"
     },
     {
+      "id": "qa-reply-dashboard-qa",
+      "kind": "notice",
+      "status": "open",
+      "title": "Dashboard QA edge cases",
+      "body": "I mean the empty, loading, and failed transcript states.",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["internal:dashboard-qa"],
+      "createdAt": "2026-08-07T07:00:58.000Z",
+      "updatedAt": "2026-08-07T07:01:09.000Z",
+      "url": "https://demo.junior.invalid/inbox?item=qa-reply-dashboard-qa"
+    },
+    {
       "id": "qa-digest-skipped",
       "kind": "notice",
       "status": "open",

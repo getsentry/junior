@@ -28,6 +28,13 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     _ = try fixture("createConversation", as: AcceptedMessage.self)
     let items = try fixture("searchInboxItems", as: InboxItemList.self)
     #expect(items.items.allSatisfy { $0.status == "open" })
+    // A reply notice lists for its starter, but the badge counts neither it
+    // nor an item for Everyone.
+    let notice = try #require(items.items.first { $0.kind == "notice" })
+    #expect(notice.canAct && !notice.needsViewer)
+    var forEveryone = try #require(items.items.first(where: \.needsViewer))
+    forEveryone.assignees = []
+    #expect(!forEveryone.needsViewer)
     _ = try fixture("getInboxItem", as: InboxItemResult.self)
     let automations = try fixture("searchAutomations", as: AutomationList.self)
     #expect(automations.total >= automations.automations.count)

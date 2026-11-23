@@ -45,6 +45,8 @@ final class ManualClock: @unchecked Sendable {
     }
     let items = try await client.call("searchInboxItems", ["limit": 50], as: InboxItemList.self)
     #expect(!items.items.isEmpty)
+    let replyNotice = try #require(items.items.first { $0.id == "qa-reply-dashboard-qa" })
+    #expect(replyNotice.canAct && !replyNotice.needsViewer)
     for item in items.items {
       _ = try await client.call("getInboxItem", ["id": .string(item.id)], as: InboxItemResult.self)
       for conversationId in item.conversationIds {

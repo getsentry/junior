@@ -240,10 +240,10 @@ final class AppModel {
     await refreshInboxCount()
   }
 
-  /// Open Inbox items that wait on the viewer.
+  /// Open Inbox items that wait on the viewer, as the dashboard badge counts.
   func refreshInboxCount() async {
     if let list = try? await call("searchInboxItems", ["limit": 50], as: InboxItemList.self) {
-      inboxCount = list.items.filter(\.canAct).count
+      inboxCount = list.items.filter(\.needsViewer).count
     }
   }
 
