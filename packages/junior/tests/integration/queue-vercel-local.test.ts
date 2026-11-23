@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   startLocalVercelQueueServer,
   type LocalVercelQueueServer,
-} from "@sentry/junior-testing/vercel-queue";
+} from "@/chat/queue/local-server";
 import {
   getQueueProvider,
   type QueueConsumer,

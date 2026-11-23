@@ -13,8 +13,7 @@
     "./postgres/fixture": "./src/postgres/fixture.ts",
     "./postgres/global-setup": "./src/postgres/global-setup.ts",
     "./postgres/setup": "./src/postgres/setup.ts",
-    "./structured-output": "./src/structured-output.ts",
-    "./vercel-queue": "./src/vercel-queue.ts"
+    "./structured-output": "./src/structured-output.ts"
   },
   "scripts": {
     "typecheck": "tsc --noEmit"

@@ -78,7 +78,7 @@ Do not use it for a deployed app.
 `JUNIOR_QUEUE_API_URL` sends the `vercel` provider's queue API calls to a
 local server instead of Vercel Queues. Junior then sends a placeholder token
 and does not get a Vercel OIDC token. The local server is
-`startLocalVercelQueueServer` in the private `@sentry/junior-testing` package.
+`startLocalVercelQueueServer` in `packages/junior/src/chat/queue/local-server.ts`.
 It keeps messages in memory and pushes each one to its callback route. Do not
 set this variable for a deployed app.
 
