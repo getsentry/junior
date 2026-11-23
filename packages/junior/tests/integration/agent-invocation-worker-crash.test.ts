@@ -14,6 +14,7 @@ import {
 } from "@/chat/agent-invocations/result";
 import { appendAndEnqueueWebMessage } from "@/chat/conversations/web-input";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
 import {
@@ -137,7 +138,23 @@ describe("child agent worker crash", () => {
           { parentConversationId: childId },
         );
         if (person) {
-          // A person's Message wakes the Thread instead.
+          // A person's Message wakes the Thread instead. A Watch Event waits
+          // beside it.
+          await appendInboundMessage({
+            message: createEventInboundMessage({
+              event: {
+                eventKey: "deploy-1",
+                eventType: "deployment.failed",
+                identifier: "getsentry/junior",
+                namespace: "github",
+                occurredAtMs: Date.now(),
+                trustedSummary: "A deployment failed.",
+              },
+              subscription: { conversationId: childId, id: "watch-1" },
+              text: "Deploy failed.",
+            }),
+            state,
+          });
           await appendAndEnqueueWebMessage(
             {
               actor: webTestActor,

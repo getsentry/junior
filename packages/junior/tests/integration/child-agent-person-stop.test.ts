@@ -2,8 +2,12 @@ import type { StateAdapter } from "chat";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { stopConversation } from "@/chat/conversations/stop";
 import { getSqlExecutor } from "@/chat/db";
+import { createEventInboundMessage } from "@/chat/events/notification";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { startConversationWork } from "@/chat/task-execution/store";
+import {
+  appendAndEnqueueInboundMessage,
+  startConversationWork,
+} from "@/chat/task-execution/store";
 import { changeTodos, listTodos } from "@/chat/todos/store";
 import { slackParentConversationId } from "../fixtures/agent-invocations";
 import { mailboxTexts, message, spawn } from "../fixtures/parent-agent-tools";
@@ -140,6 +144,23 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
       vi.setSystemTime(1_800_000_001_000);
       await sendPersonMessage(harness, threadId, "person-1");
       harness.onRun(async (run) => {
+        // A Watch Event waits beside the person's unsaved Turn.
+        await appendAndEnqueueInboundMessage({
+          message: createEventInboundMessage({
+            event: {
+              eventKey: "deploy-1",
+              eventType: "deployment.failed",
+              identifier: "getsentry/junior",
+              namespace: "github",
+              occurredAtMs: Date.now(),
+              trustedSummary: "A deployment failed.",
+            },
+            subscription: { conversationId: threadId, id: "watch-1" },
+            text: "Deploy failed.",
+          }),
+          queue: harness.queue,
+          state: harness.state,
+        });
         vi.setSystemTime(1_800_000_002_000);
         await stopConversation({
           conversationId: threadId,

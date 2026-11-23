@@ -758,7 +758,7 @@ export function createConversationTurnWorker(
               } else if (
                 reply.noReply &&
                 behavior.quietResult === "parent" &&
-                (await childWorkEnded(context.conversationId, turnId))
+                (await childWorkEnded(context.conversationId, kind, turnId))
               ) {
                 await sendToParent({
                   kind: "completed",

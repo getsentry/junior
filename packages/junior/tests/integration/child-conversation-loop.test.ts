@@ -257,14 +257,16 @@ describe("child Turns on the Conversation loop", () => {
   });
 
   // A Watch Turn that ends with `noReply` ends the Thread's work when no
-  // Watch is left, so its parent gets a result. With a Watch left, the
-  // Thread still works and its parent waits.
+  // Watch is left and no input waits to run, so its parent gets a result.
+  // With a Watch left, the Thread still works and its parent waits. An Event
+  // that arrives during the Turn runs next, and only that Turn reports.
   it.each([
-    { watchLeft: false, results: 1 },
-    { watchLeft: true, results: 0 },
+    { watchLeft: false, eventWaits: false, results: 1 },
+    { watchLeft: true, eventWaits: false, results: 0 },
+    { watchLeft: false, eventWaits: true, results: 1 },
   ])(
-    "reports a Thread whose Watch Turn ends with noReply (Watch left: $watchLeft)",
-    async ({ watchLeft, results }) => {
+    "reports a Thread whose Watch Turn ends with noReply (Watch left: $watchLeft, Event waits: $eventWaits)",
+    async ({ watchLeft, eventWaits, results }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -284,33 +286,49 @@ describe("child Turns on the Conversation loop", () => {
             { state: harness.state },
           );
         }
+        const sendEvent = (eventKey: string) =>
+          appendAndEnqueueInboundMessage({
+            message: createEventInboundMessage({
+              event: {
+                eventKey,
+                eventType: "deployment.failed",
+                identifier: "getsentry/junior",
+                namespace: "github",
+                occurredAtMs: Date.now(),
+                trustedSummary: "A deployment failed.",
+              },
+              subscription: { conversationId: childId, id: "watch-1" },
+              text: "Deploy failed.",
+            }),
+            queue: harness.queue,
+            state: harness.state,
+          });
         const before = await parentMessageTexts();
-        await appendAndEnqueueInboundMessage({
-          message: createEventInboundMessage({
-            event: {
-              eventKey: "deploy-1",
-              eventType: "deployment.failed",
-              identifier: "getsentry/junior",
-              namespace: "github",
-              occurredAtMs: Date.now(),
-              trustedSummary: "A deployment failed.",
-            },
-            subscription: { conversationId: childId, id: "watch-1" },
-            text: "Deploy failed.",
-          }),
-          queue: harness.queue,
-          state: harness.state,
-        });
+        const runsBefore = harness.runs.length;
+        await sendEvent("deploy-1");
         vi.setSystemTime(Date.now() + 60_000);
-        harness.onRun((run) =>
-          finishRun(run, { noReply: { note: "The deploy is green." } }),
-        );
+        harness.onRun(async (run) => {
+          const outcome = await finishRun(run, {
+            noReply: { note: "The deploy is green." },
+          });
+          if (eventWaits && harness.runs.length === runsBefore + 1) {
+            await sendEvent("deploy-2");
+          }
+          return outcome;
+        });
+        await harness.drain(childId);
+        // The heartbeat wakes the Event that waited out its burst window.
+        await runHeartbeatAfterLeasesExpire(harness.queue);
         await harness.drain(childId);
 
-        expect(harness.runs.at(-1)).toMatchObject({
-          conversationId: childId,
-          source: { kind: "event" },
-        });
+        expect(harness.runs.slice(runsBefore)).toEqual(
+          Array.from({ length: eventWaits ? 2 : 1 }, () =>
+            expect.objectContaining({
+              conversationId: childId,
+              source: expect.objectContaining({ kind: "event" }),
+            }),
+          ),
+        );
         expect(
           (await parentMessageTexts())
             .slice(before.length)

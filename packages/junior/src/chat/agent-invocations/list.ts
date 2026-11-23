@@ -170,6 +170,22 @@ async function runsOnConversationLoop(
 }
 
 /**
+ * Return whether input waits in a child's mailbox that will run a Turn that
+ * answers its parent, such as a fired Timer whose Watch is already gone.
+ */
+export async function hasWaitingParentWork(
+  conversationId: string,
+  kind: ConversationKind,
+): Promise<boolean> {
+  const work = await getConversationWorkState({ conversationId });
+  return await runsOnConversationLoop(
+    kind,
+    work?.execution.pendingMessages ?? [],
+    [],
+  );
+}
+
+/**
  * List the ids of a child's open Turns on the Conversation loop. A Turn keeps
  * its input in the mailbox until it commits it, so before its first
  * checkpoint its id comes from its first input. Attempt selection can take
