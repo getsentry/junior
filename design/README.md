@@ -4,8 +4,8 @@ Each file states the intent of one major system: the goals it must meet,
 where users reach it, and the rules users rely on. Teammates read it to learn
 why the system works the way it does. Agents read it before they change the
 system. The `create-design-docs` skill writes these files, and the
-`maintain-design-docs` skill checks the product against them. Both skills
-live in getsentry/junior-prod.
+`automate-design-doc-updates` skill checks the product against them. Both
+skills live in getsentry/junior-prod.
 
 ## File contract
 
@@ -34,8 +34,6 @@ Do not list behaviors. The verification map in
 
 ## Systems
 
-- [Attention](./attention.md): when Junior asks for a person's attention.
-  Every system follows it.
 - [Automations](./automations.md): saved instructions that Junior runs later.
 - [Cache warming](./cache-warming.md): keeping the prompt cache of an idle
   Conversation warm while a return is likely.
