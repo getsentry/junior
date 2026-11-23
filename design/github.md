@@ -61,9 +61,9 @@ also wake a Conversation or run an Event automation.
 - Only the requester gets Inbox items for a Junior PR. Other reviewers
   hear only from GitHub (`github#other-reviewers`,
   `github#requester-gone`).
-- A Junior push to an approved PR follows the repo's setting for stale
-  approvals. Junior never keeps or dismisses an approval on its own
-  (`github#push-after-approval`).
+- After a Junior push to an approved PR, Junior asks for a fresh review
+  only when GitHub no longer counts the approval. Junior never keeps or
+  dismisses an approval on its own (`github#push-after-approval`).
 - A Junior PR that a person can merge gets one `Ready to merge` for the
   requester (`github#ready-to-merge`, `github#stack`).
 - Junior never skips, disables, or weakens a check to make it pass
@@ -102,10 +102,10 @@ also wake a Conversation or run an Event automation.
 - `Ready to merge` waits for every check, not only the required ones, and
   does not know stacks (`github#ready-to-merge`, `github#stack`). This
   breaks "a Junior PR that a person can merge gets one `Ready to merge`".
-- In a repo that dismisses stale approvals, a Junior push to an approved
-  PR asks nobody for a fresh review, so the PR waits and nobody hears
-  (`github#push-after-approval`). This breaks "a Junior push to an approved
-  PR follows the repo's setting for stale approvals".
+- When GitHub dismisses an approval after a Junior push, nobody is asked
+  for a fresh review, so the PR waits and nobody hears
+  (`github#push-after-approval`). This breaks "asks for a fresh review
+  only when GitHub no longer counts the approval".
 - The Watch on a Junior PR expires while the PR is open. After that, its
   upkeep stops, and nobody is told (`github#long-lived`). This breaks
   "Junior owns the upkeep of its PR while the PR is open".
