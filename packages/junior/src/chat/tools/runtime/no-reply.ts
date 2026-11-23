@@ -9,8 +9,7 @@ export const noReplyToolDefinition = zodToolDefinition({
     openWorldHint: false,
     readOnlyHint: true,
   },
-  description:
-    "End the Turn without a reply. Nothing is posted and nobody is notified.",
+  description: "End the Turn quietly, without a reply.",
   exposure: "modelOnly",
   inputSchema: z
     .object({
