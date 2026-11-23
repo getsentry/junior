@@ -12,6 +12,7 @@ import {
 import { createCodeChangePublisher } from "@/chat/code/publisher";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
@@ -124,6 +125,10 @@ export function createHeartbeatContext(args: {
     },
     cache: createPluginCache(pluginName),
     codeChanges: createCodeChangePublisher(pluginName),
+    conversationChanges: createPluginConversationChanges({
+      plugin: pluginName,
+      show: args.showInboxItem ?? (async () => {}),
+    }),
     nowMs: args.nowMs,
     db: getDb(),
     embedder: createPluginEmbedder(pluginName),

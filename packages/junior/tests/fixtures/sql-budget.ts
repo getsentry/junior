@@ -144,6 +144,7 @@ export async function expectSqlBudget<T>(
 type PlanNode = {
   "Node Type": string;
   "Total Cost": number;
+  "Plan Rows": number;
   "Relation Name"?: string;
   "Index Cond"?: string;
   "Recheck Cond"?: string;
@@ -279,6 +280,17 @@ export async function expectNoFullScan<T>(
   }
   if (failures.length > 0) throw new Error(failures.join("\n"));
   return result;
+}
+
+/**
+ * Run `call` and return every plan node of each statement that it sent, in
+ * statement order. Use it to assert one planner estimate, such as the rows
+ * that Postgres expects from a node.
+ */
+export async function explainNodes(call: () => unknown): Promise<PlanNode[][]> {
+  const { statements } = await measureSql(call);
+  const plans = await explainPlans(statements);
+  return plans.map(({ plan }) => [...planNodes(plan)]);
 }
 
 /**

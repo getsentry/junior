@@ -411,6 +411,7 @@ export function githubPlugin(
           annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
           codeChanges: ctx.codeChanges,
+          conversationChanges: ctx.conversationChanges,
           db,
           events: ctx.events,
           loadCommitPages: async (target) =>
@@ -465,6 +466,7 @@ export function githubPlugin(
                 ),
               }),
             codeChanges: ctx.codeChanges,
+            conversationChanges: ctx.conversationChanges,
             db: gitHubDbSchema.parse(ctx.db),
             installationId: () => readEnv(installationIdEnv),
             loadGitHubIncidents: async () =>
