@@ -398,6 +398,13 @@ describe("child agent task work", () => {
         turnId: "turn_helper",
       });
       await processChild();
+      // A Turn records each input Message once. Its reply is a
+      // `message_handled` row, not an edit of the Message.
+      expect(
+        (await getConversationEventStore().loadHistory(childConversationId))
+          .map((event) => event.data.type)
+          .filter((type) => type === "message_updated"),
+      ).toEqual([]);
       expect(
         run.mock.calls.map(([childRun]) => [
           childRun.source.kind,
