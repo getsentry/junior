@@ -46,6 +46,7 @@ struct MessageTextView: UIViewRepresentable {
     view.font = Self.font
     view.adjustsFontForContentSizeCategory = true
     if onSubmit != nil { view.returnKeyType = .send }
+    view.onSubmit = onSubmit
     view.tintColor = UIColor(Tokens.accent)
     view.typingAttributes = Self.attributes
     view.accessibilityLabel = placeholder
@@ -55,6 +56,7 @@ struct MessageTextView: UIViewRepresentable {
 
   func updateUIView(_ view: ComposerTextView, context: Context) {
     context.coordinator.parent = self
+    view.onSubmit = onSubmit
     view.accessibilityLabel = placeholder
     if view.text != text {
       view.attributedText = NSAttributedString(string: text, attributes: Self.attributes)
@@ -87,8 +89,8 @@ struct MessageTextView: UIViewRepresentable {
     init(_ parent: MessageTextView) { self.parent = parent }
 
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText: String) -> Bool {
-      guard let onSubmit = parent.onSubmit, replacementText == "\n",
-        let view = textView as? ComposerTextView, !view.insertingLineBreak,
+      guard replacementText == "\n", let view = textView as? ComposerTextView,
+        let onSubmit = view.onSubmit, !view.insertingLineBreak,
         // Return commits a marked (IME) text first.
         textView.markedTextRange == nil
       else { return true }
@@ -112,7 +114,7 @@ struct MessageTextView: UIViewRepresentable {
     func textView(
       _ textView: UITextView, editMenuForTextIn range: NSRange, suggestedActions: [UIMenuElement]
     ) -> UIMenu? {
-      guard parent.onSubmit != nil, let view = textView as? ComposerTextView else { return nil }
+      guard let view = textView as? ComposerTextView, view.onSubmit != nil else { return nil }
       let newLine = UIAction(title: "New Line", image: UIImage(systemName: "return")) { [weak view] _ in
         view?.insertLineBreak()
       }
@@ -121,43 +123,30 @@ struct MessageTextView: UIViewRepresentable {
   }
 }
 
-/// Inserts a newline on Shift-Return from a hardware keyboard. Plain Return
-/// reaches the text system, which asks the delegate, which sends.
+/// Takes Return and Shift-Return from a hardware keyboard with key commands,
+/// before the text system inserts a newline. The software keyboard's Return
+/// has no key event; it reaches the delegate as an inserted newline.
 final class ComposerTextView: UITextView {
+  var onSubmit: (() -> Void)?
   private(set) var insertingLineBreak = false
-  private var swallowed: Set<UIPress> = []
 
   /// Insert a newline at the cursor; the delegate lets this one through.
-  func insertLineBreak() {
+  @objc func insertLineBreak() {
     insertingLineBreak = true
     defer { insertingLineBreak = false }
     insertText("\n")
   }
 
-  override func pressesBegan(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    let lineBreaks = presses.filter { press in
-      guard let key = press.key, key.keyCode == .keyboardReturnOrEnter else { return false }
-      return key.modifierFlags.contains(.shift) && markedTextRange == nil
-    }
-    guard !lineBreaks.isEmpty else { return super.pressesBegan(presses, with: event) }
-    swallowed.formUnion(lineBreaks)
-    insertLineBreak()
-    let rest = presses.subtracting(lineBreaks)
-    if !rest.isEmpty { super.pressesBegan(rest, with: event) }
+  override var keyCommands: [UIKeyCommand]? {
+    // While an IME has marked text, Return commits it.
+    guard onSubmit != nil, markedTextRange == nil else { return super.keyCommands }
+    let commands = [
+      UIKeyCommand(title: "Send", action: #selector(submit), input: "\r"),
+      UIKeyCommand(title: "New Line", action: #selector(insertLineBreak), input: "\r", modifierFlags: .shift),
+    ]
+    for command in commands { command.wantsPriorityOverSystemBehavior = true }
+    return commands + (super.keyCommands ?? [])
   }
 
-  override func pressesEnded(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    forward(presses) { super.pressesEnded($0, with: event) }
-  }
-
-  override func pressesCancelled(_ presses: Set<UIPress>, with event: UIPressesEvent?) {
-    forward(presses) { super.pressesCancelled($0, with: event) }
-  }
-
-  /// Keep the end of a swallowed press from the text system too.
-  private func forward(_ presses: Set<UIPress>, _ send: (Set<UIPress>) -> Void) {
-    let rest = presses.subtracting(swallowed)
-    swallowed.subtract(presses)
-    if !rest.isEmpty { send(rest) }
-  }
+  @objc private func submit() { onSubmit?() }
 }

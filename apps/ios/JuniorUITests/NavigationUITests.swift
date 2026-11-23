@@ -112,7 +112,7 @@ final class NavigationUITests: XCTestCase {
     let app = launch()
     let field = openComposer(app)
     field.typeText("Check the EU region too")
-    app.buttons["Send"].tap()
+    app.buttons["composer-send"].tap()
     XCTAssertTrue(message(app, containing: "Check the EU region too").waitForExistence(timeout: 10))
   }
 

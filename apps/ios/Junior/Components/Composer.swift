@@ -94,6 +94,8 @@ struct SendButton: View {
     .buttonStyle(UndimmedButtonStyle())
     .disabled(!enabled)
     .accessibilityLabel("Send")
+    // The software keyboard's Return key is "Send" too.
+    .accessibilityIdentifier("composer-send")
   }
 }
 
