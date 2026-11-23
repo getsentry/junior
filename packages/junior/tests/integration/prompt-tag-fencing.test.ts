@@ -7,7 +7,7 @@ import {
   renderCurrentInstruction,
   unwrapCurrentInstruction,
 } from "@/chat/current-instruction";
-import { isRuntimeInputText, renderUntrustedTag } from "@/chat/input-tags";
+import { isRuntimeInputText, renderDataTag } from "@/chat/input-tags";
 import { instructionTextForProjection } from "@/chat/pi/transcript";
 import { renderTodosSnapshot } from "@/chat/todos/prompt";
 import { buildTurnContextPrompt } from "@/chat/prompt";
@@ -75,7 +75,7 @@ describe("prompt tag fencing", () => {
     const cases: Array<[tag: string, text: string]> = [
       [
         "agent-result",
-        renderUntrustedTag(
+        renderDataTag(
           "agent-result",
           { source: "child_agent", conversation_id: "child-1" },
           "A child agent",
@@ -152,7 +152,7 @@ describe("prompt tag fencing", () => {
   });
 
   it("reads only the person's text back from a Turn", () => {
-    const agentResult = renderUntrustedTag(
+    const agentResult = renderDataTag(
       "agent-result",
       { source: "child_agent", conversation_id: "child-1" },
       "A child agent",

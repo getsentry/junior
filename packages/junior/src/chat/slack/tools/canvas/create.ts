@@ -52,7 +52,7 @@ export function createSlackCanvasCreateTool(
       });
       const cached = state.getOperationResult<{
         canvas_id: string;
-        permalink: string;
+        url: string | undefined;
         summary: string;
       }>(operationKey);
       if (cached) {
@@ -69,7 +69,7 @@ export function createSlackCanvasCreateTool(
       });
       const response = {
         canvas_id: created.canvasId,
-        permalink: created.permalink,
+        url: created.permalink,
         summary: `Created canvas ${created.canvasId}`,
       };
       state.setOperationResult(operationKey, response);

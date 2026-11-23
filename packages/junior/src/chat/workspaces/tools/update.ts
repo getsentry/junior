@@ -62,7 +62,9 @@ export function createUpdateWorkspaceTool(providers: [string, ...string[]]) {
         updateWorkspace(id, workspaceWriteInput(input)),
       );
       if (!workspace) {
-        throw new ToolInputError(`Workspace not found: ${id}`);
+        throw new ToolInputError(
+          `Workspace not found: ${id}. Use listWorkspaces to find its ID.`,
+        );
       }
       return { workspace: workspaceView(workspace) };
     },

@@ -44,6 +44,10 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 - Junior asks a person only with an Inbox item
   ([Inbox](./inbox.md)). A decision is an action. A task for the person is
   a To-do assigned to them, which shows in their Inbox as "To do for you".
+- A push goes to each User assigned to an open item, once per item: an
+  action, or a reply notice for its starter. Everyone items and other
+  notices do not push. When the item closes, its push goes away on every
+  device.
 
 ## Gaps
 
@@ -57,9 +61,6 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 - An Automation alert shows only in the dashboard Inbox. Slack shows no
   card for it. For a blocked Automation, Slack gets a DM with no card. For a
   failed run or a trigger that is not available, Slack gets nothing. This
-  breaks "Slack and the dashboard ask for attention for the same things".
-- In a dashboard Conversation, a Turn that ends with a question card and no
-  reply sends no push. In Slack, the same card shows in the thread. This
   breaks "Slack and the dashboard ask for attention for the same things".
 - When automatic updates stop at the limit of automated Turns in a row, the
   notice that asks the person to send a message is a plain Slack reply,

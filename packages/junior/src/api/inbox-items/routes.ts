@@ -39,13 +39,13 @@ import {
 } from "@/chat/inbox-items/related";
 import {
   countInboxItemsNeedingUserBySubject,
-  listWaitingConversations,
   ownerConversationId,
   searchInboxItems,
   type InboxItem,
   type InboxItemFilters,
   type InboxItemPosition,
 } from "@/chat/inbox-items/store";
+import { listWaitingConversations } from "@/chat/inbox-items/waiting";
 import type { InboxItemDelivery } from "@/chat/inbox-items/changes";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {

@@ -4,10 +4,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { inboxItemCountSchema, inboxItemListSchema } from "@/api/schema";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import {
-  getInboxItem,
-  waitingConversationIdsQuery,
-} from "@/chat/inbox-items/store";
+import { getInboxItem } from "@/chat/inbox-items/store";
+import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { setTodoStatusByUser } from "@/chat/todos/store";
 import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";

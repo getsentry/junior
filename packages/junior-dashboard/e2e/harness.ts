@@ -6,7 +6,8 @@ import {
 } from "node:http";
 import type { AddressInfo } from "node:net";
 import { Readable } from "node:stream";
-import type { Page, Route } from "@playwright/test";
+import { setTimeout as delay } from "node:timers/promises";
+import type { Page, Request as PageRequest, Route } from "@playwright/test";
 import { NOW, NOW_MS } from "../src/mock-reporting/fixtures";
 import type * as DashboardApp from "../src/app";
 
@@ -66,6 +67,152 @@ export async function routeConversationVersion(
       },
     }),
   );
+}
+
+/**
+ * Reads that the dashboard starts or repeats in the background, so one can be
+ * open whenever a test ends. Only GET reads belong here: a test must await
+ * every write that it causes, or the server may never see it.
+ */
+const BACKGROUND_READS: readonly RegExp[] = [
+  // The versions poll runs for the whole visit (`useVersionsPoll`).
+  /^\/api\/versions$/,
+  // A live Conversation polls its detail. When idle, the versions poll
+  // refreshes it.
+  /^\/api\/conversations\/[^/]+$/,
+  // A detail with a new ETag refreshes its side reads
+  // (`refreshSideReadsOnChange`).
+  /^\/api\/conversations\/[^/]+\/(agents|todos|watches)$/,
+  /^\/api\/memory\/conversations\/[^/]+\/memories$/,
+  // A moved versions token refreshes the feeds, every Inbox item read (the
+  // lists, the count, the waiting Conversations, and each item), and the
+  // viewer's spend (`refreshChangedReads`).
+  /^\/api\/conversations$/,
+  /^\/api\/inbox-items(\/[^/]+)?$/,
+  /^\/api\/people\/me\/spend$/,
+  // A pointer that rests on an Automation row prefetches its page
+  // (`usePrefetchAutomation`). A Conversation row prefetches its detail.
+  /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
+];
+
+/**
+ * Wait for the next outline read of a Conversation. Each visit to its page
+ * reads the outline once, so a test that ends on the page waits for it.
+ */
+export function waitForOutlineRead(page: Page, conversationId: string) {
+  const path = `/api/conversations/${encodeURIComponent(conversationId)}/outline`;
+  return page.waitForResponse(
+    (response) => new URL(response.url()).pathname === path,
+  );
+}
+
+/**
+ * Wait for the page to save a read position past `afterSeq`. The page saves
+ * one shortly after the reader sees new rows, such as a message they sent, so
+ * a test that ends right after that waits for it.
+ */
+export function waitForReadPosition(page: Page, afterSeq: number) {
+  return page.waitForResponse((response) => {
+    const request = response.request();
+    return (
+      request.method() === "PUT" &&
+      new URL(response.url()).pathname.endsWith("/read-position") &&
+      request.postDataJSON().lastReadSeq > afterSeq
+    );
+  });
+}
+
+/**
+ * Wait for the reads that the Settings page makes when it opens. Call it
+ * before the navigation to Settings, and await it before the test ends or
+ * skips there.
+ */
+export function waitForSettingsReads(page: Page) {
+  return Promise.all(
+    [
+      "/api/notifications",
+      "/api/user-customization",
+      "/api/personal-tokens",
+      "/api/connections",
+    ].map((path) =>
+      page.waitForResponse(
+        (response) => new URL(response.url()).pathname === path,
+      ),
+    ),
+  );
+}
+
+/** Whether a request is a background read that may outlive a test. */
+function isBackgroundRead(request: PageRequest): boolean {
+  const { pathname } = new URL(request.url());
+  return (
+    request.method() === "GET" &&
+    BACKGROUND_READS.some((path) => path.test(pathname))
+  );
+}
+
+// How long teardown waits for open requests to end. The requests that raced
+// teardown on CI ended 25 to 200 ms after it, so this leaves a wide margin
+// for a slow runner. A request still open after this is hung, or held by a
+// route that the test never released.
+const DRAIN_MS = 3_000;
+
+/**
+ * Track the API requests of a page so a test cannot end while one that it
+ * caused is open. Closing the page drops a write that the server has not
+ * seen, and fails a route handler that is still running.
+ */
+export function trackOpenRequests(page: Page): {
+  /**
+   * Wait for each open request other than a background read to end, and fail
+   * with each one still open after `DRAIN_MS`.
+   */
+  expectNoneOpen: () => Promise<void>;
+} {
+  const open = new Set<PageRequest>();
+  // Wakes the drain when a request ends.
+  let wake = () => {};
+  const end = (request: PageRequest) => {
+    open.delete(request);
+    wake();
+  };
+  page.on("request", (request) => {
+    // The app reads and writes with fetches. A page asset, such as an
+    // image, can still load when the test ends with no harm.
+    if (["fetch", "xhr"].includes(request.resourceType())) open.add(request);
+  });
+  page.on("requestfinished", end);
+  page.on("requestfailed", end);
+  const unexpected = () =>
+    [...open].filter((request) => !isBackgroundRead(request));
+  return {
+    expectNoneOpen: async () => {
+      // Wait until none is open, not only for those open now: a request can
+      // start another as it ends, such as a read that a write refreshes.
+      const drained = async () => {
+        while (unexpected().length > 0) {
+          await new Promise<void>((resolve) => (wake = resolve));
+        }
+      };
+      await Promise.race([
+        drained(),
+        delay(DRAIN_MS, undefined, { ref: false }),
+      ]);
+      const stillOpen = unexpected();
+      if (stillOpen.length === 0) return;
+      const lines = stillOpen.map((request) => {
+        const { pathname, search } = new URL(request.url());
+        return `  ${request.method()} ${pathname}${search}`;
+      });
+      throw new Error(
+        [
+          "The test ended while requests that it caused were open:",
+          ...lines,
+          "Wait for the response or the visible result of each request.",
+        ].join("\n"),
+      );
+    },
+  };
 }
 
 export type DashboardE2eServer = {

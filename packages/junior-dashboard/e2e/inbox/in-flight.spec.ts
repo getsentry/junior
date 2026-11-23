@@ -1,3 +1,4 @@
+import { waitForOutlineRead } from "../harness";
 import { mockInboxItems, rowHead } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
@@ -30,6 +31,24 @@ test.describe("new UI", { tag: "@new" }, () => {
       name: /Roll out payments-v42/,
     });
     await expect(pinned).toBeVisible();
+    // A right-click on an In flight row opens its Conversation menu.
+    const menu = page.getByRole("menu");
+    await pinned.click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Unpin" })).toBeVisible();
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    // On hover, its `⋯` opens the same menu.
+    await pinned.hover();
+    await inFlight
+      .getByRole("button", {
+        name: /^Open menu for Roll out payments-v42/,
+      })
+      .click();
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
 
     // The Inbox lists what needs the viewer. A pinned or running
     // Conversation shows only in In flight.
@@ -45,8 +64,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(pinned).toBeVisible();
     await screenshot(page, "inbox-in-flight", { view: "desktop" });
 
+    const outlineRead = waitForOutlineRead(
+      page,
+      "slack:CQA123:1770003600.000200",
+    );
     await inFlight.getByRole("link", { name: new RegExp(checkout) }).click();
     await expect(page).toHaveURL(/\/conversations\/slack%3ACQA123/);
+    await outlineRead;
   });
 
   test("In flight shows every pin past five running Conversations, and Show all lists the rest", async ({
@@ -132,14 +156,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-in-flight-expanded", { lightTheme: true });
 
     // A pin still drags while the list is expanded.
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
+    const save = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        response.url().includes("/api/conversations/pin-order"),
     );
     await inFlight.getByRole("link", { name: /Idle pin/ }).focus();
     await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
+    expect((await save).request().postDataJSON()).toEqual({
       conversationIds: [7, 6].map(
         (index) => `slack:CFLIGHT:${1770000000 + index}.000100`,
       ),
@@ -199,14 +223,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
     // Every row shows, so there is nothing to expand.
     await expect(page.getByRole("button", { name: "Show all" })).toHaveCount(0);
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
+    const save = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        response.url().includes("/api/conversations/pin-order"),
     );
     await inFlight.getByRole("link", { name: /Bravo pin/ }).focus();
     await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
+    expect((await save).request().postDataJSON()).toEqual({
       conversationIds: [
         "slack:CPINS:1770000001.000100",
         "slack:CPINS:1770000000.000100",
@@ -267,14 +291,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(pinned.locator("[data-inbox-row]")).toHaveCount(4);
     await expect(rowHead(pinned, "Recent conversation")).toHaveCount(0);
 
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
+    const save = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        response.url().includes("/api/conversations/pin-order"),
     );
     await inFlight.getByRole("link", { name: /Old pin 2/ }).focus();
     await page.keyboard.press("Alt+ArrowUp");
-    expect((await save).postDataJSON()).toEqual({
+    expect((await save).request().postDataJSON()).toEqual({
       conversationIds: [1, 0, 2, 3].map(
         (index) => `slack:CFEED:${1770000000 + index}.000100`,
       ),
@@ -343,13 +367,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     ]);
     expect(saves).toEqual([]);
     // A pin dropped on the running row lands on the nearest pin instead.
-    const save = page.waitForRequest(
-      (request) =>
-        request.method() === "PUT" &&
-        request.url().includes("/api/conversations/pin-order"),
+    const save = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        response.url().includes("/api/conversations/pin-order"),
     );
     await bravo.dragTo(running, { steps: 10 });
-    expect((await save).postDataJSON()).toEqual({
+    expect((await save).request().postDataJSON()).toEqual({
       conversationIds: [
         "slack:CPINS:1770000001.000100",
         "slack:CPINS:1770000000.000100",

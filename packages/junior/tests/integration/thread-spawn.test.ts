@@ -271,11 +271,11 @@ describe("Thread spawn and archive", () => {
       });
 
       const thread = await startThread(harness, "thread-spawn");
-      const nestedThread = await createIdleChild(
+      const nestedThread = await spawnChild(
         harness,
         "nested-thread",
         "thread",
-        { parentConversationId: thread },
+        thread,
       );
       // Only the direct parent archives a Thread.
       await expect(
@@ -370,9 +370,13 @@ describe("Thread spawn and archive", () => {
       let child = "";
       const thread = await createIdleChild(harness, "thread", "thread", {
         withOpenWork: async (parentConversationId) => {
-          child = await createIdleChild(harness, "thread-child", "task", {
+          // The Task still works, so it sends the Thread no result yet.
+          child = await spawnChild(
+            harness,
+            "thread-child",
+            "task",
             parentConversationId,
-          });
+          );
         },
       });
 

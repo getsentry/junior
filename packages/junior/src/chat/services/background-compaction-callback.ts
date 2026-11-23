@@ -51,10 +51,3 @@ export function createVercelBackgroundCompactionCallback(): (
 export function backgroundCompactionQueueConsumer(): QueueConsumer {
   return backgroundCompactionCallback().consumer;
 }
-
-/** Receive background compaction jobs during local development. */
-export function registerVercelBackgroundCompactionDevConsumer():
-  | (() => void)
-  | undefined {
-  return backgroundCompactionCallback().registerDev();
-}

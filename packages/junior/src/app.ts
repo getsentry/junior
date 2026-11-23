@@ -80,6 +80,7 @@ import {
   JUNIOR_AUTO_ARCHIVE_ROUTE,
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,
+  JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE,
   JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE,
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
@@ -87,7 +88,6 @@ import {
   consumeConversationQueueMessage,
   conversationWorkQueueConsumer,
   createVercelConversationWorkCallback,
-  registerVercelConversationWorkDevConsumer,
 } from "@/chat/task-execution/vercel-callback";
 import type {
   ConversationQueueMessage,
@@ -99,7 +99,6 @@ import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import {
   createVercelPluginTaskCallback,
   pluginTaskQueueConsumer,
-  registerVercelPluginTaskDevConsumer,
   sendVercelPluginTask,
   type PluginTaskQueueMessage,
 } from "@/chat/plugins/task-queue";
@@ -110,17 +109,14 @@ import {
 import {
   cacheWarmupQueueConsumer,
   createVercelCacheWarmupCallback,
-  registerVercelCacheWarmupDevConsumer,
 } from "@/chat/cache-warming/queue";
 import {
   createVercelWorkspaceSnapshotJobCallback,
-  registerVercelWorkspaceSnapshotJobDevConsumer,
   workspaceSnapshotJobQueueConsumer,
 } from "@/chat/sandbox/snapshot/job-callback";
 import {
   backgroundCompactionQueueConsumer,
   createVercelBackgroundCompactionCallback,
-  registerVercelBackgroundCompactionDevConsumer,
 } from "@/chat/services/background-compaction-callback";
 import { processBackgroundCompaction } from "@/chat/services/background-compaction";
 import {
@@ -140,7 +136,7 @@ import {
   createProductionSlackWebhookServices,
   getProductionSlackAdapter,
 } from "@/chat/app/production";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import type { ConversationWorkCallbackOptions } from "@/chat/app/conversation-work";
 import { createAgentRunner } from "@/chat/runtime/agent-runner";
 import { getAttachmentStorage } from "@/chat/attachments/storage";
@@ -625,7 +621,7 @@ export async function createApp(
     pluginRoutes = getPluginRoutes({
       dispatchForIdentity,
       events,
-      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {
       pluginApiRoutes = getPluginApiRoutes();
@@ -875,14 +871,7 @@ export async function createApp(
   let pluginTaskPOST:
     | ReturnType<typeof createVercelPluginTaskCallback>
     | undefined;
-  if (process.env["NODE_ENV"] === "development") {
-    registerVercelConversationWorkDevConsumer(getConversationWorkOptions());
-    registerVercelPluginTaskDevConsumer();
-    registerVercelWorkspaceSnapshotJobDevConsumer();
-    registerVercelCacheWarmupDevConsumer();
-    registerVercelBackgroundCompactionDevConsumer();
-  }
-  app.post("/api/internal/agent/continue", (c) => {
+  app.post(JUNIOR_CONVERSATION_WORK_CALLBACK_ROUTE, (c) => {
     agentContinuePOST ??= createVercelConversationWorkCallback(
       getConversationWorkOptions(),
     );
@@ -919,7 +908,7 @@ export async function createApp(
       conversationWorkQueue,
       dispatchForIdentity,
       events,
-      showInboxItem: createSlackInboxItemShow(getProductionSlackAdapter),
+      showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
   });
 

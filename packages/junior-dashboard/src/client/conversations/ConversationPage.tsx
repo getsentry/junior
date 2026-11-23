@@ -28,7 +28,6 @@ import { usePinConversation } from "./usePinConversation";
 import { useConversationSubscription } from "./useConversationSubscription";
 import { useConversationDelivery } from "./useConversationDelivery";
 import { useRenameConversation } from "./useRenameConversation";
-import { RenameConversationDialog } from "./RenameConversationDialog";
 import { conversationIsResponding, isChildConversation } from "./transcript";
 import {
   ConversationCatchUpContext,
@@ -807,6 +806,11 @@ export function ConversationPage(props: {
                   }}
                   onSearchChange={setSearch}
                   onViewChange={onViewChange}
+                  rename={{
+                    editing: renaming,
+                    onEditingChange: setRenaming,
+                    onSave: (next) => rename.mutate(next),
+                  }}
                   privacy={
                     <ConversationPrivacyChip
                       visibility={conversation?.visibility}
@@ -982,13 +986,6 @@ export function ConversationPage(props: {
         onClose={() => setSubagentTarget(undefined)}
         target={subagentTarget}
       />
-      {renaming ? (
-        <RenameConversationDialog
-          onClose={() => setRenaming(false)}
-          onSave={(next) => rename.mutate(next)}
-          title={title}
-        />
-      ) : null}
       {continueInSlackOpen ? (
         <ContinueInSlackDialog
           conversationId={conversationId}

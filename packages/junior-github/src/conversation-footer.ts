@@ -7,7 +7,9 @@ const GITHUB_CONVERSATION_ID_MARKER = "junior-conversation-id:";
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new PluginToolInputError(`${name} is required`);
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn, so the GitHub footer cannot be added. No change to the call can fix this.`,
+    );
   }
   return value.trim();
 }

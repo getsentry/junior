@@ -18,8 +18,8 @@ how the dashboard groups and acts on its rows.
   that Junior owns are not items ([Attention](./attention.md)).
   Whether Junior starts new work for the requester, such as a Thread that
   implements an issue it filed, is the requester's decision, not an offer.
-- A notice tells a person about something that they must fix, such as a
-  blocked Automation, and says what to do. It never asks.
+- A notice tells a person about something that they must read or fix, such
+  as a reply or a blocked Automation, and says what to do. It never asks.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
 - Only an assignee answers, and the answer carries their authority. Junior,
@@ -115,6 +115,10 @@ how the dashboard groups and acts on its rows.
   Only the person whose snooze woke sees it. It goes when they open the
   item from the Inbox, act on it, or snooze it again. A Wake that they
   pick, and a trigger that resolves the item, show nothing.
+- A reply in a dashboard Conversation is a notice for its starter. One
+  notice per Conversation holds the latest reply, and it closes when the
+  starter reads it. A Slack thread already tells people, so a Slack reply
+  adds no notice.
 - Auto-archive never hides work that waits for a person. It skips a
   Conversation while it or a child has an open action, an open To-do
   for a person, or an answer that its starter has not read.

@@ -66,6 +66,12 @@ export type TurnBehavior = {
    */
   failureNotice: "none" | "parent";
   /**
+   * `parent`: a Turn that ends with final text, or with `noReply` that also
+   * ends the work of its Conversation, sends the parent agent a completed
+   * result. `none`: the Turn sends nothing.
+   */
+  endResult: "none" | "parent";
+  /**
    * Run the plugin tasks of a completed session, such as memory capture.
    * Memory is public, so a child agent never captures it.
    */
@@ -113,6 +119,7 @@ const ROOT: TurnBehavior = {
   waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: true,
   tools: {
@@ -135,11 +142,13 @@ const ROOT_RUNTIME_TURN: TurnBehavior = {
 
 // A person's Turn in a Thread runs like a Turn on a root, but it does not
 // start or message child agents: their results would report to the parent as
-// the wrong Actor.
+// the wrong Actor. It reports to the parent like every Turn of a child.
 const PERSON_IN_THREAD: TurnBehavior = {
   ...ROOT,
   promptMode: "thread",
   sender: "person",
+  failureNotice: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: { ...ROOT.tools, agents: "none" },
@@ -147,14 +156,18 @@ const PERSON_IN_THREAD: TurnBehavior = {
 
 // A child agent's Turn comes from its parent, its child agents, or its
 // Watches. Its final response stays in its Conversation, and only a `reply`
-// reaches the parent.
+// reaches the parent. The child does work for its parent, so its parent
+// learns when it fails, ends without an answer, or ends its work with
+// `noReply`.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
   gated: true,
-  failureNotice: "none",
+  missingAnswerError: "No reply was sent.",
+  failureNotice: "parent",
+  endResult: "parent",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -184,14 +197,6 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
 };
 
-// A Task does work for its parent, so its parent learns when it fails or ends
-// without an answer.
-const AGENT_IN_TASK: TurnBehavior = {
-  ...CHILD_AGENT_TURN,
-  missingAnswerError: "No reply was sent.",
-  failureNotice: "parent",
-};
-
 // The dispatch Turn and every Watch Event Turn of an Automation run must
 // answer.
 const AUTOMATION_RUN: TurnBehavior = {
@@ -202,6 +207,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
+  endResult: "none",
   sessionTasks: true,
   relatedConversations: false,
   tools: {
@@ -280,7 +286,7 @@ export function turnBehavior(args: {
     case "thread":
       return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
-      if (!args.personInput) return AGENT_IN_TASK;
+      if (!args.personInput) return CHILD_AGENT_TURN;
       // Only an agent writes input to a task.
       throw new Error("A task Conversation cannot have a person's input");
     case "lead":
@@ -298,7 +304,7 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
     case "automation":
       return AUTOMATION_RUN.tools;
     case "child_agent":
-      return AGENT_IN_TASK.tools;
+      return CHILD_AGENT_TURN.tools;
     case "thread":
       return THREAD_TOOLS;
     case "conversation":

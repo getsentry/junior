@@ -5,8 +5,6 @@ import { viewAsParticipant } from "./conversationMenu";
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
-  const ACTIVE_CONVERSATION_ID = "slack:CQA123:1770003600.000200";
-
   /** The Conversations bundle, which lists every Conversation with its menu. */
   function conversationsList(page: Page): Locator {
     return page.getByRole("region", { name: "Conversations", exact: true });
@@ -239,16 +237,6 @@ test.describe("new UI", { tag: "@new" }, () => {
 
       await page.reload();
       await expect(renamedRow).toBeVisible();
-
-      // The `⋯` menu renames too.
-      await page.goto(
-        `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-      );
-      await page.getByRole("button", { name: "Conversation menu" }).click();
-      await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-      await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
-        "Investigate checkout latency",
-      );
     });
   });
 });

@@ -112,7 +112,9 @@ export const createCalendarEventTool = definePluginTool({
       throw new PluginToolInputError("end must be after start.");
     }
     if (endMs - startMs > MAX_EVENT_MS) {
-      throw new PluginToolInputError("Events can be at most 8 hours long.");
+      throw new PluginToolInputError(
+        "Events can be at most 8 hours long. Set end at most 8 hours after start.",
+      );
     }
     const attendees = await withRequester(ctx, input.attendees);
     const required = new Set(attendees);

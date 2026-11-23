@@ -101,7 +101,11 @@ async function commentParentNumber(
   const commentPayload = commentResponse.body;
   if (!commentResponse.ok) {
     const message = `GitHub comment lookup failed with HTTP ${commentResponse.status}: ${githubErrorMessage(commentPayload)}`;
-    if (commentResponse.status === 404) throw new PluginToolInputError(message);
+    if (commentResponse.status === 404) {
+      throw new PluginToolInputError(
+        `${message}. Check repo, comment_id, and comment_kind.`,
+      );
+    }
     throw new Error(message);
   }
   const comment = z
@@ -157,7 +161,7 @@ async function assertBotAuthoredPullRequest(
     pull.data.user?.id !== input.botUserId
   ) {
     throw new PluginToolInputError(
-      "This bot can only set feedback status on comments on pull requests it authored.",
+      "This bot can only set feedback status on comments on pull requests it authored. Do not call this tool for this pull request.",
     );
   }
 }
@@ -202,7 +206,7 @@ async function commentReactions(
   const parentNumber = await commentParentNumber(egress, input);
   if (parentNumber !== String(input.pullRequest)) {
     throw new PluginToolInputError(
-      `GitHub comment ${input.commentId} is not on pull request ${input.pullRequest}.`,
+      `GitHub comment ${input.commentId} is not on pull request ${input.pullRequest}. Set pull_request to the pull request that has the comment.`,
     );
   }
   const path = pullRequestCommentReactionsPath(input);
@@ -255,7 +259,11 @@ async function reviewBodyReactions(
   });
   if (!reviewResponse.ok) {
     const message = `GitHub review lookup failed with HTTP ${reviewResponse.status}: ${githubErrorMessage(reviewResponse.body)}`;
-    if (reviewResponse.status === 404) throw new PluginToolInputError(message);
+    if (reviewResponse.status === 404) {
+      throw new PluginToolInputError(
+        `${message}. Check repo, pull_request, and comment_id.`,
+      );
+    }
     throw new Error(message);
   }
   const review = z
@@ -409,7 +417,7 @@ export function createGitHubUpdatePullRequestFeedbackTool(
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
-          "Invalid GitHub updatePullRequestFeedback input.",
+          "Invalid GitHub updatePullRequestFeedback input. Check the arguments against the tool schema and call it again.",
           { cause: parsedInput.error },
         );
       }

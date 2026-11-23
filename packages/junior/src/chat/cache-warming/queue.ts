@@ -136,10 +136,3 @@ export function createVercelCacheWarmupCallback(): (
 export function cacheWarmupQueueConsumer(): QueueConsumer {
   return cacheWarmupCallback().consumer;
 }
-
-/** Receive cache warmup messages during local development. */
-export function registerVercelCacheWarmupDevConsumer():
-  | (() => void)
-  | undefined {
-  return cacheWarmupCallback().registerDev();
-}

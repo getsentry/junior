@@ -318,8 +318,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByText("No memories yet.")).toBeVisible();
     expect(forgetRequests).toBe(1);
 
+    // The Overview reads its summary again.
+    const overviewRead = page.waitForResponse("**/api/memory/dashboard");
     await memoryNavigation.getByRole("link", { name: "Overview" }).click();
-    await expect.poll(() => dashboardRequestCount).toBeGreaterThan(1);
+    await overviewRead;
   });
 
   test("lists archived memories and restores one", async ({

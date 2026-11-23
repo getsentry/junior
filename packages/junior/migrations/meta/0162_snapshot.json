@@ -1,5 +1,5 @@
 {
-  "id": "d5cb040c-582d-4f15-8b4e-e0708c70dc0c",
+  "id": "3a8e4bb4-c6bb-412d-8578-837be542ab5c",
   "prevId": "fadf791d-b379-41a8-9e6c-15781163fa6a",
   "version": "7",
   "dialect": "postgresql",
@@ -4114,6 +4114,132 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.junior_inbox_item_deliveries": {
+      "name": "junior_inbox_item_deliveries",
+      "schema": "",
+      "columns": {
+        "item_id": {
+          "name": "item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "user_id": {
+          "name": "user_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "channel": {
+          "name": "channel",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "event": {
+          "name": "event",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "skip_reason": {
+          "name": "skip_reason",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "junior_inbox_item_deliveries_user_status_idx": {
+          "name": "junior_inbox_item_deliveries_user_status_idx",
+          "columns": [
+            {
+              "expression": "user_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "junior_inbox_item_deliveries_item_id_junior_inbox_items_id_fk": {
+          "name": "junior_inbox_item_deliveries_item_id_junior_inbox_items_id_fk",
+          "tableFrom": "junior_inbox_item_deliveries",
+          "tableTo": "junior_inbox_items",
+          "columnsFrom": [
+            "item_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "junior_inbox_item_deliveries_user_id_junior_users_id_fk": {
+          "name": "junior_inbox_item_deliveries_user_id_junior_users_id_fk",
+          "tableFrom": "junior_inbox_item_deliveries",
+          "tableTo": "junior_users",
+          "columnsFrom": [
+            "user_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {
+        "junior_inbox_item_deliveries_item_id_user_id_channel_event_pk": {
+          "name": "junior_inbox_item_deliveries_item_id_user_id_channel_event_pk",
+          "columns": [
+            "item_id",
+            "user_id",
+            "channel",
+            "event"
+          ]
+        }
+      },
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.junior_inbox_item_slack_cards": {
       "name": "junior_inbox_item_slack_cards",
       "schema": "",
@@ -4547,7 +4673,7 @@
       "checkConstraints": {
         "junior_inbox_items_kind_check": {
           "name": "junior_inbox_items_kind_check",
-          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%' or \"junior_inbox_items\".\"dedupe_key\" like 'todo:%') and \"junior_inbox_items\".\"answer\" is null)))"
+          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%') and \"junior_inbox_items\".\"answer\" is null)))"
         },
         "junior_inbox_items_owner_check": {
           "name": "junior_inbox_items_owner_check",

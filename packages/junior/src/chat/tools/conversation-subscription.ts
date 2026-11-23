@@ -54,7 +54,7 @@ export function createSetConversationSubscriptionTool(
       const user = (await context.resolveActorIdentity?.())?.user;
       if (!user) {
         throw new ToolInputError(
-          "This person has no linked User, so their subscription cannot change.",
+          "This person has no linked User, so their subscription cannot change. No change to the call can fix this.",
         );
       }
       const result = await updateConversationSubscription(
@@ -64,7 +64,7 @@ export function createSetConversationSubscriptionTool(
       );
       if (!result) {
         throw new ToolInputError(
-          "This person is not a participant of this conversation.",
+          "This person is not a participant of this conversation, so they have no subscription to change. No change to the call can fix this.",
         );
       }
       return {

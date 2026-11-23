@@ -31,8 +31,12 @@ test("lists a Conversation's Watches and cancels one", async ({
     view: "desktop",
   });
 
+  const cancelled = page.waitForResponse(
+    (response) => response.request().method() === "DELETE",
+  );
   await details.getByRole("button", { name: `Cancel ${TIMER_INTENT}` }).click();
   await expect(timer).toHaveCount(0);
+  await cancelled;
   // The list reads the server again, so the cancel stays.
   await page.reload();
   await expect(alert).toBeVisible();

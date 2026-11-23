@@ -77,7 +77,9 @@ export function createWebFetchTool(
           MAX_FETCH_BYTES,
         );
         if (truncated) {
-          throw new ToolInputError("image response body too large");
+          throw new ToolInputError(
+            "image response body too large. Use a smaller image or another URL.",
+          );
         }
 
         const filename = filenameForUrl(

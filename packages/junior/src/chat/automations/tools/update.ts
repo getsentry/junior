@@ -217,7 +217,11 @@ async function updateEvent(
     automationRevision(task),
     editor,
   );
-  if (!saved) throw new ToolInputError("Automation was not found.");
+  if (!saved) {
+    throw new ToolInputError(
+      "Automation was not found: it was deleted. No change to the call can fix this.",
+    );
+  }
   return { ...current, task: saved };
 }
 
@@ -333,7 +337,9 @@ export function createUpdateAutomationTool(
         );
       }
       if (Object.keys(input).length === 0 && status === undefined) {
-        throw new ToolInputError("Automation update requires a change.");
+        throw new ToolInputError(
+          "Automation update requires a change. Set status or at least one field to change.",
+        );
       }
       if (current.kind === "scheduled" && current.task.status === "completed") {
         throw new ToolInputError(

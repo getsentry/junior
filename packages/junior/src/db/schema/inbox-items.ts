@@ -206,3 +206,37 @@ export const juniorInboxItemSlackCards = pgTable(
   },
   (table) => [primaryKey({ columns: [table.itemId, table.conversationId] })],
 );
+
+/**
+ * One notification of one Inbox item event to one assigned User on one
+ * channel. The key stops a second send for the same event, also on a
+ * retry. `skip_reason` says why a `skipped` row sent nothing. A `sent` row
+ * becomes `cleared` when the item closes, so the devices can close it.
+ */
+export const juniorInboxItemDeliveries = pgTable(
+  "junior_inbox_item_deliveries",
+  {
+    itemId: text("item_id")
+      .notNull()
+      .references(() => juniorInboxItems.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => juniorUsers.id, { onDelete: "cascade" }),
+    channel: text("channel").$type<"web_push">().notNull(),
+    event: text("event").$type<"created" | "reply">().notNull(),
+    status: text("status").$type<"sent" | "skipped" | "cleared">().notNull(),
+    skipReason: text("skip_reason"),
+    createdAt: timestamptz("created_at").notNull(),
+    updatedAt: timestamptz("updated_at").notNull(),
+  },
+  (table) => [
+    primaryKey({
+      columns: [table.itemId, table.userId, table.channel, table.event],
+    }),
+    index("junior_inbox_item_deliveries_user_status_idx").on(
+      table.userId,
+      table.status,
+      table.updatedAt,
+    ),
+  ],
+);
