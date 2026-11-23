@@ -53,7 +53,7 @@ runtime. Harness mechanics live in `packages/junior-evals/src/`.
 ### Failures and prompts
 
 - When an eval fails, state the general product rule it exposed, then fix at
-  that level. Follow `agent-steering.md`.
+  that level. Follow `../design/prompts.md`.
 - Product prompts must not contain eval fixture names, user messages,
   expected answers, or scenario phrases. Use neutral examples.
 

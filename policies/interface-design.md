@@ -59,7 +59,7 @@ function names are part of the interface.
   next to the first caller.
 - A role directory or file holds only that role. `tools/` holds only tools,
   and `tool-support/` holds code that only tools use.
-  `policies/tool-design.md` owns the tool layout.
+  The `tools-dir-*` ast-grep rules enforce the tool layout.
 - Do not add catch-all modules such as `utils`, `helpers`, `common`, `misc`,
   or `shared`. They name no feature and no role, so code collects there with
   no owner. The `no-catch-all-module-paths` ast-grep rule enforces this.

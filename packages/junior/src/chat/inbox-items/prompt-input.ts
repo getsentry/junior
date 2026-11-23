@@ -2,8 +2,8 @@
  * Prompt inputs for person answers to Inbox items. An answer is its own
  * prompt content part, keyed by the item id that `addInboxItem` returned.
  * The runtime builds it from the stored change record and the item, so the
- * model never reads status prose. `policies/prompt-markers.md` owns the
- * tags.
+ * model never reads status prose. It repeats the question, then one line for
+ * each answered field. `input-tags.ts` lists the input tags.
  */
 import { mapBounded } from "@/chat/fan-out";
 import { instructionForInputs } from "@/chat/agent/prompt";
