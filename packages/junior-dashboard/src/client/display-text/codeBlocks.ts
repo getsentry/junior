@@ -1,8 +1,10 @@
+import type { RootContent } from "mdast";
 import type { BundledLanguage } from "shiki/bundle/web";
 
 import { dashboardCodeLanguages } from "../code-languages";
 import { detectOutputLanguage, prettyJsonData } from "../format";
 import type { CodeBlock } from "../types";
+import { parseMarkdown } from "../markdownTree";
 
 // Shiki has no language detection, and agents often leave fences untagged.
 // Only clear signals select a language, so prose in a fence stays plain.
@@ -28,31 +30,64 @@ const LANGUAGE_ALIASES: Record<string, BundledLanguage> = {
 };
 
 /**
- * A fenced code block: its indent, info string, and code. The info string
- * can hold more than the language, such as `c++` or `js title="x"`.
+ * A fenced code block at the start of a line: its `[start, end)` range in
+ * the text, from the start of its first line, its language tag, and its code
+ * with the fence indent removed, as CommonMark reads it.
  */
-export const MARKDOWN_FENCE = /^([ \t]*)```([^\n`]*)\n([\s\S]*?)```/gm;
+interface MarkdownFence {
+  code: string;
+  end: number;
+  language?: string;
+  start: number;
+}
+
+/** Return the fenced code blocks of Markdown text, in text order. */
+export function markdownFences(text: string): MarkdownFence[] {
+  const fences: MarkdownFence[] = [];
+  const visit = (nodes: readonly RootContent[]) => {
+    for (const node of nodes) {
+      if (node.type === "list" || node.type === "listItem") {
+        visit(node.children);
+        continue;
+      }
+      if (node.type !== "code" || !node.position) continue;
+      const fenceStart = node.position.start.offset ?? 0;
+      const start = fenceStart - (node.position.start.column - 1);
+      const fenced =
+        text.startsWith("```", fenceStart) ||
+        text.startsWith("~~~", fenceStart);
+      // A fence after a list marker on its line, or an indented code block,
+      // stays in the prose.
+      if (!fenced || text.slice(start, fenceStart).trim()) continue;
+      fences.push({
+        // The code ends with its final newline, as the fence holds it.
+        code: node.value ? `${node.value}\n` : "",
+        end: node.position.end.offset ?? text.length,
+        language: node.lang ?? undefined,
+        start,
+      });
+    }
+  };
+  visit(parseMarkdown(text).children);
+  return fences;
+}
 
 /** Parse transcript prose as Markdown or JSON while preserving fenced code. */
 export function parseMarkdownBlocks(text: string): CodeBlock[] {
   const blocks: CodeBlock[] = [];
-  // A copy, so the loop's `lastIndex` stays local. Only the first word of
-  // the info string names the language.
-  const fence = new RegExp(MARKDOWN_FENCE);
   let cursor = 0;
-  let match: RegExpExecArray | null;
-  while ((match = fence.exec(text))) {
-    const prose = text.slice(cursor, match.index).trim();
+  for (const fence of markdownFences(text)) {
+    const prose = text.slice(cursor, fence.start).trim();
     if (prose) blocks.push(proseBlock(prose));
-    const tag = match[2]?.trim().split(/\s+/)[0];
-    const code = stripFenceIndent(match[3] ?? "", match[1]?.length ?? 0);
-    const language = tag ? normalizeLanguage(tag) : guessLanguage(code);
+    const language = fence.language
+      ? normalizeLanguage(fence.language)
+      : guessLanguage(fence.code);
     blocks.push({
-      code: formatCodeBlock(code, language),
+      code: formatCodeBlock(fence.code, language),
       fenced: true,
       language,
     });
-    cursor = match.index + match[0].length;
+    cursor = fence.end;
   }
   const rest = text.slice(cursor).trim();
   if (rest) blocks.push(proseBlock(rest));
@@ -78,19 +113,6 @@ function guessLanguage(code: string): BundledLanguage {
   if (PYTHON_PATTERN.test(code)) return "python";
   if (SHELL_PATTERN.test(code)) return "shellscript";
   return "markdown";
-}
-
-// A fence in a list item is indented, and so are its code lines. Remove that
-// indent, as CommonMark does.
-function stripFenceIndent(code: string, indent: number): string {
-  if (indent === 0) return code;
-  return code
-    .split("\n")
-    .map((line) => {
-      const lead = line.length - line.trimStart().length;
-      return line.slice(Math.min(indent, lead));
-    })
-    .join("\n");
 }
 
 function formatCodeBlock(code: string, language: BundledLanguage): string {

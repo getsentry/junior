@@ -14,6 +14,8 @@ import {
   type ObjectLinkContext,
   type PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
+import type { PhrasingContent } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
 import * as z from "zod";
 
 // Long enough that the access check, the card, and its cover share one
@@ -114,9 +116,27 @@ function parseCover(value: unknown): NotionCover | undefined {
     : undefined;
 }
 
-// Text that is not body prose: headings, rules, code fences, and lines that
-// hold only a block tag such as `<p />` or `<callout ...>`.
-const SKIPPED_LINE = /^(#|---|```|<\/?[a-z-]+(\s[^>]*)?\/?>$)/i;
+// The plain text of inline Markdown. Inline tags such as `<span>` drop.
+function inlineText(nodes: readonly PhrasingContent[]): string {
+  return nodes
+    .map((node) => {
+      if (node.type === "html") return "";
+      if (node.type === "image") return node.alt ?? "";
+      if ("value" in node) return node.value;
+      return "children" in node ? inlineText(node.children) : "";
+    })
+    .join("");
+}
+
+// The prose of one body line, or "" when the line is not body prose:
+// headings, rules, code fences, and lines that hold only a block tag such as
+// `<p />` or `<callout ...>`. A list or quote marker drops.
+function lineProse(line: string): string {
+  let [node] = fromMarkdown(line).children;
+  if (node?.type === "list") node = node.children[0]?.children[0];
+  if (node?.type === "blockquote") node = node.children[0];
+  return node?.type === "paragraph" ? inlineText(node.children) : "";
+}
 
 /**
  * Return the first body paragraph of a page as plain text. Notion returns
@@ -125,20 +145,10 @@ const SKIPPED_LINE = /^(#|---|```|<\/?[a-z-]+(\s[^>]*)?\/?>$)/i;
 function pageSummary(text: string | undefined): string | undefined {
   // oxlint-disable-next-line junior/no-prompt-tag-matching -- Notion's response format
   const body = text?.match(/<content>([\s\S]*?)<\/content>/)?.[1] ?? "";
-  for (const raw of body.split("\n")) {
-    const line = raw.trim();
-    if (!line || SKIPPED_LINE.test(line)) continue;
-    // Drop inline tags, then any stray angle bracket, so the summary is
-    // plain text even when a tag is cut or nested.
-    const plain = line
-      .split(/<[^>]*>/)
-      .join("")
-      .replace(/[<>]/g, "")
-      .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
-      .replace(/^([-*+]|\d+\.)\s+/, "")
-      .replace(/[*_~`]/g, "")
-      .replaceAll("\\", "");
-    const summary = objectSummary(plain);
+  for (const line of body.split("\n")) {
+    // A stray angle bracket from a cut or nested tag drops too, so the
+    // summary is plain text.
+    const summary = objectSummary(lineProse(line).replace(/[<>]/g, ""));
     if (summary) return summary;
   }
   return undefined;

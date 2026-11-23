@@ -8,6 +8,9 @@
  * such as tables and images, stays as plain text.
  */
 
+import type { Nodes } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
+
 /** Docs named paragraph styles that the converter uses. */
 type DocParagraphStyle =
   | "NORMAL_TEXT"
@@ -47,82 +50,14 @@ interface Run {
   text: string;
 }
 
-const LINK = /^\[([^\]\n]+)\]\(([^)\s]+)\)/;
 const SAFE_LINK_PREFIXES = ["https://", "http://", "mailto:"];
-const ESCAPABLE = /[\\`*_[\]()#+\-.!>|~]/;
 // Docs drops these characters on insert, which would shift every later
 // index, so the converter drops them first.
 const DROPPED_CHARACTERS =
   // oxlint-disable-next-line no-control-regex -- Docs drops these characters.
   /[\u0000-\u0008\u000B\u000C\u000E-\u001F\uE000-\uF8FF\u{F0000}-\u{10FFFF}]/gu;
-
-/** Parse inline Markdown into styled runs. */
-function parseInline(text: string, style: InlineStyle = {}): Run[] {
-  const runs: Run[] = [];
-  let plain = "";
-  const flush = () => {
-    if (plain) runs.push({ style, text: plain });
-    plain = "";
-  };
-  let i = 0;
-  while (i < text.length) {
-    const rest = text.slice(i);
-    const char = text[i]!;
-    if (char === "\\" && ESCAPABLE.test(text[i + 1] ?? "")) {
-      plain += text[i + 1];
-      i += 2;
-      continue;
-    }
-    if (char === "`") {
-      const close = text.indexOf("`", i + 1);
-      if (close > i + 1) {
-        flush();
-        runs.push({
-          style: { ...style, code: true },
-          text: text.slice(i + 1, close),
-        });
-        i = close + 1;
-        continue;
-      }
-    }
-    const link = char === "[" ? LINK.exec(rest) : null;
-    if (
-      link &&
-      SAFE_LINK_PREFIXES.some((prefix) =>
-        link[2]!.toLowerCase().startsWith(prefix),
-      )
-    ) {
-      flush();
-      runs.push(...parseInline(link[1]!, { ...style, link: link[2]! }));
-      i += link[0].length;
-      continue;
-    }
-    const bold = /^(\*\*|__)(?!\s)(.+?)(?<!\s)\1/.exec(rest);
-    if (bold && (char === "*" || !/\w/.test(text[i - 1] ?? ""))) {
-      flush();
-      runs.push(...parseInline(bold[2]!, { ...style, bold: true }));
-      i += bold[0].length;
-      continue;
-    }
-    // `_` only marks emphasis at word edges, so snake_case stays as text.
-    const italic =
-      char === "*"
-        ? /^\*(?![\s*])(.+?)(?<!\s)\*/.exec(rest)
-        : char === "_" && !/\w/.test(text[i - 1] ?? "")
-          ? /^_(?![\s_])(.+?)(?<!\s)_(?!\w)/.exec(rest)
-          : null;
-    if (italic) {
-      flush();
-      runs.push(...parseInline(italic[1]!, { ...style, italic: true }));
-      i += italic[0].length;
-      continue;
-    }
-    plain += char;
-    i += 1;
-  }
-  flush();
-  return runs;
-}
+// Docs supports nine list levels.
+const MAX_LIST_LEVEL = 8;
 
 interface Block {
   /** Nesting level of a list item. */
@@ -132,90 +67,118 @@ interface Block {
   style: DocParagraphStyle;
 }
 
-const HEADING = /^(#{1,6})\s+(.*?)(?:\s+#+)?\s*$/;
-const LIST_ITEM = /^(\s*)([-*+]|\d{1,9}[.)])\s+(.*)$/;
-const FENCE = /^\s*(```|~~~)/;
-const RULE = /^\s*([-*_])(\s*\1){2,}\s*$/;
-// Docs supports nine list levels.
-const MAX_LIST_LEVEL = 8;
+// The Markdown source of a node, for syntax that Docs cannot style. Markdown
+// joins wrapped lines, so line breaks become spaces.
+function sourceText(node: Nodes, markdown: string): string {
+  const start = node.position?.start.offset ?? 0;
+  const end = node.position?.end.offset ?? start;
+  return markdown.slice(start, end).replaceAll("\n", " ");
+}
 
-/** Split Markdown into paragraph blocks. */
-function parseBlocks(markdown: string): Block[] {
-  const blocks: Block[] = [];
-  // Indents of the open list levels, so 2- and 4-space nesting both work.
-  let indents: number[] = [];
-  let fence: string | undefined;
-  let open: string[] = [];
-  const closeParagraph = () => {
-    if (open.length) {
-      blocks.push({ runs: parseInline(open.join(" ")), style: "NORMAL_TEXT" });
+function isSafeLink(url: string): boolean {
+  const lower = url.toLowerCase();
+  return SAFE_LINK_PREFIXES.some((prefix) => lower.startsWith(prefix));
+}
+
+/** Read the inline children of a node into styled runs. */
+function inlineRuns(
+  nodes: readonly Nodes[],
+  markdown: string,
+  style: InlineStyle = {},
+): Run[] {
+  return nodes.flatMap((node): Run[] => {
+    switch (node.type) {
+      case "text":
+        return [{ style, text: node.value.replaceAll("\n", " ") }];
+      case "break":
+        return [{ style, text: " " }];
+      case "inlineCode":
+        return [{ style: { ...style, code: true }, text: node.value }];
+      case "strong":
+        return inlineRuns(node.children, markdown, { ...style, bold: true });
+      case "emphasis":
+        return inlineRuns(node.children, markdown, { ...style, italic: true });
+      case "link":
+        return isSafeLink(node.url)
+          ? inlineRuns(node.children, markdown, { ...style, link: node.url })
+          : [{ style, text: sourceText(node, markdown) }];
+      default:
+        return [{ style, text: sourceText(node, markdown) }];
     }
-    open = [];
-  };
-  const lines = markdown
+  });
+}
+
+/** Read Markdown blocks into Docs paragraphs. */
+function parseBlocks(input: string): Block[] {
+  const markdown = input
     .replace(/\r\n?/g, "\n")
-    .replace(DROPPED_CHARACTERS, "")
-    .split("\n");
-  for (const line of lines) {
-    const fenceMatch = FENCE.exec(line);
-    if (fence) {
-      if (fenceMatch?.[1] === fence) {
-        fence = undefined;
-      } else {
-        blocks.push({
-          runs: line ? [{ style: { code: true }, text: line }] : [],
-          style: "NORMAL_TEXT",
-        });
+    .replace(DROPPED_CHARACTERS, "");
+  const blocks: Block[] = [];
+  const visit = (nodes: readonly Nodes[], level?: number) => {
+    for (const node of nodes) {
+      switch (node.type) {
+        case "heading":
+          blocks.push({
+            runs: inlineRuns(node.children, markdown),
+            style: `HEADING_${node.depth}`,
+          });
+          break;
+        case "paragraph":
+          blocks.push({
+            runs: inlineRuns(node.children, markdown),
+            style: "NORMAL_TEXT",
+          });
+          break;
+        case "code":
+          for (const line of node.value.split("\n")) {
+            blocks.push({
+              runs: line ? [{ style: { code: true }, text: line }] : [],
+              style: "NORMAL_TEXT",
+            });
+          }
+          break;
+        case "blockquote":
+          visit(node.children);
+          break;
+        case "list": {
+          const itemLevel = Math.min(
+            level === undefined ? 0 : level + 1,
+            MAX_LIST_LEVEL,
+          );
+          for (const item of node.children) {
+            // The item's paragraphs make one list paragraph. A nested list
+            // or a code block follows it.
+            const block: Block = {
+              level: itemLevel,
+              ordered: node.ordered === true,
+              runs: [],
+              style: "NORMAL_TEXT",
+            };
+            blocks.push(block);
+            for (const child of item.children) {
+              if (child.type === "paragraph") {
+                if (block.runs.length)
+                  block.runs.push({ style: {}, text: " " });
+                block.runs.push(...inlineRuns(child.children, markdown));
+              } else {
+                visit([child], itemLevel);
+              }
+            }
+          }
+          break;
+        }
+        case "thematicBreak":
+        case "definition":
+          break;
+        default:
+          blocks.push({
+            runs: [{ style: {}, text: sourceText(node, markdown) }],
+            style: "NORMAL_TEXT",
+          });
       }
-      continue;
     }
-    if (fenceMatch) {
-      closeParagraph();
-      indents = [];
-      fence = fenceMatch[1];
-      continue;
-    }
-    if (!line.trim() || RULE.test(line)) {
-      closeParagraph();
-      if (!line.trim()) continue;
-      indents = [];
-      continue;
-    }
-    const heading = HEADING.exec(line);
-    if (heading) {
-      closeParagraph();
-      indents = [];
-      blocks.push({
-        runs: parseInline(heading[2]!),
-        style: `HEADING_${heading[1]!.length}` as DocParagraphStyle,
-      });
-      continue;
-    }
-    const item = LIST_ITEM.exec(line);
-    if (item) {
-      closeParagraph();
-      const indent = item[1]!.replace(/\t/g, "    ").length;
-      while (indents.length && indents.at(-1)! > indent) indents.pop();
-      if (!indents.length || indents.at(-1)! < indent) indents.push(indent);
-      blocks.push({
-        level: Math.min(indents.length - 1, MAX_LIST_LEVEL),
-        ordered: /\d/.test(item[2]!),
-        runs: parseInline(item[3]!),
-        style: "NORMAL_TEXT",
-      });
-      continue;
-    }
-    if (indents.length && /^\s/.test(line) && !open.length) {
-      // An indented line after a list item continues that item.
-      const last = blocks.at(-1)!;
-      last.runs.push({ style: {}, text: " " }, ...parseInline(line.trim()));
-      continue;
-    }
-    indents = [];
-    // Markdown joins wrapped lines into one paragraph. Quote markers drop.
-    open.push(line.trim().replace(/^>\s?/, ""));
-  }
-  closeParagraph();
+  };
+  visit(fromMarkdown(markdown).children);
   return blocks;
 }
 
