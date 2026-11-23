@@ -1,4 +1,5 @@
 import { viewAsParticipant } from "./conversationMenu";
+import { waitForReadPosition } from "./harness";
 import { expect, test } from "./test";
 import { pickOption } from "./pick-option";
 
@@ -30,12 +31,16 @@ test("finds an old archived conversation by title and restores it", async ({
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
+  // The menu click is the reader's first input in this visit, so the page
+  // saves the rows in view. The Conversation has no stored position.
+  const readSaved = waitForReadPosition(page, -1);
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
   await expect(sidebarLink).toBeVisible();
+  await readSaved;
 });
 
 test("archives and restores a conversation from the sidebar", async ({
