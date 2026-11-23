@@ -224,7 +224,34 @@ describe("inbox item tools", () => {
         id: added.item.id,
         conversation_ids: ["slack:CPUB:1.000001", "slack:CFAR:1.000004"],
       }),
-    ).rejects.toThrow("Conversation slack:CFAR:1.000004 is not found.");
+    ).rejects.toThrow(
+      "Conversation slack:CFAR:1.000004 is in another workspace or app than this item.",
+    );
+
+    // Ana's own Lead is outside the workspace too. Only she learns why.
+    await getConversationStore().recordActivity({
+      actor: { email: "ana@example.com" },
+      conversationId: "local:web:lead",
+      destination: { platform: "local", conversationId: "local:web:lead" },
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      source: "web",
+      visibility: "private",
+    });
+    const linkLead = {
+      id: added.item.id,
+      conversation_ids: ["local:web:lead"],
+    };
+    await expect(execute(reader.update, linkLead)).rejects.toThrow(
+      "Conversation local:web:lead is in another workspace or app than this item.",
+    );
+    const benReader = tools({
+      conversationId: "slack:COTHER:1.000003",
+      resolveActorIdentity: asActor(ben),
+      source: { kind: "slack" } as any,
+    });
+    await expect(execute(benReader.update, linkLead)).rejects.toThrow(
+      "Conversation local:web:lead is not found.",
+    );
   });
 
   it("keeps an item of a private Conversation for its assigned Users", async () => {

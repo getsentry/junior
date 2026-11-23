@@ -350,9 +350,15 @@ export async function requireInboxItemLinks(args: {
   );
   for (const conversationId of args.conversationIds) {
     const conversation = access.get(conversationId);
-    if (!conversation || !isSameTenant(conversation.tenant, args.tenant)) {
+    const notFound = `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`;
+    if (!conversation) throw new ToolInputError(notFound);
+    if (!isSameTenant(conversation.tenant, args.tenant)) {
+      // Name the real reason only for a Conversation the person can see, so
+      // the agent drops the id instead of looking for it again.
       throw new ToolInputError(
-        `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+        conversation.canViewPrivateContent
+          ? `Conversation ${conversationId} is in another workspace or app than this item. Only public Conversations in the item's own workspace can be linked. Remove the id from \`conversation_ids\`.`
+          : notFound,
       );
     }
     if (args.allowedIds.has(conversationId)) continue;
@@ -365,7 +371,7 @@ export async function requireInboxItemLinks(args: {
       throw new ToolInputError(
         conversation.canViewPrivateContent
           ? `Conversation ${conversationId} is private. Only public Conversations can be linked.`
-          : `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+          : notFound,
       );
     }
   }
