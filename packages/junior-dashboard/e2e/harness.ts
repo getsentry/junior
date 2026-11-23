@@ -90,12 +90,6 @@ const BACKGROUND_READS: readonly RegExp[] = [
   /^\/api\/conversations$/,
   /^\/api\/inbox-items(\/[^/]+)?$/,
   /^\/api\/people\/me\/spend$/,
-  // The Lead page reads the Lead again each time its transcript gets a new
-  // last event, from the first load on, to refresh its Watches
-  // (`useLeadWatchRefresh`). Nothing on screen changes when the Watches stay
-  // the same, so a test cannot wait for it. The shell's first read of the
-  // Lead has the same path; the Lead nav item shows its result.
-  /^\/api\/lead$/,
   // A pointer that rests on an Automation row prefetches its page
   // (`usePrefetchAutomation`). A Conversation row prefetches its detail.
   /^\/api\/automations\/(?!(event-catalog|runs)$)[^/]+(\/executions)?$/,
@@ -157,51 +151,54 @@ function isBackgroundRead(request: PageRequest): boolean {
   );
 }
 
-// How long a request that has its response may take to end its body.
-const BODY_GRACE_MS = 1_000;
+// How long teardown waits for open requests to end. The requests that raced
+// teardown on CI ended 25 to 200 ms after it, so this leaves a wide margin
+// for a slow runner. A request still open after this is hung, or held by a
+// route that the test never released.
+const DRAIN_MS = 3_000;
 
 /**
  * Track the API requests of a page so a test cannot end while one that it
- * caused is open. A request that a test does not wait for races its end:
- * closing the page drops a write that the server has not seen, and fails a
- * route handler that is still running.
+ * caused is open. Closing the page drops a write that the server has not
+ * seen, and fails a route handler that is still running.
  */
 export function trackOpenRequests(page: Page): {
-  /** Fail with each open request other than a background read. */
+  /**
+   * Wait for each open request other than a background read to end, and fail
+   * with each one still open after `DRAIN_MS`.
+   */
   expectNoneOpen: () => Promise<void>;
 } {
   const open = new Set<PageRequest>();
-  // The body of each request that got a response, once it ends.
-  const bodies = new Map<PageRequest, Promise<unknown>>();
+  // Wakes the drain when a request ends.
+  let wake = () => {};
+  const end = (request: PageRequest) => {
+    open.delete(request);
+    wake();
+  };
   page.on("request", (request) => {
     // The app reads and writes with fetches. A page asset, such as an
     // image, can still load when the test ends with no harm.
     if (["fetch", "xhr"].includes(request.resourceType())) open.add(request);
   });
-  page.on("response", (response) =>
-    bodies.set(
-      response.request(),
-      // The page can close before the body ends.
-      response.finished().catch(() => undefined),
-    ),
-  );
-  page.on("requestfinished", (request) => open.delete(request));
-  page.on("requestfailed", (request) => open.delete(request));
+  page.on("requestfinished", end);
+  page.on("requestfailed", end);
+  const unexpected = () =>
+    [...open].filter((request) => !isBackgroundRead(request));
   return {
     expectNoneOpen: async () => {
-      const unexpected = [...open].filter(
-        (request) => !isBackgroundRead(request),
-      );
-      // A test that awaited a response can end before its body is read and
-      // `requestfinished` fires. Give each body that started a short time to
-      // end. A request with no response gets none: it is still open.
-      await Promise.all(
-        unexpected.flatMap((request) => {
-          const body = bodies.get(request);
-          return body ? [Promise.race([body, delay(BODY_GRACE_MS)])] : [];
-        }),
-      );
-      const stillOpen = unexpected.filter((request) => open.has(request));
+      // Wait until none is open, not only for those open now: a request can
+      // start another as it ends, such as a read that a write refreshes.
+      const drained = async () => {
+        while (unexpected().length > 0) {
+          await new Promise<void>((resolve) => (wake = resolve));
+        }
+      };
+      await Promise.race([
+        drained(),
+        delay(DRAIN_MS, undefined, { ref: false }),
+      ]);
+      const stillOpen = unexpected();
       if (stillOpen.length === 0) return;
       const lines = stillOpen.map((request) => {
         const { pathname, search } = new URL(request.url());

@@ -16,7 +16,7 @@ function LeadPageProvider(props: {
 }) {
   const work = useLeadWork();
   const lead = useLead();
-  useLeadWatchRefresh(props.lastSeq);
+  useLeadWatchRefresh(props.lastSeq, lead.data?.lastSeq);
   const watched = lead.data?.watchedConversationIds;
   const { prefill } = props;
   const value = useMemo(
