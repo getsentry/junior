@@ -73,9 +73,10 @@ child chooses to report reaches the parent.
   getsentry/junior#3060, and getsentry/junior#2567 track it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
-- A Watch Turn of a child that ends with `noReply` keeps the child in the
-  siblings that did not report. The parent waits for a report that does not
-  come. This breaks "a parent never waits forever".
+- A Watch Turn of a Thread that ends with `noReply`, or of a Task that
+  still has an active Watch, keeps the child in the siblings that did not
+  report. The parent waits for a report that does not come. This breaks "a
+  parent never waits forever".
 - A parent does not archive its child agents when their work is done. This
   breaks "a parent manages the lifecycle of its child agents".
 - A parent cannot archive a Task. Only a Thread can be archived. This
