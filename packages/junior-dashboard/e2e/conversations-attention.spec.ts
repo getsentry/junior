@@ -154,7 +154,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await mockWaitingConversation(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -249,7 +249,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
 
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
@@ -279,7 +279,7 @@ test.describe("conversation sections", () => {
     dashboard,
   }) => {
     await viewAsParticipant(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -307,16 +307,6 @@ test.describe("conversation sections", () => {
 
     await page.reload();
     await expect(renamedRow).toBeVisible();
-
-    // The `⋯` menu renames too.
-    await page.goto(
-      `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
-    );
-    await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Title" })).toHaveValue(
-      "Investigate checkout latency",
-    );
   });
 
   test("the sidebar review chip opens details at Needs you", async ({
@@ -415,7 +405,7 @@ test.describe("stable conversation list", () => {
     // list and let go of the order.
     await page.setViewportSize(desktop);
     const setWaiting = await mockChangingWaiting(page);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -500,7 +490,7 @@ test.describe("stable conversation list", () => {
         await route.fallback();
       },
     );
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const sidebar = page.getByRole("navigation", {
       name: "Your conversations",
     });
@@ -536,7 +526,7 @@ test.describe("stable conversation list", () => {
     const setWaiting = await mockChangingWaiting(page);
     // A narrow window with a mouse shows the home list, not the sidebar.
     await page.setViewportSize({ width: 700, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/conversations`);
     const card = page.getByRole("link", {
       name: "Open Checkout latency triage",
     });

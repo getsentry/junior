@@ -100,18 +100,6 @@ export function inboxItemNeedsUser(userId: string): SQL {
 }
 
 /**
- * SQL: the Inbox item needs some person: an open `action` item with an
- * assigned User. It is `inboxItemNeedsUser` for any User.
- */
-export function inboxItemNeedsSomeone(): SQL {
-  return and(
-    eq(juniorInboxItems.status, "open"),
-    eq(juniorInboxItems.kind, "action"),
-    sql`exists (select 1 from ${juniorInboxItemAssignees} where ${juniorInboxItemAssignees.itemId} = ${juniorInboxItems.id})`,
-  )!;
-}
-
-/**
  * SQL: the Inbox item waits for a person's input: an open `action` item,
  * whoever it is assigned to. An item with no assignees still waits for
  * anyone who can answer it. The Conversation that added it shows
@@ -300,6 +288,23 @@ export const PLUGIN_INBOX_ITEM_KEY_PREFIX = "plugin:";
  */
 export const AUTOMATION_INBOX_ITEM_KEY_PREFIX = "automation:";
 
+/**
+ * Dedupe keys with this prefix belong to reply notices, which core adds for
+ * the starter of a dashboard Conversation and closes when they read the
+ * reply. An agent cannot use the prefix or change the item.
+ */
+export const REPLY_NOTICE_KEY_PREFIX = "reply:";
+
+/**
+ * The dedupe key prefixes that core and plugins own, with their owner. The
+ * add tool's input schema rejects a key that starts with one of them.
+ */
+export const RESERVED_INBOX_ITEM_KEY_PREFIXES = [
+  { owner: "a plugin", prefix: PLUGIN_INBOX_ITEM_KEY_PREFIX },
+  { owner: "an Automation alert", prefix: AUTOMATION_INBOX_ITEM_KEY_PREFIX },
+  { owner: "a reply notice", prefix: REPLY_NOTICE_KEY_PREFIX },
+] as const;
+
 /** Return the plugin that owns a dedupe key, or undefined for an agent's key. */
 export function inboxItemPlugin(dedupeKey: string): string | undefined {
   if (!dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return undefined;
@@ -325,13 +330,14 @@ export function isPluginInboxItem(item: Pick<InboxItem, "dedupeKey">) {
  * Conversation, so private content never reaches its readers. A private
  * item changes only from the Conversation or Automation that added it. An
  * agent never changes an item that a plugin added, or an item that another
- * owner kind, such as an Automation, owns.
+ * owner kind, such as an Automation, owns, or a reply notice.
  */
 export function canAgentChangeInboxItem(
   item: InboxItem,
   scope: InboxItemAgentScope,
 ): boolean {
   if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) return false;
+  if (item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)) return false;
   if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;
@@ -363,19 +369,21 @@ export async function requireInboxItemLinks(args: {
   for (const conversationId of args.conversationIds) {
     const conversation = access.get(conversationId);
     if (!conversation || !isSameTenant(conversation.tenant, args.tenant)) {
-      throw new ToolInputError(`Conversation ${conversationId} is not found.`);
+      throw new ToolInputError(
+        `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
+      );
     }
     if (args.allowedIds.has(conversationId)) continue;
     if (args.visibility === "private") {
       throw new ToolInputError(
-        "A private item links only to the Conversation that added it.",
+        "A private item links only to the Conversation that added it. Remove the other ids from `conversation_ids`.",
       );
     }
     if (conversation.visibility !== "public") {
       throw new ToolInputError(
         conversation.canViewPrivateContent
           ? `Conversation ${conversationId} is private. Only public Conversations can be linked.`
-          : `Conversation ${conversationId} is not found.`,
+          : `Conversation ${conversationId} is not found. Check conversation_ids, or use searchConversations to find the id.`,
       );
     }
   }
@@ -415,7 +423,7 @@ export async function requireInboxItemAssignees(args: {
   );
   if (others.some((id) => !inConversation.has(id))) {
     throw new ToolInputError(
-      "A private item can be assigned only to people in its Conversation.",
+      "A private item can be assigned only to people in its Conversation. Remove the other people from `assignees`.",
     );
   }
 }

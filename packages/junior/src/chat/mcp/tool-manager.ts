@@ -664,6 +664,8 @@ export class McpToolManager {
     client: PluginMcpClient,
     tool: PluginMcpListedTool,
   ): ManagedMcpTool {
+    // The provider's schema describes the MCP result. It is not a Junior
+    // result schema: Junior's wrappers, such as `callMcpTool`, own theirs.
     const outputSchema = toOptionalRecord(tool.outputSchema);
     const annotations = tool.annotations;
     const missingAnnotationKeys = missingToolAnnotationKeys(annotations);

@@ -1,12 +1,12 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
+import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
   canAgentChangeInboxItem,
-  AUTOMATION_INBOX_ITEM_KEY_PREFIX,
-  PLUGIN_INBOX_ITEM_KEY_PREFIX,
+  RESERVED_INBOX_ITEM_KEY_PREFIXES,
   canReadInboxItem,
   readInboxItemAgentScope,
   requireInboxItemAssignees,
@@ -189,6 +189,17 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .max(200)
+        .superRefine((key, context) => {
+          const reserved = RESERVED_INBOX_ITEM_KEY_PREFIXES.find(({ prefix }) =>
+            key.startsWith(prefix),
+          );
+          if (reserved) {
+            context.addIssue({
+              code: "custom",
+              message: `A \`dedupe_key\` that starts with \`${reserved.prefix}\` belongs to ${reserved.owner}. Use a different key.`,
+            });
+          }
+        })
         .nullable()
         .optional()
         .describe(
@@ -262,16 +273,6 @@ export function createAddInboxItemTool(
     execute: async (input, options) => {
       requireRequest(input.kind, Boolean(input.request));
       const evidence = evidenceInput(input.request?.evidence);
-      if (input.dedupe_key?.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) {
-        throw new ToolInputError(
-          `A \`dedupe_key\` that starts with \`${PLUGIN_INBOX_ITEM_KEY_PREFIX}\` belongs to a plugin. Use a different key.`,
-        );
-      }
-      if (input.dedupe_key?.startsWith(AUTOMATION_INBOX_ITEM_KEY_PREFIX)) {
-        throw new ToolInputError(
-          `A \`dedupe_key\` that starts with \`${AUTOMATION_INBOX_ITEM_KEY_PREFIX}\` belongs to an Automation alert. Use a different key.`,
-        );
-      }
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
       // A retry of the same tool call keeps the same key, so it updates the
@@ -397,6 +398,7 @@ export function createAddInboxItemTool(
           item,
           nowMs: Date.now(),
         });
+        await publishWaiting(services, item);
         return { created: false, item: itemResult(item) };
       }
       const item = await insertInboxItem(db, {
@@ -420,7 +422,34 @@ export function createAddInboxItemTool(
         item,
         nowMs: Date.now(),
       });
+      await publishWaiting(services, item);
       return { created: true, item: itemResult(item) };
     },
   });
+}
+
+/**
+ * Report that the item's owner Conversation waits on a person when the item
+ * is an action, also when an update makes a notice an action. An update can
+ * come from another Conversation, so the owner, not the caller, reports it.
+ * The Event key is the item, so a later update of the same action does not
+ * report it again.
+ */
+async function publishWaiting(
+  services: InboxItemToolServices,
+  item: Pick<InboxItem, "body" | "id" | "kind" | "owner" | "request">,
+): Promise<void> {
+  const conversationId = ownerConversationId(item);
+  if (item.kind !== "action" || !conversationId) return;
+  await publishAgentUpdate(
+    conversationId,
+    { type: "waiting", inboxItemId: item.id },
+    {
+      queue: services.queue(),
+      update: async () => ({
+        status: "waiting",
+        text: item.request?.question ?? item.body,
+      }),
+    },
+  );
 }

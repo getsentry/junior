@@ -37,8 +37,12 @@ import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
 import { replaceSlackMentions } from "@/chat/identities/slack-mention-text";
+import { userLookupIdentityProviders } from "@/chat/identities/lookup-providers";
+import { findLinkedHandle } from "@/chat/identities/user-lookup";
+import { parseSlackTeamId } from "@/chat/slack/ids";
 import { resolveUserTimezone } from "@/chat/identities/timezone";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
+import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
 import {
   annotateToolResult,
   saveObjectAnnotations,
@@ -110,6 +114,7 @@ import {
 } from "@/chat/plugins/core-registrations";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
+import { createPluginArtifacts } from "@/chat/plugins/artifacts";
 
 export interface ToolHookInput {
   input: Record<string, unknown>;
@@ -247,7 +252,7 @@ function pluginInvocationContext(
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return {
         ...common,
         actor: context.actor,
@@ -847,6 +852,10 @@ export function getPluginTools(
   sandbox: PluginSandbox = createSandboxCapability(context.workspace),
 ): Record<string, AnyToolDefinition> {
   const tools: Record<string, AnyToolDefinition> = {};
+  const artifacts = createPluginArtifacts(
+    context.attachmentStorage,
+    context.conversationId,
+  );
   for (const plugin of getRegistrations()) {
     const pluginName = plugin.manifest.name;
     const hook = plugin.hooks?.tools;
@@ -897,6 +906,7 @@ export function getPluginTools(
           conversationId: context.conversationId,
           resolveActor,
         }),
+      ...(artifacts ? { artifacts } : undefined),
       ...(dashboardConversationUrl
         ? { conversationLink: { url: dashboardConversationUrl } }
         : undefined),
@@ -928,6 +938,22 @@ export function getPluginTools(
           });
         },
         replaceSlackMentions,
+        async findLinkedHandle(query: string, provider: string) {
+          const teamId =
+            slackToolContext?.teamId ??
+            (context.actor?.platform === "slack"
+              ? parseSlackTeamId(context.actor.teamId)
+              : undefined);
+          // People are found through a Slack workspace's directory.
+          if (!teamId) return { status: "not_found" } as const;
+          return await findLinkedHandle({
+            egress: context.egress,
+            provider,
+            providers: userLookupIdentityProviders(),
+            query,
+            teamId,
+          });
+        },
       },
       workspaces: {
         async active() {
@@ -983,7 +1009,7 @@ export function getPluginTools(
       case "scheduled_automation":
       case "event_automation":
       case "plugin_dispatch":
-      case "agent_invocation":
+      case "parent_message":
         pluginContext = {
           ...common,
           actor: context.actor,
@@ -1204,6 +1230,10 @@ export function getPluginRoutes(options: {
           }),
       },
       codeChanges: createCodeChangePublisher(pluginName),
+      conversationChanges: createPluginConversationChanges({
+        plugin: pluginName,
+        show: options.showInboxItem ?? (async () => {}),
+      }),
       state: createPluginState(pluginName),
       inboxItems: {
         forConversation: (conversationId) =>

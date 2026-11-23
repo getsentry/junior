@@ -5,9 +5,9 @@ import * as z from "zod";
  * reads with its task. Runtime code reads only these fields, never a type
  * name, so types can later come from configuration. Types do not limit tools:
  * Guardian reviews each child action against the root user's messages, as for
- * any child. A child keeps its type for later agent invocations. How a child
+ * any child. A child keeps its type for every later task. How a child
  * starts, fresh or forked from its parent's history, is not a type: see
- * `fork` on the agent invocation.
+ * `fork` in its agent config.
  */
 export const AGENT_TYPES = ["explore", "reviewer"] as const;
 
@@ -36,7 +36,7 @@ const AGENT_TYPE_DEFINITIONS: Record<
     whenToUse:
       "Investigation across code, docs, logs, telemetry, or the web. Use it when an answer needs reading across many files or sources and you need the conclusion with evidence, not the raw output.",
     instructions:
-      "You are an explore agent. Your job is to investigate and report, so do not change anything outside your sandbox unless the task asks for it. Report what you found with exact evidence, such as paths, lines, links, and ids, and say what you could not verify.",
+      "You are an explore agent. Investigate, and do not change anything outside your sandbox unless the task asks for it. Back your answer with exact evidence, such as paths, lines, links, and ids.",
   },
   reviewer: {
     whenToUse:

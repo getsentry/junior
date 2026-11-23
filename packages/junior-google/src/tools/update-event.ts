@@ -131,7 +131,9 @@ export const updateCalendarEventTool = definePluginTool({
         throw new PluginToolInputError("end must be after start.");
       }
       if (durationMs > MAX_EVENT_MS) {
-        throw new PluginToolInputError("Events can be at most 8 hours long.");
+        throw new PluginToolInputError(
+          "Events can be at most 8 hours long. Set end at most 8 hours after start.",
+        );
       }
     }
     requireAllowedEmails(

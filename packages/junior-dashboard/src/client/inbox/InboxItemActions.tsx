@@ -1,4 +1,4 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { lazy, Suspense, useEffect, useState, type ReactNode } from "react";
 import type {
   InboxItemActionBody,
   InboxItemPayload,
@@ -16,6 +16,15 @@ import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
 import { formatRelativeTime } from "../time";
 import { InboxItemCloser } from "./InboxItemPeople";
+import { RowDismissButton } from "./RowDismissButton";
+
+// Only an open card snoozes from here, so its snooze code stays out of the
+// first load.
+const CardSnoozeButton = lazy(() =>
+  import("./CardSnoozeButton").then((module) => ({
+    default: module.CardSnoozeButton,
+  })),
+);
 
 function actionError(error: unknown): string {
   if (error instanceof DashboardApiError && error.apiError) {
@@ -132,7 +141,12 @@ export function InboxItemActions(props: {
 
   const dismiss = props.dismiss ?? true;
   const take = item.canTake ? (props.take ?? "Take") : false;
-  // Take and Dismiss are quiet, so the answer stays the main action.
+  // A card on its own, as in a transcript, snoozes its item itself. The
+  // Inbox brings its own Snooze, so its row leaves with motion.
+  const snooze =
+    dismiss && !props.extra && !props.onAction && !item.snoozedByViewer;
+  // Take, Dismiss, and Snooze are quiet, so the answer stays the main
+  // action, last.
   const secondaryActions = (
     <>
       {take ? (
@@ -145,13 +159,15 @@ export function InboxItemActions(props: {
         </Button>
       ) : null}
       {dismiss ? (
-        <Button
+        <RowDismissButton
           disabled={action.isPending || sending}
           onClick={() => void run({ action: "dismiss" }).catch(() => {})}
-          variant="ghost"
-        >
-          Dismiss
-        </Button>
+        />
+      ) : null}
+      {snooze ? (
+        <Suspense fallback={null}>
+          <CardSnoozeButton item={item} />
+        </Suspense>
       ) : null}
       {props.extra}
     </>
@@ -193,7 +209,7 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || dismiss || props.extra ? (
+      ) : take || snooze || dismiss || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">

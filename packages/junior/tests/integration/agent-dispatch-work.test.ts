@@ -1,4 +1,3 @@
-import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createOrGetDispatch,
@@ -10,7 +9,6 @@ import {
 } from "@/chat/agent-dispatch/store";
 import { enqueueAgentDispatch } from "@/chat/agent-dispatch/work";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { createAgentInvocation } from "@/chat/agent-invocations/create";
 import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
 import { upsertIdentity } from "@/chat/identities/sql";
 import {
@@ -393,15 +391,18 @@ describe("agent dispatch conversation work", () => {
     expect(modelStream).toHaveBeenCalledTimes(6);
 
     // A Turn on a child's reply replies in the run's thread.
-    const child = await createAgentInvocation({
-      actor: { name: "automation-run", platform: "system" },
-      destination,
-      idempotencyKey: "watch-follow-up-child",
-      input: "Check the release.",
+    const child = {
+      childConversationId: `${conversationId}:watch-follow-up-child`,
       parentConversationId: conversationId,
-      reasoningLevel: "medium",
+    };
+    await getConversationStore().createChild({
+      childConversationId: child.childConversationId,
+      kind: "task",
+      nowMs: Date.now() - 120_000,
+      parentConversationId: conversationId,
     });
     await enqueueChildResultToParent({
+      actor: { name: "automation-run", platform: "system" },
       nowMs: Date.now() - 60_000,
       queue,
       result: {
@@ -413,7 +414,7 @@ describe("agent dispatch conversation work", () => {
       },
       messageKey: "call-child-reply",
       sender: child,
-      turnId: getAgentInvocationTurnId(child.invocationId),
+      turnId: "turn_watch-follow-up-child",
       state,
     });
     await processNext();

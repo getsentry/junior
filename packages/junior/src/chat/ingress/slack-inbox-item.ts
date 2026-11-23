@@ -32,8 +32,8 @@ import {
   parseSlackInboxItemFormTarget,
   type SlackInboxItemClick,
 } from "@/chat/slack/inbox-item-card";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import {
-  createSlackInboxItemShow,
   resolveSlackInboxItemCardConversationId,
   syncInboxItemSlackCards,
 } from "@/chat/slack/inbox-item-card-sync";
@@ -142,7 +142,7 @@ async function act(args: {
   });
   const delivery: InboxItemDelivery = {
     queue: services.queue,
-    show: createSlackInboxItemShow(() => services.adapter),
+    show: createInboxItemShow(() => services.adapter),
   };
   let recordOnly = args.action === "dismiss";
   let item: InboxItem;

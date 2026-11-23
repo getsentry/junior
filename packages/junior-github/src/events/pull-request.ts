@@ -43,7 +43,7 @@ const STACK_CONFLICT_STEPS =
  * sets comment_id only when it has a body.
  */
 const PULL_REQUEST_FEEDBACK =
-  'When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".';
+  'When Verified details include comment_id, call github_updatePullRequestFeedback after acting on actionable feedback or answering a question, with the exact repo, pull_request, comment_id, and comment_kind from Verified details, and status "addressed" or "declined".';
 
 const GITHUB_PULL_REQUEST_EVENT_GUIDANCE: Partial<
   Record<GitHubPullRequestEvent, string>

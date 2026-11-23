@@ -369,7 +369,11 @@ not know the person's timezone. A tool that sends model text to your provider
 must call `ctx.users.replaceSlackMentions(input, provider)` first. The model
 reads Slack threads, so it can copy Slack syntax such as `<@U123>`. The call
 rewrites every string in `input`, outside Markdown code. A Slack user becomes
-`@handle` of their linked account at `provider`, or their name. Return tool definitions keyed by the plugin-local tool
+`@handle` of their linked account at `provider`, or their name. When a tool
+input names a person by email, Slack mention, or name, call
+`ctx.users.findLinkedHandle(query, provider)`. It returns `found` with the
+`handle` of the linked account at `provider`, or `unlinked`, `ambiguous`, or
+`not_found`. Return tool definitions keyed by the plugin-local tool
 names your plugin owns.
 Junior exposes them to the agent as `<pluginNamespace>_<toolName>`, where
 `pluginNamespace` is derived from the plugin manifest name. For example,
@@ -464,7 +468,7 @@ context, and rejects its calls before review or execution.
 
 ```ts
 disabledTools(ctx) {
-  return ctx.source.kind === "agent_invocation"
+  return ctx.source.kind === "parent_message"
     ? { ping: "Child agents cannot ping my-provider." }
     : {};
 },
@@ -488,8 +492,22 @@ const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
 Use `ctx.state` for plugin-namespaced durable state. Use
 `ctx.agent.dispatch(...)` when the heartbeat needs Junior to run an autonomous
 agent task, and `ctx.agent.get(...)` to reconcile that dispatch later. Use
-`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, and `ctx.inboxItems` as
-from a plugin route.
+`ctx.events`, `ctx.annotations`, `ctx.codeChanges`, `ctx.inboxItems`, and
+`ctx.conversationChanges` as from a plugin route.
+
+Use `ctx.conversationChanges.apply(...)` when readers must see annotation and
+Inbox item changes together, such as a chip that shows a merged pull request
+and the close of its ask. Junior saves the batch in one write. When one entry
+fails, Junior saves no entry. A batch has at most 100 entries.
+
+```ts
+await ctx.conversationChanges.apply({
+  annotations: [{ conversationId, upsert: annotation }],
+  inboxItems: [
+    { conversationId, close: { dedupeKey, reason, status: "done" } },
+  ],
+});
+```
 
 ```ts title="index.ts"
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";

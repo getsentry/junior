@@ -405,13 +405,15 @@ describe("transcribeAudio tool", () => {
     await expect(
       tool.execute?.({ attachment_id: elsewhere.id }, {}),
     ).rejects.toThrow(
-      new ToolInputError("Attachment not found in this conversation."),
+      new ToolInputError(
+        "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+      ),
     );
     await expect(
       tool.execute?.({ attachment_id: document.id }, {}),
     ).rejects.toThrow(
       new ToolInputError(
-        "This attachment is application/pdf, not audio or video.",
+        "This attachment is application/pdf, not audio or video. Use loadAttachment to read other files.",
       ),
     );
     expect(files.signed).toEqual([]);

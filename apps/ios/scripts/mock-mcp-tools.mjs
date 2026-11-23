@@ -49,6 +49,7 @@ const messageText = {
   max: 32_000,
   description: "Message text.",
 };
+const conversationTitle = { type: "string", trim: true, min: 1, max: 200 };
 const idempotencyKey = {
   type: "string",
   trim: true,
@@ -551,6 +552,26 @@ export function createMockMcpTools({ app, origin }) {
       },
     },
     {
+      name: "renameConversation",
+      scope: "conversations:manage",
+      title: "Rename conversation",
+      description:
+        "Rename one of your conversations for everyone in it. Later turns keep the new title. The Slack thread does not change. Returns the stored title.",
+      annotations: MANAGE,
+      input: {
+        conversationId,
+        title: conversationTitle,
+      },
+      async run({ conversationId: id, title }) {
+        const result = await apiJson(
+          "PATCH",
+          `/conversations/${enc(id)}/title`,
+          { title },
+        );
+        return { title: result.title };
+      },
+    },
+    {
       name: "setConversationAutoArchive",
       scope: "conversations:manage",
       title: "Set conversation auto-archive",
@@ -676,10 +697,7 @@ export function createMockMcpTools({ app, origin }) {
       input: {
         message: messageText,
         title: {
-          type: "string",
-          trim: true,
-          min: 1,
-          max: 200,
+          ...conversationTitle,
           optional: true,
           description:
             "Short title for the conversation. Omit it to generate one from the message.",

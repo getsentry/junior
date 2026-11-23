@@ -22,7 +22,6 @@ import { listedConversation } from "@/chat/conversations/sql/listed";
 import {
   juniorCodeChanges,
   juniorConversationAnnotations,
-  juniorConversationBriefs,
   juniorConversationParticipants,
   juniorConversations,
   juniorDestinations,
@@ -59,12 +58,14 @@ import {
 import {
   conversationIsActiveSql,
   conversationStatusSql,
+  conversationTurnFailedSql,
   conversationWaitsOnUserSql,
 } from "@/chat/conversations/sql/status";
 import { nestFeedThreads, readFeedThreadRecords } from "./threads";
-import type {
-  ConversationFeed,
-  ConversationFeedInclude,
+import {
+  CONVERSATION_FEED_WAITING_LIMIT,
+  type ConversationFeed,
+  type ConversationFeedInclude,
 } from "../schema/conversation-feed";
 import {
   childAgentTotalsReport,
@@ -84,7 +85,7 @@ import {
   latestMessageSeqQuery,
   readConversationActivityPreviews,
 } from "./activity-preview";
-import { readConversationFeedBriefs } from "./feed-brief";
+import { conversationSearchVector } from "@/chat/conversations/metadata/store";
 import { annotationUrls, feedLinksSql, pickFeedLinks } from "./feed-links";
 import { feedMediaSql } from "./feed-media";
 import { feedViewerAnswer, feedViewerAnswerSql } from "./feed-answer";
@@ -203,6 +204,7 @@ async function conversationRows(
       awaitingAuthorization: treeAwaitsAuthorization(
         juniorConversations.conversationId,
       ),
+      latestTurnFailed: conversationTurnFailedSql(juniorConversations),
       links: include.includes("links") ? feedLinksSql(db) : sql<null>`null`,
       media: include.includes("media") ? feedMediaSql(db) : sql<null>`null`,
       viewerAnswer:
@@ -245,19 +247,12 @@ async function conversationRows(
         query
           ? or(
               sql<boolean>`strpos(lower(coalesce(${juniorConversations.title}, '')), ${query}) > 0`,
-              sql<boolean>`exists (
-                select 1
-                from ${juniorConversationBriefs}
-                where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
-                  and ${includePrivateMatches ? sql`true` : eq(juniorDestinations.visibility, "public")}
-                  and ${juniorConversationBriefs.version} = (
-                    select max(${juniorConversationBriefs.version})
-                    from ${juniorConversationBriefs}
-                    where ${juniorConversationBriefs.conversationId} = ${juniorConversations.conversationId}
-                  )
-                  and to_tsvector('english', ${juniorConversationBriefs.searchText})
-                    @@ websearch_to_tsquery('english', ${query})
-              )`,
+              and(
+                includePrivateMatches
+                  ? undefined
+                  : eq(juniorDestinations.visibility, "public"),
+                sql<boolean>`${conversationSearchVector} @@ websearch_to_tsquery('english', ${query})`,
+              ),
               annotationMatch(db, query, includePrivateMatches),
             )
           : undefined,
@@ -587,6 +582,10 @@ export async function readConversationFeedFromSql(
           filter,
           include,
           includePrivateMatches: true,
+          // Pins already show. The waiting rows inside the page sort first,
+          // so this reads past them to one more row than the cap.
+          limit: limit + CONVERSATION_FEED_WAITING_LIMIT + 1,
+          pinnedForUserId: { pinned: false, userId: filter.userId },
           status: "active",
           waitingForUserId: filter.userId,
         })
@@ -595,13 +594,16 @@ export async function readConversationFeedFromSql(
   const page = pageRows.slice(0, limit);
   const lastRow = pageRows.length > limit ? page.at(-1) : undefined;
   const rows = [...pinnedRows, ...page];
+  let waitingRowsTruncated = false;
   if (firstPage) {
     const loaded = new Set(rows.map((row) => row.conversation.conversationId));
     const outsidePage = waitingRows.filter(
       (row) => !loaded.has(row.conversation.conversationId),
     );
-    options.onWaitingRows?.(outsidePage.length);
-    rows.push(...outsidePage);
+    waitingRowsTruncated = outsidePage.length > CONVERSATION_FEED_WAITING_LIMIT;
+    const waiting = outsidePage.slice(0, CONVERSATION_FEED_WAITING_LIMIT);
+    options.onWaitingRows?.(waiting.length);
+    rows.push(...waiting);
   }
   const conversations = rows.map((row) => conversationFromRecordRow(row));
   const conversationIds = conversations.map(
@@ -623,7 +625,6 @@ export async function readConversationFeedFromSql(
       lastUserMessageAt: lastUserMessageAtByConversation,
     },
     activityPreviewByConversation,
-    briefByConversation,
     automationTitleByConversation,
     firstHumanMessageTextByConversation,
     treeStateByConversation,
@@ -668,7 +669,6 @@ export async function readConversationFeedFromSql(
         ),
       })),
     readConversationActivityPreviews(db, conversationIds),
-    readConversationFeedBriefs(db, conversationIds),
     readAutomationTitlesByConversationId(conversations),
     readFirstHumanMessageTexts(db, conversations),
     readConversationTreeStates(db, conversationIds, options.viewer?.id),
@@ -770,16 +770,9 @@ export async function readConversationFeedFromSql(
           ? { unfinishedWork: true as const }
           : undefined),
       };
-      const annotations = access?.canViewPrivateContent
-        ? (annotationsByConversation.get(conversation.conversationId) ?? [])
-        : [];
       const activityPreview = visibleActivityPreviews.get(
         conversation.conversationId,
       );
-      // Like the preview, the Brief holds private content.
-      const brief = access?.canViewPrivateContent
-        ? briefByConversation.get(conversation.conversationId)
-        : undefined;
       const participants = access?.canViewPrivateContent
         ? participantsByConversation.get(conversation.conversationId)
         : undefined;
@@ -791,12 +784,16 @@ export async function readConversationFeedFromSql(
           ? pickFeedLinks(
               conversation.conversationId,
               row.links,
-              annotationUrls(annotations),
+              annotationUrls(
+                visibleAnnotationsByConversation.get(
+                  conversation.conversationId,
+                ),
+              ),
             )
           : [];
       const lastMessageAt = row.lastMessageAt?.toISOString();
       const treeRead = treeStateByConversation.get(conversation.conversationId);
-      // The viewer saw the answer as they gave it, but like the Brief it
+      // The viewer saw the answer as they gave it, but like the summary it
       // holds private content.
       const viewerAnswer = access?.canViewPrivateContent
         ? feedViewerAnswer(row.viewerAnswer)
@@ -808,17 +805,21 @@ export async function readConversationFeedFromSql(
         ...(row.awaitingAuthorization
           ? { awaitingAuthorization: true as const }
           : undefined),
+        ...(row.latestTurnFailed
+          ? { latestTurnFailed: true as const }
+          : undefined),
         ...(lastMessageAt ? { lastMessageAt } : undefined),
-        ...(threads ? { threads } : undefined),
+        ...(threads ? { threads: threads.threads } : undefined),
+        ...(threads?.omittedThreadCount
+          ? { omittedThreadCount: threads.omittedThreadCount }
+          : undefined),
         ...(participants && participants.length > 0
           ? { participants }
           : undefined),
         ...(activityPreview ? { activityPreview } : undefined),
-        ...(brief ? { brief } : undefined),
         ...(viewerAnswer ? { viewerAnswer } : undefined),
         ...(media?.length ? { media } : undefined),
         ...(links.length > 0 ? { links } : undefined),
-        ...(annotations.length > 0 ? { annotations } : undefined),
         ...(sidebarAnnotationsByConversation[conversation.conversationId]
           ? {
               sidebarAnnotations:
@@ -847,6 +848,9 @@ export async function readConversationFeedFromSql(
         }
       : undefined),
     source: "conversation_index",
+    ...(waitingRowsTruncated
+      ? { waitingRowsTruncated: true as const }
+      : undefined),
   };
 }
 

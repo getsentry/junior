@@ -7,6 +7,7 @@ import { isMemoryCaptureEvent } from "./conversationMemory";
 import type { RenderedTranscriptEntry } from "./transcriptRenderModel";
 import { entryMatchesSearch } from "./transcriptSearch";
 import type { TranscriptUnreadRange } from "./transcriptReadPosition";
+import { calendarDay, calendarDaysAgo, formatTime } from "../time";
 
 type SubagentEntry = Extract<RenderedTranscriptEntry, { kind: "subagent" }>;
 
@@ -407,4 +408,53 @@ function stableActivityGroupKey(args: {
     args.knownKeys.set(entryKey, groupKey);
   }
   return groupKey;
+}
+
+function entryTimestamp(
+  entry: RenderedTranscriptEntry | undefined,
+): number | undefined {
+  if (!entry) return undefined;
+  return entry.kind === "message" ? entry.message.timestamp : entry.timestamp;
+}
+
+function rowTimestamp(row: TranscriptListRow): number | undefined {
+  if (row.kind === "unread_marker") return undefined;
+  if (row.kind === "entry") return entryTimestamp(row.entry);
+  return entryTimestamp(row.entries[0]);
+}
+
+/**
+ * Label the first row of each calendar day: `Today`, `Yesterday`, then the
+ * weekday and date. Returns labels by row index.
+ */
+export function transcriptDayLabels(
+  rows: readonly TranscriptListRow[],
+  nowMs: number,
+  timeZone: string,
+): Map<number, string> {
+  const labels = new Map<number, string>();
+  const nowDay = calendarDay(nowMs, timeZone);
+  let lastDay: number | undefined;
+  for (const [index, row] of rows.entries()) {
+    const time = rowTimestamp(row);
+    if (time === undefined) continue;
+    const day = calendarDay(time, timeZone);
+    if (day === lastDay) continue;
+    lastDay = day;
+    const days = calendarDaysAgo(time, nowDay, timeZone);
+    labels.set(
+      index,
+      days <= 0
+        ? "Today"
+        : days === 1
+          ? "Yesterday"
+          : formatTime(time, {
+              day: "numeric",
+              month: "short",
+              timeZone,
+              weekday: "long",
+            }),
+    );
+  }
+  return labels;
 }

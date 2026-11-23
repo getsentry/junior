@@ -43,6 +43,17 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   that nobody works on, it tells nobody.
 - Junior asks a person only with an Inbox item
   ([Inbox](./inbox.md)).
+- A push goes to each User assigned to an open item, once per item: an
+  action, or a reply notice for its starter. When a time or an Event wakes
+  their snooze of that item, it pushes to them once more. Everyone items
+  and other notices do not push. When the item closes, its push goes away
+  on every device.
+- When Slack shows the item in a card, Slack asks first. The push waits 5
+  minutes and goes only to a User who is away in Slack then. An answer, a
+  dismiss, or a reply in that time closes the item, so nothing pushes. An
+  item in a Conversation with no Slack thread, or one that is attached to
+  or detached from Slack after the item opens, counts as already waited:
+  it pushes at once if it has not pushed yet.
 
 ## Gaps
 
@@ -58,6 +69,8 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   card for it. For a blocked Automation, Slack gets a DM with no card. For a
   failed run or a trigger that is not available, Slack gets nothing. This
   breaks "Slack and the dashboard ask for attention for the same things".
-- In a dashboard Conversation, a Turn that ends with a question card and no
-  reply sends no push. In Slack, the same card shows in the thread. This
-  breaks "Slack and the dashboard ask for attention for the same things".
+- When automatic updates stop at the limit of automated Turns in a row, the
+  notice that asks the person to send a message is a plain Slack reply,
+  with no Inbox item. A dashboard Conversation gets nothing. This breaks
+  "Junior asks a person only with an Inbox item" and "Slack and the
+  dashboard ask for attention for the same things".

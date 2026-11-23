@@ -6,7 +6,8 @@ import { useInboxItemData } from "./queries";
 /**
  * Old Inbox links and the classic UI's `/inbox` and `/review` links open the list:
  * `?bundle=` picks the matching entry, and `?item=` expands that item's
- * row, on Done when the item has closed.
+ * row, on Done when the item has closed. `?snooze=` stays, for
+ * `LinkedSnoozeDialog`.
  */
 export function InboxRedirect() {
   const [params] = useSearchParams();
@@ -22,5 +23,12 @@ export function InboxRedirect() {
       : item.data && item.data.status !== "open"
         ? "done"
         : "inbox";
-  return <Navigate replace to={inboxViewPath(view, { itemId })} />;
+  const path = inboxViewPath(view, { itemId });
+  // An item link always has a query, so the flag joins it.
+  return (
+    <Navigate
+      replace
+      to={itemId && params.get("snooze") ? `${path}&snooze=1` : path}
+    />
+  );
 }

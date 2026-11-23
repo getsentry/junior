@@ -6,6 +6,7 @@ import {
   isNotNull,
   lt,
   ne,
+  or,
   sql,
   type SQL,
 } from "drizzle-orm";
@@ -155,14 +156,16 @@ export async function snoozeInboxItems(
       userId: input.userId,
     }));
     await tx.insert(juniorInboxSnoozes).values(snoozes);
-    await tx.insert(juniorInboxSnoozeTriggers).values(
-      input.items.flatMap((item, index) =>
-        item.triggers.map((trigger) => ({
-          ...trigger,
-          snoozeId: snoozes[index]!.id,
-        })),
-      ),
+    const triggers = input.items.flatMap((item, index) =>
+      item.triggers.map((trigger) => ({
+        ...trigger,
+        snoozeId: snoozes[index]!.id,
+      })),
     );
+    // A snooze until its item closes has no trigger.
+    if (triggers.length > 0) {
+      await tx.insert(juniorInboxSnoozeTriggers).values(triggers);
+    }
     return snoozes.map((snooze) => snooze.id);
   });
 }
@@ -239,10 +242,16 @@ export async function listFiringInboxSnoozeTriggers(
     );
 }
 
+/** A snooze that a trigger ended: the item and the User who snoozed it. */
+export interface SettledInboxSnooze {
+  inboxItemId: string;
+  userId: string;
+}
+
 /**
  * End snoozes that a trigger fired. Only a `snoozed` row changes, so the
- * first trigger to fire wins. A woken snooze records why it woke. Return
- * the items of the snoozes that changed.
+ * first trigger to fire wins, and only its caller gets the snooze back. A
+ * woken snooze records why it woke. Return the snoozes that changed.
  */
 export async function settleInboxSnoozes(
   db: Pick<JuniorDatabase, "update">,
@@ -250,9 +259,9 @@ export async function settleInboxSnoozes(
     | { state: "cancelled" }
     | { reason: InboxSnoozeWakeReason; state: "woken" }
   ),
-): Promise<string[]> {
+): Promise<SettledInboxSnooze[]> {
   if (input.snoozeIds.length === 0) return [];
-  const rows = await db
+  return await db
     .update(juniorInboxSnoozes)
     .set(
       input.state === "woken"
@@ -265,8 +274,10 @@ export async function settleInboxSnoozes(
         eq(juniorInboxSnoozes.state, "snoozed"),
       ),
     )
-    .returning({ inboxItemId: juniorInboxSnoozes.inboxItemId });
-  return rows.map((row) => row.inboxItemId);
+    .returning({
+      inboxItemId: juniorInboxSnoozes.inboxItemId,
+      userId: juniorInboxSnoozes.userId,
+    });
 }
 
 /**
@@ -291,19 +302,26 @@ export async function clearInboxWakeReasons(
 }
 
 /**
- * Read why this User's snoozes of these items woke, by item id. An item
- * whose snooze the User woke, or whose reason they cleared, has none. A
- * new snooze clears the last reason, so an item has at most one.
+ * Read this User's snoozes of these items: the items that they snoozed and
+ * that have not woken, and why each woken snooze woke. An item whose
+ * snooze the User woke, or whose reason they cleared, has no reason. A new
+ * snooze clears the last reason, so an item has at most one of either.
  */
-export async function readInboxWakeReasons(
+export async function readViewerInboxSnoozes(
   db: Pick<JuniorDatabase, "select">,
   input: { inboxItemIds: readonly string[]; userId: string },
-): Promise<Map<string, InboxSnoozeWakeReason>> {
-  const reasons = new Map<string, InboxSnoozeWakeReason>();
-  if (input.inboxItemIds.length === 0) return reasons;
+): Promise<{
+  snoozed: Set<string>;
+  wakeReasons: Map<string, InboxSnoozeWakeReason>;
+}> {
+  const snoozed = new Set<string>();
+  const wakeReasons = new Map<string, InboxSnoozeWakeReason>();
+  if (input.inboxItemIds.length === 0) return { snoozed, wakeReasons };
+  // One statement: the item lists read this for every page.
   const rows = await db
     .select({
       inboxItemId: juniorInboxSnoozes.inboxItemId,
+      state: juniorInboxSnoozes.state,
       wakeReason: juniorInboxSnoozes.wakeReason,
     })
     .from(juniorInboxSnoozes)
@@ -311,14 +329,20 @@ export async function readInboxWakeReasons(
       and(
         eq(juniorInboxSnoozes.userId, input.userId),
         inArray(juniorInboxSnoozes.inboxItemId, [...input.inboxItemIds]),
-        eq(juniorInboxSnoozes.state, "woken"),
-        isNotNull(juniorInboxSnoozes.wakeReason),
+        or(
+          eq(juniorInboxSnoozes.state, "snoozed"),
+          and(
+            eq(juniorInboxSnoozes.state, "woken"),
+            isNotNull(juniorInboxSnoozes.wakeReason),
+          ),
+        ),
       ),
     );
   for (const row of rows) {
-    if (row.wakeReason) reasons.set(row.inboxItemId, row.wakeReason);
+    if (row.state === "snoozed") snoozed.add(row.inboxItemId);
+    else if (row.wakeReason) wakeReasons.set(row.inboxItemId, row.wakeReason);
   }
-  return reasons;
+  return { snoozed, wakeReasons };
 }
 
 /**

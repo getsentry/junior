@@ -489,6 +489,23 @@ ORDER BY table_name ASC, ordinal_position ASC
       );
 
       for (const columns of actual.values()) columns.sort();
+      // 0158 keeps these for one release after the schema drops them. Remove
+      // this when the follow-up migration drops them.
+      const pendingColumnDrops = new Map([
+        ["junior_conversation_participants", ["archived_at"]],
+        ["junior_conversations", ["child_archived_at"]],
+      ]);
+      for (const [table, dropped] of pendingColumnDrops) {
+        actual.set(
+          table,
+          (actual.get(table) ?? []).filter(
+            (column) => !dropped.includes(column),
+          ),
+        );
+      }
+      // The schema drops this table, and 0160 keeps it until it drains.
+      // Remove this when the follow-up migration drops it.
+      actual.delete("junior_agent_invocations");
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 

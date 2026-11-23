@@ -45,10 +45,12 @@ describe("conversation status", () => {
 
     await fixture.drain();
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    // The feed reads the same status as the detail.
-    await expect(fixture.feedStatus(conversationId)).resolves.toBe(
-      "needs_input",
-    );
+    // The feed reads the same status as the detail, and says the Turn
+    // failed.
+    await expect(fixture.feedRow(conversationId)).resolves.toMatchObject({
+      latestTurnFailed: true,
+      status: "needs_input",
+    });
 
     // A failure does not hold input.
     await expect(
@@ -368,7 +370,7 @@ describe("conversation status", () => {
 
     await expect(fixture.status(conversationId)).resolves.toBe("done");
     await expect(
-      fixture.status(running.invocation.childConversationId),
+      fixture.status(running.child.childConversationId),
     ).resolves.toBe("working");
     await expect(fixture.status(asking.childConversationId)).resolves.toBe(
       "needs_input",

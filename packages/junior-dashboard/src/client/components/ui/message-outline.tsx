@@ -164,7 +164,17 @@ function MessageOutlineList({ className, ...props }: ComponentProps<"ol">) {
 
   useEffect(() => {
     const list = listRef.current;
-    if (!list || activeIndex < 0 || previewIndex !== undefined) return;
+    // The preview can open a frame after the pointer arrives, so the list
+    // also asks for the pointer. A scroll under a press moves its release to
+    // another item, and the click goes nowhere.
+    if (
+      !list ||
+      activeIndex < 0 ||
+      previewIndex !== undefined ||
+      list.matches(":hover")
+    ) {
+      return;
+    }
     const top = activeIndex * ITEM_PX;
     if (top < list.scrollTop) list.scrollTop = top;
     else if (top + ITEM_PX > list.scrollTop + list.clientHeight) {

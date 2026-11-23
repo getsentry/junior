@@ -116,9 +116,11 @@ export type MessageAgentResult = {
   conversationId: string;
   /**
    * `started`: the target child agent starts work on the message now.
-   * `queued`: the target reads it after its current work.
+   * `queued`: the target reads it after its current work. `noted`: the
+   * sender is stopped, so the child got it as a Conversation note and
+   * started no work.
    */
-  delivery: "queued" | "started";
+  delivery: "noted" | "queued" | "started";
 };
 
 /**
@@ -299,6 +301,15 @@ export type AgentEnvironment = {
 };
 
 /**
+ * Committed agent messages with the event seq of each, from one projection.
+ * A Turn owns the messages above its `turn_started` seq.
+ */
+export interface AgentHistory {
+  messages: readonly PiMessage[];
+  seqs: readonly number[];
+}
+
+/**
  * One bounded attempt to advance a Turn.
  *
  * Build identity, instruction, history, delivery, and durability here. Bind
@@ -307,12 +318,6 @@ export type AgentEnvironment = {
 export type AgentRun = {
   /** Durable conversation advanced by this run. */
   conversationId: string;
-  /**
-   * Agent invocation that this Run advances. Only the Agent invocation worker
-   * sets it. It names the invocation and selects no behavior: `turnBehavior`
-   * does that from the Conversation kind and the Source.
-   */
-  agentInvocationId?: string;
   /** Parent Conversation. Unset for a root. Use it only as the tree edge. */
   parentConversationId?: string;
   /** Stable turn advanced across this run and any continuation runs. */
@@ -322,7 +327,7 @@ export type AgentRun = {
 
   instruction: AgentInstruction;
   /** Durable Pi transcript for this conversation, excluding ephemeral turn context. */
-  history?: readonly PiMessage[] | undefined;
+  history?: AgentHistory | undefined;
 
   /**
    * Who this run executes as. Prefer always setting this. Derive
@@ -489,7 +494,7 @@ export function assertRunConsistency(
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       // These Sources do not identify the Actor's platform.
       return;
   }

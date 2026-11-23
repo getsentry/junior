@@ -144,12 +144,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("heading", { name: "What do you need?" }),
     ).toBeVisible();
     await expect(page.getByLabel("Start a conversation")).toBeFocused();
-    // The pane keeps its entries beside the composer.
+    // The pane keeps its entries beside the composer. The composer is no
+    // Conversation yet, so the Inbox row stays the page.
     await expect(
       page.getByRole("navigation", { name: "Primary" }).getByRole("link", {
         name: /^Inbox/,
       }),
-    ).toBeVisible();
+    ).toHaveAttribute("aria-current", "page");
     await screenshot(page, "inbox-new-conversation", { lightTheme: true });
     await page.getByRole("link", { name: "Back to Inbox" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/`);
@@ -628,8 +629,8 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.goto(`${dashboard.baseURL}/`);
       const entries = page.getByRole("navigation", { name: "Primary" });
       // A list leaves its path as the place Back returns to.
-      await entries.getByRole("link", { name: /^Decisions/ }).click();
-      await expect(page).toHaveURL(/\/\?view=decisions$/);
+      await entries.getByRole("link", { name: /^Snoozed/ }).click();
+      await expect(page).toHaveURL(/\/\?view=snoozed$/);
       await page
         .getByRole("link", { name: "Back to the Inbox entries" })
         .click();

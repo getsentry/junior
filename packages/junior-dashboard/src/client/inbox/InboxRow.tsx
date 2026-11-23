@@ -25,7 +25,6 @@ import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import { Button, buttonVariants } from "../components/ui/button";
 import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
-import { BriefOutcomeMarker } from "../conversations/ConversationBrief";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
 import {
   ConversationStateIcon,
@@ -44,8 +43,8 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import {
   ConversationSidebarThreadRow,
   ConversationSidebarThreadToggle,
+  ConversationSidebarThreadsOmitted,
 } from "../conversations/ConversationSidebarThreadRow";
-import type { PinnedRowDrag } from "../conversations/PinnedConversationOrder";
 import { sidebarThreads } from "../conversations/sidebarThreads";
 import { useInboxRowActions } from "../conversations/useInboxRowActions";
 import { usePinConversation } from "../conversations/usePinConversation";
@@ -91,12 +90,8 @@ import {
   RowQuickActions,
   type InboxCardActions,
 } from "./RowHoverActions";
-import {
-  ButtonLabel,
-  LOOK_CLASSES,
-  RowSnoozeButton,
-  type ButtonLook,
-} from "./RowSnoozeDismiss";
+import { ButtonLabel, LOOK_CLASSES, type ButtonLook } from "./RowDismissButton";
+import { RowSnoozeButton } from "./RowSnoozeDismiss";
 import type { EventSnooze } from "./snoozeChoices";
 import { wakeReasonText } from "./snoozeSentences";
 import type { InboxBundle } from "./inboxItemFormat";
@@ -111,22 +106,13 @@ import {
 const NO_ANNOTATIONS: NonNullable<Conversation["sidebarAnnotations"]> = [];
 const NO_NOTICES: readonly InboxItemPayload[] = [];
 
-/** The second line: the Brief, or the newest message when there is none. */
+/** The second line: the summary, or the newest message when there is none. */
 function rowSummary(conversation: Conversation | undefined) {
-  const brief = conversation?.brief;
-  if (brief)
-    return {
-      mentions: undefined,
-      status: brief.status,
-      text: brief.summary || brief.intent,
-    };
+  if (conversation?.summary)
+    return { mentions: undefined, text: conversation.summary };
   const preview = conversation?.activityPreview;
   if (!preview) return undefined;
-  return {
-    mentions: preview.mentions,
-    status: undefined,
-    text: preview.text,
-  };
+  return { mentions: preview.mentions, text: preview.text };
 }
 
 /**
@@ -182,8 +168,6 @@ type InboxRowProps = {
    * is not a Conversation, which always has a `bundle`.
    */
   conversationId: string | undefined;
-  /** Set on a pinned row of a list that drags pins into a new order. */
-  drag?: PinnedRowDrag;
   expanded: boolean;
   /** The notices that fold into each ask, by the ask's id. */
   foldedNotices?: ReadonlyMap<string, readonly InboxItemPayload[]>;
@@ -285,7 +269,7 @@ function ConversationInboxRow(
     quickActions?: ReactNode;
   },
 ) {
-  const { conversation, drag } = props;
+  const { conversation } = props;
   const actions = useInboxRowActions(conversation, {
     onRowAction: props.onRowAction,
     selected: props.selected,
@@ -294,7 +278,7 @@ function ConversationInboxRow(
   const prefetch = usePrefetchConversation(conversation.id);
   const [threadsExpanded, setThreadsExpanded] = useState(false);
   const threads = props.showThreads
-    ? sidebarThreads(conversation.threads, { expanded: threadsExpanded })
+    ? sidebarThreads(conversation, { expanded: threadsExpanded })
     : undefined;
   const participant = conversation.isParticipant;
   const hasThreads = Boolean(threads && threads.threads.length > 0);
@@ -345,39 +329,37 @@ function ConversationInboxRow(
   );
   return (
     <li
-      className={cn(
-        inboxCardClass(props.expanded),
-        drag?.dragging && "opacity-40",
-      )}
+      className={inboxCardClass(props.expanded)}
       data-expanded={props.expanded || undefined}
       data-inbox-row={props.rowKey}
       ref={props.cardRef}
     >
-      <ContextMenu onOpenChange={actions.onMenuOpenChange}>
+      {/* A closed card opens the menu anywhere on it. An open card opens it
+          only from its title, so its text selects and the browser menu
+          works there. Both stay mounted, so a toggle keeps focus. */}
+      <ContextMenu
+        disabled={props.expanded}
+        onOpenChange={actions.onMenuOpenChange}
+      >
         <ContextMenuTrigger
           {...prefetch}
-          {...drag?.listeners}
-          className={cn("group relative min-w-0", dashboardSurfaceRadiusClass)}
-          onKeyDown={drag?.onKeyDown}
-          ref={drag?.setNodeRef}
+          className={cn(
+            "group relative min-w-0",
+            dashboardSurfaceRadiusClass,
+            props.expanded && "select-text",
+          )}
         >
           <InboxRowBody
             {...props}
             actionsBelow={actionsBelow}
             hoverActions={hoverActions}
             threadsShown={hasThreads}
-            linkProps={{
-              "aria-keyshortcuts": drag
-                ? "Alt+ArrowUp Alt+ArrowDown"
-                : undefined,
-              // The browser's own link drag would take the pointer from the
-              // reorder.
-              draggable: drag ? false : undefined,
-            }}
+            titleMenu={actions}
           />
         </ContextMenuTrigger>
         {actions.menu}
       </ContextMenu>
+      {actions.dialogs}
       {threads && threads.threads.length > 0 ? (
         <div className="grid gap-0.5 px-1 pb-2">
           {threads.threads.map((thread) => (
@@ -391,6 +373,9 @@ function ConversationInboxRow(
               selected={props.selected}
             />
           ))}
+          {threads.omittedCount > 0 ? (
+            <ConversationSidebarThreadsOmitted count={threads.omittedCount} />
+          ) : null}
           {toggle || actionsBelow ? (
             <div className="flex min-w-0 flex-wrap items-center gap-1">
               {toggle ? (
@@ -458,13 +443,41 @@ function RowSummary(props: {
   );
 }
 
+type TitleMenu = Pick<
+  ReturnType<typeof useInboxRowActions>,
+  "menu" | "onMenuOpenChange"
+>;
+
+/** The line that holds a row's title link, and an open row's menu. */
+function RowTitle(props: {
+  children: ReactNode;
+  expanded: boolean;
+  menu?: TitleMenu | undefined;
+}) {
+  const className = "flex min-w-0 items-center gap-1.5";
+  if (!props.menu) return <span className={className}>{props.children}</span>;
+  // A closed row's own menu takes the right-click, so this one waits.
+  return (
+    <ContextMenu
+      disabled={!props.expanded}
+      onOpenChange={props.menu.onMenuOpenChange}
+    >
+      <ContextMenuTrigger className={className} render={<span />}>
+        {props.children}
+      </ContextMenuTrigger>
+      {props.menu.menu}
+    </ContextMenu>
+  );
+}
+
 function InboxRowBody(
   props: InboxRowProps & {
     /** The row's own actions, shown in the meta's place on hover. */
     hoverActions?: ReactNode;
-    linkProps?: { "aria-keyshortcuts"?: string; draggable?: boolean };
     /** Whether the row lists its Threads under the head. */
     threadsShown?: boolean;
+    /** The Conversation menu that an open row's title opens. */
+    titleMenu?: TitleMenu;
   },
 ) {
   const { bundle, conversation } = props;
@@ -514,7 +527,7 @@ function InboxRowBody(
   const found = props.itemTitle ? undefined : rowSummary(conversation);
   // The viewer's answer replaces the line that asked for it.
   const summary = props.answered
-    ? { mentions: undefined, status: found?.status, text: props.answered }
+    ? { mentions: undefined, text: props.answered }
     : found;
   const objects = useMemo(() => linkedWorkObjects(annotations), [annotations]);
   const limit = props.expanded ? OPEN_LINKED_WORK_LIMIT : LINKED_WORK_LIMIT;
@@ -608,21 +621,15 @@ function InboxRowBody(
             className="col-start-2 row-start-1 grid min-w-0 gap-1"
             data-inbox-slot="title"
           >
-            {/* The Brief's outcome marks the title, as the dot does. It
-                sits outside the link, so the link's name stays the title. */}
-            <span className="flex min-w-0 items-center gap-1.5">
-              {summary?.status ? (
-                <BriefOutcomeMarker status={summary.status} />
-              ) : null}
+            <RowTitle expanded={props.expanded} menu={props.titleMenu}>
               <Link
-                {...props.linkProps}
                 aria-controls={opens ? undefined : controls}
                 aria-current={props.selected ? "page" : undefined}
                 aria-expanded={opens ? undefined : props.expanded}
                 className={cn(
                   "grid min-w-0 flex-1 gap-1 rounded-md font-sans text-inherit no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
-                  // A long press opens the row menu or drags a pin, not the iOS
-                  // link callout.
+                  // A long press opens the row menu, not the iOS link
+                  // callout.
                   "[-webkit-touch-callout:none]",
                 )}
                 data-inbox-head=""
@@ -691,7 +698,7 @@ function InboxRowBody(
                   </span>
                 ) : null}
               </Link>
-            </span>
+            </RowTitle>
             {wake ? (
               <span
                 className={cn(lineClass, "text-xs text-dashboard-text-muted")}

@@ -43,7 +43,8 @@ export function ConversationDetailsPanel(props: {
   return (
     <ConversationDetails
       agentTree={detail?.agentTree}
-      brief={detail?.brief}
+      summary={detail?.summary}
+      summaryMentions={detail?.summaryMentions}
       conversationId={props.conversationId}
       highlightReview={props.highlightReview}
       identity={

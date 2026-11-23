@@ -46,6 +46,14 @@ also wake a Conversation or run an Event automation.
   nobody.
 - Images in PRs, issues, and comments are links to public Junior images.
 - Junior can review a PR and request changes.
+- When the requester requests changes on a Junior PR, the PR asks for
+  their review again, in the Inbox and on GitHub, only when Junior marks
+  each comment of that change request addressed or declined and the
+  required checks pass. Pushes, merges of the base branch, comments, and
+  replies do not ask. When the requester comments or reviews, Junior acts
+  next, and the Inbox stops asking. A requester who approved since is not
+  asked. The Inbox item says why it asks: every comment is handled, or the
+  checks now pass.
 - Junior asks for a review only when the required checks pass
   (`github#review-request`, `github#rereview`).
 - Only the requester gets Inbox items for a Junior PR. Other reviewers
@@ -72,10 +80,9 @@ also wake a Conversation or run an Event automation.
 
 ## Gaps
 
-- A PR opened ready for review, and Junior's push, reply, or comment
-  after a change request, ask for a review before the required checks pass
-  (`github#review-request`, `github#rereview`). This breaks "asks for a
-  review only when the required checks pass".
+- A PR opened ready for review asks for a review before the required
+  checks pass (`github#review-request`). This breaks "asks for a review
+  only when the required checks pass".
 - Junior fixes merge conflicts on a timer after a person's activity, not
   when the PR next needs a person, and a draft gets no fix, so it never
   reaches review (`github#conflict-fix`). This breaks "upkeep follows
@@ -103,3 +110,6 @@ also wake a Conversation or run an Event automation.
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior
   images".
+- A request for the signed-in GitHub user reads it with the requester's
+  account. This breaks "acts as its own App … not by using their
+  credentials".

@@ -8,7 +8,7 @@ import type {
 import { DetailsPanel, useDetailsPanel } from "../components/DetailsPanel";
 import { ConversationInboxItems } from "../inbox/ConversationInboxItems";
 import { Button } from "../components/ui/button";
-import { ConversationBrief } from "./ConversationBrief";
+import { ConversationSummary } from "./ConversationSummary";
 import {
   ConversationTasks,
   ConversationThreads,
@@ -31,19 +31,15 @@ import {
 import { ConversationTodos } from "./ConversationTodos";
 import { DetailsCard, DetailsRow } from "./DetailsList";
 import type { ConversationDrawerTarget } from "./ConversationDrawer";
-import { formatRelativeTime, formatTime } from "../time";
-
-type Brief = NonNullable<ConversationDetailReport["brief"]>;
 
 /**
- * Surface work that needs the reader, then the Brief and its linked work.
+ * Surface work that needs the reader, then the summary and linked work.
  */
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   /** Viewer's auto-archive control. Null for non-participants. */
   autoArchive: ReactNode;
-  brief?: Brief | undefined;
   conversationId: string;
   /** True when a sidebar review chip opened details. */
   highlightReview: boolean;
@@ -57,6 +53,8 @@ export function ConversationDetails(props: {
   onOpenSubagent(target: ConversationDrawerTarget): void;
   /** Show the Turn that recalled or captured one memory. */
   onSelectMemory(entry: ConversationMemoryEntry): void;
+  summary?: string | undefined;
+  summaryMentions?: ConversationDetailReport["summaryMentions"];
   overview: ReactNode;
   usage: ReactNode;
 }) {
@@ -120,26 +118,7 @@ export function ConversationDetails(props: {
           aria-label="Conversation details"
           className="m-0 flex min-w-0 items-center gap-1.5 font-sans text-sm"
         >
-          {props.brief ? (
-            <>
-              <span className="font-semibold text-dashboard-text">Brief</span>
-              <span aria-hidden="true" className="text-dashboard-text-faint">
-                ·
-              </span>
-              <time
-                className="truncate text-xs font-normal text-dashboard-text-muted"
-                dateTime={props.brief.updatedAt}
-                title={formatTime(props.brief.updatedAt, {
-                  dateStyle: "medium",
-                  timeStyle: "short",
-                })}
-              >
-                Updated {formatRelativeTime(props.brief.updatedAt)}
-              </time>
-            </>
-          ) : (
-            <span className="font-semibold text-dashboard-text">Details</span>
-          )}
+          <span className="font-semibold text-dashboard-text">Details</span>
         </h2>
       }
       onClose={props.onClose}
@@ -158,9 +137,12 @@ export function ConversationDetails(props: {
           conversationId={props.conversationId}
           highlight={props.highlightReview}
         />
-        {props.brief ? (
+        {props.summary ? (
           <div className="min-w-0 break-words px-1 pb-1 font-sans text-sm leading-relaxed text-dashboard-text-muted">
-            <ConversationBrief brief={props.brief} variant="summary" />
+            <ConversationSummary
+              mentions={props.summaryMentions}
+              summary={props.summary}
+            />
           </div>
         ) : null}
         <ConversationTodos

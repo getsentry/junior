@@ -14,6 +14,7 @@ import { createObjectRoutes } from "./api/objects/routes";
 import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createImageRoutes } from "./api/images/routes";
+import { createLeadRoutes } from "./api/lead/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createServiceAccountRoutes } from "./api/service-accounts/routes";
@@ -43,7 +44,7 @@ import { requireViewer } from "./api/viewer";
 import { versionsQuerySchema, versionsSchema } from "./api/schema/versions";
 import { getProductionSlackAdapter } from "./chat/app/production";
 import { logException } from "./chat/logging";
-import { createSlackInboxItemShow } from "./chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "./chat/notifications/inbox-item-show";
 import type { ConversationWorkQueue } from "./chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "./chat/task-execution/vercel-queue";
 import type { WaitUntilFn } from "./handlers/types";
@@ -144,7 +145,7 @@ export function createJuniorApi(
     createInboxItemRoutes({
       delivery: {
         queue,
-        show: createSlackInboxItemShow(getProductionSlackAdapter),
+        show: createInboxItemShow(getProductionSlackAdapter),
       },
     }),
   );
@@ -157,6 +158,7 @@ export function createJuniorApi(
   app.route("/api/cache-warming", createCacheWarmingRoutes());
   app.route("/api/gateway-providers", createGatewayProviderRoutes());
   app.route("/api/images", createImageRoutes());
+  app.route("/api/lead", createLeadRoutes());
   app.route("/api/objects", createObjectRoutes());
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());

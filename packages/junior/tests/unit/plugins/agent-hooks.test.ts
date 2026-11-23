@@ -147,6 +147,8 @@ function fakeSandbox(
   return {
     sandboxId: "sandbox-agent-hooks",
     sessionId: "session-agent-hooks",
+    keepsFilesAcrossSessions: false,
+    startedAtMs: Date.now(),
     fs: {
       async readFile() {
         return "";
@@ -2136,7 +2138,7 @@ describe("getPluginTools channel resolution", () => {
     const ctx = capturePluginContext({
       turnTools: rootTurnTools,
       conversationId: "agent-invocation:invocation-1",
-      source: { kind: "agent_invocation" },
+      source: { kind: "parent_message" },
       actor: TEST_ACTOR,
       destination: SLACK_DESTINATION,
       location: {
@@ -2149,7 +2151,7 @@ describe("getPluginTools channel resolution", () => {
       workspace: {} as any,
     });
 
-    expect(ctx.source).toEqual({ kind: "agent_invocation" });
+    expect(ctx.source).toEqual({ kind: "parent_message" });
     expect(ctx.actor).toEqual(TEST_ACTOR);
     expect(ctx.slack?.channelCapabilities.canCreateCanvas).toBe(true);
   });

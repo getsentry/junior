@@ -101,6 +101,7 @@ function memoryHeartbeatContext(args: {
       record: vi.fn(),
       recordActivity: vi.fn(),
     },
+    conversationChanges: { apply: vi.fn() },
     db: memoryDb(args.fixture),
     embedder: args.embedder,
     events: { publish: vi.fn() },
@@ -744,7 +745,7 @@ describe("memory plugin storage", () => {
       restoreMemory: disabled,
       searchMemories: "enabled",
     };
-    expect(toolStates({ kind: "agent_invocation" })).toEqual(readOnly);
+    expect(toolStates({ kind: "parent_message" })).toEqual(readOnly);
     expect(
       toolStates(
         createSlackSource({

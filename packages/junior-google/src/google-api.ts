@@ -1,5 +1,6 @@
 import {
   PluginToolInputError,
+  type PluginArtifacts,
   type PluginEgress,
   type PluginSandbox,
   type User,
@@ -14,6 +15,8 @@ export interface GoogleToolContext {
   /** The Workspace account Junior acts as, in lowercase. */
   accountEmail: string;
   allowedDomains: string[];
+  /** Absent when the install cannot publish artifacts. */
+  artifacts?: PluginArtifacts;
   egress: PluginEgress;
   /** Holds full meeting records and slide thumbnails. */
   sandbox: Pick<PluginSandbox, "readFile" | "root" | "run" | "writeFile">;
@@ -59,7 +62,7 @@ export function requireAllowedEmails(
   });
   if (outside.length > 0) {
     throw new PluginToolInputError(
-      `You can only schedule with people at ${allowedDomains.join(", ")}. Not allowed: ${outside.join(", ")}`,
+      `You can only schedule with people at ${allowedDomains.join(", ")}. Not allowed: ${outside.join(", ")}. Remove them and call the tool again.`,
     );
   }
 }
@@ -189,6 +192,8 @@ export function googleApiError(
   const detail = error?.message;
   const message = `Google ${operation} failed with HTTP ${response.status}${detail ? `: ${detail}` : ""}`;
   return response.status === 400
-    ? new PluginToolInputError(message)
+    ? new PluginToolInputError(
+        `${message}. Fix the input that Google names and call the tool again.`,
+      )
     : new Error(message);
 }

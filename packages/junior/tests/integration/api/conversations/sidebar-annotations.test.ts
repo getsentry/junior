@@ -9,7 +9,7 @@ import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("conversation list sidebar annotations", () => {
-  test("includes resource links on viewable feed conversations", async () => {
+  test("shows resource links as chips on viewable feed conversations", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     const store = createSqlStore(fixture.sql);
     const publicId = "slack:C123:annotated-public";
@@ -106,36 +106,36 @@ describe("conversation list sidebar annotations", () => {
               },
               { icon: "circle-dot", key: "github", label: "junior" },
             ],
-            annotations: [
-              expect.objectContaining({
-                objectType: "automation",
-                key: "daily",
-              }),
-              expect.objectContaining({
-                key: "getsentry/junior#1081",
-                kind: "resource_link",
-                label: "getsentry/junior#1081",
-                plugin: "github",
-                status: "open",
-                url: "https://github.com/getsentry/junior/pull/1081",
-              }),
-            ],
           }),
           expect.objectContaining({ conversationId: privateId }),
         ],
       });
-      expect(
-        (await readConversationDetail(publicId))?.sidebarAnnotations,
-      ).toEqual(
+      // Feed rows send only the chips. The detail sends the full annotations.
+      for (const row of feed.conversations) {
+        expect(row).not.toHaveProperty("annotations");
+      }
+      const detail = await readConversationDetail(publicId);
+      expect(detail?.sidebarAnnotations).toEqual(
         feed.conversations.find((item) => item.conversationId === publicId)
           ?.sidebarAnnotations,
       );
+      expect(detail?.annotations).toEqual([
+        expect.objectContaining({
+          objectType: "automation",
+          key: "daily",
+        }),
+        expect.objectContaining({
+          key: "getsentry/junior#1081",
+          kind: "resource_link",
+          label: "getsentry/junior#1081",
+          plugin: "github",
+          status: "open",
+          url: "https://github.com/getsentry/junior/pull/1081",
+        }),
+      ]);
       expect(
         (await readConversationDetail(privateId))?.sidebarAnnotations,
       ).toBeUndefined();
-      expect(
-        feed.conversations.find((item) => item.conversationId === privateId),
-      ).not.toHaveProperty("annotations");
     } finally {
       setPlugins([]);
       await fixture.close();

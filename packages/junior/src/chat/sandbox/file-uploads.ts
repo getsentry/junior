@@ -114,7 +114,9 @@ export class SandboxFileNotFoundError extends ToolInputError {
 export function normalizeSandboxPath(inputPath: string): string {
   const trimmed = inputPath.trim();
   if (!trimmed) {
-    throw new ToolInputError("path is required");
+    throw new ToolInputError(
+      "path is required. Set path to a file path in the sandbox.",
+    );
   }
 
   if (path.posix.isAbsolute(trimmed)) {
@@ -218,12 +220,14 @@ export async function readSandboxFileUpload(
   }
 
   if (fileBuffer.byteLength === 0) {
-    throw new ToolInputError(`file is empty: ${targetPath}`);
+    throw new ToolInputError(
+      `file is empty: ${targetPath}. Write content to the file first.`,
+    );
   }
 
   if (fileBuffer.byteLength > MAX_SANDBOX_FILE_UPLOAD_BYTES) {
     throw new ToolInputError(
-      `file exceeds ${MAX_SANDBOX_FILE_UPLOAD_BYTES} bytes: ${targetPath} (${fileBuffer.byteLength} bytes)`,
+      `file exceeds ${MAX_SANDBOX_FILE_UPLOAD_BYTES} bytes: ${targetPath} (${fileBuffer.byteLength} bytes). Make the file smaller, or split it into smaller files.`,
     );
   }
 

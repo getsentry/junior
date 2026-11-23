@@ -3,7 +3,8 @@
  *
  * Junior asks for no review while a pull request is a draft. When GitHub
  * marks the draft ready for review, Junior asks the reviewers that the person
- * named, or else the requester's linked GitHub account.
+ * named, or else the requester's linked GitHub account. A person who already
+ * reviewed the draft is not asked again.
  */
 import type { PluginLogger, PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -11,6 +12,7 @@ import type { GitHubDb } from "../db/database.js";
 import { readGitHubDraftReviewers } from "../pull-request-requesters/draft-reviewers.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import {
+  loadPullRequestMergeState,
   requestPullRequestReviewers,
   type GitHubInstallationEnv,
 } from "./installation-requests.js";
@@ -59,7 +61,16 @@ export async function requestGitHubReviewersWhenReady(args: {
     const requester = named
       ? undefined
       : await args.loadGitHubLogin?.(opener.identityId);
-    const reviewers = named ?? (requester ? [requester] : []);
+    const candidates = named ?? (requester ? [requester] : []);
+    if (candidates.length === 0) return;
+    const { reviewedBy } = await loadPullRequestMergeState(
+      args.env,
+      target,
+      undefined,
+    );
+    const reviewers = candidates.filter(
+      (login) => !reviewedBy.includes(login.toLowerCase()),
+    );
     if (reviewers.length === 0) return;
     await requestPullRequestReviewers(args.env, { ...target, reviewers });
   } catch (error) {

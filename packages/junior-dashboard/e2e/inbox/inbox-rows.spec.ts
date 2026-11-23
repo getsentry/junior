@@ -246,13 +246,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       "data-summary-lines",
       "2",
     );
-    // The Brief's running marker sits on the title, as the dot does.
-    await expect(
-      row
-        .locator('[data-inbox-slot="title"]')
-        .getByRole("img", { name: /^Brief: / }),
-    ).toBeVisible();
-    await expect(summary.getByRole("img", { name: /^Brief: / })).toHaveCount(0);
     // Compact rows clamp it to one line. A new page has no comfortable
     // density script.
     const compact = await page.context().newPage();
@@ -379,6 +372,40 @@ test.describe("new UI", { tag: "@new" }, () => {
     await row.getByRole("link", { name: /Read the canary agent logs/ }).hover();
     await expect(meta.getByRole("img", { name: "Pinned" })).toBeVisible();
     await expect(meta.getByText("1d")).toBeVisible();
+  });
+
+  test("an open row opens its Conversation menu from its title, and leaves its text to the browser", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [rollout] });
+    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    const title = "Investigate checkout latency";
+    const row = page
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("listitem")
+      .filter({ has: page.getByRole("link", { exact: true, name: title }) })
+      // Another row's summary links to it, after it.
+      .first();
+    const head = row.getByRole("link", { exact: true, name: title });
+    const menu = page.getByRole("menu");
+    // A closed row opens it anywhere on the row.
+    await row.getByRole("group", { name: "Linked work" }).click({
+      button: "right",
+    });
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(menu).toHaveCount(0);
+    await row.getByRole("button", { name: "Question" }).click();
+    const asks = page.getByRole("region", { name: `${title}: asks` });
+    await expect(asks).toBeVisible();
+    // An open row's text selects and copies, so a right-click there is the
+    // browser's.
+    await asks.click({ button: "right" });
+    await expect(menu).toHaveCount(0);
+    await head.click({ button: "right" });
+    await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
   });
 
   test("an ask shown on an image card expands its row, as its pill would", async ({

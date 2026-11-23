@@ -7,11 +7,11 @@ import { replyTextSchema } from "@/chat/turn-answer";
 
 const DESCRIPTIONS = {
   parent: {
-    tool: "Send the reply of this Turn to your parent agent when the Turn ends. The parent reads it as your result.",
+    tool: "Send this text to your parent agent when the Turn ends.",
     text: "The finished result for your parent agent, with everything it needs to continue.",
   },
   automation: {
-    tool: "Post the reply of this Turn when the Turn ends. When the run starts, the reply goes to its stored destinations. After the run posts, a reply goes to the run's Slack thread.",
+    tool: "Post the Automation's reply. The run's first reply goes to every place the Automation posts to, such as its channel or the creator's DMs. Later replies go in the Slack thread of the first reply in the Automation's channel.",
     text: "The finished message, such as a reminder, digest, or alert.",
   },
 } as const;
@@ -53,7 +53,9 @@ export function createReplyTool(target: "parent" | "automation") {
       }
       const text = replyTextSchema.safeParse(input.text);
       if (!text.success) {
-        throw new ToolInputError("The reply text must not be empty.");
+        throw new ToolInputError(
+          `The reply text must not be empty. Set text to the reply, or call \`${NO_REPLY_TOOL_NAME}\` to post nothing.`,
+        );
       }
       return { text: text.data };
     },

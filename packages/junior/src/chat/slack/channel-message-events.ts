@@ -122,7 +122,7 @@ export function requireSlackChannelMessageScope(
   const channelId = automation.destination.channelId;
   if (!CHANNEL_ID_PATTERN.test(channelId)) {
     throw new ToolInputError(
-      "A Slack channel-message automation works only in a channel, not in a DM.",
+      "A Slack channel-message automation works only in a channel, not in a DM. Create it from the Slack channel to watch.",
     );
   }
   const { identifier, match } = automation.trigger;

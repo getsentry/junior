@@ -34,7 +34,7 @@ import {
 } from "@/chat/inbox-items/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
 import { mswServer } from "../../msw/server";
@@ -123,6 +123,7 @@ function blocksOf(call: { params: Record<string, unknown> } | undefined) {
       action_id?: string;
       style?: string;
       text?: unknown;
+      url?: string;
       value?: string;
     }>;
     text?: string;
@@ -299,10 +300,10 @@ describe("Slack webhook: Inbox item cards", () => {
     expect(
       controls?.elements?.map((element) => [element.action_id, element.style]),
     ).toEqual([
+      ["junior_review_item:dismiss", undefined],
       ["junior_review_item:choice:0", "primary"],
       ["junior_review_item:choice:1", undefined],
       ["junior_review_item:answer", undefined],
-      ["junior_review_item:dismiss", undefined],
     ]);
 
     // The agent changes the choices. A click on the old card cannot pick a
@@ -521,7 +522,7 @@ describe("Slack webhook: Inbox item cards", () => {
     await createPluginInboxItems({
       conversationId: THREAD,
       plugin: "deploys",
-      show: createSlackInboxItemShow(createSlackAdapterFixture),
+      show: createInboxItemShow(createSlackAdapterFixture),
     }).upsert({
       assigneeIdentityIds: ["identity:U123"],
       body: "Deploys of `api` stopped after 3 failures.",
@@ -538,7 +539,7 @@ describe("Slack webhook: Inbox item cards", () => {
       blocksOf(card)
         .find((block) => block.type === "actions")
         ?.elements?.map((element) => element.action_id),
-    ).toEqual(["junior_review_item:choice:0", "junior_review_item:dismiss"]);
+    ).toEqual(["junior_review_item:dismiss", "junior_review_item:choice:0"]);
 
     const [item] = await getDb().query.juniorInboxItems.findMany();
     const resume = (actionTs: string) =>
@@ -679,6 +680,47 @@ describe("Slack webhook: Inbox item cards", () => {
     );
   });
 
+  it("orders a card Dismiss, Snooze, then the answer, with Snooze in the dashboard", async () => {
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    try {
+      harness();
+      await slackThread(THREAD, "public");
+      const ana = await linkSlackUser("ana@example.com", "U123");
+      const { item } = await addItem(ana, {
+        kind: "action",
+        title: "Ship release 1.2.3",
+        body: "The release checks passed.",
+        assignees: ["everyone"],
+        dedupe_key: "release:1.2.3",
+        request: SHIP_REQUEST,
+      });
+
+      const [post] = slackApiOutbox.messages();
+      const controls = blocksOf(post).find((block) => block.type === "actions");
+      // A Slack message looks the same to everyone, so Snooze opens the
+      // item's snooze form in the dashboard, for the person who clicks.
+      expect(
+        controls?.elements?.map((element) => [
+          element.action_id,
+          element.url ?? null,
+        ]),
+      ).toEqual([
+        ["junior_review_item:dismiss", null],
+        [
+          "junior_review_item:snooze",
+          `https://junior.example.com/inbox?item=${encodeURIComponent(item.id)}&snooze=1`,
+        ],
+        ["junior_review_item:choice:0", null],
+        ["junior_review_item:choice:1", null],
+        ["junior_review_item:answer", null],
+      ]);
+    } finally {
+      setDashboardConversationLinkOptions(undefined);
+    }
+  });
+
   it("keeps a long answer inside the Slack limits of a card", async () => {
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
@@ -702,7 +744,7 @@ describe("Slack webhook: Inbox item cards", () => {
       await actOnInboxItem({
         action: "submit",
         answer: { requestId: item.id, values: { notes: ["x".repeat(3_000)] } },
-        delivery: { queue, show: createSlackInboxItemShow() },
+        delivery: { queue, show: createInboxItemShow() },
         id: item.id,
         user: ana,
       });

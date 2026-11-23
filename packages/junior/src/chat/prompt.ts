@@ -2,11 +2,25 @@
  * Prompt assembly.
  *
  * This module owns Junior's static system prompt and volatile per-turn runtime
- * context. `policies/system-prompt.md` defines the block order, the authority
- * of each context input, and the cache rules. Change that policy before you
- * change the shape here. Runtime context is session-scoped bootstrap data; it
- * must stay separate from durable conversation history so compaction does not
- * retain runtime instructions as user text.
+ * context. The header of `system-prompt-rules.ts` holds the block order.
+ *
+ * The system prompt is the same for every Turn of one deployment, platform,
+ * and Prompt mode, so it holds no request, actor, time, or Conversation data.
+ * Facts for one request go in the context message: a user-role message before
+ * the current instruction, with `<runtime-turn-context>`, `AGENTS.md` at Turn
+ * start, and `<thread-context>`, each in its own content part. The current
+ * instruction is a separate user-role message with only a person's words and
+ * attachments. Tool results, files, and fetched pages are tool result
+ * messages.
+ *
+ * A Turn adds `AGENTS.md` only when it differs from the latest copy in
+ * history. An `AGENTS.md` that the Turn finds or changes later is a new
+ * user-role message at the end of history, because earlier messages do not
+ * change. Only context compaction rewrites them.
+ *
+ * Runtime context is session-scoped bootstrap data; it must stay separate
+ * from durable conversation history so compaction does not retain runtime
+ * instructions as user text.
  */
 import fs from "node:fs";
 import path from "node:path";
@@ -231,7 +245,7 @@ function formatActiveMcpCatalogsForPrompt(
           ),
           childLine(
             renderInlineTag(
-              "available_tool_count",
+              "available-tool-count",
               String(catalog.available_tool_count),
             ),
           ),
@@ -470,7 +484,7 @@ function formatSourceLines(source: Source): string[] {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return [`- source.kind: ${source.kind}`];
   }
 }
@@ -601,6 +615,13 @@ function buildContextSection(params: {
  * and Code Mode script tools that the model can use now, each with its tags,
  * or null when it is empty. A Turn sends the ones that changed as named
  * system prompt sections, so the Turn context and history stay the same.
+ *
+ * At Turn start, one system message sets each section that differs from the
+ * section state of history, or removes an empty one. System messages before
+ * the first assistant message fold into the system prompt. Pi sends a later
+ * one before the next assistant message, or folds it into the system prompt
+ * for a model without mid-conversation system messages. Context compaction
+ * folds the section state into one system message.
  */
 export function buildCapabilitySections(params: {
   availableSkills: SkillMetadata[];
@@ -841,6 +862,10 @@ const STATIC_SYSTEM_PROMPTS: Record<
   conversation: {
     local: buildStaticSystemPrompt("local", "conversation"),
     slack: buildStaticSystemPrompt("slack", "conversation"),
+  },
+  lead: {
+    local: buildStaticSystemPrompt("local", "lead"),
+    slack: buildStaticSystemPrompt("slack", "lead"),
   },
   thread: {
     local: buildStaticSystemPrompt("local", "thread"),

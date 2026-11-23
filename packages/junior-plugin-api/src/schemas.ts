@@ -157,9 +157,9 @@ export const pluginDispatchSourceSchema = z
   .object({ kind: z.literal("plugin_dispatch") })
   .strict();
 
-/** Runtime-owned Agent invocation input Source. */
-export const agentInvocationSourceSchema = z
-  .object({ kind: z.literal("agent_invocation") })
+/** Runtime-owned Source of a parent agent's task or message to a child agent. */
+export const parentMessageSourceSchema = z
+  .object({ kind: z.literal("parent_message") })
   .strict();
 
 const currentSourceSchema = z.discriminatedUnion("kind", [
@@ -170,7 +170,7 @@ const currentSourceSchema = z.discriminatedUnion("kind", [
   scheduledAutomationSourceSchema,
   eventAutomationSourceSchema,
   pluginDispatchSourceSchema,
-  agentInvocationSourceSchema,
+  parentMessageSourceSchema,
 ]);
 
 function normalizeStoredSource(value: unknown): unknown {
@@ -180,6 +180,7 @@ function normalizeStoredSource(value: unknown): unknown {
   const source = value as Record<string, unknown>;
   if ("kind" in source) {
     const legacyKinds: Record<string, string> = {
+      agent_invocation: "parent_message",
       event_task: "event_automation",
       resource_event: "event",
       scheduled_task: "scheduled_automation",

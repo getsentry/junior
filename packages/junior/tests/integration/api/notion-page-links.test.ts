@@ -52,7 +52,8 @@ const PAGES: Record<string, Record<string, unknown>> = {
       "<p />",
       "## Goals",
       "",
-      'Ship the **new onboarding** flow <span color="blue">to</span> [all teams](https://example.com) by June.',
+      // A quoted bullet is prose too: its markers drop.
+      '> - Ship the **new onboarding** flow <span color="blue">to</span> [all teams](https://example.com) by June.',
       "</content>",
       "</page>",
     ].join("\n"),

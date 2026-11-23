@@ -8,9 +8,11 @@ import { CONTENT_VERSION_HEADER } from "../schema/response";
 import type { WaitUntilFn } from "@/handlers/types";
 import type { JuniorApiEnv } from "../route";
 import {
-  acceptedConversationMessageSchema,
   forkConversationBodySchema,
   forkConversationResponseSchema,
+} from "../schema/conversation-fork";
+import {
+  acceptedConversationMessageSchema,
   conversationAttachmentParamsSchema,
   conversationAttachmentQuerySchema,
   conversationDetailQuerySchema,
@@ -57,10 +59,6 @@ import {
   conversationUnchangedDetailWithMailboxSchema,
 } from "../schema/conversation-pending-messages";
 import { conversationReadPositionSchema } from "../schema/conversation-read-position";
-import {
-  renameConversationBodySchema,
-  renameConversationResponseSchema,
-} from "../schema/conversation-title";
 import { conversationOutlineSchema } from "../schema/conversation-outline";
 import { conversationStatsReportSchema } from "../schema/conversation-stats";
 import {
@@ -92,12 +90,12 @@ import { catchUpOnConversation } from "./catch-up";
 import { reorderPinnedConversations } from "./pin";
 import { inviteToConversation } from "./subscription";
 import { setConversationDeliveryForViewer } from "./delivery";
-import { renameConversation } from "./rename";
 import {
   archiveConversationOperation,
   cancelQueuedMessagesOperation,
   archiveDoneConversationsOperation,
   pinConversationOperation,
+  renameConversationOperation,
   setConversationAutoArchiveOperation,
   setConversationSubscriptionOperation,
   stopConversationOperation,
@@ -427,25 +425,7 @@ export function createConversationRoutes(
   app.patch(
     "/:conversationId/title",
     requireViewer,
-    validateRequest(
-      "param",
-      conversationParamsSchema,
-      "Invalid route parameters.",
-    ),
-    validateRequest(
-      "json",
-      renameConversationBodySchema,
-      "Invalid request body.",
-    ),
-    async (context) =>
-      jsonResponse(
-        renameConversationResponseSchema,
-        await renameConversation(
-          context.get("viewer"),
-          context.req.valid("param").conversationId,
-          context.req.valid("json"),
-        ),
-      ),
+    apiOperationHandler(renameConversationOperation, options),
   );
 
   app.post(

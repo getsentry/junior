@@ -22,9 +22,7 @@ export type AgentConfig = z.output<typeof agentConfigSchema>;
 
 /**
  * Read the agent config that one Conversation stores, or undefined when it
- * stores none. Today only a child that a spawn created without an Agent
- * invocation row stores one. A child that an Agent invocation names reads
- * its settings from its row first.
+ * stores none. Today only a child agent stores one.
  */
 export async function readAgentConfig(
   conversationId: string,
