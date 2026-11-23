@@ -19,6 +19,7 @@ import {
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
+import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
 import {
   listGitHubAssignedWork,
@@ -297,6 +298,27 @@ function issueLifecyclePayload(input: {
     },
     repository: { full_name: "getsentry/junior", id: 2001 },
   };
+}
+
+/** Wrap a database so reads of pull request requesters fail while armed. */
+function failingRequesterReads(
+  db: GitHubDb,
+  lookup: { fails: boolean },
+): GitHubDb {
+  const wrapped: GitHubDb = Object.create(db);
+  wrapped.select = (...args: Parameters<GitHubDb["select"]>) => {
+    const builder = db.select(...args);
+    const from = builder.from.bind(builder);
+    return Object.assign(builder, {
+      from(table: Parameters<typeof from>[0]) {
+        if (lookup.fails && table === juniorGitHubPullRequestRequesters) {
+          throw new Error("requester read failed");
+        }
+        return from(table);
+      },
+    });
+  };
+  return wrapped;
 }
 
 function signedRequest(body: unknown, eventName = "pull_request"): Request {
@@ -3864,6 +3886,122 @@ describe("GitHub-owned pull request outcomes", () => {
         ),
       ).toHaveLength(1);
       expect(errors).not.toContain("GitHub ended pull request change failed");
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("retries the whole outcome when the owner lookup fails", async () => {
+    const fixture = await createGitHubFixture();
+    const opener = "slack:C123:1712345.0001";
+    const other = "slack:C789:1719999.0003";
+    const chips = new Map<string, string | undefined>();
+    const closes: Array<[conversationId: string, dedupeKey: string]> = [];
+    const annotations: PluginConversationAnnotations = {
+      forConversation(conversationId) {
+        return {
+          async upsert(annotation) {
+            chips.set(conversationId, annotation.status);
+          },
+          async remove() {},
+          async list() {
+            return [];
+          },
+        };
+      },
+    };
+    const inboxItems: PluginConversationInboxItems = {
+      forConversation(conversationId) {
+        return {
+          async upsert() {},
+          async close(input) {
+            closes.push([conversationId, input.dedupeKey]);
+            return true;
+          },
+        };
+      },
+    };
+    const lookup = { fails: false };
+    const db = failingRequesterReads(fixture.db(), lookup);
+    try {
+      await fixture
+        .db()
+        .insert(juniorGitHubPullRequestRequesters)
+        .values({
+          conversationId: opener,
+          createdAt: new Date("2026-07-01T12:00:00.000Z"),
+          identityId: "identity-requester",
+          number: 946,
+          repositoryFullName: "getsentry/junior",
+          updatedAt: new Date("2026-07-01T12:00:00.000Z"),
+        });
+      const route = createGitHubWebhookRoute({
+        annotations,
+        appIdEnv: "GITHUB_APP_ID",
+        botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
+        codeChanges: {
+          async associateConversations() {},
+          async recordActivity() {},
+          async record() {},
+        },
+        conversationChanges: conversationChangesThrough({
+          annotations,
+          inboxItems,
+        }),
+        db,
+        inboxItems,
+        installationId: () => "456",
+        installationIdEnv: "GITHUB_INSTALLATION_ID",
+        markFeedbackReviewing: async () => {},
+        privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
+        events: { async publish() {} },
+        webhookSecret: () => "test-secret",
+      });
+      const opened = pullRequestPayload({
+        pull_request: {
+          ...(pullRequestPayload().pull_request as Record<string, unknown>),
+          body: [
+            "<!-- junior-session-footer:start -->",
+            ...[opener, other].map(
+              (id) =>
+                `<!-- junior-conversation-id:${encodeURIComponent(id)} -->`,
+            ),
+            "<!-- junior-session-footer:end -->",
+          ].join("\n"),
+        },
+      });
+      expect((await route.handler(signedRequest(opened))).status).toBe(202);
+      chips.clear();
+      closes.length = 0;
+      const merged = pullRequestPayload({
+        action: "closed",
+        pull_request: {
+          ...(opened.pull_request as Record<string, unknown>),
+          closed_at: "2026-07-03T12:00:00.000Z",
+          merged: true,
+          merged_at: "2026-07-03T12:00:00.000Z",
+          updated_at: "2026-07-03T12:00:00.000Z",
+        },
+      });
+
+      lookup.fails = true;
+      await expect(route.handler(signedRequest(merged))).rejects.toThrow(
+        "requester read failed",
+      );
+      expect(chips.size).toBe(0);
+      expect(closes).toEqual([]);
+
+      // The row stays open, so the next delivery applies the outcome.
+      lookup.fails = false;
+      expect((await route.handler(signedRequest(merged))).status).toBe(202);
+      expect(Object.fromEntries(chips)).toEqual({
+        [opener]: "merged",
+        [other]: "merged",
+      });
+      expect(closes.slice(0, 2)).toEqual([
+        [opener, "pull-request-action:getsentry/junior#946"],
+        [opener, "merge-conflict:getsentry/junior#946"],
+      ]);
     } finally {
       await fixture.close();
     }
