@@ -1,12 +1,14 @@
-// What the host gives core to build each step of a Turn: the prompt layout,
-// which turns each unread input into a user message with instruction
-// authority for its Actor, and the model settings of the claimed Turn. The
-// host gives the database and the bot settings, so this file reads no
-// globals.
-import { actorSchema } from "@sentry/junior-plugin-api";
+// What the host gives core to build each step of a Turn: the prompt layout
+// of the Turn's platform, which turns each unread input into a user message
+// with instruction authority for its Actor, and the model settings of the
+// claimed Turn. The host gives the database and the bot settings, so this
+// file reads no globals.
+import { actorSchema, type Platform } from "@sentry/junior-plugin-api";
+import { eq } from "drizzle-orm";
 import * as z from "zod";
 import type { BotConfig } from "@/chat/config";
 import { resolveConversationPrivacy } from "@/chat/conversation-privacy";
+import { locationSchema } from "@/chat/conversations/location";
 import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { resolveRootVisibility } from "@/chat/conversations/sql/privacy";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
@@ -20,6 +22,7 @@ import {
 } from "@/core/prompt/layout";
 import type { UnreadInput } from "@/core/turn/inbox";
 import type { ClaimedTurn } from "@/core/turn/state";
+import { juniorConversations } from "@/db/schema";
 
 const turnInputPayloadSchema = z
   .object({ text: z.string().min(1), actor: actorSchema })
@@ -36,22 +39,55 @@ function formatInput(input: UnreadInput): InputPrompt {
   };
 }
 
-/**
- * Builds the host's prompt layout once: the deployment's system prompt, then
- * the unread inputs after the history.
- */
-export async function buildTurnPromptLayout(): Promise<PromptLayout> {
+/** The prompt layout of each platform that core Turns reply on. */
+type TurnPromptLayouts = Readonly<Record<Platform, PromptLayout>>;
+
+async function platformPromptLayout(platform: Platform): Promise<PromptLayout> {
   return definePromptLayout({
-    // The engine has no Delivery yet, so the reply stays in history. A Turn
-    // without Delivery gets the local rules.
     systemPrompt: [
       {
         name: "deployment",
-        text: await buildDeploymentSystemPrompt("local", "conversation"),
+        text: await buildDeploymentSystemPrompt(platform, "conversation"),
       },
     ],
     messages: [inputs({ format: formatInput })],
   });
+}
+
+/**
+ * Builds the host's prompt layouts once, one for each platform: the
+ * platform's deployment system prompt, then the unread inputs after the
+ * history. Every Turn on a platform gets the same system prompt.
+ */
+export async function buildTurnPromptLayouts(): Promise<TurnPromptLayouts> {
+  const [slack, local] = await Promise.all([
+    platformPromptLayout("slack"),
+    platformPromptLayout("local"),
+  ]);
+  return { slack, local };
+}
+
+/**
+ * Gives the prompt layout of a claimed Turn: the layout of the platform of
+ * its Conversation's Location, which Delivery sends the replies to. A Turn
+ * with no Location gets the `local` layout. It only picks one of `layouts`.
+ */
+export function turnPromptLayout(
+  { executor }: Pick<EngineContext, "executor">,
+  layouts: TurnPromptLayouts,
+) {
+  return async (turn: ClaimedTurn): Promise<PromptLayout> => {
+    const [conversation] = await executor
+      .db()
+      .select({ location: juniorConversations.location })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, turn.conversationId))
+      .limit(1);
+    const location = conversation?.location
+      ? locationSchema.parse(conversation.location)
+      : undefined;
+    return layouts[location?.provider ?? "local"];
+  };
 }
 
 /**

@@ -55,9 +55,10 @@ export const MODEL: ModelSettings = {
 };
 
 /**
- * What a test step runs with: the model client, the prompt layout, the model
- * settings and the tools. Each one that a test leaves out has a default:
- * no model reply, `testPrompt()`, `MODEL` and no tools.
+ * What a test step runs with: the model client, the prompt layout picker, the
+ * model settings and the tools. Each one that a test leaves out has a
+ * default: no model reply, `testPrompt()` for every Turn, `MODEL` and no
+ * tools.
  */
 export type Step = Partial<
   Omit<Parameters<typeof advanceTurn>[2], "maxAttempts">
@@ -156,7 +157,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
       { turnId: forTurnId },
       {
         client: step.client ?? replyingClient([]),
-        prompt: step.prompt ?? testPrompt(),
+        prompt: step.prompt ?? promptForEveryTurn(testPrompt()),
         modelSettings: step.modelSettings ?? (() => Promise.resolve(MODEL)),
         tools: step.tools ?? [],
         maxAttempts: MAX_ATTEMPTS,
@@ -261,6 +262,13 @@ export function testPrompt(
     systemPrompt: [{ name: "identity", text: "You are Junior." }],
     messages,
   });
+}
+
+/** A prompt layout picker that gives `layout` for every Turn. */
+export function promptForEveryTurn(
+  layout: PromptLayout,
+): () => Promise<PromptLayout> {
+  return () => Promise.resolve(layout);
 }
 
 /** A step whose model gives the replies in order, with `tools`. */

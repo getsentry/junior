@@ -39,6 +39,11 @@ export type ModelCall = {
   status: number;
   /** `none`, or the fault that a rule injected. */
   fault: string;
+  /** The request's messages as the emulator records them. */
+  messages: Array<{
+    role: string;
+    parts: Array<{ type: string; text?: string }>;
+  }>;
 };
 
 const emulator = await createEmulator({ service: "ai", port: 0 });
@@ -87,6 +92,16 @@ export async function setModelRules(rules: ModelRule[]): Promise<void> {
 /** The model requests of the test so far, oldest first. */
 export async function modelCalls(): Promise<ModelCall[]> {
   return (await control("/_ai/calls")) as ModelCall[];
+}
+
+/** The system prompt that a model request sent. */
+export function systemPromptOf(
+  call: ModelCall | undefined,
+): string | undefined {
+  return call?.messages
+    .find((message) => message.role === "system")
+    ?.parts.map((part) => part.text ?? "")
+    .join("");
 }
 
 /** Injected fault: the model provider answers 529 overloaded. */

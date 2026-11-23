@@ -33,6 +33,7 @@ import {
   startTurnEngine,
   storedReply,
   testInputs,
+  promptForEveryTurn,
   testPrompt,
   userText,
   type TurnEngine,
@@ -238,13 +239,15 @@ describe("advanceTurn at the end of a Turn, with a test step", () => {
       () => Promise.reject(new Error("The memory store is down")),
       { timeoutMs: 1_000 },
     );
-    const prompt = testPrompt([
-      testInputs(),
-      fragment("memory", {
-        loader: memory,
-        format: (text): FragmentMessage => ({ role: "user", content: text }),
-      }),
-    ]);
+    const prompt = promptForEveryTurn(
+      testPrompt([
+        testInputs(),
+        fragment("memory", {
+          loader: memory,
+          format: (text): FragmentMessage => ({ role: "user", content: text }),
+        }),
+      ]),
+    );
     for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt += 1) {
       await expect(engine.advance({ prompt })).rejects.toThrow(
         'Loader "memory" failed',
