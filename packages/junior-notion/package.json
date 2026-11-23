@@ -28,9 +28,11 @@
   },
   "dependencies": {
     "@sentry/junior-plugin-api": "workspace:*",
+    "mdast-util-from-markdown": "^2.1.0",
     "zod": "catalog:"
   },
   "devDependencies": {
+    "@types/mdast": "^4.0.4",
     "@types/node": "catalog:",
     "tsdown": "catalog:",
     "typescript": "catalog:"

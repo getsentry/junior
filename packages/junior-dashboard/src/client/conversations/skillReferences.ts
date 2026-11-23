@@ -1,3 +1,7 @@
+import type { Nodes } from "mdast";
+
+import { parseMarkdown } from "../markdownTree";
+
 /** The `$skill-name` or `@name` reference that the caret is in. */
 export type ComposerToken = {
   /** Index of the `$` or `@`. */
@@ -64,28 +68,19 @@ export function findProseSkillReferences(text: string): SkillReference[] {
   );
 }
 
-// A fence line opens a block that runs to its closing fence, or to the end
-// of the text. A run of backticks opens a span that ends at the next run of
-// the same length. A run with no closing run is text.
-const CODE_OPENER = /(^[ \t]*```)|`+/gm;
-const FENCE_CLOSER = /\n[ \t]*```/g;
-
-// The `[start, end)` ranges of fenced and inline code in Markdown text.
+// The `[start, end)` ranges of fenced, indented, and inline code in Markdown
+// text. A fence with no closing fence runs to the end of the text, and a run
+// of backticks with no closing run is text, as CommonMark reads them.
 function codeRanges(text: string): [number, number][] {
   const ranges: [number, number][] = [];
-  const opener = new RegExp(CODE_OPENER);
-  let match: RegExpExecArray | null;
-  while ((match = opener.exec(text))) {
-    const fence = Boolean(match[1]);
-    const closer = fence
-      ? new RegExp(FENCE_CLOSER)
-      : new RegExp(`(?<!\`)${match[0]}(?!\`)`, "g");
-    closer.lastIndex = opener.lastIndex;
-    const close = closer.exec(text);
-    if (!close && !fence) continue;
-    const end = close ? close.index + close[0].length : text.length;
-    ranges.push([match.index, end]);
-    opener.lastIndex = end;
-  }
+  const visit = (node: Nodes) => {
+    if (node.type === "code" || node.type === "inlineCode") {
+      const { end, start } = node.position ?? {};
+      if (start && end) ranges.push([start.offset ?? 0, end.offset ?? 0]);
+    } else if ("children" in node) {
+      for (const child of node.children) visit(child);
+    }
+  };
+  visit(parseMarkdown(text));
   return ranges;
 }

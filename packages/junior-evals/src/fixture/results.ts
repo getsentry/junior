@@ -2,6 +2,10 @@
  * Call results read through Junior's reporting API, the way the dashboard
  * reads a Conversation. Tests never read stored rows directly.
  */
+import type { Nodes } from "mdast";
+import { fromMarkdown } from "mdast-util-from-markdown";
+import { gfmFromMarkdown } from "mdast-util-gfm";
+import { gfm } from "micromark-extension-gfm";
 import type * as z from "zod";
 import {
   conversationDetailReportSchema,
@@ -444,21 +448,43 @@ export function readCallEvents(args: {
   };
 }
 
+// Block nodes hold separate runs of text. Inline nodes join their text.
+const BLOCK_NODE_TYPES = new Set([
+  "blockquote",
+  "code",
+  "heading",
+  "list",
+  "listItem",
+  "paragraph",
+  "root",
+  "table",
+  "tableCell",
+  "tableRow",
+]);
+
+function markdownWords(node: Nodes): string {
+  if ("value" in node) return node.value;
+  if (!("children" in node)) return "";
+  const separator = BLOCK_NODE_TYPES.has(node.type) ? " " : "";
+  return node.children.map(markdownWords).join(separator);
+}
+
 /**
  * Compare a Slack post with a stored reply by their words. Slack rendering
- * changes formatting and links references, such as `owner/repo#1`. Remove
- * code fence lines: a split inside a code block closes the block at the end of
- * a post and opens it again in the next post.
+ * changes formatting and links references, such as `owner/repo#1`. Only the
+ * text of the parsed Markdown counts, so code fences drop: a split inside a
+ * code block closes the block at the end of a post and opens it again in the
+ * next post.
  */
 function comparableText(text: string): string {
-  return text
-    .replace(/^[ \t]*(`{3,}|~{3,}).*$/gm, "")
-    .replace(/\[([^\]]*)\]\([^)]*\)/g, "$1")
+  const markdown = text
     .replace(/<[^|>]+\|([^>]*)>/g, "$1")
-    .replace(/<(https?:\/\/[^>]+)>/g, "$1")
-    .replace(/[*_~`>]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    .replace(/<(https?:\/\/[^>]+)>/g, "$1");
+  const tree = fromMarkdown(markdown, {
+    extensions: [gfm()],
+    mdastExtensions: [gfmFromMarkdown()],
+  });
+  return markdownWords(tree).replace(/\s+/g, " ").trim();
 }
 
 /** What one call did in a Slack thread, read from its Slack API calls. */

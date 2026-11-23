@@ -50,7 +50,6 @@
   "packages/junior-google/src/calendar/events.ts": 1,
   "packages/junior-google/src/cli.ts": 3,
   "packages/junior-google/src/credentials.ts": 2,
-  "packages/junior-google/src/docs/markdown.ts": 1,
   "packages/junior-google/src/drive/files.ts": 1,
   "packages/junior-google/src/index.ts": 1,
   "packages/junior-google/src/setup-routes.ts": 1,

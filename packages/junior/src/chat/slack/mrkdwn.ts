@@ -332,13 +332,12 @@ function bulletListFollowUpParagraphs(text: string): string {
 
 /** Insert blank lines between content blocks so Slack renders them with visual separation. */
 export function ensureBlockSpacing(text: string): string {
-  const codeBlockPattern = /^```/;
   const lines = text.split("\n");
   const result: string[] = [];
   let inCodeBlock = false;
 
   for (const line of lines) {
-    const isCodeFence = codeBlockPattern.test(line.trimStart());
+    const isCodeFence = line.trimStart().startsWith("```");
 
     if (isCodeFence) {
       if (!inCodeBlock) {
