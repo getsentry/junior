@@ -169,32 +169,32 @@ test("the Lead nav item opens the Lead from other pages", async ({
   await expect(page.getByRole("button", { name: /details/i })).toHaveCount(0);
 });
 
-test("a direct link to the Lead leaves the other rows their places @new", async ({
+test("home is the Lead, even with its id slow to load @new", async ({
   page,
   dashboard,
 }) => {
   await page.setViewportSize(desktop);
-  await page.goto(`${dashboard.baseURL}/automations`);
-  const nav = page.getByRole("navigation", { name: "Primary" });
-  const lead = nav.getByRole("link", { name: "Lead", exact: true });
-  await lead.click();
-  await expect(page.getByRole("heading", { name: "Your Lead" })).toBeVisible();
-  const leadPath = decodeURIComponent(new URL(page.url()).pathname);
-
-  // Reload the Lead from a link with unencoded colons, with its id slow to
-  // load. The Lead keeps its row, and Conversations still opens its list.
   await page.route("**/api/lead", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
     await route.fallback();
   });
-  await page.goto(`${dashboard.baseURL}${leadPath}`);
+  await page.goto(dashboard.baseURL);
   await expect(page.getByRole("heading", { name: "Your Lead" })).toBeVisible();
+  await expect(
+    page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
+  ).toBeVisible();
+  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+  const nav = page.getByRole("navigation", { name: "Primary" });
+  const lead = nav.getByRole("link", { name: "Lead", exact: true });
+  await expect(lead).toHaveAttribute("href", "/");
   await expect(lead).toHaveAttribute("aria-current", "page");
+  // Home has no list to go back to.
+  await expect(page.getByRole("link", { name: /^Back to / })).toHaveCount(0);
   await nav.getByRole("link", { name: "Conversations", exact: true }).click();
-  await expect(page).toHaveURL(/\/\?view=conversations$/);
+  await expect(page).toHaveURL(/\/inbox\?view=conversations$/);
 });
 
-test("a new Lead introduces itself @classic", async ({ page, dashboard }) => {
+test("a new Lead introduces itself", async ({ page, dashboard }) => {
   await emptyLead(page);
   await page.setViewportSize(desktop);
   await page.goto(dashboard.baseURL);
@@ -260,15 +260,20 @@ test.describe("on a touch screen", () => {
     ).toHaveCount(0);
   });
 
-  test("the phone home lists the Lead first @new", async ({
+  test("the phone home is the Lead, and the entries list it first @new", async ({
     page,
     dashboard,
   }) => {
     await page.setViewportSize(mobile);
     await page.goto(dashboard.baseURL);
+    await expect(
+      page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
+    ).toBeVisible();
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const entries = page.getByRole("navigation", { name: "Primary" });
     await expect(entries.getByRole("link").first()).toHaveText("Lead");
     await entries.getByRole("link", { name: "Lead", exact: true }).click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
     await expect(
       page.getByLabel("Conversation transcript").getByText(LEAD_REPLY),
     ).toBeVisible();

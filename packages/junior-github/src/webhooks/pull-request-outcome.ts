@@ -3,11 +3,9 @@ import * as z from "zod";
 import {
   GITHUB_SESSION_FOOTER_START,
   githubConversationIds,
-  githubLinkedIssues,
 } from "../conversation-footer.js";
 import type {
   GitHubPullRequestConversationsInput,
-  GitHubPullRequestLinkedIssuesInput,
   GitHubPullRequestOutcomeInput,
 } from "../pull-request-outcomes/store.js";
 import { botLoginFromEmail, isBotLogin } from "./ownership.js";
@@ -269,31 +267,6 @@ export function normalizeGitHubPullRequestConversations(args: {
   return conversationIds.length > 0
     ? {
         conversationIds,
-        pullRequestId: String(parsed.data.pull_request.id),
-      }
-    : undefined;
-}
-
-/** Normalize linked issues written into a Junior-owned PR body by its bot. */
-export function normalizeGitHubPullRequestLinkedIssues(args: {
-  body: unknown;
-  botEmail?: string | undefined;
-}): GitHubPullRequestLinkedIssuesInput | undefined {
-  const parsed = pullRequestConversationSchema.safeParse(args.body);
-  if (!parsed.success) return undefined;
-  if (
-    !isBotLogin(parsed.data.pull_request.user.login, args.botEmail) ||
-    !isBotLogin(parsed.data.sender.login, args.botEmail)
-  ) {
-    return undefined;
-  }
-  const linkedIssues = githubLinkedIssues(
-    parsed.data.pull_request.body,
-    parsed.data.repository.full_name,
-  );
-  return linkedIssues.length > 0
-    ? {
-        linkedIssues,
         pullRequestId: String(parsed.data.pull_request.id),
       }
     : undefined;

@@ -77,7 +77,8 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * Show the actions that the viewer can take on one Inbox item, or how it
  * closed. The Inbox, the transcript, and the side panel use it, so a
  * question reads the same on each. A caller that shows
- * its own Dismiss turns this one off. `onAction` takes the actions in its
+ * its own Dismiss turns this one off. A To-do for the viewer adds Done,
+ * its main action, last. `onAction` takes the actions in its
  * place and reports their failures itself. An answer that failed shows
  * again in the form.
  */
@@ -139,6 +140,8 @@ export function InboxItemActions(props: {
     }
   }
 
+  // A To-do for the viewer closes with Done, its main action.
+  const todo = item.todoId !== undefined;
   const dismiss = props.dismiss ?? true;
   const take = item.canTake ? (props.take ?? "Take") : false;
   // A card on its own, as in a transcript, snoozes its item itself. The
@@ -170,6 +173,14 @@ export function InboxItemActions(props: {
         </Suspense>
       ) : null}
       {props.extra}
+      {todo ? (
+        <Button
+          disabled={action.isPending || sending}
+          onClick={() => void run({ action: "done" }).catch(() => {})}
+        >
+          Done
+        </Button>
+      ) : null}
     </>
   );
 
@@ -209,7 +220,7 @@ export function InboxItemActions(props: {
             words={item.owner.kind !== "automation"}
           />
         </div>
-      ) : take || snooze || dismiss || props.extra ? (
+      ) : take || snooze || dismiss || todo || props.extra ? (
         <div className="flex flex-wrap items-center gap-2">
           {/* The actions sit at the right edge, as on a desktop. */}
           <div className="ml-auto flex flex-wrap items-center justify-end gap-1">

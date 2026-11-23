@@ -11,6 +11,7 @@ async function mockInboxCount(page: Page, count: { value: number }) {
         decisions: count.value,
         needsViewer: count.value,
         snoozed: 0,
+        todos: 0,
       },
     }),
   );

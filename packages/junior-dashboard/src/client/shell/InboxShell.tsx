@@ -1,5 +1,5 @@
 import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Navigate, Route, useLocation, useParams } from "react-router";
+import { Navigate, Route, useLocation } from "react-router";
 
 import {
   useConversationsData,
@@ -39,29 +39,23 @@ import {
   useConversationDensity,
   useDensityRoot,
 } from "../conversations/conversationDensity";
-import { useArea } from "../areas";
+import { areaForPath } from "../areas";
 import { useSidebarFits } from "../conversations/conversationSidebarLayout";
 import {
   AREA_PAGE_PARAM,
   AreaSidebar,
   areaListsPages,
 } from "../components/layout/AreaSidebar";
-import { paneRowForPath } from "../components/layout/paneRows";
+import { isCodePath, paneRowForPath } from "../components/layout/paneRows";
 import { useNewAutomationAction } from "../pages/automations/newAutomation";
 import { InboxDataProvider, useInboxData } from "../inbox/inboxData";
 import { InboxNav } from "../inbox/InboxNav";
 import { VisualViewportShell } from "../components/layout/VisualViewportShell";
 import {
-  automationPath,
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "../format";
-import {
-  conversationPath,
-  isNewConversationPath,
-  COMPOSER_PATH,
-} from "../conversations/conversationRoutes";
 import { useLead } from "../lead/Lead";
 import { useDashboardServerVersion } from "../dashboard-version";
 import { ConversationWorkspace } from "./conversations/ConversationWorkspace";
@@ -86,16 +80,19 @@ import {
   hasAutomationDetailsFrame,
   AutomationsRouteLoading,
 } from "./pages/automations/AutomationsPageLayout";
+import { conversationIdFromPath, inboxMobileHeader } from "./inboxMobileHeader";
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
-import { InboxRedirect } from "../inbox/InboxRedirect";
+import { InboxRedirect, isOldInboxLink } from "../inbox/InboxRedirect";
+import {
+  LegacyAutomationExecutionsRedirect,
+  LegacyAutomationListRedirect,
+  LegacyAutomationsRedirect,
+  LegacySystemRedirect,
+} from "./legacyRedirects";
+import { NAV_PAGES } from "../navPages";
 import { LinkedSnooze } from "../inbox/LinkedSnooze";
 import { InboxListProvider, useInboxReturnPath } from "../inbox/inboxListState";
-import {
-  INBOX_VIEW_LABELS,
-  inboxViewOfPath,
-  parseInboxView,
-} from "../inbox/inboxModel";
 import { useInboxTabCount } from "../inbox/inboxTabIcon";
 import { cn } from "../styles";
 import { ComfortableDensityContext, UiShellContext } from "../uiShell";
@@ -111,7 +108,7 @@ const RepositoryPage = lazy(() =>
   })),
 );
 const CodePage = lazy(() =>
-  import("../pages/code/CodePage").then((module) => ({
+  import("./pages/code/CodePage").then((module) => ({
     default: module.CodePage,
   })),
 );
@@ -223,34 +220,6 @@ function ShellInboxData(props: { children: ReactNode }) {
   );
 }
 
-/**
- * Where the phone header's Back goes on an Inbox page, and its title: a
- * Conversation and the composer go back to the list, and a list goes back
- * to the entries.
- */
-function inboxMobileHeader(
-  pathname: string,
-  search: string,
-  returnPath: string,
-): { backLabel?: string; backTo?: string; title?: string } {
-  const back = (to: string) => ({
-    backLabel: `Back to ${INBOX_VIEW_LABELS[inboxViewOfPath(to)]}`,
-    backTo: to,
-  });
-  if (pathname === COMPOSER_PATH)
-    return { ...back(returnPath), title: "New conversation" };
-  if (conversationIdFromPath(pathname)) return back(returnPath);
-  const view = new URLSearchParams(search).get("view");
-  // A list's Back goes to the entries, which "/" shows on a phone.
-  if (pathname === "/" && view !== null)
-    return {
-      backLabel: "Back to the Inbox entries",
-      backTo: "/",
-      title: INBOX_VIEW_LABELS[parseInboxView(view)],
-    };
-  return {};
-}
-
 function Shell() {
   const location = useLocation();
   const inboxReturnPath = useInboxReturnPath();
@@ -272,20 +241,27 @@ function Shell() {
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
   const workspace =
-    location.pathname === "/" ||
+    location.pathname === NAV_PAGES.lead.to ||
+    location.pathname === NAV_PAGES.inbox.to ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
   const newAutomation = useNewAutomationAction();
   useDensityRoot();
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
+  // Home shows the viewer's Lead.
+  const lead = useLead(loggedIn);
+  const leadId = lead.data?.conversationId;
+  const openConversationId =
+    conversationId ??
+    (location.pathname === NAV_PAGES.lead.to ? leadId : undefined);
   // The shell owns the open Conversation's data, and the page reads it. On a
   // direct load, this fetch runs beside the dashboard core reads, before the
   // page mounts. One fetch for each visit also brings the unread page.
-  const conversationDetail = useConversationData(conversationId, {
+  const conversationDetail = useConversationData(openConversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
   });
-  useVersionsPoll(conversationId, Boolean(data));
+  useVersionsPoll(openConversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -301,11 +277,8 @@ function Shell() {
   // To do's own count, so the header and the tab match its cards.
   const inboxCount = useInboxData().todoCount;
   useInboxTabCount(inboxCount);
-  const lead = useLead(loggedIn);
-  const leadId = lead.data?.conversationId;
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
-    leadPath: leadId ? conversationPath(leadId) : undefined,
     loading,
     loggedIn,
     pathname: location.pathname,
@@ -326,7 +299,7 @@ function Shell() {
   // back to it.
   // An area of sections on one page, such as Settings, opens that page.
   const sidebarFits = useSidebarFits();
-  const area = useArea(
+  const area = areaForPath(
     location.pathname,
     { primary: primaryNavItems, profile: profileNavItems },
     paneRowForPath(location, primaryNavItems, undefined) !== undefined,
@@ -433,10 +406,12 @@ function Shell() {
           }
         >
           <InboxDashboardChrome
-            // Conversation pages and the Automations list put these in
-            // their own header.
+            // Conversation pages, the Automations list, and Code put these
+            // in their own header.
             desktopControls={
-              workspace || location.pathname === "/automations" ? undefined : (
+              workspace ||
+              location.pathname === "/automations" ||
+              isCodePath(location.pathname) ? undefined : (
                 <PaneCollapsedControls />
               )
             }
@@ -621,6 +596,32 @@ function Shell() {
               <Route
                 element={
                   loading ? (
+                    <ConversationWorkspaceLoading detail />
+                  ) : !data ? (
+                    <LoadingView
+                      label={query.error?.message ?? "Dashboard unavailable"}
+                    />
+                  ) : !loggedIn ? (
+                    // Without an account there is no Lead.
+                    <Navigate replace to={NAV_PAGES.inbox.to} />
+                  ) : leadId ? (
+                    <ConversationWorkspace
+                      detail={conversationDetail}
+                      leadId={leadId}
+                    />
+                  ) : lead.error ? (
+                    <LoadingView label={lead.error.message} />
+                  ) : (
+                    <ConversationWorkspaceLoading detail />
+                  )
+                }
+                path="/"
+              />
+              <Route
+                element={
+                  isOldInboxLink(location.search) ? (
+                    <InboxRedirect />
+                  ) : loading ? (
                     <ConversationWorkspaceLoading detail={false} />
                   ) : data ? (
                     <ConversationWorkspace detail={conversationDetail} />
@@ -630,9 +631,8 @@ function Shell() {
                     />
                   )
                 }
-                path="/"
+                path="/inbox"
               />
-              <Route element={<InboxRedirect />} path="/inbox" />
               <Route element={<InboxRedirect />} path="/review" />
               <Route element={<CodePage />} path="/code" />
               {codeRepositoryTabs.map((tab) => (
@@ -675,7 +675,7 @@ function Shell() {
                 path="/conversations/:conversationId"
               />
               <Route
-                element={<Navigate replace to="/" />}
+                element={<Navigate replace to={NAV_PAGES.inbox.to} />}
                 path="/conversations"
               />
               <Route
@@ -869,29 +869,6 @@ function Shell() {
   );
 }
 
-/** Read the selected conversation id from a workspace detail path. */
-function conversationIdFromPath(pathname: string): string | undefined {
-  if (isNewConversationPath(pathname)) return undefined;
-  const match = pathname.match(/^\/conversations\/([^/]+)$/);
-  if (!match?.[1]) return undefined;
-  try {
-    return decodeURIComponent(match[1]);
-  } catch {
-    return match[1];
-  }
-}
-
-function LegacyAutomationsRedirect() {
-  const location = useLocation();
-  const suffix = location.pathname.slice("/tasks".length);
-  return (
-    <Navigate
-      replace
-      to={`/automations${suffix}${location.search}${location.hash}`}
-    />
-  );
-}
-
 /**
  * The command palette, with Zen mode among its actions where it exists, and
  * Send feedback where the profile menu offers it.
@@ -944,38 +921,6 @@ function ShellCommandPalette({
         />
       ) : null}
     </>
-  );
-}
-
-/** The list became the Automations landing page. */
-function LegacyAutomationListRedirect() {
-  const location = useLocation();
-  return (
-    <Navigate replace to={`/automations${location.search}${location.hash}`} />
-  );
-}
-
-/** Execution history became the Runs tab of the Automation page. */
-function LegacyAutomationExecutionsRedirect() {
-  const location = useLocation();
-  const { automationId } = useParams();
-  return (
-    <Navigate
-      replace
-      to={`${automationPath(automationId ?? "", "runs")}${location.search}${location.hash}`}
-    />
-  );
-}
-
-function LegacySystemRedirect(props: { section: "locations" | "people" }) {
-  const location = useLocation();
-  const legacyPrefix = `/${props.section}`;
-  const suffix = location.pathname.slice(legacyPrefix.length);
-  return (
-    <Navigate
-      replace
-      to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
-    />
   );
 }
 

@@ -5,6 +5,7 @@ import SwiftUI
 /// composer docked at the bottom (`ConversationWorkspace` stacked home).
 struct HomeScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @State private var model = HomeModel()
   @State private var archiveError: String?
   @State private var undo: MCPConversation?
@@ -42,10 +43,10 @@ struct HomeScreen: View {
       try? await Task.sleep(for: .milliseconds(250))
       if !Task.isCancelled { await model.load(app) }
     }
-    .onChange(of: app.focusSearch, initial: true) { _, focus in
+    .onChange(of: window.focusSearch, initial: true) { _, focus in
       if focus {
         searchFocused = true
-        app.focusSearch = false
+        window.focusSearch = false
       }
     }
   }
@@ -176,11 +177,11 @@ extension HomeScreen {
 /// Above the list beside the open item: closes it to show the
 /// new-conversation composer (`ConversationSidebar.tsx`).
 private struct NewConversationRow: View {
-  @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
 
   var body: some View {
     Button {
-      app.path = []
+      window.path = []
     } label: {
       HStack(spacing: 8) {
         Icon("pencil", size: 12)
@@ -192,11 +193,11 @@ private struct NewConversationRow: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 8)
-      .background(app.path.isEmpty ? Tokens.fillHover : .clear, in: RoundedRectangle(cornerRadius: 8))
+      .background(window.path.isEmpty ? Tokens.fillHover : .clear, in: RoundedRectangle(cornerRadius: 8))
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft))
-    .accessibilityAddTraits(app.path.isEmpty ? .isSelected : [])
+    .accessibilityAddTraits(window.path.isEmpty ? .isSelected : [])
   }
 }
 
@@ -204,6 +205,7 @@ private struct NewConversationRow: View {
 /// the Conversation lives.
 struct ConversationCard: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   let row: MCPConversation
   let onArchive: () -> Void
   let onPin: () -> Void
@@ -211,7 +213,7 @@ struct ConversationCard: View {
 
   var body: some View {
     Button {
-      app.path = [route]
+      window.path = [route]
     } label: {
       // A card with only a title centers it against the tile, as the web's
       // stretched column does.
@@ -235,7 +237,7 @@ struct ConversationCard: View {
       }
       .padding(.horizontal, 12)
       .padding(.vertical, 10)
-      .listCard(selected: app.path.first == route)
+      .listCard(selected: window.path.first == route)
       .contentShape(RoundedRectangle(cornerRadius: 8))
     }
     .buttonStyle(PressableStyle(pressedFill: Tokens.fillSoft, scale: 0.99))
@@ -248,8 +250,8 @@ struct ConversationCard: View {
     .accessibilityElement(children: .ignore)
     .accessibilityLabel(accessibilityText)
     .accessibilityAddTraits(.isButton)
-    .accessibilityAddTraits(app.path.first == route ? .isSelected : [])
-    .accessibilityAction { app.path = [route] }
+    .accessibilityAddTraits(window.path.first == route ? .isSelected : [])
+    .accessibilityAction { window.path = [route] }
     .accessibilityAction(named: row.pinnedAt == nil ? "Pin" : "Unpin", onPin)
     .accessibilityAction(named: "Rename", onRename)
     .accessibilityAction(named: row.archivedAt == nil ? "Archive" : "Restore", onArchive)

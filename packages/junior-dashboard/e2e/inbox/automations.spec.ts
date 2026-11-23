@@ -119,7 +119,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // Groups follow the latest run, so fix the day that the list reads.
     await page.clock.setFixedTime(LIST_NOW);
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: "Automations" })

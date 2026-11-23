@@ -118,7 +118,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const link = answer.getByRole("link", { name: answered.title });
     await expect(link).toHaveAttribute("href", `/inbox?item=${answered.id}`);
     await link.click();
-    await expect(page).toHaveURL(/\/\?view=done$/);
+    await expect(page).toHaveURL(/\/inbox\?view=done$/);
     await expect(
       page.getByRole("region", { name: `${answered.title}: how it closed` }),
     ).toBeVisible();

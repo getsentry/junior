@@ -4,6 +4,7 @@ import {
   Eye,
   GitMerge,
   Info,
+  ListTodo,
   Stamp,
   type LucideIcon,
 } from "lucide-react";
@@ -21,6 +22,7 @@ const ASK_ICONS: Record<string, LucideIcon> = {
   "Merge conflict": GitMerge,
   "Ready to merge": CircleCheck,
   "Review requested": Eye,
+  "To do for you": ListTodo,
 };
 
 /** The icon of a kind of ask, such as "Ready to merge". */
