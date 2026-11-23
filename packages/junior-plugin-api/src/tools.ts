@@ -13,6 +13,7 @@ import type { PluginAnnotations } from "./annotations";
 import { objectAnnotationSchema } from "./object-annotations";
 import type { WatchResult, SubscribableResource } from "./events";
 import type { PluginState } from "./state";
+import type { PluginTurnInboxItems } from "./inbox-items";
 import * as z from "zod";
 import type { ZodTypeAny } from "zod";
 
@@ -820,10 +821,11 @@ export type PluginWorkOwner =
 
 /**
  * Result of `users.findLinkedHandle`. `unlinked` means one person matched
- * but has no linked account at the provider.
+ * but has no linked account at the provider. `identityId` is the stored
+ * Identity of the linked account, such as for an Inbox item assignee.
  */
 export type PluginLinkedHandleLookup =
-  | { status: "found"; handle: string }
+  | { status: "found"; handle: string; identityId: string }
   | { status: "ambiguous" | "not_found" | "unlinked" };
 
 interface BaseToolRegistrationHookContext extends PluginContext {
@@ -851,6 +853,8 @@ interface BaseToolRegistrationHookContext extends PluginContext {
   decider: PluginDecider;
   embedder: PluginEmbedder;
   egress: PluginEgress;
+  /** This plugin's Inbox items in this Conversation. Set only with a `conversationId`. */
+  inboxItems?: PluginTurnInboxItems;
   mcp?: PluginMcp;
   model: PluginModel;
   events: PluginEventToolContext;

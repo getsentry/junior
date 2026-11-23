@@ -87,6 +87,15 @@ export interface PluginInboxItems {
   }): Promise<boolean>;
 }
 
+/** Inbox items of a plugin in the Conversation of a tool call. */
+export interface PluginTurnInboxItems extends PluginInboxItems {
+  /**
+   * Return the Identities that an item of this Conversation can go to: those
+   * whose User is in the Conversation. `upsert` leaves out the others.
+   */
+  assignable(identityIds: string[]): Promise<string[]>;
+}
+
 /** Inbox items of a plugin, for the Conversation that each item belongs to. */
 export interface PluginConversationInboxItems {
   forConversation(conversationId: string): PluginInboxItems;

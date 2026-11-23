@@ -20,6 +20,7 @@ import {
   recordGitHubIssueConversations,
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
+import { closeGitHubIssueReviewsForWebhook } from "../issue-reviewers/webhooks.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
 import {
   recordGitHubPullRequestConversations,
@@ -479,6 +480,14 @@ export function createGitHubWebhookRoute(args: {
         inboxItems: args.inboxItems,
         state: args.state,
         targets: pullRequestActionTargets(eventName, body),
+      });
+      await closeGitHubIssueReviewsForWebhook({
+        body,
+        db: args.db,
+        deliveryId,
+        eventName,
+        inboxItems: args.inboxItems,
+        log: args.log,
       });
       await requestGitHubReviewersWhenReady({
         body,

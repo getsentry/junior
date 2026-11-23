@@ -2179,7 +2179,7 @@ Conversation: \`local:test:old-conversation\`
       actor: { platform: "slack", teamId: "T1", userId: "U1" },
       findLinkedHandle: async (query, provider) =>
         query === "jane@example.com" && provider === "github"
-          ? { status: "found", handle: "jane-gh" }
+          ? { status: "found", handle: "jane-gh", identityId: "jane-gh-id" }
           : { status: "not_found" },
       resolveActor: async () => ({
         identity: {

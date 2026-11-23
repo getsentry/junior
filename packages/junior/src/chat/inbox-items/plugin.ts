@@ -2,8 +2,8 @@ import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
 import type {
-  PluginInboxItems,
   PluginReviewNotice,
+  PluginTurnInboxItems,
 } from "@sentry/junior-plugin-api";
 import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { PLUGIN_INBOX_ITEM_KEY_PREFIX } from "@/chat/inbox-items/access";
@@ -22,16 +22,17 @@ import {
 } from "./store";
 
 /**
- * Resolve the Users to assign. A plugin notice goes only to people in its
- * Conversation, public or private. Junior leaves out an Identity without a
- * User and a User who is not in the Conversation.
+ * Resolve the User of each Identity that a plugin item can go to. A plugin
+ * notice goes only to people in its Conversation, public or private. Junior
+ * leaves out an Identity without a User and a User who is not in the
+ * Conversation.
  */
-async function assigneeUserIds(
+async function assignableUsers(
   db: JuniorDatabase,
   identityIds: readonly string[],
   conversationId: string,
-): Promise<string[]> {
-  const userIds = await mapBounded(
+): Promise<Array<{ identityId: string; userId: string }>> {
+  const users = await mapBounded(
     [...new Set(identityIds)],
     async (identityId) => {
       const user = (await readIdentityByIdFromSql(db, identityId))?.user;
@@ -39,10 +40,10 @@ async function assigneeUserIds(
       const access = (
         await readConversationAccessFromSql(db, [conversationId], user)
       ).get(conversationId);
-      return access?.isParticipant ? [user.id] : [];
+      return access?.isParticipant ? [{ identityId, userId: user.id }] : [];
     },
   );
-  return userIds.flat();
+  return users.flat();
 }
 
 /** Field id of the one choice field of a plugin item with choices. */
@@ -74,7 +75,7 @@ export function createPluginInboxItems(args: {
   conversationId: string;
   plugin: string;
   show: ShowInboxItem;
-}): PluginInboxItems {
+}): PluginTurnInboxItems {
   const { conversationId, show } = args;
   const scopedKey = (dedupeKey: string) =>
     `${PLUGIN_INBOX_ITEM_KEY_PREFIX}${args.plugin}:${dedupeKey}`;
@@ -86,6 +87,11 @@ export function createPluginInboxItems(args: {
     return access;
   };
   return {
+    async assignable(identityIds) {
+      return (await assignableUsers(getDb(), identityIds, conversationId)).map(
+        (user) => user.identityId,
+      );
+    },
     async upsert(notice: PluginReviewNotice) {
       const db = getDb();
       const access = await readAccess(db);
@@ -108,11 +114,9 @@ export function createPluginInboxItems(args: {
       }
       const content: InboxItemContent = {
         assignedToEveryone: false,
-        assigneeUserIds: await assigneeUserIds(
-          db,
-          notice.assigneeIdentityIds,
-          conversationId,
-        ),
+        assigneeUserIds: (
+          await assignableUsers(db, notice.assigneeIdentityIds, conversationId)
+        ).map((user) => user.userId),
         body: notice.body,
         conversationIds: [
           ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),

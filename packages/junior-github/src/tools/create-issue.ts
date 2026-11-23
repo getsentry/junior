@@ -31,6 +31,10 @@ import {
   parseRepo,
   repoPath,
 } from "../tool-support/github-api.js";
+import {
+  requestIssueReviews,
+  type LeftOutIssueReviewer,
+} from "../tool-support/issue-reviewers.js";
 const GITHUB_ISSUE_CREATE_IDEMPOTENCY_TTL_MS = 30 * 24 * 60 * 60 * 1000;
 const GITHUB_ISSUE_CREATE_LOCK_TTL_MS = 60_000;
 
@@ -43,6 +47,9 @@ class GitHubIssueCreateRejectedError extends Error {
     this.status = status;
   }
 }
+
+const REVIEW_BY_DESCRIPTION =
+  'People whose review or decision the issue waits on, such as for a design issue or a proposal: GitHub logins, emails, Slack mentions, or names. Each gets a "Review requested" Inbox item. Leave it out for tracking issues and bug reports.';
 
 const createIssueInputSchema = Type.Object(
   {
@@ -62,6 +69,9 @@ const createIssueInputSchema = Type.Object(
         description: "Labels to apply to the issue.",
       }),
     ),
+    review_by: Type.Optional(
+      Type.Array(Type.String(), { description: REVIEW_BY_DESCRIPTION }),
+    ),
   },
   { additionalProperties: false },
 );
@@ -79,6 +89,7 @@ const createIssueToolInputSchema = z
       .array(z.string())
       .describe("Labels to apply to the issue.")
       .optional(),
+    review_by: z.array(z.string()).describe(REVIEW_BY_DESCRIPTION).optional(),
   })
   .strict();
 
@@ -122,6 +133,8 @@ interface GitHubIssueResult {
 
 interface GitHubIssueData extends GitHubIssueResult {
   note?: string;
+  review_left_out?: LeftOutIssueReviewer[];
+  review_requested?: string[];
   subscribable?: SubscribableResource;
   subscription?: WatchResult;
 }
@@ -133,6 +146,10 @@ interface GitHubIssueToolResult extends PluginToolOutput, GitHubIssueData {
 const gitHubIssueDataSchema = z.object({
   note: z.string().optional(),
   number: z.number(),
+  review_left_out: z
+    .array(z.object({ person: z.string(), reason: z.string() }))
+    .optional(),
+  review_requested: z.array(z.string()).optional(),
   subscribable: subscribableResourceSchema.optional(),
   subscription: watchResultSchema.optional(),
   url: z.string(),
@@ -164,12 +181,23 @@ async function gitHubIssueToolResult(
     number: result.number,
     repo: repoName,
   });
+  const reviews = await requestIssueReviews(
+    ctx,
+    {
+      number: result.number,
+      repo: repoName,
+      title: input.title,
+      url: result.url,
+    },
+    input.review_by,
+  );
   const data = {
     ...(startedByPerson(ctx)
       ? { note: implementIssueNote(`${repoName}#${result.number}`) }
       : undefined),
     number: result.number,
     url: result.url,
+    ...reviews,
     ...watch,
   };
   return {

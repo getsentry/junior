@@ -24,6 +24,13 @@ function inboxItemKeys(result: { toolCalls: ToolCall[] }): unknown[] {
   );
 }
 
+/** The people each created issue waits on, as the agent named them. */
+function reviewers(result: { toolCalls: ToolCall[] }): unknown[] {
+  return completedToolCalls("github_createIssue", result).map(
+    (call) => (call.input as { review_by?: unknown }).review_by ?? [],
+  );
+}
+
 function threadsStarted(result: { toolCalls: ToolCall[] }): ToolCall[] {
   return completedToolCalls("spawnAgent", result).filter(
     (call) => (call.input as { kind?: unknown }).kind === "thread",
@@ -89,5 +96,30 @@ describe("Filing Issues", () => {
     expect(createdIssues(conversation)).toHaveLength(1);
     expect(inboxItemKeys(conversation)).toEqual([]);
     expect(threadsStarted(conversation)).toHaveLength(0);
+  });
+
+  test("when someone asks for a design issue to review, the issue waits on their review", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "can you open a design issue in acme/storefront that proposes keeping the cart in the URL instead of local storage? I want to review the approach before anyone builds it",
+      ),
+    );
+
+    const [issueReviewers] = reviewers(conversation);
+    expect(issueReviewers).toEqual([expect.any(String)]);
+  });
+
+  test("when someone files a bug to track it, the issue waits on no one", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      slackMention(
+        "file an issue in acme/storefront so we track it: the cart page drops the coupon code when you reload it",
+      ),
+    );
+
+    expect(reviewers(conversation)).toEqual([[]]);
   });
 });

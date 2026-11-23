@@ -127,6 +127,13 @@
       "when": 1795220519456,
       "tag": "0017_pull_request_lifecycle_copies",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1795445958171,
+      "tag": "0018_issue_reviewers",
+      "breakpoints": true
     }
   ]
 }

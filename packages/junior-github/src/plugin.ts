@@ -21,6 +21,7 @@ import { createGitHubTools, type GitHubPluginExperiments } from "./tools.js";
 import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
+import { checkGitHubIssueReviewReactions } from "./issue-reviewers/reactions.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
 import {
   GITHUB_CONFLICT_RESUME,
@@ -32,6 +33,7 @@ import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.j
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
+  loadIssueReactions,
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
@@ -421,6 +423,17 @@ export function githubPlugin(
           nowMs: ctx.nowMs,
           inboxItems: ctx.inboxItems,
           state: ctx.state,
+        });
+        await checkGitHubIssueReviewReactions({
+          db,
+          inboxItems: ctx.inboxItems,
+          loadReactions: async (issue) =>
+            await loadIssueReactions(
+              { ...installationEnv, responses: ctx.state },
+              issue,
+            ),
+          log: ctx.log,
+          now: new Date(ctx.nowMs),
         });
       },
       async unfinishedWork(ctx) {

@@ -530,5 +530,42 @@ export async function findLinkedHandle(input: {
   const handle = users[0]!.linked_identities?.find(
     (identity) => identity.provider === provider,
   )?.handle;
-  return handle ? { status: "found", handle } : { status: "unlinked" };
+  const identityId = handle
+    ? await linkedIdentityId(input.teamId, users[0]!.id, provider, handle)
+    : undefined;
+  return handle && identityId
+    ? { status: "found", handle, identityId }
+    : { status: "unlinked" };
+}
+
+/** Return the stored Identity of one linked account of a Slack user. */
+async function linkedIdentityId(
+  teamId: SlackTeamId,
+  slackUserId: string,
+  provider: string,
+  handle: string,
+): Promise<string | undefined> {
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({ id: juniorIdentities.id })
+    .from(linkedSlackIdentity)
+    .innerJoin(
+      juniorIdentities,
+      and(
+        eq(juniorIdentities.userId, linkedSlackIdentity.userId),
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, provider),
+        eq(juniorIdentities.handle, handle),
+      ),
+    )
+    .where(
+      and(
+        eq(linkedSlackIdentity.kind, "user"),
+        eq(linkedSlackIdentity.provider, "slack"),
+        eq(linkedSlackIdentity.providerTenantId, teamId),
+        eq(linkedSlackIdentity.providerSubjectId, slackUserId),
+      ),
+    )
+    .limit(1);
+  return row?.id;
 }

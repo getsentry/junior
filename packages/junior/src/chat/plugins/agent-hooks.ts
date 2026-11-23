@@ -106,6 +106,7 @@ import { createCodeChangePublisher } from "@/chat/code/publisher";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import {
   apiRoutePrefix,
   coreRegistrations,
@@ -917,6 +918,11 @@ export function getPluginTools(
       decider: createPluginDecider(pluginName, { onCost }),
       embedder: createPluginEmbedder(pluginName, { onCost }),
       egress: context.egress,
+      inboxItems: createPluginInboxItems({
+        conversationId: context.conversationId,
+        plugin: pluginName,
+        show: createInboxItemShow(),
+      }),
       ...(mcp ? { mcp } : undefined),
       model: createPluginModel(pluginName, plugin.model, { onCost }),
       events,

@@ -311,6 +311,22 @@ export function seeds(nowMs: number): MockItemSeed[] {
       title: "Review requested · #91",
     },
     {
+      body: "#77 waits on your review.\n\nhttps://github.com/getsentry/payments/issues/77",
+      conversationId: RELEASE_CONVERSATION_ID,
+      createdAt: at(70),
+      id: "qa-issue-review-77",
+      plugin: "github",
+      status: "open",
+      subject: {
+        id: "https://github.com/getsentry/payments/issues/77",
+        objectType: "task",
+        // As the GitHub plugin names it, with its number.
+        title: "Design: Split the release train by region (#77)",
+        url: "https://github.com/getsentry/payments/issues/77",
+      },
+      title: "Review requested · #77",
+    },
+    {
       assignedToEveryone: true,
       body: "The canary deploy paused after the error budget alert. Nothing to do unless it stays paused.",
       conversationId: DEPLOY_CONVERSATION_ID,

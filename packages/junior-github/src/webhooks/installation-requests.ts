@@ -216,6 +216,30 @@ export async function loadPullRequestConflictHistory(
   });
 }
 
+/**
+ * Read the first 100 reactions on one issue, with a read-only token. A saved
+ * response makes a repeat read conditional.
+ */
+export async function loadIssueReactions(
+  env: GitHubInstallationEnv,
+  issue: { number: number; repositoryFullName: string },
+): Promise<unknown> {
+  const { owner, name } = splitRepository(
+    issue.repositoryFullName,
+    "issue reactions",
+  );
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { issues: "read" },
+    repositories: [name],
+  });
+  return await githubRequest(
+    "https://api.github.com",
+    `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/issues/${issue.number}/reactions?per_page=100`,
+    { responses: env.responses, token: token.token },
+  );
+}
+
 /** Ask people to review one pull request, with a pull request write token. */
 export async function requestPullRequestReviewers(
   env: GitHubInstallationEnv,

@@ -239,6 +239,7 @@ describe("findLinkedHandle", () => {
     await expect(findGitHubHandle("<@U039RR91S>")).resolves.toEqual({
       status: "found",
       handle: "dcramer",
+      identityId: expect.any(String),
     });
   });
 
