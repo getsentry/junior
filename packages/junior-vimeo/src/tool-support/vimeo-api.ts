@@ -180,7 +180,7 @@ export function assertWritable(video: Video): void {
     : false;
   if (!inFolder) {
     throw new PluginToolInputError(
-      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${folder.uri}. Junior changes only videos in that folder; use vimeo_listFolder to find them.`,
+      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${folder.uri}. The Vimeo tools change only videos in that folder; use vimeo_listFolder to find them.`,
     );
   }
 }
