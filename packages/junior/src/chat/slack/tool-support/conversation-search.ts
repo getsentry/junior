@@ -33,7 +33,7 @@ export function createSlackConversationSearchChannelPort(
       if (!reference || reference.channelId !== match.providerDestinationId) {
         return {};
       }
-      const permalink = options.includePermalink
+      const url = options.includeUrl
         ? await getSlackMessagePermalink({
             channelId: reference.channelId,
             messageTs: reference.threadTs,
@@ -44,7 +44,7 @@ export function createSlackConversationSearchChannelPort(
         ...(match.channelName
           ? { channel_name: match.channelName }
           : undefined),
-        ...(permalink ? { permalink } : undefined),
+        ...(url ? { url } : undefined),
       };
     },
   };

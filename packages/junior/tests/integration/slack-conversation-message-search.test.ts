@@ -91,8 +91,7 @@ describe("searchConversationMessages", () => {
           excerpt: expect.stringContaining("rollback owner"),
           channel_id: "CARCHIVE",
           channel_name: "archive",
-          permalink:
-            "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+          url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
         },
       ],
     });
@@ -124,9 +123,8 @@ describe("searchConversationMessages", () => {
       query: "launch checklist",
     });
     expect(withDashboard.matches[0]).toMatchObject({
-      dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent("slack:CARCHIVE:1700000000.100000")}`,
+      url: `https://junior.example.com/conversations/${encodeURIComponent("slack:CARCHIVE:1700000000.100000")}`,
     });
-    expect(withDashboard.matches[0]).not.toHaveProperty("permalink");
 
     await expect(
       executeTool(tool, {
