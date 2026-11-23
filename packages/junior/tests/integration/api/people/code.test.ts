@@ -216,9 +216,11 @@ describe("people code API", () => {
         platform: "slack" as const,
         teamId: "T1",
       };
+      const nowMs = Date.now();
       await store.recordActivity({
         actor,
         conversationId: "slack:C1:fix",
+        nowMs: nowMs - 3_000,
         destination: channel,
         source: "slack",
         title: "Fix the flaky deploy",
@@ -227,6 +229,7 @@ describe("people code API", () => {
       await store.recordActivity({
         actor,
         conversationId: "slack:D1:secret",
+        nowMs: nowMs - 2_000,
         destination: { channelId: "D1", platform: "slack", teamId: "T1" },
         source: "slack",
         title: "Private plans",
@@ -236,6 +239,7 @@ describe("people code API", () => {
         actor,
         conversationId: "agent-dispatch:sweep-run",
         destination: channel,
+        nowMs: nowMs - 1_000,
         title: "Dependency sweep run",
         visibility: "public",
       });
@@ -243,7 +247,6 @@ describe("people code API", () => {
         fixture.sql.db(),
         "alice@example.com",
       );
-      const nowMs = Date.now();
       await saveScheduledAutomation(fixture.sql.db(), {
         id: "sched_sweep",
         conversationAccess: { audience: "channel", visibility: "public" },
@@ -268,8 +271,8 @@ describe("people code API", () => {
           timezone: "UTC",
         },
         status: "active",
+        // Untitled, so it is named from its task.
         task: { kind: "instruction", instruction: "Bump dependencies." },
-        title: "Dependency sweep",
         updatedAtMs: nowMs,
       });
       await recordAutomationExecution("sched_sweep", {
@@ -278,9 +281,9 @@ describe("people code API", () => {
         nowMs,
         status: "completed",
       });
-      const change = (number: number, conversationId: string) =>
+      const change = (number: number, ...conversationIds: string[]) =>
         ({
-          conversationIds: [conversationId],
+          conversationIds,
           number,
           openedAt: new Date(nowMs - number * 60_000),
           providerId: `change-${number}`,
@@ -306,6 +309,12 @@ describe("people code API", () => {
         fixture.sql.db(),
         "github",
         change(3, "agent-dispatch:sweep-run"),
+      );
+      // The earliest Conversation is the source, not the first id.
+      await recordCodeChange(
+        fixture.sql.db(),
+        "github",
+        change(4, "slack:C1:fix", "agent-dispatch:sweep-run"),
       );
       const stacks = async (api: {
         request(url: string): Response | Promise<Response>;
@@ -334,7 +343,16 @@ describe("people code API", () => {
           kind: "conversation",
           title: "Private plans",
         },
-        3: { id: "sched_sweep", kind: "automation", title: "Dependency sweep" },
+        3: {
+          id: "sched_sweep",
+          kind: "automation",
+          title: "Bump dependencies.",
+        },
+        4: {
+          id: "slack:C1:fix",
+          kind: "conversation",
+          title: "Fix the flaky deploy",
+        },
       });
       // Anyone else gets no stack for a private source, so its title stays
       // hidden.
