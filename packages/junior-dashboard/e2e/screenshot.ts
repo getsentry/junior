@@ -1,3 +1,4 @@
+import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, type Locator, type Page } from "@playwright/test";
 
@@ -35,6 +36,9 @@ const SCREENSHOT_STYLE = [
 // Each worker's dashboard server listens on a random port. Pages that show
 // the dashboard URL, such as the MCP settings, show this origin instead.
 const SCREENSHOT_ORIGIN = "http://127.0.0.1:3000";
+
+// Captures to try for two in a row that are the same.
+const MAX_CAPTURES = 8;
 
 type ScreenshotOptions = {
   clip?: {
@@ -78,12 +82,10 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
   const views = options.view ? [VIEWS[options.view]] : [desktop, mobile];
 
   for (const view of views) {
-    const size = page.viewportSize();
-    if (size?.width !== view.width || size.height !== view.height) {
-      // A resize moves the page under the pointer, so whichever element
-      // lands there shows its hover state or tooltip. Park the pointer.
-      await page.mouse.move(0, 0);
-    }
+    // The last click or hover of the spec, or a resize that moves the page
+    // under the pointer, leaves a hover state or tooltip on some runs. Move
+    // the pointer off the page, which sends mouseleave.
+    await page.mouse.move(-1, -1);
     await page.setViewportSize({
       height: view.height,
       width: view.width,
@@ -129,18 +131,43 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
         for (const [node, text] of changed) node.nodeValue = text;
       };
     }, SCREENSHOT_ORIGIN);
-    await page.screenshot({
+    const file = `${name}__${view.name}.png`;
+    const image = await stableCapture(page, file, {
       animations: "disabled",
       clip,
       fullPage: !options.clip,
       style: SCREENSHOT_STYLE,
-      path: path.join(SCREENSHOT_DIR, `${name}__${view.name}.png`),
     });
+    await mkdir(SCREENSHOT_DIR, { recursive: true });
+    await writeFile(path.join(SCREENSHOT_DIR, file), image);
     // Later steps of the spec read the real URL.
     await restoreOrigin.evaluate((restore) => restore());
   }
 
   if (previous) await page.setViewportSize(previous);
+}
+
+/**
+ * Capture until the image stops changing, so a late fetch, scroll, or layout
+ * pass cannot land in some runs and not others. A page that never stops
+ * changing fails the test here, not later as a Frameshift change on an
+ * unrelated pull request.
+ */
+async function stableCapture(
+  page: Page,
+  file: string,
+  options: Parameters<Page["screenshot"]>[0],
+): Promise<Buffer> {
+  let previous = await page.screenshot(options);
+  for (let capture = 1; capture < MAX_CAPTURES; capture += 1) {
+    await settle(page);
+    const image = await page.screenshot(options);
+    if (image.equals(previous)) return image;
+    previous = image;
+  }
+  throw new Error(
+    `Screenshot ${file} changed in each of ${MAX_CAPTURES} captures. Find what still moves and make it settle before the shot.`,
+  );
 }
 
 /**
