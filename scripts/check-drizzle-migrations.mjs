@@ -14,7 +14,7 @@ function readJson(filePath, errors) {
   }
 }
 
-/** Report missing, orphaned, or disconnected Drizzle migration metadata. */
+/** Report missing, orphaned, out-of-order, or disconnected Drizzle migration metadata. */
 export function checkDrizzleMigrationDirectory(directory) {
   const errors = [];
   const journalPath = path.join(directory, "meta", "_journal.json");
@@ -29,11 +29,21 @@ export function checkDrizzleMigrationDirectory(directory) {
   const expectedSnapshotFiles = new Set();
   const snapshotIds = new Set();
   let previousSnapshotId = ZERO_SNAPSHOT_ID;
+  let previousWhen = -Infinity;
 
   for (const [index, entry] of entries.entries()) {
     const prefix = String(index).padStart(4, "0");
     if (entry?.idx !== index) {
       errors.push(`${journalPath}: entry ${index} must have idx ${index}`);
+    }
+    // The migrator skips each migration whose `when` is not newer than the
+    // last applied one, so an out-of-order entry never runs.
+    if (typeof entry?.when !== "number" || entry.when <= previousWhen) {
+      errors.push(
+        `${journalPath}: entry ${index} must have a "when" greater than the previous entry's, or the migrator skips it. Run \`pnpm db:rebase\` to regenerate the branch migrations.`,
+      );
+    } else {
+      previousWhen = entry.when;
     }
     if (typeof entry?.tag !== "string" || !entry.tag.startsWith(`${prefix}_`)) {
       errors.push(`${journalPath}: entry ${index} must use a ${prefix}_ tag`);
@@ -94,7 +104,8 @@ export function checkDrizzleMigrationDirectory(directory) {
   return errors;
 }
 
-function migrationDirectories(root) {
+/** List the `migrations` directories of the packages that have a Drizzle journal. */
+export function migrationDirectories(root) {
   const packagesDirectory = path.join(root, "packages");
   return fs
     .readdirSync(packagesDirectory, { withFileTypes: true })
