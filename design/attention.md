@@ -61,9 +61,10 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
   Inbox shows it in FYI. This breaks "anything that takes attention names
   what the person gets or must do".
 - Some asks are only a Slack message: a draft pull request that waits for
-  the requester's review, and a decision on a watched issue. They add no
-  Inbox item. This breaks "Junior asks a person only with an Inbox item"
-  and "Slack and the dashboard ask for attention for the same things".
+  the requester's review (`github#draft-held`), and a decision on a
+  watched issue. They add no Inbox item. This breaks "Junior asks a person
+  only with an Inbox item" and "Slack and the dashboard ask for attention
+  for the same things".
 - An Automation alert shows only in the dashboard Inbox. Slack shows no
   card for it. For a blocked Automation, Slack gets a DM with no card. For a
   failed run or a trigger that is not available, Slack gets nothing. This

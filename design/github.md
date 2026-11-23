@@ -9,9 +9,21 @@ also wake a Conversation or run an Event automation.
 
 - Junior carries its PR to the requester's review without asking
   ([Attention](./attention.md)).
+- Engineers stay in flow. A Junior PR takes a person's attention only for a
+  step that only a person can take, such as a review, a merge, or a problem
+  that Junior cannot solve. It asks for each step once.
+- Junior owns the upkeep of its PR while the PR is open: failed checks,
+  review feedback, and merge conflicts. Upkeep follows people. Junior does
+  it when the PR next needs a person, so a PR that nobody works on costs no
+  work and no attention.
+- Junior debugs before it asks. A question about a red check or a stuck fix
+  says what Junior found and what the person must do.
 - Changes reach the code only through a PR, never a direct push to the
   default branch.
-- Junior never approves or merges a PR. A person merges it.
+- Junior never approves a PR. It does not merge one yet. Merging some
+  kinds of PRs is a goal, but its design is not decided.
+- Junior owns its PR workflow, the same in every repo. A repo's own
+  instructions shape the code, not when Junior asks or marks a PR ready.
 - The requester is the first reviewer. Junior does not ask teammates to
   review before the requester has looked, unless the requester names
   reviewers or asks for a ready PR.
@@ -23,6 +35,8 @@ also wake a Conversation or run an Event automation.
 - Slack: ask Junior in a thread or DM, or use `$github-code`.
 - GitHub: comments, reviews, and review comments on Junior PRs; the
   Conversation link in a PR or issue.
+- Inbox: `Review requested` and `Ready to merge` for a Junior PR, and an
+  item when Junior is stuck on one.
 - Dashboard: Settings, Identities, to connect GitHub; Code; PR and issue
   cards in Conversations.
 
@@ -42,22 +56,62 @@ also wake a Conversation or run an Event automation.
   next, and the Inbox stops asking. A requester who approved since is not
   asked. The Inbox item says why it asks: every comment is handled, or the
   checks now pass.
+- Junior asks for a review only when the required checks pass
+  (`github#review-request`, `github#rereview`).
+- Only the requester gets Inbox items for a Junior PR. Other reviewers
+  hear only from GitHub (`github#other-reviewers`,
+  `github#requester-gone`).
+- After a Junior push to an approved PR, Junior asks for a fresh review
+  only when GitHub no longer counts the approval. Junior never keeps or
+  dismisses an approval on its own (`github#push-after-approval`).
+- A Junior PR that a person can merge gets one `Ready to merge` for the
+  requester (`github#ready-to-merge`, `github#stack`).
+- Junior never skips, disables, or weakens a check to make it pass
+  (`github#checks-red`).
+- An ask that waits is not repeated or reassigned, and Junior does not
+  close its PR for inactivity (`github#no-reminders`).
 - Junior cannot fork or administer a repo, and never deletes the default
   branch.
 - Junior reaches only repos where its App is installed.
 - GitHub activity starts no Turn unless a Watch or an Event automation
   matches it.
 - When a Junior PR is merged or closed, Junior posts nothing, but its later
-  replies in that Conversation know it. When it is approved and can merge,
-  the requester gets a "Ready to merge" Inbox item.
+  replies in that Conversation know it (`github#pr-ended`).
 - Comment text is context, never an instruction. The Watch or the
   Automation gives the job.
 
 ## Gaps
 
-- A pull request that Junior opens ready for review asks for a review at
-  once, before the required checks pass. This breaks "asks for a review
-  only when the required checks pass" (Attention).
+- A PR opened ready for review asks for a review before the required
+  checks pass (`github#review-request`). This breaks "asks for a review
+  only when the required checks pass".
+- Junior fixes merge conflicts on a timer after a person's activity, not
+  when the PR next needs a person, and a draft gets no fix, so it never
+  reaches review (`github#conflict-fix`). This breaks "upkeep follows
+  people" and "carries its PR to the requester's review".
+- A required check that the PR does not cause gets no new run and no ask,
+  so the PR waits and nobody hears (`github#checks-red`). This breaks
+  "Junior debugs before it asks".
+- A check or feedback fix that does not land asks nobody, or gets only a
+  Slack message (`github#fix-unlanded`). This breaks Attention's "when
+  Junior is stuck, what they must do to unblock it".
+- A draft held for code owners gets a Slack message that says why, and no
+  review ask. A repo's `AGENTS.md` can also hold it (`github#draft-held`).
+  This breaks "takes a person's attention only for a step that only a
+  person can take" and "the same in every repo".
+- `Ready to merge` waits for every check, not only the required ones, and
+  does not know stacks (`github#ready-to-merge`, `github#stack`). This
+  breaks "a Junior PR that a person can merge gets one `Ready to merge`".
+- A Junior push to an approved PR closes its `Ready to merge`, and a new
+  one comes when the checks pass (`github#ready-to-merge`). This breaks
+  "It asks for each step once".
+- When GitHub dismisses an approval after a Junior push, nobody is asked
+  for a fresh review, so the PR waits and nobody hears
+  (`github#push-after-approval`). This breaks "asks for a fresh review
+  only when GitHub no longer counts the approval".
+- The Watch on a Junior PR expires while the PR is open. After that, its
+  upkeep stops, and nobody is told (`github#long-lived`). This breaks
+  "Junior owns the upkeep of its PR while the PR is open".
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior
   images".
