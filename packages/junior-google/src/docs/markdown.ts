@@ -159,6 +159,13 @@ function parseBlocks(input: string): Block[] {
             if (block.runs.length) block.runs.push({ style: {}, text: " " });
             block.runs.push(...inlineRuns(child.children, markdown));
           }
+          // Docs has no checkbox here, so a task item keeps its Markdown box.
+          if (typeof item.checked === "boolean") {
+            block.runs.unshift({
+              style: {},
+              text: item.checked ? "[x] " : "[ ] ",
+            });
+          }
         }
       } else if (!DROPPED_BLOCKS.has(node.type)) {
         paragraph([{ style: {}, text: sourceText(node, markdown) }]);
