@@ -61,6 +61,8 @@ final class AppModel {
   var focusSearch = false
   /// Open the Conversation's details on arrival (`?details=1`).
   var openDetails = false
+  /// Open the rename prompt on arrival (`?rename=1`).
+  var openRename = false
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
 
@@ -190,6 +192,7 @@ final class AppModel {
     // `?drawer=1` opens the navigation drawer over the page (screenshots).
     drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
+    openRename = components.queryItems?.contains { $0.name == "rename" } == true
   }
 
   func go(_ place: Place) {
