@@ -4,7 +4,7 @@
  * it from its child agents, and a Watch on the Conversation gets the same
  * update, in the same `<agent-result>` format.
  */
-import { renderUntrustedTag } from "@/chat/input-tags";
+import { renderDataTag } from "@/chat/input-tags";
 
 const AGENT_UPDATE_TEXT_MAX_LENGTH = 12_000;
 
@@ -48,7 +48,7 @@ export function renderAgentResult(args: {
   waitingOn?: string | undefined;
 }): string {
   const text = args.update.text.trim().slice(0, AGENT_UPDATE_TEXT_MAX_LENGTH);
-  return renderUntrustedTag(
+  return renderDataTag(
     "agent-result",
     {
       conversation_id: args.conversationId,

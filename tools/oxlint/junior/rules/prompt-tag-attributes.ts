@@ -47,14 +47,14 @@ const WRITERS = new Map([
   ["openingTag", 1],
   ["renderInlineTag", 2],
   ["renderTag", 1],
-  ["renderUntrustedTag", 1],
+  ["renderDataTag", 1],
 ]);
 
 function writerName(node: ESTree.CallExpression) {
   return node.callee.type === "Identifier" ? node.callee.name : undefined;
 }
 
-// A tag writer such as `renderUntrustedTag` passes its own attributes
+// A tag writer such as `renderDataTag` passes its own attributes
 // parameter on; its callers are checked.
 function insideWriter(node: ESTree.Node): boolean {
   for (let current = node.parent; current; current = current.parent) {

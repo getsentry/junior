@@ -45,7 +45,7 @@ import {
   type ChildMessage,
 } from "./child-message";
 import { childAgentStillWorks } from "./store";
-import { renderUntrustedTag } from "@/chat/input-tags";
+import { renderDataTag } from "@/chat/input-tags";
 import { listUnreportedSiblingAgents } from "./list";
 import { recordChildAgentEnded, type SubagentOutcome } from "./markers";
 import {
@@ -163,7 +163,7 @@ function senderEventMetadata(
 }
 
 function renderMessageInput(sender: ChildAgentSender, text: string): string {
-  return renderUntrustedTag(
+  return renderDataTag(
     "agent-message",
     {
       conversation_id: sender.childConversationId,
