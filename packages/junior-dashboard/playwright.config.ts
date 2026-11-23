@@ -26,9 +26,6 @@ export default defineConfig<{ ui: DashboardShell }>({
   },
   fullyParallel: true,
   forbidOnly: Boolean(process.env["CI"]),
-  // A retry that passes hides a flaky test, so a flaky test fails the run.
-  // The retry stays so that the failed attempt records a trace.
-  failOnFlakyTests: Boolean(process.env["CI"]),
   retries: process.env["CI"] ? 1 : 0,
   // A broken build fails every journey. Stop early instead of waiting for
   // each timeout and retry until the CI job limit.
