@@ -1,4 +1,4 @@
-import { and, desc, eq, gt, inArray } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, max } from "drizzle-orm";
 import type { NotificationPause } from "@/chat/notifications/pause";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorInboxItemDeliveries } from "@/db/schema";
@@ -96,14 +96,16 @@ export async function recordInboxItemSlackCard(
 }
 
 /**
- * Record the web push of a reply notice to its starter. Each reply pushes
- * again, so the one record of the item holds the latest push. A skipped
- * push keeps an earlier `sent` record: that notification still shows, and
- * the close of the item must clear it.
+ * Record a web push that can repeat for one item and User: a reply to its
+ * starter, or the wake of their snooze. Each one pushes again, so the one
+ * record of the event holds the latest push. A skipped push keeps an
+ * earlier `sent` record: that notification still shows, and the close of
+ * the item must clear it.
  */
-export async function recordReplyNoticePush(
+export async function recordRepeatInboxItemPush(
   db: JuniorDatabase,
   input: {
+    event: "reply" | "wake";
     itemId: string;
     nowMs: number;
     skipReason: InboxItemDeliverySkipReason | undefined;
@@ -120,7 +122,7 @@ export async function recordReplyNoticePush(
     ...result,
     channel: "web_push",
     createdAt: now,
-    event: "reply",
+    event: input.event,
     itemId: input.itemId,
     userId: input.userId,
   });
@@ -160,6 +162,8 @@ export async function clearInboxItemDeliveries(
 /**
  * Return the items whose web push to this User cleared after `sinceMs`,
  * newest first. A device can still show them, so the next push closes them.
+ * An item can have more than one push, such as its creation and a wake, but
+ * shows as one notification, so it is listed once.
  */
 export async function listClearedInboxItemPushes(
   db: JuniorDatabase,
@@ -177,7 +181,8 @@ export async function listClearedInboxItemPushes(
         gt(juniorInboxItemDeliveries.updatedAt, new Date(sinceMs)),
       ),
     )
-    .orderBy(desc(juniorInboxItemDeliveries.updatedAt))
+    .groupBy(juniorInboxItemDeliveries.itemId)
+    .orderBy(desc(max(juniorInboxItemDeliveries.updatedAt)))
     .limit(MAX_CLEARED_ITEMS);
   return rows.map((row) => row.itemId);
 }

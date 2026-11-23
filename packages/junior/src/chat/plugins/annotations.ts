@@ -2,6 +2,7 @@ import { and, desc, eq, inArray, or } from "drizzle-orm";
 import {
   conversationAnnotationInputSchema,
   type ConversationAnnotation,
+  type ConversationAnnotationInput,
   type PluginAnnotations,
 } from "@sentry/junior-plugin-api";
 import type { JuniorDatabase } from "@/db/db";
@@ -28,36 +29,56 @@ function annotationFromRow(row: {
   };
 }
 
+/**
+ * Add or replace one annotation of a plugin, and mark the Conversation detail
+ * changed in the same statement. Pass a transaction to save it with other
+ * changes.
+ */
+export async function upsertPluginAnnotation(
+  db: JuniorDatabase,
+  args: {
+    annotation: ConversationAnnotationInput;
+    conversationId: string;
+    plugin: string;
+  },
+): Promise<void> {
+  const annotation = conversationAnnotationInputSchema.parse(args.annotation);
+  const now = new Date();
+  await db
+    .with(conversationDetailTouch(db, [args.conversationId]))
+    .insert(juniorConversationAnnotations)
+    .values({
+      annotation,
+      conversationId: args.conversationId,
+      createdAt: now,
+      key: annotation.key,
+      kind: annotation.kind,
+      plugin: args.plugin,
+      updatedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [
+        juniorConversationAnnotations.conversationId,
+        juniorConversationAnnotations.plugin,
+        juniorConversationAnnotations.kind,
+        juniorConversationAnnotations.key,
+      ],
+      set: { annotation, updatedAt: now },
+    });
+}
+
 export function createPluginAnnotations(args: {
   conversationId: string;
   db: JuniorDatabase;
   plugin: string;
 }): PluginAnnotations {
   return {
-    async upsert(input) {
-      const annotation = conversationAnnotationInputSchema.parse(input);
-      const now = new Date();
-      await args.db
-        .with(conversationDetailTouch(args.db, [args.conversationId]))
-        .insert(juniorConversationAnnotations)
-        .values({
-          annotation,
-          conversationId: args.conversationId,
-          createdAt: now,
-          key: annotation.key,
-          kind: annotation.kind,
-          plugin: args.plugin,
-          updatedAt: now,
-        })
-        .onConflictDoUpdate({
-          target: [
-            juniorConversationAnnotations.conversationId,
-            juniorConversationAnnotations.plugin,
-            juniorConversationAnnotations.kind,
-            juniorConversationAnnotations.key,
-          ],
-          set: { annotation, updatedAt: now },
-        });
+    async upsert(annotation) {
+      await upsertPluginAnnotation(args.db, {
+        annotation,
+        conversationId: args.conversationId,
+        plugin: args.plugin,
+      });
     },
     async remove(kind, key) {
       await args.db

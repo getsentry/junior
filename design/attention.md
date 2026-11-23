@@ -44,9 +44,10 @@ it: agent replies and questions, Slack, the Inbox, push, and each plugin.
 - Junior asks a person only with an Inbox item
   ([Inbox](./inbox.md)).
 - A push goes to each User assigned to an open item, once per item: an
-  action, or a reply notice for its starter. Everyone items and other
-  notices do not push. When the item closes, its push goes away on every
-  device.
+  action, or a reply notice for its starter. When a time or an Event wakes
+  their snooze of that item, it pushes to them once more. Everyone items
+  and other notices do not push. When the item closes, its push goes away
+  on every device.
 - When Slack shows the item in a card, Slack asks first. The push waits 5
   minutes and goes only to a User who is away in Slack then. An answer, a
   dismiss, or a reply in that time closes the item, so nothing pushes. An

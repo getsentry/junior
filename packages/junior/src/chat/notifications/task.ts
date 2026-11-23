@@ -11,7 +11,7 @@ import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { getConversationEventStore } from "@/chat/db";
 import {
   clearInboxItemDeliveries,
-  recordReplyNoticePush,
+  recordRepeatInboxItemPush,
 } from "@/chat/inbox-items/deliveries";
 import {
   closeReadReplyNotice,
@@ -155,7 +155,8 @@ async function notifyReply(context: PluginTaskContext): Promise<void> {
   if (!url) return skip("no_dashboard");
   const nowMs = Date.now();
   const pause = await readNotificationPause(db, userId, nowMs);
-  await recordReplyNoticePush(db, {
+  await recordRepeatInboxItemPush(db, {
+    event: "reply",
     itemId,
     nowMs,
     skipReason: pause,

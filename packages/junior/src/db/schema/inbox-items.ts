@@ -222,7 +222,7 @@ export const juniorInboxItemDeliveries = pgTable(
       .notNull()
       .references(() => juniorUsers.id, { onDelete: "cascade" }),
     channel: text("channel").$type<"slack" | "web_push">().notNull(),
-    event: text("event").$type<"created" | "reply">().notNull(),
+    event: text("event").$type<"created" | "reply" | "wake">().notNull(),
     status: text("status").$type<"sent" | "skipped" | "cleared">().notNull(),
     skipReason: text("skip_reason"),
     createdAt: timestamptz("created_at").notNull(),
