@@ -5,7 +5,7 @@ import { and, asc, eq, like } from "drizzle-orm";
 import { eventFromRow } from "@/chat/conversations/sql/history";
 import { piMessageFromHistoryItem } from "@/chat/pi/conversation-events";
 import { getAssistantReplyText } from "@/chat/services/assistant-reply";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { EngineContext } from "@/core/engine-context";
 import { juniorConversationEvents } from "@/db/schema";
 
 type EventRow = typeof juniorConversationEvents.$inferSelect;
@@ -29,11 +29,11 @@ export function replyText(row: EventRow): string | undefined {
 
 /** Finds the reply events of a Turn, in history order. */
 export async function findTurnReplies(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   conversationId: string,
   turnId: string,
 ): Promise<EventRow[]> {
-  const events = await executor
+  const events = await engineCtx.db
     .db()
     .select()
     .from(juniorConversationEvents)

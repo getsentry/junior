@@ -34,6 +34,7 @@ vi.hoisted(() => {
 });
 
 const originalJuniorSecret = process.env["JUNIOR_SECRET"];
+const LEASE_MS = 60_000;
 
 type Run = { turnId: string; metadata: QueueMessageMetadata; atMs: number };
 
@@ -77,14 +78,21 @@ afterEach(async () => {
   await Promise.all(workers.map((worker) => worker.close()));
 });
 
+// The queue and lease parts of the engine context. The consumer only records
+// its runs, so it needs no database.
+const engineCtx = { queue: getQueueProvider(), leaseMs: LEASE_MS };
+
 /** The step runner that the runner PR adds. It only records its runs. */
-const turnStep = createTurnStepConsumer(async (message, metadata) => {
-  setActiveSpanAttributes({
-    "app.turn.step_seq": 3,
-    "gen_ai.conversation.id": "slack:C123:1",
-  });
-  runs.push({ turnId: message.turnId, metadata, atMs: Date.now() });
-});
+const turnStep = createTurnStepConsumer(
+  engineCtx,
+  async (message, metadata) => {
+    setActiveSpanAttributes({
+      "app.turn.step_seq": 3,
+      "gen_ai.conversation.id": "slack:C123:1",
+    });
+    runs.push({ turnId: message.turnId, metadata, atMs: Date.now() });
+  },
+);
 
 async function startWorker(consumer: QueueConsumer): Promise<void> {
   const provider = getQueueProvider();
@@ -142,10 +150,10 @@ async function waitFor(check: () => boolean, timeoutMs = 10_000) {
 }
 
 function publishFromRequest(
-  options?: Parameters<typeof publishTurnStep>[1],
+  options?: Parameters<typeof publishTurnStep>[2],
 ): Promise<void> {
   return Sentry.startSpan({ name: "http.server", op: "http.server" }, () =>
-    publishTurnStep(turnId, options),
+    publishTurnStep(engineCtx, turnId, options),
   );
 }
 

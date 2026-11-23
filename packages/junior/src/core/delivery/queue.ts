@@ -2,18 +2,15 @@
 // Conversation and the Turn: the outbox rows own what is sent and what is
 // left, so a message sent twice or late sends no reply twice.
 import * as z from "zod";
-import { getChatConfig } from "@/chat/config";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
-import {
-  getQueueProvider,
-  type QueueMessageMetadata,
-} from "@/chat/queue/provider";
+import type { QueueMessageMetadata } from "@/chat/queue/provider";
 import {
   QUEUE_SIGNATURE_MAX_AGE_MS,
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
+import type { EngineContext } from "@/core/engine-context";
 import { activeTraceContext, withSpan } from "@/core/telemetry";
 
 /** Queue topic of delivery messages. */
@@ -54,10 +51,11 @@ const deliverySign = {
 
 /** Sends a message that delivers the Turn's replies, after `delayMs` if set. */
 export async function publishDelivery(
+  engineCtx: Pick<EngineContext, "queue">,
   message: DeliveryMessage,
   options: { delayMs?: number } = {},
 ): Promise<void> {
-  const queue = getQueueProvider();
+  const { queue } = engineCtx;
   await withSpan(
     "queue.publish",
     {
@@ -101,10 +99,11 @@ export type RunDelivery = (
 /**
  * Builds the queue consumer of delivery messages. It acknowledges a message
  * with a bad or expired signature and retries one that cannot be checked yet.
- * Build it after the app sets its runtime config, because the visibility
- * timeout reads `functionMaxDurationSeconds`.
  */
-export function createDeliveryConsumer(run: RunDelivery) {
+export function createDeliveryConsumer(
+  engineCtx: Pick<EngineContext, "queue" | "leaseMs">,
+  run: RunDelivery,
+) {
   return queueCallback<SignedDeliveryMessage>({
     consumerGroup: DELIVERY_CONSUMER_GROUP,
     // The outbox rows hold the delivery state, so a retry only sends what is
@@ -126,7 +125,7 @@ export function createDeliveryConsumer(run: RunDelivery) {
           "app.turn.id": message.turnId,
           "gen_ai.conversation.id": message.conversationId,
           "messaging.destination.name": metadata.topicName,
-          "messaging.system": getQueueProvider().messagingSystem,
+          "messaging.system": engineCtx.queue.messagingSystem,
           "messaging.message.id": metadata.messageId,
           "messaging.message.receive.latency":
             Date.now() - metadata.createdAt.getTime(),
@@ -145,7 +144,6 @@ export function createDeliveryConsumer(run: RunDelivery) {
     topic: DELIVERY_TOPIC,
     verify: (value) => verifyQueueMessage(deliverySign, value),
     visibilityTimeoutSeconds:
-      getChatConfig().functionMaxDurationSeconds +
-      VISIBILITY_TIMEOUT_BUFFER_SECONDS,
+      engineCtx.leaseMs / 1000 + VISIBILITY_TIMEOUT_BUFFER_SECONDS,
   });
 }

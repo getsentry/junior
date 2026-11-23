@@ -24,7 +24,6 @@ import {
 import {
   ACTOR,
   CONVERSATION_ID,
-  LEASE_MS,
   MAX_ATTEMPTS,
   MODEL,
   prepareWith,
@@ -211,7 +210,7 @@ describe("advanceTurn", () => {
     "does not run a step of a %s Turn",
     async (state) => {
       if (state === "cancelled") {
-        await cancelTurn(fixture.sql, turnId);
+        await cancelTurn(engine.engineCtx, turnId);
       } else {
         await fixture.sql
           .db()
@@ -239,7 +238,7 @@ describe("advanceTurn", () => {
 
   it("stops the step when the Turn is cancelled during it, and writes nothing", async () => {
     await engine.advance(
-      prepareInterrupted(() => cancelTurn(fixture.sql, turnId)),
+      prepareInterrupted(() => cancelTurn(engine.engineCtx, turnId)),
     );
 
     await expect(engine.readTurn()).resolves.toMatchObject({
@@ -261,7 +260,7 @@ describe("advanceTurn", () => {
       prepare: prepareWith([]).prepare,
       client: {
         complete: async (request, signal) => {
-          await cancelTurn(fixture.sql, turnId);
+          await cancelTurn(engine.engineCtx, turnId);
           await model.complete(request, signal);
           throw new Error("The connection closed");
         },
@@ -279,7 +278,7 @@ describe("advanceTurn", () => {
   it("stops the step when another invocation takes over the Turn during it, and writes nothing", async () => {
     // The lease of this invocation has expired, so a redelivery claims it.
     const step = prepareInterrupted(() =>
-      claimTurn(fixture.sql, { turnId, owner: "worker-b", leaseMs: LEASE_MS }),
+      claimTurn({ ...engine.engineCtx, owner: "worker-b" }, turnId),
     );
 
     await engine.advance(step, EXPIRED_LEASE_MS);
@@ -301,7 +300,7 @@ describe("advanceTurn", () => {
     const send: ToolDefinition = {
       ...sendTool([]),
       execute: async (_args, { signal }) => {
-        await cancelTurn(fixture.sql, turnId);
+        await cancelTurn(engine.engineCtx, turnId);
         // The tool works until its signal aborts.
         await new Promise((_resolve, reject) => {
           signal.addEventListener("abort", () => reject(signal.reason), {
@@ -459,15 +458,10 @@ describe("advanceTurn", () => {
   });
 
   it.each([
-    ["cancelled", () => cancelTurn(fixture.sql, turnId)],
+    ["cancelled", () => cancelTurn(engine.engineCtx, turnId)],
     [
       "taken over",
-      () =>
-        claimTurn(fixture.sql, {
-          turnId,
-          owner: "worker-b",
-          leaseMs: LEASE_MS,
-        }),
+      () => claimTurn({ ...engine.engineCtx, owner: "worker-b" }, turnId),
     ],
   ])(
     "leaves a Turn that was %s alone when the invocation throws",
@@ -514,11 +508,10 @@ describe("advanceTurn", () => {
     await engine.addTestInput("How many Turns?");
     await engine.advance(prepareWith([sendCallReply()]));
     // An invocation claims the tool step, then dies before it commits.
-    await claimTurn(fixture.sql, {
+    await claimTurn(
+      { ...engine.engineCtx, owner: "worker-dead", leaseMs: EXPIRED_LEASE_MS },
       turnId,
-      owner: "worker-dead",
-      leaseMs: EXPIRED_LEASE_MS,
-    });
+    );
 
     await engine.advance(prepareWith([], [sendTool(executed)]));
 
@@ -602,7 +595,9 @@ describe("advanceTurn", () => {
       type: "user_message",
       provenance: { authority: "instruction", actor: ACTOR },
     });
-    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([]);
+    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual(
+      [],
+    );
   });
 
   it("leaves the input unread when the model step fails", async () => {
@@ -613,7 +608,7 @@ describe("advanceTurn", () => {
 
     await expect(engine.readTurn()).resolves.toMatchObject({ state: "failed" });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId }),
     ]);
   });
@@ -641,7 +636,7 @@ describe("advanceTurn", () => {
       userText("How many Turns?"),
       storedReply(reply),
     ]);
-    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId: lateInputId }),
     ]);
     await expect(engine.deliveredStepMessages()).resolves.toBe(1);
@@ -665,7 +660,7 @@ describe("advanceTurn", () => {
       storedReply(reply),
       expect.objectContaining({ role: "toolResult" }),
     ]);
-    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([
+    await expect(findUnreadInputs(engine.engineCtx, turnId)).resolves.toEqual([
       expect.objectContaining({ inputId }),
     ]);
   });
@@ -698,8 +693,8 @@ describe("advanceTurn", () => {
       stepSeq: 0,
     });
     await expect(engine.loadHistory()).resolves.toEqual([]);
-    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toHaveLength(
-      1,
-    );
+    await expect(
+      findUnreadInputs(engine.engineCtx, turnId),
+    ).resolves.toHaveLength(1);
   });
 });

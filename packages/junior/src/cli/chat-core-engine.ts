@@ -12,15 +12,15 @@ import { localDestinationSchema } from "@sentry/junior-plugin-api";
 import { eq } from "drizzle-orm";
 import { getChatConfig } from "@/chat/config";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
-import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import { getConversationStore } from "@/chat/db";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
-import { getQueueProvider } from "@/chat/queue/provider";
+import type { EngineContext } from "@/core/engine-context";
 import { scheduleInput } from "@/core/turn/schedule";
-import type { JuniorSqlDatabase } from "@/db/db";
 import { juniorTurns } from "@/db/schema";
 import type { TurnState } from "@/db/schema/turns";
 import { turnStepConsumer } from "@/turn-steps/consumer";
+import { createEngineContext } from "@/turn-steps/engine-context";
 import type { TurnInputPayload } from "@/turn-steps/prepare";
 
 const LOCAL_ACTOR: TurnInputPayload["actor"] = {
@@ -50,13 +50,13 @@ export type CoreEngineResult =
 type EndedTurn = { state: TurnState; endReason: string | null };
 
 async function waitForTurnEnd(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   turnId: string,
 ): Promise<EndedTurn> {
   const deadline = Date.now() + TURN_WAIT_TIMEOUT_MS;
   /* oxlint-disable no-await-in-loop -- Each read waits for the one before it. */
   while (Date.now() < deadline) {
-    const [turn] = await executor
+    const [turn] = await engineCtx.db
       .db()
       .select({ state: juniorTurns.state, endReason: juniorTurns.endReason })
       .from(juniorTurns)
@@ -73,13 +73,12 @@ async function waitForTurnEnd(
 }
 
 async function lastAssistantText(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   conversationId: string,
 ): Promise<string> {
-  const events =
-    await createSqlConversationEventStore(executor).loadCurrentHistory(
-      conversationId,
-    );
+  const events = await createSqlConversationEventStore(
+    engineCtx.db,
+  ).loadCurrentHistory(conversationId);
   const reply = projectConversationEvents(events)
     .messages.filter((message) => message.role === "assistant")
     .at(-1);
@@ -96,14 +95,17 @@ export async function runCoreEnginePrompt(args: {
   conversationId: string;
   message: string;
 }): Promise<CoreEngineResult> {
-  const queue = getQueueProvider();
-  if (getChatConfig().queue.provider !== "bullmq" || !queue.startWorker) {
+  const config = getChatConfig();
+  const engineCtx = createEngineContext(config);
+  const { queue } = engineCtx;
+  if (config.queue.provider !== "bullmq" || !queue.startWorker) {
     throw new Error(
       "--engine core runs its steps on a BullMQ worker. Set JUNIOR_QUEUE_PROVIDER=bullmq and JUNIOR_QUEUE_REDIS_URL.",
     );
   }
-  const executor = getSqlExecutor();
-  const worker = await queue.startWorker([turnStepConsumer().consumer]);
+  const worker = await queue.startWorker([
+    turnStepConsumer(engineCtx).consumer,
+  ]);
   try {
     await getConversationStore().recordActivity({
       conversationId: args.conversationId,
@@ -119,7 +121,7 @@ export async function runCoreEnginePrompt(args: {
       text: args.message,
       actor: LOCAL_ACTOR,
     };
-    const { turnId } = await scheduleInput(executor, {
+    const { turnId } = await scheduleInput(engineCtx, {
       conversationId: args.conversationId,
       // The local CLI has no per-person id, so it uses the system Identity.
       actorIdentityId: SYSTEM_IDENTITY_ID,
@@ -128,7 +130,7 @@ export async function runCoreEnginePrompt(args: {
       sentAt: new Date(),
       source: "local",
     });
-    const turn = await waitForTurnEnd(executor, turnId);
+    const turn = await waitForTurnEnd(engineCtx, turnId);
     if (turn.state !== "completed") {
       return {
         outcome: turn.state === "cancelled" ? "cancelled" : "failed",
@@ -137,7 +139,7 @@ export async function runCoreEnginePrompt(args: {
     }
     return {
       outcome: "completed",
-      reply: await lastAssistantText(executor, args.conversationId),
+      reply: await lastAssistantText(engineCtx, args.conversationId),
     };
   } finally {
     await worker.close();

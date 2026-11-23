@@ -10,6 +10,7 @@ import { instructionProvenanceFor } from "@/chat/conversations/provenance";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { getQueueProvider } from "@/chat/queue/provider";
+import type { EngineContext } from "@/core/engine-context";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import {
   cancelTurn,
@@ -38,10 +39,17 @@ const EXPIRED_LEASE_MS = 0;
 
 describe("Turn state", () => {
   let fixture: LocalJuniorSqlFixture;
+  let engineCtx: EngineContext;
   let turnId: string;
 
   beforeEach(async () => {
     fixture = await createJuniorSqlFixture();
+    engineCtx = {
+      db: fixture.sql,
+      queue: getQueueProvider(),
+      owner: "worker-a",
+      leaseMs: LEASE_MS,
+    };
     await fixture.sql.db().insert(juniorIdentities).values({
       createdAt: new Date(),
       id: "identity:actor",
@@ -94,7 +102,7 @@ describe("Turn state", () => {
   }
 
   function claim(owner = "worker-a", leaseMs = LEASE_MS) {
-    return claimTurn(fixture.sql, { turnId, owner, leaseMs });
+    return claimTurn({ ...engineCtx, owner, leaseMs }, turnId);
   }
 
   async function addTestInput(text: string) {
@@ -159,13 +167,13 @@ describe("Turn state", () => {
     });
     expect(running.leaseExpiresAt!.getTime()).toBeGreaterThan(Date.now());
 
-    await expect(holdsLease(fixture.sql, taken!)).resolves.toBe(true);
-    await expect(holdsLease(fixture.sql, stale)).resolves.toBe(false);
+    await expect(holdsLease(engineCtx, taken!)).resolves.toBe(true);
+    await expect(holdsLease(engineCtx, stale)).resolves.toBe(false);
     await expect(
-      commitStep(fixture.sql, stale, finishedStep(), []),
+      commitStep(engineCtx, stale, finishedStep(), []),
     ).resolves.toBeUndefined();
     await expect(
-      failTurn(fixture.sql, stale, "late", {
+      failTurn(engineCtx, stale, "late", {
         failureCode: "model_execution_failed",
       }),
     ).resolves.toBe(false);
@@ -198,7 +206,7 @@ describe("Turn state", () => {
     const claimed = (await claim())!;
 
     await expect(
-      failTurn(fixture.sql, claimed, "Model request failed", {
+      failTurn(engineCtx, claimed, "Model request failed", {
         failureCode: "model_execution_failed",
         failureReason: "rate_limit",
         eventId: "0123456789abcdef0123456789abcdef",
@@ -220,7 +228,7 @@ describe("Turn state", () => {
   it("cancels a running Turn and fences out its lease holder", async () => {
     const claimed = (await claim())!;
 
-    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(true);
+    await expect(cancelTurn(engineCtx, turnId)).resolves.toBe(true);
     const cancelled = await readTurn();
     expect(cancelled).toMatchObject({
       state: "cancelled",
@@ -230,12 +238,12 @@ describe("Turn state", () => {
       leaseExpiresAt: null,
     });
     expect(cancelled.endedAt).toBeInstanceOf(Date);
-    await expect(holdsLease(fixture.sql, claimed)).resolves.toBe(false);
+    await expect(holdsLease(engineCtx, claimed)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(cancelled);
   });
 
   it("cancels a queued Turn so no worker can claim it", async () => {
-    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(true);
+    await expect(cancelTurn(engineCtx, turnId)).resolves.toBe(true);
     const cancelled = await readTurn();
     expect(cancelled).toMatchObject({
       state: "cancelled",
@@ -257,7 +265,7 @@ describe("Turn state", () => {
     const messages = [toolCallReply(), toolResult()];
 
     await expect(
-      commitStep(fixture.sql, claimed, { outcome: "continue", messages }, []),
+      commitStep(engineCtx, claimed, { outcome: "continue", messages }, []),
     ).resolves.toBe("continue");
 
     await expect(readTurn()).resolves.toMatchObject({
@@ -278,7 +286,7 @@ describe("Turn state", () => {
   it("lets a new claim take the next step at once, and fences out the old lease", async () => {
     const first = (await claim("worker-a"))!;
     await commitStep(
-      fixture.sql,
+      engineCtx,
       first,
       { outcome: "continue", messages: [toolCallReply(), toolResult()] },
       [],
@@ -295,7 +303,7 @@ describe("Turn state", () => {
     expect(running).toMatchObject({ state: "running", leaseOwner: "worker-b" });
 
     await expect(
-      commitStep(fixture.sql, first, finishedStep(), []),
+      commitStep(engineCtx, first, finishedStep(), []),
     ).resolves.toBeUndefined();
     await expect(readTurn()).resolves.toEqual(running);
   });
@@ -305,7 +313,7 @@ describe("Turn state", () => {
     const messages = [finalReply()];
 
     await expect(
-      commitStep(fixture.sql, claimed, { outcome: "completed", messages }, []),
+      commitStep(engineCtx, claimed, { outcome: "completed", messages }, []),
     ).resolves.toBe("completed");
 
     const completed = await readTurn();
@@ -325,27 +333,22 @@ describe("Turn state", () => {
 
     await expect(claim()).resolves.toBeUndefined();
     await expect(
-      failTurn(fixture.sql, claimed, "late", {
+      failTurn(engineCtx, claimed, "late", {
         failureCode: "model_execution_failed",
       }),
     ).resolves.toBe(false);
-    await expect(cancelTurn(fixture.sql, turnId)).resolves.toBe(false);
+    await expect(cancelTurn(engineCtx, turnId)).resolves.toBe(false);
     await expect(readTurn()).resolves.toEqual(completed);
   });
 
   it("rejects a second commit of the same step, and appends nothing", async () => {
     const claimed = (await claim())!;
     const messages = [toolCallReply(), toolResult()];
-    await commitStep(
-      fixture.sql,
-      claimed,
-      { outcome: "continue", messages },
-      [],
-    );
+    await commitStep(engineCtx, claimed, { outcome: "continue", messages }, []);
     const committed = await readTurn();
 
     await expect(
-      commitStep(fixture.sql, claimed, { outcome: "continue", messages }, []),
+      commitStep(engineCtx, claimed, { outcome: "continue", messages }, []),
     ).resolves.toBeUndefined();
 
     expect(committed.stepSeq).toBe(1);
@@ -366,7 +369,7 @@ describe("Turn state", () => {
     const first = (await claim())!;
     await expect(
       commitStep(
-        fixture.sql,
+        engineCtx,
         first,
         { outcome: "continue", messages: [toolCallReply(), toolResult()] },
         [input],
@@ -376,7 +379,7 @@ describe("Turn state", () => {
 
     // The input again, as a step that read it a second time would pass it.
     await expect(
-      commitStep(fixture.sql, second, finishedStep(), [input]),
+      commitStep(engineCtx, second, finishedStep(), [input]),
     ).resolves.toBe("completed");
 
     const events = await createSqlConversationEventStore(
@@ -401,16 +404,16 @@ describe("Turn state", () => {
       ],
       messages: [question(), toolCallReply(), toolResult(), finalReply()],
     });
-    await expect(findUnreadInputs(fixture.sql, turnId)).resolves.toEqual([]);
+    await expect(findUnreadInputs(engineCtx, turnId)).resolves.toEqual([]);
   });
 
   it("rejects a commit after cancel, and appends nothing", async () => {
     const claimed = (await claim())!;
-    await cancelTurn(fixture.sql, turnId);
+    await cancelTurn(engineCtx, turnId);
     const cancelled = await readTurn();
 
     await expect(
-      commitStep(fixture.sql, claimed, finishedStep(), []),
+      commitStep(engineCtx, claimed, finishedStep(), []),
     ).resolves.toBeUndefined();
     await expect(readTurn()).resolves.toEqual(cancelled);
     await expect(loadHistory()).resolves.toEqual({ types: [], messages: [] });

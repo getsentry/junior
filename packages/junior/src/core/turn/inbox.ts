@@ -4,8 +4,8 @@
 import type { UserMessage } from "@earendil-works/pi-ai";
 import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
 import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
+import type { EngineContext } from "@/core/engine-context";
 import type { Turn } from "@/core/turn/state";
-import type { JuniorSqlDatabase } from "@/db/db";
 import {
   juniorConversationEvents,
   juniorTurnInbox,
@@ -37,10 +37,10 @@ export type TurnInput = {
  * Conversation. Undefined when no such input exists.
  */
 export async function findInputTurn(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   args: { conversationId: string; idempotencyKey: string },
 ): Promise<Turn | undefined> {
-  const [turn] = await executor
+  const [turn] = await engineCtx.db
     .db()
     .select({ turnId: juniorTurns.id, state: juniorTurns.state })
     .from(juniorTurnInbox)
@@ -81,10 +81,10 @@ export function inputEventKey(inputId: string): string {
 
 /** Finds the inputs of a Turn that the history has not read, oldest first. */
 export async function findUnreadInputs(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   turnId: string,
 ): Promise<UnreadInput[]> {
-  const db = executor.db();
+  const db = engineCtx.db.db();
   const readEvent = db
     .select({ one: sql`1` })
     .from(juniorConversationEvents)
@@ -119,13 +119,13 @@ export async function findUnreadInputs(
  * The first attempt keeps its time. It does not mark the inputs read.
  */
 export async function markInputsAttempted(
-  executor: JuniorSqlDatabase,
+  engineCtx: Pick<EngineContext, "db">,
   inputIds: string[],
 ): Promise<void> {
   if (inputIds.length === 0) {
     return;
   }
-  await executor
+  await engineCtx.db
     .db()
     .update(juniorTurnInbox)
     .set({ attemptedAt: sql`coalesce(${juniorTurnInbox.attemptedAt}, now())` })
