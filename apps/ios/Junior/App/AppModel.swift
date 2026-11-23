@@ -35,10 +35,9 @@ enum Route: Hashable {
 @MainActor
 @Observable
 final class AppModel {
-  /// The app's OAuth client: the URL of its Client ID Metadata Document,
-  /// which names the app and lists its loopback redirect URI.
-  static let oauthClientID =
-    "https://raw.githubusercontent.com/getsentry/junior/refs/heads/gricha/ios-app/apps/ios/oauth-client.json"
+  /// The app's OAuth client ID. Junior knows this client (`JUNIOR_IOS_CLIENT`
+  /// in `packages/junior/src/api/mcp/oauth/client-metadata.ts`).
+  static let oauthClientID = "https://junior.sentry.dev/clients/ios"
 
   private(set) var server: JuniorServer
   private(set) var client: MCPClient

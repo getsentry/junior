@@ -354,11 +354,13 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
     // A pull request row opens from its item link.
-    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: "Pin the release train" });
-    await expect(page.getByRole("button", { name: "Snooze" })).toBeVisible();
+    await expect(
+      openRowOf(page).getByRole("button", { name: "Snooze" }),
+    ).toBeVisible();
     // Hold the reads that follow the snooze, so only the page hides the row.
     let release = () => {};
     const held = new Promise<void>((resolve) => (release = resolve));
@@ -378,7 +380,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: "Pin the release train" });
@@ -434,7 +436,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize({ height: 560, width: 1280 });
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
@@ -452,7 +454,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const ask = { ...prReview, canAct: false };
     await mockInboxItems(page, { open: [license, ask] });
-    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${ask.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${ask.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
@@ -472,7 +474,10 @@ test.describe("new UI", { tag: "@new" }, () => {
       inboxItemId: ask.id,
       triggers: [{ eventType: "pull_request.checks.passed", outcome: "wake" }],
     });
-    await expect(openRowOf(page)).toHaveCount(0);
+    // The ask leaves the list. The Inbox opens the next row.
+    await expect(
+      page.getByRole("listitem").filter({ hasText: ask.subject.title }),
+    ).toHaveCount(0);
   });
 
   test("an ask with no subject snoozes until a time or an Event on a pull request that the viewer finds", async ({
@@ -540,7 +545,10 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize(mobile);
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
+    // A phone shows the Inbox list on its own page.
+    await page.goto(
+      `${dashboard.baseURL}/inbox?view=inbox&type=prs&item=${prReview.id}`,
+    );
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
@@ -582,7 +590,10 @@ test.describe("new UI", { tag: "@new" }, () => {
         { eventType: "issue.closed", outcome: "wake", resourceUrl: issue },
       ],
     });
-    await expect(openRowOf(page)).toHaveCount(0);
+    // The row leaves the list. The Inbox opens the next row.
+    await expect(
+      page.getByRole("listitem").filter({ hasText: prReview.subject.title }),
+    ).toHaveCount(0);
   });
 
   test("a pasted link that the viewer cannot snooze on offers no Events", async ({
@@ -590,7 +601,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();

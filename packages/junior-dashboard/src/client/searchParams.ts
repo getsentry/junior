@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useSearchParams } from "react-router";
+import { parsePath, useSearchParams } from "react-router";
 
 /** Build a same-page path that keeps the active query string. */
 export function pathWithSearch(
@@ -12,17 +12,17 @@ export function pathWithSearch(
         ? search.slice(1)
         : search
       : (search?.toString() ?? "");
-  const separator = pathname.indexOf("?");
-  const path = separator === -1 ? pathname : pathname.slice(0, separator);
-  const existing =
-    separator === -1 ? "" : pathname.slice(separator + 1).replace(/^\?+/, "");
+  const parsed = parsePath(pathname);
+  const path = parsed.pathname ?? "";
+  const existing = (parsed.search ?? "").replace(/^\?+/, "");
   // Path-owned params win when a caller already baked a query into `pathname`.
   const merged = new URLSearchParams(ambient);
   for (const [key, value] of new URLSearchParams(existing)) {
     merged.set(key, value);
   }
   const query = merged.toString();
-  return query ? `${path}?${query}` : path;
+  const hash = parsed.hash ?? "";
+  return query ? `${path}?${query}${hash}` : `${path}${hash}`;
 }
 
 /** Accept only one of the allowed enum values from a query param. */

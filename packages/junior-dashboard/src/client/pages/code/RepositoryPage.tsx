@@ -29,7 +29,7 @@ import {
 import {
   RecentConversationRow,
   RepositorySection,
-  repositoryActivity,
+  codeActivity,
 } from "./RepositorySections";
 import {
   RepositoryChangesTab,
@@ -218,7 +218,7 @@ function RepositoryOverview(props: {
       </div>
       <CodeActivityChart
         bucketUnit={timeRangeBucketUnit(props.range)}
-        days={repositoryActivity(data, props.range)}
+        days={codeActivity(data, props.range)}
         range={props.range}
       />
     </>

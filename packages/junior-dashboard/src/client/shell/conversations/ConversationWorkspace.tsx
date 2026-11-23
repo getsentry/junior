@@ -18,7 +18,6 @@ import {
   useInboxReturnPath,
   useShowComposer,
 } from "../../inbox/inboxListState";
-import { INBOX_VIEW_LABELS, inboxViewOfPath } from "../../inbox/inboxModel";
 import { InboxNav } from "../../inbox/InboxNav";
 import { ToggleGroup, ToggleGroupItem } from "../../components/ui/toggle-group";
 import { useConversationActionToasts } from "../../conversations/conversationActionToasts";
@@ -59,7 +58,12 @@ import {
   ListPane,
   PaneCollapsedControls,
 } from "../../components/layout/PaneNav";
-import { isOldAutomationsPath } from "../../components/layout/paneRows";
+import {
+  isOldAutomationsPath,
+  isOldPullRequestsPath,
+  oldPullRequestsTarget,
+  returnPathLabel,
+} from "../../components/layout/paneRows";
 import { HomeSummary } from "./HomeSummary";
 
 /**
@@ -288,6 +292,9 @@ export function ConversationWorkspace(props: {
   // The Automations bundle became its own page.
   if (isOldAutomationsPath(location))
     return <Navigate replace to="/automations" />;
+  // Pull requests moved to Code, which opens on the viewer's own.
+  if (isOldPullRequestsPath(location))
+    return <Navigate replace to={oldPullRequestsTarget(location.search)} />;
 
   return (
     <div className="flex h-full min-h-0 overflow-hidden bg-dashboard-bg">
@@ -353,20 +360,20 @@ export function ConversationWorkspace(props: {
   );
 }
 
-/** Back to the Inbox list the reader came from. Esc does the same. */
+/** Back to the list the reader came from. Esc does the same. */
 function BackToList() {
   const to = useInboxReturnPath();
-  const view = inboxViewOfPath(to);
+  const label = returnPathLabel(to);
   return (
     <Link
       aria-keyshortcuts="Escape"
-      aria-label={`Back to ${INBOX_VIEW_LABELS[view]}`}
+      aria-label={`Back to ${label}`}
       className="-ml-2 inline-flex h-8 items-center gap-1.5 rounded-lg px-2 font-sans text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:bg-dashboard-fill-hover hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-dashboard-focus"
       title="Back (Esc)"
       to={to}
     >
       <ArrowLeft aria-hidden="true" className="size-4" />
-      {INBOX_VIEW_LABELS[view]}
+      {label}
     </Link>
   );
 }

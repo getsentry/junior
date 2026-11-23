@@ -5,9 +5,11 @@ import { errorResponse } from "./errors";
 import { NOW_MS, readMockAutomationList } from "./fixtures";
 import { readMockInboxItems } from "./inbox-items";
 import { mockSearchReport } from "./search";
+import { readMockSearchTodos } from "./todos";
 
 /**
- * Mount the mock `/api/search` route over the mock Inbox and Automations.
+ * Mount the mock `/api/search` route over the mock Inbox, Automations, and
+ * To-dos.
  * The mock server holds no memories, so e2e specs mock them.
  */
 export function registerMockSearchRoutes(
@@ -22,6 +24,7 @@ export function registerMockSearchRoutes(
           ...readMockInboxItems(NOW_MS, { closed: true }),
         ],
         memories: [],
+        todos: readMockSearchTodos(),
       },
       new URL(c.req.url).searchParams,
     );

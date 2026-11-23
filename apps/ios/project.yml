@@ -18,7 +18,6 @@ fileGroups:
   - Gemfile.lock
   - .ruby-version
   - .swift-format
-  - oauth-client.json
   - fastlane/Appfile
   - fastlane/Fastfile
   - fastlane/Matchfile

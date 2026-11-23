@@ -1170,6 +1170,13 @@
       "when": 1795461906115,
       "tag": "0166_memory_prefix_index",
       "breakpoints": true
+    },
+    {
+      "idx": 167,
+      "version": "7",
+      "when": 1795465060510,
+      "tag": "0167_todo_search_indexes",
+      "breakpoints": true
     }
   ]
 }

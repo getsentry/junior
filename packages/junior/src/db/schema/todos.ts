@@ -1,12 +1,14 @@
-import { sql } from "drizzle-orm";
+import { sql, type SQL } from "drizzle-orm";
 import {
   bigint,
   check,
   foreignKey,
+  index,
   pgSequence,
   pgTable,
   primaryKey,
   text,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import type { TodoStatus } from "@/chat/todos/types";
 import { juniorConversations } from "./conversations";
@@ -19,6 +21,19 @@ import { juniorUsers } from "./users";
  * shows a version that the fork's own To-dos reuse.
  */
 export const juniorTodoVersionSeq = pgSequence("junior_todo_version_seq");
+
+/**
+ * The words of a To-do title for search. The `simple` config keeps each
+ * word as typed, so a prefix of it matches.
+ */
+export function todoSearchDocument(table: { title: AnyPgColumn }): SQL {
+  return sql`to_tsvector('simple', ${table.title})`;
+}
+
+/** The lowercase title of a To-do, for typo-tolerant search. */
+export function todoFuzzyTitle(table: { title: AnyPgColumn }): SQL {
+  return sql`lower(${table.title})`;
+}
 
 /**
  * One To-do: work that a Conversation has not finished. At most one
@@ -66,6 +81,11 @@ export const juniorTodos = pgTable(
     check(
       "junior_todos_assignee_check",
       sql`${table.assigneeConversationId} is null or ${table.assigneeUserId} is null`,
+    ),
+    index("junior_todos_search_idx").using("gin", todoSearchDocument(table)),
+    index("junior_todos_title_trgm_idx").using(
+      "gin",
+      sql`${todoFuzzyTitle(table)} gin_trgm_ops`,
     ),
   ],
 );

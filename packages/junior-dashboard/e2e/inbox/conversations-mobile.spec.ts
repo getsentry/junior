@@ -270,6 +270,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       entries.getByRole("link", { name: "Conversations", exact: true }),
     ).toBeVisible();
+    await expect(
+      entries.getByRole("link", { name: "Code", exact: true }),
+    ).toBeVisible();
     const navigationTrigger = page.getByRole("button", {
       name: "Open navigation",
     });
@@ -308,9 +311,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
     const accountMenu = page.getByLabel("Account menu for Dashboard User");
+    // Code is an Inbox entry, under Conversations, not an account page.
     await expect(
       accountMenu.getByRole("link", { name: "Code", exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       accountMenu.getByRole("link", { name: "System", exact: true }),
     ).toBeVisible();

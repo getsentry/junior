@@ -248,7 +248,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // that the Automations, System, Memories, and Settings areas list.
     for (const name of [
       "Snoozed",
-      "Pull requests",
+      "Code",
       "Settings",
       "My profile",
       "Automation runs",
@@ -492,6 +492,42 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
   });
 
+  test("finds To-dos, with closed ones under Done, and opens their Conversation", async ({
+    page,
+    dashboard,
+  }) => {
+    await page.goto(dashboard.baseURL);
+    await page.keyboard.press("ControlOrMeta+k");
+    const palette = page.getByRole("dialog", { name: "Go to conversation" });
+    await palette.getByRole("combobox").fill("dashboard");
+    const group = (name: string) =>
+      palette.getByRole("group", { exact: true, name }).getByRole("option");
+    await expect(group("To-dos")).toHaveText([
+      /Fix the failing dashboard checks/,
+      /Review the dashboard plan before editing/,
+    ]);
+    await expect(group("Done")).toHaveText([/Port the old dashboard theme/]);
+    await expect(group("Done")).toContainText("To-do");
+    for (const view of [desktop, mobile]) {
+      await page.setViewportSize({ height: view.height, width: view.width });
+      await group("To-dos").first().hover();
+      await expect(group("To-dos").first()).toHaveAttribute(
+        "aria-selected",
+        "true",
+      );
+      await screenshot(page, "inbox-palette-todos", {
+        lightTheme: true,
+        view: view.name,
+      });
+    }
+
+    await pickOption(group("To-dos").first());
+    await expect(page).toHaveURL(/\/conversations\/internal%3Adashboard-qa$/);
+    await expect(
+      page.getByRole("heading", { name: "Dashboard QA edge cases" }),
+    ).toBeVisible();
+  });
+
   test("finds Inbox items, Automations, and Memories with one search for each typed query", async ({
     page,
     dashboard,
@@ -539,9 +575,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       /Start incident reviews with the customer impact/,
     ]);
     await expect(group("Inbox")).toHaveCount(3);
-    await expect(group("Done")).toHaveAccessibleName(
+    await expect(group("To-dos")).toHaveText([
+      /Review the dashboard plan before editing/,
+    ]);
+    await expect(group("Done")).toHaveText([
       /Review the initech license entry/,
-    );
+      /Read the review feedback/,
+    ]);
     // Conversations lead the list, so show the server-matched groups.
     // A resize resets the scroll, so each size gets its own shot.
     const shot = async (view: typeof desktop | typeof mobile) => {

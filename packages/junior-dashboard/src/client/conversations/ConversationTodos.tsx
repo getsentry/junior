@@ -1,14 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { getDashboardAgentName } from "../agentName";
-import {
-  Circle,
-  CircleCheck,
-  CircleDashed,
-  CircleX,
-  Ellipsis,
-  LockKeyhole,
-  type LucideIcon,
-} from "lucide-react";
+import { Ellipsis, LockKeyhole } from "lucide-react";
 import {
   conversationTodoSchema,
   conversationTodosReportSchema,
@@ -27,6 +19,7 @@ import { patch } from "../http";
 import { revalidatedJsonQuery } from "../revalidation";
 import { cn } from "../styles";
 import { conversationSideReadQueryKey } from "./conversationSideReads";
+import { todoStatusIcons } from "./todoStatusIcons";
 import {
   DetailsCard,
   DetailsList,
@@ -45,13 +38,6 @@ export function useConversationTodos(conversationId: string) {
     retry: false,
   });
 }
-
-const statusIcons: Record<ConversationTodo["status"], LucideIcon> = {
-  open: Circle,
-  in_progress: CircleDashed,
-  done: CircleCheck,
-  dropped: CircleX,
-};
 
 const statusLabels: Record<ConversationTodo["status"], string> = {
   open: "Open",
@@ -104,7 +90,7 @@ function TodoRow(props: {
   todo: ConversationTodo;
 }) {
   const { todo } = props;
-  const Icon = todo.redacted ? LockKeyhole : statusIcons[todo.status];
+  const Icon = todo.redacted ? LockKeyhole : todoStatusIcons[todo.status];
   const closed = todo.status === "done" || todo.status === "dropped";
   const row = (
     <DetailsRow
