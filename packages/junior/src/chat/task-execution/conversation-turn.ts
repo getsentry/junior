@@ -21,6 +21,11 @@ import {
   isParentMessageAuthor,
 } from "@/chat/agent-invocations/parent-message";
 import { recordChildAgentEnded } from "@/chat/agent-invocations/markers";
+import {
+  childWorkEnded,
+  type DeliverToParent,
+  type ParentResult,
+} from "@/chat/agent-invocations/parent-result";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import {
   hydrateConversationMessages,
@@ -122,8 +127,6 @@ import {
 import { isEventConversationMessage } from "@/chat/events/actor";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
-import type { Actor } from "@sentry/junior-plugin-api";
-import type { Reply } from "@/chat/turn-answer";
 import {
   sharedDelegatedSubject,
   verifiedTimerWatchSubject,
@@ -172,25 +175,6 @@ function sharedAuthorIdentityId(
   );
   return ids.size === 1 ? [...ids][0] : undefined;
 }
-
-/**
- * What one child agent Turn sends its parent agent: its `reply`, or a
- * blocked or failed result.
- */
-export type ParentResult =
-  | { kind: "reply"; reply: Reply }
-  | { kind: "blocked" | "failed" | "stopped"; text: string };
-
-/**
- * Send one child agent Turn's result to the parent agent. `actor` is the
- * Actor of the Turn. Repeat calls for one result are safe.
- */
-export type DeliverToParent = (args: {
-  actor: Actor;
-  result: ParentResult;
-  conversationId: string;
-  turnId: string;
-}) => Promise<void>;
 
 /**
  * Create the shared mailbox worker for web and event Turns of every
@@ -771,6 +755,15 @@ export function createConversationTurnWorker(
                 });
               } else if (reply.blocked) {
                 await blockRunAutomation(context.conversationId, reply.blocked);
+              } else if (
+                reply.noReply &&
+                behavior.quietResult === "parent" &&
+                (await childWorkEnded(context.conversationId, turnId))
+              ) {
+                await sendToParent({
+                  kind: "completed",
+                  text: reply.noReply.note ?? "",
+                });
               }
 
               const completedState = buildDeliveredTurnStatePatch({

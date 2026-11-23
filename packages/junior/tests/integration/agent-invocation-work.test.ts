@@ -439,6 +439,11 @@ describe("child agent task work", () => {
 
   const blockedMissing = "Approval to open the PR. Ask the user.";
   // Plain text in a child Turn is not an answer. It gets one reminder.
+  const quiet = {
+    type: "toolCall" as const,
+    name: "noReply",
+    arguments: { note: "Bot comment needs no change." },
+  };
   const plainText = [
     { type: "text" as const, text: "Draft summary for the parent." },
     { type: "text" as const, text: "Draft summary for the parent." },
@@ -470,6 +475,7 @@ describe("child agent task work", () => {
       },
       subagentOutcome: "error",
       parentMessages: [],
+      lastResult: "failed" as const,
     },
     {
       // A blocked report is a result, not a model failure.
@@ -490,15 +496,49 @@ describe("child agent task work", () => {
       ],
     },
     {
-      // The note stays in the child. The parent gets nothing.
+      // A Task whose work ends reports to its parent. Its note is the result.
       name: "quiet",
+      outputs: [quiet],
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [
+        expect.stringMatching(
+          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+        ),
+      ],
+    },
+    {
+      // A Task that waits on its own Timer still works. It reports later.
+      name: "quiet waiting",
       outputs: [
         {
           type: "toolCall" as const,
-          name: "noReply",
-          arguments: { note: "Bot comment needs no change." },
+          name: "watchTimer",
+          arguments: { after_ms: 60_000, intent: "Check the deploy again." },
         },
+        quiet,
       ],
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [],
+    },
+    {
+      // A Turn that sent its reply before its worker was lost already
+      // reported. Its retry sends no second result.
+      name: "quiet after a reply",
+      replied: true,
+      outputs: [quiet],
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [
+        expect.stringMatching(/status="completed">\n[\s\S]*\nLost reply\.\n/),
+      ],
+    },
+    {
+      // A Thread's note stays in the Thread. The parent gets nothing.
+      name: "quiet thread",
+      kind: "thread" as const,
+      outputs: [quiet],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [],
@@ -535,6 +575,7 @@ describe("child agent task work", () => {
       lastResult,
       outputs,
       parentMessages,
+      replied,
       subagentOutcome,
       terminal,
     }) => {
@@ -558,6 +599,20 @@ describe("child agent task work", () => {
           parentConversationId,
           "failed-result-1",
         );
+        if (replied) {
+          await enqueueChildResultToParent({
+            actor: invocationInput.actor,
+            messageKey: getTurnReplyKey(turnId, "lost-reply"),
+            queue,
+            result: {
+              kind: "reply",
+              reply: { text: "Lost reply.", toolCallId: "lost-reply" },
+            },
+            sender: { childConversationId, parentConversationId },
+            state,
+            turnId,
+          });
+        }
 
         await expect(
           process(queue.takeMessageFor(childConversationId)),

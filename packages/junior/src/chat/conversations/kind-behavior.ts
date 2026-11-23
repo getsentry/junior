@@ -66,6 +66,12 @@ export type TurnBehavior = {
    */
   failureNotice: "none" | "parent";
   /**
+   * `parent`: a Turn that ends with `noReply` and also ends the work of its
+   * Conversation sends the parent agent a completed result. `none`: the
+   * Turn sends nothing.
+   */
+  quietResult: "none" | "parent";
+  /**
    * Run the plugin tasks of a completed session, such as memory capture.
    * Memory is public, so a child agent never captures it.
    */
@@ -113,6 +119,7 @@ const ROOT: TurnBehavior = {
   waitsForSignIn: true,
   gated: false,
   failureNotice: "none",
+  quietResult: "none",
   sessionTasks: true,
   relatedConversations: true,
   tools: {
@@ -155,6 +162,7 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   waitsForSignIn: false,
   gated: true,
   failureNotice: "none",
+  quietResult: "none",
   sessionTasks: false,
   relatedConversations: false,
   tools: {
@@ -184,12 +192,13 @@ const THREAD_TOOLS: TurnBehavior["tools"] = {
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
 };
 
-// A Task does work for its parent, so its parent learns when it fails or ends
-// without an answer.
+// A Task does work for its parent, so its parent learns when it fails, ends
+// without an answer, or ends its work with `noReply`.
 const AGENT_IN_TASK: TurnBehavior = {
   ...CHILD_AGENT_TURN,
   missingAnswerError: "No reply was sent.",
   failureNotice: "parent",
+  quietResult: "parent",
 };
 
 // The dispatch Turn and every Watch Event Turn of an Automation run must
@@ -202,6 +211,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   waitsForSignIn: true,
   gated: true,
   failureNotice: "none",
+  quietResult: "none",
   sessionTasks: true,
   relatedConversations: false,
   tools: {

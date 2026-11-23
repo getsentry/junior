@@ -364,7 +364,6 @@ describe("child Turns on the Conversation loop", () => {
         run.signal?.throwIfAborted();
         throw new Error("The stored stop did not abort the run");
       });
-      const before = await parentMessageTexts();
       await sendHelperReply(harness, await createHelper(harness, childId));
 
       await harness.processUntilRun(childId);
@@ -382,8 +381,9 @@ describe("child Turns on the Conversation loop", () => {
           }),
         }),
       );
-      // A stop is not a result, so the parent hears nothing.
-      await expect(parentMessageTexts()).resolves.toEqual(before);
+      // A stop is not a result, and it drops the child's unread result of
+      // its task Turn, so the parent hears nothing.
+      await expect(parentMessageTexts()).resolves.toEqual([]);
     } finally {
       await harness.close();
     }
