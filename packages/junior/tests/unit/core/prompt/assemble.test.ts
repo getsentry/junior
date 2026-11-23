@@ -1,24 +1,17 @@
 import type { Message, UserMessage } from "@earendil-works/pi-ai";
 import { describe, expect, it } from "vitest";
-import { assembleModelRequest } from "@/core/model/assemble";
-import type { ModelSettings } from "@/core/model/client";
+import { assemblePrompt } from "@/core/prompt/assemble";
 import {
-  defineModelRequest,
+  definePromptLayout,
   fragment,
   loader,
   skip,
-  type ModelRequestContext,
+  type PromptBuildContext,
   type Skip,
-} from "@/core/model/request";
+} from "@/core/prompt/layout";
 import type { UnreadInput } from "@/core/turn/inbox";
 
-const MODEL: ModelSettings = {
-  id: "anthropic/claude-sonnet-4.5",
-  reasoning: "low",
-  privacy: "public",
-};
-const model = fragment("model", { format: () => MODEL });
-const CTX: ModelRequestContext = {
+const CTX: PromptBuildContext = {
   turn: {
     turnId: "turn-1",
     leaseEpoch: 1,
@@ -35,13 +28,13 @@ function userText(content: string): UserMessage {
 }
 
 /** A load that ends only when core aborts its signal. */
-function waitForAbort(_ctx: ModelRequestContext, signal: AbortSignal) {
+function waitForAbort(_ctx: PromptBuildContext, signal: AbortSignal) {
   return new Promise<string>((_resolve, reject) => {
     signal.addEventListener("abort", () => reject(signal.reason));
   });
 }
 
-describe("assembleModelRequest", () => {
+describe("assemblePrompt", () => {
   it("runs a loader once for the fragments that share it", async () => {
     let loads = 0;
     const turnRow = loader(
@@ -52,7 +45,7 @@ describe("assembleModelRequest", () => {
       },
       { timeoutMs: 100 },
     );
-    const spec = defineModelRequest({
+    const layout = definePromptLayout({
       systemPrompt: [],
       messages: ["first", "second", "third"].map((name) =>
         fragment(name, {
@@ -60,12 +53,9 @@ describe("assembleModelRequest", () => {
           format: (row) => userText(`${name} ${row.turnId}`),
         }),
       ),
-      model,
     });
 
-    const { newMessages, diagnostics } = await assembleModelRequest(spec, CTX, {
-      session: "conversation-1",
-    });
+    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
 
     expect(loads).toBe(1);
     expect(newMessages).toEqual([
@@ -88,7 +78,7 @@ describe("assembleModelRequest", () => {
       },
       { timeoutMs: 100 },
     );
-    const spec = defineModelRequest({
+    const layout = definePromptLayout({
       systemPrompt: [],
       messages: [
         fragment("memory", {
@@ -97,12 +87,9 @@ describe("assembleModelRequest", () => {
           format: (text) => userText(text),
         }),
       ],
-      model,
     });
 
-    const { newMessages, diagnostics } = await assembleModelRequest(spec, CTX, {
-      session: "conversation-1",
-    });
+    const { newMessages, diagnostics } = await assemblePrompt(layout, CTX);
 
     expect(loads).toBe(0);
     expect(newMessages).toEqual([]);
@@ -130,7 +117,7 @@ describe("assembleModelRequest", () => {
       { timeoutMs: 5, optional: true },
     );
     const values: unknown[] = [];
-    const spec = defineModelRequest({
+    const layout = definePromptLayout({
       systemPrompt: [],
       messages: [failing, slow].map((source) =>
         fragment(source.label, {
@@ -141,12 +128,9 @@ describe("assembleModelRequest", () => {
           },
         }),
       ),
-      model,
     });
 
-    const { diagnostics } = await assembleModelRequest(spec, CTX, {
-      session: "conversation-1",
-    });
+    const { diagnostics } = await assemblePrompt(layout, CTX);
 
     expect(values).toEqual([undefined, undefined]);
     expect(timeoutSignal?.aborted).toBe(true);
@@ -165,31 +149,27 @@ describe("assembleModelRequest", () => {
     const slow = loader("memory", waitForAbort, { timeoutMs: 5 });
 
     await expect(
-      assembleModelRequest(
-        defineModelRequest({
+      assemblePrompt(
+        definePromptLayout({
           systemPrompt: [],
           messages: [fragment("soul", { loader: failing, format: userText })],
-          model,
         }),
         CTX,
-        { session: "conversation-1" },
       ),
     ).rejects.toThrow('Loader "soul" failed');
     await expect(
-      assembleModelRequest(
-        defineModelRequest({
+      assemblePrompt(
+        definePromptLayout({
           systemPrompt: [],
           messages: [fragment("memory", { loader: slow, format: userText })],
-          model,
         }),
         CTX,
-        { session: "conversation-1" },
       ),
     ).rejects.toThrow('Loader "memory" timed out after 5 ms');
   });
 
   it("reports the reason of a skipped fragment", async () => {
-    const spec = defineModelRequest({
+    const layout = definePromptLayout({
       systemPrompt: [],
       messages: [
         fragment("inputs", {
@@ -199,12 +179,9 @@ describe("assembleModelRequest", () => {
               : userText("Inputs"),
         }),
       ],
-      model,
     });
 
-    const { diagnostics } = await assembleModelRequest(spec, CTX, {
-      session: "conversation-1",
-    });
+    const { diagnostics } = await assemblePrompt(layout, CTX);
 
     expect(diagnostics.fragments).toEqual([
       {
@@ -213,13 +190,12 @@ describe("assembleModelRequest", () => {
         status: "skipped",
         reason: "no unread inputs",
       },
-      { name: "model", field: "model", status: "included" },
     ]);
   });
 
-  it("keeps the layout order within each field", async () => {
+  it("keeps the layout order of the system prompt and the messages", async () => {
     const history: Message[] = [userText("Earlier")];
-    const spec = defineModelRequest({
+    const layout = definePromptLayout({
       systemPrompt: [
         { name: "identity", text: "You are Junior." },
         { name: "world", text: "You work at Sentry." },
@@ -230,41 +206,33 @@ describe("assembleModelRequest", () => {
           format: () => [userText("Second"), userText("Third")],
         }),
       ],
-      model,
     });
 
-    const { request, newMessages, diagnostics } = await assembleModelRequest(
-      spec,
-      { ...CTX, history },
-      { session: "conversation-1" },
-    );
-
-    expect(newMessages).toEqual([
+    const newMessages = [
       userText("First"),
       userText("Second"),
       userText("Third"),
-    ]);
-    expect(request).toEqual({
+    ];
+
+    expect(await assemblePrompt(layout, { ...CTX, history })).toEqual({
       systemPrompt: "You are Junior.\n\nYou work at Sentry.",
       messages: [...history, ...newMessages],
-      model: MODEL,
-      session: "conversation-1",
-    });
-    expect(diagnostics).toEqual({
-      systemPrompt: [
-        { name: "identity", chars: 15 },
-        { name: "world", chars: 19 },
-      ],
-      loaders: [],
-      fragments: [
-        { name: "first", field: "messages", status: "included" },
-        { name: "pair", field: "messages", status: "included" },
-        { name: "model", field: "model", status: "included" },
-      ],
+      newMessages,
+      diagnostics: {
+        systemPrompt: [
+          { name: "identity", chars: 15 },
+          { name: "world", chars: 19 },
+        ],
+        loaders: [],
+        fragments: [
+          { name: "first", field: "messages", status: "included" },
+          { name: "pair", field: "messages", status: "included" },
+        ],
+      },
     });
   });
 
-  it("builds the layout of the `defineModelRequest` example", async () => {
+  it("builds the layout of the `definePromptLayout` example", async () => {
     // The example's code, with a fake memory store and SOUL.md text.
     const soul = "Be direct.";
     const memoryStore = {
@@ -289,18 +257,12 @@ describe("assembleModelRequest", () => {
           ? { role: "user", content: notes.join("\n"), timestamp: 0 }
           : skip("no memories"),
     });
-    const settings: ModelSettings = {
-      id: "anthropic/claude-sonnet-4.5",
-      reasoning: "low",
-      privacy: "public",
-    };
-    const spec = defineModelRequest({
+    const layout = definePromptLayout({
       systemPrompt: [
         { name: "identity", text: "You are Junior, Sentry's Slack bot." },
         { name: "personality", text: soul },
       ],
       messages: [recalled],
-      model: fragment("model", { format: () => settings }),
     });
     const input: UnreadInput = {
       inputId: "input-1",
@@ -312,23 +274,27 @@ describe("assembleModelRequest", () => {
     };
     const withInput = { ...CTX, inputs: [input] };
 
-    const recall = await assembleModelRequest(spec, withInput, {
-      session: "conversation-1",
+    const recall = await assemblePrompt(layout, withInput);
+    const noInputs = await assemblePrompt(layout, CTX);
+    const noMemories = await assemblePrompt(layout, {
+      ...withInput,
+      turn: { ...CTX.turn, conversationId: "conversation-2" },
     });
-    const noInputs = await assembleModelRequest(spec, CTX, {
-      session: "conversation-1",
-    });
-    const noMemories = await assembleModelRequest(
-      spec,
-      { ...withInput, turn: { ...CTX.turn, conversationId: "conversation-2" } },
-      { session: "conversation-2" },
-    );
 
-    expect(recall.request).toEqual({
+    expect(recall).toEqual({
       systemPrompt: "You are Junior, Sentry's Slack bot.\n\nBe direct.",
       messages: [userText("Thomas likes short replies.")],
-      model: settings,
-      session: "conversation-1",
+      newMessages: [userText("Thomas likes short replies.")],
+      diagnostics: {
+        systemPrompt: [
+          { name: "identity", chars: 35 },
+          { name: "personality", chars: 10 },
+        ],
+        loaders: [expect.objectContaining({ label: "memories", status: "ok" })],
+        fragments: [
+          { name: "recalled-memories", field: "messages", status: "included" },
+        ],
+      },
     });
     expect(noInputs.diagnostics.fragments[0]).toEqual({
       name: "recalled-memories",
