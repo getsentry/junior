@@ -1,9 +1,17 @@
 name: iOS Beta
 
 # Builds a signed Release of apps/ios and uploads it to TestFlight.
-# Run it from the Actions tab or `gh workflow run ios-beta.yml --ref <branch>`.
+# Run it from the Actions tab or `gh workflow run ios-beta.yml --ref <branch>`,
+# or add the `trigger-ios-beta` label to a pull request (ios-beta-label.yml).
+# With the `pull_request` input, the run keeps its status in that pull
+# request's description.
 on:
   workflow_dispatch:
+    inputs:
+      pull_request:
+        description: Pull request number to report the status on
+        required: false
+        type: string
 
 permissions:
   contents: read
@@ -13,10 +21,34 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  start:
+    name: Report start
+    if: inputs.pull_request != ''
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: write
+    timeout-minutes: 5
+    steps:
+      # The default branch's script: the write token must not run branch code.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PULL_REQUEST: ${{ inputs.pull_request }}
+        with:
+          script: |
+            const { reportBeta } = await import(`${process.env.GITHUB_WORKSPACE}/apps/ios/scripts/ios-beta.mjs`);
+            await reportBeta({ github, context, pullRequest: process.env.PULL_REQUEST, state: "building" });
+
   testflight:
     name: Upload to TestFlight
     runs-on: macos-26
     timeout-minutes: 60
+    outputs:
+      build: ${{ steps.upload.outputs.build }}
     defaults:
       run:
         working-directory: apps/ios
@@ -45,6 +77,7 @@ jobs:
           permission-contents: read
 
       - name: Build and upload to TestFlight
+        id: upload
         run: scripts/testflight.sh
         env:
           CODESIGN_TOKEN: ${{ steps.codesign-token.outputs.token }}
@@ -61,3 +94,34 @@ jobs:
           path: |
             ~/Library/Logs/gym
             apps/ios/fastlane/report.xml
+
+  report:
+    name: Report result
+    needs: testflight
+    if: always() && inputs.pull_request != ''
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      contents: read
+      pull-requests: write
+    timeout-minutes: 5
+    steps:
+      # The default branch's script: the write token must not run branch code.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        env:
+          PULL_REQUEST: ${{ inputs.pull_request }}
+          RESULT: ${{ needs.testflight.result }}
+          BUILD: ${{ needs.testflight.outputs.build }}
+        with:
+          script: |
+            const { reportBeta } = await import(`${process.env.GITHUB_WORKSPACE}/apps/ios/scripts/ios-beta.mjs`);
+            await reportBeta({
+              github,
+              context,
+              pullRequest: process.env.PULL_REQUEST,
+              state: process.env.RESULT,
+              build: process.env.BUILD,
+            });
