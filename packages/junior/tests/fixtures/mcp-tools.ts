@@ -1,5 +1,7 @@
 import { getConversationEventStore, getDb, getSqlExecutor } from "@/chat/db";
 import { createSqlStore } from "@/chat/conversations/sql/store";
+import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
+import type { PiMessage } from "@/chat/pi/messages";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { insertInboxItem, type InboxItem } from "@/chat/inbox-items/store";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
@@ -58,6 +60,60 @@ export async function appendMcpMessages(
         role,
         text,
       },
+      createdAtMs: nowMs + index,
+    })),
+  );
+}
+
+/**
+ * Append one assistant step to one Conversation: reasoning and a tool call,
+ * then the tool result.
+ */
+export async function appendMcpToolStep(
+  conversationId: string,
+  step: { reasoning: string; toolCallId: string; toolName: string },
+): Promise<void> {
+  const nowMs = Date.now();
+  const usage = {
+    input: 0,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens: 0,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
+  };
+  const messages: PiMessage[] = [
+    {
+      role: "assistant",
+      api: "anthropic-messages",
+      provider: "vercel-ai-gateway",
+      model: "test-model",
+      usage,
+      stopReason: "toolUse",
+      content: [
+        { type: "thinking", thinking: step.reasoning },
+        {
+          type: "toolCall",
+          id: step.toolCallId,
+          name: step.toolName,
+          arguments: { query: "private input" },
+        },
+      ],
+      timestamp: nowMs,
+    },
+    {
+      role: "toolResult",
+      toolCallId: step.toolCallId,
+      toolName: step.toolName,
+      content: [{ type: "text", text: "private output" }],
+      isError: false,
+      timestamp: nowMs + 1,
+    },
+  ];
+  await getConversationEventStore().append(
+    conversationId,
+    messages.map((message, index) => ({
+      data: historyItemFromPiMessage(message, { authority: "context" }),
       createdAtMs: nowMs + index,
     })),
   );

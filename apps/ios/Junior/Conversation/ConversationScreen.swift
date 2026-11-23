@@ -164,11 +164,16 @@ struct ConversationScreen: View {
             if model.messages.isEmpty, model.conversation?.turnActive != true {
               Text("No messages yet.").type(.sm).foregroundStyle(Tokens.textMuted).padding(.leading, 32)
             }
-            ForEach(model.messages) { message in
-              MessageRow(message: message, blocks: model.messageBlocks[message.seq])
-                .id(message.seq)
+            ForEach(model.items) { item in
+              switch item {
+              case .message(let message):
+                MessageRow(message: message, blocks: model.messageBlocks[message.seq])
+              case .activity(let group):
+                ActivityGroupRow(group: group, live: group.id == model.liveActivityId)
+              }
             }
-            if model.conversation?.turnActive == true {
+            // The running Turn shows its progress in its activity row.
+            if model.conversation?.turnActive == true, model.liveActivityId == nil {
               WorkingRow()
             }
             if let actionError = model.actionError {
@@ -188,8 +193,8 @@ struct ConversationScreen: View {
         .defaultScrollAnchor(.bottom, for: .initialOffset)
         .scrollDismissesKeyboard(.interactively)
         .onAppear { scrollToBottom(proxy, animated: false) }
-        .onChange(of: model.messages.last?.seq) { old, _ in
-          // Follow new messages only for a reader at the end, not one reading back.
+        .onChange(of: model.items.last?.id) { old, _ in
+          // Follow new rows only for a reader at the end, not one reading back.
           if old == nil || atBottom { scrollToBottom(proxy, animated: old != nil) }
         }
       }

@@ -175,6 +175,90 @@ export function mcpMessages(
   });
 }
 
+const mcpActivityPartSchema = z.discriminatedUnion("type", [
+  z.object({ type: z.literal("reasoning"), text: z.string() }).strict(),
+  z
+    .object({
+      type: z.literal("tool_call"),
+      toolCallId: z.string(),
+      name: z.string(),
+      status: z.enum(["running", "completed", "error"]),
+      startedAt: z.string().optional(),
+    })
+    .strict(),
+]);
+
+/** MCP view of one report event that holds reasoning or tool calls. */
+export const mcpActivitySchema = z
+  .object({
+    seq: z.number().int(),
+    createdAt: z.string(),
+    parts: z
+      .array(mcpActivityPartSchema)
+      .describe(
+        "In order. A tool call shows again with the same `toolCallId` when it ends; `createdAt` of that entry is its end.",
+      ),
+  })
+  .strict();
+
+/** Reasoning and tool calls of one report event in an MCP result. */
+export type McpActivity = z.output<typeof mcpActivitySchema>;
+type McpActivityPart = z.output<typeof mcpActivityPartSchema>;
+
+/** Opt-in param of the tools that return `activity` beside `messages`. */
+export const mcpIncludeActivitySchema = z
+  .boolean()
+  .default(false)
+  .describe(
+    "Also return `activity`: the reasoning and tool calls between the same points as `messages`. Tool input and output are left out.",
+  );
+
+/**
+ * Keep the reasoning and tool calls of a report event page, in order. Tool
+ * input and output are left out.
+ */
+export function mcpActivity(
+  events: readonly ConversationReportEvent[],
+): McpActivity[] {
+  return events.flatMap((event) => {
+    const data = event.data;
+    const parts: McpActivityPart[] = [];
+    if (data.type === "assistant_message") {
+      for (const part of data.parts) {
+        if (part.text) parts.push({ type: "reasoning", text: part.text });
+      }
+    } else if (data.type === "tool_calls") {
+      const calls = new Map(data.calls.map((call) => [call.toolCallId, call]));
+      // `assistant` orders reasoning and the calls it made. A result event
+      // has no `assistant`.
+      const ordered =
+        data.assistant?.parts ??
+        data.calls.map((call) => ({
+          type: "tool_call" as const,
+          toolCallId: call.toolCallId,
+        }));
+      for (const part of ordered) {
+        if (part.type === "reasoning") {
+          if (part.text) parts.push({ type: "reasoning", text: part.text });
+          continue;
+        }
+        const call = calls.get(part.toolCallId);
+        if (!call) continue;
+        parts.push({
+          type: "tool_call",
+          toolCallId: call.toolCallId,
+          name: call.name,
+          status: call.status,
+          ...(call.startedAt ? { startedAt: call.startedAt } : undefined),
+        });
+      }
+    }
+    return parts.length > 0
+      ? [{ seq: event.seq, createdAt: event.createdAt, parts }]
+      : [];
+  });
+}
+
 /** Message text param shared by the tools that send a message. */
 export const mcpMessageTextSchema = z
   .string()

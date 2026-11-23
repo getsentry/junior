@@ -8,7 +8,10 @@ import { readConversationEventPage } from "@/api/conversations/event-page";
 import { readConversationRecordFromSql } from "@/api/conversations/record";
 import { getSqlExecutor } from "@/chat/db";
 import {
+  mcpActivity,
+  mcpActivitySchema,
   mcpConversationIdSchema,
+  mcpIncludeActivitySchema,
   mcpMessages,
   mcpMessageSchema,
 } from "../conversation";
@@ -33,7 +36,7 @@ export function registerListConversationMessagesTool(
     {
       title: "List conversation messages",
       description:
-        "List the user and assistant messages of one conversation, oldest first, ending with the newest. Tool calls are not included.",
+        "List the user and assistant messages of one conversation, oldest first, ending with the newest.",
       inputSchema: {
         conversationId: mcpConversationIdSchema,
         before: z
@@ -51,9 +54,14 @@ export function registerListConversationMessagesTool(
           .max(50)
           .default(10)
           .describe("Maximum number of messages."),
+        includeActivity: mcpIncludeActivitySchema,
       },
       outputSchema: {
         messages: z.array(mcpMessageSchema),
+        activity: z
+          .array(mcpActivitySchema)
+          .optional()
+          .describe("Set only with `includeActivity`. Oldest first."),
         nextCursor: z
           .string()
           .optional()
@@ -66,7 +74,7 @@ export function registerListConversationMessagesTool(
         readOnlyHint: true,
       },
     },
-    async ({ before, conversationId, limit }) => {
+    async ({ before, conversationId, includeActivity, limit }) => {
       const record = (await isConversationParticipant(user, conversationId))
         ? await readConversationRecordFromSql(conversationId)
         : undefined;
@@ -91,10 +99,20 @@ export function registerListConversationMessagesTool(
       });
       const scanned = mcpMessages(page.events);
       const messages = scanned.slice(-limit);
-      const olderSeq =
-        scanned.length > messages.length ? messages[0]?.seq : page.previousSeq;
+      const cutSeq =
+        scanned.length > messages.length ? messages[0]?.seq : undefined;
+      const olderSeq = cutSeq ?? page.previousSeq;
+      // The next page starts before `cutSeq`, so it reads earlier activity.
+      const activity = includeActivity
+        ? mcpActivity(
+            cutSeq === undefined
+              ? page.events
+              : page.events.filter((event) => event.seq > cutSeq),
+          )
+        : undefined;
       return mcpToolResult({
         messages,
+        ...(activity ? { activity } : undefined),
         ...(olderSeq === undefined
           ? undefined
           : {

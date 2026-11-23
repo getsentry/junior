@@ -2,6 +2,12 @@
 // the mock dashboard API in-process and maps its JSON to the result of the
 // real tool in `packages/junior/src/api/mcp/tools`.
 import { randomUUID } from "node:crypto";
+import {
+  mcpActivity,
+  mcpAttachments,
+  mcpAuthor,
+  mcpMessages,
+} from "./mock-mcp-transcript.mjs";
 
 /** Every MCP scope, in canonical order. */
 export const MCP_SCOPES = [
@@ -58,6 +64,12 @@ const idempotencyKey = {
   optional: true,
   description:
     "Reuse the same key to retry without sending the message twice. Omit it to send a new message.",
+};
+const includeActivity = {
+  type: "boolean",
+  default: false,
+  description:
+    "Also return `activity`: the reasoning and tool calls between the same points as `messages`. Tool input and output are left out.",
 };
 const cursorParam = (description) => ({
   type: "string",
@@ -184,41 +196,6 @@ export function createMockMcpTools({ app, origin }) {
     };
   }
 
-  function mcpAttachments(attachments) {
-    return attachments?.length
-      ? attachments.map(({ bytes, contentType, filename }) => ({
-          bytes,
-          contentType,
-          filename,
-        }))
-      : undefined;
-  }
-
-  function mcpAuthor(identity) {
-    return identity?.fullName ?? identity?.slackUserName ?? identity?.email;
-  }
-
-  function mcpMessages(events) {
-    return events.flatMap((event) => {
-      const data = event.data;
-      if (data.type !== "message" || data.role === "system") return [];
-      const text = data.text ?? "";
-      const attachments = mcpAttachments(data.attachments);
-      if (!text && !attachments) return [];
-      return [
-        {
-          seq: event.seq,
-          messageId: data.messageId,
-          createdAt: event.createdAt,
-          role: data.role,
-          author: mcpAuthor(data.actorIdentity),
-          text,
-          attachments,
-        },
-      ];
-    });
-  }
-
   async function readPendingWork(id) {
     const result = await api(
       "GET",
@@ -255,16 +232,20 @@ export function createMockMcpTools({ app, origin }) {
     };
   }
 
-  function messagesAfter(events, afterSeq) {
+  function messagesAfter(events, afterSeq, withActivity) {
     const newer = events.filter((event) => event.seq > afterSeq);
     const page = newer.slice(0, AFTER_EVENT_SCAN_LIMIT);
     const scanned = mcpMessages(page);
     const messages = scanned.slice(0, AFTER_MESSAGE_LIMIT);
     const cut = scanned.length > messages.length;
+    const seq = cut ? messages.at(-1).seq : (page.at(-1)?.seq ?? afterSeq);
     return {
+      activity: withActivity
+        ? mcpActivity(page.filter((event) => event.seq <= seq))
+        : undefined,
       messages,
       hasMore: cut || newer.length > page.length,
-      seq: cut ? messages.at(-1).seq : (page.at(-1)?.seq ?? afterSeq),
+      seq,
     };
   }
 
@@ -369,8 +350,9 @@ export function createMockMcpTools({ app, origin }) {
         after: cursorParam(
           "`cursor` from sendMessage, createConversation, or an earlier getConversation call.",
         ),
+        includeActivity,
       },
-      async run({ after, conversationId: id }) {
+      async run({ after, conversationId: id, includeActivity: withActivity }) {
         const afterSeq = after ? decodeCursor(id, after) : undefined;
         if (after && afterSeq === undefined) {
           throw new ToolError(
@@ -383,7 +365,11 @@ export function createMockMcpTools({ app, origin }) {
             ? undefined
             : detail.eventHistory.status === "expired"
               ? { messages: [], hasMore: false, seq: afterSeq }
-              : messagesAfter((await readTranscript(id)).events, afterSeq);
+              : messagesAfter(
+                  (await readTranscript(id)).events,
+                  afterSeq,
+                  withActivity,
+                );
         const lastReply = newer
           ? undefined
           : mcpMessages(detail.events)
@@ -405,6 +391,7 @@ export function createMockMcpTools({ app, origin }) {
             : undefined,
           lastReply,
           messages: newer?.messages,
+          activity: newer?.activity,
           hasMore: newer?.hasMore ? true : undefined,
           ...(await readPendingWork(id)),
           cursor: encodeCursor(
@@ -419,7 +406,7 @@ export function createMockMcpTools({ app, origin }) {
       scope: "conversations:read",
       title: "List conversation messages",
       description:
-        "List the user and assistant messages of one conversation, oldest first, ending with the newest. Tool calls are not included.",
+        "List the user and assistant messages of one conversation, oldest first, ending with the newest.",
       annotations: READ_ONLY,
       input: {
         conversationId,
@@ -433,8 +420,14 @@ export function createMockMcpTools({ app, origin }) {
           default: 10,
           description: "Maximum number of messages.",
         },
+        includeActivity,
       },
-      async run({ before, conversationId: id, limit }) {
+      async run({
+        before,
+        conversationId: id,
+        includeActivity: withActivity,
+        limit,
+      }) {
         const { detail, events } = await readTranscript(id);
         const beforeSeq = before ? decodeCursor(id, before) : undefined;
         if (before && beforeSeq === undefined) {
@@ -453,10 +446,18 @@ export function createMockMcpTools({ app, origin }) {
           older.length > page.length ? page[0]?.seq : undefined;
         const scanned = mcpMessages(page);
         const messages = scanned.slice(-limit);
-        const olderSeq =
-          scanned.length > messages.length ? messages[0]?.seq : previousSeq;
+        const cutSeq =
+          scanned.length > messages.length ? messages[0]?.seq : undefined;
+        const olderSeq = cutSeq ?? previousSeq;
         return {
           messages,
+          activity: withActivity
+            ? mcpActivity(
+                cutSeq === undefined
+                  ? page
+                  : page.filter((event) => event.seq > cutSeq),
+              )
+            : undefined,
           nextCursor:
             olderSeq === undefined ? undefined : encodeCursor(id, olderSeq),
         };

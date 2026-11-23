@@ -7,6 +7,7 @@ import {
 } from "../../../../fixtures/mcp-http";
 import {
   appendMcpMessages,
+  appendMcpToolStep,
   seedMcpConversation,
 } from "../../../../fixtures/mcp-tools";
 
@@ -24,18 +25,45 @@ describe("listConversationMessages MCP tool", () => {
     });
     await appendMcpMessages(CONVERSATION_ID, [
       { role: "user", text: "What broke?" },
-      { role: "assistant", text: "The relay deploy broke ingestion." },
-      { role: "user", text: "Roll it back." },
-      { role: "assistant", text: "The rollback is done." },
+    ]);
+    await appendMcpToolStep(CONVERSATION_ID, {
+      reasoning: "Check the deploys first.",
+      toolCallId: "call-deploys",
+      toolName: "searchDeploys",
+    });
+    await appendMcpMessages(CONVERSATION_ID, [
+      {
+        messageId: "message-1",
+        role: "assistant",
+        text: "The relay deploy broke ingestion.",
+      },
+    ]);
+    await appendMcpToolStep(CONVERSATION_ID, {
+      reasoning: "Roll back the relay deploy.",
+      toolCallId: "call-rollback",
+      toolName: "rollback",
+    });
+    await appendMcpMessages(CONVERSATION_ID, [
+      { messageId: "message-2", role: "user", text: "Roll it back." },
+      {
+        messageId: "message-3",
+        role: "assistant",
+        text: "The rollback is done.",
+      },
     ]);
     const call = await connectMcpTools();
 
     const newest = await call("listConversationMessages", {
       conversationId: CONVERSATION_ID,
+      includeActivity: true,
       limit: 3,
     });
     const older = await call("listConversationMessages", {
       before: (newest.structuredContent as { nextCursor: string }).nextCursor,
+      conversationId: CONVERSATION_ID,
+      includeActivity: true,
+    });
+    const withoutActivity = await call("listConversationMessages", {
       conversationId: CONVERSATION_ID,
     });
 
@@ -45,13 +73,54 @@ describe("listConversationMessages MCP tool", () => {
         expect.objectContaining({ text: "Roll it back." }),
         expect.objectContaining({ text: "The rollback is done." }),
       ],
+      activity: [
+        {
+          seq: expect.any(Number),
+          createdAt: expect.any(String),
+          parts: [
+            { type: "reasoning", text: "Roll back the relay deploy." },
+            {
+              type: "tool_call",
+              toolCallId: "call-rollback",
+              name: "rollback",
+              status: "running",
+              startedAt: expect.any(String),
+            },
+          ],
+        },
+        {
+          seq: expect.any(Number),
+          createdAt: expect.any(String),
+          parts: [
+            {
+              type: "tool_call",
+              toolCallId: "call-rollback",
+              name: "rollback",
+              status: "completed",
+            },
+          ],
+        },
+      ],
       nextCursor: expect.any(String),
     });
+    // Each page holds the activity after its first message.
     expect(older.structuredContent).toEqual({
       messages: [
         expect.objectContaining({ role: "user", text: "What broke?" }),
       ],
+      activity: [
+        expect.objectContaining({
+          parts: [
+            { type: "reasoning", text: "Check the deploys first." },
+            expect.objectContaining({ name: "searchDeploys" }),
+          ],
+        }),
+        expect.objectContaining({
+          parts: [expect.objectContaining({ status: "completed" })],
+        }),
+      ],
     });
+    expect(withoutActivity.structuredContent).not.toHaveProperty("activity");
   });
 
   it("rejects a cursor from another Conversation and hides other Conversations", async () => {

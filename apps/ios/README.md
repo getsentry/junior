@@ -112,7 +112,7 @@ runs an older Junior rejects the app's client ID.
 
 ## Not in the public API
 
-MCP has user and assistant messages but no tool calls, so transcripts show no
-activity rows. It has no read position (the app opens at the latest message),
+MCP has a Turn's reasoning and tool calls but not tool input or output, so tool
+rows do not open. It has no read position (the app opens at the latest message),
 no attachments, no spend, and no way to answer an Inbox item or change an
 Automation; those open on the web.
