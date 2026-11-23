@@ -1156,6 +1156,13 @@
       "when": 1795449459671,
       "tag": "0164_search_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 165,
+      "version": "7",
+      "when": 1795454807296,
+      "tag": "0165_drop_legacy_archive_columns",
+      "breakpoints": true
     }
   ]
 }
