@@ -538,8 +538,8 @@ export async function mockInboxItems(
 }
 
 /**
- * Serve the viewer's code changes from their person Code overview, for the
- * Pull requests view. Each change is in getsentry/payments and opened 30
+ * Serve the viewer's code changes from their person Code overview, for
+ * Code · Mine. Each change is in getsentry/payments and opened 30
  * days before the report.
  */
 export async function mockViewerCodeChanges(

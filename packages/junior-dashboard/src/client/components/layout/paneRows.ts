@@ -1,18 +1,23 @@
 import {
   INBOX_VIEW_LABELS,
+  inboxViewOfPath,
   inboxViewPath,
   parseInboxView,
   type InboxView,
 } from "../../inbox/inboxModel";
 import { COMPOSER_PATH } from "../../conversations/conversationRoutes";
 import type { DashboardHeaderNavItem } from "../../shell/components/layout/DashboardHeader";
+import { NAV_PAGES } from "../../navPages";
 import { LEAD_NAV_KEY } from "../../shell/primaryNav";
 
 /**
  * A row of the pane's destinations that keeps its place: an Inbox view,
- * Automations, the Lead, or a primary plugin page (its nav item key).
+ * Code, Automations, the Lead, or a primary plugin page (its nav item key).
  */
-export type PaneRow = InboxView | "automations" | (string & {});
+export type PaneRow = InboxView | "automations" | "code" | (string & {});
+
+/** The list that opened a Conversation: an Inbox view, or Code. */
+export type ConversationOrigin = InboxView | "code";
 
 /** A row shows the page, or the list that opened it. */
 export type PaneRowMark = "page" | "origin";
@@ -23,6 +28,21 @@ const under = (pathname: string, root: string) =>
 /** True for the Inbox's own rows, which share one workspace. */
 export const isInboxView = (row: PaneRow | undefined): row is InboxView =>
   row !== undefined && Object.hasOwn(INBOX_VIEW_LABELS, row);
+
+/** True for a path, with or without its search, on a Code page. */
+export function isCodePath(path: string): boolean {
+  return under(path.split("?", 1)[0] ?? path, NAV_PAGES.code.to);
+}
+
+/** Name the list that a return path opens: Code or an Inbox view. */
+export function returnPathLabel(path: string): string {
+  return isCodePath(path) ? "Code" : INBOX_VIEW_LABELS[inboxViewOfPath(path)];
+}
+
+/** True for a row that can open a Conversation and stay its origin. */
+export const isConversationOrigin = (
+  row: PaneRow | undefined,
+): row is ConversationOrigin => row === "code" || isInboxView(row);
 
 /**
  * True for the old Automations bundle links, `/?view=automations` and
@@ -37,6 +57,30 @@ export function isOldAutomationsPath(location: {
     (location.pathname === "/" && params.get("view") === "automations") ||
     (location.pathname === "/review" && params.get("bundle") === "automations")
   );
+}
+
+/**
+ * True for the old Pull requests links, `/?view=prs` and
+ * `/review?bundle=prs`, which redirect to Code.
+ */
+export function isOldPullRequestsPath(location: {
+  pathname: string;
+  search: string;
+}): boolean {
+  const params = new URLSearchParams(location.search);
+  return (
+    (location.pathname === "/" && params.get("view") === "prs") ||
+    (location.pathname === "/review" && params.get("bundle") === "prs")
+  );
+}
+
+/**
+ * Where an old Pull requests link goes: the ask it names, or Code, which
+ * opens on Mine.
+ */
+export function oldPullRequestsTarget(search: string): string {
+  const itemId = new URLSearchParams(search).get("item");
+  return itemId ? inboxViewPath("inbox", { itemId }) : NAV_PAGES.code.to;
 }
 
 // A link may leave the colons of a Conversation id unencoded, so compare
@@ -69,16 +113,17 @@ export function paneDestinationForPath(
 
 /**
  * Name the row that owns a path. A Conversation belongs to `origin`, the
- * Inbox view that opened it, so that view reopens it; one with no origin,
- * such as a direct link, belongs to Conversations.
+ * list that opened it, so that list reopens it; one with no origin, such as
+ * a direct link, belongs to Conversations.
  */
 export function paneRowForPath(
   location: { pathname: string; search: string },
   navItems: readonly DashboardHeaderNavItem[],
-  origin: InboxView | undefined,
+  origin: ConversationOrigin | undefined,
 ): PaneRow | undefined {
   const { pathname } = location;
   if (isOldAutomationsPath(location)) return "automations";
+  if (isOldPullRequestsPath(location) || isCodePath(pathname)) return "code";
   if (pathname === "/")
     return parseInboxView(new URLSearchParams(location.search).get("view"));
   // The Lead is a Conversation with its own row.
@@ -111,6 +156,7 @@ export function paneRowRoot(
 ): string {
   if (isInboxView(row)) return inboxViewPath(row);
   if (row === "automations") return "/automations";
+  if (row === "code") return NAV_PAGES.code.to;
   return navItems.find((item) => item.key === row)?.to ?? "/";
 }
 
@@ -121,5 +167,6 @@ export function paneRowLabel(
 ): string {
   if (isInboxView(row)) return INBOX_VIEW_LABELS[row];
   if (row === "automations") return "Automations";
+  if (row === "code") return "Code";
   return navItems.find((item) => item.key === row)?.label ?? "Inbox";
 }

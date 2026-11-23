@@ -18,14 +18,13 @@ import {
 /**
  * The Inbox entries in the pane, as in Google Inbox. Each one names a list
  * in the main area: the Inbox, Snoozed, Done, Conversations, then the asks
- * by type.
+ * by type. The viewer's pull requests are in Code.
  */
 export type InboxView =
   | "conversations"
   | "decisions"
   | "done"
   | "inbox"
-  | "prs"
   | "snoozed";
 
 const INBOX_VIEWS: readonly InboxView[] = [
@@ -33,7 +32,6 @@ const INBOX_VIEWS: readonly InboxView[] = [
   "decisions",
   "done",
   "inbox",
-  "prs",
   "snoozed",
 ];
 
@@ -43,7 +41,6 @@ export const INBOX_VIEW_LABELS: Record<InboxView, string> = {
   decisions: "Decisions",
   done: "Done",
   inbox: "Inbox",
-  prs: "Pull requests",
   snoozed: "Snoozed",
 };
 
@@ -483,7 +480,7 @@ export function linkedRowOf(
         ? linkedId
         : undefined;
     if (!open) return undefined;
-    if (view === "prs" || view === "decisions") return open.id;
+    if (view === "decisions") return open.id;
     if (view !== "inbox") return `conversation:${open.rootConversationId}`;
     if (open.kind === "notice") return `fyi:${open.id}`;
     return linkedInboxRowKey(open, rows);
