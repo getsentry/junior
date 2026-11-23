@@ -439,10 +439,12 @@ export function createInboxItemRoutes(services: {
       let codeChanges = 0;
       let decisions = 0;
       let needsViewer = 0;
+      let todos = 0;
       for (const subject of subjects) {
         automations += subject.automations;
         needsViewer += subject.total;
         decisions += subject.decisions;
+        todos += subject.todos;
         if (
           subject.subjectUrl &&
           readLinkObjectType(subject.subjectUrl, linkTypes) === "code_change"
@@ -458,6 +460,7 @@ export function createInboxItemRoutes(services: {
         decisions,
         needsViewer,
         snoozed,
+        todos,
       });
     },
   );

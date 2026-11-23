@@ -80,6 +80,11 @@ export function isDecisionItem(item: InboxItemPayload): boolean {
   return Boolean(item.request);
 }
 
+/** An item that shows a To-do for the viewer. */
+export function isTodoItem(item: InboxItemPayload): boolean {
+  return item.todoId !== undefined;
+}
+
 /** Keep the items that one bundle holds. */
 export function itemsInView(
   items: readonly InboxItemPayload[],

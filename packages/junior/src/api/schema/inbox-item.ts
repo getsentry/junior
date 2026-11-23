@@ -261,6 +261,8 @@ export const inboxItemCountSchema = z
      * item for them, as Snoozed lists them. 0 without `include=snoozed`.
      */
     snoozed: z.number().int().nonnegative(),
+    /** The `needsViewer` items that show a To-do (`todoId`). */
+    todos: z.number().int().nonnegative(),
   })
   .strict();
 

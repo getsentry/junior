@@ -464,6 +464,7 @@ export async function mockInboxItems(
           snoozed: new Set(
             open.filter((i) => asleep(sleeping, i)).map((i) => i.owner.id),
           ).size,
+          todos: needsViewer.filter((i) => "todoId" in i).length,
         },
       });
     }

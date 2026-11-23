@@ -772,8 +772,8 @@ function inboxItemNeedsUserNow(userId: string): SQL {
 
 /**
  * Count the open Inbox items that need a User (`inboxItemNeedsUser`), one
- * row per subject URL, with the ones that ask with a form as `decisions`
- * and the Automation alerts as `automations`.
+ * row per subject URL, with the ones that ask with a form as `decisions`,
+ * the Automation alerts as `automations`, and the To-dos as `todos`.
  * The nav count and the Inbox bundle counts all read this one query. A
  * snoozed item does not count until it wakes.
  */
@@ -785,6 +785,7 @@ export async function countInboxItemsNeedingUserBySubject(
     automations: number;
     decisions: number;
     subjectUrl: string | null;
+    todos: number;
     total: number;
   }>
 > {
@@ -796,6 +797,10 @@ export async function countInboxItemsNeedingUserBySubject(
         ),
       decisions: count(juniorInboxItems.request),
       subjectUrl: juniorInboxItems.subjectUrl,
+      todos:
+        sql<number>`count(*) filter (where ${like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`)})`.mapWith(
+          Number,
+        ),
       total: count(),
     })
     .from(juniorInboxItems)
