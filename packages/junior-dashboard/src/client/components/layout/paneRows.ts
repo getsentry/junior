@@ -75,12 +75,16 @@ export function isOldPullRequestsPath(location: {
 }
 
 /**
- * Where an old Pull requests link goes: the ask it names, or Code, which
- * opens on Mine.
+ * Where an old Pull requests link goes: the ask it names, with its snooze
+ * link kept, or Code, which opens on Mine.
  */
 export function oldPullRequestsTarget(search: string): string {
-  const itemId = new URLSearchParams(search).get("item");
-  return itemId ? inboxViewPath("inbox", { itemId }) : NAV_PAGES.code.to;
+  const params = new URLSearchParams(search);
+  const itemId = params.get("item");
+  if (!itemId) return NAV_PAGES.code.to;
+  const path = inboxViewPath("inbox", { itemId });
+  // An item link always has a query, so the flag joins it.
+  return params.get("snooze") ? `${path}&snooze=1` : path;
 }
 
 // A link may leave the colons of a Conversation id unencoded, so compare

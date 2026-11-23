@@ -194,6 +194,49 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
   });
 
+  test("Code · Mine waits for your asks before it groups your changes, and says when they fail", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [prReview] });
+    await mockViewerCodeChanges(page, [
+      { idleDays: 1, number: 91, title: "Pin the release train" },
+    ]);
+    // Hold the asks, so only the changes have loaded.
+    let release = () => {};
+    const held = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/api/inbox-items?**", async (route) => {
+      await held;
+      await route.fallback();
+    });
+    await page.goto(`${dashboard.baseURL}/code`);
+    const mine = page.getByRole("region", { exact: true, name: "Code" });
+    await expect(mine.getByRole("status")).toHaveText(
+      "Loading your pull requests",
+    );
+    await expect(mine.getByRole("region")).toHaveCount(0);
+    release();
+    // The change waits on the viewer, because its ask names it.
+    await expect(
+      mine
+        .getByRole("region", { name: "Waiting on you" })
+        .getByRole("listitem", { name: "Pin the release train" }),
+    ).toBeVisible();
+    await expect(
+      mine.getByRole("region", { name: "Waiting on others" }),
+    ).toHaveCount(0);
+
+    await page.unroute("**/api/inbox-items?**");
+    await page.route("**/api/inbox-items?**", (route) =>
+      route.fulfill({ json: { error: "unavailable" }, status: 503 }),
+    );
+    await page.reload();
+    await expect(
+      mine.getByRole("alert").filter({ hasText: "Could not load your asks." }),
+    ).toBeVisible();
+    await expect(mine.getByRole("region")).toHaveCount(0);
+  });
+
   test("old Pull requests links open Code · Mine", async ({
     page,
     dashboard,
@@ -215,6 +258,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("region", { name: `${prReview.title}: asks` }),
     ).toBeVisible();
     await expect(page).toHaveURL(/\/\?view=inbox/);
+    // A snooze link keeps its dialog.
+    await page.goto(
+      `${dashboard.baseURL}/?view=prs&item=${prReview.id}&snooze=1`,
+    );
+    await expect(
+      page.getByRole("dialog", { name: "Custom snooze" }),
+    ).toBeVisible();
   });
 
   test.describe("on a phone", () => {

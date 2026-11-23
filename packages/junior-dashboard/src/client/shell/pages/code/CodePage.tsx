@@ -4,6 +4,7 @@ import { Link, useLocation, useSearchParams } from "react-router";
 
 import { useCodeOverviewData, useDashboardCoreData } from "../../../api";
 import { EmptyTelemetry } from "../../../components/EmptyTelemetry";
+import { InlineError } from "../../../components/InlineError";
 import { PageContentSkeleton } from "../../../components/PageContentSkeleton";
 import {
   timeRangeBucketUnit,
@@ -85,7 +86,12 @@ function CodeMine(props: { range: TimeRangeDays; rangeSelector: ReactNode }) {
       else next.add(key);
       return next;
     });
-  if (pullRequests.loading)
+  // Each change's group depends on its asks, so both load first.
+  if (data.itemsError)
+    return (
+      <InlineError className="py-3">Could not load your asks.</InlineError>
+    );
+  if (pullRequests.loading || !data.itemsLoaded)
     return (
       <PageContentSkeleton label="Loading your pull requests" variant="list" />
     );
