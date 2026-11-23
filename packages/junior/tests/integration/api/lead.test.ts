@@ -12,7 +12,11 @@ import {
   createAndEnqueueConversation,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import { getConversationStore, getSqlExecutor } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
 import { createWatch } from "@/chat/events/store";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { closeConversationFixture } from "../../fixtures/conversation";
@@ -82,12 +86,14 @@ describe("Lead API", () => {
     );
   });
 
-  it("lists the Conversations that the Lead watches", async () => {
+  it("lists the Conversations that the Lead watches, with the seq it read them at", async () => {
     const api = apiFor("lead-api-watches@example.com");
-    const leadId = await readLeadId(api);
+    const before = await readLead(api);
+    expect(before.lastSeq).toBe(-1);
+    const leadId = before.conversationId;
     const watch = {
       conversationId: leadId,
-      events: ["conversation.completed"],
+      events: ["agent.update"],
       expiresAtMs: Date.now() + 3_600_000,
       intent: "Tell the person when it finishes.",
     };
@@ -108,9 +114,22 @@ describe("Lead API", () => {
       resourceType: "pull_request",
     });
 
-    expect((await readLead(api)).watchedConversationIds).toEqual([
-      "slack:C1:1.0",
+    // The Turn that adds a Watch also adds transcript events.
+    await getConversationEventStore().append(leadId, [
+      {
+        data: {
+          type: "message",
+          messageId: "lead-api-watches:reply",
+          role: "assistant",
+          text: "Watching it.",
+        },
+        createdAtMs: Date.now(),
+      },
     ]);
+
+    const after = await readLead(api);
+    expect(after.watchedConversationIds).toEqual(["slack:C1:1.0"]);
+    expect(after.lastSeq).toBeGreaterThan(before.lastSeq);
   });
 
   it("keeps the Lead out of the conversation lists of its person", async () => {

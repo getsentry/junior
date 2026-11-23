@@ -4,6 +4,7 @@ import type { Page } from "@playwright/test";
 import { mockLandingAutomationApis } from "../automation-landing-fixture";
 import { expandRow, mockInboxItems, rollout, rowHead } from "./inbox-fixture";
 import { expect, test } from "../test";
+import { waitForSettingsReads } from "../harness";
 import { mobile, screenshot } from "../screenshot";
 import { pickOption } from "../pick-option";
 
@@ -262,12 +263,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-palette-pages", { lightTheme: true });
 
     await input.fill("API Tokens");
+    const settingsRead = waitForSettingsReads(page);
     await input.press("Enter");
     await expect(palette).toHaveCount(0);
     await expect(page).toHaveURL(/\/settings#api-tokens$/);
     await expect(
       page.getByRole("heading", { name: "API Tokens" }),
     ).toBeVisible();
+    await settingsRead;
   });
 
   test("sends feedback from the command palette", async ({

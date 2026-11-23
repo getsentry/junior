@@ -230,18 +230,18 @@ export function createSlackChannelListMessagesTool(context: SlackToolContext) {
         if (error instanceof SlackActionError) {
           if (error.code === "not_in_channel") {
             throw new ToolInputError(
-              "Could not read this Slack channel history because the bot is not in the channel.",
+              "Could not read this Slack channel history because the bot is not in the channel. Ask someone to add the bot to the channel.",
               { cause: error },
             );
           }
           if (error.code === "missing_scope") {
             throw new ToolInputError(
-              "Could not read this Slack channel history because this installation is missing history scopes.",
+              "Could not read this Slack channel history because this installation is missing history scopes. No change to the call can fix this.",
               { cause: error },
             );
           }
           throw new ToolInputError(
-            "Could not read this Slack channel history.",
+            "Could not read this Slack channel history. Check channel_id, or continue without it.",
             { cause: error },
           );
         }

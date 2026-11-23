@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
 import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
 import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
@@ -72,13 +72,14 @@ function getVercelOptions(nitro: {
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const tempDir of tempDirs.splice(0)) {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
 });
 
 describe("juniorNitro plugin modules", () => {
-  it("configures Vercel build output for heartbeat and conversation work", () => {
+  it("configures Vercel build output for heartbeat and conversation work", async () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -94,7 +95,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro().nitro.setup(nitro);
+    await juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(vercel.config).toEqual({
@@ -159,7 +160,7 @@ describe("juniorNitro plugin modules", () => {
     });
   });
 
-  it("preserves existing Vercel route function settings", () => {
+  it("preserves existing Vercel route function settings", async () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -209,7 +210,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({ maxDuration: 300 }).nitro.setup(nitro);
+    await juniorNitro({ maxDuration: 300 }).nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(vercel.config?.crons).toEqual([
@@ -254,7 +255,8 @@ describe("juniorNitro plugin modules", () => {
     });
   });
 
-  it("uses a custom Vercel conversation work queue topic", () => {
+  it("uses the conversation work queue topic from the environment", async () => {
+    vi.stubEnv("JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC", "custom_work");
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -270,9 +272,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({ conversationWorkQueueTopic: "custom_work" }).nitro.setup(
-      nitro,
-    );
+    await juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(
@@ -286,7 +286,7 @@ describe("juniorNitro plugin modules", () => {
     ]);
   });
 
-  it("replaces a stale queue trigger when the topic changes", () => {
+  it("replaces a stale queue trigger when the topic changes", async () => {
     const virtual: Record<string, (() => Promise<string>) | string> = {};
     const nitro = {
       hooks: {
@@ -321,9 +321,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({
-      conversationWorkQueueTopic: "new_topic",
-    }).nitro.setup(nitro);
+    await juniorNitro().nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
 
     expect(
@@ -332,7 +330,7 @@ describe("juniorNitro plugin modules", () => {
     ).toEqual([
       {
         type: "queue/v2beta",
-        topic: "new_topic",
+        topic: DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC,
       },
     ]);
     expect(
@@ -365,7 +363,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({ maxDuration: 800 }).nitro.setup(nitro);
+    await juniorNitro({ maxDuration: 800 }).nitro.setup(nitro);
     const vercel = getVercelOptions(nitro);
     const template = virtual["#junior/config"];
 
@@ -420,7 +418,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
+    await juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
     await new Promise((resolve) => setTimeout(resolve, 25));
 
     expect(globalState.__juniorNitroPluginModuleImports).toBeUndefined();
@@ -472,7 +470,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({
+    await juniorNitro({
       dashboard: { basePath: "/ops" },
     }).nitro.setup(nitro);
 
@@ -592,7 +590,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
+    await juniorNitro({ plugins: "./plugins" }).nitro.setup(nitro);
 
     const template = virtual["#junior/config"];
     expect(typeof template).toBe("function");
@@ -652,7 +650,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({
+    await juniorNitro({
       plugins: {
         module: "@acme/junior-runtime",
         exportName: "runtimePlugins",
@@ -699,7 +697,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({
+    await juniorNitro({
       plugins: {
         module: "./plugins",
         exportName: "default",
@@ -795,7 +793,7 @@ describe("juniorNitro plugin modules", () => {
       },
     };
 
-    juniorNitro({
+    await juniorNitro({
       cwd: tempRoot,
       plugins: defineJuniorPlugins(["@acme/junior-demo"]),
     }).nitro.setup(nitro);

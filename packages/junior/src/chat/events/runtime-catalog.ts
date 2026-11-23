@@ -15,7 +15,7 @@ import {
 /**
  * Enabled event registrations for search, guidance, and tool schemas.
  *
- * Includes core Workspace snapshot and Conversation status events under the
+ * Includes core Workspace snapshot and agent update events under the
  * `junior` namespace, Slack channel-message events under the `slack`
  * namespace, plus every enabled plugin registration. Plugins may not use the `junior` or `slack` namespaces.
  */

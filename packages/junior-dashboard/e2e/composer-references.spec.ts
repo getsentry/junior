@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { waitForReadPosition } from "./harness";
 import { pasteText } from "./paste-text";
 import { pickOption } from "./pick-option";
 
@@ -20,21 +21,19 @@ async function openThread(page: Page, baseURL: string) {
   return composer;
 }
 
-// Messages and linked work that the page sends.
-async function recordWrites(page: Page) {
+// Messages and linked work that the page sends, once each response is in.
+function recordWrites(page: Page) {
   const sent: string[] = [];
   const linked: string[] = [];
-  await page.route("**/api/conversations/*/messages", async (route) => {
-    if (route.request().method() === "POST") {
-      sent.push(route.request().postDataJSON().message);
+  page.on("requestfinished", (request) => {
+    if (request.method() !== "POST") return;
+    const { pathname } = new URL(request.url());
+    if (pathname.endsWith("/messages")) {
+      sent.push(request.postDataJSON().message);
     }
-    await route.fallback();
-  });
-  await page.route("**/api/conversations/*/annotations", async (route) => {
-    if (route.request().method() === "POST") {
-      linked.push(route.request().postDataJSON().url);
+    if (pathname.endsWith("/annotations")) {
+      linked.push(request.postDataJSON().url);
     }
-    await route.fallback();
   });
   return { linked, sent };
 }
@@ -47,7 +46,7 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
   page,
   dashboard,
 }) => {
-  const { linked, sent } = await recordWrites(page);
+  const { linked, sent } = recordWrites(page);
   const composer = await openThread(page, dashboard.baseURL);
   const mentions = page.getByRole("listbox", { name: "Mentions" });
 
@@ -115,10 +114,19 @@ test("@ finds Conversations, Tasks and files, and links the work it sends", asyn
     /Investigate checkout latency/,
   );
   await expect(mentions).not.toHaveAttribute("aria-busy", "true");
+  // The sent message reads the card of its link.
+  const cardRead = page.waitForResponse((response) => {
+    const url = new URL(response.url());
+    return (
+      url.pathname === "/api/objects" &&
+      url.searchParams.getAll("url").join() === checkout
+    );
+  });
   await composer.press("Enter");
   await composer.press("Enter");
   await expect.poll(() => sent).toHaveLength(2);
   expect(linked).toHaveLength(2);
+  await cardRead;
 });
 
 test("the active row stays put when a source above it loads", async ({
@@ -162,7 +170,7 @@ test("the active row stays put when a source above it loads", async ({
 });
 
 test("# finds pull requests and channels", async ({ page, dashboard }) => {
-  const { linked, sent } = await recordWrites(page);
+  const { linked, sent } = recordWrites(page);
   const composer = await openThread(page, dashboard.baseURL);
   const references = page.getByRole("listbox", { name: "References" });
 
@@ -186,6 +194,8 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await expect(composer.locator("[data-reference='channel']")).toHaveText(
     "#proj-release",
   );
+  // The thread ends at seq 5 when it opens. The sent message comes after it.
+  const readSaved = waitForReadPosition(page, 5);
   await composer.press("Enter");
 
   await expect
@@ -194,6 +204,7 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
       `See <${PULL_REQUEST}|getsentry/junior#3842> in <#CQA456|proj-release>`,
     ]);
   await expect.poll(() => linked).toEqual([PULL_REQUEST]);
+  await readSaved;
 });
 
 test("a draft keeps the kind of a chip inserted last", async ({

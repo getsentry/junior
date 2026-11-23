@@ -178,17 +178,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, { open: [rollout, notice] });
     await page.goto(`${dashboard.baseURL}/`);
     const todo = page.getByRole("region", { name: "To do" });
-    const created = page.waitForRequest(
-      (request) =>
-        request.method() === "POST" &&
-        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    const created = page.waitForResponse(
+      (response) =>
+        response.request().method() === "POST" &&
+        new URL(response.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     // The closed row's quick Snooze.
     const row = rowHead(todo, checkout);
     await row.hover();
     await todo.getByRole("button", { exact: true, name: "Snooze" }).click();
     await page.getByRole("button", { name: "Tomorrow" }).click();
-    expect((await created).postDataJSON()).toEqual({
+    expect((await created).request().postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
       inboxItemId: rollout.id,
       wakeAt: expect.any(String),
@@ -201,13 +201,13 @@ test.describe("new UI", { tag: "@new" }, () => {
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
     await expandRow(rowHead(page, checkout));
-    const deleted = page.waitForRequest(
-      (request) =>
-        request.method() === "DELETE" &&
-        new URL(request.url()).pathname.endsWith("/api/inbox/snoozes"),
+    const deleted = page.waitForResponse(
+      (response) =>
+        response.request().method() === "DELETE" &&
+        new URL(response.url()).pathname.endsWith("/api/inbox/snoozes"),
     );
     await page.getByRole("button", { name: "Wake" }).click();
-    expect((await deleted).postDataJSON()).toEqual({
+    expect((await deleted).request().postDataJSON()).toEqual({
       conversationId: rollout.rootConversationId,
       inboxItemId: rollout.id,
     });

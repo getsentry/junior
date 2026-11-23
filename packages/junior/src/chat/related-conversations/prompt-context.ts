@@ -12,7 +12,7 @@ const MAX_SUMMARY_CHARS = 1_500;
 const relatedConversationSchema = z.object({
   channelName: z.string().optional(),
   conversationId: z.string(),
-  dashboardUrl: z.string().optional(),
+  url: z.string().optional(),
   status: z.string(),
   summary: z.string(),
   title: z.string().optional(),
@@ -30,9 +30,7 @@ function renderConversation(conversation: RelatedConversation): string {
     ...(conversation.channelName
       ? [`  channel_name: ${conversation.channelName}`]
       : []),
-    ...(conversation.dashboardUrl
-      ? [`  dashboard_url: ${conversation.dashboardUrl}`]
-      : []),
+    ...(conversation.url ? [`  url: ${conversation.url}`] : []),
     `  updated_at: ${new Date(conversation.updatedAtMs).toISOString()}`,
     `  summary: ${conversation.summary.slice(0, MAX_SUMMARY_CHARS)}`,
   ].join("\n");

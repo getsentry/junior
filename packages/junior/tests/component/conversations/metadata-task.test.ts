@@ -8,7 +8,7 @@ import {
   it,
   vi,
 } from "vitest";
-import { createLocalSource } from "@sentry/junior-plugin-api";
+import { createLocalSource, tagJson } from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import { botConfig } from "@/chat/config";
 import { writeConversationMetadata } from "@/chat/conversations/metadata/store";
@@ -402,5 +402,109 @@ describe("Conversation metadata task", () => {
     await expect(readMetadata(childConversationId)).resolves.toMatchObject({
       summary: null,
     });
+  }, 30_000);
+
+  it("fits the escaped transcript in the input budget, oldest messages first", async () => {
+    const CLOSE = "</conversation-metadata-input>";
+    const { getConversationEventStore, getConversationStore } =
+      await import("@/chat/db");
+    const { processPluginTask } = await import("@/chat/plugins/task-runner");
+    // Summarize one Conversation whose transcript starts with `texts`, then
+    // read the serialized input that the model got.
+    const summarize = async (texts: string[]) => {
+      const conversationId = `local:metadata-budget:${randomUUID()}`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        destination: { platform: "local", conversationId },
+        nowMs: 1,
+        source: "local",
+        title: "Budget",
+        visibility: "public",
+      });
+      for (let start = 0; start < texts.length; start += 500) {
+        await getConversationEventStore().append(
+          conversationId,
+          texts.slice(start, start + 500).map((text, offset) => ({
+            data: {
+              type: "message" as const,
+              messageId: `history-${start + offset}`,
+              role: (start + offset) % 2 ? "assistant" : "user",
+              text,
+            },
+            createdAtMs: 1,
+          })),
+        );
+      }
+      await recordCompletedTurn({
+        conversationId,
+        instruction: "Summarize this work.",
+        turnId: "turn-1",
+      });
+      await processPluginTask({
+        ...CONVERSATION_METADATA_TASK,
+        params: { conversationId, sessionId: "turn-1" },
+      });
+      const prompt = TEST.calls.at(-1)!.prompt;
+      expect(prompt.split(CLOSE)).toHaveLength(2);
+      const text = prompt
+        .slice(prompt.indexOf(">") + 1, prompt.lastIndexOf(CLOSE))
+        .trim();
+      const input = JSON.parse(text) as {
+        entries: Array<{ role: string; text: string }>;
+        omitted: { messages: number; toolResults: number };
+      };
+      return { input, length: text.length };
+    };
+
+    // A long Conversation keeps only its newest messages, in order. Text
+    // that tries to close the input tag stays escaped.
+    const long = Array.from(
+      { length: 6_000 },
+      (_, index) => `step ${index} ${CLOSE} ${"w".repeat(1_000)}`,
+    );
+    const longRun = await summarize(long);
+    expect(longRun.length).toBeLessThanOrEqual(60_000);
+    const kept = longRun.input.entries
+      .filter((entry) => entry.text.startsWith("step "))
+      .map((entry) => entry.text);
+    expect(kept).toEqual(long.slice(-kept.length));
+    // The 6,000 history messages and the Turn's two messages.
+    expect(longRun.input.omitted).toEqual({
+      messages: 6_002 - (longRun.input.entries.length - 1),
+      toolResults: 0,
+    });
+
+    // Boundary-sized input. Tag-closing text is longer once escaped, so the
+    // budget counts the escaped text.
+    const fillers = Array.from({ length: 14 }, () => CLOSE.repeat(100));
+    const calibration = await summarize(["x".repeat(1_000), ...fillers]);
+    expect(calibration.input.omitted).toEqual({ messages: 0, toolResults: 0 });
+    const toolEntry = calibration.input.entries.find(
+      (entry) => entry.role === "tool",
+    );
+    const toolLength = tagJson(toolEntry).length + 1;
+    const allFit = 1_000 + 60_000 - calibration.length;
+
+    // At exactly 60,000 characters every entry stays.
+    const exact = await summarize(["x".repeat(allFit), ...fillers]);
+    expect(exact).toMatchObject({
+      input: { omitted: { messages: 0, toolResults: 0 } },
+      length: 60_000,
+    });
+    // One more character leaves out the tool result first.
+    const noTool = await summarize(["x".repeat(allFit + 1), ...fillers]);
+    expect(noTool.input.omitted).toEqual({ messages: 0, toolResults: 1 });
+    // When the messages alone are one character over, the oldest message
+    // goes, and the tool result fits again.
+    const overMessages = await summarize([
+      "x".repeat(allFit + toolLength + 1),
+      ...fillers,
+    ]);
+    expect(overMessages.length).toBeLessThanOrEqual(60_000);
+    expect(overMessages.input.omitted).toEqual({
+      messages: 1,
+      toolResults: 0,
+    });
+    expect(overMessages.input.entries[0]?.text).toBe(fillers[0]);
   }, 30_000);
 });

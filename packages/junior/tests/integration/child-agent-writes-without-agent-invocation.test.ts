@@ -6,17 +6,10 @@ import {
   AgentNameInUseError,
   AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
-import {
-  getAgentInvocationId,
-  getAgentInvocationMessageId,
-} from "@/chat/agent-invocations/ids";
+import { getParentMessageId } from "@/chat/agent-invocations/ids";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { readRootConversation } from "@/chat/agent-invocations/root-conversation";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import {
-  getAgentInvocation,
-  getLatestAgentInvocationForConversation,
-} from "@/chat/agent-invocations/store";
 import { stopChildAgentsOf } from "@/chat/agent-invocations/stop";
 import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import type { AgentRun } from "@/chat/agent/types";
@@ -75,7 +68,7 @@ async function startParentTurn(turnId = "parent-turn") {
   });
 }
 
-describe("spawn and messageAgent without Agent invocations", () => {
+describe("spawn and messageAgent", () => {
   afterEach(async () => {
     vi.useRealTimers();
     await disconnectStateAdapter();
@@ -91,14 +84,9 @@ describe("spawn and messageAgent without Agent invocations", () => {
         reasoningLevel: "high",
         title: "Deploy check",
       });
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.processUntilRun(childId);
 
-      await expect(
-        getAgentInvocation(
-          getAgentInvocationId(slackParentConversationId, "parent-turn:call-1"),
-        ),
-      ).resolves.toBeUndefined();
       await expect(
         getAgentBinding({
           name: harness.agentName,
@@ -116,7 +104,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
         instruction: { provenance: { authority: "instruction" } },
         reasoning: "high",
       });
-      expect(run.agentInvocationId).toBeUndefined();
       expect(run.instruction.text).toContain("Check the deploy.");
       // A retry of the spawn writes no second marker.
       await spawn(harness, "call-1", {
@@ -125,8 +112,9 @@ describe("spawn and messageAgent without Agent invocations", () => {
         reasoningLevel: "high",
         title: "Deploy check",
       });
-      const markerId = getAgentInvocationMessageId(
-        getAgentInvocationId(slackParentConversationId, "parent-turn:call-1"),
+      const markerId = getParentMessageId(
+        slackParentConversationId,
+        "parent-turn:call-1",
       );
       await expect(
         loadSubagentEvents(slackParentConversationId),
@@ -196,7 +184,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
           },
         )!({ task: "Check the rollback." }, { toolCallId: "call-1" }),
       ).resolves.toEqual({ childConversationId: first });
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.processUntilRun(first);
 
       expect(harness.runs).toHaveLength(1);
@@ -254,7 +242,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
 
       // The model retries the spawn. It creates the child, so the task runs.
       await expect(spawn(harness, "call-1")).resolves.toBe(childId);
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.processUntilRun(childId!);
       expect(harness.runs).toHaveLength(1);
       expect(harness.runs[0]!.instruction.text).toContain("Check the deploy.");
@@ -325,17 +313,14 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it.each([
-    { kind: "task" as const, notices: 1 },
-    { kind: "thread" as const, notices: 0 },
-  ])(
-    "tells only a Task's parent when its Turn fails ($kind)",
-    async ({ kind, notices }) => {
+  it.each(["task", "thread"] as const)(
+    "tells a %s's parent when its Turn fails",
+    async (kind) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
         const childId = await spawn(harness, "call-1", { kind });
-        harness.onPersonRun(async () => {
+        harness.onRun(async () => {
           throw new Error("The model is unavailable.");
         });
         // The runner throws on each try, so the last try fails the Turn.
@@ -348,11 +333,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
           (await mailboxTexts(harness, slackParentConversationId)).filter(
             (text) => text.includes('status="failed"'),
           ),
-        ).toEqual(
-          Array.from({ length: notices }, () =>
-            expect.stringContaining("The model is unavailable."),
-          ),
-        );
+        ).toEqual([expect.stringContaining("The model is unavailable.")]);
         // The dashboard shows the failed work as failed, for both kinds.
         expect(
           (await loadSubagentEvents(slackParentConversationId)).filter(
@@ -376,9 +357,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await harness.processUntilRun(childId);
       await message(harness, harness.agentName, "call-2");
       await harness.processUntilRun(childId);
-      await expect(
-        getLatestAgentInvocationForConversation(childId),
-      ).resolves.toBeUndefined();
 
       // An agent writes the child's instructions, so Guardian reads no actor.
       // A Turn records its input before it runs, so it reads its own task.
@@ -398,7 +376,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
     }
   });
 
-  it("gives a child a parent message that writes no Agent invocation", async () => {
+  it("queues a parent message behind the child's waiting task and keeps its agent config", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -415,9 +393,6 @@ describe("spawn and messageAgent without Agent invocations", () => {
         "Check the deploy.",
         "Check it again.",
       ]);
-      await expect(
-        getLatestAgentInvocationForConversation(childId),
-      ).resolves.toBeUndefined();
       await expect(readAgentConfig(childId)).resolves.toEqual({
         agentType: "explore",
       });
@@ -528,7 +503,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
         { text: "Run the new check.", to: grandchildId },
         { toolCallId: "child-call-2" },
       );
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.drain(grandchildId);
 
       expect(harness.runs).toHaveLength(1);
@@ -571,7 +546,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
           { ...parentRun(), ...other },
           { queue: harness.queue, state: harness.state },
         )!({ text: "Check it again.", to: childId }, { toolCallId: "call-2" });
-        harness.onPersonRun(finishRun);
+        harness.onRun(finishRun);
         await harness.drain(childId);
 
         // The Turn derives its credentials from its Actor, so only the
@@ -631,7 +606,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
       vi.setSystemTime(1_800_000_002_000);
       await resumeConversationTree(slackParentConversationId, Date.now());
       await message(harness, childId, "call-3");
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.processUntilRun(childId);
       expect(harness.runs).toHaveLength(1);
       await expect(
@@ -833,7 +808,7 @@ describe("spawn and messageAgent without Agent invocations", () => {
       await expect(getConversationStoppedAtMs(threadId)).resolves.toBe(
         undefined,
       );
-      harness.onPersonRun(finishRun);
+      harness.onRun(finishRun);
       await harness.drain(threadId);
       expect(
         harness.runs.some((run) =>

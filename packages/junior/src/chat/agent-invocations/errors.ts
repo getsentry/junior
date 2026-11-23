@@ -6,7 +6,7 @@ export class AgentNameInUseError extends Error {
   }
 }
 
-/** Parent already has the maximum number of non-terminal child invocations. */
+/** Parent already has the maximum number of active child agents. */
 export class AgentInvocationLimitError extends Error {
   constructor(limit: number) {
     super(
@@ -36,18 +36,6 @@ export class AgentStoppedError extends Error {
       "This conversation is stopped, so it cannot give work to child agents",
     );
     this.name = "AgentStoppedError";
-  }
-}
-
-/**
- * A child agent already has the maximum number of open tasks.
- *
- * TODO(dcramer): Delete with Agent invocation rows (#3060 step 7).
- */
-export class AgentMessageQueueFullError extends Error {
-  constructor(limit: number) {
-    super(`The child agent already has ${limit} open tasks`);
-    this.name = "AgentMessageQueueFullError";
   }
 }
 

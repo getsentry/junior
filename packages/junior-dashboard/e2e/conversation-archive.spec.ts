@@ -1,4 +1,5 @@
 import { viewAsParticipant } from "./conversationMenu";
+import { waitForReadPosition } from "./harness";
 import { expect, test } from "./test";
 import { pickOption } from "./pick-option";
 
@@ -30,12 +31,16 @@ test("finds an old archived conversation by title and restores it", async ({
     (request) =>
       request.method() === "PATCH" && request.url().endsWith("/archive"),
   );
+  // The menu click is the reader's first input in this visit, so the page
+  // saves the rows in view. The Conversation has no stored position.
+  const readSaved = waitForReadPosition(page, -1);
   await page.getByRole("button", { name: "Conversation menu" }).click();
   await page.getByRole("menuitem", { name: "Restore", exact: true }).click();
   expect((await restoreRequest).postDataJSON()).toMatchObject({
     archived: false,
   });
   await expect(sidebarLink).toBeVisible();
+  await readSaved;
 });
 
 test("archives and restores a conversation from the sidebar", async ({
@@ -205,18 +210,24 @@ test("confirms a child archive and archives its children too", async ({
     name: "Also archive its child conversations?",
   });
   await expect(confirm).toContainText("for everyone");
-  const archiveRequest = page.waitForRequest(
-    (request) =>
-      request.method() === "PATCH" && request.url().endsWith("/archive"),
+  const archived = page.waitForResponse(
+    (response) =>
+      response.request().method() === "PATCH" &&
+      response.url().endsWith("/archive"),
+  );
+  // The Conversations page that the archive returns to reads the Lead.
+  const leadRead = page.waitForResponse(
+    (response) => new URL(response.url()).pathname === "/api/lead",
   );
   await confirm.getByRole("button", { name: "Archive" }).click();
-  expect((await archiveRequest).postDataJSON()).toMatchObject({
+  expect((await archived).request().postDataJSON()).toMatchObject({
     applyToChildren: true,
     archived: true,
   });
   await expect(page).toHaveURL(
     new URL("/conversations", dashboard.baseURL).href,
   );
+  await leadRead;
 });
 
 test("shows why a child restore is refused", async ({ page, dashboard }) => {

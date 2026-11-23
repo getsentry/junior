@@ -1,24 +1,11 @@
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
-import { getAgentInvocationTurnId } from "@/chat/agent-invocations/ids";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AgentRun } from "@/chat/agent/types";
 import {
-  createAgentInvocation,
-  createAgentInvocationForMessage,
+  messageChildAgent,
+  spawnChildAgent,
 } from "@/chat/agent-invocations/create";
-import { enqueueChildResultToParent } from "@/chat/agent-invocations/result";
-import {
-  completeAgentInvocation,
-  getAgentInvocation,
-  listAgentInvocationsForConversation,
-  NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-  TERMINAL_AGENT_INVOCATION_STATUSES,
-} from "@/chat/agent-invocations/store";
-import {
-  enqueueAgentInvocation,
-  createAndEnqueueAgentInvocation,
-} from "@/chat/agent-invocations/work";
-import type { CreateAgentInvocationInput } from "@/chat/agent-invocations/types";
+import type { SpawnChildAgentInput } from "@/chat/agent-invocations/types";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { getAutomatedTurnLimitState } from "@/chat/services/automated-turn-limit";
@@ -51,14 +38,13 @@ import { createModelStream } from "../fixtures/model-stream";
 import { createConversationWorkHarness } from "../fixtures/conversation-work";
 import type { AgentRequestStreamFn } from "@/chat/pi/agent-history";
 
-const parentConversationId = "local:test:agent-invocation-concurrency";
+const parentConversationId = "local:test:child-agent-concurrency";
 const destination = {
   conversationId: parentConversationId,
   platform: "local",
 } as const;
 const baseInput = {
   actor: { name: "parent-agent", platform: "system" } as const,
-  destination,
   input: "Do the delegated work.",
   parentConversationId,
 };
@@ -68,12 +54,24 @@ async function listAgents() {
     .execute!({}, {});
 }
 
+/** The child replies and results that reached a Conversation's mailbox. */
+async function mailboxTexts(conversationId: string) {
+  return (
+    (await getConversationWorkState({ conversationId }))?.messages.map(
+      (message) => message.input.text,
+    ) ?? []
+  );
+}
+
 const NO_ANSWER = "Do not answer.";
 
-/** Reply with the input, or answer with plain text twice for `NO_ANSWER`. */
-function taskModel(request: AgentRun): AgentRequestStreamFn {
+/**
+ * Reply with the input, or answer with plain text twice for `NO_ANSWER`.
+ * With `reply`, always reply with that text.
+ */
+function taskModel(request: AgentRun, reply?: string): AgentRequestStreamFn {
   return createModelStream(
-    request.instruction.text.includes(NO_ANSWER)
+    reply === undefined && request.instruction.text.includes(NO_ANSWER)
       ? [
           { type: "text", text: "Thinking about it." },
           { type: "text", text: "Still thinking." },
@@ -82,7 +80,7 @@ function taskModel(request: AgentRun): AgentRequestStreamFn {
           {
             type: "toolCall",
             name: "reply",
-            arguments: { text: `result:${request.instruction.text}` },
+            arguments: { text: reply ?? `result:${request.instruction.text}` },
           },
         ],
   );
@@ -108,7 +106,7 @@ async function createHarness(
     state,
   } = await createConversationWorkHarness(agentRunner);
   // This harness runs only child work. Each child result also wakes the
-  // parent, and agent-invocation-work covers that parent Turn.
+  // parent, and its results stay in the parent's mailbox.
   const processNext = async () => {
     const message = queue.takeMessage();
     if (message.conversationId === parentConversationId) {
@@ -141,41 +139,42 @@ async function createHarness(
       childConversationId: string;
       idempotencyKey: string;
       input: string;
-    }) => {
-      const created = await createAgentInvocationForMessage({
-        ...baseInput,
-        ...args,
-        parentToolCallId: args.idempotencyKey,
-      });
-      await enqueueAgentInvocation(created.invocation, {
-        conversationStore,
-        queue,
-        state,
-      });
-      return created;
-    },
+    }) =>
+      await messageChildAgent(
+        {
+          ...baseInput,
+          ...args,
+          parentToolCallId: args.idempotencyKey,
+          parentTurnId: args.idempotencyKey,
+        },
+        { conversationStore, queue, state },
+      ),
     queue,
     state,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
+    /** Spawn one child agent, as spawnAgent does. */
     spawn: async (
-      overrides: Partial<CreateAgentInvocationInput> & {
-        idempotencyKey: string;
-      },
+      overrides: Partial<SpawnChildAgentInput> & { idempotencyKey: string },
     ) =>
-      await createAndEnqueueAgentInvocation(
-        { ...baseInput, ...overrides },
+      await spawnChildAgent(
+        {
+          ...baseInput,
+          ...overrides,
+          parentToolCallId: overrides.idempotencyKey,
+          parentTurnId: overrides.idempotencyKey,
+        },
         { conversationStore, queue, state },
       ),
   };
 }
 
-describe("agent invocation identity and concurrency", () => {
+describe("child agent identity and concurrency", () => {
   afterEach(async () => {
     await disconnectStateAdapter();
     vi.restoreAllMocks();
   });
 
-  it("gives each unnamed invocation a fresh child without inherited history", async () => {
+  it("gives each unnamed child a fresh Conversation without inherited history", async () => {
     const harness = await createHarness(taskModel);
     try {
       const first = await harness.spawn({
@@ -196,18 +195,11 @@ describe("agent invocation identity and concurrency", () => {
         [],
         [],
       ]);
-      await expect(
-        getAgentInvocation(first.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:first unnamed task",
-        status: "completed",
-      });
-      await expect(
-        getAgentInvocation(second.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:second unnamed task",
-        status: "completed",
-      });
+      // Each child's result reached the parent.
+      await expect(mailboxTexts(parentConversationId)).resolves.toEqual([
+        expect.stringMatching(/status="completed"[\s\S]*first unnamed task/),
+        expect.stringMatching(/status="completed"[\s\S]*second unnamed task/),
+      ]);
     } finally {
       await harness.close();
     }
@@ -221,32 +213,36 @@ describe("agent invocation identity and concurrency", () => {
         idempotencyKey: "named-1",
         input: "first named task",
         reasoningLevel: "high",
+        title: "Research",
       });
       await harness.drainQueuedWork();
-      const { invocation: second } = await harness.message({
-        childConversationId: first.childConversationId,
-        idempotencyKey: "named-2",
-        input: "second named task",
-      });
-      await expect(listAgents()).resolves.toEqual({
+      await expect(
+        harness.message({
+          childConversationId: first.childConversationId,
+          idempotencyKey: "named-2",
+          input: "second named task",
+        }),
+      ).resolves.toEqual({ delivery: "started" });
+      await expect(listAgents()).resolves.toMatchObject({
         agents: [
           {
             conversation_id: first.childConversationId,
             kind: "task",
-            last_result: "completed",
             name: "researcher",
             relation: "child",
-            status: "pending",
-            task: "second named task",
-            updated_at: expect.any(String),
+            status: "running",
+            task: "Research",
           },
         ],
       });
       await harness.drainQueuedWork();
 
-      expect(second.childConversationId).toBe(first.childConversationId);
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
+      expect(requests.map((request) => request.conversationId)).toEqual([
+        first.childConversationId,
+        first.childConversationId,
+      ]);
       expect(requests[0]?.history?.messages).toEqual([]);
       expect(requests[0]?.reasoning).toBe("high");
       expect(requests[0]?.disabledFeatures).toEqual(["interactive-auth"]);
@@ -260,19 +256,19 @@ describe("agent invocation identity and concurrency", () => {
         ]),
       );
       expect(JSON.stringify(requests[1]?.history?.messages)).toContain(
-        "result:first named task",
+        "result:",
       );
-      await expect(
-        getAgentInvocation(second.invocationId),
-      ).resolves.toMatchObject({
-        agentName: "researcher",
-        reasoningLevel: "high",
-        // The child sees the parent's message as a parent agent task.
-        result: expect.stringMatching(
-          /^result:<parent-agent-task>\n[\s\S]*second named task\n<\/parent-agent-task>$/,
-        ),
-        status: "completed",
-      });
+      expect(JSON.stringify(requests[1]?.history?.messages)).toContain(
+        "first named task",
+      );
+      // The child sees the parent's message as a parent agent task.
+      expect(requests[1]?.instruction.text).toMatch(
+        /<parent-agent-task>\n[\s\S]*second named task\n<\/parent-agent-task>/,
+      );
+      await expect(mailboxTexts(parentConversationId)).resolves.toEqual([
+        expect.stringContaining("first named task"),
+        expect.stringMatching(/name="researcher"[\s\S]*second named task/),
+      ]);
     } finally {
       await harness.close();
     }
@@ -282,8 +278,12 @@ describe("agent invocation identity and concurrency", () => {
     const started = new Set<string>();
     const release = deferred<void>();
     const bothStarted = deferred<void>();
+    const taskOf = (request: AgentRun) =>
+      ["parallel first", "parallel second"].find((task) =>
+        request.instruction.text.includes(task),
+      )!;
     const harness = await createHarness((request) => {
-      const task = request.instruction.text;
+      const task = taskOf(request);
       started.add(task);
       if (started.size === 2) {
         bothStarted.resolve(undefined);
@@ -318,10 +318,7 @@ describe("agent invocation identity and concurrency", () => {
         Object.fromEntries(
           harness
             .requests()
-            .map((request) => [
-              request.instruction.text,
-              request.history?.messages,
-            ]),
+            .map((request) => [taskOf(request), request.history?.messages]),
         ),
       ).toEqual({
         "parallel first": [],
@@ -330,18 +327,16 @@ describe("agent invocation identity and concurrency", () => {
       expect(first.childConversationId).not.toBe(second.childConversationId);
       release.resolve(undefined);
       await processing;
-      await expect(
-        getAgentInvocation(first.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:parallel first",
-        status: "completed",
-      });
-      await expect(
-        getAgentInvocation(second.invocationId),
-      ).resolves.toMatchObject({
-        result: "result:parallel second",
-        status: "completed",
-      });
+      const results = await mailboxTexts(parentConversationId);
+      expect(results).toHaveLength(2);
+      expect(results).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(
+            /name="researcher"[\s\S]*result:parallel first/,
+          ),
+          expect.stringMatching(/name="reviewer"[\s\S]*result:parallel second/),
+        ]),
+      );
     } finally {
       release.resolve(undefined);
       await harness.close();
@@ -351,7 +346,7 @@ describe("agent invocation identity and concurrency", () => {
   it("keeps a successful parallel child independent from a failing sibling", async () => {
     const harness = await createHarness((request) =>
       createModelStream([
-        request.instruction.text === "failing sibling"
+        request.instruction.text.includes("failing sibling")
           ? { type: "error", errorMessage: "sibling failed" }
           : {
               type: "toolCall",
@@ -365,10 +360,12 @@ describe("agent invocation identity and concurrency", () => {
         harness.spawn({
           idempotencyKey: "sibling-success",
           input: "successful sibling",
+          title: "successful sibling",
         }),
         harness.spawn({
           idempotencyKey: "sibling-failure",
           input: "failing sibling",
+          title: "failing sibling",
         }),
       ]);
       await harness.drainQueuedWork();
@@ -376,44 +373,39 @@ describe("agent invocation identity and concurrency", () => {
       expect(
         harness
           .requests()
-          .map((request) => request.instruction.text)
+          .map((request) => request.conversationId)
           .sort(),
-      ).toEqual(["failing sibling", "successful sibling"].sort());
-      await expect(
-        getAgentInvocation(successful.invocationId),
-      ).resolves.toMatchObject({
-        result: "successful sibling result",
-        status: "completed",
-      });
-      await expect(
-        getAgentInvocation(failing.invocationId),
-      ).resolves.toMatchObject({
-        errorMessage: "sibling failed",
-        status: "failed",
-      });
+      ).toEqual(
+        [successful.childConversationId, failing.childConversationId].sort(),
+      );
+      const results = await mailboxTexts(parentConversationId);
+      expect(results).toHaveLength(2);
+      expect(results).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(
+            /status="completed"[\s\S]*successful sibling result/,
+          ),
+          expect.stringMatching(/status="failed"[\s\S]*sibling failed/),
+        ]),
+      );
       const successfulChild = {
         conversation_id: successful.childConversationId,
         kind: "task",
-        last_result: "completed",
         status: "idle",
         task: "successful sibling",
-        updated_at: expect.any(String),
       };
       const failingChild = {
         conversation_id: failing.childConversationId,
-        error: "sibling failed",
         kind: "task",
-        last_result: "failed",
         status: "idle",
         task: "failing sibling",
-        updated_at: expect.any(String),
       };
       const listed = await listAgents();
       expect(listed.agents).toHaveLength(2);
       expect(listed.agents).toEqual(
         expect.arrayContaining([
-          { relation: "child", ...successfulChild },
-          { relation: "child", ...failingChild },
+          expect.objectContaining({ relation: "child", ...successfulChild }),
+          expect.objectContaining({ relation: "child", ...failingChild }),
         ]),
       );
       // A child agent sees itself, its parent, and its sibling.
@@ -422,7 +414,7 @@ describe("agent invocation identity and concurrency", () => {
           conversationId: successful.childConversationId,
           parentConversationId,
         }).execute!({}, {}),
-      ).resolves.toEqual({
+      ).resolves.toMatchObject({
         agents: [
           { relation: "self", ...successfulChild },
           {
@@ -430,7 +422,6 @@ describe("agent invocation identity and concurrency", () => {
             relation: "parent",
             // Both child results wait in the parent mailbox.
             status: "pending",
-            updated_at: expect.any(String),
           },
           { relation: "sibling", ...failingChild },
         ],
@@ -448,6 +439,7 @@ describe("agent invocation identity and concurrency", () => {
         agentName: "watcher",
         idempotencyKey: "watch-1",
         input: "Watch the deploy.",
+        title: "Watch the deploy.",
       });
       await harness.drainQueuedWork();
 
@@ -470,9 +462,8 @@ describe("agent invocation identity and concurrency", () => {
       clock.mockReturnValue(clock() + 120_000);
       await harness.drainQueuedWork();
 
-      // The timer runs on the child's Conversation loop, with no agent
-      // invocation, as the event Actor, with an event Source and the grants
-      // of the person who set it.
+      // The timer runs on the child's Conversation loop as the event Actor,
+      // with an event Source and the grants of the person who set it.
       const requests = harness.requests();
       expect(requests).toHaveLength(2);
       const timerRun = requests[1]!;
@@ -495,7 +486,6 @@ describe("agent invocation identity and concurrency", () => {
           namespace: "junior",
         },
       });
-      expect(timerRun.agentInvocationId).toBeUndefined();
       // The child transcript shows the timer input as an Event, as on a root.
       await expect(
         loadMessageEvents(child.childConversationId),
@@ -508,7 +498,7 @@ describe("agent invocation identity and concurrency", () => {
           role: "user",
         }),
       );
-      // Its `reply` reaches the parent once, and it adds no agent invocation.
+      // Its `reply` reaches the parent once.
       const parentWork = await getConversationWorkState({
         conversationId: parentConversationId,
         state: harness.state,
@@ -518,12 +508,6 @@ describe("agent invocation identity and concurrency", () => {
           .map((message) => message.input.text)
           .filter((text) => text.includes("Check the deploy again.")),
       ).toHaveLength(1);
-      await expect(
-        listAgentInvocationsForConversation(child.childConversationId, [
-          ...NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-          ...TERMINAL_AGENT_INVOCATION_STATUSES,
-        ]),
-      ).resolves.toHaveLength(1);
       // The timer Turn counts toward the automated-turn limit, as on a root.
       await expect(
         getAutomatedTurnLimitState({
@@ -599,9 +583,9 @@ describe("agent invocation identity and concurrency", () => {
       clock.mockReturnValue(clock() + 120_000);
       await harness.drainQueuedWork();
       expect(harness.requests().map((request) => request.source.kind)).toEqual([
-        "agent_invocation",
+        "parent_message",
         "event",
-        "agent_invocation",
+        "parent_message",
         "event",
       ]);
     } finally {
@@ -610,12 +594,11 @@ describe("agent invocation identity and concurrency", () => {
     }
   });
 
-  // A child with no open agent invocation, such as after a Watch Event Turn
-  // that spawned a helper, gets the helper's `reply` on its Conversation
-  // loop. That Turn answers the parent itself. After the re-ask, a Task that
-  // ends without an answer tells the parent, and a Thread stays quiet. It
-  // runs as the web user who started it, but cannot wait for that person to
-  // sign in.
+  // An idle child, such as after a Watch Event Turn that spawned a helper,
+  // gets the helper's result on its Conversation loop. That Turn answers the
+  // parent itself. After the re-ask, a child that ends without an answer
+  // tells the parent. It runs as the web user who started it, but cannot
+  // wait for that person to sign in.
   it.each([
     {
       name: "a Task reply",
@@ -633,13 +616,20 @@ describe("agent invocation identity and concurrency", () => {
       name: "a Thread with no answer",
       kind: "thread",
       finding: NO_ANSWER,
-      expected: [],
+      expected: ["No reply was sent."],
     },
   ] as const)(
-    "runs a grandchild reply on the child's Conversation loop for $name",
+    "runs a grandchild result on the child's Conversation loop for $name",
     async ({ expected, finding, kind }) => {
       const clock = vi.spyOn(Date, "now").mockReturnValue(1_800_000_000_000);
-      const harness = await createHarness(taskModel);
+      let helperId: string | undefined;
+      // The helper answers with the finding. The child runs the task model.
+      const harness = await createHarness((request) =>
+        taskModel(
+          request,
+          request.conversationId === helperId ? finding : undefined,
+        ),
+      );
       try {
         const actor = {
           platform: "web" as const,
@@ -647,64 +637,44 @@ describe("agent invocation identity and concurrency", () => {
           email: "alice@example.com",
           fullName: "Alice",
         };
-        const child = await createAgentInvocation({
-          ...baseInput,
+        const child = await harness.spawn({
           actor,
           idempotencyKey: "loop-child",
+          input: "Watch the deploy.",
           kind,
         });
-        await completeAgentInvocation({
-          invocationId: child.invocationId,
-          result: "Watching.",
-          status: "completed",
-        });
-        const helper = await createAgentInvocation({
-          ...baseInput,
+        await harness.drainQueuedWork();
+        const parentBefore = await mailboxTexts(parentConversationId);
+        ({ childConversationId: helperId } = await harness.spawn({
           actor,
           idempotencyKey: "loop-helper",
           parentConversationId: child.childConversationId,
-        });
-        await enqueueChildResultToParent({
-          actor,
-          messageKey: "helper-reply",
-          queue: harness.queue,
-          result: {
-            kind: "reply",
-            reply: { text: finding, toolCallId: "helper-reply" },
-          },
-          sender: helper,
-          turnId: getAgentInvocationTurnId(helper.invocationId),
-          state: harness.state,
-        });
+        }));
+        // The helper's Turn sends its result to the child.
+        await harness.processQueuedBatch();
         // The child Turn runs after the Event burst window, as on a root.
         clock.mockReturnValue(clock() + 60_000);
         await harness.drainQueuedWork();
 
-        const requests = harness.requests();
-        expect(requests).toHaveLength(1);
-        expect(requests[0]).toMatchObject({
+        const requests = harness
+          .requests()
+          .filter(
+            (request) => request.conversationId === child.childConversationId,
+          );
+        expect(requests).toHaveLength(2);
+        expect(requests[1]).toMatchObject({
           actor,
           conversationId: child.childConversationId,
           disabledFeatures: ["interactive-auth"],
           parentConversationId,
+          source: { kind: "event" },
         });
-        expect(requests[0]!.authorization).toBeUndefined();
-        expect(requests[0]!.agentInvocationId).toBeUndefined();
-        // The child starts no agent invocation, and its answer reaches the
-        // parent once.
-        await expect(
-          listAgentInvocationsForConversation(child.childConversationId, [
-            ...NON_TERMINAL_AGENT_INVOCATION_STATUSES,
-            ...TERMINAL_AGENT_INVOCATION_STATUSES,
-          ]),
-        ).resolves.toHaveLength(1);
-        const parentWork = await getConversationWorkState({
-          conversationId: parentConversationId,
-          state: harness.state,
-        });
-        expect(
-          (parentWork?.messages ?? []).map((message) => message.input.text),
-        ).toEqual(expected.map((text) => expect.stringContaining(text)));
+        expect(requests[1]!.authorization).toBeUndefined();
+        // The child's answer reaches the parent once.
+        await expect(mailboxTexts(parentConversationId)).resolves.toEqual([
+          ...parentBefore,
+          ...expected.map((text) => expect.stringContaining(text)),
+        ]);
       } finally {
         clock.mockRestore();
         await harness.close();
@@ -838,6 +808,9 @@ describe("agent invocation identity and concurrency", () => {
         input: "Watch the logs.",
         parentConversationId: watcher.childConversationId,
       });
+      await harness.processQueuedBatch();
+      // The watcher reads the helper's result after the Event burst window.
+      clock.mockReturnValue(clock() + 120_000);
       await harness.drainQueuedWork();
 
       const toolsFor = (conversationId: string) => {

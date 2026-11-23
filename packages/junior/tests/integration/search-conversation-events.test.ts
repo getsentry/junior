@@ -545,6 +545,24 @@ describe("searchConversationEvents", () => {
     await expect(
       executeTool({ query: "lease.ts" }, { ...context(), turnId: "turn-ask" }),
     ).resolves.toMatchObject({ events: [{ seq: 2 }] });
+
+    // More events without text than one embedding batch do not end the run
+    // before the older events that have text.
+    await events.append(
+      CURRENT_CONVERSATION_ID,
+      Array.from({ length: 40 }, (_, index) => ({
+        createdAtMs: 13 + index,
+        data: {
+          type: "message" as const,
+          messageId: `m-blank-${index}`,
+          role: "assistant" as const,
+          text: "\n",
+        },
+      })),
+    );
+    await expect(
+      embedConversationEvents(getDb(), embedder, CURRENT_CONVERSATION_ID),
+    ).resolves.toBe(2);
   });
 
   it("backfills the index of recently active Conversations from the heartbeat", async () => {

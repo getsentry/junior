@@ -8,6 +8,7 @@ import { syncAutomationAlerts } from "@/chat/automations/alert-items";
 import { getDb } from "@/chat/db";
 import { runTimerWatchHeartbeat } from "@/chat/events/timers";
 import { runInboxSnoozeTimers } from "@/chat/inbox-snoozes/triggers";
+import { runInboxItemPushTimers } from "@/chat/notifications/inbox-item-push";
 import {
   createPluginEventPublisher,
   getRegistrations,
@@ -16,22 +17,12 @@ import {
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
-import { mapBounded } from "@/chat/fan-out";
 import { runScheduledAutomationHeartbeat } from "@/chat/scheduled-automations/heartbeat";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { createHeartbeatContext } from "./context";
 import type { IdentityDispatcher } from "./identity";
-import {
-  listPendingAgentInvocationMailboxAppends,
-  listPendingAgentInvocationResults,
-} from "@/chat/agent-invocations/store";
-import {
-  createEndStoppedChildWork,
-  enqueueAgentInvocationResult,
-} from "@/chat/agent-invocations/result";
-import { recordSubagentEnded } from "@/chat/agent-invocations/markers";
-import { enqueueAgentInvocation } from "@/chat/agent-invocations/work";
+import { createEndStoppedChildWork } from "@/chat/agent-invocations/result";
 import {
   confirmDispatchMailboxAppend,
   getDispatchRecord,
@@ -48,7 +39,6 @@ import {
 const DEFAULT_PLUGIN_LIMIT = 25;
 const PLUGIN_HEARTBEAT_TIMEOUT_MS = 25_000;
 const DISPATCH_MAILBOX_APPEND_LIMIT = 100;
-const AGENT_INVOCATION_MAILBOX_APPEND_LIMIT = 100;
 async function runWithTimeout<T>(
   promise: Promise<T>,
   timeoutMs: number,
@@ -168,85 +158,6 @@ export async function recoverPendingDispatchMailboxAppends(args: {
   /* oxlint-enable no-await-in-loop */
 }
 
-/**
- * Run `work` for each item. Items for one mailbox run one at a time in list
- * order, so its appends keep that order. Different mailboxes run at once.
- */
-async function runPerMailbox<T>(
-  items: readonly T[],
-  mailboxOf: (item: T) => string,
-  work: (item: T) => Promise<void>,
-): Promise<void> {
-  const byMailbox = new Map<string, T[]>();
-  for (const item of items) {
-    const mailbox = mailboxOf(item);
-    byMailbox.set(mailbox, [...(byMailbox.get(mailbox) ?? []), item]);
-  }
-  await mapBounded([...byMailbox.values()], async (group) => {
-    /* oxlint-disable no-await-in-loop -- Appends to one mailbox keep the order of the list. */
-    for (const item of group) {
-      await work(item);
-    }
-    /* oxlint-enable no-await-in-loop */
-  });
-}
-
-/** Repair invocation creation that stopped before its idempotent mailbox append. */
-export async function recoverPendingAgentInvocationMailboxAppends(args: {
-  conversationWorkQueue: ConversationWorkQueue;
-  nowMs: number;
-}): Promise<void> {
-  const invocations = await listPendingAgentInvocationMailboxAppends(
-    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
-  );
-  // The list is in creation order, and each append goes to the child.
-  await runPerMailbox(
-    invocations,
-    (invocation) => invocation.childConversationId,
-    async (invocation) => {
-      try {
-        await enqueueAgentInvocation(invocation, {
-          nowMs: args.nowMs,
-          queue: args.conversationWorkQueue,
-        });
-      } catch (error) {
-        logException(error, "agent.invocation.mailbox.append_recovery.failed", {
-          "app.agent.invocation_id": invocation.invocationId,
-        });
-      }
-    },
-  );
-}
-
-/** Repair terminal agent invocation results that never reached their parent. */
-export async function recoverPendingAgentInvocationResults(args: {
-  conversationWorkQueue: ConversationWorkQueue;
-  nowMs: number;
-}): Promise<void> {
-  const invocations = await listPendingAgentInvocationResults(
-    AGENT_INVOCATION_MAILBOX_APPEND_LIMIT,
-  );
-  // The list is in the order that the invocations ended, and each result
-  // goes to the parent.
-  await runPerMailbox(
-    invocations,
-    (invocation) => invocation.parentConversationId,
-    async (invocation) => {
-      try {
-        await recordSubagentEnded(invocation);
-        await enqueueAgentInvocationResult(invocation, {
-          nowMs: args.nowMs,
-          queue: args.conversationWorkQueue,
-        });
-      } catch (error) {
-        logException(error, "agent.invocation.result.recovery.failed", {
-          "app.agent.invocation_id": invocation.invocationId,
-        });
-      }
-    },
-  );
-}
-
 /** Run the core heartbeat phases. */
 export async function runHeartbeat(args: {
   conversationWorkQueue?: ConversationWorkQueue | undefined;
@@ -258,8 +169,6 @@ export async function runHeartbeat(args: {
   showInboxItem?: ShowInboxItem | undefined;
 }): Promise<void> {
   const queue = args.conversationWorkQueue ?? getVercelConversationWorkQueue();
-  // Runs before result recovery, so an invocation that this ends is sent to
-  // its parent in the same heartbeat.
   const endStoppedChildWork = createEndStoppedChildWork({ queue });
   await recoverConversationWork({
     beforeWorkStops: async (conversationId, inboundMessageIds) => {
@@ -270,14 +179,6 @@ export async function runHeartbeat(args: {
     queue,
   });
   await recoverPendingDispatchMailboxAppends({
-    conversationWorkQueue: queue,
-    nowMs: args.nowMs,
-  });
-  await recoverPendingAgentInvocationMailboxAppends({
-    conversationWorkQueue: queue,
-    nowMs: args.nowMs,
-  });
-  await recoverPendingAgentInvocationResults({
     conversationWorkQueue: queue,
     nowMs: args.nowMs,
   });
@@ -303,6 +204,11 @@ export async function runHeartbeat(args: {
     }
   } catch (error) {
     logException(error, "inbox_snoozes.heartbeat.failed");
+  }
+  try {
+    await runInboxItemPushTimers(getDb(), args.nowMs);
+  } catch (error) {
+    logException(error, "inbox_item_push.heartbeat.failed");
   }
   try {
     await syncAutomationAlerts(getDb(), args.nowMs);

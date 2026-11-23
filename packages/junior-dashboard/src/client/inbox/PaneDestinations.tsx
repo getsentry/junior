@@ -12,7 +12,11 @@ import { Link, useLocation, useSearchParams } from "react-router";
 
 import { navItemIcon } from "../components/layout/navIcons";
 import { usePaneNavItems, usePaneRowLink } from "../components/layout/PaneNav";
-import { isLeadPath, type PaneRow } from "../components/layout/paneRows";
+import {
+  isLeadPath,
+  type PaneRow,
+  type PaneRowMark,
+} from "../components/layout/paneRows";
 import { cn, dashboardCountClass } from "../styles";
 import { LEAD_NAV_KEY } from "../shell/primaryNav";
 import { useInboxData } from "./inboxData";
@@ -33,14 +37,21 @@ const ICONS: Record<InboxView, LucideIcon> = {
   snoozed: Clock3,
 };
 
-/** The row style that the destinations and the In flight rows share. */
-export const paneEntryClass = (selected: boolean, phone?: boolean) =>
+/**
+ * The row style that the destinations and the In flight rows share. The
+ * list that opened the page keeps the accent text without the fill, so only
+ * the page's own row is lit.
+ */
+export const paneEntryClass = (mark?: PaneRowMark, phone?: boolean) =>
   cn(
-    "grid min-w-0 grid-cols-[1rem_minmax(0,1fr)_auto] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
+    // A count adds its own column, so a row without one gives its title the
+    // full width, with no gap left for a count.
+    "grid min-w-0 grid-flow-col grid-cols-[1rem_minmax(0,1fr)] items-center gap-x-3 rounded-lg px-3 font-sans text-sm no-underline transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-dashboard-focus",
     phone ? "h-11" : "h-8",
-    selected
-      ? "bg-dashboard-accent/[0.12] text-dashboard-accent-text"
-      : "text-dashboard-text hover:bg-dashboard-fill-hover",
+    mark === "page"
+      ? "bg-dashboard-accent/[0.12]"
+      : "hover:bg-dashboard-fill-hover",
+    mark ? "text-dashboard-accent-text" : "text-dashboard-text",
   );
 
 function Entry(props: {
@@ -61,26 +72,32 @@ function Entry(props: {
   strong?: boolean;
 }) {
   const link = usePaneRowLink(props.row);
-  const selected = props.phone ? props.phoneSelected : link.current;
+  const mark = props.phone
+    ? props.phoneSelected
+      ? "page"
+      : undefined
+    : link.mark;
   const Icon = props.icon;
   return (
     <li className="list-none">
       <Link
-        aria-current={selected ? "page" : undefined}
+        // The list that opened the page is current in the pane's set of
+        // lists, but it is not the page.
+        aria-current={mark === "origin" ? "true" : mark}
         // A count that waits on the viewer reads as one, as the tab title's.
         aria-label={
           props.strong && props.count
             ? `${props.label}, ${props.count} waiting`
             : undefined
         }
-        className={paneEntryClass(selected, props.phone)}
+        className={paneEntryClass(mark, props.phone)}
         to={props.phone ? props.phoneTo : link.to}
       >
         <Icon
           aria-hidden="true"
           className={cn(
             "size-4",
-            selected ? "text-current" : "text-dashboard-text-muted",
+            mark ? "text-current" : "text-dashboard-text-muted",
           )}
           strokeWidth={1.9}
         />

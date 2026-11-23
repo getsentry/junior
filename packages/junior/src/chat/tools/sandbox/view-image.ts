@@ -40,7 +40,7 @@ export function createViewImageTool(
     async execute({ path }) {
       if (!supportsImageInput()) {
         throw new ToolInputError(
-          "viewImage is unavailable because the current model does not support image inputs",
+          "viewImage is unavailable because the current model does not support image inputs. No change to the call can fix this in this Turn.",
         );
       }
 

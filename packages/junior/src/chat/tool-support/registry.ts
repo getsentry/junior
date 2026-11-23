@@ -48,6 +48,7 @@ import {
 } from "@/chat/tool-support/zod-tool";
 import { setConversationSubscriptionToolDefinition } from "@/chat/tools/conversation-subscription";
 import type { ToolRegistry } from "@/chat/tool-support/definition";
+import { listedToolExposure } from "@/chat/tool-exposure";
 import { listWatchesToolDefinition } from "@/chat/tools/list-watches";
 import { runOperatorSqlToolDefinition } from "@/chat/tools/operator-sql";
 import { readConversationEventToolDefinition } from "@/chat/tools/read-conversation-event";
@@ -399,7 +400,11 @@ export function staticToolDefinitions(key: ToolDefinitionsKey): ToolRegistry {
   const core: ToolRegistry = {};
   for (const [name, entry] of coreToolEntries(scope)) {
     if (isRunBuilt(entry) || (entry.when && !entry.when(scope))) continue;
-    core[name] = modelFacing(entry.definition(scope));
+    core[name] = listedToolExposure(
+      scope.listedTools,
+      name,
+      modelFacing(entry.definition(scope)),
+    );
   }
   return scope.listedTools.only
     ? core

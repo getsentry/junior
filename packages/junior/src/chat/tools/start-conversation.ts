@@ -51,11 +51,7 @@ export const startConversationToolDefinition = zodToolDefinition({
       .describe(
         "ID of the new conversation. Pass it to messageAgent to steer it.",
       ),
-    dashboard_url: z
-      .string()
-      .url()
-      .optional()
-      .describe("Dashboard link of the new conversation."),
+    url: z.string().url().optional().describe("Link to the new conversation."),
     subscribable: subscribableResourceSchema.describe(
       "Watch it with watchEvents only when the person asks to hear back.",
     ),
@@ -74,7 +70,7 @@ export function createStartConversationTool(
     execute: async (input, options) => {
       if (!options.toolCallId || !context.turnId) {
         throw new ToolInputError(
-          "startConversation requires an active Turn and tool call ID",
+          "startConversation requires an active Turn and tool call ID. No change to the call can fix this.",
         );
       }
       const { conversationId } = await startLeadConversation({
@@ -85,10 +81,10 @@ export function createStartConversationTool(
         task: input.task,
         title: input.title,
       });
-      const dashboardUrl = getDashboardConversationLink(conversationId);
+      const url = getDashboardConversationLink(conversationId);
       return {
         conversation_id: conversationId,
-        ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+        ...(url ? { url } : undefined),
         subscribable: conversationWatch({ conversationId, title: input.title }),
       };
     },

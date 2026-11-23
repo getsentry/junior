@@ -20,7 +20,12 @@ import {
   commitParentMessageFork,
   isParentMessageAuthor,
 } from "@/chat/agent-invocations/parent-message";
-import { recordChildAgentEnded } from "@/chat/agent-invocations/markers";
+import {
+  childWorkEnded,
+  parentResultActor,
+  type DeliverToParent,
+  type ParentResult,
+} from "@/chat/agent-invocations/parent-result";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import {
   hydrateConversationMessages,
@@ -122,8 +127,6 @@ import {
 import { isEventConversationMessage } from "@/chat/events/actor";
 import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
-import type { Actor } from "@sentry/junior-plugin-api";
-import type { Reply } from "@/chat/turn-answer";
 import {
   sharedDelegatedSubject,
   verifiedTimerWatchSubject,
@@ -172,25 +175,6 @@ function sharedAuthorIdentityId(
   );
   return ids.size === 1 ? [...ids][0] : undefined;
 }
-
-/**
- * What one child agent Turn sends its parent agent: its `reply`, or a
- * blocked or failed result.
- */
-export type ParentResult =
-  | { kind: "reply"; reply: Reply }
-  | { kind: "blocked" | "failed" | "stopped"; text: string };
-
-/**
- * Send one child agent Turn's result to the parent agent. `actor` is the
- * Actor of the Turn. Repeat calls for one result are safe.
- */
-export type DeliverToParent = (args: {
-  actor: Actor;
-  result: ParentResult;
-  conversationId: string;
-  turnId: string;
-}) => Promise<void>;
 
 /**
  * Create the shared mailbox worker for web and event Turns of every
@@ -399,11 +383,16 @@ export function createConversationTurnWorker(
         );
       }
       await deliverToParent({
-        actor,
+        actor: parentResultActor(actor, source.kind),
         result,
         conversationId: context.conversationId,
         turnId,
       });
+    };
+    const reportFailure = async (text: string): Promise<void> => {
+      if (behavior.failureNotice === "parent") {
+        await sendToParent({ kind: "failed", text });
+      }
     };
     // TODO(dcramer): Stop deriving surface from Delivery after active Turn
     // lookup and reporting read Source for web and Event Turns.
@@ -741,14 +730,13 @@ export function createConversationTurnWorker(
               // lost worker cannot save the Turn and drop the answer.
               if (reply.diagnostics.outcome !== "success") {
                 await deliverAssistantMessage(reply.text);
-                if (behavior.failureNotice === "parent") {
-                  await sendToParent({
-                    kind: "failed",
-                    text: reply.diagnostics.errorMessage ?? reply.text,
-                  });
-                }
+                await reportFailure(
+                  reply.diagnostics.errorMessage ?? reply.text,
+                );
               } else if (reply.reply && behavior.tools.reply === "parent") {
                 await sendToParent({ kind: "reply", reply: reply.reply });
+                // Keep the reply in the child's transcript, not its Location.
+                await deliverAssistantMessage(reply.reply.text);
               } else if (reply.reply) {
                 await deliverAssistantMessage(reply.reply.text, {
                   reply: true,
@@ -763,6 +751,20 @@ export function createConversationTurnWorker(
                 });
               } else if (reply.blocked) {
                 await blockRunAutomation(context.conversationId, reply.blocked);
+              } else if (reply.noReply) {
+                if (
+                  behavior.endResult === "parent" &&
+                  (await childWorkEnded(context.conversationId, turnId))
+                ) {
+                  await sendToParent({
+                    kind: "completed",
+                    text: reply.noReply.note ?? "",
+                  });
+                }
+              } else if (behavior.endResult === "parent" && reply.text) {
+                // A person's Turn in a Thread ends with final text. The
+                // person sees it, and the parent gets it too.
+                await sendToParent({ kind: "completed", text: reply.text });
               }
 
               const completedState = buildDeliveredTurnStatePatch({
@@ -800,7 +802,7 @@ export function createConversationTurnWorker(
               }
               if (fromParent) {
                 // A parent agent's task resets the limit, as a person's
-                // Message does and as on an Agent invocation.
+                // Message does.
                 await resetAutomatedTurnLimit({
                   conversationId: context.conversationId,
                 });
@@ -820,10 +822,11 @@ export function createConversationTurnWorker(
               }
 
               completedSuccessfully = reply.diagnostics.outcome === "success";
+              const delivered = assistantMessageDelivered
+                ? "success"
+                : "no_reply";
               return completedSuccessfully
-                ? {
-                    outcome: assistantMessageDelivered ? "success" : "no_reply",
-                  }
+                ? { outcome: reply.blocked ? "blocked" : delivered }
                 : {
                     ...(modelFailureEventId
                       ? { eventId: modelFailureEventId }
@@ -970,17 +973,9 @@ export function createConversationTurnWorker(
             failureCode,
             turnId,
           });
-          if (behavior.failureNotice === "parent") {
-            await sendToParent({
-              kind: "failed",
-              text:
-                failure instanceof Error ? failure.message : String(failure),
-            });
-          } else {
-            // A child that sends no notice, such as a Thread, ends its
-            // dashboard markers with the failure here.
-            await recordChildAgentEnded(context.conversationId, "error");
-          }
+          await reportFailure(
+            failure instanceof Error ? failure.message : String(failure),
+          );
           await acknowledge();
           return { status: "completed" };
         }

@@ -1,7 +1,6 @@
 import * as z from "zod";
 import {
   AgentInvocationLimitError,
-  AgentMessageQueueFullError,
   AgentMessageTargetError,
   AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
@@ -68,7 +67,7 @@ export function createMessageAgentTool(
     execute: async (input, options) => {
       if (!options.toolCallId) {
         throw new ToolInputError(
-          "messageAgent requires an active tool call ID",
+          "messageAgent requires an active tool call ID. No change to the call can fix this.",
         );
       }
       let result;
@@ -90,14 +89,6 @@ export function createMessageAgentTool(
         if (error instanceof AgentStoppedError) {
           throw new ToolInputError(
             `${error.message}. Do not start more work. End this turn.`,
-            { cause: error },
-          );
-        }
-        // TODO(dcramer): Remove this mapping with AgentMessageQueueFullError
-        // when children stop writing Agent invocations (#3060 step 7).
-        if (error instanceof AgentMessageQueueFullError) {
-          throw new ToolInputError(
-            `${error.message}. Wait for its result, then send one message with everything it needs.`,
             { cause: error },
           );
         }

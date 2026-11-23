@@ -20,7 +20,7 @@ export type BlockedReport = z.output<typeof blockedReportSchema>;
  * Read the last successful blocked report from the new messages of one run.
  *
  * Do not pass the whole history. A named child keeps its history, so a report
- * from an earlier agent invocation must not end the current one.
+ * from an earlier Turn must not end the current one.
  */
 export function readBlockedReport(
   messages: readonly unknown[],

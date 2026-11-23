@@ -528,7 +528,9 @@ describe("loadAttachment tool", () => {
       await expect(
         tool.execute?.({ attachment_id: attachmentId }, {}),
       ).rejects.toThrow(
-        new ToolInputError("Attachment not found in this conversation."),
+        new ToolInputError(
+          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+        ),
       );
     }
     expect(getCapturedSlackApiCalls("files.info")).toEqual([]);

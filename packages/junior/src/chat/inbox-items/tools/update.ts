@@ -108,7 +108,9 @@ export function createUpdateInboxItemTool(
         input.reason === item.closeReason;
       const closesOnly = !changesContent && input.status && input.reason;
       if (item.status !== "open" && !retriesClose && !closesOnly) {
-        throw new ToolInputError(`Inbox item ${item.id} is already closed.`);
+        throw new ToolInputError(
+          `Inbox item ${item.id} is already closed. To follow up, add a new item with addInboxItem.`,
+        );
       }
       if (item.dedupeKey.startsWith(PLUGIN_INBOX_ITEM_KEY_PREFIX)) {
         throw new ToolInputError(
@@ -189,7 +191,9 @@ export function createUpdateInboxItemTool(
           ...(item.subject ? { subject: item.subject } : undefined),
         });
         if (!updated) {
-          throw new ToolInputError(`Inbox item ${item.id} is already closed.`);
+          throw new ToolInputError(
+            `Inbox item ${item.id} is already closed. To follow up, add a new item with addInboxItem.`,
+          );
         }
       }
       if (input.status && input.reason) {
@@ -205,7 +209,7 @@ export function createUpdateInboxItemTool(
         if (!closed) {
           if (changesContent) {
             throw new ToolInputError(
-              `Inbox item ${item.id} is already closed.`,
+              `Inbox item ${item.id} is already closed. To follow up, add a new item with addInboxItem.`,
             );
           }
           return alreadyClosedResult(await readableItem(item.id, scope));

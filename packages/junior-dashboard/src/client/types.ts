@@ -129,6 +129,10 @@ export type TranscriptViewMessage = {
   /** Resource identifier of the first Event, such as a Conversation id. */
   eventIdentifier?: string;
   eventObjectType?: ObjectType | undefined;
+  /** What the first Event says happened, when it is an agent update. */
+  eventStatus?: string;
+  /** Watch that delivered the first Event. */
+  eventWatchId?: string;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   /** Every Event when several arrived together in one message. */

@@ -195,8 +195,8 @@ pnpm build
 ```
 
 Start `pnpm dev` with the Docker settings. When the dev server is ready, run
-`snapshot create` with the same state settings as the dev server. With the
-BullMQ queue, the dev server keeps the snapshot pointer in the Compose Redis.
+`snapshot create` with the same state settings as the dev server. The dev
+server keeps the snapshot pointer in the Compose Redis.
 `pnpm cli` uses memory state by default, so it cannot find that pointer:
 
 ```sh

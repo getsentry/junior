@@ -50,6 +50,7 @@ import {
   inboxItemVisibleTo,
   type InboxItemReader,
 } from "./access";
+import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
 import type { InboxItemRequest } from "./evidence";
 
 type InboxItemKind = "notice" | "action";
@@ -339,6 +340,21 @@ export async function getInboxItem(
   return (await hydrate(db, rows))[0];
 }
 
+/** Return whether one Inbox item is open. */
+export async function isInboxItemOpen(
+  db: JuniorDatabase,
+  id: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
+    .where(
+      and(eq(juniorInboxItems.id, id), eq(juniorInboxItems.status, "open")),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Read the action items that the agent added in one Conversation and that a
  * reply can answer: the open items, and the items that a reply closed. A
@@ -517,8 +533,10 @@ export async function closeInboxItem(
       ),
     )
     .returning(ownerColumns);
+  if (updated.length === 0) return false;
+  await clearInboxItemDeliveries(db, [input.id], input.nowMs);
   await touchConversationDetail(db, ownerConversationIds(updated));
-  return updated.length > 0;
+  return true;
 }
 
 /**
@@ -563,7 +581,12 @@ export async function dismissOpenInboxItems(
               ),
       ),
     )
-    .returning(ownerColumns);
+    .returning({ ...ownerColumns, id: juniorInboxItems.id });
+  await clearInboxItemDeliveries(
+    db,
+    dismissed.map((item) => item.id),
+    input.nowMs,
+  );
   await touchConversationDetail(db, ownerConversationIds(dismissed));
 }
 
@@ -593,6 +616,13 @@ export async function takeInboxItem(
     await tx
       .insert(juniorInboxItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
+    // The taker is now an assignee, but needs no push for their own take.
+    await claimInboxItemPush(tx, {
+      itemId: input.id,
+      nowMs: input.nowMs,
+      skipReason: "taken",
+      userId: input.userId,
+    });
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });

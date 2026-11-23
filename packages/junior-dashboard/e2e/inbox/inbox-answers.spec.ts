@@ -65,8 +65,13 @@ test.describe("new UI", { tag: "@new" }, () => {
       const summary = rollout(page).locator('[data-inbox-slot="summary"]');
       await expect(summary).toHaveText("You answered Hold");
       await expect(page.getByText(ask)).toHaveCount(0);
+      // The summaries read the cards of their links.
+      const cardsRead = page.waitForResponse(
+        (response) => new URL(response.url()).pathname === "/api/objects",
+      );
       await page.reload();
       await expect(summary).toHaveText("You answered Hold");
+      await cardsRead;
     });
   }
 

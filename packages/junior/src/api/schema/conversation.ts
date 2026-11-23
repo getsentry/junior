@@ -358,7 +358,7 @@ const conversationReportMessageEventDataSchema = z
     actorIdentity: actorIdentitySchema.optional(),
     /** Identity id of the author. Detail `authors` maps it to the person. */
     actorIdentityId: z.string().min(1).optional(),
-    /** Agent invocation whose input this is. An agent wrote it, not a person. */
+    /** Set on input that an earlier release's agent wrote, not a person. */
     agentInvocationId: z.string().min(1).optional(),
     eventType: z.string().min(1).optional(),
     /** Namespace of the first Event, such as `github`. */
@@ -369,6 +369,10 @@ const conversationReportMessageEventDataSchema = z
      */
     eventIdentifier: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
+    /** What the first Event says happened, when it is an agent update. */
+    eventStatus: z.string().min(1).optional(),
+    /** Watch that delivered the first Event. */
+    eventWatchId: z.string().min(1).optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),

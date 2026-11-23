@@ -110,7 +110,7 @@ export function prepareCatalogToolCall(
   }
   if (!prepared || typeof prepared !== "object" || Array.isArray(prepared)) {
     throw new ToolInputError(
-      `${dispatcherName} arguments must prepare to an object for ${call.toolName}.`,
+      `${dispatcherName} arguments must prepare to an object for ${call.toolName}. Pass arguments as a JSON object.`,
     );
   }
   return {
