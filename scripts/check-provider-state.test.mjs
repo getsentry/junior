@@ -14,7 +14,7 @@ function snapshot(table, columns) {
 }
 
 const message = (key) =>
-  `0001_snapshot.json: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to scripts/github-state-exceptions.mjs with the reason.`;
+  `0001_snapshot.json: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to scripts/github-state-baseline.json with the reason.`;
 
 test("reports every GitHub plugin column that is not an exception", () => {
   assert.deepEqual(
@@ -22,7 +22,7 @@ test("reports every GitHub plugin column that is not an exception", () => {
       "junior-github",
       "0001_snapshot.json",
       snapshot("junior_github_reviews", ["review_id", "body"]),
-      { "junior_github_reviews.review_id": "Junior-owned: the key." },
+      { junior_github_reviews: { review_id: "Junior-owned: the key." } },
     ),
     [message("junior_github_reviews.body")],
   );
@@ -41,13 +41,25 @@ test("reports provider state names on tables with provider ids", () => {
         "title",
         "body",
       ]),
-      { "junior_code_reviews.title": "Too expensive to derive: search." },
+      { junior_code_reviews: { title: "Too expensive to derive: search." } },
     ),
     [
       message("junior_code_reviews.state"),
       message("junior_code_reviews.comment_count"),
       message("junior_code_reviews.labels"),
     ],
+  );
+});
+
+test("accepts every column of a table with a table reason", () => {
+  assert.deepEqual(
+    checkSnapshot(
+      "junior-github",
+      "0001_snapshot.json",
+      snapshot("junior_github_reviews", ["review_id", "state"]),
+      { junior_github_reviews: "Junior-owned: the reviews Junior wrote." },
+    ),
+    [],
   );
 });
 

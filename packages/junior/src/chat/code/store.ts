@@ -24,7 +24,7 @@ export async function recordCodeChange(
     "vcs.change.id": String(change.number),
     "vcs.change.state": change.state,
     "vcs.provider.name": provider,
-    "vcs.repository.url.full": change.repository.url,
+    "vcs.repository.name": change.repository.name,
   });
   const repositories = await db
     .insert(juniorCodeRepositories)
@@ -33,7 +33,6 @@ export async function recordCodeChange(
       name: change.repository.name,
       provider,
       providerId: change.repository.providerId,
-      url: change.repository.url,
       updatedAt: change.updatedAt,
     })
     .onConflictDoUpdate({
@@ -43,7 +42,6 @@ export async function recordCodeChange(
       ],
       set: {
         name: change.repository.name,
-        ...(change.repository.url ? { url: change.repository.url } : undefined),
         updatedAt: change.updatedAt,
       },
       where: lte(juniorCodeRepositories.updatedAt, change.updatedAt),
@@ -95,7 +93,6 @@ export async function recordCodeChange(
     state: change.state,
     ...(change.title ? { title: change.title } : undefined),
     updatedAt: change.updatedAt,
-    url: change.url ?? null,
   };
   await db
     .insert(juniorCodeChanges)

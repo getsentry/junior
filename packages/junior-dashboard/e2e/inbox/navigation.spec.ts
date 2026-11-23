@@ -19,7 +19,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
     // One list of labelled rows: the Lead, the Inbox views, Conversations,
@@ -76,7 +76,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("ArrowRight");
     await expect.poll(paneWidth).toBe(startWidth + 32);
     await primary.getByRole("link", { name: /^Inbox/ }).click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect.poll(paneWidth).toBe(startWidth + 32);
     await page.reload();
     await expect.poll(paneWidth).toBe(startWidth + 32);
@@ -87,7 +87,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const search = page.getByRole("button", { name: /^Search/ });
     const label = search.getByText("Search", { exact: true });
     const chip = search.locator("kbd");
@@ -146,7 +146,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     // 720px and up: 7d over 30d, with the full amounts.
     await page.setViewportSize({ width: 1440, height: 720 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(profile).toHaveAccessibleName(
       `Open profile menu for Dashboard User. ${EXACT}.`,
     );
@@ -198,7 +198,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ).total,
     });
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const primary = page.getByRole("navigation", { name: "Primary" });
     const automations = primary.getByRole("link", { name: /^Automations/ });
     // The row sits with Conversations, and its count is the Inbox's To do
@@ -235,10 +235,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     const inbox = page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: /^Inbox/ });
-    await expect(inbox).toHaveAttribute("href", "/");
+    await expect(inbox).toHaveAttribute("href", "/inbox");
     // The old link would bounce the reader back to Automations.
     await inbox.click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(inbox).toHaveAttribute("aria-current", "page");
     await expect(
       page.getByRole("heading", { exact: true, name: "Automations" }),
@@ -261,7 +261,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await primary
       .getByRole("link", { name: "Conversations", exact: true })
       .click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
   });
 
   test("names New after the page that shows", async ({ page, dashboard }) => {
@@ -311,7 +313,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The choice survives a reload and a move to another page.
     await page.reload();
     await expect(primary).toBeHidden();
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(primary).toBeHidden();
     const entries = page.getByRole("navigation", { name: "Primary" });
     await expect(entries).toBeHidden();
@@ -387,10 +389,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(inbox).not.toHaveAttribute("aria-current");
     await expect(backToConversations).toHaveAttribute(
       "href",
-      "/?view=conversations",
+      "/inbox?view=conversations",
     );
     await backToConversations.click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     await expect(conversations).toHaveAttribute("aria-current", "page");
 
     // Opened from Conversations, it stays there after a reload, Back, and
@@ -408,17 +412,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(inbox).not.toHaveAttribute("aria-current");
     await expect(backToConversations).toHaveAttribute(
       "href",
-      "/?view=conversations",
+      "/inbox?view=conversations",
     );
     await page.goBack();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     await page.goForward();
     await expect(title).toBeVisible();
     await expect(conversations).toHaveAttribute("aria-current", "true");
 
     // Opened from the Inbox, it stays in the Inbox after a reload. Its
     // In flight row is the page, so only that row is fully marked.
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlightRow = page
       .getByRole("list", { name: "In flight" })
       .getByRole("link", { name: /Investigate checkout latency/ });
@@ -434,7 +440,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(inFlightRow).toHaveAttribute("aria-current", "page");
     await expect(inbox).toHaveAttribute("aria-current", "true");
     await expect(conversations).not.toHaveAttribute("aria-current");
-    await expect(backToInbox).toHaveAttribute("href", "/");
+    await expect(backToInbox).toHaveAttribute("href", "/inbox");
     await screenshot(page, "navigation-origin-in-flight", { lightTheme: true });
 
     // The Lead is a Conversation with its own row, so that row is the page.
@@ -461,7 +467,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ],
     });
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const primary = page.getByRole("navigation", { name: "Primary" });
     const inbox = primary.getByRole("link", { name: /^Inbox/ });
     await expect(inbox).toHaveAttribute("aria-current", "page");
@@ -484,7 +490,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   test("keeps the density choice", async ({ page, dashboard }) => {
     const root = page.locator("html");
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await expect(root).toHaveAttribute("data-density", "compact");
     // Comfortable gives a row's summary more lines.
     const row = page
@@ -613,7 +619,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const dashboard = await startDashboardE2eServer({ authRequired: false });
     try {
       await page.setViewportSize({ width: 1440, height: 1150 });
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       const primary = page.getByRole("navigation", { name: "Primary" });
       await expect(primary.getByRole("link", { name: /^Inbox/ })).toHaveText(
         /^Inbox\s*\d+$/,
@@ -645,7 +651,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await route.fulfill({ json: {} });
     });
     await page.setViewportSize({ height: 900, width: 1440 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     await page.getByRole("button", { name: /^Open profile menu/ }).click();
     const entry = page.getByRole("menuitem", { name: "Send feedback" });

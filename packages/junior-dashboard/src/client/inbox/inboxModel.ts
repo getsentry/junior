@@ -66,12 +66,12 @@ export function inboxViewPath(
   options: { itemId?: string; snooze?: boolean } = {},
 ): string {
   const params = new URLSearchParams();
-  // Phones show the entries at `/`, so an item link names its entry.
+  // Phones show the entries at `/inbox`, so an item link names its entry.
   if (view !== "inbox" || options.itemId) params.set("view", view);
   if (options.itemId) params.set("item", options.itemId);
   if (options.itemId && options.snooze) params.set("snooze", "1");
   const search = params.toString();
-  return search ? `/?${search}` : "/";
+  return search ? `/inbox?${search}` : "/inbox";
 }
 
 /** An ask or notice about a code change, such as a GitHub pull request. */
@@ -82,6 +82,11 @@ export function isCodeChangeItem(item: InboxItemPayload): boolean {
 /** A question or approval that Junior asks with a form. */
 export function isDecisionItem(item: InboxItemPayload): boolean {
   return Boolean(item.request);
+}
+
+/** An item that shows a To-do for the viewer. */
+export function isTodoItem(item: InboxItemPayload): boolean {
+  return item.todoId !== undefined;
 }
 
 /** Keep the items that one bundle holds. */
@@ -278,10 +283,12 @@ export function textRepeatsHead(item: InboxItemPayload, text: string): boolean {
 
 /**
  * What one item is, as its row says: Question, Approval, the pull request
- * state that a plugin ask names, or FYI. A closed item says how it closed.
+ * state that a plugin ask names, To do for you, or FYI. A closed item says
+ * how it closed.
  */
 export function inboxItemKind(item: InboxItemPayload): string {
   if (item.status !== "open") return inboxItemStatusLabel(item);
+  if (item.todoId !== undefined) return "To do for you";
   if (item.kind === "notice") return "FYI";
   if (item.request) return "Question";
   const state = pullRequestState(item);

@@ -1,13 +1,13 @@
 -- Junior's code index holds the lifecycle and the linked Conversations of
--- Junior pull requests, and 0019 drops their copies here. Copy a pull
+-- Junior pull requests, and 0021 drops their copies here. Copy a pull
 -- request that the code index does not have, and a newer lifecycle or
--- Conversation link of one that it has. Only those rows change.
+-- Conversation link of one that it has. Only those rows change. Core
+-- migrations run first and drop the url columns, so this writes no links.
 INSERT INTO junior_code_repositories (
   id,
   name,
   provider,
   provider_id,
-  url,
   updated_at
 )
 SELECT DISTINCT ON (repository_id)
@@ -15,7 +15,6 @@ SELECT DISTINCT ON (repository_id)
   repository_full_name,
   'github',
   repository_id,
-  'https://github.com/' || repository_full_name,
   updated_at
 FROM junior_github_pull_requests
 ORDER BY repository_id, updated_at DESC
@@ -32,8 +31,7 @@ INSERT INTO junior_code_changes (
   provider_id,
   repository_id,
   state,
-  updated_at,
-  url
+  updated_at
 )
 SELECT
   gen_random_uuid(),
@@ -49,8 +47,7 @@ SELECT
     WHEN 'closed_unmerged' THEN 'closed'
     ELSE github_change.state
   END,
-  github_change.updated_at,
-  'https://github.com/' || github_change.repository_full_name || '/pull/' || github_change.number
+  github_change.updated_at
 FROM junior_github_pull_requests AS github_change
 JOIN junior_code_repositories AS repository
   ON repository.provider = 'github'

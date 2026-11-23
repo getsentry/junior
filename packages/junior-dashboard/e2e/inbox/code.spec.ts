@@ -190,7 +190,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The ask stays with its pull request, and opens its row in the Inbox.
     await waiting.getByRole("link", { name: /^Review requested/ }).click();
     await expect(page).toHaveURL(
-      `${dashboard.baseURL}/?view=inbox&item=${encodeURIComponent(prReview.id)}`,
+      `${dashboard.baseURL}/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
     );
   });
 
@@ -237,36 +237,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(mine.getByRole("region")).toHaveCount(0);
   });
 
-  test("old Pull requests links open Code · Mine", async ({
-    page,
-    dashboard,
-  }) => {
-    await mockInboxItems(page, { open: [prReview] });
-    const mineTab = page
-      .getByRole("navigation", { name: "Code to show" })
-      .getByRole("link", { exact: true, name: "Mine" });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
-    await expect(mineTab).toHaveAttribute("aria-current", "page");
-    await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
-    await expect(mineTab).toHaveAttribute("aria-current", "page");
-    // A link to one ask opens that ask in the Inbox. The Inbox drops the
-    // one-time item link once the row is open.
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
-    await expect(
-      page.getByRole("region", { name: `${prReview.title}: asks` }),
-    ).toBeVisible();
-    await expect(page).toHaveURL(/\/\?view=inbox/);
-    // A snooze link keeps its dialog.
-    await page.goto(
-      `${dashboard.baseURL}/?view=prs&item=${prReview.id}&snooze=1`,
-    );
-    await expect(
-      page.getByRole("dialog", { name: "Custom snooze" }),
-    ).toBeVisible();
-  });
-
   test.describe("on a phone", () => {
     test.use({ viewport: { height: 844, width: 390 } });
 
@@ -274,7 +244,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
       dashboard,
     }) => {
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       await page
         .getByRole("navigation", { name: "Primary" })
         .getByRole("link", { exact: true, name: "Code" })
@@ -316,7 +286,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await header
         .getByRole("link", { name: "Back to the Inbox entries" })
         .click();
-      await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+      await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     });
   });
 
@@ -591,6 +561,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     const filters = list.getByRole("navigation", {
       name: "Conversations to show",
     });
+    // All, the default, is at the right edge, after Pinned.
+    await expect(filters.getByRole("link")).toHaveText([
+      /^Done$/,
+      /^Watching$/,
+      /^Working$/,
+      /^Needs you$/,
+      /^Pinned$/,
+      /^All$/,
+    ]);
     await filters.getByRole("link", { name: "Working" }).click();
     await expect(page).toHaveURL(/\/conversations\?state=working$/);
     await expect(working).toBeVisible();

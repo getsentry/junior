@@ -1,5 +1,5 @@
 {
-  "id": "5bb3b47d-23ed-47ff-b501-ecc376b2d2cf",
+  "id": "55c18ad2-d481-442c-8f93-252ca2aa199f",
   "prevId": "f775cac5-699b-4d11-9b40-e8092bea55c4",
   "version": "7",
   "dialect": "postgresql",
@@ -1574,21 +1574,6 @@
               "expression": "to_tsvector('simple', \"number\"::text || ' ' || coalesce(\"title\", ''))",
               "asc": true,
               "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        },
-        "junior_code_changes_conversation_ids_idx": {
-          "name": "junior_code_changes_conversation_ids_idx",
-          "columns": [
-            {
-              "expression": "conversation_ids",
-              "isExpression": false,
-              "asc": true,
               "nulls": "last"
             }
           ],
@@ -4750,7 +4735,7 @@
       "checkConstraints": {
         "junior_inbox_items_kind_check": {
           "name": "junior_inbox_items_kind_check",
-          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%') and \"junior_inbox_items\".\"answer\" is null)))"
+          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%' or \"junior_inbox_items\".\"dedupe_key\" like 'todo:%') and \"junior_inbox_items\".\"answer\" is null)))"
         },
         "junior_inbox_items_owner_check": {
           "name": "junior_inbox_items_owner_check",

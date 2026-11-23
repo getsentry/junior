@@ -67,7 +67,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 1 waiting");
     await expect(page).toHaveTitle("(1) Inbox - Junior");
 
@@ -75,7 +75,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/settings`);
     await expect(page).toHaveTitle("(1) Settings - Junior");
 
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await closeCheckoutAsks(page);
     await expect(inboxTab(page)).toHaveAccessibleName("Inbox");
     await expect(page).toHaveTitle("Inbox - Junior");
@@ -86,7 +86,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const icon = page.locator('link[rel="icon"]');
     await expect(icon).toHaveAttribute("href", /^data:image\/png;base64,/);
 
@@ -189,7 +189,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await recordTitles(page);
     await mockOneAsk(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(page).toHaveTitle("(1) Inbox - Junior");
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Done/ }).click();
@@ -214,7 +214,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const alert = automationAlert("event-1", "Closed issue summary");
     await mockInboxItems(page, { open: [rollout, alert] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(page).toHaveTitle("(2) Inbox - Junior");
     const todo = page.getByRole("region", { name: "To do" });
     const head = rowHead(todo, alert.title);
@@ -245,7 +245,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [rollout, migration, license],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const cards = todo.locator("[data-inbox-row]");
     await expect(cards).toHaveCount(3);

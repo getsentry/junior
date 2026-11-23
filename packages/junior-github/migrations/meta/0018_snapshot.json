@@ -1,5 +1,5 @@
 {
-  "id": "28fb6a63-69d0-40ab-97e9-536771c73138",
+  "id": "b85b88bb-e673-46b0-bf5a-e3582daae286",
   "prevId": "84ce1936-1b4b-461e-95a0-f3dbfd5d14fb",
   "version": "7",
   "dialect": "postgresql",
@@ -82,9 +82,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "junior_github_issues_closed_at_idx": {
           "name": "junior_github_issues_closed_at_idx",
@@ -97,9 +97,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "junior_github_issues_open_idx": {
           "name": "junior_github_issues_open_idx",
@@ -112,68 +112,14 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"junior_github_issues\".\"state\" = 'open'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {},
       "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.junior_github_pull_request_issues": {
-      "name": "junior_github_pull_request_issues",
-      "schema": "",
-      "columns": {
-        "pull_request_id": {
-          "name": "pull_request_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "issue_repository_full_name": {
-          "name": "issue_repository_full_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "issue_number": {
-          "name": "issue_number",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "junior_github_pull_request_issues_pull_request_id_junior_github_pull_requests_pull_request_id_fk": {
-          "name": "junior_github_pull_request_issues_pull_request_id_junior_github_pull_requests_pull_request_id_fk",
-          "tableFrom": "junior_github_pull_request_issues",
-          "columnsFrom": [
-            "pull_request_id"
-          ],
-          "tableTo": "junior_github_pull_requests",
-          "columnsTo": [
-            "pull_request_id"
-          ],
-          "onUpdate": "no action",
-          "onDelete": "cascade"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_github_pull_request_issues_pull_request_id_issue_repository_full_name_issue_number_pk": {
-          "name": "junior_github_pull_request_issues_pull_request_id_issue_repository_full_name_issue_number_pk",
-          "columns": [
-            "pull_request_id",
-            "issue_repository_full_name",
-            "issue_number"
-          ]
-        }
-      },
       "uniqueConstraints": {},
       "policies": {},
       "checkConstraints": {},
@@ -359,9 +305,9 @@
             }
           ],
           "isUnique": false,
-          "with": {},
+          "concurrently": false,
           "method": "btree",
-          "concurrently": false
+          "with": {}
         },
         "junior_github_pull_requests_open_idx": {
           "name": "junior_github_pull_requests_open_idx",
@@ -374,10 +320,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "btree",
           "where": "\"junior_github_pull_requests\".\"state\" = 'open'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         },
         "junior_github_pull_requests_unmerged_conversations_idx": {
           "name": "junior_github_pull_requests_unmerged_conversations_idx",
@@ -390,10 +336,10 @@
             }
           ],
           "isUnique": false,
-          "with": {},
-          "method": "gin",
           "where": "\"junior_github_pull_requests\".\"state\" <> 'merged'",
-          "concurrently": false
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
         }
       },
       "foreignKeys": {},
@@ -406,10 +352,10 @@
   },
   "enums": {},
   "schemas": {},
-  "views": {},
   "sequences": {},
   "roles": {},
   "policies": {},
+  "views": {},
   "_meta": {
     "columns": {},
     "schemas": {},

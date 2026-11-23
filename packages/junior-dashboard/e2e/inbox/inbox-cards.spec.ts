@@ -30,7 +30,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fulfill({ json: feed, response });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await page.evaluate(() => {
       localStorage.setItem("junior:density", "comfortable");
     });
@@ -63,7 +63,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       }, value);
       await page.reload();
     };
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await density("comfortable");
     const release = page
       .locator("[data-inbox-row]")
@@ -160,7 +160,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.addInitScript(() =>
       localStorage.setItem("junior:density", "comfortable"),
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const card = page
       .locator("[data-inbox-row]")
       .filter({ hasText: checkout })
@@ -179,7 +179,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.addInitScript(() =>
       localStorage.setItem("junior:density", "comfortable"),
     );
-    await page.goto(`${baseURL}/?view=conversations`);
+    await page.goto(`${baseURL}/inbox?view=conversations`);
     const row = page
       .locator("li[data-inbox-row]")
       .filter({ hasText: "Dashboard QA edge cases" })
@@ -256,7 +256,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.addInitScript(() =>
       localStorage.setItem("junior:density", "comfortable"),
     );
-    await page.goto(`${baseURL}/?view=conversations`);
+    await page.goto(`${baseURL}/inbox?view=conversations`);
     const row = page
       .locator("li[data-inbox-row]")
       .filter({ hasText: BUSY })

@@ -1,7 +1,7 @@
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { askTypeOf, type AskType, type InboxTypeFilter } from "./inboxFilters";
-import { isCodeChangeItem, isDecisionItem } from "./inboxModel";
+import { isCodeChangeItem, isDecisionItem, isTodoItem } from "./inboxModel";
 import { itemNeedsViewer } from "./inboxItemFormat";
 
 /** The server counts of the items that wait on the viewer, on every page. */
@@ -9,6 +9,7 @@ type WaitingCounts = {
   codeChanges: number;
   decisions: number;
   needsViewer: number;
+  todos: number;
 };
 
 /** The counts of the asks in To do: every one, and each type's. */
@@ -21,8 +22,8 @@ export type TodoCounts = Partial<Record<InboxTypeFilter, number>>;
  * The counting rule: a count holds the asks that wait on the viewer and
  * that To do shows, one per ask, as a stack shows a row for each of its
  * asks. An Automation alert is an ask too. All is the Inbox badge, the
- * header, the tab, and the To do heading. Pull requests, Decisions, and
- * Other split All by `askTypeOf`, so they add up to it.
+ * header, the tab, and the To do heading. Pull requests, Decisions,
+ * To-dos, and Other split All by `askTypeOf`, so they add up to it.
  *
  * An answered, dismissed, or closed item is in no row, and a snoozed or
  * cleared row is not on the page, so none of them count.
@@ -54,6 +55,7 @@ export function inboxCounts(input: {
       decisions: shown("decisions"),
       other: shown("other"),
       prs: shown("prs"),
+      todos: shown("todos"),
     };
   }
   if (!server) return {};
@@ -65,20 +67,22 @@ export function inboxCounts(input: {
   ) => Math.max(0, counted - waiting.filter(inCount).length);
   const all = todo.length + past(server.needsViewer, () => true);
   const prs = shown("prs") + past(server.codeChanges, isCodeChangeItem);
+  const todos = shown("todos") + past(server.todos, isTodoItem);
   // The server counts a question about a pull request in both, so
-  // Decisions takes no more than Pull requests and the Other asks that To
-  // do shows leave. Other keeps at least the asks that To do shows.
+  // Decisions takes no more than Pull requests, To-dos, and the Other asks
+  // that To do shows leave. Other keeps at least the asks that To do shows.
   const decisions = Math.max(
     shown("decisions"),
     Math.min(
-      all - prs - shown("other"),
+      all - prs - todos - shown("other"),
       shown("decisions") + past(server.decisions, isDecisionItem),
     ),
   );
   return {
     all,
     decisions,
-    other: Math.max(0, all - prs - decisions),
+    other: Math.max(0, all - prs - decisions - todos),
     prs,
+    todos,
   };
 }

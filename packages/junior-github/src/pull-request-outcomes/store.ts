@@ -11,7 +11,6 @@ import {
   type GitHubPullRequestCommitComposition,
   githubPullRequestCommitCompositionSchema,
   githubPullRequestStateSchema,
-  juniorGitHubPullRequestIssues,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 
@@ -48,26 +47,6 @@ export interface GitHubPullRequestConversationsInput {
   conversationIds: string[];
   pullRequestId: string;
 }
-
-const githubPullRequestLinkedIssuesInputSchema = z
-  .object({
-    linkedIssues: z
-      .array(
-        z
-          .object({
-            number: z.number().int().positive(),
-            repositoryFullName: z.string().min(1),
-          })
-          .strict(),
-      )
-      .min(1),
-    pullRequestId: z.string().min(1),
-  })
-  .strict();
-
-export type GitHubPullRequestLinkedIssuesInput = z.output<
-  typeof githubPullRequestLinkedIssuesInputSchema
->;
 
 /**
  * Record one Junior-owned pull request. The lifecycle goes to Junior's code
@@ -116,45 +95,6 @@ export async function recordGitHubPullRequestOutcome(
     applied: written.length > 0,
     commitComposition: written[0]?.commitComposition ?? undefined,
   };
-}
-
-/** Link an existing Junior-owned PR to tracked issues across repositories. */
-export async function recordGitHubPullRequestLinkedIssues(
-  db: GitHubDb,
-  input: GitHubPullRequestLinkedIssuesInput,
-): Promise<boolean> {
-  const association = githubPullRequestLinkedIssuesInputSchema.parse(input);
-  const list = (values: Array<string | number>) =>
-    sql.join(
-      values.map((value) => sql`${value}`),
-      sql`, `,
-    );
-  // One insert for every issue. It inserts nothing when the PR row is gone.
-  const issues = sql`unnest(
-    ARRAY[${list(association.linkedIssues.map((issue) => issue.repositoryFullName))}]::text[],
-    ARRAY[${list(association.linkedIssues.map((issue) => issue.number))}]::integer[]
-  ) AS issue(repository_full_name, number)`;
-  const inserted = await db
-    .insert(juniorGitHubPullRequestIssues)
-    .select(
-      db
-        .select({
-          pullRequestId: juniorGitHubPullRequests.pullRequestId,
-          issueRepositoryFullName:
-            sql<string>`lower(issue.repository_full_name)`.as(
-              "issue_repository_full_name",
-            ),
-          issueNumber: sql<number>`issue.number`.as("issue_number"),
-        })
-        .from(juniorGitHubPullRequests)
-        .crossJoin(issues)
-        .where(
-          eq(juniorGitHubPullRequests.pullRequestId, association.pullRequestId),
-        ),
-    )
-    .onConflictDoNothing()
-    .returning({ issueNumber: juniorGitHubPullRequestIssues.issueNumber });
-  return inserted.length > 0;
 }
 
 /**

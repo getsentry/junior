@@ -38,7 +38,6 @@ export const juniorCodeRepositories = pgTable(
     name: text("name").notNull(),
     provider: text("provider").notNull(),
     providerId: text("provider_id").notNull(),
-    url: text("url"),
     updatedAt: timestamptz("updated_at").notNull(),
   },
   (table) => [
@@ -81,7 +80,6 @@ export const juniorCodeChanges = pgTable(
     state: text("state").$type<CodeChangeState>().notNull(),
     title: text("title"),
     updatedAt: timestamptz("updated_at").notNull(),
-    url: text("url"),
   },
   (table) => [
     uniqueIndex("junior_code_changes_provider_id_idx").on(

@@ -21,7 +21,7 @@ export default defineConfig({
       // migrations here.
       postgresSkipMigrations: [
         "0008_native_code_backfill.sql",
-        "0018_pull_request_lifecycle_backfill.sql",
+        "0020_pull_request_lifecycle_backfill.sql",
       ],
     },
   },
