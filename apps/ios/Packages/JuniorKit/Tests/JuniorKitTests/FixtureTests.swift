@@ -32,7 +32,7 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     // nor an item for Everyone.
     let notice = try #require(items.items.first { $0.kind == "notice" })
     #expect(notice.canAct && !notice.needsViewer)
-    var forEveryone = try #require(items.items.first(where: \.needsViewer))
+    var forEveryone = try #require(items.items.first { $0.needsViewer })
     forEveryone.assignees = []
     #expect(!forEveryone.needsViewer)
     _ = try fixture("getInboxItem", as: InboxItemResult.self)
