@@ -329,14 +329,14 @@ describe("Turn step Vercel queue integration", () => {
     restoreRuntimeConfig(runtimeConfig);
   });
 
-  it("uses the app's max duration in the visibility timeout", () => {
+  it("uses the app's max duration in the visibility timeout", async () => {
     // createApp sets the host's max duration after this module loads.
     resetRuntimeConfig(600);
 
     const chatConfig = getChatConfig();
     const engineCtx = createEngineContext(chatConfig);
     engineCtx.queue.createCallback(
-      turnStepConsumer(engineCtx, {
+      await turnStepConsumer(engineCtx, {
         client: createGatewayModelClient(),
         bot: chatConfig.bot,
         tools: [],

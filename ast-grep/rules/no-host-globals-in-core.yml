@@ -4,7 +4,7 @@ severity: error
 message: "Core must not read the host's process globals. Take the value from engineCtx (EngineContext in packages/junior/src/core/engine-context.ts), and let the host set it in packages/junior/src/turn-steps/engine-context.ts."
 files:
   - packages/junior/src/core/**/*.ts
-  - packages/junior/src/turn-steps/prepare.ts
+  - packages/junior/src/turn-steps/prompt.ts
 rule:
   any:
     - kind: identifier

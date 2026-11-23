@@ -11,6 +11,7 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
 import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
+import type { PromptMessage } from "@/core/prompt/assemble";
 import { findUnreadInputs } from "@/core/turn/inbox";
 import {
   cancelTurn,
@@ -361,7 +362,8 @@ describe("Turn state", () => {
 
   it("appends the inputs before the step's messages, and writes each input once", async () => {
     const inputId = await addTestInput("How many Turns?");
-    const input = {
+    const input: PromptMessage = {
+      source: "input",
       inputId,
       message: question(),
       provenance: instructionProvenanceFor(ACTOR),

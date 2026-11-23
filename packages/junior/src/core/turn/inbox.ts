@@ -1,9 +1,7 @@
 // The inputs of a Turn. Each input row carries its Turn from the time it is
 // written, and its idempotency key is unique in the Conversation. An input is
 // read once the Conversation history has its event, keyed `inbox:<row id>`.
-import type { UserMessage } from "@earendil-works/pi-ai";
 import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import type { EngineContext } from "@/core/engine-context";
 import type { Turn } from "@/core/turn/state";
 import {
@@ -65,13 +63,6 @@ export type UnreadInput = Pick<
   traceContext: TurnInputTraceContext | null;
   /** When an attempt of the Turn first claimed it with the input unread. */
   attemptedAt: Date | null;
-};
-
-/** An unread input as the user message that a step reads, and its provenance. */
-export type InputMessage = {
-  inputId: string;
-  message: UserMessage;
-  provenance: ConversationMessageProvenance;
 };
 
 /** The idempotency key of the history event that reads an input. */

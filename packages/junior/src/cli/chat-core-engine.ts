@@ -24,7 +24,7 @@ import {
   turnStepConsumer,
 } from "@/turn-steps/consumer";
 import { createEngineContext } from "@/turn-steps/engine-context";
-import type { TurnInputPayload } from "@/turn-steps/prepare";
+import type { TurnInputPayload } from "@/turn-steps/prompt";
 
 const LOCAL_ACTOR: TurnInputPayload["actor"] = {
   fullName: "Local CLI",
@@ -108,7 +108,7 @@ export async function runCoreEnginePrompt(args: {
     );
   }
   const worker = await queue.startWorker([
-    turnStepConsumer(engineCtx, {
+    await turnStepConsumer(engineCtx, {
       client: createGatewayModelClient(),
       bot: config.bot,
       // Core Turns have no tools yet.

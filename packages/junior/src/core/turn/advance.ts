@@ -19,12 +19,14 @@ import {
 } from "@/chat/services/provider-error";
 import { requireTurnFailureEventId } from "@/chat/services/turn-failure-response";
 import type { EngineContext } from "@/core/engine-context";
-import type { ModelClient } from "@/core/model/client";
+import type { ModelClient, ModelSettings } from "@/core/model/client";
+import { assemblePrompt, layoutSystemPrompt } from "@/core/prompt/assemble";
+import type { PromptLayout } from "@/core/prompt/layout";
 import { setActiveSpanAttributes } from "@/core/telemetry";
+import type { ToolDefinition } from "@/core/tool";
 import {
   findUnreadInputs,
   markInputsAttempted,
-  type InputMessage,
   type UnreadInput,
 } from "@/core/turn/inbox";
 import { reconcileTurn } from "@/core/turn/schedule";
@@ -38,41 +40,24 @@ import {
   type TurnFailure,
   type TurnLease,
 } from "@/core/turn/state";
-import {
-  hasPendingToolCalls,
-  runStep,
-  type StepInput,
-  type StepResult,
-} from "@/core/turn/step";
+import { hasPendingToolCalls, runStep } from "@/core/turn/step";
 
 // How often a running step checks that its lease still holds. A cancel or a
 // takeover stops the step's model request and tools within this time.
 const LEASE_CHECK_INTERVAL_MS = 1_000;
 
-/** The parts of a step's input that do not come from the Turn's history. */
-export type PreparedStep = Omit<
-  StepInput,
-  | "client"
-  | "messages"
-  | "replay"
-  | "session"
-  | "signal"
-  | "skipDanglingToolCalls"
->;
-
 type AdvanceTurnOptions = {
   client: ModelClient;
   /**
-   * Builds the system prompt, tools and model settings for the claimed Turn,
-   * and turns each unread input into a user message with its provenance,
-   * such as instruction authority for the Actor who sent it. It must return
-   * every input it gets, once, in the order the step reads them. It gets no
-   * inputs when the step runs tool calls.
+   * How core builds the prompt of each model request: the system prompt,
+   * and the messages after the history, with the unread inputs where its
+   * `inputs()` fragment is.
    */
-  prepare: (
-    turn: ClaimedTurn,
-    inputs: UnreadInput[],
-  ) => Promise<PreparedStep & { inputs: InputMessage[] }>;
+  prompt: PromptLayout;
+  /** Gives the model settings of the claimed Turn, at each step. */
+  modelSettings: (turn: ClaimedTurn) => Promise<ModelSettings>;
+  /** The tools of the Turn's steps. */
+  tools: ToolDefinition[];
   /**
    * Caps the tries of one step. A commit resets `attempts`, so the cap does
    * not limit the steps of a Turn.
@@ -143,7 +128,12 @@ async function runClaimedStep(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   claim: ClaimedTurn,
   unread: UnreadInput[],
-  { client, prepare }: Pick<AdvanceTurnOptions, "client" | "prepare">,
+  {
+    client,
+    prompt,
+    modelSettings,
+    tools,
+  }: Pick<AdvanceTurnOptions, "client" | "prompt" | "modelSettings" | "tools">,
 ): Promise<void> {
   const events = await createSqlConversationEventStore(
     executor,
@@ -153,28 +143,47 @@ async function runClaimedStep(
     "gen_ai.conversation.id": claim.conversationId,
   });
   const history = projectConversationEvents(events).messages;
-  // A tool batch must follow its tool calls, so only a model request reads
-  // inputs. The inputs wait for the model request after the batch.
-  const stepInputs = hasPendingToolCalls(history) ? [] : unread;
-  const { inputs, ...prepared } = await prepare(claim, stepInputs);
-  checkPreparedInputs(stepInputs, inputs);
-  const result = await runStepWhileLeased({ executor }, claim, {
-    ...prepared,
-    client,
-    session: claim.conversationId,
-    messages: [...history, ...inputs.map((input) => input.message)],
-    // A later claim of the same step means an earlier attempt did not commit.
-    replay: claim.attempts > 1,
-    // Tool calls pending at a Turn's first step belong to an earlier Turn.
-    skipDanglingToolCalls: claim.stepSeq === 0,
+  const toolStep = hasPendingToolCalls(history);
+  const model = await modelSettings(claim);
+  const step = await whileLeased({ executor }, claim, async (signal) => {
+    // A tool batch must follow its tool calls, so only a model request reads
+    // inputs and gets the layout's messages. The inputs wait for the model
+    // request after the batch.
+    const built = toolStep
+      ? {
+          systemPrompt: layoutSystemPrompt(prompt),
+          messages: history,
+          newMessages: [],
+        }
+      : await assemblePrompt(
+          prompt,
+          { turn: claim, history, inputs: unread },
+          { signal },
+        );
+    const result = await runStep({
+      systemPrompt: built.systemPrompt,
+      messages: built.messages,
+      tools,
+      model,
+      client,
+      session: claim.conversationId,
+      // A later claim of the same step means an earlier attempt did not
+      // commit.
+      replay: claim.attempts > 1,
+      // Tool calls pending at a Turn's first step belong to an earlier Turn.
+      skipDanglingToolCalls: claim.stepSeq === 0,
+      signal,
+    });
+    return { result, newMessages: built.newMessages };
   });
-  if (!result) {
+  if (!step) {
     return;
   }
+  const { result, newMessages } = step;
   switch (result.outcome) {
     case "continue":
     case "completed": {
-      if (await commitStep({ executor }, claim, result, inputs)) {
+      if (await commitStep({ executor }, claim, result, newMessages)) {
         await reconcileTurn({ executor, queue }, claim.turnId);
       }
       return;
@@ -216,34 +225,17 @@ function captureModelFailure(reply: AssistantMessage): TurnFailure {
   };
 }
 
-/** Throws unless `prepare` returned each unread input exactly once. */
-function checkPreparedInputs(
-  unread: UnreadInput[],
-  prepared: InputMessage[],
-): void {
-  const expected = new Set(unread.map((input) => input.inputId));
-  const returned = prepared.map((input) => input.inputId);
-  if (
-    returned.length !== expected.size ||
-    new Set(returned).size !== returned.length ||
-    returned.some((inputId) => !expected.has(inputId))
-  ) {
-    throw new Error(
-      `prepare must return each unread input once: expected [${[...expected].join(", ")}], got [${returned.join(", ")}]`,
-    );
-  }
-}
-
 /**
- * Runs the step, and aborts it when a check finds that the lease is lost.
- * Undefined when the step stopped for that reason: the new lease holder or
- * the cancel owns the Turn, so this invocation writes nothing.
+ * Runs `run`, the step and the prompt it builds, and aborts its signal when a
+ * check finds that the lease is lost. Undefined when it stopped for that
+ * reason: the new lease holder or the cancel owns the Turn, so this
+ * invocation writes nothing.
  */
-async function runStepWhileLeased(
+async function whileLeased<T>(
   { executor }: Pick<EngineContext, "executor">,
   lease: TurnLease,
-  input: Omit<StepInput, "signal">,
-): Promise<StepResult | undefined> {
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T | undefined> {
   const abort = new AbortController();
   let checking = false;
   let failureLogged = false;
@@ -272,11 +264,11 @@ async function runStepWhileLeased(
   const timer = setInterval(() => void check(), LEASE_CHECK_INTERVAL_MS);
   timer.unref?.();
   try {
-    return await runStep({ ...input, signal: abort.signal });
+    return await run(abort.signal);
   } catch (error) {
-    // runStep throws the abort reason when its signal aborts. Another error
-    // after an abort may be a bug, but the lease is lost, so it is only
-    // logged.
+    // runStep and assemblePrompt throw the abort reason when their signal
+    // aborts. Another error after an abort may be a bug, but the lease is
+    // lost, so it is only logged.
     if (abort.signal.aborted) {
       if (error !== abort.signal.reason) {
         logException(error, "turn.step.error_after_abort", {
