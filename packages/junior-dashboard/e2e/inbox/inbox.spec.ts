@@ -418,8 +418,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       page.getByRole("region", { name: `${checkout}: asks` }),
     ).toBeVisible();
 
-    await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
     await page.goto(`${dashboard.baseURL}/review`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await page.goto(`${dashboard.baseURL}/inbox`);

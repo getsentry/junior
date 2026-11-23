@@ -237,36 +237,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(mine.getByRole("region")).toHaveCount(0);
   });
 
-  test("old Pull requests links open Code · Mine", async ({
-    page,
-    dashboard,
-  }) => {
-    await mockInboxItems(page, { open: [prReview] });
-    const mineTab = page
-      .getByRole("navigation", { name: "Code to show" })
-      .getByRole("link", { exact: true, name: "Mine" });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
-    await expect(mineTab).toHaveAttribute("aria-current", "page");
-    await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/code`);
-    await expect(mineTab).toHaveAttribute("aria-current", "page");
-    // A link to one ask opens that ask in the Inbox. The Inbox drops the
-    // one-time item link once the row is open.
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
-    await expect(
-      page.getByRole("region", { name: `${prReview.title}: asks` }),
-    ).toBeVisible();
-    await expect(page).toHaveURL(/\/inbox\?view=inbox/);
-    // A snooze link keeps its dialog.
-    await page.goto(
-      `${dashboard.baseURL}/?view=prs&item=${prReview.id}&snooze=1`,
-    );
-    await expect(
-      page.getByRole("dialog", { name: "Custom snooze" }),
-    ).toBeVisible();
-  });
-
   test.describe("on a phone", () => {
     test.use({ viewport: { height: 844, width: 390 } });
 

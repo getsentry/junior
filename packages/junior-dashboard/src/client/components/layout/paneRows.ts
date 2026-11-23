@@ -62,35 +62,6 @@ export function isOldAutomationsPath(location: {
   );
 }
 
-/**
- * True for the old Pull requests links, `/?view=prs` and
- * `/review?bundle=prs`, which redirect to Code.
- */
-export function isOldPullRequestsPath(location: {
-  pathname: string;
-  search: string;
-}): boolean {
-  const params = new URLSearchParams(location.search);
-  return (
-    (location.pathname === "/" && params.get("view") === "prs") ||
-    (location.pathname === "/review" && params.get("bundle") === "prs")
-  );
-}
-
-/**
- * Where an old Pull requests link goes: the ask it names, with its snooze
- * link kept, or Code, which opens on Mine.
- */
-export function oldPullRequestsTarget(search: string): string {
-  const params = new URLSearchParams(search);
-  const itemId = params.get("item");
-  if (!itemId) return NAV_PAGES.code.to;
-  return inboxViewPath("inbox", {
-    itemId,
-    snooze: Boolean(params.get("snooze")),
-  });
-}
-
 /** True when a path opens the Lead, the Lead nav item's page. */
 export function isLeadPath(
   pathname: string,
@@ -127,7 +98,7 @@ export function paneRowForPath(
 ): PaneRow | undefined {
   const { pathname } = location;
   if (isOldAutomationsPath(location)) return "automations";
-  if (isOldPullRequestsPath(location) || isCodePath(pathname)) return "code";
+  if (isCodePath(pathname)) return "code";
   if (pathname === INBOX_PATH)
     return parseInboxView(new URLSearchParams(location.search).get("view"));
   // The Lead is home, with its own row.

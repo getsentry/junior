@@ -1,6 +1,5 @@
 import { Navigate, useSearchParams } from "react-router";
 
-import { oldPullRequestsTarget } from "../components/layout/paneRows";
 import { inboxViewPath } from "./inboxModel";
 import { useInboxItemData } from "./queries";
 
@@ -26,8 +25,6 @@ export function InboxRedirect() {
   // Only a link with no entry needs the item's status.
   const item = useInboxItemData(bundle ? undefined : itemId);
   if (bundle === "automations") return <Navigate replace to="/automations" />;
-  if (bundle === "prs")
-    return <Navigate replace to={oldPullRequestsTarget(params.toString())} />;
   if (!bundle && itemId && item.isPending) return null;
   const view =
     bundle === "decisions" || bundle === "done"

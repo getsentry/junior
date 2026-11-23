@@ -101,40 +101,6 @@ export function githubConversationIds(
   return [...ids];
 }
 
-/** Read same- and cross-repository issue references from a pull request body. */
-export function githubLinkedIssues(
-  body: string | null | undefined,
-  repositoryFullName: string,
-): { number: number; repositoryFullName: string }[] {
-  if (!body) return [];
-  const references = new Map<
-    string,
-    { number: number; repositoryFullName: string }
-  >();
-  const add = (linkedRepository: string, rawNumber: string) => {
-    const number = Number.parseInt(rawNumber, 10);
-    if (!Number.isInteger(number) || number <= 0) return;
-    const normalizedRepository = linkedRepository.toLowerCase();
-    references.set(`${normalizedRepository}#${number}`, {
-      number,
-      repositoryFullName: linkedRepository,
-    });
-  };
-
-  for (const match of body.matchAll(/\b([\w.-]+\/[\w.-]+)#(\d+)\b/g)) {
-    add(match[1] ?? "", match[2] ?? "");
-  }
-  for (const match of body.matchAll(/(?:^|[^\w/])#(\d+)\b/g)) {
-    add(repositoryFullName, match[1] ?? "");
-  }
-
-  return [...references.values()].sort(
-    (left, right) =>
-      left.repositoryFullName.localeCompare(right.repositoryFullName) ||
-      left.number - right.number,
-  );
-}
-
 /**
  * Append (or replace an existing) conversation session footer to a GitHub body string.
  * Without a dashboard or Sentry link, returns the body unchanged (existing footer stripped).
