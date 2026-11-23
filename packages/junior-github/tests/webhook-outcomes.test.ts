@@ -87,12 +87,12 @@ function checkSuitePullRequest(
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 
-// These webhooks read no cached object.
+// These tests read no cached object.
 const objectCache: PluginCache = {
   async getOrLoad(_key, load) {
     return (await load()).value;
   },
-  async delete() {},
+  async update() {},
 };
 
 it("combines open, merged, and closed pull requests into conversation work", async () => {
@@ -2941,8 +2941,14 @@ describe("GitHub-owned pull request outcomes", () => {
             if (entry.ttlMs) cached.set(key, entry.value);
             return entry.value;
           },
-          async delete(key: string) {
-            cached.delete(key);
+          async update<T>(
+            key: string,
+            next: (
+              current: T | undefined,
+            ) => { ttlMs?: number; value: T } | undefined,
+          ) {
+            const entry = next(cached.get(key) as T | undefined);
+            if (entry?.ttlMs) cached.set(key, entry.value);
           },
         },
         annotations: {

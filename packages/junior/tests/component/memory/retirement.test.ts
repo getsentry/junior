@@ -158,7 +158,7 @@ function taskContext(args: {
       async getOrLoad(_key, load) {
         return (await load()).value;
       },
-      async delete() {},
+      async update() {},
     },
     db: args.db,
     embedder: args.embedder,

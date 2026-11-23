@@ -15,38 +15,21 @@ import type {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { githubObjectAnnotation } from "./annotations.js";
+import {
+  GITHUB_OBJECT_CACHE,
+  githubIssueFieldsSchema,
+  githubObjectCacheKey,
+  githubPullRequestFieldsSchema,
+  type GitHubIssueFields,
+  type GitHubPullRequestFields,
+} from "./object-cache.js";
 import { githubObjectFacts } from "./object-facts.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
-// Webhooks clear a changed object, so the TTL bounds only a change that
-// sends no webhook.
-const OBJECT_CACHE_TTL_MS = 60_000;
-// When GitHub fails after the TTL, the card keeps the last object read. The
-// repository access check still expires, so access is never extended.
-const OBJECT_CACHE = {
-  staleIfError: true,
-  ttlMs: OBJECT_CACHE_TTL_MS,
-} as const;
-
 const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
 const REPO_PATTERN = /^[\w.-]{1,100}$/;
 const NUMBER_PATTERN = /^[1-9]\d{0,9}$/;
-
-const objectSchema = z.object({
-  html_url: z.string(),
-  number: z.number().int().positive(),
-  state: z.string(),
-  title: z.string(),
-});
-const issueSchema = objectSchema.extend({
-  // The issues API also returns pull requests, with this field set.
-  pull_request: z.unknown().optional(),
-});
-const pullRequestSchema = objectSchema.extend({
-  draft: z.boolean().optional(),
-  merged: z.boolean().optional(),
-});
 
 interface GitHubObjectLink {
   kind: "issue" | "pull_request";
@@ -86,10 +69,12 @@ function repoRef(htmlUrl: string, link: GitHubObjectLink): string {
   return `${owner}/${name}`;
 }
 
-function issueCard(link: GitHubObjectLink, body: unknown): ObjectAnnotation {
-  const issue = issueSchema.parse(body);
+function issueCard(
+  link: GitHubObjectLink,
+  issue: GitHubIssueFields,
+): ObjectAnnotation {
   return githubObjectAnnotation({
-    ...githubObjectFacts("task", body),
+    ...githubObjectFacts("task", issue),
     repo: repoRef(issue.html_url, link),
     number: issue.number,
     title: issue.title,
@@ -101,11 +86,10 @@ function issueCard(link: GitHubObjectLink, body: unknown): ObjectAnnotation {
 
 function pullRequestCard(
   link: GitHubObjectLink,
-  body: unknown,
+  pull: GitHubPullRequestFields,
 ): ObjectAnnotation {
-  const pull = pullRequestSchema.parse(body);
   return githubObjectAnnotation({
-    ...githubObjectFacts("code_change", body),
+    ...githubObjectFacts("code_change", pull),
     repo: repoRef(pull.html_url, link),
     number: pull.number,
     title: pull.title,
@@ -120,53 +104,61 @@ function pullRequestCard(
 }
 
 /**
- * The cache key of one issue or pull request, such as
- * `pulls:getsentry/junior#12`. Webhooks clear it when the object changes.
+ * Read the object fields through the cache, or with the App. Nothing for a
+ * missing or deleted object.
  */
-export function githubObjectCacheKey(
-  collection: "issues" | "pulls",
-  repo: string,
-  number: number | string,
-): string {
-  return `${collection}:${repo}#${number}`.toLowerCase();
+async function readFields<T>(
+  ctx: ObjectLinkContext,
+  link: GitHubObjectLink,
+  schema: z.ZodType<T>,
+): Promise<T | null> {
+  const collection = link.kind === "issue" ? "issues" : "pulls";
+  const key = githubObjectCacheKey(
+    collection,
+    `${link.owner}/${link.name}`,
+    link.number,
+  );
+  const load = async () => {
+    const response = await githubApi(ctx.egress, {
+      followRedirects: true,
+      operation: link.kind === "issue" ? "github.issue.get" : "github.pull.get",
+      path: `${repoPath(link)}/${collection}/${link.number}`,
+    });
+    // GitHub answers 404 for a missing object, and 410 for a deleted issue.
+    if (response.status === 404 || response.status === 410) {
+      return { ...GITHUB_OBJECT_CACHE, value: null };
+    }
+    if (!response.ok) {
+      throw new Error(
+        `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
+      );
+    }
+    return { ...GITHUB_OBJECT_CACHE, value: schema.parse(response.body) };
+  };
+  const cached = schema
+    .nullable()
+    .safeParse(await ctx.cache.getOrLoad(key, load));
+  if (cached.success) return cached.data;
+  // An entry from before the cache kept object fields holds a card.
+  return await ctx.cache.getOrLoad(key, load, { refresh: true });
 }
 
-/** Read the object with the App. Nothing for a missing or deleted one. */
+/** Read the card of the object. Nothing for a missing or deleted one. */
 async function readObject(
   ctx: ObjectLinkContext,
   link: GitHubObjectLink,
 ): Promise<ObjectAnnotation | null> {
-  const collection = link.kind === "issue" ? "issues" : "pulls";
-  return await ctx.cache.getOrLoad(
-    githubObjectCacheKey(collection, `${link.owner}/${link.name}`, link.number),
-    async () => {
-      const response = await githubApi(ctx.egress, {
-        followRedirects: true,
-        operation:
-          link.kind === "issue" ? "github.issue.get" : "github.pull.get",
-        path: `${repoPath(link)}/${collection}/${link.number}`,
-      });
-      // GitHub answers 404 for a missing object, and 410 for a deleted issue.
-      if (response.status === 404 || response.status === 410) {
-        return { ...OBJECT_CACHE, value: null };
-      }
-      if (!response.ok) {
-        throw new Error(
-          `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
-        );
-      }
-      if (link.kind === "pull_request") {
-        return { ...OBJECT_CACHE, value: pullRequestCard(link, response.body) };
-      }
-      // GitHub opens a pull request at its issue URL too, such as a linked
-      // `owner/repo#12`. Only the pulls API has its draft and merge state.
-      const value =
-        issueSchema.parse(response.body).pull_request === undefined
-          ? issueCard(link, response.body)
-          : await readObject(ctx, { ...link, kind: "pull_request" });
-      return { ...OBJECT_CACHE, value };
-    },
-  );
+  if (link.kind === "pull_request") {
+    const pull = await readFields(ctx, link, githubPullRequestFieldsSchema);
+    return pull && pullRequestCard(link, pull);
+  }
+  const issue = await readFields(ctx, link, githubIssueFieldsSchema);
+  if (!issue) return null;
+  // GitHub opens a pull request at its issue URL too, such as a linked
+  // `owner/repo#12`. Only the pulls API has its draft and merge state.
+  return issue.pull_request === undefined
+    ? issueCard(link, issue)
+    : await readObject(ctx, { ...link, kind: "pull_request" });
 }
 
 async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
@@ -193,7 +185,7 @@ async function resolveLink(
  * A pull request at its issue URL shows the pull request card.
  */
 export const githubIssueLinks: PluginObjectLinkDefinition = {
-  // The object cache is shared by every viewer, and webhooks clear it.
+  // The object cache is shared by every viewer, and webhooks refresh it.
   cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],

@@ -684,8 +684,8 @@ export function route(
     plugin: { name: "github" },
     events: { hasMatch: async () => false, async publish() {} },
     cache: {
-      // The pull request webhook clears its cached object.
-      async delete() {},
+      // The pull request webhook refreshes its cached object.
+      async update() {},
       getOrLoad: unused,
     },
     inboxItems,

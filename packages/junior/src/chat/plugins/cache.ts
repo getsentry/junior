@@ -9,8 +9,8 @@ export function createPluginCache(plugin: string): PluginCache {
     async getOrLoad(key, load, options) {
       return await cache().getOrLoad(key, load, options);
     },
-    async delete(key) {
-      await cache().delete(key);
+    async update(key, next) {
+      await cache().update(key, next);
     },
   };
 }

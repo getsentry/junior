@@ -23,7 +23,7 @@ import {
   recordGitHubIssueOutcome,
 } from "../issue-outcomes/store.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
-import { clearGitHubObjectCache } from "./object-cache.js";
+import { refreshGitHubObjectCache } from "./object-cache.js";
 import {
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestLinkedIssues,
@@ -150,7 +150,7 @@ export function createGitHubWebhookRoute(args: {
   annotations: PluginConversationAnnotations;
   appIdEnv: string;
   botEmail(): string | undefined;
-  /** The plugin cache, whose issue and pull request entries webhooks clear. */
+  /** The plugin cache, whose issue and pull request entries webhooks refresh. */
   cache: PluginCache;
   classifyPullRequestCommits?(input: {
     number: number;
@@ -230,7 +230,7 @@ export function createGitHubWebhookRoute(args: {
           status: 202,
         });
       }
-      await clearGitHubObjectCache({
+      await refreshGitHubObjectCache({
         body,
         cache: args.cache,
         eventName,

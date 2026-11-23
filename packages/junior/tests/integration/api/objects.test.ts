@@ -518,9 +518,12 @@ describe("object links API", () => {
     }
   });
 
-  it("shows a GitHub change on the next card read after its webhook", async () => {
+  it("shows the GitHub object of a webhook on the next card read, with no GitHub call", async () => {
     stubGitHubApp();
-    let issue: Record<string, unknown> = {
+    const reads: string[] = [];
+    const before = "2026-01-02T03:04:05Z";
+    const after = "2026-01-02T04:00:00Z";
+    const issue = {
       closed_at: null,
       created_at: "2026-01-01T00:00:00Z",
       html_url: `${GITHUB_REPO}/issues/12`,
@@ -528,32 +531,40 @@ describe("object links API", () => {
       number: 12,
       state: "open",
       title: "Show GitHub links as cards",
-      updated_at: "2026-01-02T03:04:05Z",
+      updated_at: before,
       user: { login: "byk" },
     };
-    let pull: Record<string, unknown> = {
+    const pullRequest = (number: number) => ({
+      additions: 120,
+      base: { ref: "main" },
+      changed_files: 4,
       closed_at: null,
       created_at: "2026-01-01T00:00:00Z",
+      deletions: 8,
       draft: true,
-      html_url: `${GITHUB_REPO}/pull/34`,
-      id: 34_000,
+      head: { ref: "feat/github-link-cards", sha: "aaa111" },
+      html_url: `${GITHUB_REPO}/pull/${number}`,
+      id: number * 1000,
+      mergeable: false,
       merged: false,
       merged_at: null,
-      number: 34,
+      number,
       state: "open",
       title: "Add GitHub link cards",
-      updated_at: "2026-01-02T03:04:05Z",
+      updated_at: before,
       user: { login: "byk" },
-    };
+    });
     mswServer.use(
-      http.get(`${GITHUB_API}/issues/12`, () => HttpResponse.json(issue)),
-      http.get(`${GITHUB_API}/issues/34`, () =>
-        HttpResponse.json({
-          ...pull,
-          pull_request: { url: `${GITHUB_API}/pulls/34` },
-        }),
-      ),
-      http.get(`${GITHUB_API}/pulls/34`, () => HttpResponse.json(pull)),
+      http.get(`${GITHUB_API}/issues/12`, () => {
+        reads.push("issues/12");
+        return HttpResponse.json(issue);
+      }),
+      http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
+        reads.push(`pulls/${params["number"]}`);
+        return params["number"] === "34"
+          ? HttpResponse.json(pullRequest(34))
+          : HttpResponse.json({ message: "Server Error" }, { status: 502 });
+      }),
     );
     try {
       const app = await createApp({
@@ -569,40 +580,76 @@ describe("object links API", () => {
       setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
       await linkGitHubMember();
       const read = await viewerApi("alice@example.com");
-      const links = [
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const start = Date.now();
+      const first = await read(
         `${GITHUB_REPO}/issues/12`,
         `${GITHUB_REPO}/pull/34`,
-        `${GITHUB_REPO}/issues/34`,
-      ];
-      const statuses = async () =>
-        [...(await read(...links)).objects.values()].map(
-          (object) => object.status,
-        );
-      expect(await statuses()).toEqual(["open", "draft", "draft"]);
-
-      issue = {
-        ...issue,
-        closed_at: "2026-01-02T04:00:00Z",
-        state: "closed",
-        updated_at: "2026-01-02T04:00:00Z",
-      };
-      pull = {
-        ...pull,
-        closed_at: "2026-01-02T04:00:00Z",
-        draft: false,
-        merged: true,
-        merged_at: "2026-01-02T04:00:00Z",
-        state: "closed",
-        updated_at: "2026-01-02T04:00:00Z",
-      };
-      await sendGitHubWebhook(app, "issues", { action: "closed", issue });
-      await sendGitHubWebhook(app, "pull_request", {
-        action: "closed",
-        pull_request: pull,
+      );
+      expect(first.objects.get(`${GITHUB_REPO}/pull/34`)).toMatchObject({
+        facts: { additions: 120, mergeable: false },
+        status: "draft",
       });
 
-      // Within the card TTL, the next read already shows the change.
-      expect(await statuses()).toEqual(["closed", "merged", "merged"]);
+      vi.setSystemTime(start + 50_000);
+      await sendGitHubWebhook(app, "issues", {
+        action: "closed",
+        issue: {
+          ...issue,
+          closed_at: after,
+          state: "closed",
+          updated_at: after,
+        },
+      });
+      // A push marks the pull request ready. The payload leaves out the
+      // size and the merge state.
+      const { additions: _, mergeable: __, ...pushed } = pullRequest(34);
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "synchronize",
+        pull_request: {
+          ...pushed,
+          draft: false,
+          head: { ref: "feat/github-link-cards", sha: "bbb222" },
+          updated_at: after,
+        },
+      });
+      // A delivery from before the push comes late.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "edited",
+        changes: { title: { from: "Add link cards" } },
+        pull_request: { ...pullRequest(34), title: "Older title" },
+      });
+      // No card has read #78 yet.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "opened",
+        pull_request: { ...pullRequest(78), title: "Cache GitHub objects" },
+      });
+
+      // Past the TTL of the first read, but each webhook started it again.
+      vi.setSystemTime(start + 100_000);
+      const readsBefore = reads.length;
+      const next = await read(
+        `${GITHUB_REPO}/issues/12`,
+        `${GITHUB_REPO}/pull/34`,
+        `${GITHUB_REPO}/pull/78`,
+      );
+      expect(reads.slice(readsBefore)).toEqual([]);
+      expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
+        status: "closed",
+      });
+      const pull = next.objects.get(`${GITHUB_REPO}/pull/34`);
+      expect(pull).toMatchObject({
+        // A field that the payload leaves out stays as cached.
+        facts: { additions: 120, deletions: 8 },
+        status: "open",
+        title: "Add GitHub link cards",
+      });
+      // The merge state was about the old head commit.
+      expect(pull?.facts).not.toHaveProperty("mergeable");
+      expect(next.objects.get(`${GITHUB_REPO}/pull/78`)).toMatchObject({
+        status: "draft",
+        title: "Cache GitHub objects",
+      });
     } finally {
       vi.unstubAllEnvs();
     }

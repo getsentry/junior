@@ -31,8 +31,14 @@ export interface PluginCache {
     options?: { refresh?: boolean },
   ): Promise<T>;
   /**
-   * Drop the cached value of `key`, such as when a provider webhook says
-   * that the object changed. The next `getOrLoad` loads it again.
+   * Replace the cached value of `key` with the entry that `next` returns,
+   * such as when a provider webhook carries the changed object. `next` gets
+   * the cached value, also a stale one, or `undefined` when there is none.
+   * Return nothing to keep the entry as it is. The entry's TTL, and its
+   * `staleIfError` day, start again.
    */
-  delete(key: string): Promise<void>;
+  update<T>(
+    key: string,
+    next: (current: T | undefined) => CacheEntry<T> | undefined,
+  ): Promise<void>;
 }

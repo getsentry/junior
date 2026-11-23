@@ -1,38 +1,50 @@
 import type { PluginCache } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import { githubObjectCacheKey } from "../issue-links.js";
+import {
+  GITHUB_OBJECT_CACHE,
+  githubIssueFieldsSchema,
+  githubObjectCacheKey,
+  githubPullRequestFieldsSchema,
+  mergeGitHubObject,
+} from "../object-cache.js";
 
-const objectNumber = z.object({ number: z.number().int().positive() });
-const objectEventSchema = z.object({
-  issue: objectNumber.optional(),
-  pull_request: objectNumber.optional(),
-  repository: z.object({ full_name: z.string().min(1) }),
+const repositorySchema = z.object({ full_name: z.string().min(1) });
+const issueEventSchema = z.object({
+  issue: githubIssueFieldsSchema,
+  repository: repositorySchema,
+});
+const pullRequestEventSchema = z.object({
+  pull_request: githubPullRequestFieldsSchema,
+  repository: repositorySchema,
 });
 
 /**
- * Clear the cached issue or pull request that an `issues` or `pull_request`
- * webhook changed, so the next card read loads it from GitHub.
+ * Write the issue or pull request of an `issues` or `pull_request` webhook
+ * into its cache entry, so the next card read shows it without a GitHub
+ * call.
  */
-export async function clearGitHubObjectCache(args: {
+export async function refreshGitHubObjectCache(args: {
   body: unknown;
   cache: PluginCache;
   eventName: string;
 }): Promise<void> {
-  if (args.eventName !== "issues" && args.eventName !== "pull_request") {
-    return;
-  }
-  const parsed = objectEventSchema.safeParse(args.body);
-  if (!parsed.success) return;
-  const { issue, pull_request: pullRequest, repository } = parsed.data;
-  const number = (args.eventName === "issues" ? issue : pullRequest)?.number;
-  if (!number) return;
-  // The issue URL of a pull request caches the pull request card too.
-  await args.cache.delete(
-    githubObjectCacheKey("issues", repository.full_name, number),
+  const event =
+    args.eventName === "issues"
+      ? issueEventSchema.safeParse(args.body)
+      : args.eventName === "pull_request"
+        ? pullRequestEventSchema.safeParse(args.body)
+        : undefined;
+  if (!event?.success) return;
+  const { repository } = event.data;
+  const [collection, payload] =
+    "issue" in event.data
+      ? (["issues", event.data.issue] as const)
+      : (["pulls", event.data.pull_request] as const);
+  await args.cache.update<typeof payload | null>(
+    githubObjectCacheKey(collection, repository.full_name, payload.number),
+    (current) => {
+      const value = mergeGitHubObject(current, payload);
+      return value && { ...GITHUB_OBJECT_CACHE, value };
+    },
   );
-  if (args.eventName === "pull_request") {
-    await args.cache.delete(
-      githubObjectCacheKey("pulls", repository.full_name, number),
-    );
-  }
 }

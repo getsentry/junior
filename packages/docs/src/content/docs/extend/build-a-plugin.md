@@ -482,8 +482,10 @@ as an incomplete response. A load that throws is not cached, and concurrent
 callers for one key share one load. Set `staleIfError: true` to keep the value
 for a day after its TTL: when a later load throws, such as during a provider
 outage, the cache returns that value. Do not set it on an answer about access,
-because access must expire with its TTL. When a provider webhook says that an
-object changed, call `ctx.cache.delete(key)` so the next read loads it again.
+because access must expire with its TTL. When a provider webhook carries a
+changed object, write it with `ctx.cache.update(key, next)`. `next` gets the
+cached value and returns the new entry, so the next read needs no provider
+call.
 
 ```ts
 const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({

@@ -18,6 +18,21 @@ function isFresh(entry: StoredEntry<unknown>): boolean {
   return entry.freshUntilMs === undefined || Date.now() < entry.freshUntilMs;
 }
 
+async function storeEntry<T>(
+  state: StateAdapter,
+  cacheKey: string,
+  entry: CacheEntry<T> & { ttlMs: number },
+): Promise<void> {
+  if (!(entry.ttlMs > 0)) throw new Error("Cache ttlMs must be positive");
+  await state.set<StoredEntry<T>>(
+    cacheKey,
+    entry.staleIfError
+      ? { freshUntilMs: Date.now() + entry.ttlMs, value: entry.value }
+      : { value: entry.value },
+    entry.staleIfError ? entry.ttlMs + LAST_GOOD_MS : entry.ttlMs,
+  );
+}
+
 /** The prefix of every state key of one cache namespace. */
 export function cacheKeyPrefix(namespace: string): string {
   return `junior:cache:${namespace}:`;
@@ -67,19 +82,10 @@ export function createCache(
             }
             const entry = await load();
             if (entry.ttlMs !== undefined) {
-              if (!(entry.ttlMs > 0)) {
-                throw new Error("Cache ttlMs must be positive");
-              }
-              await state.set<StoredEntry<T>>(
-                cacheKey,
-                entry.staleIfError
-                  ? {
-                      freshUntilMs: Date.now() + entry.ttlMs,
-                      value: entry.value,
-                    }
-                  : { value: entry.value },
-                entry.staleIfError ? entry.ttlMs + LAST_GOOD_MS : entry.ttlMs,
-              );
+              await storeEntry(state, cacheKey, {
+                ...entry,
+                ttlMs: entry.ttlMs,
+              });
             }
             return entry.value;
           },
@@ -94,8 +100,28 @@ export function createCache(
         throw error;
       }
     },
-    async delete(key) {
-      await state.delete(stateKey(key));
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => CacheEntry<T> | undefined,
+    ): Promise<void> {
+      const cacheKey = stateKey(key);
+      await state.connect();
+      // The load lock keeps a load that started before this write from
+      // replacing it.
+      const attempt = await withLock(
+        state,
+        `${cacheKey}:load`,
+        async () => {
+          const current = await state.get<StoredEntry<T>>(cacheKey);
+          const entry = next(current?.value);
+          if (entry?.ttlMs !== undefined) {
+            await storeEntry(state, cacheKey, { ...entry, ttlMs: entry.ttlMs });
+          }
+        },
+        { keepAlive: true, waitMs: LOAD_WAIT_MS },
+      );
+      // Without the lock, drop the entry so the next read loads it.
+      if (!attempt.acquired) await state.delete(cacheKey);
     },
   };
 }
