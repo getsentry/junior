@@ -242,7 +242,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fulfill({ headers, json: report });
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs`);
     await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
@@ -319,7 +319,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fallback();
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs`);
     await rowHead(page, "Pin the release train").click();
     await expect.poll(() => detailReads).toBeGreaterThan(0);
     // The reads that mounting the row starts are done after one check.

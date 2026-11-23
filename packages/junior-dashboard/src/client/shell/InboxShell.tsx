@@ -1,5 +1,5 @@
 import { lazy, useEffect, useMemo, useState, type ReactNode } from "react";
-import { Navigate, Route, useLocation, useParams } from "react-router";
+import { Navigate, Route, useLocation } from "react-router";
 
 import {
   useConversationsData,
@@ -52,13 +52,11 @@ import { InboxDataProvider, useInboxData } from "../inbox/inboxData";
 import { InboxNav } from "../inbox/InboxNav";
 import { VisualViewportShell } from "../components/layout/VisualViewportShell";
 import {
-  automationPath,
   buildConversations,
   conversationDetailTitle,
   conversationDisplayTitle,
 } from "../format";
 import {
-  conversationPath,
   isNewConversationPath,
   COMPOSER_PATH,
 } from "../conversations/conversationRoutes";
@@ -88,7 +86,14 @@ import {
 } from "./pages/automations/AutomationsPageLayout";
 import { buildPrimaryNavItems, buildProfileNavItems } from "./primaryNav";
 import { TracedRoutes } from "../TracedRoutes";
-import { InboxRedirect } from "../inbox/InboxRedirect";
+import { InboxRedirect, isOldInboxLink } from "../inbox/InboxRedirect";
+import {
+  LegacyAutomationExecutionsRedirect,
+  LegacyAutomationListRedirect,
+  LegacyAutomationsRedirect,
+  LegacySystemRedirect,
+} from "./legacyRedirects";
+import { NAV_PAGES } from "../navPages";
 import { LinkedSnooze } from "../inbox/LinkedSnooze";
 import { InboxListProvider, useInboxReturnPath } from "../inbox/inboxListState";
 import {
@@ -241,11 +246,11 @@ function inboxMobileHeader(
     return { ...back(returnPath), title: "New conversation" };
   if (conversationIdFromPath(pathname)) return back(returnPath);
   const view = new URLSearchParams(search).get("view");
-  // A list's Back goes to the entries, which "/" shows on a phone.
-  if (pathname === "/" && view !== null)
+  // A list's Back goes to the entries, which `/inbox` shows on a phone.
+  if (pathname === NAV_PAGES.inbox.to && view !== null)
     return {
       backLabel: "Back to the Inbox entries",
-      backTo: "/",
+      backTo: NAV_PAGES.inbox.to,
       title: INBOX_VIEW_LABELS[parseInboxView(view)],
     };
   return {};
@@ -272,20 +277,27 @@ function Shell() {
     ? userPages.filter((page) => page.navigation === "primary")
     : [];
   const workspace =
-    location.pathname === "/" ||
+    location.pathname === NAV_PAGES.lead.to ||
+    location.pathname === NAV_PAGES.inbox.to ||
     location.pathname === "/conversations" ||
     location.pathname.startsWith("/conversations/");
   const newAutomation = useNewAutomationAction();
   useDensityRoot();
   const conversationId = conversationIdFromPath(location.pathname);
   const conversationsQuery = useConversationsData();
+  // Home shows the viewer's Lead.
+  const lead = useLead(loggedIn);
+  const leadId = lead.data?.conversationId;
+  const openConversationId =
+    conversationId ??
+    (location.pathname === NAV_PAGES.lead.to ? leadId : undefined);
   // The shell owns the open Conversation's data, and the page reads it. On a
   // direct load, this fetch runs beside the dashboard core reads, before the
   // page mounts. One fetch for each visit also brings the unread page.
-  const conversationDetail = useConversationData(conversationId, {
+  const conversationDetail = useConversationData(openConversationId, {
     unreadPageAtOpen: readConversationStartPosition() === "unread",
   });
-  useVersionsPoll(conversationId, Boolean(data));
+  useVersionsPoll(openConversationId, Boolean(data));
   const mobileConversation = useMemo(() => {
     if (!conversationId) return undefined;
     return buildConversations(
@@ -301,11 +313,8 @@ function Shell() {
   // To do's own count, so the header and the tab match its cards.
   const inboxCount = useInboxData().todoCount;
   useInboxTabCount(inboxCount);
-  const lead = useLead(loggedIn);
-  const leadId = lead.data?.conversationId;
   const primaryNavItems = buildPrimaryNavItems({
     inboxCount,
-    leadPath: leadId ? conversationPath(leadId) : undefined,
     loading,
     loggedIn,
     pathname: location.pathname,
@@ -621,6 +630,32 @@ function Shell() {
               <Route
                 element={
                   loading ? (
+                    <ConversationWorkspaceLoading detail />
+                  ) : !data ? (
+                    <LoadingView
+                      label={query.error?.message ?? "Dashboard unavailable"}
+                    />
+                  ) : !loggedIn ? (
+                    // Without an account there is no Lead.
+                    <Navigate replace to={NAV_PAGES.inbox.to} />
+                  ) : leadId ? (
+                    <ConversationWorkspace
+                      detail={conversationDetail}
+                      leadId={leadId}
+                    />
+                  ) : lead.error ? (
+                    <LoadingView label={lead.error.message} />
+                  ) : (
+                    <ConversationWorkspaceLoading detail />
+                  )
+                }
+                path="/"
+              />
+              <Route
+                element={
+                  isOldInboxLink(location.search) ? (
+                    <InboxRedirect />
+                  ) : loading ? (
                     <ConversationWorkspaceLoading detail={false} />
                   ) : data ? (
                     <ConversationWorkspace detail={conversationDetail} />
@@ -630,9 +665,8 @@ function Shell() {
                     />
                   )
                 }
-                path="/"
+                path="/inbox"
               />
-              <Route element={<InboxRedirect />} path="/inbox" />
               <Route element={<InboxRedirect />} path="/review" />
               <Route element={<CodePage />} path="/code" />
               {codeRepositoryTabs.map((tab) => (
@@ -675,7 +709,7 @@ function Shell() {
                 path="/conversations/:conversationId"
               />
               <Route
-                element={<Navigate replace to="/" />}
+                element={<Navigate replace to={NAV_PAGES.inbox.to} />}
                 path="/conversations"
               />
               <Route
@@ -881,17 +915,6 @@ function conversationIdFromPath(pathname: string): string | undefined {
   }
 }
 
-function LegacyAutomationsRedirect() {
-  const location = useLocation();
-  const suffix = location.pathname.slice("/tasks".length);
-  return (
-    <Navigate
-      replace
-      to={`/automations${suffix}${location.search}${location.hash}`}
-    />
-  );
-}
-
 /**
  * The command palette, with Zen mode among its actions where it exists, and
  * Send feedback where the profile menu offers it.
@@ -944,38 +967,6 @@ function ShellCommandPalette({
         />
       ) : null}
     </>
-  );
-}
-
-/** The list became the Automations landing page. */
-function LegacyAutomationListRedirect() {
-  const location = useLocation();
-  return (
-    <Navigate replace to={`/automations${location.search}${location.hash}`} />
-  );
-}
-
-/** Execution history became the Runs tab of the Automation page. */
-function LegacyAutomationExecutionsRedirect() {
-  const location = useLocation();
-  const { automationId } = useParams();
-  return (
-    <Navigate
-      replace
-      to={`${automationPath(automationId ?? "", "runs")}${location.search}${location.hash}`}
-    />
-  );
-}
-
-function LegacySystemRedirect(props: { section: "locations" | "people" }) {
-  const location = useLocation();
-  const legacyPrefix = `/${props.section}`;
-  const suffix = location.pathname.slice(legacyPrefix.length);
-  return (
-    <Navigate
-      replace
-      to={`/system/${props.section}${suffix}${location.search}${location.hash}`}
-    />
   );
 }
 

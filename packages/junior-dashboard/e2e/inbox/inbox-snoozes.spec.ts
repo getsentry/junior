@@ -59,7 +59,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {
     await mockInboxItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(rowHead(page, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await expect(
@@ -86,7 +86,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
     const nav = page.getByRole("navigation", { name: "Primary" });
     await nav.getByRole("link", { name: /^Snoozed/ }).click();
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
+    await expect(page).toHaveURL(/\/inbox\?view=snoozed$/);
     await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("Nothing snoozed")).toBeVisible();
@@ -106,7 +106,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/automations/event-1", (route) =>
       route.fulfill({ json: automation }),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, alert.title));
     // The card says what to fix, and acts on its Automation.
@@ -176,7 +176,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: rollout.rootConversationId,
     };
     await mockInboxItems(page, { open: [rollout, notice] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const created = page.waitForResponse(
       (response) =>
@@ -224,7 +224,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
@@ -251,7 +251,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ? route.fulfill({ json: { error: "Failed" }, status: 500 })
         : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=snoozed`);
     await expandRow(rowHead(page, checkout));
     await page.getByRole("button", { name: "Wake" }).click();
     await expect(page.getByText("The row could not be woken")).toBeVisible();
@@ -280,7 +280,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, {
       open: [license, pinReview, checklist, linked],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     const linkedRow = todo
       .locator("[data-inbox-row]")
@@ -318,8 +318,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
-    await page.goto(`${dashboard.baseURL}/?item=${pinChecks.id}`);
-    await expect(page).toHaveURL(/\/\?view=snoozed$/);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinChecks.id}`);
+    await expect(page).toHaveURL(/\/inbox\?view=snoozed$/);
     // The link opens the row, so its Wake shows.
     await expect(page.getByRole("button", { name: "Wake" })).toBeVisible();
   });
@@ -341,7 +341,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.route("**/api/inbox-items?**snoozed=true**", (route) =>
       route.fulfill({ json: { error: "Failed" }, status: 500 }),
     );
-    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(page).not.toHaveURL(/[?&]item=/);
@@ -354,7 +354,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
     // A pull request row opens from its item link.
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: "Pin the release train" });
@@ -378,7 +378,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: "Pin the release train" });
@@ -434,7 +434,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize({ height: 560, width: 1280 });
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
@@ -452,7 +452,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     const ask = { ...prReview, canAct: false };
     await mockInboxItems(page, { open: [license, ask] });
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${ask.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${ask.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
@@ -480,7 +480,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, rollout] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expandRow(rowHead(page, checkout));
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
@@ -540,7 +540,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize(mobile);
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
@@ -590,7 +590,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [license, prReview] });
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReview.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReview.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
@@ -646,7 +646,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       ],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     await expect(rowHead(todo, checkout)).toHaveCount(0);
@@ -686,7 +686,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         untilMs: NOW_MS + 86_400_000,
       })),
     });
-    await page.goto(`${dashboard.baseURL}/?item=${digest.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${digest.id}`);
     await expect(page).toHaveURL(/[?&]view=snoozed(?:&|$)/);
     await expect(rowHead(page, "Daily operations digest")).toBeVisible();
     await expect(rowHead(page, checkout)).toBeVisible();
@@ -720,7 +720,7 @@ test.describe("new UI", { tag: "@new" }, () => {
           ? route.fulfill({ status: 500, json: { error: "boom" } })
           : route.fallback(),
     );
-    await page.goto(`${dashboard.baseURL}/?view=snoozed`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=snoozed`);
     await expect(rowHead(page, checkout)).toBeVisible();
     await expect(
       page.getByText("Could not load your snoozed rows."),
@@ -753,7 +753,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await held;
       await route.fallback();
     });
-    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
     const todo = page.getByRole("region", { name: "To do" });
     await expect(todo.locator("[data-inbox-row]").first()).toBeVisible();
     // The link holds until Snoozed says whether a snooze hides the item.
@@ -779,7 +779,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const polled = page.waitForResponse((response) =>
       new URL(response.url()).pathname.endsWith("/api/versions"),
     );
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await polled;
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, checkout));

@@ -31,7 +31,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fallback();
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`, {
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`, {
       waitUntil: "domcontentloaded",
     });
     const list = page.getByRole("region", {
@@ -230,7 +230,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
 
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await expect(
       page
         .getByRole("region", { exact: true, name: "Conversations" })
@@ -299,7 +299,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 844, width: 390 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
     const conversation = page.getByRole("listitem").filter({
       has: page.getByRole("link", { name: /Checkout latency triage/ }),
@@ -490,7 +490,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
     const trigger = page.getByRole("button", {
@@ -549,7 +549,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     test.use({ controlTimers: true });
 
     test("after the hover pause", async ({ page, dashboard }) => {
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       const trigger = page.getByRole("button", {
         name: /^(Open|Close) profile menu for Dashboard User/,
       });

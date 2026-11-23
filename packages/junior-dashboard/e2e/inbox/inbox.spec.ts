@@ -29,7 +29,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     // One row, or one stack of rows, per Conversation.
     await expect(
@@ -74,7 +74,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await mockInboxItems(page, {
       open: [rollout, license, audit, prReady, migration, prMerge, prReview],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const nav = page.getByRole("navigation", { name: "Primary" });
     await expect(nav.getByRole("link")).toHaveText([
       /^Lead$/,
@@ -93,7 +93,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const sections = page.locator("section[aria-label] section[aria-label]");
 
     // Pull requests list the viewer's open changes, with their asks.
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Pull requests" }),
     ).toBeVisible();
@@ -104,7 +104,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-pull-requests", { lightTheme: true });
 
     // Decisions group by Conversation, the longest wait first.
-    await page.goto(`${dashboard.baseURL}/?view=decisions`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=decisions`);
     await expect(
       page.getByRole("heading", { level: 1, name: "Decisions" }),
     ).toBeVisible();
@@ -137,7 +137,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await mockInboxItems(page, {
       open: [rollout, license, audit],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     // Each ask has its own row, in its stack or alone.
     const row = (item: { id: string }) =>
@@ -146,7 +146,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await row(audit).locator("[data-inbox-head]").first().click();
     const asks = page.getByRole("region", { name: /: asks$/ });
     await expect(asks).toHaveCount(1);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
 
     const auditItem = asks.locator("[data-inbox-card]");
     await auditItem.getByRole("radio", { name: "Reject" }).click();
@@ -208,7 +208,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await mockInboxItems(page, {
       open: [license, prReady, digest, teamAsk],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     // FYI dismisses its notices and says so; the questions stay.
     await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
     await expect(page.getByText("Dismissed 2 FYIs")).toBeVisible();
@@ -248,7 +248,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const actions = await mockInboxItems(page, {
       open: [license, prReady, digest],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const clearFyi = page.getByRole("button", {
       name: /^Dismiss \d+ in FYI$/,
     });
@@ -271,7 +271,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Undo" }).click();
     await page.goBack();
     await page.goBack();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(clearFyi).toBeVisible();
     expect(actions).toEqual([]);
   });
@@ -284,7 +284,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       failActions: [digest.id],
       open: [license, digest],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const digestFyi = page
       .getByRole("region", { name: "FYI" })
       .locator("[data-inbox-row]")
@@ -408,7 +408,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         title: "Rename the payments queue",
       },
     ]);
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs`);
     await expect(
       page.locator("section[aria-label] section[aria-label]"),
     ).toHaveText([/^Waiting on you/, /^Waiting on others/, /^Drafts/]);
@@ -467,12 +467,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page
       .getByRole("navigation", { name: "Primary" })
       .getByRole("link", { name: "Done", exact: true })
       .click();
-    await expect(page).toHaveURL(/\/\?view=done$/);
+    await expect(page).toHaveURL(/\/inbox\?view=done$/);
     await expect(
       page.getByRole("heading", { level: 1, name: "Done" }),
     ).toBeVisible();
@@ -496,21 +496,21 @@ test.describe("new UI", { tag: "@new" }, () => {
     // The linked item is past the first page, so its row loads on its own.
     await mockInboxItems(page, { open: [audit, rollout], pageSize: 1 });
     await page.goto(`${dashboard.baseURL}/review?item=${rollout.id}`);
-    await expect(page).toHaveURL(/\/\?view=inbox$/);
+    await expect(page).toHaveURL(/\/inbox\?view=inbox$/);
     await expect(
       page.getByRole("region", { name: `${checkout}: asks` }),
     ).toBeVisible();
 
     await page.goto(`${dashboard.baseURL}/review?bundle=prs`);
-    await expect(page).toHaveURL(/\/\?view=prs$/);
+    await expect(page).toHaveURL(/\/inbox\?view=prs$/);
     await page.goto(`${dashboard.baseURL}/review`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await page.goto(`${dashboard.baseURL}/inbox`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
 
     // A closed item opens in Done.
     await page.goto(`${dashboard.baseURL}/review?item=${answered.id}`);
-    await expect(page).toHaveURL(/\/\?view=done$/);
+    await expect(page).toHaveURL(/\/inbox\?view=done$/);
     await expect(
       page.getByRole("region", { name: `${answered.title}: how it closed` }),
     ).toBeVisible();
@@ -521,19 +521,19 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [rollout, license] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await todo.getByRole("button", { name: /^To do/ }).click();
     await expect(todo.locator("[data-inbox-row]")).toHaveCount(0);
 
-    await page.goto(`${dashboard.baseURL}/?item=${rollout.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${rollout.id}`);
     const asks = todo.getByRole("region", { name: `${checkout}: asks` });
     await expect(
       todo.locator(`li[data-inbox-row="todo:${rollout.id}"]`),
     ).toHaveAttribute("data-expanded", "true");
     await expect(asks).toBeInViewport();
     // The link leaves the URL only once its row is on screen.
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).not.toHaveURL(/[?&]item=/);
   });
 
   test("each card of an open row keeps its own Dismiss, and an item row's head names it", async ({
@@ -541,7 +541,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, { open: [prReady, license, audit] });
-    await page.goto(`${dashboard.baseURL}/?view=prs&item=${prReady.id}`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs&item=${prReady.id}`);
     const asks = page.getByRole("region", { name: /: asks$/ });
     const card = asks.getByRole("region", { name: prReady.title });
     // The card's Dismiss closes it. The item row's head names it and its
@@ -556,7 +556,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // title. In the Inbox, these asks stack as rows; Conversations keeps the
     // Conversation row.
     await page.goto(
-      `${dashboard.baseURL}/?view=conversations&item=${prReady.id}`,
+      `${dashboard.baseURL}/inbox?view=conversations&item=${prReady.id}`,
     );
     await expect(
       page
@@ -590,7 +590,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       `**/api/conversations/${encodeURIComponent(prReview.owner.id)}**`,
       (route) => route.fulfill({ json: { error: "Not found" }, status: 404 }),
     );
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs`);
     const row = page
       .locator("[data-inbox-row]")
       .filter({ hasText: prReview.subject.title });
@@ -627,7 +627,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       request: undefined,
     };
     await mockInboxItems(page, { open: [item] });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs`);
     await rowHead(page, "Pin the release train").click();
     const toggle = page.getByRole("button", { name: `Expand ${item.title}` });
     await expect(toggle).toHaveAttribute("aria-expanded", "false");
@@ -665,7 +665,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       request: undefined,
     };
     await mockInboxItems(page, { open: [item] });
-    await page.goto(`${dashboard.baseURL}/?view=prs`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=prs`);
     await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
       name: "Pull request: Pin the release train to payments 4.2",
@@ -755,7 +755,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         },
       });
     });
-    await page.goto(`${dashboard.baseURL}/?view=decisions`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=decisions`);
     const head = rowHead(page, rollout.title);
     await expect(head).toBeVisible();
     // Nothing loads until the row expands.

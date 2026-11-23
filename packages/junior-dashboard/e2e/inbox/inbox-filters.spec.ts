@@ -42,7 +42,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [rollout, license, migration, prMerge, prReview, todo],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     // Pull requests counts each ask, and a pull request ask with a question
     // is not also a Decision.
     await expect(typeFilter(page, "All")).toHaveText(/^All\s*6$/);
@@ -106,7 +106,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [rollout, license],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const filters = page
       .getByRole("navigation", { name: "Asks to show" })
       .getByRole("link");
@@ -124,7 +124,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       automations: () => 0,
       open: [prMerge, prReview, todo],
     });
-    await page.goto(`${dashboard.baseURL}/?type=prs&pinned=1&item=${todo.id}`);
+    await page.goto(
+      `${dashboard.baseURL}/inbox?type=prs&pinned=1&item=${todo.id}`,
+    );
     const todoList = page.getByRole("region", { name: "To do" });
     await expect(
       // The innermost row: a stack row also holds the ask.

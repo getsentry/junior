@@ -4,6 +4,15 @@ import { inboxViewPath } from "./inboxModel";
 import { useInboxItemData } from "./queries";
 
 /**
+ * True for an old Inbox link, which names an entry by `?bundle=` or an item
+ * with no `?view=`. A list link always has `?view=` with its item.
+ */
+export function isOldInboxLink(search: string): boolean {
+  const params = new URLSearchParams(search);
+  return params.has("bundle") || (params.has("item") && !params.has("view"));
+}
+
+/**
  * Old Inbox links and the classic UI's `/inbox` and `/review` links open the list:
  * `?bundle=` picks the matching entry, and `?item=` expands that item's
  * row, on Done when the item has closed. `?snooze=` stays, for

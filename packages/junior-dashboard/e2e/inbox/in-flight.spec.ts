@@ -12,7 +12,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page);
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(
       inFlight.getByRole("link", { name: new RegExp(checkout) }),
@@ -36,7 +36,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await pinned.click({ button: "right" });
     await expect(menu.getByRole("menuitem", { name: "Unpin" })).toBeVisible();
     await expect(menu.getByRole("menuitem", { name: "Rename" })).toBeVisible();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(page).toHaveURL(
+      `${dashboard.baseURL}/inbox?view=conversations`,
+    );
     await page.keyboard.press("Escape");
     await expect(menu).toHaveCount(0);
     // On hover, its `⋯` opens the same menu.
@@ -127,7 +129,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     // Pins always show. Running Conversations fill the rows left, up to five.
     await expect(
@@ -142,7 +144,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     const showAll = page.getByRole("button", { name: "Show all" });
     await expect(showAll).toHaveAttribute("aria-expanded", "false");
     await showAll.click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(inFlight.getByRole("listitem")).toHaveText([
       ...Array.from(
         { length: 6 },
@@ -214,7 +216,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveText([
       /Charlie pin/,
@@ -280,7 +282,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await mockInboxItems(page, { open: [] });
-    await page.goto(`${dashboard.baseURL}/?view=conversations&pinned=1`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations&pinned=1`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveCount(4);
     // Pinned lists every pin, and no other row.
@@ -341,7 +343,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       )
         saves.push(request.postDataJSON());
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     // The running Conversation that is not pinned shows first.
     await expect(inFlight.getByRole("listitem")).toHaveText([
