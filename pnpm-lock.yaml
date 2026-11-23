@@ -516,6 +516,15 @@ importers:
       just-bash:
         specifier: 3.0.1
         version: 3.0.1
+      mdast-util-from-markdown:
+        specifier: ^2.1.0
+        version: 2.1.0
+      mdast-util-gfm:
+        specifier: ^3.1.0
+        version: 3.1.0
+      micromark-extension-gfm:
+        specifier: ^3.0.0
+        version: 3.0.0
       node-html-markdown:
         specifier: ^2.0.0
         version: 2.0.0
@@ -565,6 +574,9 @@ importers:
       '@sentry/junior-testing':
         specifier: workspace:*
         version: file:packages/junior-testing(@neondatabase/serverless@1.1.0)(@types/pg@8.15.6)(vitest@4.1.12)
+      '@types/mdast':
+        specifier: ^4.0.4
+        version: 4.0.4
       '@types/node':
         specifier: 'catalog:'
         version: 24.19.2
@@ -15197,6 +15209,9 @@ snapshots:
       jiti: 2.7.0
       jose: 6.2.4
       just-bash: 3.0.1
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       nitro: 3.0.260522-beta(jiti@2.7.0)
       node-html-markdown: 2.0.0
       p-limit: 7.3.3
@@ -15309,6 +15324,9 @@ snapshots:
       jiti: 2.7.0
       jose: 6.2.4
       just-bash: 3.0.1
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       nitro: 3.0.260522-beta
       node-html-markdown: 2.0.0
       p-limit: 7.3.3
@@ -15421,6 +15439,9 @@ snapshots:
       jiti: 2.7.0
       jose: 6.2.4
       just-bash: 3.0.1
+      mdast-util-from-markdown: 2.1.0
+      mdast-util-gfm: 3.1.0
+      micromark-extension-gfm: 3.0.0
       node-html-markdown: 2.0.0
       p-limit: 7.3.3
       parse5: 7.3.0

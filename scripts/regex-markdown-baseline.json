@@ -1,0 +1,11 @@
+{
+  "packages/junior-dashboard/src/client/conversations/skillReferences.ts": 2,
+  "packages/junior-dashboard/src/client/display-text/codeBlocks.ts": 1,
+  "packages/junior-dashboard/src/client/display-text/plainText.ts": 3,
+  "packages/junior-dashboard/src/mock-reporting/feed-links.ts": 1,
+  "packages/junior-evals/src/fixture/results.ts": 2,
+  "packages/junior-google/src/docs/markdown.ts": 3,
+  "packages/junior-notion/src/links/pages.ts": 3,
+  "packages/junior/src/chat/services/assistant-reply.ts": 1,
+  "packages/junior/src/chat/slack/mrkdwn.ts": 1
+}
