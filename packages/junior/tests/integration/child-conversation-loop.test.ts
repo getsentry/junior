@@ -256,12 +256,79 @@ describe("child Turns on the Conversation loop", () => {
     }
   });
 
+  // A Watch Turn that ends with `noReply` ends the Thread's work when no
+  // Watch is left, so its parent gets a result. With a Watch left, the
+  // Thread still works and its parent waits.
   it.each([
-    { kind: "task" as const, notices: 1 },
-    { kind: "thread" as const, notices: 0 },
+    { watchLeft: false, results: 1 },
+    { watchLeft: true, results: 0 },
   ])(
-    "tells only a Task's parent when its Conversation loop Turn fails ($kind)",
-    async ({ kind, notices }) => {
+    "reports a Thread whose Watch Turn ends with noReply (Watch left: $watchLeft)",
+    async ({ watchLeft, results }) => {
+      vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+      const harness = await createHarness();
+      try {
+        const childId = await startIdleChild(harness, "thread");
+        if (watchLeft) {
+          await createWatch(
+            {
+              conversationId: childId,
+              events: ["deployment.failed"],
+              expiresAtMs: Date.now() + 600_000,
+              identifier: "getsentry/junior",
+              intent: "Check the deploy.",
+              label: "getsentry/junior deploys",
+              namespace: "github",
+              resourceType: "deployment_source",
+            },
+            { state: harness.state },
+          );
+        }
+        const before = await parentMessageTexts();
+        await appendAndEnqueueInboundMessage({
+          message: createEventInboundMessage({
+            event: {
+              eventKey: "deploy-1",
+              eventType: "deployment.failed",
+              identifier: "getsentry/junior",
+              namespace: "github",
+              occurredAtMs: Date.now(),
+              trustedSummary: "A deployment failed.",
+            },
+            subscription: { conversationId: childId, id: "watch-1" },
+            text: "Deploy failed.",
+          }),
+          queue: harness.queue,
+          state: harness.state,
+        });
+        vi.setSystemTime(Date.now() + 60_000);
+        harness.onRun((run) =>
+          finishRun(run, { noReply: { note: "The deploy is green." } }),
+        );
+        await harness.drain(childId);
+
+        expect(harness.runs.at(-1)).toMatchObject({
+          conversationId: childId,
+          source: { kind: "event" },
+        });
+        expect(
+          (await parentMessageTexts())
+            .slice(before.length)
+            .filter((text) => text.includes("The deploy is green.")),
+        ).toEqual(
+          Array.from({ length: results }, () =>
+            expect.stringMatching(/status="completed"/),
+          ),
+        );
+      } finally {
+        await harness.close();
+      }
+    },
+  );
+
+  it.each(["task", "thread"] as const)(
+    "tells a %s's parent when its Conversation loop Turn fails",
+    async (kind) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -279,11 +346,7 @@ describe("child Turns on the Conversation loop", () => {
           (await parentMessageTexts())
             .slice(before.length)
             .filter((text) => text.includes("stop after reading the run")),
-        ).toEqual(
-          Array.from({ length: notices }, () =>
-            expect.stringMatching(/status="failed"/),
-          ),
-        );
+        ).toEqual([expect.stringMatching(/status="failed"/)]);
       } finally {
         await harness.close();
       }

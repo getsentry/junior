@@ -21,6 +21,7 @@ import { mapBounded } from "@/chat/fan-out";
 import { recordChildAgentEnded } from "./markers";
 import { dropWaitingParentMessages } from "./parent-message";
 import { readParentMessage } from "./parent-message-input";
+import { runsPersonInput } from "./parent-result";
 import { createDeliverToParent } from "./result";
 import {
   getChildAgentLockName,
@@ -227,13 +228,13 @@ export async function cancelWaitingParentMessages(
 }
 
 /**
- * Tell the parent of a Task that a person stops it, when the stop cuts its
- * work: a waiting parent message or a running Turn. Call it before the stop
- * request is saved, so a failure leaves the stop to be retried. A Thread, a
- * Task with no open work, and a run that an earlier stop already cut stay
- * quiet. The result is keyed by the stop time, which a redelivery of the
- * same stop keeps, so a retry adds nothing even when a worker took the
- * waiting work in between.
+ * Tell the parent of a child agent that a person stops it, when the stop
+ * cuts work that the parent gave: a waiting parent message or a running Turn
+ * that does not run a person's input. Call it before the stop request is
+ * saved, so a failure leaves the stop to be retried. A child with no such
+ * work, and a run that an earlier stop already cut, stay quiet. The result
+ * is keyed by the stop time, which a redelivery of the same stop keeps, so a
+ * retry adds nothing even when a worker took the waiting work in between.
  */
 export async function reportPersonStopToParent(
   conversationId: string,
@@ -269,14 +270,23 @@ export async function reportPersonStopToParent(
     const parentMessage = readParentMessage(message);
     return parentMessage ? [parentMessage] : [];
   });
-  if (!runId && !firstWaiting) {
+  const [turn] = runId ? await listActiveMailboxTurns(conversationId) : [];
+  const cutsTurn =
+    runId !== undefined &&
+    !runsPersonInput(turn, work?.execution.pendingMessages ?? []);
+  if (!cutsTurn && !firstWaiting) {
     return;
   }
-  const [turn] = runId ? await listActiveMailboxTurns(conversationId) : [];
   await createDeliverToParent(options)({
-    actor: turn?.actor ?? firstWaiting?.actor ?? EVENT_SYSTEM_ACTOR,
+    actor:
+      (cutsTurn ? turn?.actor : undefined) ??
+      firstWaiting?.actor ??
+      EVENT_SYSTEM_ACTOR,
     conversationId,
-    result: { kind: "stopped", text: "A person stopped this task." },
+    result: {
+      kind: "stopped",
+      text: `A person stopped this ${conversation.kind}.`,
+    },
     turnId: getPersonStopTurnId(options.stoppedAtMs),
   });
 }

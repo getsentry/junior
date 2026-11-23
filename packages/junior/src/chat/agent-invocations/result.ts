@@ -19,7 +19,11 @@ import {
   resolveMailboxTurnWork,
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
-import type { DeliverToParent, ParentResult } from "./parent-result";
+import {
+  runsPersonInput,
+  type DeliverToParent,
+  type ParentResult,
+} from "./parent-result";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import {
   getConversationWorkState,
@@ -374,9 +378,9 @@ export function createDeliverToParent(options: {
 
 /**
  * End the work of a child Conversation whose last attempt lost its worker.
- * Its open markers end with `error`. Then a Task tells its parent that it
- * failed, as a failed Turn does. A Thread keeps the stored failure and its
- * telemetry.
+ * Its open markers end with `error`. Then the child tells its parent that it
+ * failed, as a failed Turn does. A person's Turn in a Thread keeps the stored
+ * failure and its telemetry.
  */
 export function createEndStoppedChildWork(options: {
   queue: ConversationWorkQueue;
@@ -396,7 +400,6 @@ export function createEndStoppedChildWork(options: {
       turnBehavior({ kind: conversation.kind, personInput: false })
         .failureNotice !== "parent"
     ) {
-      // A Thread sends its parent no failure notice.
       return;
     }
     const turns = await listActiveMailboxTurns(conversationId);
@@ -407,6 +410,9 @@ export function createEndStoppedChildWork(options: {
     const pending =
       (await getConversationWorkState({ conversationId }))?.execution
         .pendingMessages ?? [];
+    if (runsPersonInput(turns[0], pending)) {
+      return;
+    }
     const turnIds = new Set([
       ...turns.map((turn) => turn.turnId),
       ...pending.map((message) =>
@@ -431,7 +437,7 @@ export function createEndStoppedChildWork(options: {
       actor: turn?.actor ?? EVENT_SYSTEM_ACTOR,
       result: {
         kind: "failed",
-        text: "This task stopped because its worker failed repeatedly.",
+        text: `This ${conversation.kind} stopped because its worker failed repeatedly.`,
       },
       conversationId,
       turnId: turn?.turnId ?? `lost:${inboundMessageIds.at(-1) ?? "input"}`,
@@ -466,7 +472,8 @@ export function createChildConversationWorker(options: {
     }
     const result = await options.runTurn(context, kept);
     if (result.status === "completed") {
-      // A Turn that sent no result, such as a Thread's, ends its work here.
+      // A Turn that sent no result, such as a person's Turn in a Thread,
+      // ends the child's work here.
       await recordChildAgentEnded(context.conversationId, "success", options);
     }
     return result;

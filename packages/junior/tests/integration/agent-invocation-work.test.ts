@@ -465,7 +465,7 @@ describe("child agent task work", () => {
       lastResult: "failed" as const,
     },
     {
-      // A Thread keeps its failure and tells its parent nothing.
+      // A Thread tells its parent that the work it gave failed.
       name: "failed thread",
       kind: "thread" as const,
       outputs: [{ type: "error" as const, errorMessage: "model unavailable" }],
@@ -474,7 +474,9 @@ describe("child agent task work", () => {
         type: "turn_failed",
       },
       subagentOutcome: "error",
-      parentMessages: [],
+      parentMessages: [
+        expect.stringMatching(/status="failed">\n[\s\S]*\nmodel unavailable\n/),
+      ],
       lastResult: "failed" as const,
     },
     {
@@ -535,16 +537,20 @@ describe("child agent task work", () => {
       ],
     },
     {
-      // A Thread's note stays in the Thread. The parent gets nothing.
+      // A Thread whose work ends reports like a Task.
       name: "quiet thread",
       kind: "thread" as const,
       outputs: [quiet],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
-      parentMessages: [],
+      parentMessages: [
+        expect.stringMatching(
+          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+        ),
+      ],
     },
     {
-      // A Task's parent learns that no reply was sent, without the text.
+      // A child's parent learns that no reply was sent, without the text.
       name: "unanswered task",
       outputs: plainText,
       terminal: {
@@ -560,13 +566,20 @@ describe("child agent task work", () => {
       lastResult: "failed" as const,
     },
     {
-      // A Thread stays quiet. Its text is its answer in its own transcript.
       name: "unanswered thread",
       kind: "thread" as const,
       outputs: plainText,
-      terminal: { outcome: "success", type: "turn_completed" },
-      subagentOutcome: "success",
-      parentMessages: [],
+      terminal: {
+        failureCode: "model_execution_failed",
+        type: "turn_failed",
+      },
+      subagentOutcome: "error",
+      parentMessages: [
+        expect.stringMatching(
+          /status="failed">\n[\s\S]*\nNo reply was sent\.\n/,
+        ),
+      ],
+      lastResult: "failed" as const,
     },
   ])(
     "finishes a $name child Turn after saving its result",

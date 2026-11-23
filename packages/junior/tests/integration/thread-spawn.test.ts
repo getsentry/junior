@@ -271,11 +271,11 @@ describe("Thread spawn and archive", () => {
       });
 
       const thread = await startThread(harness, "thread-spawn");
-      const nestedThread = await createIdleChild(
+      const nestedThread = await spawnChild(
         harness,
         "nested-thread",
         "thread",
-        { parentConversationId: thread },
+        thread,
       );
       // Only the direct parent archives a Thread.
       await expect(

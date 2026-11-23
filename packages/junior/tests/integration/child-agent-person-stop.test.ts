@@ -65,13 +65,18 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
     },
   );
 
-  it.each(["waits", "runs"] as const)(
-    "tells the parent once that a person stopped a Task while it %s",
-    async (when) => {
+  it.each([
+    { kind: "task", when: "waits" },
+    { kind: "task", when: "runs" },
+    { kind: "thread", when: "waits" },
+    { kind: "thread", when: "runs" },
+  ] as const)(
+    "tells the parent once that a person stopped a $kind while it $when",
+    async ({ kind, when }) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
-        const taskId = await spawn(harness, "call-1");
+        const taskId = await spawn(harness, `call-${kind}`, { kind });
         await changeTodos(getSqlExecutor(), {
           change: {
             add: [
@@ -124,6 +129,38 @@ describe("a person's stop of a child agent without an Agent invocation", () => {
       }
     },
   );
+
+  it("tells the parent nothing when a person stops a person's Turn in a Thread", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const threadId = await spawn(harness, "call-person", { kind: "thread" });
+      harness.onRun(finishRun);
+      await harness.drain(threadId);
+      vi.setSystemTime(1_800_000_001_000);
+      await sendPersonMessage(harness, threadId, "person-1");
+      harness.onRun(async (run) => {
+        vi.setSystemTime(1_800_000_002_000);
+        await stopConversation({
+          conversationId: threadId,
+          conversationStore: harness.conversationStore,
+          queue: harness.queue,
+          state: harness.state,
+        });
+        return await finishRun(run);
+      });
+      await harness.drain(threadId);
+
+      expect(harness.runs.at(-1)).toMatchObject({ source: { kind: "web" } });
+      expect(
+        (await mailboxTexts(harness, slackParentConversationId)).filter(
+          (text) => text.includes('status="stopped"'),
+        ),
+      ).toEqual([]);
+    } finally {
+      await harness.close();
+    }
+  });
 
   it("shows the parent's next Turn that a person stopped a Task", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
