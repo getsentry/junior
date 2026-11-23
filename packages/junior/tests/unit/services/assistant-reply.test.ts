@@ -59,6 +59,11 @@ describe("assistant reply", () => {
     });
   });
 
+  it("keeps thinking text inside a closed fence in a quote", () => {
+    const text = "> ```\n> <thinking>example</thinking>\n> ```";
+    expect(decideReply(assistant(text))).toEqual({ kind: "deliver", text });
+  });
+
   it("removes thinking after a fence with no closing line", () => {
     expect(
       decideReply(

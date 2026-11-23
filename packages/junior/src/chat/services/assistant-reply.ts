@@ -24,7 +24,9 @@ function isClosedFence(source: string): boolean {
       ? "~"
       : undefined;
   const lastLine = source.lastIndexOf("\n");
-  const closer = lastLine < 0 ? "" : source.slice(lastLine + 1).trim();
+  let closer = lastLine < 0 ? "" : source.slice(lastLine + 1).trim();
+  // A fence inside a quote has the quote markers before its closer.
+  while (closer.startsWith(">")) closer = closer.slice(1).trimStart();
   return (
     marker !== undefined &&
     closer.length >= 3 &&
