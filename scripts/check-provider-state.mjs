@@ -7,23 +7,25 @@ import { latestSnapshots } from "./lib/drizzle-snapshots.mjs";
  * Junior reads it through the plugin cache (`design/github.md`). The latest
  * Drizzle snapshot of each package is the schema that its migrations create.
  *
- * - Every column of the GitHub plugin's tables must be in `BASELINE`, with
- *   its reason.
+ * - Every column of the GitHub plugin's tables must be listed, with its
+ *   reason.
  * - In any package, a column with a provider state name, such as `state` or
- *   `title`, on a table that holds provider ids must be in that file too.
+ *   `title`, on a table that holds provider ids must be listed too.
  *
- * `BASELINE` maps each table to a reason for the whole table, or to a reason
- * for each column. A reason says the value is one of:
+ * Each file maps a table to a reason for the whole table, or to a reason for
+ * each column.
  *
- * - Junior-owned: a fact that Junior decides or records, or a key for one.
- * - Too expensive to derive: a value that a read needs for many objects at
- *   once, which GitHub cannot give at that cost.
- * - Mirror awaiting cleanup: a copy of GitHub state that a cleanup removes.
- *
- * Only the owner adds an entry. `baseline-growth:check` counts every entry
- * under the one `tables` key, so a new table also counts as growth.
+ * - `EXCEPTIONS` holds the values that Junior keeps. A reason says the value
+ *   is Junior-owned (a fact that Junior decides or records, or a key for one)
+ *   or too expensive to derive (a value that a read needs for many objects
+ *   at once, which GitHub cannot give at that cost). It grows only through
+ *   a PR that the owner reviews.
+ * - `BASELINE` holds the copies of GitHub state that a cleanup removes. It
+ *   may only shrink (`baseline-growth:check`). Delete it, and the code that
+ *   reads it, with its last entry.
  */
 
+const EXCEPTIONS = "scripts/github-state-exceptions.json";
 const BASELINE = "scripts/github-state-baseline.json";
 
 const GITHUB_PACKAGE = "junior-github";
@@ -33,18 +35,18 @@ const STATE_NAME =
 const PROVIDER_ID = /(?:^|_)provider_id$/;
 
 function failure(snapshotPath, key) {
-  return `${snapshotPath}: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to ${BASELINE} with the reason.`;
+  return `${snapshotPath}: ${key} copies GitHub state. Read it from GitHub through the plugin cache (design/github.md). If it is a Junior-owned fact or too expensive to derive, ask the owner to add it to ${EXCEPTIONS} with the reason.`;
 }
 
 /**
  * Report the columns of one package's Drizzle snapshot that may copy
- * provider state and are not in `baseline`, the `tables` of `BASELINE`.
+ * provider state and are not in `listed`, the tables of both files.
  */
-export function checkSnapshot(packageName, snapshotPath, snapshot, baseline) {
+export function checkSnapshot(packageName, snapshotPath, snapshot, listed) {
   const errors = [];
   for (const table of Object.values(snapshot.tables ?? {})) {
     const columns = Object.values(table.columns ?? {});
-    const excepted = baseline[table.name] ?? {};
+    const excepted = listed[table.name] ?? {};
     const holdsProviderIds = columns.some((column) =>
       PROVIDER_ID.test(column.name),
     );
@@ -62,13 +64,33 @@ export function checkSnapshot(packageName, snapshotPath, snapshot, baseline) {
   return errors;
 }
 
+function readTables(root, file) {
+  return JSON.parse(fs.readFileSync(path.join(root, file), "utf8")).tables;
+}
+
+/**
+ * Join the tables of two files. A table reason covers the whole table, so it
+ * wins over column reasons.
+ */
+export function joinTables(first, second) {
+  const tables = { ...first };
+  for (const [name, reasons] of Object.entries(second)) {
+    const current = tables[name];
+    if (typeof current === "string") continue;
+    tables[name] =
+      typeof reasons === "string" ? reasons : { ...current, ...reasons };
+  }
+  return tables;
+}
+
 /** Check the latest snapshot of every package that has migrations. */
 export function run({ root }) {
-  const { tables } = JSON.parse(
-    fs.readFileSync(path.join(root, BASELINE), "utf8"),
+  const listed = joinTables(
+    readTables(root, EXCEPTIONS),
+    readTables(root, BASELINE),
   );
   return latestSnapshots(root).flatMap(
     ({ packageName, snapshotPath, snapshot }) =>
-      checkSnapshot(packageName, snapshotPath, snapshot, tables),
+      checkSnapshot(packageName, snapshotPath, snapshot, listed),
   );
 }
