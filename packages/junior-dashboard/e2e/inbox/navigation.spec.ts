@@ -1,7 +1,12 @@
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "../harness";
-import { automationAlert, mockInboxItems, openRow } from "./inbox-fixture";
+import {
+  automationAlert,
+  license,
+  mockInboxItems,
+  openRow,
+} from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
@@ -374,10 +379,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     const backToInbox = page.getByRole("link", { name: "Back to Inbox" });
 
     // A direct link has no origin, so Conversations owns the page, and
-    // Back goes there.
+    // Back goes there. The view is the list the page is in, not the page.
     await page.goto(conversationUrl);
     await expect(title).toBeVisible();
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
     await expect(inbox).not.toHaveAttribute("aria-current");
     await expect(backToConversations).toHaveAttribute(
       "href",
@@ -385,20 +390,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await backToConversations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(conversations).toHaveAttribute("aria-current", "page");
 
     // Opened from Conversations, it stays there after a reload, Back, and
     // Forward.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await openRow(
       page
         .getByRole("region", { exact: true, name: "Conversations" })
         .getByRole("link", { name: /Checkout latency triage/ }),
     );
     await expect(page).toHaveURL(conversationUrl);
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
     await page.reload();
     await expect(title).toBeVisible();
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
     await expect(inbox).not.toHaveAttribute("aria-current");
     await expect(backToConversations).toHaveAttribute(
       "href",
@@ -408,25 +413,72 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
     await page.goForward();
     await expect(title).toBeVisible();
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
 
-    // Opened from the Inbox, it stays in the Inbox after a reload. The
-    // Inbox lists no Conversations, so it opens from In flight.
+    // Opened from the Inbox, it stays in the Inbox after a reload. Its
+    // In flight row is the page, so only that row is fully marked.
     await page.goto(dashboard.baseURL);
-    await page
+    const inFlightRow = page
       .getByRole("list", { name: "In flight" })
-      .getByRole("link", { name: /Investigate checkout latency/ })
-      .click();
+      .getByRole("link", { name: /Investigate checkout latency/ });
+    await inFlightRow.click();
     const running = page.getByRole("heading", {
       name: "Investigate checkout latency",
     });
     await expect(running).toBeVisible();
-    await expect(inbox).toHaveAttribute("aria-current", "page");
+    await expect(inFlightRow).toHaveAttribute("aria-current", "page");
+    await expect(inbox).toHaveAttribute("aria-current", "true");
     await page.reload();
     await expect(running).toBeVisible();
-    await expect(inbox).toHaveAttribute("aria-current", "page");
+    await expect(inFlightRow).toHaveAttribute("aria-current", "page");
+    await expect(inbox).toHaveAttribute("aria-current", "true");
     await expect(conversations).not.toHaveAttribute("aria-current");
     await expect(backToInbox).toHaveAttribute("href", "/");
+    await screenshot(page, "navigation-origin-in-flight", { lightTheme: true });
+
+    // The Lead is a Conversation with its own row, so that row is the page.
+    const lead = primary.getByRole("link", { exact: true, name: "Lead" });
+    await lead.click();
+    await expect(lead).toHaveAttribute("aria-current", "page");
+    await expect(inbox).not.toHaveAttribute("aria-current");
+  });
+
+  test("marks the Inbox, but not as the page, for a Conversation it opened", async ({
+    page,
+    dashboard,
+  }) => {
+    // An ask from a Conversation that is not in flight.
+    const triage = "slack:CQA123:1770000000.000100";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...license,
+          conversationIds: [triage],
+          owner: { id: triage, kind: "conversation" },
+          rootConversationId: triage,
+        },
+      ],
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(dashboard.baseURL);
+    const primary = page.getByRole("navigation", { name: "Primary" });
+    const inbox = primary.getByRole("link", { name: /^Inbox/ });
+    await expect(inbox).toHaveAttribute("aria-current", "page");
+
+    await openRow(
+      page
+        .getByRole("region", { name: "To do" })
+        .getByRole("link", { name: /Review the acme license entry/ })
+        .first(),
+    );
+    await expect(page).toHaveURL(
+      /\/conversations\/slack%3ACQA123%3A1770000000/,
+    );
+    await expect(
+      page.getByRole("heading", { name: "Checkout latency triage" }),
+    ).toBeVisible();
+    await expect(inbox).toHaveAttribute("aria-current", "true");
+    await screenshot(page, "navigation-origin-inbox", { lightTheme: true });
   });
 
   test("keeps the density choice", async ({ page, dashboard }) => {
