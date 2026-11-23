@@ -198,22 +198,19 @@ export async function updateGitHubAnnotations(args: {
 }
 
 /**
- * Return the status change of one object for each linked conversation, to
- * save in one batch with other changes.
+ * Return the status change of one object for one conversation, to save in
+ * one batch with other changes.
  */
-export async function githubAnnotationChanges(args: {
+export async function githubAnnotationChange(args: {
   annotations: PluginConversationAnnotations;
-  conversationIds: string[];
+  conversationId: string;
   update: GitHubStatusUpdate;
-}): Promise<ConversationAnnotationChange[]> {
-  return await pLimit(ANNOTATION_UPDATE_CONCURRENCY).map(
-    args.conversationIds,
-    async (conversationId) => ({
-      conversationId,
-      upsert: githubStatusAnnotation(
-        await args.annotations.forConversation(conversationId).list(),
-        args.update,
-      ),
-    }),
-  );
+}): Promise<ConversationAnnotationChange> {
+  return {
+    conversationId: args.conversationId,
+    upsert: githubStatusAnnotation(
+      await args.annotations.forConversation(args.conversationId).list(),
+      args.update,
+    ),
+  };
 }

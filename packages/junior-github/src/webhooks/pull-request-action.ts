@@ -371,15 +371,19 @@ async function showAction(
 
 /**
  * Return the closes of the next-action item and the merge conflict notice
- * of a pull request that merged or closed. The outcome write saves them in
- * one batch with the chips, so no reader sees an ended pull request next to
- * its open item.
+ * of a pull request that merged or closed, with the conversation that owns
+ * them. Undefined when no person asked Junior for the pull request. The
+ * outcome write saves them in one batch with that conversation's chip, so no
+ * reader sees an ended pull request next to its open item.
  */
 export async function endedGitHubPullRequestItemChanges(args: {
   db: GitHubDb;
   state: EndedState;
   target: GitHubPullRequestTarget;
-}): Promise<ConversationInboxItemChange[]> {
+}): Promise<
+  | { conversationId: string; inboxItems: ConversationInboxItemChange[] }
+  | undefined
+> {
   const { target } = args;
   const conversationId = (
     await listGitHubPullRequestOpeners(args.db, {
@@ -387,11 +391,14 @@ export async function endedGitHubPullRequestItemChanges(args: {
       repositoryFullName: target.repositoryFullName,
     })
   ).get(target.number)?.conversationId;
-  if (!conversationId) return [];
+  if (!conversationId) return undefined;
   const reason = ENDED_REASONS[args.state];
-  return [actionDedupeKey(target), gitHubConflictItemKey(target)].map(
-    (dedupeKey) => ({ close: { dedupeKey, ...reason }, conversationId }),
-  );
+  return {
+    conversationId,
+    inboxItems: [actionDedupeKey(target), gitHubConflictItemKey(target)].map(
+      (dedupeKey) => ({ close: { dedupeKey, ...reason }, conversationId }),
+    ),
+  };
 }
 
 /**
