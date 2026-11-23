@@ -3,7 +3,7 @@ import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { createHash } from "node:crypto";
 import type { Job } from "bullmq";
 import { getChatConfig } from "@/chat/config";
-import { importAtRuntime } from "@/chat/queue/import-at-runtime";
+import { importAtRuntime } from "@/chat/import-at-runtime";
 import { logException, logInfo } from "@/chat/logging";
 import type {
   QueueConsumer,

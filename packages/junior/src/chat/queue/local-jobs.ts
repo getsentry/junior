@@ -6,7 +6,7 @@
 // `pg-boss` is an optional peer dependency. Only dev installs need it.
 import type { PgBoss } from "pg-boss";
 import { getChatConfig } from "@/chat/config";
-import { importAtRuntime } from "@/chat/queue/import-at-runtime";
+import { importAtRuntime } from "@/chat/import-at-runtime";
 import { logException } from "@/chat/logging";
 
 /** Headers that carry delivery facts on a pushed local queue message. */
