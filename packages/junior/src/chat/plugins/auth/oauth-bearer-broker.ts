@@ -228,13 +228,14 @@ export function createOAuthBearerBroker(
     expiresAtMs: number,
     reason: string,
   ): CredentialLease {
+    const env = resolvePluginCommandEnv(manifest);
+    if (authTokenEnv) {
+      env[authTokenEnv] = authTokenPlaceholder;
+    }
     return {
       id: randomUUID(),
       provider,
-      env: {
-        ...resolvePluginCommandEnv(manifest),
-        [authTokenEnv]: authTokenPlaceholder,
-      },
+      env,
       headerTransforms: mergeHeaderTransforms([
         ...pluginHeaderTransforms(),
         ...domains.map((domain) => ({
@@ -249,7 +250,9 @@ export function createOAuthBearerBroker(
 
   return {
     async issue(input) {
-      const envToken = process.env[authTokenEnv]?.trim();
+      const envToken = authTokenEnv
+        ? process.env[authTokenEnv]?.trim()
+        : undefined;
       const oauth = manifest.oauth;
       const userSubjectId = credentialUserSubjectId(input.context);
       // Only plugin host code names an operation, so sandbox commands never

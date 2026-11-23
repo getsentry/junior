@@ -46,7 +46,6 @@ async function createServiceAccountApp(): Promise<void> {
           credentials: {
             type: "oauth-bearer",
             domains: ["api.clips.test"],
-            authTokenEnv: "CLIPS_TOKEN",
           },
           oauth: {
             clientIdEnv: "CLIPS_CLIENT_ID",

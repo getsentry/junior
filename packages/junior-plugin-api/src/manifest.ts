@@ -16,7 +16,11 @@ export interface PluginOAuthConfig {
 
 export interface PluginOAuthBearerCredentials {
   apiHeaders?: Record<string, string>;
-  authTokenEnv: string;
+  /**
+   * Env var of a host token, and the name of the Sandbox placeholder.
+   * Optional with `oauth`: without it there is no env token fallback.
+   */
+  authTokenEnv?: string;
   authTokenPlaceholder?: string;
   domains: string[];
   type: "oauth-bearer";

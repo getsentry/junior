@@ -174,7 +174,6 @@ credentials:
   type: oauth-bearer
   domains:
     - api.my-provider.example
-  auth-token-env: MY_PROVIDER_TOKEN
 
 oauth:
   client-id-env: MY_PROVIDER_CLIENT_ID
@@ -190,6 +189,9 @@ accounts:
       - my-provider.upload
 ```
 
+- `auth-token-env` is optional when the plugin has `oauth`. Leave it out
+  when only host code calls the provider: then there is no env token
+  fallback and no Sandbox placeholder.
 - Junior adds the service account's token only to `ctx.egress.fetch` calls
   that name a listed operation. Commands in the sandbox name no operation,
   so they never get the service account.

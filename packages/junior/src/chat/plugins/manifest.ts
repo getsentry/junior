@@ -180,7 +180,7 @@ const baseCredentialsSchema = z
 
 const oauthBearerCredentialsSchema = baseCredentialsSchema.extend({
   "api-headers": stringMapSchema.optional(),
-  "auth-token-env": envVarString,
+  "auth-token-env": envVarString.optional(),
   "auth-token-placeholder": nonEmptyTrimmedString.optional(),
   type: z.literal("oauth-bearer"),
 });
@@ -754,6 +754,7 @@ function assertCommandEnvHostRefsAreExplicitlyExposed(
 function normalizeCredentials(
   data: Record<string, unknown>,
   name: string,
+  hasOAuth: boolean,
 ): PluginCredentials {
   if (data["type"] !== "oauth-bearer") {
     throw new Error(
@@ -770,6 +771,13 @@ function normalizeCredentials(
     throw new Error(`Plugin ${name} credentials requires domains`);
   }
   const domains = result.data.domains;
+  const authTokenEnv = result.data["auth-token-env"];
+  // Without OAuth, the env token is the only credential.
+  if (!authTokenEnv && !hasOAuth) {
+    throw new Error(
+      `Plugin ${name} credentials.auth-token-env is required without oauth`,
+    );
+  }
 
   const apiHeaders = result.data["api-headers"]
     ? normalizeStringMap(
@@ -783,7 +791,7 @@ function normalizeCredentials(
     type: "oauth-bearer",
     domains,
     ...(apiHeaders ? { apiHeaders } : undefined),
-    authTokenEnv: result.data["auth-token-env"],
+    ...(authTokenEnv ? { authTokenEnv } : undefined),
     ...(result.data["auth-token-placeholder"]
       ? { authTokenPlaceholder: result.data["auth-token-placeholder"] }
       : undefined),
@@ -1317,7 +1325,7 @@ function parseManifestSource(
     : undefined;
 
   const credentials = data.credentials
-    ? normalizeCredentials(data.credentials, data.name)
+    ? normalizeCredentials(data.credentials, data.name, Boolean(data.oauth))
     : undefined;
   const runtimeDependencies = data["runtime-dependencies"]
     ? normalizeRuntimeDependencies(data["runtime-dependencies"], data.name)

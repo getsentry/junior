@@ -666,12 +666,10 @@ describe("plugin manifest API headers", () => {
         "env-vars:",
         "  EXAMPLE_CLIENT_ID:",
         "  EXAMPLE_CLIENT_SECRET:",
-        "  EXAMPLE_TOKEN:",
         "credentials:",
         "  type: oauth-bearer",
         "  domains:",
         "    - api.example.com",
-        "  auth-token-env: EXAMPLE_TOKEN",
         "oauth:",
         "  client-id-env: EXAMPLE_CLIENT_ID",
         "  client-secret-env: EXAMPLE_CLIENT_SECRET",
@@ -689,6 +687,26 @@ describe("plugin manifest API headers", () => {
       userOAuth: false,
       serviceAccount: { operations: ["example.upload"] },
     });
+    expect(manifest.credentials?.authTokenEnv).toBeUndefined();
+  });
+
+  it("requires auth-token-env on credentials without OAuth", () => {
+    expect(() =>
+      parsePluginManifest(
+        [
+          "name: example",
+          "display-name: Example",
+          "description: Example API access",
+          "credentials:",
+          "  type: oauth-bearer",
+          "  domains:",
+          "    - api.example.com",
+        ].join("\n"),
+        "/tmp/example",
+      ),
+    ).toThrow(
+      "Plugin example credentials.auth-token-env is required without oauth",
+    );
   });
 
   it("rejects service account operations without top-level OAuth", () => {
