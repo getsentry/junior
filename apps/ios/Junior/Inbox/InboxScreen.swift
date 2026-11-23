@@ -38,7 +38,7 @@ final class InboxModel {
     } catch {}
   }
 
-  /// "Needs you" (the items that the badge counts) and "FYI", newest first.
+  /// "Needs you" (items that wait on the viewer) and "FYI", newest first.
   var groups: [(id: String, title: String, items: [InboxItem])] {
     let newest = items.sorted { ($0.createdAt.date ?? .distantPast) > ($1.createdAt.date ?? .distantPast) }
     let needsYou = newest.filter(\.needsViewer)
