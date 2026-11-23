@@ -196,7 +196,8 @@ export type PromptLayout = {
  * Checks a layout and returns the copy that core builds each prompt from. It
  * throws on an empty or repeated system prompt section name, on two
  * fragments with one name, on one fragment used twice, and on two loaders
- * with one label. It freezes the system prompt sections.
+ * with one label. It freezes the system prompt sections and the messages
+ * list.
  *
  * The rules:
  * - Loaders do all of the I/O. Core runs each needed loader once per step.
@@ -270,11 +271,11 @@ export function definePromptLayout(layout: PromptLayout): PromptLayout {
   }
 
   return {
-    ...layout,
     systemPrompt: Object.freeze(
       layout.systemPrompt.map(({ name, text }) =>
         Object.freeze({ name, text }),
       ),
     ),
+    messages: Object.freeze([...layout.messages]),
   };
 }

@@ -52,6 +52,17 @@ describe("definePromptLayout", () => {
     expect(Object.isFrozen(layout.systemPrompt[0])).toBe(true);
   });
 
+  it("freezes the messages list", () => {
+    const first = fragment("first", { format: () => userText("First") });
+    const messages = [first];
+    const layout = definePromptLayout({ systemPrompt: [], messages });
+
+    messages.push(fragment("second", { format: () => userText("Second") }));
+
+    expect(layout.messages).toEqual([first]);
+    expect(Object.isFrozen(layout.messages)).toBe(true);
+  });
+
   it("throws on two fragments with one name", () => {
     expect(() =>
       definePromptLayout({

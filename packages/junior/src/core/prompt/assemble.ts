@@ -20,8 +20,9 @@ import type {
 /**
  * Builds the prompt for one step. A required loader that fails or times out
  * throws an error that names it. An optional one gives `undefined` to its
- * fragments. `newMessages` are the message fragments' outputs, which go after
- * `ctx.history` in `messages`.
+ * fragments. A fragment whose `enabled` or `format` throws gives an error
+ * that names it. `newMessages` are the message fragments' outputs, which go
+ * after `ctx.history` in `messages`.
  */
 export async function assemblePrompt(
   layout: PromptLayout,
@@ -35,7 +36,8 @@ export async function assemblePrompt(
   const disabled = new Set<object>();
   const needed = new Set<Loader<unknown>>();
   for (const item of layout.messages) {
-    if (item.enabled && !item.enabled(ctx)) {
+    const { enabled } = item;
+    if (enabled && !inFragment(item.name, () => enabled(ctx))) {
       disabled.add(item);
     } else if (item.loader) {
       needed.add(item.loader);
@@ -69,7 +71,7 @@ export async function assemblePrompt(
       fragments.push({ name, field: "messages", status: "disabled" });
       continue;
     }
-    const output = item.render(values);
+    const output = inFragment(name, () => item.render(values));
     if (isSkip(output)) {
       fragments.push({
         name,
@@ -97,6 +99,15 @@ export async function assemblePrompt(
       fragments,
     },
   };
+}
+
+/** Runs a fragment's own code, and names the fragment when it throws. */
+function inFragment<T>(name: string, run: () => T): T {
+  try {
+    return run();
+  } catch (error) {
+    throw new Error(`Fragment "${name}" failed`, { cause: error });
+  }
 }
 
 function isSkip<TOutput>(output: TOutput | Skip): output is Skip {
