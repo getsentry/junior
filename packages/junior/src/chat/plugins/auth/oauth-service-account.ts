@@ -26,7 +26,10 @@ import {
 const SERVICE_ACCOUNT_KEY_PREFIX = "junior:oauth_service_account";
 const SIGN_IN_KEY_PREFIX = "junior:oauth_service_account_sign_in";
 const SIGN_IN_TTL_MS = 10 * 60 * 1000;
-const UPDATE_LOCK_WAIT_MS = 5_000;
+// A token refresh can take up to 20 seconds, so the lock that covers it must
+// outlive the refresh, and a caller that waits must outwait it.
+const REFRESH_LOCK_TTL_MS = 30_000;
+const REFRESH_LOCK_WAIT_MS = 30_000;
 const TOKEN_EXCHANGE_TIMEOUT_MS = 20_000;
 
 /** Stored tokens for one plugin's OAuth service account. */
@@ -127,7 +130,7 @@ export async function withOAuthServiceAccountLock<T>(
     state,
     updateLockKey(provider),
     async (lock) => await run(() => fenceLock(state, lock)),
-    { ttlMs: MUTATION_LOCK_TTL_MS, waitMs: UPDATE_LOCK_WAIT_MS },
+    { ttlMs: REFRESH_LOCK_TTL_MS, waitMs: REFRESH_LOCK_WAIT_MS },
   );
   if (!result.acquired) {
     throw new Error(

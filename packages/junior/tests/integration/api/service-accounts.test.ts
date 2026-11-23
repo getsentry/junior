@@ -278,4 +278,67 @@ describe("service accounts API", () => {
       expect.objectContaining({ kind: "unavailable", provider: "clips" }),
     );
   });
+
+  it("keeps no old expiry when a service account refresh reports none", async () => {
+    process.env["CLIPS_CLIENT_ID"] = "clips-client";
+    process.env["CLIPS_CLIENT_SECRET"] = "clips-secret";
+    const grants: string[] = [];
+    const upstream: Array<string | null> = [];
+    mswServer.use(
+      http.post(
+        "https://clips.test/oauth/access_token",
+        async ({ request }) => {
+          const grant = new URLSearchParams(await request.text()).get(
+            "grant_type",
+          )!;
+          grants.push(grant);
+          // The first token expires within the refresh window. The refreshed
+          // token reports no expiry.
+          return HttpResponse.json(
+            grant === "authorization_code"
+              ? {
+                  access_token: "first-token",
+                  refresh_token: "first-refresh",
+                  token_type: "bearer",
+                  expires_in: 60,
+                  scope: "public upload",
+                }
+              : {
+                  access_token: "second-token",
+                  token_type: "bearer",
+                  scope: "public upload",
+                },
+          );
+        },
+      ),
+      http.post("https://api.clips.test/videos", ({ request }) => {
+        upstream.push(request.headers.get("authorization"));
+        return HttpResponse.json({ uri: "/videos/1" });
+      }),
+    );
+    const admin = authenticatedApi(ADMIN);
+    const connected = await finishSignIn(
+      admin,
+      await startSignIn(admin, "clips"),
+      "clips-code",
+    );
+    expect(connected.status).toBe(200);
+
+    const post = async () =>
+      await createPluginEgress({
+        credentialContext: { actor: { type: "user", userId: "U_PERSON" } },
+        pluginAuth: { handleAuthRequired: vi.fn() },
+      }).fetch({
+        operation: "clips.upload",
+        provider: "clips",
+        request: new Request("https://api.clips.test/videos", {
+          method: "POST",
+        }),
+      });
+
+    expect((await post()).status).toBe(200);
+    expect((await post()).status).toBe(200);
+    expect(upstream).toEqual(["Bearer second-token", "Bearer second-token"]);
+    expect(grants).toEqual(["authorization_code", "refresh_token"]);
+  });
 });

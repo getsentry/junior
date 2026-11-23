@@ -206,7 +206,8 @@ async function serviceAccountToken(
       });
       return undefined;
     }
-    const next = { ...latest, ...refreshed };
+    // A refresh that reports no expiry must not keep the old token's expiry.
+    const next = { ...latest, ...refreshed, expiresAt: refreshed.expiresAt };
     await fence();
     await putOAuthServiceAccountCredentials(provider, next);
     return next;
