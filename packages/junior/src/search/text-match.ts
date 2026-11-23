@@ -8,7 +8,8 @@ import type { TypedQuery } from "./typed-query";
  */
 export const SEARCH_RANK_WINDOW = 200;
 
-function prefixTsquery(query: TypedQuery): SQL {
+/** SQL: the `simple` tsquery of typed text, each word as a prefix. */
+export function prefixTsquery(query: TypedQuery): SQL {
   return sql`to_tsquery('simple', ${query.prefix})`;
 }
 

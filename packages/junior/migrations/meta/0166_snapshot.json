@@ -1,5 +1,5 @@
 {
-  "id": "2265009a-36ac-4c12-92d6-6d6d8adbddd3",
+  "id": "95db36c0-8ea2-4996-8e01-7625e5ed3391",
   "prevId": "3c75f87f-c8bb-4c81-84ca-acc686ffef13",
   "version": "7",
   "dialect": "postgresql",
@@ -5433,6 +5433,34 @@
           "method": "gin",
           "with": {}
         },
+        "junior_memory_memories_prefix_idx": {
+          "name": "junior_memory_memories_prefix_idx",
+          "columns": [
+            {
+              "expression": "scope",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "scope_key",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "to_tsvector('simple', \"content\")",
+              "asc": true,
+              "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
         "junior_memory_memories_idempotency_idx": {
           "name": "junior_memory_memories_idempotency_idx",
           "columns": [
@@ -6144,38 +6172,7 @@
           "notNull": true
         }
       },
-      "indexes": {
-        "junior_todos_search_idx": {
-          "name": "junior_todos_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('simple', \"title\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        },
-        "junior_todos_title_trgm_idx": {
-          "name": "junior_todos_title_trgm_idx",
-          "columns": [
-            {
-              "expression": "lower(\"title\") gin_trgm_ops",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        }
-      },
+      "indexes": {},
       "foreignKeys": {
         "junior_todos_assignee_user_id_junior_users_id_fk": {
           "name": "junior_todos_assignee_user_id_junior_users_id_fk",

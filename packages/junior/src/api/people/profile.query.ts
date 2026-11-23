@@ -258,11 +258,15 @@ export async function readPeopleProfileFromSql(
   const hourWindow = trailingUtcHourWindow(nowMs, 7 * 24);
   const [totalsRows, dayRows, hourRows, locationRows, surfaceRows, recentRows] =
     await Promise.all([
+      // `roots` holds one person, but Postgres cannot see that through its
+      // grouping. Without the email match it plans one group, and one
+      // active-days subquery, for each user in the table.
       getDb()
         .select(personTotalColumns(roots))
         .from(roots)
         .innerJoin(juniorUsers, eq(juniorUsers.id, roots.userId))
         .innerJoin(turnRoot, personRootJoin(roots))
+        .where(eq(juniorUsers.primaryEmailNormalized, normalizedEmail))
         .groupBy(juniorUsers.id),
       rootBucketRows({ email: normalizedEmail, since: start, unit: "day" }),
       rootBucketRows({
