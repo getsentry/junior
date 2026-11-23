@@ -44,7 +44,9 @@ export function layoutSystemPrompt(layout: PromptLayout): string {
  * fragments. A fragment whose `enabled` or `format` throws gives an error
  * that names it. When `signal` aborts, each load's signal aborts too, and
  * this throws the abort reason. `newMessages` are the new messages in layout
- * order, which go after `ctx.history` in `messages`.
+ * order, which go after `ctx.history` in `messages`. Core sets their
+ * timestamps: an input's send time, or the step's time for a fragment
+ * message.
  */
 export async function assemblePrompt(
   layout: PromptLayout,
@@ -89,6 +91,8 @@ export async function assemblePrompt(
     }
   }
 
+  // One time for the step, so every fragment message of a prompt shares it.
+  const stepTime = Date.now();
   const fragments: FragmentDiagnostics[] = [];
   const newMessages: PromptMessage[] = [];
   for (const item of layout.messages) {
@@ -106,7 +110,7 @@ export async function assemblePrompt(
         newMessages.push({
           source: "input",
           inputId: input.inputId,
-          message,
+          message: { ...message, timestamp: input.sentAt.getTime() },
           provenance,
         });
       }
@@ -125,7 +129,11 @@ export async function assemblePrompt(
     }
     fragments.push({ name, field: "messages", status: "included" });
     for (const message of Array.isArray(output) ? output : [output]) {
-      newMessages.push({ source: "fragment", fragment: name, message });
+      newMessages.push({
+        source: "fragment",
+        fragment: name,
+        message: { ...message, timestamp: stepTime },
+      });
     }
   }
   return {

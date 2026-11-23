@@ -179,9 +179,21 @@ export function fragment(
   };
 }
 
-/** One unread input as a user message, and the authority it has. */
+// Distributes over a union, so each kind of message keeps its own fields.
+type WithoutTimestamp<M> = M extends unknown ? Omit<M, "timestamp"> : never;
+
+/**
+ * A message that a fragment gives. It has no timestamp: core sets the step's
+ * time, so a fragment reads no clock.
+ */
+export type FragmentMessage = WithoutTimestamp<Message>;
+
+/**
+ * One unread input as a user message, and the authority it has. Core sets
+ * the message's timestamp to the input's send time.
+ */
 export type InputPrompt = {
-  message: UserMessage;
+  message: Omit<UserMessage, "timestamp">;
   provenance: ConversationMessageProvenance;
 };
 
@@ -201,8 +213,8 @@ export function inputs({
   format,
 }: {
   format: FormatInput;
-}): Fragment<UserMessage[]> {
-  const item: Fragment<UserMessage[]> = {
+}): Fragment<Omit<UserMessage, "timestamp">[]> {
+  const item: Fragment<Omit<UserMessage, "timestamp">[]> = {
     name: "inputs",
     render: (values) => values.ctx.inputs.map((input) => format(input).message),
   };
@@ -229,7 +241,7 @@ export type PromptLayout = {
   /** Their texts are joined, in order, into the system prompt. */
   readonly systemPrompt: readonly SystemPromptSection[];
   /** Their messages go after the history, in order. */
-  readonly messages: readonly Fragment<Message | Message[]>[];
+  readonly messages: readonly Fragment<FragmentMessage | FragmentMessage[]>[];
 };
 
 /**
@@ -242,7 +254,9 @@ export type PromptLayout = {
  * The rules:
  * - Loaders do all of the I/O. Core runs each needed loader once per step.
  * - Fragments are pure. `enabled` and `format` do no I/O, and read no clock
- *   and no random value, so the same inputs give the same prompt.
+ *   and no random value, so the same inputs give the same prompt. Their
+ *   messages have no timestamp: core gives each one the step's time, and
+ *   each input its send time.
  * - Message fragments only append. Their messages go after the history, and
  *   a later step sees them in its history. Core builds them only for a step
  *   that sends a model request, not for a step that runs tool calls.
@@ -265,9 +279,9 @@ export type PromptLayout = {
  *   loader: memories,
  *   // Recall only for a step that has new inputs.
  *   enabled: (ctx) => ctx.inputs.length > 0,
- *   format: (notes): Message | Skip =>
+ *   format: (notes): FragmentMessage | Skip =>
  *     notes && notes.length > 0
- *       ? { role: "user", content: notes.join("\n"), timestamp: 0 }
+ *       ? { role: "user", content: notes.join("\n") }
  *       : skip("no memories"),
  * });
  * const layout = definePromptLayout({
@@ -279,11 +293,7 @@ export type PromptLayout = {
  *     recalled,
  *     inputs({
  *       format: (input) => ({
- *         message: {
- *           role: "user",
- *           content: String(input.payload["text"]),
- *           timestamp: input.sentAt.getTime(),
- *         },
+ *         message: { role: "user", content: String(input.payload["text"]) },
  *         provenance: { authority: "instruction" },
  *       }),
  *     }),

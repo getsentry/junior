@@ -31,11 +31,7 @@ export type TurnInputPayload = z.output<typeof turnInputPayloadSchema>;
 function formatInput(input: UnreadInput): InputPrompt {
   const payload = turnInputPayloadSchema.parse(input.payload);
   return {
-    message: {
-      role: "user",
-      content: [{ type: "text", text: payload.text }],
-      timestamp: input.sentAt.getTime(),
-    },
+    message: { role: "user", content: [{ type: "text", text: payload.text }] },
     provenance: instructionProvenanceFor(payload.actor),
   };
 }

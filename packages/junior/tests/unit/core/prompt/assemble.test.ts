@@ -1,5 +1,5 @@
 import type { Message, UserMessage } from "@earendil-works/pi-ai";
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { assemblePrompt } from "@/core/prompt/assemble";
 import {
   definePromptLayout,
@@ -8,6 +8,7 @@ import {
   loader,
   skip,
   type Fragment,
+  type FragmentMessage,
   type InputPrompt,
   type PromptBuildContext,
   type PromptLayout,
@@ -27,30 +28,40 @@ const CTX: PromptBuildContext = {
   inputs: [],
 };
 
-function userText(content: string): UserMessage {
-  return { role: "user", content, timestamp: 0 };
+// The clock at assembly, and the send time of the test input.
+const STEP_TIME = 1_750_000_000_000;
+const INPUT_TIME = 1_000;
+
+/** A message as a fragment gives it, without a timestamp. */
+function note(content: string): Omit<UserMessage, "timestamp"> {
+  return { role: "user", content };
+}
+
+/** A message as the prompt has it, with the timestamp that core set. */
+function userText(content: string, timestamp = STEP_TIME): UserMessage {
+  return { role: "user", content, timestamp };
 }
 
 const INPUT: UnreadInput = {
   inputId: "input-1",
   actorIdentityId: "identity-1",
   payload: { text: "How many Turns?" },
-  sentAt: new Date(0),
+  sentAt: new Date(INPUT_TIME),
   traceContext: null,
   attemptedAt: null,
 };
 
 function formatInput(input: UnreadInput): InputPrompt {
   return {
-    message: userText(String(input.payload["text"])),
+    message: note(String(input.payload["text"])),
     provenance: { authority: "instruction" },
   };
 }
 
 /** `messages` with the inputs fragment after them, which a layout needs. */
 function withInputs(
-  messages: Fragment<Message | Message[]>[],
-): Fragment<Message | Message[]>[] {
+  messages: Fragment<FragmentMessage | FragmentMessage[]>[],
+): Fragment<FragmentMessage | FragmentMessage[]>[] {
   return [...messages, inputs({ format: formatInput })];
 }
 
@@ -74,6 +85,16 @@ function waitForAbort(_ctx: PromptBuildContext, signal: AbortSignal) {
 }
 
 describe("assemblePrompt", () => {
+  beforeEach(() => {
+    // Only the clock: the loader timeouts still run on real timers.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(STEP_TIME);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
   it("runs the loaders at the same time", async () => {
     const started = new Set<string>();
     let release = () => {};
@@ -99,7 +120,7 @@ describe("assemblePrompt", () => {
       systemPrompt: [],
       messages: withInputs(
         ["first", "second"].map((label) =>
-          fragment(label, { loader: waitForBoth(label), format: userText }),
+          fragment(label, { loader: waitForBoth(label), format: note }),
         ),
       ),
     });
@@ -129,7 +150,7 @@ describe("assemblePrompt", () => {
         ["first", "second", "third"].map((name) =>
           fragment(name, {
             loader: turnRow,
-            format: (row) => userText(`${name} ${row.turnId}`),
+            format: (row) => note(`${name} ${row.turnId}`),
           }),
         ),
       ),
@@ -164,7 +185,7 @@ describe("assemblePrompt", () => {
         fragment("memory", {
           loader: memory,
           enabled: (ctx) => ctx.inputs.length > 0,
-          format: (text) => userText(text),
+          format: (text) => note(text),
         }),
       ]),
     });
@@ -197,9 +218,9 @@ describe("assemblePrompt", () => {
         fragment("off", {
           loader: memory,
           enabled: () => false,
-          format: userText,
+          format: note,
         }),
-        fragment("on", { loader: memory, format: userText }),
+        fragment("on", { loader: memory, format: note }),
       ]),
     });
 
@@ -332,7 +353,7 @@ describe("assemblePrompt", () => {
         definePromptLayout({
           systemPrompt: [],
           messages: withInputs([
-            fragment("soul", { loader: failing, format: userText }),
+            fragment("soul", { loader: failing, format: note }),
           ]),
         }),
         CTX,
@@ -343,7 +364,7 @@ describe("assemblePrompt", () => {
         definePromptLayout({
           systemPrompt: [],
           messages: withInputs([
-            fragment("memory", { loader: slow, format: userText }),
+            fragment("memory", { loader: slow, format: note }),
           ]),
         }),
         CTX,
@@ -357,9 +378,7 @@ describe("assemblePrompt", () => {
       messages: withInputs([
         fragment("summary", {
           format: (_value, ctx) =>
-            ctx.inputs.length === 0
-              ? skip("no unread inputs")
-              : userText("Inputs"),
+            ctx.inputs.length === 0 ? skip("no unread inputs") : note("Inputs"),
         }),
       ]),
     });
@@ -377,18 +396,46 @@ describe("assemblePrompt", () => {
     ]);
   });
 
+  it("gives fragment messages one step time and inputs their send time", async () => {
+    const layout = definePromptLayout({
+      systemPrompt: [],
+      messages: [
+        fragment("first", {
+          format: () => {
+            // A later clock must not reach the next fragment's message.
+            vi.setSystemTime(STEP_TIME + 60_000);
+            return note("First");
+          },
+        }),
+        inputs({ format: formatInput }),
+        fragment("second", { format: () => note("Second") }),
+      ],
+    });
+
+    const { newMessages } = await assemble(layout, {
+      ...CTX,
+      inputs: [INPUT],
+    });
+
+    expect(newMessages.map(({ message }) => message.timestamp)).toEqual([
+      STEP_TIME,
+      INPUT_TIME,
+      STEP_TIME,
+    ]);
+  });
+
   it("keeps the layout order of the system prompt and the messages", async () => {
-    const history: Message[] = [userText("Earlier")];
+    const history: Message[] = [userText("Earlier", 0)];
     const layout = definePromptLayout({
       systemPrompt: [
         { name: "identity", text: "You are Junior." },
         { name: "world", text: "You work at Sentry." },
       ],
       messages: [
-        fragment("first", { format: () => userText("First") }),
+        fragment("first", { format: () => note("First") }),
         inputs({ format: formatInput }),
         fragment("pair", {
-          format: () => [userText("Second"), userText("Third")],
+          format: () => [note("Second"), note("Third")],
         }),
       ],
     });
@@ -400,7 +447,7 @@ describe("assemblePrompt", () => {
       messages: [
         ...history,
         userText("First"),
-        userText("How many Turns?"),
+        userText("How many Turns?", INPUT_TIME),
         userText("Second"),
         userText("Third"),
       ],
@@ -409,7 +456,7 @@ describe("assemblePrompt", () => {
         {
           source: "input",
           inputId: "input-1",
-          message: userText("How many Turns?"),
+          message: userText("How many Turns?", INPUT_TIME),
           provenance: { authority: "instruction" },
         },
         { source: "fragment", fragment: "pair", message: userText("Second") },
@@ -483,9 +530,9 @@ describe("assemblePrompt", () => {
       loader: memories,
       // Recall only for a step that has new inputs.
       enabled: (ctx) => ctx.inputs.length > 0,
-      format: (notes): Message | Skip =>
+      format: (notes): FragmentMessage | Skip =>
         notes && notes.length > 0
-          ? { role: "user", content: notes.join("\n"), timestamp: 0 }
+          ? { role: "user", content: notes.join("\n") }
           : skip("no memories"),
     });
     const layout = definePromptLayout({
@@ -497,11 +544,7 @@ describe("assemblePrompt", () => {
         recalled,
         inputs({
           format: (input) => ({
-            message: {
-              role: "user",
-              content: String(input.payload["text"]),
-              timestamp: input.sentAt.getTime(),
-            },
+            message: { role: "user", content: String(input.payload["text"]) },
             provenance: { authority: "instruction" },
           }),
         }),
@@ -520,7 +563,7 @@ describe("assemblePrompt", () => {
       systemPrompt: "You are Junior, Sentry's Slack bot.\n\nBe direct.",
       messages: [
         userText("Thomas likes short replies."),
-        userText("How many Turns?"),
+        userText("How many Turns?", INPUT_TIME),
       ],
       newMessages: [
         {
@@ -531,7 +574,7 @@ describe("assemblePrompt", () => {
         {
           source: "input",
           inputId: "input-1",
-          message: userText("How many Turns?"),
+          message: userText("How many Turns?", INPUT_TIME),
           provenance: { authority: "instruction" },
         },
       ],

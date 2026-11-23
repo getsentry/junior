@@ -14,7 +14,7 @@ const turnRow = loader(
 );
 
 function userText(content: string) {
-  return { role: "user" as const, content, timestamp: 0 };
+  return { role: "user" as const, content };
 }
 
 function inputsFragment() {
