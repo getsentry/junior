@@ -101,7 +101,7 @@ arrive:
 - Embeddable only on the listed hostnames.
 - Not downloadable, with comments and adding to showcases turned off.
 
-Replacing a file keeps the video's ID, hash, privacy, and thumbnail.
+Replacing a file keeps the video's ID, hash, privacy, and embed domains.
 
 ## Capabilities
 
