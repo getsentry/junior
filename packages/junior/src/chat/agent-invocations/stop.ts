@@ -271,9 +271,7 @@ export async function reportPersonStopToParent(
     return parentMessage ? [parentMessage] : [];
   });
   const [turn] = runId ? await listActiveMailboxTurns(conversationId) : [];
-  const cutsTurn =
-    runId !== undefined &&
-    !runsPersonInput(turn, work?.execution.pendingMessages ?? []);
+  const cutsTurn = runId !== undefined && !runsPersonInput(turn, work);
   if (!cutsTurn && !firstWaiting) {
     return;
   }

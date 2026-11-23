@@ -407,12 +407,11 @@ export function createEndStoppedChildWork(options: {
     // a reply that the parent already has. Its Turn id comes from its record
     // or, before the first save, from its input, which is still pending.
     // `inboundMessageIds` also holds the input of earlier Turns.
-    const pending =
-      (await getConversationWorkState({ conversationId }))?.execution
-        .pendingMessages ?? [];
-    if (runsPersonInput(turns[0], pending)) {
+    const work = await getConversationWorkState({ conversationId });
+    if (runsPersonInput(turns[0], work)) {
       return;
     }
+    const pending = work?.execution.pendingMessages ?? [];
     const turnIds = new Set([
       ...turns.map((turn) => turn.turnId),
       ...pending.map((message) =>
