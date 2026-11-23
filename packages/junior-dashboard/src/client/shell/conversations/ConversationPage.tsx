@@ -29,7 +29,7 @@ import { useConversationSubscription } from "../../conversations/useConversation
 import { useConversationDelivery } from "../../conversations/useConversationDelivery";
 import { useRenameConversation } from "../../conversations/useRenameConversation";
 import {
-  conversationIsResponding,
+  conversationShowsThinking,
   isChildConversation,
 } from "../../conversations/transcript";
 import {
@@ -910,7 +910,7 @@ export function ConversationPage(props: {
                       responding={
                         !detail.error &&
                         !history.newer &&
-                        conversationIsResponding(detail.data)
+                        conversationShowsThinking(detail)
                       }
                       onOpenSubagentTranscript={onOpenSubagentTranscript}
                       search={search}
