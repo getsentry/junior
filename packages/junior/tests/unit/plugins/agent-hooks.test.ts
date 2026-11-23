@@ -2134,7 +2134,7 @@ describe("getPluginTools channel resolution", () => {
     expect(ctx.slack?.channelCapabilities.canPostToChannel).toBe(false);
   });
 
-  it("exposes Slack context and Actor for an Agent invocation", () => {
+  it("exposes Slack context and Actor for a Parent message", () => {
     const ctx = capturePluginContext({
       turnTools: rootTurnTools,
       conversationId: "agent-invocation:invocation-1",

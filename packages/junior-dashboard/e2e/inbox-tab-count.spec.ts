@@ -11,9 +11,18 @@ async function mockInboxCount(page: Page, count: { value: number }) {
         decisions: count.value,
         needsViewer: count.value,
         snoozed: 0,
+        todos: 0,
       },
     }),
   );
+}
+
+// The selected item's transcript reads its earlier pages back to the first
+// message.
+async function transcriptReadToStart(page: Page) {
+  await expect(
+    page.getByText("Question 1: review the checkout error budget."),
+  ).toBeAttached();
 }
 
 // Record every title write. A pinned tab marks each one as an update.
@@ -55,6 +64,7 @@ test("the tab title and icon count the Inbox until it is zero", async ({
   await page.reload();
   await expect(page).toHaveTitle("Inbox - Junior");
   await expect(icon).toHaveAttribute("href", "/favicon.ico");
+  await transcriptReadToStart(page);
 });
 
 test("the tab icon count fills the top-left corner, clear of the eye", async ({
@@ -101,6 +111,7 @@ test("the tab icon count fills the top-left corner, clear of the eye", async ({
       .map(([name]) => name);
   }, href);
   expect(accentSpots).toEqual(["badgeRight", "topLeft"]);
+  await transcriptReadToStart(page);
 });
 
 test("turning off the tab count hides it in the title and on the icon", async ({
@@ -141,6 +152,7 @@ test("moving between pages never flashes the bare agent name in the tab", async 
   await expect(page).toHaveTitle("(1) Automations - Junior");
   await page.goBack();
   await expect(page).toHaveTitle("(1) Inbox - Junior");
+  await transcriptReadToStart(page);
 
   const all = await recordedTitles(page);
   // From the first counted title on: the count loads after the page title.

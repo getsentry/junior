@@ -8,6 +8,7 @@ import {
   gt,
   ilike,
   inArray,
+  like,
   isNull,
   lt,
   not,
@@ -41,15 +42,16 @@ import {
 import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import {
   PLUGIN_INBOX_ITEM_KEY_PREFIX,
+  TODO_INBOX_ITEM_KEY_PREFIX,
   inboxItemAssignedTo,
   inboxItemForUser,
   inboxItemLinkedTo,
   inboxItemNeedsUser,
   inboxItemOwnedByConversation,
-  inboxItemPlugin,
   inboxItemVisibleTo,
   type InboxItemReader,
 } from "./access";
+import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
 import type { InboxItemRequest } from "./evidence";
 
 type InboxItemKind = "notice" | "action";
@@ -339,11 +341,27 @@ export async function getInboxItem(
   return (await hydrate(db, rows))[0];
 }
 
+/** Return whether one Inbox item is open. */
+export async function isInboxItemOpen(
+  db: JuniorDatabase,
+  id: string,
+): Promise<boolean> {
+  const rows = await db
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
+    .where(
+      and(eq(juniorInboxItems.id, id), eq(juniorInboxItems.status, "open")),
+    )
+    .limit(1);
+  return rows.length > 0;
+}
+
 /**
  * Read the action items that the agent added in one Conversation and that a
  * reply can answer: the open items, and the items that a reply closed. A
  * plugin's items are left out: the plugin closes them when its provider
- * state changes, such as when a pull request merges.
+ * state changes, such as when a pull request merges. A To-do's items are
+ * left out too: they close when the To-do does.
  */
 export async function listReplyActionItems(
   db: JuniorDatabase,
@@ -357,6 +375,7 @@ export async function listReplyActionItems(
         inboxItemOwnedByConversation(conversationId),
         eq(juniorInboxItems.kind, "action"),
         notLike(juniorInboxItems.dedupeKey, `${PLUGIN_INBOX_ITEM_KEY_PREFIX}%`),
+        notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
         or(
           eq(juniorInboxItems.status, "open"),
           eq(juniorInboxItems.closeReason, INBOX_ITEM_REPLIED_REASON),
@@ -517,8 +536,10 @@ export async function closeInboxItem(
       ),
     )
     .returning(ownerColumns);
+  if (updated.length === 0) return false;
+  await clearInboxItemDeliveries(db, [input.id], input.nowMs);
   await touchConversationDetail(db, ownerConversationIds(updated));
-  return updated.length > 0;
+  return true;
 }
 
 /**
@@ -563,7 +584,12 @@ export async function dismissOpenInboxItems(
               ),
       ),
     )
-    .returning(ownerColumns);
+    .returning({ ...ownerColumns, id: juniorInboxItems.id });
+  await clearInboxItemDeliveries(
+    db,
+    dismissed.map((item) => item.id),
+    input.nowMs,
+  );
   await touchConversationDetail(db, ownerConversationIds(dismissed));
 }
 
@@ -593,6 +619,13 @@ export async function takeInboxItem(
     await tx
       .insert(juniorInboxItemAssignees)
       .values({ itemId: input.id, userId: input.userId });
+    // The taker is now an assignee, but needs no push for their own take.
+    await claimInboxItemPush(tx, {
+      itemId: input.id,
+      nowMs: input.nowMs,
+      skipReason: "taken",
+      userId: input.userId,
+    });
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;
   });
@@ -762,14 +795,14 @@ function searchConditions(
  * SQL: the Inbox item needs the User now: `inboxItemNeedsUser`, and the
  * User has not snoozed it.
  */
-function inboxItemNeedsUserNow(userId: string): SQL {
+export function inboxItemNeedsUserNow(userId: string): SQL {
   return and(inboxItemNeedsUser(userId), not(inboxItemSnoozedBy(userId)))!;
 }
 
 /**
  * Count the open Inbox items that need a User (`inboxItemNeedsUser`), one
- * row per subject URL, with the ones that ask with a form as `decisions`
- * and the Automation alerts as `automations`.
+ * row per subject URL, with the ones that ask with a form as `decisions`,
+ * the Automation alerts as `automations`, and the To-dos as `todos`.
  * The nav count and the Inbox bundle counts all read this one query. A
  * snoozed item does not count until it wakes.
  */
@@ -781,6 +814,7 @@ export async function countInboxItemsNeedingUserBySubject(
     automations: number;
     decisions: number;
     subjectUrl: string | null;
+    todos: number;
     total: number;
   }>
 > {
@@ -792,6 +826,10 @@ export async function countInboxItemsNeedingUserBySubject(
         ),
       decisions: count(juniorInboxItems.request),
       subjectUrl: juniorInboxItems.subjectUrl,
+      todos:
+        sql<number>`count(*) filter (where ${like(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`)})`.mapWith(
+          Number,
+        ),
       total: count(),
     })
     .from(juniorInboxItems)
@@ -867,101 +905,4 @@ export async function searchInboxItems(
     ...item,
     ownerRootConversationId: rows[index]!.ownerRootConversationId,
   }));
-}
-
-/** One open Inbox item that a Conversation waits on a User for. */
-type WaitingItem = {
-  /** The plugin that added the item, such as `github`. Unset for an agent. */
-  plugin?: string;
-  title: string;
-};
-
-/** One Conversation that waits on a User, with its open Inbox items. */
-export type WaitingConversation = {
-  conversationId: string;
-  /** Open Inbox items on this Conversation that need the User, newest first. */
-  items: WaitingItem[];
-  /** When the oldest of those items was added: when the wait began. */
-  waitingSince: string;
-};
-
-// The root of a linked Conversation. An item that a child agent adds links
-// the child, and the feed lists only roots.
-const waitingRootId = sql<string>`coalesce(${juniorConversations.rootConversationId}, ${juniorInboxItemConversations.conversationId})`;
-
-/**
- * Return a query for the ids of the root Conversations that wait on a User,
- * as `listWaitingConversations` lists them, to filter another query by.
- */
-export function waitingConversationIdsQuery(
-  db: JuniorDatabase,
-  userId: string,
-) {
-  return db
-    .select({ conversationId: waitingRootId })
-    .from(juniorInboxItemConversations)
-    .innerJoin(
-      juniorInboxItems,
-      eq(juniorInboxItems.id, juniorInboxItemConversations.itemId),
-    )
-    .leftJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorInboxItemConversations.conversationId,
-      ),
-    )
-    .where(inboxItemNeedsUserNow(userId));
-}
-
-/**
- * List the root Conversations that wait on a User: each root or one of its
- * child conversations is linked to an open item that needs the User now
- * (`inboxItemNeedsUserNow`), so a snoozed item leaves it out.
- */
-export async function listWaitingConversations(
-  db: JuniorDatabase,
-  userId: string,
-): Promise<WaitingConversation[]> {
-  const rows = await db
-    .selectDistinct({
-      conversationId: waitingRootId,
-      itemId: juniorInboxItems.id,
-      dedupeKey: juniorInboxItems.dedupeKey,
-      title: juniorInboxItems.title,
-      createdAt: juniorInboxItems.createdAt,
-    })
-    .from(juniorInboxItemConversations)
-    .innerJoin(
-      juniorInboxItems,
-      eq(juniorInboxItems.id, juniorInboxItemConversations.itemId),
-    )
-    .leftJoin(
-      juniorConversations,
-      eq(
-        juniorConversations.conversationId,
-        juniorInboxItemConversations.conversationId,
-      ),
-    )
-    .where(inboxItemNeedsUserNow(userId))
-    .orderBy(desc(juniorInboxItems.createdAt), desc(juniorInboxItems.id));
-  const waiting = new Map<string, WaitingConversation>();
-  for (const row of rows) {
-    const plugin = inboxItemPlugin(row.dedupeKey);
-    const item = { title: row.title, ...(plugin ? { plugin } : undefined) };
-    const current = waiting.get(row.conversationId);
-    // Rows come newest first, so each later row is older.
-    if (current) {
-      current.items.push(item);
-      current.waitingSince = row.createdAt.toISOString();
-    } else
-      waiting.set(row.conversationId, {
-        conversationId: row.conversationId,
-        items: [item],
-        waitingSince: row.createdAt.toISOString(),
-      });
-  }
-  return [...waiting.values()].sort((left, right) =>
-    left.conversationId.localeCompare(right.conversationId),
-  );
 }

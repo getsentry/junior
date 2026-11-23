@@ -26,7 +26,7 @@ export type ParentMessage = z.output<typeof parentMessageSchema>;
 
 /**
  * Read the parent message that one mailbox input is, if it is one. Check its
- * sender with `isFromStoredParent` before it gets any authority.
+ * sender with `readChildOfStoredParent` before it gets any authority.
  */
 export function readParentMessage(
   message: InboundMessage,

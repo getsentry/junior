@@ -83,6 +83,7 @@ it("keeps other links and labels as text", () => {
     "<https://other.example.com/conversations/a|Elsewhere>",
     `<${ORIGIN}/conversations/a?message=1|With a query>`,
     `<${ORIGIN}/people/a|A person>`,
+    "<https://other.example.com/memories/a|Elsewhere>",
     "<https://github.com/getsentry/junior/pull/1|my fix>",
     "<https://github.com/getsentry/junior/issues/1|getsentry/junior#1>",
     "<#C123> and <https://example.com|a page>",
@@ -107,10 +108,15 @@ it("writes each reference as the token that it reads back from", () => {
       url: "https://github.com/getsentry/sentry-docs/pull/15120",
     },
     { kind: "channel" as const, channelId: "C456", name: "proj-release" },
+    {
+      kind: "memory" as const,
+      title: "Use pnpm for repository commands.",
+      url: `${ORIGIN}/memories/memory-pnpm`,
+    },
   ];
   const text = references.map(referenceText).join(" ");
   expect(text).toBe(
-    `<${ORIGIN}/conversations/junior%3At|Review the plan> <https://github.com/getsentry/sentry-docs/pull/15120|getsentry/sentry-docs#15120> <#C456|proj-release>`,
+    `<${ORIGIN}/conversations/junior%3At|Review the plan> <https://github.com/getsentry/sentry-docs/pull/15120|getsentry/sentry-docs#15120> <#C456|proj-release> <${ORIGIN}/memories/memory-pnpm|Use pnpm for repository commands.>`,
   );
   expect(
     splitComposerText(text, ORIGIN).flatMap((part) =>
@@ -124,9 +130,10 @@ it("writes each reference as the token that it reads back from", () => {
 it("lists the linked work that a message references, once each", () => {
   const conversation = `${ORIGIN}/conversations/a`;
   const pull = "https://github.com/getsentry/junior/pull/3842";
+  // A memory is not work.
   expect(
     linkedWorkUrls(
-      `<${conversation}|A> <${pull}|getsentry/junior#3842> <#C1|ops> <${conversation}|A again>`,
+      `<${conversation}|A> <${pull}|getsentry/junior#3842> <#C1|ops> <${ORIGIN}/memories/m|M> <${conversation}|A again>`,
       ORIGIN,
     ),
   ).toEqual([conversation, pull]);

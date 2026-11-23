@@ -1,7 +1,12 @@
 import { mockAutomationCollection } from "../../src/mock-reporting/automation-collection";
 import { automationReport } from "./automation-fixture";
 import { startDashboardE2eServer } from "../harness";
-import { automationAlert, mockInboxItems, openRow } from "./inbox-fixture";
+import {
+  automationAlert,
+  license,
+  mockInboxItems,
+  openRow,
+} from "./inbox-fixture";
 import { expect, test } from "../test";
 import { mobile, screenshot } from "../screenshot";
 
@@ -17,9 +22,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(dashboard.baseURL);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
-    // One list of labelled rows: the Lead, the Inbox views, Conversations
-    // and Automations. The Inbox filters its asks by type, so the pane has no
-    // rows for them. No tab bar sits above them.
+    // One list of labelled rows: the Lead, the Inbox views, Conversations,
+    // Code, and Automations. The Inbox filters its asks by type, so the pane
+    // has no rows for them. No tab bar sits above them.
     await expect(page.getByRole("tablist")).toHaveCount(0);
     const rows = primary.getByRole("link");
     const names = [
@@ -28,6 +33,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       "Snoozed",
       "Done",
       "Conversations",
+      "Code",
       /^Automations/,
     ];
     for (const [index, name] of names.entries())
@@ -209,9 +215,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/review?bundle=automations`);
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
     // The pane stays on the Automation pages too.
+    const runsRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations/runs",
+    );
     await page.goto(`${dashboard.baseURL}/automations/runs`);
     await expect(automations).toHaveAttribute("aria-current", "page");
     await expect(primary.getByRole("link", { name: /^Inbox/ })).toBeVisible();
+    await runsRead;
   });
 
   test("an old Automations link does not become the Inbox's place", async ({
@@ -326,13 +337,24 @@ test.describe("new UI", { tag: "@new" }, () => {
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations/runs`);
     // A press on the row that shows goes back to its top level.
+    const listRead = page.waitForResponse(
+      (response) =>
+        new URL(response.url()).pathname === "/api/automations" &&
+        new URL(response.url()).searchParams.get("pageSize") === "100",
+    );
     await automations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/automations`);
+    await listRead;
 
-    // The pane's search bar opens the command palette.
+    // The pane's search bar opens the command palette, which reads the
+    // viewer's Automations when it opens.
     await page.getByRole("button", { name: /^Search/ }).click();
     await expect(
-      page.getByRole("dialog", { name: "Go to conversation" }),
+      page
+        .getByRole("dialog", { name: "Go to conversation" })
+        .getByRole("group", { name: "Automations" })
+        .getByRole("option")
+        .first(),
     ).toBeVisible();
   });
 
@@ -358,10 +380,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     const backToInbox = page.getByRole("link", { name: "Back to Inbox" });
 
     // A direct link has no origin, so Conversations owns the page, and
-    // Back goes there.
+    // Back goes there. The view is the list the page is in, not the page.
     await page.goto(conversationUrl);
     await expect(title).toBeVisible();
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
     await expect(inbox).not.toHaveAttribute("aria-current");
     await expect(backToConversations).toHaveAttribute(
       "href",
@@ -369,20 +391,20 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await backToConversations.click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
+    await expect(conversations).toHaveAttribute("aria-current", "page");
 
     // Opened from Conversations, it stays there after a reload, Back, and
     // Forward.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
     await openRow(
       page
         .getByRole("region", { exact: true, name: "Conversations" })
         .getByRole("link", { name: /Checkout latency triage/ }),
     );
     await expect(page).toHaveURL(conversationUrl);
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
     await page.reload();
     await expect(title).toBeVisible();
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
     await expect(inbox).not.toHaveAttribute("aria-current");
     await expect(backToConversations).toHaveAttribute(
       "href",
@@ -392,25 +414,72 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page).toHaveURL(`${dashboard.baseURL}/?view=conversations`);
     await page.goForward();
     await expect(title).toBeVisible();
-    await expect(conversations).toHaveAttribute("aria-current", "page");
+    await expect(conversations).toHaveAttribute("aria-current", "true");
 
-    // Opened from the Inbox, it stays in the Inbox after a reload. The
-    // Inbox lists no Conversations, so it opens from In flight.
+    // Opened from the Inbox, it stays in the Inbox after a reload. Its
+    // In flight row is the page, so only that row is fully marked.
     await page.goto(dashboard.baseURL);
-    await page
+    const inFlightRow = page
       .getByRole("list", { name: "In flight" })
-      .getByRole("link", { name: /Investigate checkout latency/ })
-      .click();
+      .getByRole("link", { name: /Investigate checkout latency/ });
+    await inFlightRow.click();
     const running = page.getByRole("heading", {
       name: "Investigate checkout latency",
     });
     await expect(running).toBeVisible();
-    await expect(inbox).toHaveAttribute("aria-current", "page");
+    await expect(inFlightRow).toHaveAttribute("aria-current", "page");
+    await expect(inbox).toHaveAttribute("aria-current", "true");
     await page.reload();
     await expect(running).toBeVisible();
-    await expect(inbox).toHaveAttribute("aria-current", "page");
+    await expect(inFlightRow).toHaveAttribute("aria-current", "page");
+    await expect(inbox).toHaveAttribute("aria-current", "true");
     await expect(conversations).not.toHaveAttribute("aria-current");
     await expect(backToInbox).toHaveAttribute("href", "/");
+    await screenshot(page, "navigation-origin-in-flight", { lightTheme: true });
+
+    // The Lead is a Conversation with its own row, so that row is the page.
+    const lead = primary.getByRole("link", { exact: true, name: "Lead" });
+    await lead.click();
+    await expect(lead).toHaveAttribute("aria-current", "page");
+    await expect(inbox).not.toHaveAttribute("aria-current");
+  });
+
+  test("marks the Inbox, but not as the page, for a Conversation it opened", async ({
+    page,
+    dashboard,
+  }) => {
+    // An ask from a Conversation that is not in flight.
+    const triage = "slack:CQA123:1770000000.000100";
+    await mockInboxItems(page, {
+      open: [
+        {
+          ...license,
+          conversationIds: [triage],
+          owner: { id: triage, kind: "conversation" },
+          rootConversationId: triage,
+        },
+      ],
+    });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto(dashboard.baseURL);
+    const primary = page.getByRole("navigation", { name: "Primary" });
+    const inbox = primary.getByRole("link", { name: /^Inbox/ });
+    await expect(inbox).toHaveAttribute("aria-current", "page");
+
+    await openRow(
+      page
+        .getByRole("region", { name: "To do" })
+        .getByRole("link", { name: /Review the acme license entry/ })
+        .first(),
+    );
+    await expect(page).toHaveURL(
+      /\/conversations\/slack%3ACQA123%3A1770000000/,
+    );
+    await expect(
+      page.getByRole("heading", { name: "Checkout latency triage" }),
+    ).toBeVisible();
+    await expect(inbox).toHaveAttribute("aria-current", "true");
+    await screenshot(page, "navigation-origin-inbox", { lightTheme: true });
   });
 
   test("keeps the density choice", async ({ page, dashboard }) => {
@@ -436,8 +505,22 @@ test.describe("new UI", { tag: "@new" }, () => {
       .click();
     await expect(root).toHaveAttribute("data-density", "comfortable");
     await expect(summary).toHaveClass(/line-clamp-2/);
-    await page.reload();
+    await page.reload({ waitUntil: "commit" });
+    // The rows read the cards of their links again after the reload. Wait
+    // from the commit of the new document, so a read from the page before
+    // the reload does not count.
+    const cardsRead = ["pull/5378", "people/dev"].map((link) =>
+      page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return (
+          url.pathname === "/api/objects" &&
+          url.searchParams.getAll("url").some((value) => value.includes(link))
+        );
+      }),
+    );
     await expect(root).toHaveAttribute("data-density", "comfortable");
+    await expect(summary).toHaveClass(/line-clamp-2/);
+    await Promise.all(cardsRead);
   });
 
   test("hides and restores the panels with the shortcuts and Zen mode", async ({

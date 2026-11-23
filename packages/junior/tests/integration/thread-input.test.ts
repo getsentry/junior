@@ -212,13 +212,17 @@ describe("Thread input", () => {
         destination: slackDestination,
         kind: "thread",
       });
-      // A person's Turn sends nothing to the parent, and a parent task's
-      // Turn without a `reply` sends nothing either.
+      // The parent task's Turn ended its work with `noReply`, so the parent
+      // has its result. The person's Turn sends the parent nothing.
       const parentWork = await getConversationWorkState({
         conversationId: slackParentConversationId,
         state: harness.state,
       });
-      expect(parentWork?.messages ?? []).toEqual([]);
+      expect(
+        (parentWork?.messages ?? []).map((message) => message.input.text),
+      ).toEqual([
+        expect.stringMatching(/^<agent-result [^>]*status="completed"/),
+      ]);
     } finally {
       await harness.close();
     }

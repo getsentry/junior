@@ -1,4 +1,5 @@
 import type { ActorIdentity } from "@sentry/junior/api/schema";
+import { markdownPlainText } from "@sentry/junior-plugin-api";
 
 import { plainTextTokens } from "./mentions";
 import { SLACK_LINK_RE } from "./links";
@@ -16,14 +17,9 @@ export function displayPlainText(
 }
 
 function stripMarkdown(text: string): string {
-  return text
-    .replace(SLACK_LINK_RE, (_, url: string, label?: string) =>
+  return markdownPlainText(
+    text.replace(SLACK_LINK_RE, (_, url: string, label?: string) =>
       label?.trim() ? label.trim() : url,
-    )
-    .replace(/\[([^\]]+)\]\([^\s)]+(?:\s+"[^"]*")?\)/g, "$1")
-    .replace(/(^|\s)([*_~`]{1,3})(?=\S)/g, "$1")
-    .replace(/([*_~`]{1,3})(?=\s|$|[.,!?;:])/g, "")
-    .replace(/^\s*(?:#{1,6}|[-+*]|\d+\.)\s+/gm, "")
-    .replace(/\s+/g, " ")
-    .trim();
+    ),
+  );
 }

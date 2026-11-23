@@ -8,8 +8,9 @@ export {
 } from "../chat/attachments/input";
 export type { InputFile, MessageAttachment } from "../chat/attachments/input";
 export {
-  AGENT_REPLY_EVENT_TYPE,
+  AGENT_UPDATE_EVENT_TYPE,
   isAgentInvocationResultEventType,
+  isAgentUpdateEventType,
 } from "../chat/agent-invocations/result-event-type";
 export { webMessageId } from "../chat/conversations/web-message-id";
 export {
@@ -492,5 +493,14 @@ export type {
   InboxSnoozeTrigger,
   InboxSnoozeWake,
 } from "./schema/inbox-snooze";
+export { searchQuerySchema, searchReportSchema } from "./schema/search";
+export type {
+  SearchAutomation,
+  SearchInboxItem,
+  SearchMemory,
+  SearchReport,
+  SearchSource,
+  SearchTodo,
+} from "./schema/search";
 export { VERSIONS_CONVERSATION_LIMIT, versionsSchema } from "./schema/versions";
 export type { Versions } from "./schema/versions";

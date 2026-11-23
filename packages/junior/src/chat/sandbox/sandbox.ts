@@ -494,7 +494,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
-      throw new ToolInputError("path is required");
+      throw new ToolInputError(
+        "path is required. Set path to a file path in the sandbox.",
+      );
     }
     const offset = positiveInteger(rawInput["offset"]);
     const limit = positiveInteger(rawInput["limit"]);
@@ -581,7 +583,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
-      throw new ToolInputError("path is required");
+      throw new ToolInputError(
+        "path is required. Set path to a file path in the sandbox.",
+      );
     }
 
     const workspacePath = resolveWorkspacePath(filePath);
@@ -625,10 +629,14 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
   ) => {
     const filePath = String(rawInput["path"] ?? "").trim();
     if (!filePath) {
-      throw new ToolInputError("path is required");
+      throw new ToolInputError(
+        "path is required. Set path to a file path in the sandbox.",
+      );
     }
     if (!Array.isArray(rawInput["edits"])) {
-      throw new ToolInputError("edits is required");
+      throw new ToolInputError(
+        "edits is required. Set edits to a list of { old_text, new_text } replacements.",
+      );
     }
 
     logSandboxBootRequest("tool.editFile", {
@@ -666,7 +674,9 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
 
     if (params.toolName === "bash") {
       if (!bashCommand) {
-        throw new ToolInputError("command is required");
+        throw new ToolInputError(
+          "command is required. Set command to the shell command to run.",
+        );
       }
     }
 
@@ -749,7 +759,7 @@ export function createSandbox(options: SandboxOptions): SandboxAccess {
         async (sandbox) => {
           if (!sandbox.createPreview) {
             throw new ToolInputError(
-              "This sandbox provider cannot create previews.",
+              "This sandbox provider cannot create previews. No change to the call can fix this; continue without a preview.",
             );
           }
           return await sandbox.createPreview(port);

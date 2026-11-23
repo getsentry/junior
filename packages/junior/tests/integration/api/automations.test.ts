@@ -747,6 +747,7 @@ describe("Automations API", () => {
         decisions: 1,
         needsViewer: 2,
         snoozed: 0,
+        todos: 0,
       });
       expect((await list("state=unavailable")).total).toBe(2);
       const lastPage = await list("page=21");

@@ -65,6 +65,13 @@ test.describe("new UI", { tag: "@new" }, () => {
         }),
       })
       .first();
+    // Opening the tool rows is reading them, so the page saves the read
+    // position.
+    const readSaved = page.waitForResponse(
+      (response) =>
+        response.request().method() === "PUT" &&
+        new URL(response.url()).pathname.endsWith("/read-position"),
+    );
     await activity
       .locator(':scope > [data-slot="collapsible-trigger"]')
       .click();
@@ -88,6 +95,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(toolResult).toBeVisible();
     await page.getByPlaceholder("Search transcript…").fill("");
     await expect(toolResult).toBeHidden();
+    await readSaved;
   });
 
   test("inspects all reporting events and steps through event details", async ({

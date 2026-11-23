@@ -366,7 +366,7 @@ describe("conversation stop API", () => {
 
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent.reply"]);
+    ).resolves.toEqual(["agent.update"]);
     const [stopped] =
       (
         await getConversationWorkState({
@@ -452,7 +452,7 @@ describe("conversation stop API", () => {
     });
     await expect(
       parentMailboxEventTypes(created.conversationId, state),
-    ).resolves.toEqual(["agent.reply"]);
+    ).resolves.toEqual(["agent.update"]);
 
     const response = await stopRequest(
       fixture,

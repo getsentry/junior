@@ -16,6 +16,7 @@ import { useSheet } from "../ui/useSheet";
 import {
   MobileHeaderActionsSlot,
   MobileHeaderTagsSlot,
+  MobileHeaderTitleSlot,
   MobileSecondaryNavigationSlot,
   useMobileHeaderBack,
   useRegisterOpenMobileNavigation,
@@ -222,8 +223,9 @@ export function DashboardHeader(props: {
         )}
         {conversationMode ? (
           <div className="col-start-2 row-start-1 flex min-w-0 items-center gap-2">
+            <MobileHeaderTitleSlot />
             {mobileTitle ? (
-              <h1 className="m-0 min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text">
+              <h1 className="m-0 hidden min-w-0 truncate text-left font-display text-sm font-medium text-dashboard-text peer-empty/title:block">
                 {mobileTitle}
               </h1>
             ) : null}

@@ -4,8 +4,10 @@
  */
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
+  PluginConversationAnnotations,
   PluginConversationInboxItems,
   PluginRoute,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { http, HttpResponse } from "msw";
@@ -15,6 +17,7 @@ import {
   juniorGitHubPullRequests,
 } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
+import { conversationChangesThrough } from "./conversation-changes";
 import type { GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import { memoryState } from "./plugin-harness";
@@ -52,12 +55,12 @@ export const repository = {
   owner: { login: "getsentry" },
 };
 
-export function checkSuiteCompleted() {
+export function checkSuiteCompleted(conclusion = "success") {
   return signedRequest(
     {
       action: "completed",
       check_suite: {
-        conclusion: "success",
+        conclusion,
         head_sha: "abcdef1234567890",
         id: 77,
         pull_requests: [
@@ -188,12 +191,28 @@ export interface GitHubState {
   /** The review requests on the pull request's timeline. */
   reviewRequests?: Array<{ at: string; login: string }>;
   reviews: Array<{
+    body?: string;
     commit_id?: string;
+    /** The ids of the review's inline comments. */
+    comments?: number[];
     id?: number;
     state: string;
     submitted_at?: string;
     user: { login: string };
   }>;
+  /**
+   * Junior's feedback reactions, by `review:<id>` for a review body and
+   * `comment:<id>` for an inline comment.
+   */
+  feedback?: Record<string, string>;
+  /** Feedback keys that GitHub's GraphQL read does not show yet. */
+  laggingFeedback?: string[];
+  /** GitHub rejects review requests, such as during an outage. */
+  rejectReviewRequests?: boolean;
+  /** The checks of the head commit. */
+  checks?: Array<{ conclusion: string | null; name: string; status: string }>;
+  /** The checks that a ruleset of the base branch requires. */
+  requiredChecks?: string[];
   state: "closed" | "open";
   /** The pull request title. */
   title?: string;
@@ -232,7 +251,93 @@ function reviewsPage(github: GitHubState, before: number) {
   };
 }
 
+// The bot's reactions in GraphQL, as reaction groups.
+function graphqlReactionGroups(github: GitHubState, key: string) {
+  return github.laggingFeedback?.includes(key)
+    ? []
+    : botReactionGroups(github, key);
+}
+
+function botReactionGroups(github: GitHubState, key: string) {
+  const content = github.feedback?.[key];
+  return content
+    ? [
+        {
+          content: { "+1": "THUMBS_UP", "-1": "THUMBS_DOWN", eyes: "EYES" }[
+            content
+          ],
+          reactors: { nodes: [{ databaseId: BOT_USER_ID }] },
+        },
+      ]
+    : [];
+}
+
+// What the feedback tool and the check suite webhook read to decide
+// whether to ask a reviewer again.
+function reviewAgainPull(github: GitHubState, reviewer: string) {
+  const review = github.reviews
+    .filter(
+      (item) =>
+        item.user.login.toLowerCase() === reviewer.toLowerCase() &&
+        item.state !== "COMMENTED",
+    )
+    .at(-1);
+  return {
+    baseRef: { refUpdateRule: null },
+    baseRefName: "main",
+    commits: {
+      nodes: [
+        {
+          commit: {
+            statusCheckRollup: {
+              contexts: {
+                nodes: (github.checks ?? []).map((check) => ({
+                  __typename: "CheckRun",
+                  ...check,
+                })),
+                pageInfo: { hasNextPage: false },
+              },
+            },
+          },
+        },
+      ],
+    },
+    reviewRequests: {
+      nodes: (github.requestedReviewers ?? []).map((login) => ({
+        requestedReviewer: { __typename: "User", login },
+      })),
+    },
+    reviews: {
+      nodes: review
+        ? [
+            {
+              body: review.body ?? "Please change this.",
+              databaseId: review.id ?? null,
+              comments: {
+                nodes: (review.comments ?? []).map((id) => ({
+                  databaseId: id,
+                  reactionGroups: graphqlReactionGroups(
+                    github,
+                    `comment:${id}`,
+                  ),
+                })),
+                totalCount: review.comments?.length ?? 0,
+              },
+              reactionGroups: graphqlReactionGroups(
+                github,
+                `review:${review.id}`,
+              ),
+              state: review.state,
+            },
+          ]
+        : [],
+    },
+  };
+}
+
 export function mockGitHub(github: GitHubState, requests: string[]) {
+  const reviewOfComment = (id: number) =>
+    github.reviews.find((review) => review.comments?.includes(id));
   mswServer.use(
     http.post(
       "https://api.github.com/app/installations/456/access_tokens",
@@ -295,11 +400,98 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
         return HttpResponse.json({ ...review, node_id: `PRR_${review?.id}` });
       },
     ),
+    // The feedback tool reads one inline comment, and sets its reaction.
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/pulls/comments/:id",
+      ({ params }) =>
+        HttpResponse.json({
+          pull_request_url:
+            "https://api.github.com/repos/getsentry/junior/pulls/946",
+          user: reviewOfComment(Number(params["id"]))?.user ?? null,
+        }),
+    ),
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/pulls/comments/:id/reactions",
+      ({ params }) => {
+        const content = github.feedback?.[`comment:${String(params["id"])}`];
+        return HttpResponse.json(
+          content ? [{ content, id: 1, user: { id: BOT_USER_ID } }] : [],
+        );
+      },
+    ),
+    http.delete(
+      "https://api.github.com/repos/getsentry/junior/pulls/comments/:id/reactions/:reaction",
+      ({ params }) => {
+        delete github.feedback?.[`comment:${String(params["id"])}`];
+        return new HttpResponse(null, { status: 204 });
+      },
+    ),
+    http.post(
+      "https://api.github.com/repos/getsentry/junior/pulls/comments/:id/reactions",
+      async ({ params, request }) => {
+        const { content } = (await request.json()) as { content: string };
+        (github.feedback ??= {})[`comment:${String(params["id"])}`] = content;
+        return HttpResponse.json({ content, id: 1 }, { status: 201 });
+      },
+    ),
+    http.get(
+      "https://api.github.com/repos/getsentry/junior/rules/branches/main",
+      () => {
+        requests.push("rules");
+        return HttpResponse.json(
+          github.requiredChecks
+            ? [
+                {
+                  parameters: {
+                    required_status_checks: github.requiredChecks.map(
+                      (context) => ({ context }),
+                    ),
+                  },
+                  type: "required_status_checks",
+                },
+              ]
+            : [],
+        );
+      },
+    ),
     http.post("https://api.github.com/graphql", async ({ request }) => {
       const { operationName, variables } = (await request.json()) as {
         operationName: string;
-        variables: { before?: string };
+        variables: {
+          before?: string;
+          content?: string;
+          reviewer?: string;
+          subjectId?: string;
+        };
       };
+      const reviewKey = `review:${variables.subjectId?.replace("PRR_", "")}`;
+      if (operationName === "PullRequestReviewAgain") {
+        requests.push("review again");
+        return HttpResponse.json({
+          data: {
+            repository: {
+              pullRequest: reviewAgainPull(github, variables.reviewer ?? ""),
+            },
+          },
+        });
+      }
+      if (operationName === "ReviewReactions") {
+        return HttpResponse.json({
+          data: {
+            node: { reactionGroups: botReactionGroups(github, reviewKey) },
+          },
+        });
+      }
+      if (operationName === "AddReviewReaction") {
+        (github.feedback ??= {})[reviewKey] =
+          { THUMBS_DOWN: "-1", THUMBS_UP: "+1" }[variables.content ?? ""] ??
+          "eyes";
+        return HttpResponse.json({ data: { addReaction: {} } });
+      }
+      if (operationName === "RemoveReviewReaction") {
+        delete github.feedback?.[reviewKey];
+        return HttpResponse.json({ data: { removeReaction: {} } });
+      }
       if (operationName === "PullRequestNextAction") {
         requests.push("pull");
         const mergeableState = await readPull(github);
@@ -366,6 +558,10 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
       "https://api.github.com/repos/getsentry/junior/pulls/946/requested_reviewers",
       async ({ request }) => {
         const { reviewers } = (await request.json()) as { reviewers: string[] };
+        if (github.rejectReviewRequests) {
+          requests.push(`rejected ${reviewers.join(",")}`);
+          return HttpResponse.json({}, { status: 503 });
+        }
         requests.push(`request ${reviewers.join(",")}`);
         github.requestedReviewers = [
           ...(github.requestedReviewers ?? []),
@@ -377,8 +573,15 @@ export function mockGitHub(github: GitHubState, requests: string[]) {
   );
 }
 
-/** Mark one review body addressed with the feedback tool, as Junior does. */
-export async function markReviewAddressed(reviewId: number): Promise<void> {
+/**
+ * Mark one review body or inline review comment with the feedback tool, as
+ * Junior does. `state` is the plugin state that the webhook route reads.
+ */
+export async function markFeedback(
+  state: PluginState,
+  target: { id: number; kind: "review" | "review_body" },
+  status: "addressed" | "declined" = "addressed",
+): Promise<void> {
   const tool = bindPluginTool(
     githubPlugin().hooks!.tools!()["updatePullRequestFeedback"],
     {
@@ -387,18 +590,19 @@ export async function markReviewAddressed(reviewId: number): Promise<void> {
           await fetch(request),
       },
       log: { error() {}, info() {}, warn() {} },
+      state,
       users: { replaceSlackMentions: async (value: unknown) => value },
     } as never,
   );
   await tool.execute(
     {
-      comment_id: reviewId,
-      comment_kind: "review_body",
+      comment_id: target.id,
+      comment_kind: target.kind,
       pull_request: 946,
       repo: "getsentry/junior",
-      status: "addressed",
+      status,
     },
-    { toolCallId: `addressed-${reviewId}` },
+    { toolCallId: `${status}-${target.kind}-${target.id}` },
   );
 }
 
@@ -409,10 +613,13 @@ export type InboxItemCall =
 export function route(
   fixture: GitHubFixture,
   calls: InboxItemCall[],
+  /** Each logged error, as `message: cause name` when it has a cause. */
   errors: string[] = [],
   failures = { close: 0 },
   /** Keys of the other closed items, such as from before one item per pull request. */
   otherCloses: string[] = [],
+  /** The plugin state, shared with the feedback tool. */
+  state: PluginState = memoryState(),
 ): PluginRoute {
   const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
   const inboxItems: PluginConversationInboxItems = {
@@ -441,28 +648,35 @@ export function route(
   const unused = () => {
     throw new Error("The next-action webhooks do not use this");
   };
+  const annotations: PluginConversationAnnotations = {
+    forConversation() {
+      return {
+        async upsert() {},
+        async remove() {},
+        async list() {
+          return [];
+        },
+      };
+    },
+  };
   const [webhook] = githubPlugin().hooks!.routes!({
     agent: { dispatchForIdentity: unused },
-    annotations: {
-      forConversation() {
-        return {
-          async upsert() {},
-          async remove() {},
-          async list() {
-            return [];
-          },
-        };
-      },
-    },
+    annotations,
     codeChanges: {
       async associateConversations() {},
       async recordActivity() {},
       async record() {},
     },
+    conversationChanges: conversationChangesThrough({
+      annotations,
+      inboxItems,
+    }),
     db: fixture.db(),
     log: {
-      error(message) {
-        errors.push(message);
+      error(message, _metadata, cause) {
+        errors.push(
+          cause instanceof Error ? `${message}: ${cause.name}` : message,
+        );
       },
       info() {},
       warn() {},
@@ -471,7 +685,7 @@ export function route(
     events: { hasMatch: async () => false, async publish() {} },
     cache: { getOrLoad: unused },
     inboxItems,
-    state: memoryState(),
+    state,
     // The requester linked the GitHub account `Requester`.
     users: {
       readIdentity: async (identityId: string) =>

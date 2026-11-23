@@ -1,4 +1,4 @@
-import type { Locator, Page } from "@playwright/test";
+import type { Locator, Page, Request } from "@playwright/test";
 
 import { withRequestedMailbox } from "./harness";
 
@@ -39,6 +39,7 @@ export async function mockLongConversation(
     turnActive: false,
     surface: "internal",
   };
+  const pageReads: Request[] = [];
   const state = {
     conversationId,
     /** Holds `before` pages until it resolves. */
@@ -46,6 +47,9 @@ export async function mockLongConversation(
     /** Holds every page read until it resolves. */
     holdReads: Promise.resolve(),
     pageRequests: [] as string[],
+    /** Wait for the response of each page read so far. */
+    pageReadsLanded: () =>
+      Promise.all(pageReads.map((request) => request.response())),
     readDelayMs: 0,
     /** The seq range that each page read served, in order. */
     pageRanges: [] as [number, number][],
@@ -125,6 +129,7 @@ export async function mockLongConversation(
     async (route) => {
       const { search, searchParams } = new URL(route.request().url());
       state.pageRequests.push(search);
+      pageReads.push(route.request());
       const after = searchParams.get("after");
       const message = /^message-(\d+)$/.exec(
         searchParams.get("message") ?? "",

@@ -1,7 +1,8 @@
 import type { CodeChangeState } from "@sentry/junior-plugin-api";
-import { and, arrayContains, eq, isNotNull } from "drizzle-orm";
+import { arrayContains, eq } from "drizzle-orm";
 import type { ConversationReportEvent } from "@/api/schema/conversation";
 import { readConversationEventPage } from "@/api/conversations/event-page";
+import { codeChangeUrl } from "@/chat/code/links";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { listConversationAnnotations } from "@/chat/plugins/annotations";
 import type { JuniorSqlDatabase } from "@/db/db";
@@ -79,10 +80,10 @@ export async function conversationMetadataInputFromSql(
         closedAt: juniorCodeChanges.closedAt,
         mergedAt: juniorCodeChanges.mergedAt,
         number: juniorCodeChanges.number,
+        provider: juniorCodeChanges.provider,
         repository: juniorCodeRepositories.name,
         state: juniorCodeChanges.state,
         title: juniorCodeChanges.title,
-        url: juniorCodeChanges.url,
       })
       .from(juniorCodeChanges)
       .innerJoin(
@@ -90,10 +91,7 @@ export async function conversationMetadataInputFromSql(
         eq(juniorCodeRepositories.id, juniorCodeChanges.repositoryId),
       )
       .where(
-        and(
-          arrayContains(juniorCodeChanges.conversationIds, [conversationId]),
-          isNotNull(juniorCodeChanges.url),
-        ),
+        arrayContains(juniorCodeChanges.conversationIds, [conversationId]),
       ),
   ]);
   const location = conversation.location;
@@ -111,19 +109,25 @@ export async function conversationMetadataInputFromSql(
         }
       : undefined),
     entries: transcriptEntriesFromReportEvents(events),
-    codeChanges: codeChanges.map((change) => ({
-      repository: change.repository,
-      number: change.number,
-      ...(change.title ? { title: change.title } : undefined),
-      url: change.url!,
-      state: change.state,
-      ...(change.mergedAt
-        ? { mergedAt: change.mergedAt.toISOString() }
-        : undefined),
-      ...(change.closedAt
-        ? { closedAt: change.closedAt.toISOString() }
-        : undefined),
-    })),
+    codeChanges: codeChanges.flatMap((change) => {
+      const url = codeChangeUrl(change);
+      if (!url) return [];
+      return [
+        {
+          repository: change.repository,
+          number: change.number,
+          ...(change.title ? { title: change.title } : undefined),
+          url,
+          state: change.state,
+          ...(change.mergedAt
+            ? { mergedAt: change.mergedAt.toISOString() }
+            : undefined),
+          ...(change.closedAt
+            ? { closedAt: change.closedAt.toISOString() }
+            : undefined),
+        },
+      ];
+    }),
     resources: annotations.flatMap((annotation) =>
       annotation.url
         ? [

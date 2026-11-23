@@ -80,6 +80,16 @@ export type ConversationMenu = {
   };
 };
 
+/** The API takes pins, renames, and other changes only from participants. */
+export function isConversationParticipant(
+  menu: Pick<ConversationMenu, "conversation" | "detail">,
+): boolean {
+  const { conversation, detail } = menu;
+  return Boolean(
+    conversation && (detail?.isParticipant ?? conversation.isParticipant),
+  );
+}
+
 /**
  * List the rows of the conversation `⋯` menu and the sidebar row menu, in
  * groups that the menus divide with a separator. Both menus render this
@@ -97,10 +107,7 @@ export function useConversationMenuItems(
   const { actions, conversation, detail, pending } = menu;
   const archived = Boolean(conversation?.archivedAt);
   const pinned = Boolean(conversation?.pinnedAt);
-  // The API takes these changes only from participants.
-  const participant = Boolean(
-    conversation && (detail?.isParticipant ?? conversation.isParticipant),
-  );
+  const participant = isConversationParticipant(menu);
   const live = conversationTurnIsActive(detail, conversation);
 
   const conversationItems: ConversationMenuItem[] = [

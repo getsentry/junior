@@ -39,9 +39,12 @@ export async function editFile(params: {
     rawContent = await params.fs.readFile(filePath, { encoding: "utf8" });
   } catch (error) {
     if (isMissingPathError(error)) {
-      throw new ToolInputError(`File not found: ${params.path}`, {
-        cause: error,
-      });
+      throw new ToolInputError(
+        `File not found: ${params.path}. Check the path with bash, or create the file with writeFile.`,
+        {
+          cause: error,
+        },
+      );
     }
     throw error;
   }

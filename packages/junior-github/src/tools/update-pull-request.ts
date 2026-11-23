@@ -109,7 +109,9 @@ const outputSchema = pluginToolOutputSchema.merge(
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new PluginToolInputError(`${name} is required`);
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn, so the GitHub footer cannot be added. No change to the call can fix this.`,
+    );
   }
   return value.trim();
 }
@@ -179,7 +181,7 @@ export function createGitHubUpdatePullRequestTool(
       const parsedInput = inputSchema.safeParse(input);
       if (!parsedInput.success) {
         throw new PluginToolInputError(
-          "Invalid GitHub updatePullRequest input.",
+          "Invalid GitHub updatePullRequest input. Check the arguments against the tool schema and call it again.",
           { cause: parsedInput.error },
         );
       }
@@ -226,7 +228,9 @@ export function createGitHubUpdatePullRequestTool(
         // 404 and 422 mean the model named a missing pull request or GitHub
         // rejected the requested change, such as a base change in a stack.
         if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
+          throw new PluginToolInputError(
+            `${message}. Check repo and pull_request, and fix any field that GitHub names.`,
+          );
         }
         throw new Error(message);
       }

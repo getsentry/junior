@@ -139,7 +139,7 @@ export async function readRequesterFile(
   const requester = await requesterEmail(ctx);
   if (!requester) {
     throw new PluginToolInputError(
-      "The requester's email is unknown, so the tool cannot check that they may open this file.",
+      "The requester's email is unknown, so the tool cannot check that they may open this file. No change to the call can fix this.",
     );
   }
   if (

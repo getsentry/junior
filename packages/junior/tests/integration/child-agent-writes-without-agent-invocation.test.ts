@@ -313,12 +313,9 @@ describe("spawn and messageAgent", () => {
     }
   });
 
-  it.each([
-    { kind: "task" as const, notices: 1 },
-    { kind: "thread" as const, notices: 0 },
-  ])(
-    "tells only a Task's parent when its Turn fails ($kind)",
-    async ({ kind, notices }) => {
+  it.each(["task", "thread"] as const)(
+    "tells a %s's parent when its Turn fails",
+    async (kind) => {
       vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
       const harness = await createHarness();
       try {
@@ -336,11 +333,7 @@ describe("spawn and messageAgent", () => {
           (await mailboxTexts(harness, slackParentConversationId)).filter(
             (text) => text.includes('status="failed"'),
           ),
-        ).toEqual(
-          Array.from({ length: notices }, () =>
-            expect.stringContaining("The model is unavailable."),
-          ),
-        );
+        ).toEqual([expect.stringContaining("The model is unavailable.")]);
         // The dashboard shows the failed work as failed, for both kinds.
         expect(
           (await loadSubagentEvents(slackParentConversationId)).filter(

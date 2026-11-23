@@ -12,6 +12,7 @@ import { handleSlackForm } from "./slack-form";
 import { saveSkippedSlackMessage } from "./slack-skipped-message";
 import { findSlackThreadOwnerId } from "@/chat/slack/thread-owner";
 import { resumeConversationDelivery } from "@/chat/conversations/delivery-pause";
+import { pushConversationInboxItemsNow } from "@/chat/notifications/inbox-item-push";
 import { handleSlackStop, slackStopButtonRequest } from "./slack-stop";
 import type { SlackInteractionInputFacts } from "./slack-interaction-input";
 import { shouldIgnoreMessageSubtype } from "./slack-message-subtypes";
@@ -80,7 +81,7 @@ import { bindMessageAuthorIdentityId } from "@/chat/services/message-actor-ident
 import { createUserTokenStore } from "@/chat/capabilities/factory";
 import type { UserTokenStore } from "@/chat/credentials/user-token-store";
 import { publishAppHomeView } from "@/chat/slack/app-home";
-import { createSlackInboxItemShow } from "@/chat/slack/inbox-item-card-sync";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { presentSlackAutomationDetails } from "@/chat/slack/automation-details";
 import { getSlackClient } from "@/chat/slack/client";
 import {
@@ -457,8 +458,11 @@ async function routeParsedMessage(args: {
   }
 
   // A mention in the thread attaches a detached Conversation again.
-  if (route === "mention") {
-    await resumeConversationDelivery(conversationId);
+  if (
+    route === "mention" &&
+    (await resumeConversationDelivery(conversationId))
+  ) {
+    await pushConversationInboxItemsNow(conversationId);
   }
 
   // Keep non-mention thread messages as Conversation history without waking a
@@ -497,7 +501,7 @@ async function routeParsedMessage(args: {
       conversationId,
       delivery: {
         queue: args.queue,
-        show: createSlackInboxItemShow(() => args.adapter),
+        show: createInboxItemShow(() => args.adapter),
       },
       resolveUser: async () => {
         const teamId = args.installation.teamId;

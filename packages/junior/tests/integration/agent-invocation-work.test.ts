@@ -1,5 +1,10 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
+import { createJuniorApi } from "@/api";
+import {
+  conversationEventPageSchema,
+  conversationOutlineSchema,
+} from "@/api/schema";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import {
   getAgentReplyMessageId,
@@ -18,6 +23,7 @@ import { stopConversationAndChildAgents } from "@/chat/conversations/stop";
 import { bindMessageAgent } from "@/chat/agent-invocations/message";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
 import { EVENT_MESSAGE_AUTHOR, EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import {
   appendAndEnqueueInboundMessage,
@@ -157,7 +163,7 @@ describe("child agent task work", () => {
             metadata: expect.objectContaining({
               kind: "event",
               event: expect.objectContaining({
-                eventType: "agent.reply",
+                eventType: "agent.update",
                 identifier: childConversationId,
                 namespace: "junior",
               }),
@@ -204,7 +210,7 @@ describe("child agent task work", () => {
         message: resultMessage,
         source: createEventSource({
           eventKey: resultMessage.inboundMessageId,
-          eventType: "agent.reply",
+          eventType: "agent.update",
           identifier: childConversationId,
           namespace: "junior",
         }),
@@ -251,8 +257,8 @@ describe("child agent task work", () => {
           }),
         ]),
       );
-      // A child posts nothing to its Location. Its task is a message event,
-      // and its `reply` stays in its history, as checked above.
+      // A child posts nothing to its Location. Its task and its `reply` are
+      // message events in its own transcript.
       await expect(loadMessageEvents(childConversationId)).resolves.toEqual([
         expect.objectContaining({
           type: "message",
@@ -262,6 +268,11 @@ describe("child agent task work", () => {
           meta: expect.objectContaining({
             requestText: slackInvocationInput.input,
           }),
+        }),
+        expect.objectContaining({
+          type: "message",
+          role: "assistant",
+          text: "Durable child result",
         }),
       ]);
       await expect(loadTurnEvents(childConversationId)).resolves.toEqual([
@@ -274,11 +285,39 @@ describe("child agent task work", () => {
         }),
         expect.objectContaining({
           data: expect.objectContaining({
+            outcome: "success",
             turnId,
             type: "turn_completed",
           }),
         }),
       ]);
+      // The dashboard shows the task as parent agent input, not as the
+      // person who started the root, with the `reply` as its answer.
+      const api = createJuniorApi();
+      const childPath = `http://localhost/api/conversations/${encodeURIComponent(childConversationId)}`;
+      const outline = conversationOutlineSchema.parse(
+        await (await api.request(`${childPath}/outline`)).json(),
+      );
+      expect(outline.items).toEqual([
+        expect.objectContaining({
+          agentInvocationId: taskMessageId,
+          reply: "Durable child result",
+        }),
+      ]);
+      const eventPage = conversationEventPageSchema.parse(
+        await (
+          await api.request(
+            `${childPath}/events?message=${encodeURIComponent(taskMessageId)}`,
+          )
+        ).json(),
+      );
+      expect(eventPage.events.map((event) => event.data)).toContainEqual(
+        expect.objectContaining({
+          type: "message",
+          messageId: taskMessageId,
+          agentInvocationId: taskMessageId,
+        }),
+      );
       expect(run).toHaveBeenCalledOnce();
       expect(run.mock.calls[0]?.[0]).toMatchObject({
         conversationId: childConversationId,
@@ -402,6 +441,11 @@ describe("child agent task work", () => {
 
   const blockedMissing = "Approval to open the PR. Ask the user.";
   // Plain text in a child Turn is not an answer. It gets one reminder.
+  const quiet = {
+    type: "toolCall" as const,
+    name: "noReply",
+    arguments: { note: "Bot comment needs no change." },
+  };
   const plainText = [
     { type: "text" as const, text: "Draft summary for the parent." },
     { type: "text" as const, text: "Draft summary for the parent." },
@@ -418,6 +462,24 @@ describe("child agent task work", () => {
       parentMessages: [
         expect.stringMatching(/status="failed">\n[\s\S]*\nmodel unavailable\n/),
       ],
+      // The model error leaves execution idle. The child still lists its
+      // failure.
+      lastResult: "failed" as const,
+    },
+    {
+      // A Thread tells its parent that the work it gave failed.
+      name: "failed thread",
+      kind: "thread" as const,
+      outputs: [{ type: "error" as const, errorMessage: "model unavailable" }],
+      terminal: {
+        failureCode: "model_execution_failed",
+        type: "turn_failed",
+      },
+      subagentOutcome: "error",
+      parentMessages: [
+        expect.stringMatching(/status="failed">\n[\s\S]*\nmodel unavailable\n/),
+      ],
+      lastResult: "failed" as const,
     },
     {
       // A blocked report is a result, not a model failure.
@@ -429,7 +491,7 @@ describe("child agent task work", () => {
           arguments: { missing: blockedMissing },
         },
       ],
-      terminal: { type: "turn_completed" },
+      terminal: { outcome: "blocked", type: "turn_completed" },
       subagentOutcome: "blocked",
       parentMessages: [
         expect.stringMatching(
@@ -438,21 +500,59 @@ describe("child agent task work", () => {
       ],
     },
     {
-      // The note stays in the child. The parent gets nothing.
+      // A Task whose work ends reports to its parent. Its note is the result.
       name: "quiet",
+      outputs: [quiet],
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [
+        expect.stringMatching(
+          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+        ),
+      ],
+    },
+    {
+      // A Task that waits on its own Timer still works. It reports later.
+      name: "quiet waiting",
       outputs: [
         {
           type: "toolCall" as const,
-          name: "noReply",
-          arguments: { note: "Bot comment needs no change." },
+          name: "watchTimer",
+          arguments: { after_ms: 60_000, intent: "Check the deploy again." },
         },
+        quiet,
       ],
       terminal: { outcome: "no_reply", type: "turn_completed" },
       subagentOutcome: "success",
       parentMessages: [],
     },
     {
-      // A Task's parent learns that no reply was sent, without the text.
+      // A Turn that sent its reply before its worker was lost already
+      // reported. Its retry sends no second result.
+      name: "quiet after a reply",
+      replied: true,
+      outputs: [quiet],
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [
+        expect.stringMatching(/status="completed">\n[\s\S]*\nLost reply\.\n/),
+      ],
+    },
+    {
+      // A Thread whose work ends reports like a Task.
+      name: "quiet thread",
+      kind: "thread" as const,
+      outputs: [quiet],
+      terminal: { outcome: "no_reply", type: "turn_completed" },
+      subagentOutcome: "success",
+      parentMessages: [
+        expect.stringMatching(
+          /status="completed">\n[\s\S]*\nBot comment needs no change\.\n/,
+        ),
+      ],
+    },
+    {
+      // A child's parent learns that no reply was sent, without the text.
       name: "unanswered task",
       outputs: plainText,
       terminal: {
@@ -465,19 +565,35 @@ describe("child agent task work", () => {
           /status="failed">\n[\s\S]*\nNo reply was sent\.\n/,
         ),
       ],
+      lastResult: "failed" as const,
     },
     {
-      // A Thread stays quiet.
       name: "unanswered thread",
       kind: "thread" as const,
       outputs: plainText,
-      terminal: { type: "turn_completed" },
-      subagentOutcome: "success",
-      parentMessages: [],
+      terminal: {
+        failureCode: "model_execution_failed",
+        type: "turn_failed",
+      },
+      subagentOutcome: "error",
+      parentMessages: [
+        expect.stringMatching(
+          /status="failed">\n[\s\S]*\nNo reply was sent\.\n/,
+        ),
+      ],
+      lastResult: "failed" as const,
     },
   ])(
     "finishes a $name child Turn after saving its result",
-    async ({ kind, outputs, parentMessages, subagentOutcome, terminal }) => {
+    async ({
+      kind,
+      lastResult,
+      outputs,
+      parentMessages,
+      replied,
+      subagentOutcome,
+      terminal,
+    }) => {
       const { conversationStore, fixture } = await prepareParentConversation();
       const modelStream = vi.fn(createModelStream(outputs));
       const { process, queue, state } = await createConversationWorkHarness(
@@ -498,6 +614,20 @@ describe("child agent task work", () => {
           parentConversationId,
           "failed-result-1",
         );
+        if (replied) {
+          await enqueueChildResultToParent({
+            actor: invocationInput.actor,
+            messageKey: getTurnReplyKey(turnId, "lost-reply"),
+            queue,
+            result: {
+              kind: "reply",
+              reply: { text: "Lost reply.", toolCallId: "lost-reply" },
+            },
+            sender: { childConversationId, parentConversationId },
+            state,
+            turnId,
+          });
+        }
 
         await expect(
           process(queue.takeMessageFor(childConversationId)),
@@ -532,6 +662,11 @@ describe("child agent task work", () => {
         expect(
           (parentWork?.messages ?? []).map((message) => message.input.text),
         ).toEqual(parentMessages);
+        const { agents } = await createListAgentsTool({
+          conversationId: parentConversationId,
+        }).execute!({}, {});
+        expect(agents).toEqual([expect.objectContaining({ status: "idle" })]);
+        expect(agents[0]!.last_result).toBe(lastResult);
       } finally {
         await fixture.close();
       }

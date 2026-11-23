@@ -25,7 +25,15 @@ import {
   ConversationHeaderActions,
   HeaderIconButton,
 } from "../../conversations/ConversationHeaderActions";
-import type { ConversationMenu } from "../../conversations/conversationMenuItems";
+import {
+  isConversationParticipant,
+  type ConversationMenu,
+} from "../../conversations/conversationMenuItems";
+import {
+  EditableConversationTitle,
+  MobileEditableConversationTitle,
+  type ConversationTitleEdit,
+} from "../../conversations/EditableConversationTitle";
 import { ChildAgentTags } from "../../conversations/ChildAgentTags";
 import { ConversationBreadcrumb } from "../../conversations/ConversationBreadcrumb";
 import { ConversationOverflowMenu } from "../../conversations/ConversationOverflowMenu";
@@ -101,6 +109,8 @@ function ConversationTitleHeader(props: {
   onSearchChange(value: string): void;
   onViewChange(value: TranscriptViewMode): void;
   privacy: ReactNode;
+  /** Renames the Conversation in place. Only participants get it. */
+  rename?: ConversationTitleEdit | undefined;
   search: string;
   searchMatch: TranscriptSearchMatch;
   sidebarToggle?: ReactNode | undefined;
@@ -221,8 +231,18 @@ function ConversationTitleHeader(props: {
     />
   );
 
+  const rename = isConversationParticipant(props.menu)
+    ? props.rename
+    : undefined;
+  const titleText = (
+    <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
+      {props.title}
+    </span>
+  );
+  const titleClass =
+    "font-display text-base font-medium leading-6 tracking-tight";
   const title =
-    props.view === "raw" ? (
+    props.view === "raw" && !rename?.editing ? (
       // Event log is a debug view reached from the `⋯` menu. The title leads
       // back to the Conversation.
       <>
@@ -233,9 +253,7 @@ function ConversationTitleHeader(props: {
             title="Back to conversation"
             type="button"
           >
-            <span className={fadeOverflowClass} ref={fadeWhenOverflowing}>
-              {props.title}
-            </span>
+            {titleText}
           </button>
         </h2>
         <span aria-hidden="true" className="text-dashboard-text-faint">
@@ -252,12 +270,23 @@ function ConversationTitleHeader(props: {
       <h2
         aria-current="page"
         className={cn(
-          fadeOverflowClass,
-          "m-0 font-display text-base font-medium leading-6 tracking-tight",
+          "m-0 flex min-w-0",
+          titleClass,
+          // The field keeps at least half the row; the tags shrink first.
+          rename?.editing && "min-w-1/2 flex-1",
         )}
-        ref={fadeWhenOverflowing}
       >
-        {props.title}
+        {rename ? (
+          <EditableConversationTitle
+            {...rename}
+            className={titleClass}
+            title={props.title}
+          >
+            {titleText}
+          </EditableConversationTitle>
+        ) : (
+          titleText
+        )}
       </h2>
     );
 
@@ -295,6 +324,11 @@ function ConversationTitleHeader(props: {
           ) : null}
         </ConversationOverflowMenu>
       </MobileHeaderActionsPortal>
+      {rename ? (
+        <MobileEditableConversationTitle {...rename} title={props.title}>
+          {titleText}
+        </MobileEditableConversationTitle>
+      ) : null}
       {props.state || props.contextTags || props.linkedWork ? (
         <MobileHeaderTagsPortal>
           {/* One row. Tags keep their width; the slot scrolls. */}
@@ -321,7 +355,10 @@ function ConversationTitleHeader(props: {
             The summary line shares the header row, so the row keeps the
             height of the pane and details headers. */}
         <div className="hidden h-header min-w-0 items-center justify-between gap-2 pl-6 pr-4 md:flex">
-          <div className="grid min-w-0 gap-0.5">
+          {/* The title field takes the free width. */}
+          <div
+            className={cn("grid min-w-0 gap-0.5", rename?.editing && "flex-1")}
+          >
             <div className="flex min-w-0 items-center gap-2">
               {props.sidebarToggle ? (
                 <div className="shrink-0 empty:hidden">

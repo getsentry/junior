@@ -188,32 +188,35 @@ export async function dropWaitingParentMessages(
 }
 
 /**
- * Return whether a parent message names the stored parent of the child that
- * received it, with that parent's author id. The caller drops another
- * message.
+ * Read the stop of the child that received a parent message, when the
+ * message names the child's stored parent with that parent's author id.
+ * Returns undefined for another message, which the caller drops.
  */
-export async function isFromStoredParent(
+export async function readChildOfStoredParent(
   message: InboundMessage,
   parentMessage: ParentMessage,
-): Promise<boolean> {
-  const rows =
-    message.input.authorId ===
+): Promise<{ stoppedAt: Date | null } | undefined> {
+  if (
+    message.input.authorId !==
     parentMessageAuthorId(parentMessage.parentConversationId)
-      ? await getSqlExecutor()
-          .db()
-          .select({ conversationId: juniorConversations.conversationId })
-          .from(juniorConversations)
-          .where(
-            and(
-              eq(juniorConversations.conversationId, message.conversationId),
-              eq(
-                juniorConversations.parentConversationId,
-                parentMessage.parentConversationId,
-              ),
-            ),
-          )
-      : [];
-  return rows.length > 0;
+  ) {
+    return undefined;
+  }
+  const [row] = await getSqlExecutor()
+    .db()
+    .select({ stoppedAt: juniorConversations.stoppedAt })
+    .from(juniorConversations)
+    .where(
+      and(
+        eq(juniorConversations.conversationId, message.conversationId),
+        eq(
+          juniorConversations.parentConversationId,
+          parentMessage.parentConversationId,
+        ),
+      ),
+    )
+    .limit(1);
+  return row;
 }
 
 /**

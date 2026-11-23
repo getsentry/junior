@@ -36,7 +36,7 @@ describe("searchConversations", () => {
     await closeDb();
   });
 
-  it("returns bounded summary details with dashboard and best-effort Slack links", async () => {
+  it("returns bounded summary details with a dashboard link, else a best-effort Slack link", async () => {
     const conversationId = "slack:CARCHIVE:1700000000.100000";
     await getConversationStore().recordActivity({
       conversationId,
@@ -70,12 +70,6 @@ describe("searchConversations", () => {
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink:
-          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-      }),
-    });
 
     const tool = createSearchConversationsTool({
       channels,
@@ -97,7 +91,6 @@ describe("searchConversations", () => {
           channel_id: "CARCHIVE",
           channel_name: "archive",
           conversation_id: conversationId,
-          dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
           excerpt: expect.stringContaining("**launch**"),
           kind: "root",
           links: [
@@ -107,25 +100,37 @@ describe("searchConversations", () => {
               url: "https://github.com/getsentry/junior/pull/1805",
             },
           ],
-          permalink:
-            "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
           status: "idle",
           summary: "The launch decision uses a blue rollout.",
           title: "Launch decision",
           updated_at: expect.any(String),
+          url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
         },
       ],
+    });
+
+    // Without the dashboard, the Slack thread is the link.
+    setDashboardConversationLinkOptions(undefined);
+    queueSlackApiResponse("chat.getPermalink", {
+      body: chatGetPermalinkOk({
+        permalink:
+          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+      }),
+    });
+    const resultWithThreadUrl = await executeTool(tool, {
+      query: "launch decision",
+    });
+    expect(resultWithThreadUrl.conversations[0]).toMatchObject({
+      url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
     });
 
     queueSlackApiResponse("chat.getPermalink", {
       body: slackError({ error: "missing_scope" }),
     });
-    const resultWithoutPermalink = await executeTool(tool, {
+    const resultWithoutUrl = await executeTool(tool, {
       query: "launch decision",
     });
-    expect(resultWithoutPermalink.conversations[0]).not.toHaveProperty(
-      "permalink",
-    );
+    expect(resultWithoutUrl.conversations[0]).not.toHaveProperty("url");
 
     // A child agent gives the Slack channel and thread of its root.
     const childId = "agent:launch-child";
@@ -153,12 +158,14 @@ describe("searchConversations", () => {
         channel_name: "archive",
         conversation_id: childId,
         kind: "thread",
-        permalink:
-          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
+        url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
         root_conversation_id: conversationId,
       }),
     ]);
 
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
     const publicTool = createSearchConversationsTool({
       conversationId: "local:test:current",
     });
@@ -173,11 +180,10 @@ describe("searchConversations", () => {
     });
     expect(publicResult.conversations[0]).toMatchObject({
       conversation_id: conversationId,
-      dashboard_url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
+      url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
     });
     expect(publicResult.conversations[0]).not.toHaveProperty("channel_id");
     expect(publicResult.conversations[0]).not.toHaveProperty("channel_name");
-    expect(publicResult.conversations[0]).not.toHaveProperty("permalink");
   });
 
   it("embeds summaries again after a model change, so search finds them by meaning", async () => {

@@ -1,3 +1,4 @@
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import type { InboxItemToolServices } from "@/chat/inbox-items/tool-support";
 import type { ProviderTenant } from "@/api/conversations/access";
 import { createSlackActor } from "@/chat/actor";
@@ -6,7 +7,6 @@ import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { readActorIdentityFromSql } from "@/chat/plugins/viewer";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { parseSlackUserId } from "./ids";
-import { createSlackInboxItemShow } from "./inbox-item-card-sync";
 
 const SLACK_MENTION = /^<@([A-Z0-9]+)(?:\|[^>]*)?>$/;
 
@@ -50,6 +50,6 @@ export function createSlackInboxItemToolServices(
   return {
     findMentionedUserId: findSlackMentionedUserId,
     queue,
-    show: createSlackInboxItemShow(),
+    show: createInboxItemShow(),
   };
 }

@@ -26,23 +26,25 @@ export function createSlackConversationSearchChannelPort(
       });
       return target.channelId;
     },
-    async describeMatch(match) {
+    async describeMatch(match, options) {
       // A child agent has no Slack thread of its own. It belongs to its root.
       // ast-grep-ignore: no-slack-thread-from-conversation-id -- read-only label or link; it does not post
       const reference = parseSlackThreadId(match.rootConversationId);
       if (!reference || reference.channelId !== match.providerDestinationId) {
         return {};
       }
-      const permalink = await getSlackMessagePermalink({
-        channelId: reference.channelId,
-        messageTs: reference.threadTs,
-      });
+      const url = options.includeUrl
+        ? await getSlackMessagePermalink({
+            channelId: reference.channelId,
+            messageTs: reference.threadTs,
+          })
+        : undefined;
       return {
         channel_id: reference.channelId,
         ...(match.channelName
           ? { channel_name: match.channelName }
           : undefined),
-        ...(permalink ? { permalink } : undefined),
+        ...(url ? { url } : undefined),
       };
     },
   };

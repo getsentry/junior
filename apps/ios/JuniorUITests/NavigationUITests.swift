@@ -37,7 +37,7 @@ final class NavigationUITests: XCTestCase {
   }
 
   /// The whole OAuth flow: the browser sheet, the mock's consent, the
-  /// loopback redirect, the token exchange, and a Keychain that survives a
+  /// `junior-ios` redirect, the token exchange, and a Keychain that survives a
   /// relaunch. Sign out returns to Sign in.
   func testSignInAndOut() {
     var app = launch(auth: .signedOut)
@@ -105,6 +105,27 @@ final class NavigationUITests: XCTestCase {
     app.buttons["Send"].tap()
     let sent = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Check the EU region too'")).firstMatch
     XCTAssertTrue(sent.waitForExistence(timeout: 10))
+  }
+
+  /// Rename from the Conversation menu; the header shows the saved title.
+  func testRenameConversation() {
+    let app = launch()
+    let row = card(app, "Investigate checkout latency")
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    row.tap()
+    let menu = app.buttons["Conversation menu"]
+    XCTAssertTrue(menu.waitForExistence(timeout: 10))
+    menu.tap()
+    app.buttons["Rename"].tap()
+    let alert = app.alerts["Rename conversation"]
+    let field = alert.textFields.firstMatch
+    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    // The field opens focused, with the current title and the cursor at its end.
+    let current = (field.value as? String) ?? ""
+    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+    field.typeText("Checkout latency fix")
+    alert.buttons["Save"].tap()
+    XCTAssertTrue(app.staticTexts["Checkout latency fix"].waitForExistence(timeout: 10))
   }
 
   func testDrawerNavigatesToInbox() {

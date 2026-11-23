@@ -27,7 +27,7 @@ export const archiveAgentToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "Archive a Thread that this conversation started, for everyone. A person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread since you last gave it work: that person decides, and can archive it from its dashboard_url.",
+    "Archive a Thread that this conversation started, for everyone. A person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread since you last gave it work: that person decides, and can archive it from its url.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -101,7 +101,7 @@ export function createArchiveAgentTool(conversationId: string) {
         personMessageAt > (lastWorkAt ?? 0)
       ) {
         throw new ToolInputError(
-          `A person messaged ${childConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its dashboard_url.`,
+          `A person messaged ${childConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its url.`,
         );
       }
       const result = await setConversationArchive({

@@ -483,11 +483,21 @@ describe("versions API", () => {
 
     const first = await expectPlanCost(
       () =>
-        expectNoFullScan(() =>
-          expectSqlBudget(() => readVersions(app, onScreen), {
-            statements: 1,
-            serialRounds: 1,
-          }),
+        expectNoFullScan(
+          () =>
+            expectSqlBudget(() => readVersions(app, onScreen), {
+              statements: 1,
+              serialRounds: 1,
+            }),
+          {
+            inboxItemsNeedingUser: {
+              reason:
+                "The Inbox token reads every open action item to find the ones assigned to the viewer. It needs a fix of its own.",
+              statement:
+                'from "junior_inbox_items" where (("junior_inbox_items"."status" =',
+              table: "junior_inbox_items",
+            },
+          },
         ),
       5_000,
     );

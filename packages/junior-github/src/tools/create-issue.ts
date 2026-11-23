@@ -195,15 +195,29 @@ function parseCreateIssueInput(input: unknown): CreateGitHubIssueInput {
   try {
     return Value.Parse(createIssueInputSchema, input);
   } catch (error) {
-    throw new PluginToolInputError("Invalid GitHub createIssue input.", {
-      cause: error,
-    });
+    throw new PluginToolInputError(
+      "Invalid GitHub createIssue input. Check the arguments against the tool schema and call it again.",
+      {
+        cause: error,
+      },
+    );
   }
 }
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new PluginToolInputError(`${name} is required`);
+    throw new PluginToolInputError(
+      `${name} must not be empty. Set it and call the tool again.`,
+    );
+  }
+  return value.trim();
+}
+
+function runtimeId(value: string | undefined, name: string): string {
+  if (!value?.trim()) {
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn. No change to the call can fix this.`,
+    );
   }
   return value.trim();
 }
@@ -312,8 +326,8 @@ export const gitHubIssueTool = definePluginTool({
     ctx: ToolRegistrationHookContext,
   ) {
     const parsedInput = parseCreateIssueInput(input);
-    const conversationId = nonEmptyString(ctx.conversationId, "conversationId");
-    const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
+    const conversationId = runtimeId(ctx.conversationId, "conversationId");
+    const toolCallId = runtimeId(options?.toolCallId, "toolCallId");
     const key = `createIssue:${conversationId}:${toolCallId}`;
     const attempt = await ctx.state.withLock(
       `${key}:lock`,

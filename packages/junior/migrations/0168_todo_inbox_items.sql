@@ -1,0 +1,4 @@
+ALTER TABLE "junior_inbox_items" DROP CONSTRAINT "junior_inbox_items_kind_check";--> statement-breakpoint
+-- The new check only adds an allowed key prefix, so every row already meets
+-- it. NOT VALID skips the scan under lock and still checks every new write.
+ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_kind_check" CHECK (("junior_inbox_items"."kind" = 'notice' and "junior_inbox_items"."request" is null and "junior_inbox_items"."answer" is null) or ("junior_inbox_items"."kind" = 'action' and ("junior_inbox_items"."request" is not null or (("junior_inbox_items"."dedupe_key" like 'plugin:%' or "junior_inbox_items"."dedupe_key" like 'automation:%' or "junior_inbox_items"."dedupe_key" like 'todo:%') and "junior_inbox_items"."answer" is null)))) NOT VALID;

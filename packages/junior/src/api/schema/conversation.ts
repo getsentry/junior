@@ -369,6 +369,10 @@ const conversationReportMessageEventDataSchema = z
      */
     eventIdentifier: z.string().min(1).optional(),
     eventObjectType: objectTypeSchema.optional(),
+    /** What the first Event says happened, when it is an agent update. */
+    eventStatus: z.string().min(1).optional(),
+    /** Watch that delivered the first Event. */
+    eventWatchId: z.string().min(1).optional(),
     explicitMention: z.boolean().optional(),
     quiet: z.literal(true).optional(),
     trustedSummary: z.string().min(1).optional(),

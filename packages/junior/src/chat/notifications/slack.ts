@@ -1,6 +1,7 @@
 import type { JuniorDatabase } from "@/db/db";
 import { linkedSlackUser } from "@/chat/identities/sql";
 import { isSlackDndActive } from "@/chat/slack/dnd";
+import { isSlackUserActive } from "@/chat/slack/presence";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
 
@@ -29,4 +30,17 @@ export async function isPausedBySlack(
     },
   );
   return paused ?? undefined;
+}
+
+/**
+ * Return whether the user's linked Slack user is active in Slack now.
+ * Return false when the user has no linked Slack user or Slack cannot
+ * answer.
+ */
+export async function isActiveInSlack(
+  db: JuniorDatabase,
+  userId: string,
+): Promise<boolean> {
+  const slack = await linkedSlackUser(db, userId);
+  return slack ? ((await isSlackUserActive(slack.userId)) ?? false) : false;
 }

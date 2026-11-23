@@ -754,7 +754,7 @@ describe("conversation report event projection", () => {
         identifier: "local:web:started",
         label: "Conversation Changelog",
         namespace: "junior",
-        supported_events: ["conversation.completed"],
+        supported_events: ["agent.update"],
         type: "conversation",
       },
     };

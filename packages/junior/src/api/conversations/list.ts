@@ -76,7 +76,7 @@ import { listConversationAnnotationsById } from "@/chat/plugins/annotations";
 import { listConversationSidebarAnnotations } from "@/chat/plugins/conversation-sidebar";
 import { listConversationWork } from "@/chat/plugins/unfinished-work";
 import { readConversationTrees } from "@/chat/conversations/sql/conversation-tree";
-import { waitingConversationIdsQuery } from "@/chat/inbox-items/store";
+import { waitingConversationIdsQuery } from "@/chat/inbox-items/waiting";
 import { treeAwaitsAuthorization } from "@/chat/conversations/sql/authorization-wait";
 import { lastMessageAtSql } from "@/chat/conversations/sql/last-message";
 import { isConversationPriority } from "./priority";

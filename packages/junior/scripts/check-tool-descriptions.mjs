@@ -8,7 +8,8 @@ import {
 } from "./tool-schema-ast.mjs";
 
 // Tool descriptions say what a tool does and returns. Field meaning lives in
-// `describe()` on the param. See policies/tool-design.md.
+// `describe()` on the param, and every input field has one. See
+// design/tools.md.
 //
 // 512 fits Anthropic's "3-4 sentences" guidance with room to spare and is half
 // of OpenAI's hard 1,024-character limit on a function description.
@@ -18,6 +19,10 @@ export const MAX_PARAM_DESCRIPTION_CHARS = 256;
 
 const BASELINE_RELATIVE_PATH =
   "packages/junior/scripts/tool-descriptions-baseline.txt";
+// A text baseline ratchets as one total, so a rule added later keeps its
+// entries in its own file.
+const PARAM_BASELINE_RELATIVE_PATH =
+  "packages/junior/scripts/tool-param-descriptions-baseline.txt";
 const SUBJECT_PREFIX_CHARS = 48;
 
 // Agents read this text as the fix instruction, so it names the fix and the
@@ -26,6 +31,7 @@ const GUIDANCE = {
   "tool-description-length": `Cut the description to what the tool does and returns, and move field meaning into describe() on the param. Do not split it into promptGuidelines or a computed string to pass.`,
   "param-description-length": `Cut it to what the value is and its format or constraint. Move behavior that spans fields into fixed validation or a shorter cross-field note.`,
   "tool-description-names-param": `Move what the tool description says about this field into describe() on the param, and remove the field name from the tool description. Put a rule that ties two fields together on the field that depends on the other.`,
+  "param-missing-description": `Add describe() on the param: what the value is, what happens when it is left out, and its limits.`,
 };
 
 // Strip parentheses and type-only wrappers such as `as const` and `satisfies`.
@@ -137,11 +143,13 @@ export function collectToolDescriptionIssues(files, packageSrcRoots = {}) {
   const issues = new Set();
   for (const { filePath, properties } of index.toolDefinitions()) {
     const keys = new Set();
+    const describedKeys = new Set();
     const inputSchema = properties.get("inputSchema");
     if (inputSchema) {
       index.walkSchema(filePath, inputSchema, {
         onKey: (_file, _property, key) => keys.add(key),
         onDescribe: (describeFile, call, key) => {
+          if (key) describedKeys.add(key);
           const { text } = staticText(describeFile, call.arguments[0]);
           if (text.length > MAX_PARAM_DESCRIPTION_CHARS) {
             issues.add(
@@ -153,8 +161,15 @@ export function collectToolDescriptionIssues(files, packageSrcRoots = {}) {
     }
 
     const { text } = staticText(filePath, properties.get("description"));
-    if (!text) continue;
     const subject = subjectOf(text);
+    for (const key of [...keys].sort()) {
+      if (!describedKeys.has(key)) {
+        issues.add(
+          `${filePath}\tparam-missing-description\t${key}${subject ? `: ${subject}` : ""}`,
+        );
+      }
+    }
+    if (!text) continue;
     if (text.length > MAX_TOOL_DESCRIPTION_CHARS) {
       issues.add(`${filePath}\ttool-description-length\t${subject}`);
     }
@@ -206,16 +221,23 @@ export function diffBaseline(current, baseline) {
 export async function checkRepoToolDescriptions(repoRoot) {
   const { files, packageSrcRoots } = await readRepoToolSources(repoRoot);
   const current = collectToolDescriptionIssues(files, packageSrcRoots);
-  const baseline = parseBaseline(
-    await fs.readFile(path.join(repoRoot, BASELINE_RELATIVE_PATH), "utf8"),
+  const baselineText = await Promise.all(
+    [BASELINE_RELATIVE_PATH, PARAM_BASELINE_RELATIVE_PATH].map((file) =>
+      fs.readFile(path.join(repoRoot, file), "utf8"),
+    ),
   );
+  const baseline = parseBaseline(baselineText.join("\n"));
   const { unexpected, stale } = diffBaseline(current, baseline);
   return [
     ...unexpected.map(issueMessage),
-    ...stale.map(
-      (entry) =>
-        `${entry.split("\t")[0]}: stale entry; remove it from ${BASELINE_RELATIVE_PATH}: ${entry.split("\t").slice(1).join(" ")}`,
-    ),
+    ...stale.map((entry) => {
+      const [filePath, rule, ...detail] = entry.split("\t");
+      const baselinePath =
+        rule === "param-missing-description"
+          ? PARAM_BASELINE_RELATIVE_PATH
+          : BASELINE_RELATIVE_PATH;
+      return `${filePath}: stale entry; remove it from ${baselinePath}: ${[rule, ...detail].join(" ")}`;
+    }),
   ];
 }
 

@@ -208,15 +208,29 @@ function parseCreatePullRequestInput(
   try {
     return Value.Parse(createPullRequestInputSchema, input);
   } catch (error) {
-    throw new PluginToolInputError("Invalid GitHub createPullRequest input.", {
-      cause: error,
-    });
+    throw new PluginToolInputError(
+      "Invalid GitHub createPullRequest input. Check the arguments against the tool schema and call it again.",
+      {
+        cause: error,
+      },
+    );
   }
 }
 
 function nonEmptyString(value: string | undefined, name: string): string {
   if (!value?.trim()) {
-    throw new PluginToolInputError(`${name} is required`);
+    throw new PluginToolInputError(
+      `${name} must not be empty. Set it and call the tool again.`,
+    );
+  }
+  return value.trim();
+}
+
+function runtimeId(value: string | undefined, name: string): string {
+  if (!value?.trim()) {
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn. No change to the call can fix this.`,
+    );
   }
   return value.trim();
 }
@@ -295,7 +309,9 @@ async function createGitHubPullRequest(
     // 404 and 422 mean the model named a missing repo or branch, or GitHub
     // rejected the requested change. The model can fix the input and retry.
     if (response.status === 404 || response.status === 422) {
-      throw new PluginToolInputError(message);
+      throw new PluginToolInputError(
+        `${message}. Check repo, head, and base, and fix any field that GitHub names.`,
+      );
     }
     throw new GitHubPullRequestCreateRejectedError(message, response.status);
   }
@@ -443,7 +459,9 @@ function namedLogins(
   return values?.map((value) => {
     const login = parseGitHubLogin(value);
     if (!login) {
-      throw new PluginToolInputError(`Invalid GitHub ${role} login: ${value}`);
+      throw new PluginToolInputError(
+        `Invalid GitHub ${role} login: ${value}. Pass a GitHub login, such as octocat.`,
+      );
     }
     return login;
   });
@@ -641,11 +659,8 @@ export function createGitHubPullRequestTool(
         ...githubText,
         ...people,
       });
-      const conversationId = nonEmptyString(
-        ctx.conversationId,
-        "conversationId",
-      );
-      const toolCallId = nonEmptyString(options?.toolCallId, "toolCallId");
+      const conversationId = runtimeId(ctx.conversationId, "conversationId");
+      const toolCallId = runtimeId(options?.toolCallId, "toolCallId");
       const key = `createPullRequest:${conversationId}:${toolCallId}`;
       const attempt = await ctx.state.withLock(
         `${key}:lock`,
