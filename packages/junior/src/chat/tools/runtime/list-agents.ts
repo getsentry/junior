@@ -249,7 +249,7 @@ const listAgentsOutputSchema = juniorToolOutputSchema.extend({
   agents: z
     .array(listedAgentSchema)
     .describe(
-      "Without a query: this conversation, its parent, its child agents, the roots it started, then its siblings, newest activity first. With a query: the best matches, your team first.",
+      "Without a query: this conversation, its parent, its child agents, the roots it started, then its siblings, newest activity first. With a query: the best matches, your team first, then the conversations your person takes part in.",
     ),
 });
 

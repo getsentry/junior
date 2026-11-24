@@ -11,7 +11,9 @@ import { juniorConversationEmbeddings, juniorConversations } from "@/db/schema";
 import { slackInvocationInput } from "../fixtures/agent-invocations";
 import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
+import { seedMcpConversation } from "../fixtures/mcp-tools";
 import { createHarness } from "../fixtures/thread-input";
+import { signedInViewer } from "../fixtures/user";
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -26,7 +28,7 @@ describe("listAgents query", () => {
     await closeDb();
   });
 
-  it("finds Conversations that it may read, its team first, and says how much of a summary it cut", async () => {
+  it("finds Conversations that it may read, its team first, then its person's, and says how much of a summary it cut", async () => {
     const recordPublic = async (channelId: string, title: string) => {
       const conversationId = `slack:${channelId}:1700000000.100000`;
       await getConversationStore().recordActivity({
@@ -73,12 +75,24 @@ describe("listAgents query", () => {
     } finally {
       await harness.close();
     }
+    // Its person takes part in this one. It matches the query less closely
+    // than the other public match and still ranks before it.
+    const person = await signedInViewer("list-agents-person@example.com");
+    const personWork = "slack:CPERSON:1700000000.100000";
+    await seedMcpConversation({
+      conversationId: personWork,
+      email: "list-agents-person@example.com",
+      title: "Launch window and the decision log",
+    });
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
 
     const result = await executeTool(
-      createListAgentsTool({ conversationId: requester }),
+      createListAgentsTool({
+        conversationId: requester,
+        resolvePersonUserId: async () => person.id,
+      }),
       { query: "launch decision" },
     );
 
@@ -87,6 +101,10 @@ describe("listAgents query", () => {
         relation: "child",
         conversation_id: child,
         kind: "thread",
+      }),
+      expect.objectContaining({
+        relation: "other",
+        conversation_id: personWork,
       }),
       {
         relation: "other",
@@ -101,9 +119,9 @@ describe("listAgents query", () => {
       },
     ]);
     const cut = /\[(\d+) more characters cut/.exec(
-      result.agents[1].summary,
+      result.agents[2].summary,
     )?.[1];
-    expect(result.agents[1].summary.startsWith(summary.slice(0, 1_000))).toBe(
+    expect(result.agents[2].summary.startsWith(summary.slice(0, 1_000))).toBe(
       true,
     );
     expect(Number(cut)).toBe(summary.length - 1_000);
