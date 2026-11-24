@@ -12,9 +12,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-
-/** Deploy topic name. Keep stable for Vercel queue wiring. */
-export const CACHE_WARMUP_QUEUE_TOPIC = "junior_cache_warmups";
+import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 const cacheWarmupMessageSchema = z.discriminatedUnion("kind", [
   z

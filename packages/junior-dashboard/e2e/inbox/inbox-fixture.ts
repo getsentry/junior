@@ -697,13 +697,18 @@ export function rowHead(scope: Page | Locator, title: string) {
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
  * row's Open action: on hover on a Conversation row, or on the open card
- * of an item row.
+ * of an item row. A phone hides a closed row's actions, so there a row
+ * with nothing to expand opens from its head.
  */
 export async function openRow(head: Locator) {
   const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
   const open = row.getByRole("link", { name: "Open conversation" }).first();
   await head.hover();
-  if (!(await open.isVisible())) await expandRow(head);
+  if (!(await open.isVisible())) {
+    const expand = row.locator('[aria-controls^="inbox-row-"]').first();
+    if ((await expand.count()) === 0) return head.click();
+    await expand.click();
+  }
   await open.click();
 }
 

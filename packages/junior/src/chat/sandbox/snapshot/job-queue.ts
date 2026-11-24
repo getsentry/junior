@@ -7,11 +7,10 @@ import {
   verifyQueueMessage,
 } from "@/chat/queue/sign";
 import { getQueueProvider } from "@/chat/queue/provider";
+import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 const SIGNATURE_CONTEXT = "junior.workspace_snapshot_queue.v1";
 const SIGNATURE_VERSION = "v1" as const;
-
-export const WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC = "junior_workspace_snapshots";
 
 const workspaceSnapshotJobMessageSchema = z
   .object({

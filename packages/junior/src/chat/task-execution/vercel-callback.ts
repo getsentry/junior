@@ -15,10 +15,8 @@ import {
   type ConversationQueueMessage,
   type ConversationWorkQueue,
 } from "./queue";
-import {
-  getVercelConversationWorkQueue,
-  resolveConversationWorkQueueTopic,
-} from "./vercel-queue";
+import { resolveConversationWorkQueueTopic } from "@/chat/queue/topics";
+import { getVercelConversationWorkQueue } from "./vercel-queue";
 import {
   processConversationWork,
   type ConversationWorkProcessResult,
