@@ -38,6 +38,7 @@ import { syncInboxItemPush } from "@/chat/notifications/inbox-item-push";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
+import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import {
   juniorConversationParticipants,
   juniorInboxItemDeliveries,
@@ -337,6 +338,60 @@ describe("inbox item push", () => {
       close: [added.item.id],
       tag: next.item.id,
     });
+  });
+
+  it("pushes a To-do for a person to each new assignee once, and closes it with the next push", async () => {
+    const ana = await anaWithPhone();
+    await user("bob@example.com");
+    await conversation(ROOT, "public");
+    const tool = createUpdateTodosTool(
+      { conversationId: ROOT },
+      services.findMentionedUserId,
+    );
+    const updateTodos = async (input: unknown) => await execute(tool, input);
+
+    const {
+      todos: [todo],
+    } = await updateTodos({
+      add: [
+        { title: "Confirm the rollback window", assignee: "bob@example.com" },
+      ],
+    });
+    expect(pushes).toEqual([]);
+    // The item moves to Ana, so she gets its push.
+    await updateTodos({
+      update: [
+        {
+          id: todo.id,
+          assignee: "ana@example.com",
+          notes: "Check the **deploy** calendar.",
+        },
+      ],
+    });
+    const itemId = pushes[0]?.["tag"] as string;
+    expect(pushes).toEqual([
+      {
+        body: "Check the deploy calendar.",
+        tag: itemId,
+        title: "Confirm the rollback window",
+        url: `https://junior.example.com/inbox?item=${itemId}`,
+      },
+    ]);
+    // A change of the same To-do does not push again.
+    await updateTodos({
+      update: [{ id: todo.id, title: "Confirm the rollback week" }],
+    });
+    expect(pushes).toHaveLength(1);
+
+    // Done closes the item, and the next push closes its push.
+    await actOnInboxItem({
+      action: "done",
+      delivery: { queue, show: services.show },
+      id: itemId,
+      user: ana,
+    });
+    const next = await execute((await turnTools(ana)).add, ASK);
+    expect(pushes[1]).toMatchObject({ close: [itemId], tag: next.item.id });
   });
 
   it("pushes an item that Slack shows only to an assignee who is away in Slack 5 minutes later", async () => {

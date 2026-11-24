@@ -59,12 +59,13 @@ function closeReason(todo: TodoRow | undefined): string | undefined {
  * match the To-dos now. Each open To-do for a person who can see the
  * Conversation has one open item. Call it inside the transaction of each
  * To-do change, under the To-do lock. It writes nothing when the items are
- * already right.
+ * already right. Return the ids of the open items that it added or changed,
+ * so the caller can push them after the transaction commits.
  */
 export async function syncTodoInboxItems(
   db: JuniorDatabase,
   args: { conversationId: string; nowMs: number },
-): Promise<void> {
+): Promise<string[]> {
   const { conversationId, nowMs } = args;
   const todos = await db
     .select({
@@ -132,6 +133,7 @@ export async function syncTodoInboxItems(
       ? await readConversationAccessRows(db, [conversationId])
       : [];
   let tenant: ProviderTenant | undefined;
+  const shown: string[] = [];
   /* oxlint-disable no-await-in-loop -- Reads share one transaction; a list has few people. */
   for (const userId of people) {
     const participantRoots = await conversationIdsWithParticipantUser(
@@ -179,19 +181,21 @@ export async function syncTodoInboxItems(
       visibility: "private",
     };
     if (!item) {
-      await insertInboxItem(db, {
+      const inserted = await insertInboxItem(db, {
         ...content,
         dedupeKey: key,
         nowMs,
         owner: { id: conversationId, kind: "conversation" },
         ...(tenant ? { tenant } : undefined),
       });
+      if (inserted) shown.push(inserted.id);
     } else if (
       item.title !== content.title ||
       item.body !== content.body ||
       assigneeOf.get(item.id) !== userId
     ) {
       await updateInboxItemContent(db, { ...content, id: item.id, nowMs });
+      shown.push(item.id);
     }
   }
   for (const item of openItems) {
@@ -204,4 +208,5 @@ export async function syncTodoInboxItems(
     });
   }
   /* oxlint-enable no-await-in-loop */
+  return shown;
 }
