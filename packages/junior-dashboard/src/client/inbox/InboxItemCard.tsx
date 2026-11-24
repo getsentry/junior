@@ -18,6 +18,7 @@ import {
   inboxItemTitleText,
 } from "./inboxItemFormat";
 import { InboxItemAssignees, InboxItemTitle } from "./InboxItemPeople";
+import { useClosingInboxItem } from "./queries";
 
 /**
  * Show one Inbox item as a card: its title, status, description, and the
@@ -25,7 +26,8 @@ import { InboxItemAssignees, InboxItemTitle } from "./InboxItemPeople";
  * frame as transcript object cards, so it reads as one record, not as prose.
  */
 export function InboxItemCard(props: { item: InboxItemPayload }) {
-  const { item } = props;
+  // The status shows as closed as the viewer's action starts.
+  const item = useClosingInboxItem(props.item);
   const open = item.status === "open";
   return (
     <section
@@ -69,7 +71,7 @@ export function InboxItemCard(props: { item: InboxItemPayload }) {
           <DisplayText mentions={item.mentions} text={item.body} />
         </InboxItemObjects>
         <div className="border-t border-dashboard-border pt-4">
-          <InboxItemActions item={item} />
+          <InboxItemActions item={props.item} />
         </div>
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">

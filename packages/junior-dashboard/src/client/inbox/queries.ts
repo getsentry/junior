@@ -25,6 +25,7 @@ import {
 } from "@sentry/junior/api/schema";
 import * as z from "zod";
 
+import { useDashboardCoreData } from "../api";
 import {
   conversationDetailQueryKey,
   type ConversationSnapshot,
@@ -576,6 +577,27 @@ export function useClosingInboxItemIds(): ReadonlySet<string> {
 }
 
 /**
+ * The ids of the items that a viewer's action closes while it runs or after
+ * it succeeded. A list can still hold them as open until it reads again.
+ */
+export function useClosedByViewerInboxItemIds(): ReadonlySet<string> {
+  const ids = useMutationState({
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      const { status } = mutation.state;
+      return action &&
+        closesItem(action.body) &&
+        (status === "pending" || status === "success")
+        ? action.id
+        : "";
+    },
+  });
+  const key = [...new Set(ids.filter(Boolean))].sort().join("\n");
+  return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
+}
+
+/**
  * The answer of the viewer's last action on an item, when that action was
  * an answer that failed, so the form shows it again.
  */
@@ -594,6 +616,78 @@ export function useFailedInboxItemAnswer(id: string) {
   return last?.failed && last.body.action === "submit"
     ? last.body.answer
     : undefined;
+}
+
+/**
+ * The error of the viewer's last action on an item, when that action failed.
+ * A card that closes as its action starts unmounts its form, so the form
+ * that comes back reads the error here.
+ */
+export function useFailedInboxItemAction(id: string): Error | undefined {
+  const errors = useMutationState({
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
+    select: (mutation) =>
+      actionOf(mutation)?.id === id ? mutation.state.error : undefined,
+  });
+  // The mutation cache keeps insertion order, so the last one is newest. Its
+  // error is null while it runs or after it succeeds.
+  return errors.filter((error) => error !== undefined).at(-1) ?? undefined;
+}
+
+/**
+ * Show an item as closed from the moment the viewer's action that closes it
+ * starts. While the action runs, the item shows the viewer's answer or
+ * dismiss. After it succeeds, the item shows as the server returned it,
+ * until the item's own reads have it. A failed action shows the item as it
+ * was.
+ */
+export function useClosingInboxItem(item: InboxItemPayload): InboxItemPayload;
+export function useClosingInboxItem(
+  item: InboxItemPayload | undefined,
+): InboxItemPayload | undefined;
+export function useClosingInboxItem(
+  item: InboxItemPayload | undefined,
+): InboxItemPayload | undefined {
+  const viewer = useDashboardCoreData().data?.me.user;
+  // `useMutationState` reads `select` again only when a mutation changes, so
+  // `select` does not depend on the item, which can load later.
+  const actions = useMutationState({
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      const { data, status, submittedAt } = mutation.state;
+      return action
+        ? {
+            ...action,
+            closed: inboxItemSchema.safeParse(data).data,
+            status,
+            submittedAt,
+          }
+        : undefined;
+    },
+  });
+  // The mutation cache keeps insertion order, so the last one is newest.
+  const last = actions.filter((action) => action?.id === item?.id).at(-1);
+  if (item?.status !== "open" || !last || !closesItem(last.body)) return item;
+  if (last.status === "success") return last.closed ?? item;
+  if (last.status !== "pending" || !viewer) return item;
+  const { body } = last;
+  return {
+    ...item,
+    ...(body.action === "submit"
+      ? { answer: { ...body.answer, requestId: item.id } }
+      : undefined),
+    closedAt: new Date(last.submittedAt).toISOString(),
+    // The server's item replaces this one when the action succeeds. The
+    // dashboard shows a person by email and name, not by `userId`.
+    closedBy: {
+      avatarUrl: viewer.avatarUrl || undefined,
+      displayName: viewer.name?.trim() || undefined,
+      email: viewer.email,
+      userId: "",
+    },
+    status: body.action === "dismiss" ? "dismissed" : "done",
+  };
 }
 
 /**

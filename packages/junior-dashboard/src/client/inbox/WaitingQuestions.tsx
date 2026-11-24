@@ -11,7 +11,11 @@ import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
 import { scrollRootFor } from "../conversations/transcriptBottomPinning";
-import { useInboxItemsData, useWaitingConversations } from "./queries";
+import {
+  useClosedByViewerInboxItemIds,
+  useInboxItemsData,
+  useWaitingConversations,
+} from "./queries";
 import { itemConversationId, inboxItemWaitsForAnswer } from "./inboxItemFormat";
 
 /**
@@ -38,6 +42,9 @@ export function useWaitingQuestions(conversationId: string | undefined) {
   // Each page that lands asks for the next one. The fetch flags alone can
   // end where they started, so the loop would not run again.
   const pageCount = query.data?.pages.length ?? 0;
+  // A card closes as the viewer's action on it starts, before the list
+  // drops its item.
+  const closing = useClosedByViewerInboxItemIds();
   useEffect(() => {
     if (stale || failed || !hasNextPage || isFetching) return;
     void fetchNextPage();
@@ -50,11 +57,12 @@ export function useWaitingQuestions(conversationId: string | undefined) {
         : items.filter(
             (item) =>
               inboxItemWaitsForAnswer(item) &&
+              !closing.has(item.id) &&
               !item.assignedToEveryone &&
               item.addedByTurnId !== undefined &&
               itemConversationId(item) === conversationId,
           ),
-    [conversationId, items, stale],
+    [closing, conversationId, items, stale],
   );
 }
 
