@@ -3,7 +3,10 @@ import { githubPlugin } from "@sentry/junior-github";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { eq } from "drizzle-orm";
 import * as z from "zod";
-import type { CodeChangeInput } from "@sentry/junior-plugin-api";
+import type {
+  CodeChangeFilter,
+  CodeChangeInput,
+} from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import {
   apiErrorSchema,
@@ -12,6 +15,7 @@ import {
   codeRepositoryReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { recordCodeChange, recordCodeChangeActivity } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -424,6 +428,72 @@ describe("code API", () => {
       );
     } finally {
       vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+
+  test("lets a plugin read its code changes by repository, state, and age", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const github = createPluginCodeChanges("github");
+      const change = (
+        number: number,
+        state: "closed" | "merged" | "open",
+        updatedAt: string,
+      ) =>
+        github.record({
+          closedAt: state === "closed" ? new Date(updatedAt) : undefined,
+          conversationIds: [`conversation-${number}`],
+          mergedAt: state === "merged" ? new Date(updatedAt) : undefined,
+          number,
+          openedAt: new Date("2026-08-01T12:00:00.000Z"),
+          providerId: `change-${number}`,
+          repository: { name: "getsentry/Junior", providerId: "repository-1" },
+          state,
+          updatedAt: new Date(updatedAt),
+        });
+      await change(1, "open", "2026-08-03T12:00:00.000Z");
+      await change(2, "open", "2026-08-02T12:00:00.000Z");
+      await change(3, "merged", "2026-08-04T12:00:00.000Z");
+      await createPluginCodeChanges("gitlab").record({
+        conversationIds: [],
+        number: 1,
+        openedAt: new Date("2026-08-01T12:00:00.000Z"),
+        providerId: "gitlab-change-1",
+        repository: { name: "getsentry/junior", providerId: "gitlab-1" },
+        state: "open",
+        updatedAt: new Date("2026-08-01T12:00:00.000Z"),
+      });
+      const numbers = async (filter: CodeChangeFilter) =>
+        (await github.list(filter)).map((found) => found.number);
+
+      // A webhook knows the repository name in any case, and the number.
+      await expect(
+        github.list({ repository: { name: "GETSENTRY/junior", numbers: [3] } }),
+      ).resolves.toEqual([
+        {
+          closedAt: undefined,
+          conversationIds: ["conversation-3"],
+          mergedAt: new Date("2026-08-04T12:00:00.000Z"),
+          number: 3,
+          providerId: "change-3",
+          repository: { name: "getsentry/Junior", providerId: "repository-1" },
+          state: "merged",
+        },
+      ]);
+      // Oldest update first, and only this plugin's code changes.
+      await expect(numbers({})).resolves.toEqual([2, 1, 3]);
+      await expect(
+        numbers({
+          state: "open",
+          updatedBefore: new Date("2026-08-03T00:00:00.000Z"),
+        }),
+      ).resolves.toEqual([2]);
+      await expect(
+        numbers({ conversationIds: ["conversation-1", "conversation-3"] }),
+      ).resolves.toEqual([1, 3]);
+    } finally {
       await fixture.close();
     }
   });

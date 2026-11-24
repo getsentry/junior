@@ -94,6 +94,11 @@ export const juniorCodeChanges = pgTable(
       "gin",
       codeChangeSearchDocument(table),
     ),
+    // Plugins read the code changes of some Conversations.
+    index("junior_code_changes_conversation_ids_idx").using(
+      "gin",
+      table.conversationIds,
+    ),
     index("junior_code_changes_open_idx")
       .on(table.id)
       .where(sql`${table.state} = 'open'`),

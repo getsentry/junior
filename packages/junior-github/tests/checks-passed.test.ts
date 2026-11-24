@@ -131,11 +131,7 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
         },
         async update() {},
       },
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record() {},
-      },
+      codeChanges: fixture.codeIndex.codeChanges,
       db: fixture.db(),
       events,
       log: { error() {}, info() {}, warn() {} },

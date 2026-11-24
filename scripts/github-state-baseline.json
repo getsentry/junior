@@ -1,12 +1,3 @@
 {
-  "tables": {
-    "junior_github_pull_requests": {
-      "repository_id": "Mirror awaiting cleanup: core code changes hold the repository.",
-      "repository_full_name": "Mirror awaiting cleanup: core code changes hold the repository.",
-      "number": "Mirror awaiting cleanup: core code changes hold the number.",
-      "state": "Mirror awaiting cleanup: core code changes hold the lifecycle.",
-      "opened_at": "Mirror awaiting cleanup: core code changes hold the lifecycle.",
-      "finished_at": "Mirror awaiting cleanup: core code changes hold the lifecycle."
-    }
-  }
+  "tables": {}
 }

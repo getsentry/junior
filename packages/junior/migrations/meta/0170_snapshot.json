@@ -1,5 +1,5 @@
 {
-  "id": "1535da35-ae7b-4b0a-a616-d5651708ca4c",
+  "id": "53cebd3e-2849-4abe-9840-450ae0fe2b07",
   "prevId": "1bf59037-95bb-4ae3-91a2-2b9886bfef5d",
   "version": "7",
   "dialect": "postgresql",
@@ -1368,6 +1368,18 @@
           "primaryKey": true,
           "notNull": true
         },
+        "additions": {
+          "name": "additions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "changed_files": {
+          "name": "changed_files",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1380,6 +1392,19 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
+        },
+        "deletions": {
+          "name": "deletions",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "draft": {
+          "name": "draft",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "last_activity_at": {
           "name": "last_activity_at",
@@ -1543,6 +1568,21 @@
               "expression": "to_tsvector('simple', \"number\"::text || ' ' || coalesce(\"title\", ''))",
               "asc": true,
               "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "junior_code_changes_conversation_ids_idx": {
+          "name": "junior_code_changes_conversation_ids_idx",
+          "columns": [
+            {
+              "expression": "conversation_ids",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
