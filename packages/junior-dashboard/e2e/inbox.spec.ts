@@ -120,7 +120,12 @@ const migration = {
 
 async function mockInboxItems(
   page: Page,
-  options: { open?: unknown[]; pageSize?: number } = {},
+  options: {
+    /** An answer returns the item closed, as the server does. */
+    closes?: boolean;
+    open?: unknown[];
+    pageSize?: number;
+  } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
   const open = (options.open ?? [
@@ -158,11 +163,16 @@ async function mockInboxItems(
     const action = path.match(/^\/([^/]+)\/actions$/);
     if (action) {
       const id = decodeURIComponent(action[1]);
-      actions.push({ body: route.request().postDataJSON(), id });
+      const body = route.request().postDataJSON();
+      actions.push({ body, id });
       const acted = items.find((i) => i.id === id);
-      return acted
-        ? route.fulfill({ json: acted })
-        : route.fulfill({ json: { error: "Not found" }, status: 404 });
+      if (!acted) {
+        return route.fulfill({ json: { error: "Not found" }, status: 404 });
+      }
+      const closed = options.closes && body.action === "submit";
+      return route.fulfill({
+        json: closed ? { ...acted, status: "done" } : acted,
+      });
     }
     const item = items.find((i) => i.id === decodeURIComponent(path.slice(1)));
     return item
@@ -579,6 +589,7 @@ test("a message asks before it drops picks on a question card, and Send sends th
 }) => {
   // A notice fills the first page, so the question loads from the second.
   const actions = await mockInboxItems(page, {
+    closes: true,
     open: [{ ...prReady, conversationIds: [conversationId] }, migration],
     pageSize: 1,
   });

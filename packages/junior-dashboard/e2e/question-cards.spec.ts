@@ -93,6 +93,40 @@ for (const view of [desktop, mobile]) {
   });
 }
 
+test("an answer closes the card at once, and a failed one comes back", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  const actions = "**/api/inbox-items/qa-rollout/actions";
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(actions, async (route) => {
+    await held;
+    await route.fulfill({
+      json: { error: "The rollout is locked." },
+      status: 409,
+    });
+  });
+  await openConversation(page, dashboard.baseURL, ONE_QUESTION_ID);
+  const card = page.getByRole("region", {
+    name: "Asked Approve the payments-v42 rollout",
+  });
+  const hold = card.getByRole("button", { name: "Hold", exact: true });
+  await hold.click();
+  await card.getByRole("button", { name: "Send", exact: true }).click();
+  // The card closes before the server answers.
+  await expect(card.getByRole("region", { name: "Question" })).toHaveCount(0);
+  await expect(card).toContainText("Answered");
+  await expect(card).toContainText("Hold");
+
+  release();
+  await expect(card.getByText("The rollout is locked.")).toBeVisible();
+  await expect(hold).toHaveAttribute("aria-pressed", "true");
+});
+
 test("a second click takes the pick back, and a note alone answers", async ({
   dashboard,
   page,

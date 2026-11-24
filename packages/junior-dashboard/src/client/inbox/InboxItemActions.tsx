@@ -10,7 +10,12 @@ import { UserInputForm } from "../components/UserInputForm";
 import { Button } from "../components/ui/button";
 import { DisplayText } from "../display-text/DisplayText";
 import { DashboardApiError } from "../http";
-import { useFailedInboxItemAnswer, useInboxItemAction } from "./queries";
+import {
+  useClosingInboxItem,
+  useFailedInboxItemAction,
+  useFailedInboxItemAnswer,
+  useInboxItemAction,
+} from "./queries";
 import { InboxItemEvidence } from "./InboxItemEvidence";
 import { answerRows } from "./inboxItemFormat";
 import { useReportUnsentAnswer } from "./UnsentAnswers";
@@ -79,8 +84,9 @@ function ClosedSummary(props: { item: InboxItemPayload }) {
  * question reads the same on each. A caller that shows
  * its own Dismiss turns this one off. A To-do for the viewer adds Done,
  * its main action, last. `onAction` takes the actions in its
- * place and reports their failures itself. An answer that failed shows
- * again in the form.
+ * place and reports their failures itself. Without it, the item shows as
+ * closed as soon as an action that closes it starts. An answer that failed
+ * shows again in the form, with the error.
  */
 export function InboxItemActions(props: {
   /** What Junior said around the question, after the question. */
@@ -96,7 +102,8 @@ export function InboxItemActions(props: {
   const { item } = props;
   const action = useInboxItemAction();
   const draft = useFailedInboxItemAnswer(item.id);
-  const [error, setError] = useState<string>();
+  const failure = useFailedInboxItemAction(item.id);
+  const closing = useClosingInboxItem(item);
   const [unsent, setUnsent] = useState(false);
   // `onAction` sends without `action`, so it keeps its own pending state.
   const [sending, setSending] = useState(false);
@@ -106,7 +113,9 @@ export function InboxItemActions(props: {
     if (item.status !== "open") clearAnswerDraft(item.id);
   }, [item.id, item.status]);
 
-  if (item.status !== "open") return <ClosedSummary item={item} />;
+  // A caller with `onAction` shows its own pending state.
+  const shown = props.onAction ? item : closing;
+  if (shown.status !== "open") return <ClosedSummary item={shown} />;
   if (!item.canAct && !item.canAnswer) {
     return (
       <div className="flex flex-wrap items-center gap-2">
@@ -131,13 +140,7 @@ export function InboxItemActions(props: {
         setSending(false);
       }
     }
-    setError(undefined);
-    try {
-      await action.mutateAsync({ body, id: item.id });
-    } catch (failure) {
-      setError(actionError(failure));
-      throw failure;
-    }
+    await action.mutateAsync({ body, id: item.id });
   }
 
   // A To-do for the viewer closes with Done, its main action.
@@ -230,7 +233,9 @@ export function InboxItemActions(props: {
           </div>
         </div>
       ) : null}
-      {error ? <InlineError>{error}</InlineError> : null}
+      {failure && !props.onAction ? (
+        <InlineError>{actionError(failure)}</InlineError>
+      ) : null}
     </div>
   );
 }

@@ -21,7 +21,7 @@ import {
   useAnswerLinked,
 } from "../conversations/TranscriptAnswerLinks";
 import { DisplayText } from "../display-text/DisplayText";
-import { useConversationInboxItemData } from "./queries";
+import { useClosingInboxItem, useConversationInboxItemData } from "./queries";
 import { AnswerSummary, InboxItemActions } from "./InboxItemActions";
 import { InboxItemObjects } from "./InboxItemObjects";
 import {
@@ -307,10 +307,12 @@ export function InboxItemAskRow(props: {
   fallback: ReactNode;
   itemId: string;
 }) {
-  const { data: item, isError } = useConversationInboxItemData(
+  const { data, isError } = useConversationInboxItemData(
     props.conversationId,
     props.itemId,
   );
+  // The card closes, without its form, as the viewer's action starts.
+  const item = useClosingInboxItem(data);
   // The record repeats the answer only while its answer row is out of view.
   const answerShown = useAnswerInView(props.itemId);
   // Only a question from this Conversation shows its form here. Another

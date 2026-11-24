@@ -21,6 +21,7 @@ import {
   InboxItemAssignees,
   InboxItemTitle,
 } from "../../inbox/InboxItemPeople";
+import { useClosingInboxItem } from "../../inbox/queries";
 import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 
 /**
@@ -29,7 +30,8 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
  * frame as transcript object cards, so it reads as one record, not as prose.
  */
 export function InboxItemCard(props: { item: InboxItemPayload }) {
-  const { item } = props;
+  // The status shows as closed as the viewer's action starts.
+  const item = useClosingInboxItem(props.item);
   const open = item.status === "open";
   const assigned = item.assignees.length > 0 || item.assignedToEveryone;
   return (
@@ -68,7 +70,7 @@ export function InboxItemCard(props: { item: InboxItemPayload }) {
           <DisplayText mentions={item.mentions} text={item.body} />
         </InboxItemObjects>
         <div className="border-t border-dashboard-border pt-4">
-          <InboxItemActions item={item} />
+          <InboxItemActions item={props.item} />
         </div>
       </div>
       <footer className="flex flex-wrap items-center justify-between gap-3 border-t border-dashboard-border bg-dashboard-fill-faint px-4 py-3 text-xs md:px-5">
