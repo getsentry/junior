@@ -54,6 +54,7 @@ function startedTaskContext(
       show: options.showInboxItem ?? (async () => {}),
     }),
     db: getDb(),
+    lastDelivery: (options.deliveryCount ?? 0) >= PLUGIN_TASK_MAX_DELIVERIES,
     log: createPluginLogger(pluginName),
     name,
     payload,
