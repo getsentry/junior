@@ -105,11 +105,13 @@ export function parseMarkdownLines(lines: string[]): MarkdownLine[] {
       const fenced = fence === "`" || fence === "~";
       let length = 0;
       while (fenced && text[start + length] === fence) length++;
+      const quotes = quoteDepth(text.slice(starts[firstLine], start));
       for (let line = firstLine; line <= lastLine; line++) {
         const isFence =
           fenced &&
           (line === firstLine ||
-            (line === lastLine && closesFence(lines[line]!, fence, length)));
+            (line === lastLine &&
+              closesFence(lines[line]!, fence, length, quotes)));
         const from = line === firstLine ? start : starts[line]!;
         const to = Math.min(lineEnd(starts, text, line), end);
         kinds[line] = isFence ? "fence" : "code";
@@ -225,15 +227,26 @@ function quoteMarkerEnd(text: string, from: number): number {
 }
 
 // A closing fence: at least `length` of the opening fence character, alone
-// on its line after the indent and quote markers of its container.
-function closesFence(line: string, fence: string, length: number): boolean {
+// on its line after the indent and the `quotes` markers of its container.
+function closesFence(
+  line: string,
+  fence: string,
+  length: number,
+  quotes: number,
+): boolean {
   const trimmed = line.trimEnd();
   let at = trimmed.length;
   while (at > 0 && trimmed[at - 1] === fence) at--;
+  const prefix = trimmed.slice(0, at);
   return (
     trimmed.length - at >= length &&
-    trimmed.slice(0, at).replaceAll(">", "").trim() === ""
+    quoteDepth(prefix) === quotes &&
+    prefix.replaceAll(">", "").trim() === ""
   );
+}
+
+function quoteDepth(prefix: string): number {
+  return prefix.split(">").length - 1;
 }
 
 // Runs of characters with one format and marker. Markers carry their

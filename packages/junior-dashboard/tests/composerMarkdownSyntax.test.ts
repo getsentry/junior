@@ -128,6 +128,8 @@ it("tells fences from code by the parsed block", () => {
   // An unclosed fence runs to the end, so its last line is code.
   expect(kinds(["```", "a"])).toEqual(["fence", "code"]);
   expect(kinds(["> ```", "> a", "> ```"])).toEqual(["fence", "code", "fence"]);
+  // A quote marker only closes a fence that opened in that quote.
+  expect(kinds(["```", "a", "> ```"])).toEqual(["fence", "code", "code"]);
   expect(kinds(["    indented"])).toEqual(["code"]);
 });
 
