@@ -204,6 +204,30 @@ describe("GitHub pull request snoozes", () => {
     expect((await asAna.inbox()).inbox).toEqual([TITLE]);
   });
 
+  it("does not wake a snooze on a stale merge state read", async () => {
+    const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "labeled",
+      pull_request: pullRequest({ mergeable: false }),
+    });
+
+    // The read of the first push comes after the second push, so the
+    // entry rejects it, and the conflict stays marked.
+    for (const head of ["bbb222", "ccc333"]) {
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "synchronize",
+        pull_request: pullRequest({ head: { ref: "feat/acme", sha: head } }),
+      });
+    }
+    stubMergeState("MERGEABLE", "bbb222");
+    vi.setSystemTime(Date.now() + 60_000);
+    await runTestHeartbeat(fixture.queue, Date.now());
+    expect((await asAna.inbox()).inbox).toEqual([]);
+
+    await push("ddd444", "MERGEABLE");
+    expect((await asAna.inbox()).inbox).toEqual([TITLE]);
+  });
+
   it("wakes a snooze when a push fixes the merge conflict, and not before", async () => {
     const eventType = "pull_request.merge_conflict.resolved";
     const asAna = await snoozeUntil(eventType);

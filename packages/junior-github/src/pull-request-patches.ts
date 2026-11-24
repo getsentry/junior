@@ -111,18 +111,20 @@ export async function scheduleGitHubPullRequestPatch(args: {
 type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 
 // Write the read fields, only over an entry of the same head commit that
-// is not newer than the read. Return whether to read again: GitHub still
-// computes the merge state, or a webhook came after the read and its
-// fields still wait. After the last attempt, a merge state that GitHub
-// still computes stays pending only briefly, so the next read asks GitHub.
+// is not newer than the read. Return whether it wrote, and whether to read
+// again: GitHub still computes the merge state, or a webhook came after the
+// read and its fields still wait. After the last attempt, a merge state that
+// GitHub still computes stays pending only briefly, so the next read asks
+// GitHub.
 async function writeHeadFacts(
   cache: PluginCache,
   key: string,
   node: HeadFactsNode,
   last: boolean,
-): Promise<boolean> {
+): Promise<{ readAgain: boolean; written: boolean }> {
   const mergeable = githubMergeable(node.mergeable);
   let readAgain = false;
+  let written = false;
   await cache.update<GitHubPullRequestFields | null>(key, (current) => {
     if (!current || current.head?.sha !== node.headRefOid) return undefined;
     if (isOlderGitHubObject(current, { updated_at: node.updatedAt })) {
@@ -132,6 +134,7 @@ async function writeHeadFacts(
     }
     const computing = mergeable === null && current.mergeable === "pending";
     readAgain = computing && !last;
+    written = true;
     return {
       ...(computing && last
         ? GITHUB_PULL_REQUEST_PENDING_CACHE
@@ -144,7 +147,7 @@ async function writeHeadFacts(
       },
     };
   });
-  return readAgain;
+  return { readAgain, written };
 }
 
 // A patch reads the merge state that a push or a new base changes, so it
@@ -264,10 +267,13 @@ export async function runGitHubPullRequestPatches(args: {
               dropped.push(key);
               continue;
             }
-            observed.push({ node, ref });
             const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
             // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
-            if (await writeHeadFacts(args.cache, key, node, last)) {
+            const write = await writeHeadFacts(args.cache, key, node, last);
+            // A read that the entry rejects is stale: a newer push or webhook
+            // came after it, so its merge state must not mark or publish.
+            if (write.written) observed.push({ node, ref });
+            if (write.readAgain) {
               again.push(entry);
             }
           }
