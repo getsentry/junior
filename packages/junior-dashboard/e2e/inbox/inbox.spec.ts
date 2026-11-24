@@ -754,7 +754,8 @@ test.describe("new UI", () => {
             .getByRole("link", { name: new RegExp(checkout) }),
         ).toBeVisible();
       },
-      { requests: 9, serialRounds: 2 },
+      // The pull request on the checkout row reads its live state.
+      { requests: 10, serialRounds: 2 },
     );
   });
 

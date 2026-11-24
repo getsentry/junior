@@ -631,7 +631,7 @@ test.describe("new UI", () => {
     }
   });
 
-  test("sends feedback about the new UI from the profile menu", async ({
+  test("sends feedback about the dashboard from the profile menu", async ({
     page,
     dashboard,
   }) => {
@@ -670,7 +670,7 @@ test.describe("new UI", () => {
       lightTheme: true,
       view: "desktop",
     });
-    await dialog.getByRole("radio", { name: "The new UI" }).click();
+    await dialog.getByRole("radio", { name: "The dashboard" }).click();
     await dialog
       .getByRole("textbox", { name: "Comment" })
       .fill("Snoozed rows are hard to find");
@@ -688,7 +688,7 @@ test.describe("new UI", () => {
           source: "dashboard_feedback",
         },
       },
-      tags: { "app.dashboard.ui": "inbox", "app.feedback.topic": "new_ui" },
+      tags: { "app.feedback.topic": "new_ui" },
     });
 
     // On a phone the entry is in the navigation sheet, and the dialog opens
