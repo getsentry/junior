@@ -1,8 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants, juniorUsers } from "@/db/schema";
+import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
 import { createAgent } from "../fixtures/agent";
 import {
   closeConversationFixture,
@@ -106,13 +105,20 @@ describe("related conversations", () => {
       nowMs: Date.now(),
       title: "Open external links in new tabs",
     });
-    // The person who asks and one other person take part in the root.
+    // The person who asks and one other person take part in the root. The
+    // other person's name is only on their Slack Identity.
     const requester = await resolveViewerUser(webTestActor.email);
     const other = await resolveViewerUser("bob@example.com");
-    await getDb()
-      .update(juniorUsers)
-      .set({ displayName: "Bob Example" })
-      .where(eq(juniorUsers.id, other!.id));
+    await getDb().insert(juniorIdentities).values({
+      createdAt: new Date(),
+      displayName: "Bob Example",
+      id: "identity-bob-slack",
+      kind: "user",
+      provider: "slack",
+      providerSubjectId: "UBOB",
+      updatedAt: new Date(),
+      userId: other!.id,
+    });
     await getDb()
       .insert(juniorConversationParticipants)
       .values(
