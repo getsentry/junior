@@ -90,6 +90,11 @@ export const inboxItemSchema = z
       })
       .strict()
       .optional(),
+    /**
+     * Set on the reply notice of a Conversation's starter. Its body is a
+     * short preview of the reply, which its Turn's message holds in full.
+     */
+    replyNotice: z.literal(true).optional(),
     request: inboxItemRequestSchema.optional(),
     /**
      * The top of the owner Conversation's tree that the viewer can see, at

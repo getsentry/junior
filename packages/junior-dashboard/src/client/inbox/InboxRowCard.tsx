@@ -20,7 +20,7 @@ import {
   InboxItemSubjectPreview,
   SubjectMergeConflict,
 } from "./InboxItemSubjectPreview";
-import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
+import { InboxItemTurnMessage, ReplyNoticeText } from "./InboxItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton } from "./RowDismissButton";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
@@ -165,7 +165,13 @@ export function InboxRowCard(props: {
         </>
       )}
       <InboxItemObjects conversationId={itemConversationId(item)}>
-        {showBody ? (
+        {showBody && item.replyNotice ? (
+          <ReplyNoticeText
+            item={item}
+            label={inboxItemTitleText(item)}
+            preview={text}
+          />
+        ) : showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
             label={inboxItemTitleText(item)}

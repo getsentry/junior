@@ -1,11 +1,86 @@
+import type { Page } from "@playwright/test";
+import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
   mockInboxItems,
   pinChecks,
   pinReview,
   releaseNotes,
   rowHead,
+  viewer,
 } from "./inbox-fixture";
+import { desktop, mobile, screenshot } from "../screenshot";
 import { expect, test } from "../test";
+
+// A dashboard Conversation's reply notice. It stores a short preview; its
+// Turn's message holds the reply in full.
+const replyConversationId = "local:web:reply-notice-qa";
+const replyTurnId = "turn-reply-notice";
+const replyNotice = {
+  addedByTurnId: replyTurnId,
+  assignedToEveryone: false,
+  assignees: [viewer],
+  body: "The deploy finished. Checkout p95 is back to 210 ms, and the…",
+  canAct: true,
+  canTake: false,
+  conversationIds: [replyConversationId],
+  createdAt: "2026-08-07T09:40:00.000Z",
+  id: "item-reply-notice",
+  kind: "notice" as const,
+  owner: { id: replyConversationId, kind: "conversation" },
+  replyNotice: true as const,
+  rootConversationId: replyConversationId,
+  status: "open" as const,
+  title: "Roll back payments-v42",
+  updatedAt: "2026-08-07T09:40:00.000Z",
+  visibility: "private" as const,
+};
+const replyText = [
+  "The deploy finished. Checkout p95 is back to 210 ms, and the error rate is flat.",
+  ...Array.from(
+    { length: 12 },
+    (_, index) => `Region ${index + 1} is on payments-v41 and healthy.`,
+  ),
+  "I left the payments-v42 tag in place, so a fix can ship on top of it.",
+].join("\n\n");
+
+/** Serve the reply notice's Turn, or fail its read. */
+async function mockReplyTurn(page: Page, options: { fail?: boolean } = {}) {
+  const event = (seq: number, data: Record<string, unknown>) => ({
+    createdAt: new Date(NOW_MS - (60 - seq) * 1000).toISOString(),
+    data,
+    seq,
+  });
+  await page.route(
+    `**/api/conversations/${encodeURIComponent(replyConversationId)}/events?*`,
+    (route) => {
+      if (options.fail) return route.fulfill({ status: 500 });
+      return route.fulfill({
+        json: {
+          eventHistory: { status: "available" },
+          events: [
+            event(1, {
+              state: "started",
+              turnId: replyTurnId,
+              type: "turn_lifecycle",
+            }),
+            event(2, {
+              messageId: "m-reply",
+              role: "assistant",
+              text: replyText,
+              type: "message",
+            }),
+            event(3, {
+              state: "succeeded",
+              turnId: replyTurnId,
+              type: "turn_lifecycle",
+            }),
+          ],
+          generatedAt: new Date(NOW_MS).toISOString(),
+        },
+      });
+    },
+  );
+}
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -256,5 +331,70 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       rowHead(page, "Package release and self-update"),
     ).toBeVisible();
+  });
+
+  for (const view of [desktop, mobile]) {
+    test(`a reply notice shows the reply in full and opens it in its Conversation (${view.name})`, async ({
+      dashboard,
+      page,
+    }) => {
+      await page.setViewportSize(view);
+      const actions = await mockInboxItems(page, { open: [replyNotice] });
+      await mockReplyTurn(page);
+      await page.goto(`${dashboard.baseURL}/inbox?item=${replyNotice.id}`);
+      const card = page
+        .getByRole("region", { name: "FYI" })
+        .getByRole("region", { name: replyNotice.title, exact: true });
+      // The reply from its Turn takes the place of the stored preview.
+      await expect(card).toContainText("the error rate is flat.");
+      await expect(card).not.toContainText(replyNotice.body);
+      await expect(
+        card.getByRole("region", { name: "Junior's message" }),
+      ).toHaveCount(0);
+      const more = card.getByRole("button", {
+        name: `Expand ${replyNotice.title}`,
+      });
+      await expect(more).toHaveAttribute("aria-expanded", "false");
+      // The one Conversation link is the card's main action. It opens the
+      // reply.
+      const open = card.getByRole("link", { name: "Open conversation" });
+      await expect(open).toHaveCount(1);
+      await expect(open).toHaveText("Conversation");
+      await expect(open).toHaveAttribute(
+        "href",
+        `/conversations/${encodeURIComponent(replyConversationId)}?message=m-reply`,
+      );
+      await expect(card.getByRole("button", { name: "Snooze" })).toBeVisible();
+      await screenshot(page, "inbox-reply-notice", {
+        lightTheme: true,
+        view: view.name,
+      });
+      await more.click();
+      await expect(card).toContainText("ship on top of it.");
+      // Dismiss is for a reply that the card said enough of.
+      await card.getByRole("button", { name: "Dismiss", exact: true }).click();
+      await expect
+        .poll(() => actions.map((action) => action.id))
+        .toEqual([replyNotice.id]);
+    });
+  }
+
+  test("a reply notice whose Turn read fails shows its preview and opens its Conversation", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [replyNotice] });
+    await mockReplyTurn(page, { fail: true });
+    await page.goto(`${dashboard.baseURL}/inbox?item=${replyNotice.id}`);
+    const card = page
+      .getByRole("region", { name: "FYI" })
+      .getByRole("region", { name: replyNotice.title, exact: true });
+    await expect(card).toContainText(replyNotice.body);
+    await expect(
+      card.getByRole("link", { name: "Open conversation" }),
+    ).toHaveAttribute(
+      "href",
+      `/conversations/${encodeURIComponent(replyConversationId)}?ask=${replyNotice.id}`,
+    );
   });
 });
