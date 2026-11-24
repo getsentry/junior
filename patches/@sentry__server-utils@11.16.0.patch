@@ -1,8 +1,8 @@
 diff --git a/build/cjs/index.js b/build/cjs/index.js
-index a9897d837df5c0be738881fa45fc27d25f15d94b..1e44ff7b579bc28ce3d775eee4b4a526a1150212 100644
+index 5136114..89d026f 100644
 --- a/build/cjs/index.js
 +++ b/build/cjs/index.js
-@@ -7585,6 +7585,7 @@ const ORIGIN$7 = "auto.db.postgres";
+@@ -8449,6 +8449,7 @@ const ORIGIN$7 = "auto.db.postgres";
  const ATTR_PG_PLAN = "db.postgresql.plan";
  const ATTR_PG_IDLE_TIMEOUT = "db.postgresql.idle.timeout.millis";
  const ATTR_PG_MAX_CLIENT = "db.postgresql.max.client";
@@ -10,7 +10,7 @@ index a9897d837df5c0be738881fa45fc27d25f15d94b..1e44ff7b579bc28ce3d775eee4b4a526
  const DB_SYSTEM_POSTGRESQL$1 = "postgresql";
  const SPAN_QUERY_FALLBACK = "pg.query";
  const SPAN_CONNECT = "pg.connect";
-@@ -7633,13 +7634,21 @@ function subscribeQueryLikeChannel(channelName, getSpanOptions, { deferStreamedR
+@@ -8497,13 +8498,21 @@ function subscribeQueryLikeChannel(channelName, getSpanOptions, { deferStreamedR
  				[_sentry_conventions_attributes.SENTRY_KIND]: "client"
  			}
  		});
@@ -34,7 +34,7 @@ index a9897d837df5c0be738881fa45fc27d25f15d94b..1e44ff7b579bc28ce3d775eee4b4a526
  		return true;
  	} } : void 0);
  }
-@@ -7681,6 +7690,19 @@ function poolConnectSpanOptions(ctx) {
+@@ -8545,6 +8554,19 @@ function poolConnectSpanOptions(ctx) {
  function hasOnMethod(obj) {
  	return "on" in obj && typeof obj.on === "function";
  }
@@ -54,7 +54,7 @@ index a9897d837df5c0be738881fa45fc27d25f15d94b..1e44ff7b579bc28ce3d775eee4b4a526
  function extractQueryConfig(args) {
  	const arg0 = args[0];
  	if (typeof arg0 === "string") return { text: arg0 };
-@@ -7974,7 +7996,12 @@ function instrumentNeon() {
+@@ -8838,7 +8860,12 @@ function instrumentNeon() {
  		const span = (0, _sentry_core.startInactiveSpan)(httpQuerySpanOptions(data.arguments));
  		httpQuerySpans.add(span);
  		return span;
@@ -68,7 +68,7 @@ index a9897d837df5c0be738881fa45fc27d25f15d94b..1e44ff7b579bc28ce3d775eee4b4a526
  	tracingChannel(CHANNELS.NEON_RESOLVE_CONNECTION).subscribe({
  		start: NOOP$2,
  		end: NOOP$2,
-@@ -8016,6 +8043,9 @@ function httpQuerySpanOptions(args) {
+@@ -8880,6 +8907,9 @@ function httpQuerySpanOptions(args) {
  		attributes
  	};
  }
@@ -79,7 +79,7 @@ index a9897d837df5c0be738881fa45fc27d25f15d94b..1e44ff7b579bc28ce3d775eee4b4a526
  	const operations = new Set(statements.map((s) => s[_sentry_conventions_attributes.DB_OPERATION_NAME]?.toUpperCase()));
  	const [operation] = operations;
 diff --git a/build/esm/integrations/neon.js b/build/esm/integrations/neon.js
-index 9ff08ff6731837a8fe8bdd0526a7d8b04a29b3d1..f0fa304b7d3ed480395ca9f8a076bdfcfd957463 100644
+index 9ff08ff..f0fa304 100644
 --- a/build/esm/integrations/neon.js
 +++ b/build/esm/integrations/neon.js
 @@ -4,7 +4,7 @@ import { CHANNELS } from "../orchestrion/channels.js";
@@ -116,7 +116,7 @@ index 9ff08ff6731837a8fe8bdd0526a7d8b04a29b3d1..f0fa304b7d3ed480395ca9f8a076bdfc
  	const operations = new Set(statements.map((s) => s[DB_OPERATION_NAME]?.toUpperCase()));
  	const [operation] = operations;
 diff --git a/build/esm/integrations/pg.js b/build/esm/integrations/pg.js
-index 010f5ad3a2e600885ea65fb9c99916e75f9cd95a..e6ef286c25532662f6d49a1c6e9c097be103e341 100644
+index 010f5ad..e6ef286 100644
 --- a/build/esm/integrations/pg.js
 +++ b/build/esm/integrations/pg.js
 @@ -13,6 +13,7 @@ const ORIGIN = "auto.db.postgres";
@@ -179,3 +179,4 @@ index 010f5ad3a2e600885ea65fb9c99916e75f9cd95a..e6ef286c25532662f6d49a1c6e9c097b
 +export { bindPgQueryChannel, getConnectionAttributes, postgresIntegration, setReturnedRows };
  
  //# sourceMappingURL=pg.js.map
+\ No newline at end of file
