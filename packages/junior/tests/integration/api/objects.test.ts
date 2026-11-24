@@ -544,6 +544,12 @@ describe("object links API", () => {
         action: "deleted",
         issue: deleted,
       });
+      // A delivery from before the delete comes late.
+      await sendGitHubWebhook(app, "issues", {
+        action: "edited",
+        changes: { title: { from: "Show links" } },
+        issue: deleted,
+      });
       moved = true;
       await sendGitHubWebhook(app, "issues", {
         action: "transferred",

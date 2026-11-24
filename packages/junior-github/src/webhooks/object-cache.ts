@@ -57,6 +57,8 @@ export async function refreshGitHubObjectCache(args: {
   const gone = action === "deleted";
   await args.cache.update<typeof payload | null>(key, (current) => {
     if (gone) return { ...GITHUB_OBJECT_CACHE, value: null };
+    // A late delivery from before the delete must not bring it back.
+    if (current === null) return undefined;
     const value = mergeGitHubObject(current, payload);
     return value && { ...GITHUB_OBJECT_CACHE, value };
   });

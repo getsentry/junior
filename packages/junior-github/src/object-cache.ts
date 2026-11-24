@@ -80,7 +80,7 @@ export function githubObjectCacheKey(
  */
 export function mergeGitHubObject<
   T extends GitHubIssueFields | GitHubPullRequestFields,
->(current: T | null | undefined, payload: T): T | undefined {
+>(current: T | undefined, payload: T): T | undefined {
   if (
     current?.updated_at &&
     payload.updated_at &&
