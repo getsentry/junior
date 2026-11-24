@@ -4,14 +4,13 @@ import path from "node:path";
 import { pathToFileURL } from "node:url";
 import type { PluginRegistration } from "@sentry/junior-plugin-api";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPluginSystemPromptContributions } from "@/chat/plugins/agent-hooks";
+import { botConfig, setBotName } from "@/chat/config";
+import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import { buildPluginSystemPromptContributions } from "@/chat/prompt";
-import {
-  buildDeploymentSystemPrompt,
-  type SystemPromptTable,
-} from "@/chat/system-prompt";
+import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import type { PromptMode } from "@/chat/system-prompt-rules";
-import { juniorNitro } from "@/nitro";
+import type { SystemPromptTable } from "@/chat/system-prompt-table";
+import { juniorNitro, type JuniorNitroOptions } from "@/nitro";
 
 const tempDirs: string[] = [];
 
@@ -54,10 +53,13 @@ async function writeSystemPromptPlugin(
   return file;
 }
 
-/** Render `#junior/system-prompts` as `juniorNitro` does at build. */
-async function renderSystemPrompts(tempRoot: string): Promise<string> {
+/** Render the virtual modules that `juniorNitro` injects at build. */
+async function renderBuild(
+  tempRoot: string,
+  options: JuniorNitroOptions = {},
+): Promise<{ config: string; systemPrompts: string }> {
   const virtual: Record<string, (() => Promise<string>) | string> = {};
-  await juniorNitro({ plugins: "./plugins" }).nitro.setup({
+  await juniorNitro({ plugins: "./plugins", ...options }).nitro.setup({
     hooks: { hook() {} },
     options: {
       output: { serverDir: path.join(tempRoot, ".output", "server") },
@@ -66,14 +68,32 @@ async function renderSystemPrompts(tempRoot: string): Promise<string> {
       virtual,
     },
   });
-  const template = virtual["#junior/system-prompts"];
-  if (typeof template !== "function") {
-    throw new Error("juniorNitro did not inject #junior/system-prompts");
-  }
-  return template();
+  const render = async (id: string) => {
+    const template = virtual[id];
+    if (template === undefined) {
+      throw new Error(`juniorNitro did not inject ${id}`);
+    }
+    return typeof template === "function" ? template() : template;
+  };
+  const systemPrompts = await render("#junior/system-prompts");
+  return { config: await render("#junior/config"), systemPrompts };
+}
+
+/** Render `#junior/system-prompts` as `juniorNitro` does at build. */
+async function renderSystemPrompts(tempRoot: string): Promise<string> {
+  return (await renderBuild(tempRoot)).systemPrompts;
+}
+
+/** Import a rendered `#junior/system-prompts` module. */
+async function importSystemPrompts(code: string): Promise<SystemPromptTable> {
+  const built: { systemPrompts: SystemPromptTable } = await import(
+    `data:text/javascript,${encodeURIComponent(code)}`
+  );
+  return built.systemPrompts;
 }
 
 afterEach(async () => {
+  vi.unstubAllEnvs();
   for (const tempDir of tempDirs.splice(0)) {
     await fs.rm(tempDir, { recursive: true, force: true });
   }
@@ -86,9 +106,8 @@ describe("juniorNitro system prompts", () => {
       tempRoot,
       "return [{ text: `Demo guidance for ${ctx.platform}` }];",
     );
-    const code = await renderSystemPrompts(tempRoot);
-    const built: { systemPrompts: SystemPromptTable } = await import(
-      `data:text/javascript,${encodeURIComponent(code)}`
+    const systemPrompts = await importSystemPrompts(
+      await renderSystemPrompts(tempRoot),
     );
     const pluginModule: {
       plugins: { registrations: PluginRegistration[] };
@@ -102,7 +121,7 @@ describe("juniorNitro system prompts", () => {
         ),
       );
       for (const mode of PROMPT_MODES) {
-        const sections = built.systemPrompts[platform][mode];
+        const sections = systemPrompts[platform][mode];
         // The runtime here has no app plugins, so it builds the core blocks.
         expect(
           sections
@@ -112,6 +131,37 @@ describe("juniorNitro system prompts", () => {
         ).toBe(await buildDeploymentSystemPrompt(platform, mode));
         expect(sections.at(-1)).toEqual({ name: "plugins", text: guidance });
       }
+    }
+  });
+
+  it("builds the system prompts and the runtime bot name from juniorNitro({ botName })", async () => {
+    const tempRoot = await makeTempDir();
+    await writeSystemPromptPlugin(tempRoot, "return [];");
+    vi.stubEnv("JUNIOR_BOT_NAME", "junior");
+    const named = await renderBuild(tempRoot, { botName: "jr" });
+    const unnamed = await importSystemPrompts(
+      await renderSystemPrompts(tempRoot),
+    );
+    const table = await importSystemPrompts(named.systemPrompts);
+    const identity = (sections: { name: string; text: string }[]) =>
+      sections.find((section) => section.name === "identity");
+
+    expect(named.config).toContain('export const botName = "jr";');
+    const previousBotName = botConfig.userName;
+    setBotName("jr");
+    try {
+      for (const platform of ["slack", "local"] as const) {
+        const sections = table[platform].conversation;
+        // The runtime builds the same prompt when its bot name is `jr`.
+        expect(sections.map((section) => section.text).join("\n\n")).toBe(
+          await buildDeploymentSystemPrompt(platform, "conversation"),
+        );
+        expect(identity(sections)).not.toEqual(
+          identity(unnamed[platform].conversation),
+        );
+      }
+    } finally {
+      setBotName(previousBotName);
     }
   });
 
@@ -167,11 +217,10 @@ describe("juniorNitro system prompts", () => {
     const originalCwd = process.cwd();
     process.chdir(tempRoot);
     try {
-      const code = await renderSystemPrompts(tempRoot);
-      const built: { systemPrompts: SystemPromptTable } = await import(
-        `data:text/javascript,${encodeURIComponent(code)}`
+      const systemPrompts = await importSystemPrompts(
+        await renderSystemPrompts(tempRoot),
       );
-      const sections = built.systemPrompts.local.conversation;
+      const sections = systemPrompts.local.conversation;
       expect(sections.map((section) => section.name)).toContain("world");
       // With no SOUL.md, the runtime also uses the default personality.
       expect(sections.map((section) => section.text).join("\n\n")).toBe(

@@ -14,10 +14,11 @@ export const ACP_TEST_URL = "http://junior.test/api/acp";
 
 /**
  * Supply dashboard browser authentication and the build-time system prompts
- * for ACP integration tests.
+ * for ACP integration tests. Both use `botName`, as a build does.
  */
-export function mockAcpDashboardConfig(): void {
+export function mockAcpDashboardConfig(botName = "junior"): void {
   vi.doMock("#junior/config", () => ({
+    botName,
     createDashboardApp: () => ({
       fetch: () => new Response("Not Found", { status: 404 }),
     }),
@@ -29,8 +30,9 @@ export function mockAcpDashboardConfig(): void {
   }));
   // A juniorNitro() build has both modules. This build has no plugins.
   vi.doMock("#junior/system-prompts", async () => {
-    const { buildSystemPromptTable } = await import("@/chat/system-prompt");
-    return { systemPrompts: await buildSystemPromptTable([]) };
+    const { buildSystemPromptTable } =
+      await import("@/chat/system-prompt-table");
+    return { systemPrompts: await buildSystemPromptTable([], botName) };
   });
 }
 

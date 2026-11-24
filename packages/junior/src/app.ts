@@ -174,11 +174,6 @@ export type { JuniorDashboardOptions } from "./dashboard-routes";
 export type { MemoryOptions } from "@/chat/memory/registration";
 export interface JuniorAppOptions extends BotModelConfig {
   /**
-   * Name Junior uses for itself, such as its Slack bot username. Defaults to
-   * `JUNIOR_BOT_NAME`, then `junior`.
-   */
-  botName?: string;
-  /**
    * Embed the searchable events of a Conversation after each completed Turn,
    * so `searchConversationEvents` also matches its history by meaning. This
    * costs one embedding call per 32 new events. Disabled by default. Word
@@ -289,6 +284,7 @@ function resolvePublicBaseURL(
 type JuniorVirtualDashboardOptions = JuniorDashboardOptions;
 
 interface JuniorVirtualConfig {
+  botName?: string | undefined;
   functionMaxDurationSeconds?: number | undefined;
   createDashboardApp?: CreateDashboardApp | undefined;
   dashboard?: JuniorVirtualDashboardOptions | undefined;
@@ -320,6 +316,7 @@ async function resolveVirtualConfig(): Promise<
 > {
   try {
     const mod: {
+      botName?: string;
       createDashboardApp?: CreateDashboardApp | undefined;
       functionMaxDurationSeconds?: number;
       dashboard?: JuniorVirtualDashboardOptions | undefined;
@@ -328,6 +325,7 @@ async function resolveVirtualConfig(): Promise<
       pluginRuntimeRegistrations?: string[];
     } = await import("#junior/config");
     return {
+      botName: mod.botName,
       createDashboardApp: mod.createDashboardApp,
       functionMaxDurationSeconds: mod.functionMaxDurationSeconds,
       dashboard: mod.dashboard,
@@ -437,6 +435,12 @@ function mountRoutes(app: Hono, routes: HostRouteRegistration[]): void {
 
 /** Create a Hono app with all Junior routes. */
 export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
+  // The build puts the bot name in the system prompt, so only the build sets it.
+  if (options && "botName" in options) {
+    throw new Error(
+      "createApp({ botName }) was removed; set botName in juniorNitro() instead",
+    );
+  }
   const virtualConfig = await resolveVirtualConfig();
   const dashboard = options?.dashboard ?? virtualConfig?.dashboard;
   const configuredPlugins = options?.plugins ?? virtualConfig?.pluginSet;
@@ -505,7 +509,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
     // models, limits, or Slack settings.
     resetRuntimeConfig(virtualConfig?.functionMaxDurationSeconds);
     setBotModelConfig(options ?? {});
-    setBotName(options?.botName);
+    setBotName(virtualConfig?.botName);
     setRuntimeLimits(options?.limits);
     setSlackReactionConfig(options?.slack ?? {});
     // One domain list for Slack authors and dashboard sign-ins.

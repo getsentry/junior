@@ -20,7 +20,6 @@ import type {
   PluginOperationalReportContent,
   PluginOperationalTone,
   PluginRouteApp,
-  Platform,
   Event,
   EventData,
   EventPublisher,
@@ -32,7 +31,6 @@ import type {
   User,
   UserPromptContext,
 } from "@sentry/junior-plugin-api";
-import pLimit from "p-limit";
 import { getConfigDefaults } from "@/chat/configuration/defaults";
 import { resolveWorkOwner } from "@/chat/conversations/work-owner";
 import { getDb } from "@/chat/db";
@@ -74,7 +72,12 @@ import {
   createPluginModel,
   createPluginReranker,
 } from "@/chat/plugins/model";
-import type { PluginPromptContributionContext } from "@/chat/plugins/prompt";
+import { runPluginHooksAtOnce } from "@/chat/plugins/hook-runner";
+import {
+  PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS,
+  toPromptContributionContext,
+  type PluginPromptContributionContext,
+} from "@/chat/plugins/prompt";
 import { createPluginState } from "@/chat/plugins/state";
 import { SANDBOX_JUNIOR_ROOT } from "@/chat/sandbox/paths";
 import type {
@@ -112,7 +115,6 @@ import {
   coreRegistrations,
   isCoreRegistrationName,
 } from "@/chat/plugins/core-registrations";
-import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import { loadPluginPromptHistory } from "@/chat/plugins/prompt-history";
 import { createPluginArtifacts } from "@/chat/plugins/artifacts";
 
@@ -185,10 +187,8 @@ const PLUGIN_ROUTE_METHODS = new Set<PluginRouteMethod>([
   "OPTIONS",
   "ALL",
 ]);
-const PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS = 16_000;
 const PLUGIN_PROMPT_CONTEXT_MAX_BYTES = 8_000;
 const PLUGIN_PROMPT_CONTEXT_TOTAL_MAX_BYTES = 16_000;
-const systemPromptMessageArraySchema = z.array(promptMessageSchema);
 
 const promptContextContentSchema = z.record(z.string(), z.unknown());
 
@@ -384,19 +384,6 @@ function pluginMcpContext(
 
 function safeErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
-}
-
-function toPromptContributionContext(args: {
-  hookName: "systemPrompt" | "userPrompt";
-  index: number;
-  message: z.output<typeof promptMessageSchema>;
-  pluginName: string;
-}): PluginPromptContributionContext {
-  return {
-    id: `${args.hookName}:${args.index}`,
-    pluginName: args.pluginName,
-    text: args.message.text,
-  };
 }
 
 function normalizePromptContext(value: unknown): Record<string, unknown> {
@@ -595,96 +582,6 @@ export function applyPluginFormatMarkdown(
     }
   }
   return transformed;
-}
-
-type PluginHookOutcome<T> =
-  | { error: unknown; plugin: PluginRegistration }
-  | { plugin: PluginRegistration; value: T };
-
-/**
- * Run one hook of each plugin at once. `start` gives the call for a plugin,
- * or nothing when the plugin has no such hook. The outcomes keep plugin
- * order, so budgets and output order do not depend on which hook ends first.
- */
-async function runPluginHooksAtOnce<T>(
-  plugins: readonly PluginRegistration[],
-  start: (plugin: PluginRegistration) => (() => Promise<T> | T) | undefined,
-): Promise<PluginHookOutcome<T>[]> {
-  const limit = pLimit(FAN_OUT_CONCURRENCY);
-  return await Promise.all(
-    plugins.flatMap((plugin) => {
-      const run = start(plugin);
-      return run
-        ? [
-            limit(run).then(
-              (value): PluginHookOutcome<T> => ({ plugin, value }),
-              (error: unknown): PluginHookOutcome<T> => ({ error, plugin }),
-            ),
-          ]
-        : [];
-    }),
-  );
-}
-
-/**
- * Collect the guidance of `plugins` for the static system prompts of one
- * platform, in plugin name order, so a build and the runtime give the same
- * text. Every Prompt mode on the platform reuses it. A hook gets no database
- * or cache. A hook that throws, returns invalid guidance, or goes over the
- * guidance budget throws an error that names its plugin, so the build fails.
- */
-export async function getPluginSystemPromptContributions(
-  plugins: readonly PluginRegistration[],
-  platform: Platform,
-): Promise<PluginPromptContributionContext[]> {
-  const contributions: PluginPromptContributionContext[] = [];
-  let totalChars = 0;
-  const ordered = [...plugins].sort((left, right) =>
-    left.manifest.name.localeCompare(right.manifest.name),
-  );
-  const outcomes = await runPluginHooksAtOnce(ordered, (plugin) => {
-    const hook = plugin.hooks?.systemPrompt;
-    const name = plugin.manifest.name;
-    return (
-      hook &&
-      (() =>
-        hook({
-          plugin: { name },
-          log: createPluginLogger(name),
-          platform,
-        }))
-    );
-  });
-  for (const outcome of outcomes) {
-    const pluginName = outcome.plugin.manifest.name;
-    const failure = `Plugin "${pluginName}" systemPrompt hook failed for ${platform}`;
-    if ("error" in outcome) {
-      throw new Error(failure, { cause: outcome.error });
-    }
-    const result = systemPromptMessageArraySchema.safeParse(outcome.value);
-    if (!result.success) {
-      throw new Error(`${failure}: invalid guidance`, { cause: result.error });
-    }
-    const acceptedContributions = result.data.map((message, index) =>
-      toPromptContributionContext({
-        hookName: "systemPrompt",
-        index,
-        message,
-        pluginName,
-      }),
-    );
-    totalChars += acceptedContributions.reduce(
-      (sum, contribution) => sum + contribution.text.length,
-      0,
-    );
-    if (totalChars > PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS) {
-      throw new Error(
-        `${failure}: plugin guidance is over ${PLUGIN_PROMPT_CONTRIBUTION_TOTAL_MAX_CHARS} characters`,
-      );
-    }
-    contributions.push(...acceptedContributions);
-  }
-  return contributions;
 }
 
 /** Collect request-scoped plugin prompt contributions. */

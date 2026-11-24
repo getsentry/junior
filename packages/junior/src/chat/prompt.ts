@@ -24,7 +24,6 @@
  */
 import fs from "node:fs";
 import path from "node:path";
-import { botConfig } from "@/chat/config";
 import {
   CAPABILITY_SECTION_TAG,
   type CapabilitySectionTag,
@@ -408,16 +407,16 @@ const TURN_CONTEXT_HEADER =
   "Runtime context for this request. `<context-trust>` in the system prompt says how much authority each block has. The static system prompt remains authoritative.";
 
 /** Block 1, `# Identity`: the name and platform identity. Keep it short. */
-function buildIdentitySection(platform: PromptPlatform): string {
+function buildIdentitySection(
+  platform: PromptPlatform,
+  botName: string,
+): string {
   if (platform !== "slack") {
-    return [
-      "# Identity",
-      `Your assistant name is \`${botConfig.userName}\`.`,
-    ].join("\n");
+    return ["# Identity", `Your assistant name is \`${botName}\`.`].join("\n");
   }
   return [
     "# Identity",
-    `Your Slack username is \`${botConfig.userName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
+    `Your Slack username is \`${botName}\`. Your Slack user ID is \`slack.bot_user_id\` in the runtime context.`,
     `${SLACK_MENTION_FORMAT_RULE} A mention of your own user ID means you.`,
   ].join("\n");
 }
@@ -878,12 +877,14 @@ export type SystemPromptSection = { name: string; text: string };
 
 /**
  * Build the core blocks of the system prompt for one platform and Prompt
- * mode, in order, from `files`. With no `files`, it reads `SOUL.md` and
- * `WORLD.md` on each call and uses the defaults when a read fails.
+ * mode, in order, from `botName` and `files`. With no `files`, it reads
+ * `SOUL.md` and `WORLD.md` on each call and uses the defaults when a read
+ * fails.
  */
 export function buildCoreSystemPromptSections(
   platform: PromptPlatform,
   mode: PromptMode,
+  botName: string,
   files: SystemPromptFiles = { soul: readPersonality(), world: readWorld() },
 ): SystemPromptSection[] {
   const world = buildWorldSection(files.world);
@@ -892,7 +893,7 @@ export function buildCoreSystemPromptSections(
       name: "header",
       text: platform === "slack" ? SLACK_HEADER : LOCAL_HEADER,
     },
-    { name: "identity", text: buildIdentitySection(platform) },
+    { name: "identity", text: buildIdentitySection(platform, botName) },
     { name: "rules", text: buildRuleBlocks(platform, mode).join("\n\n") },
     { name: "personality", text: buildPersonalitySection(files.soul) },
     ...(world ? [{ name: "world", text: world }] : []),

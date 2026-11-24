@@ -36,7 +36,6 @@ import {
   applyPluginFormatMarkdown,
   createPluginHookRunner,
   getPluginApiRoutes,
-  getPluginSystemPromptContributions,
   getPluginUserPromptContributions,
   getPluginOperationalReports,
   getPluginProfileReports,
@@ -45,6 +44,7 @@ import {
   getPluginTools,
   setPlugins,
 } from "@/chat/plugins/agent-hooks";
+import { getPluginSystemPromptContributions } from "@/chat/plugins/system-prompt-hook";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
 import { createTools } from "@/chat/tool-support/create-tools";
 import { PluginToolDeniedError } from "@/chat/tool-support/plugin-tool-denied-error";

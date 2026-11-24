@@ -17,9 +17,7 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
-
-/** Deploy topic name. Keep stable for Vercel queue wiring. */
-export const PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 const PLUGIN_TASK_MAX_DELIVERIES = 5;
 const PLUGIN_TASK_SIGN_CONTEXT = "junior.plugin_task_queue.v1";

@@ -14,6 +14,7 @@ import {
   type RuntimePluginModule,
 } from "@/build/virtual-config";
 import { injectVirtualSystemPrompts } from "@/build/virtual-system-prompts";
+import { resolveBotName } from "@/chat/bot-name";
 import { queueCallbackRoutes } from "@/chat/queue/routes";
 import {
   JUNIOR_AUTO_ARCHIVE_CRON_SCHEDULE,
@@ -90,6 +91,12 @@ export type JuniorNitroPluginSource =
   | string;
 
 export interface JuniorNitroOptions {
+  /**
+   * Name Junior uses for itself, such as its Slack bot username. Defaults to
+   * `JUNIOR_BOT_NAME` at build, then `junior`. The build puts it in the
+   * system prompt, and the runtime reads the same value.
+   */
+  botName?: string;
   cwd?: string;
   /** Authenticated dashboard configuration injected for createApp(). */
   dashboard?: JuniorNitroDashboardOptions;
@@ -249,6 +256,21 @@ function dropRoutedServerEntry(nitro: Nitro): void {
   }
 }
 
+// `nitro dev` does not resolve `#junior/config`, so the runtime reads
+// `JUNIOR_BOT_NAME`. Each app worker copies `process.env` when it starts.
+function shareDevBotName(nitro: Nitro, botName: string): void {
+  const previous = process.env["JUNIOR_BOT_NAME"];
+  process.env["JUNIOR_BOT_NAME"] = botName;
+  // A change to the Nitro config closes this instance and runs modules again.
+  nitro.hooks.hook("close", () => {
+    if (previous === undefined) {
+      delete process.env["JUNIOR_BOT_NAME"];
+    } else {
+      process.env["JUNIOR_BOT_NAME"] = previous;
+    }
+  });
+}
+
 /** Nitro module that configures deployment wiring and copies app/plugin content into the Vercel build output. */
 export function juniorNitro(options: JuniorNitroOptions = {}): {
   nitro: { setup(nitro: unknown): void | Promise<void> };
@@ -259,6 +281,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
         const cwd = path.resolve(
           options.cwd ?? nitro.options.rootDir ?? process.cwd(),
         );
+        const botName = resolveBotName(options.botName, process.env);
 
         const functionMaxDurationSeconds = configureVercelDeployment(
           nitro,
@@ -307,6 +330,7 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
             (plugin) => plugin.manifest.name,
           );
         injectVirtualConfig(nitro, {
+          botName,
           functionMaxDurationSeconds,
           ...(pluginModule
             ? {
@@ -319,11 +343,13 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           pluginRuntimeRegistrations,
           dashboard: options.dashboard,
         });
-        injectVirtualSystemPrompts(nitro, async () =>
-          pluginRuntimeRegistrationsFromPluginSet(
-            await loadConfiguredPluginSet(),
-          ),
-        );
+        injectVirtualSystemPrompts(nitro, {
+          botName,
+          loadPlugins: async () =>
+            pluginRuntimeRegistrationsFromPluginSet(
+              await loadConfiguredPluginSet(),
+            ),
+        });
 
         const copyBuildContent = async () => {
           const pluginSet = await loadConfiguredPluginSet();
@@ -353,7 +379,11 @@ export function juniorNitro(options: JuniorNitroOptions = {}): {
           });
         });
 
-        return nitro.options.dev ? startDevQueue(nitro) : undefined;
+        if (!nitro.options.dev) {
+          return undefined;
+        }
+        shareDevBotName(nitro, botName);
+        return startDevQueue(nitro);
       },
     },
   };
