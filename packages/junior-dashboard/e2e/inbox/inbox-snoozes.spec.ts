@@ -452,7 +452,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const ask = { ...prReview, canAct: false };
+    const ask = { ...prReview, canAct: false, canAnswer: false };
     await mockInboxItems(page, { open: [license, ask] });
     await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${ask.id}`);
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();

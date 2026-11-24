@@ -821,6 +821,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         ],
         body: "The rollout plan has three open decisions.",
         canAct: true,
+        canAnswer: true,
         canTake: false,
         conversationIds: [conversationId],
         createdAt: report.startedAt,

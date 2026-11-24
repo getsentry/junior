@@ -19,6 +19,7 @@ const question = {
   ],
   body: "The rollback is ready.",
   canAct: true,
+  canAnswer: true,
   canTake: false,
   conversationIds: [CLOSED_ISSUE_ID],
   createdAt: "2026-08-07T08:00:00.000Z",
