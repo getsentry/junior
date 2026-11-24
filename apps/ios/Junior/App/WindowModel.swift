@@ -19,6 +19,8 @@ final class WindowModel {
   var openDetails = false
   /// Open the rename prompt on arrival (`?rename=1`).
   var openRename = false
+  /// The changelog sheet, which the drawer opens.
+  var changelogOpen = false
 
   private let app: AppModel
 
@@ -57,6 +59,8 @@ final class WindowModel {
     drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
     openDetails = components.queryItems?.contains { $0.name == "details" } == true
     openRename = components.queryItems?.contains { $0.name == "rename" } == true
+    // `/settings?changelog=1` opens the full changelog (screenshots).
+    changelogOpen = components.queryItems?.contains { $0.name == "changelog" } == true
   }
 
   func go(_ place: Place) {
@@ -93,5 +97,6 @@ final class WindowModel {
     drawerOpen = false
     webPage = nil
     demoWebNotice = false
+    changelogOpen = false
   }
 }

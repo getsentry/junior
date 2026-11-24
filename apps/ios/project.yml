@@ -26,7 +26,8 @@ settings:
   base:
     SWIFT_VERSION: "6.0"
     SWIFT_STRICT_CONCURRENCY: complete
-    MARKETING_VERSION: "0.1.0"
+    # The server release version. scripts/bump-release-versions.mjs sets it.
+    MARKETING_VERSION: "0.314.0"
     CURRENT_PROJECT_VERSION: "1"
     # Ad-hoc "Sign to Run Locally" for the simulator, so the Keychain works.
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
@@ -40,6 +41,10 @@ targets:
     platform: iOS
     sources:
       - path: Junior
+      # Craft's changelog of each release. The drawer's Changelog reads its
+      # iOS entries from the app bundle.
+      - path: ../../CHANGELOG.md
+        buildPhase: resources
     dependencies:
       - package: JuniorKit
     settings:
