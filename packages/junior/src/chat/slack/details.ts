@@ -8,6 +8,7 @@
  */
 import type { AnyBlock, KnownBlock } from "@slack/types";
 import { SlackFormatConverter } from "@chat-adapter/slack";
+import { markdownPlainText } from "@sentry/junior-plugin-api";
 
 // Slack limits: a container holds 10 child blocks and a 150-character title.
 // A section holds 3,000 characters of text.
@@ -40,11 +41,23 @@ type SlackContainerBlock = {
   type: "container";
 };
 
+// Track code fences line by line. `inFence` is true for the fence lines
+// and every line between them, so markup there stays text.
+function stepFence(
+  line: string,
+  fence: string | undefined,
+): { fence: string | undefined; inFence: boolean } {
+  const marker = line.match(FENCE_RE)?.[1];
+  const inFence = fence !== undefined || marker !== undefined;
+  if (marker && !fence) return { fence: marker, inFence };
+  if (marker && fence && marker.startsWith(fence)) {
+    return { fence: undefined, inFence };
+  }
+  return { fence, inFence };
+}
+
 function plainSummary(summary: string | undefined): string {
-  const text = (summary ?? "")
-    .replace(/[*_~`]/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
+  const text = markdownPlainText(summary ?? "");
   return (text || "Details").slice(0, MAX_TITLE_CHARS);
 }
 
@@ -68,10 +81,9 @@ function splitReplySegments(text: string): ReplySegment[] {
   };
 
   for (const [index, line] of lines.entries()) {
-    const marker = line.match(FENCE_RE)?.[1];
-    const inFence = fence !== undefined || marker !== undefined;
-    if (marker && !fence) fence = marker;
-    else if (marker && fence && marker.startsWith(fence)) fence = undefined;
+    const step = stepFence(line, fence);
+    fence = step.fence;
+    const inFence = step.inFence;
     const trimmed = line.trim();
 
     if (open) {
@@ -117,12 +129,19 @@ function splitReplySegments(text: string): ReplySegment[] {
 /**
  * Rewrite `<details>` markup as plain Markdown: the summary becomes a bold
  * label above its body. Use it where Slack shows text without blocks, such
- * as notifications, and for a section that cannot fit a container.
+ * as notifications, and for a section that cannot fit a container. Markup
+ * inside a code fence stays text. Text that is only markup, such as a lone
+ * closing tag that a long reply split into its own post, stays as written,
+ * because Slack rejects a post with empty text.
  */
 export function detailsToMarkdown(text: string): string {
-  return text
+  let fence: string | undefined;
+  const markdown = text
     .split("\n")
     .flatMap((line) => {
+      const step = stepFence(line, fence);
+      fence = step.fence;
+      if (step.inFence) return [line];
       const trimmed = line.trim();
       const opener = trimmed.match(DETAILS_OPEN_RE);
       if (opener) {
@@ -138,6 +157,7 @@ export function detailsToMarkdown(text: string): string {
     .join("\n")
     .replace(/\n{3,}/g, "\n\n")
     .trim();
+  return markdown || text.trim();
 }
 
 // Section blocks read Slack mrkdwn, not Markdown. The converter parses
@@ -153,18 +173,21 @@ function toSlackMrkdwn(markdown: string): string {
     .trim();
 }
 
-// Split at a line break so a section never cuts a line in two.
-function splitSections(text: string): string[] {
+// Split at a line break so a section never cuts a line in two. A line too
+// long for one section returns undefined, so the caller shows the whole
+// body inline instead of dropping part of it.
+function splitSections(text: string): string[] | undefined {
   const sections: string[] = [];
   let current = "";
   for (const line of text.split("\n")) {
+    if (line.length > MAX_SECTION_CHARS) return undefined;
     const next = current ? `${current}\n${line}` : line;
     if (next.length <= MAX_SECTION_CHARS) {
       current = next;
       continue;
     }
     if (current) sections.push(current);
-    current = line.slice(0, MAX_SECTION_CHARS);
+    current = line;
   }
   if (current.trim()) sections.push(current);
   return sections;
@@ -175,7 +198,11 @@ function containerBlock(
   body: string,
 ): SlackContainerBlock | undefined {
   const sections = splitSections(toSlackMrkdwn(body));
-  if (sections.length === 0 || sections.length > MAX_CHILD_BLOCKS) {
+  if (
+    !sections ||
+    sections.length === 0 ||
+    sections.length > MAX_CHILD_BLOCKS
+  ) {
     return undefined;
   }
   return {
