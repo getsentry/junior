@@ -20,4 +20,8 @@ CREATE TRIGGER "junior_notify_versions" AFTER INSERT OR UPDATE OR DELETE ON "jun
 CREATE TRIGGER "junior_notify_versions" AFTER INSERT OR UPDATE OR DELETE ON "junior_attachments" FOR EACH STATEMENT EXECUTE FUNCTION "junior_notify_versions"();--> statement-breakpoint
 CREATE TRIGGER "junior_notify_versions" AFTER INSERT OR UPDATE OR DELETE ON "junior_identities" FOR EACH STATEMENT EXECUTE FUNCTION "junior_notify_versions"();--> statement-breakpoint
 CREATE TRIGGER "junior_notify_versions" AFTER INSERT OR UPDATE OR DELETE ON "junior_users" FOR EACH STATEMENT EXECUTE FUNCTION "junior_notify_versions"();--> statement-breakpoint
-CREATE TRIGGER "junior_notify_versions" AFTER INSERT OR UPDATE OR DELETE ON "junior_destinations" FOR EACH STATEMENT EXECUTE FUNCTION "junior_notify_versions"();
+CREATE TRIGGER "junior_notify_versions" AFTER INSERT OR UPDATE OR DELETE ON "junior_destinations" FOR EACH STATEMENT EXECUTE FUNCTION "junior_notify_versions"();--> statement-breakpoint
+CREATE TRIGGER "junior_notify_versions" AFTER INSERT OR UPDATE OR DELETE ON "junior_inbox_snoozes" FOR EACH STATEMENT EXECUTE FUNCTION "junior_notify_versions"();--> statement-breakpoint
+-- The feed token counts live authorization requests, which are events. Most
+-- event writes move no token, so only this event type notifies.
+CREATE TRIGGER "junior_notify_versions" AFTER INSERT ON "junior_conversation_events" FOR EACH ROW WHEN (NEW."type" = 'authorization_requested') EXECUTE FUNCTION "junior_notify_versions"();

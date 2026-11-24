@@ -10,6 +10,7 @@ import {
 import { closeDb, getSqlExecutor } from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { recordRoot } from "../../fixtures/dashboard-reporting";
+import { addItem, conversation, ROOT, user } from "../../fixtures/snoozes";
 
 // Chat config reads the flag when it loads, so set it first.
 const { previous } = vi.hoisted(() => {
@@ -183,5 +184,29 @@ describe("versions stream", () => {
     const [session] = await listenSessions();
     expect(session?.pid).not.toBe(lost!.pid);
     await reopened.cancel();
+  }, 20_000);
+
+  it("pushes a snooze, which writes only the snoozes table", async () => {
+    const app = await authenticatedApi();
+    const ana = await user(SLACK_ACTOR.email);
+    await conversation(ROOT, "public");
+    await addItem(ROOT, [ana], "Review acme entry");
+    const stream = await openStream(app);
+    const before = await stream.next();
+    expect(before).toEqual((await poll(app)).versions);
+
+    const snoozed = await app.request("http://localhost/api/inbox/snoozes", {
+      body: JSON.stringify({
+        conversationId: ROOT,
+        wakeAt: new Date(Date.now() + 3_600_000).toISOString(),
+      }),
+      headers: { "content-type": "application/json" },
+      method: "POST",
+    });
+    expect(snoozed.status).toBe(201);
+    const after = (await poll(app)).versions;
+    expect(after.inboxItems).not.toBe(versionsSchema.parse(before).inboxItems);
+    expect(await stream.next()).toEqual(after);
+    await stream.cancel();
   }, 20_000);
 });
