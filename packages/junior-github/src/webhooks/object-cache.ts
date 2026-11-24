@@ -14,6 +14,7 @@ import { scheduleGitHubPullRequestPatch } from "../pull-request-patches.js";
 
 const repositorySchema = z.object({ full_name: z.string().min(1) });
 const issueEventSchema = z.object({
+  action: z.string().optional(),
   issue: githubIssueFieldsSchema,
   repository: repositorySchema,
 });
@@ -143,10 +144,13 @@ export async function refreshGitHubObjectCache(
   if (args.eventName === "issues") {
     const event = issueEventSchema.safeParse(args.body);
     if (!event.success) return;
-    const { issue, repository } = event.data;
+    const { action, issue, repository } = event.data;
+    // A deleted or moved issue is gone from its URL, as a read would find.
+    const gone = action === "deleted" || action === "transferred";
     await args.cache.update<typeof issue | null>(
       githubObjectCacheKey("issues", repository.full_name, issue.number),
       (current) => {
+        if (gone) return { ...GITHUB_ISSUE_CACHE, value: null };
         const value = mergeGitHubObject(current, issue);
         return value && { ...GITHUB_ISSUE_CACHE, value };
       },

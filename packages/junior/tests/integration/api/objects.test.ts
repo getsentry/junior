@@ -446,11 +446,25 @@ describe("object links API", () => {
       updated_at: before,
       user: { login: "byk" },
     });
+    const deleted = {
+      ...issue,
+      html_url: `${GITHUB_REPO}/issues/13`,
+      id: 13_000,
+      number: 13,
+    };
     mswServer.use(
       http.get(`${GITHUB_API}/issues/12`, () => {
         reads.push("issues/12");
         return HttpResponse.json(issue);
       }),
+      http.get(`${GITHUB_API}/issues/13`, () => {
+        reads.push("issues/13");
+        return HttpResponse.json(deleted);
+      }),
+      http.get(
+        `${GITHUB_REPO}/issues/13`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
       http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
         reads.push(`pulls/${params["number"]}`);
         return params["number"] === "34"
@@ -467,8 +481,12 @@ describe("object links API", () => {
       const start = Date.now();
       const first = await read(
         `${GITHUB_REPO}/issues/12`,
+        `${GITHUB_REPO}/issues/13`,
         `${GITHUB_REPO}/pull/34`,
       );
+      expect(first.objects.get(`${GITHUB_REPO}/issues/13`)).toMatchObject({
+        status: "open",
+      });
       expect(first.objects.get(`${GITHUB_REPO}/pull/34`)).toMatchObject({
         facts: { additions: 120, mergeable: false },
         status: "draft",
@@ -483,6 +501,10 @@ describe("object links API", () => {
           state: "closed",
           updated_at: after,
         },
+      });
+      await sendGitHubWebhook(app, "issues", {
+        action: "deleted",
+        issue: deleted,
       });
       // A push marks the pull request ready. The payload leaves out the
       // size and the merge state.
@@ -513,6 +535,7 @@ describe("object links API", () => {
       const readsBefore = reads.length;
       const next = await read(
         `${GITHUB_REPO}/issues/12`,
+        `${GITHUB_REPO}/issues/13`,
         `${GITHUB_REPO}/pull/34`,
         `${GITHUB_REPO}/pull/78`,
       );
@@ -520,6 +543,8 @@ describe("object links API", () => {
       expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
         status: "closed",
       });
+      // The deleted issue has no card.
+      expect(next.objects.has(`${GITHUB_REPO}/issues/13`)).toBe(false);
       const pull = next.objects.get(`${GITHUB_REPO}/pull/34`);
       expect(pull).toMatchObject({
         // A field that the payload leaves out stays as cached.
