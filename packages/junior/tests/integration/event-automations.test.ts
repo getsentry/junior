@@ -291,7 +291,6 @@ describe("event automations", () => {
       assigneeUserIds: [],
       body: "Two review comments need an answer.",
       conversationIds: [runConversationId],
-      dedupeKey: "review:1174",
       kind: "notice",
       nowMs: Date.now(),
       subject: { id: "review:1174", kind: "agent" },

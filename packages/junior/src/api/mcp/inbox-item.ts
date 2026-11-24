@@ -4,12 +4,12 @@
  * MCP Inbox items stay read-only. An answer sends a message to the linked
  * Conversations, which can start a Turn. A dismiss starts no Turn.
  */
-import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { getDashboardInboxItemLink } from "@/chat/dashboard-link";
 import { canActOnInboxItem } from "@/chat/inbox-items/access";
 import type { InboxItem } from "@/chat/inbox-items/store";
-import { subjectLink } from "@/chat/inbox-items/subjects";
+import type { InboxSubjectView } from "@/api/inbox-items/resolve-subjects";
+import { subjectKey } from "@/chat/inbox-items/subject-links";
 
 /** MCP view of one Inbox item. Answers happen in Slack or the dashboard. */
 export const mcpInboxItemSchema = z
@@ -47,11 +47,12 @@ export const mcpInboxItemSchema = z
 export function mcpInboxItem(
   item: InboxItem,
   userId: string,
-  cards: ReadonlyMap<string, OwnedObjectAnnotation>,
+  views: ReadonlyMap<string, InboxSubjectView>,
 ): z.output<typeof mcpInboxItemSchema> {
   const url = getDashboardInboxItemLink(item.id);
-  const subjectUrl = subjectLink(item.subject);
-  const subjectTitle = subjectUrl ? cards.get(subjectUrl)?.title : undefined;
+  const view = views.get(subjectKey(item.subject));
+  const subjectUrl = view?.url;
+  const subjectTitle = view?.object?.title;
   return {
     id: item.id,
     kind: item.kind,

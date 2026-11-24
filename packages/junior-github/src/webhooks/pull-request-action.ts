@@ -22,11 +22,11 @@
  * state and each side's latest activity. A comment by another person needs
  * no read.
  *
- * The requester takes one action, not both, so one item per pull request
- * shows it. Each action has its own subject kind, so a new action closes
- * the item of the old one and adds a new item. Each webhook that can change
- * one of these facts reads them again from GitHub. Junior saves the derived
- * action and changes the items only when the action changes.
+ * The requester takes one action, not both, so one `pull_request` item per
+ * pull request shows it. A new action changes the same item and pushes it
+ * again, so a snooze or pin of it stays. Each webhook that can change one
+ * of these facts reads them again from GitHub. Junior saves the derived
+ * action and changes the item only when the action changes.
  *
  * The item goes to the Conversation where a person asked Junior to open the
  * pull request. It is assigned to that person only when they are in that
@@ -42,18 +42,19 @@ import type {
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { GITHUB_INBOX_SUBJECTS } from "../inbox-subjects.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  pullRequestSubject,
+} from "../inbox-subjects.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
   claimGitHubPullRequestReadySync,
+  readGitHubPullRequestIds,
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestNextAction,
 } from "../pull-request-outcomes/store.js";
-import {
-  GITHUB_CONFLICT_GONE_REASON,
-  gitHubConflictItemKey,
-} from "../merge-conflict-checks/policy.js";
+import { GITHUB_CONFLICT_GONE_REASON } from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import {
   dropGitHubReviewAsked,
@@ -100,39 +101,6 @@ const ACTION_EVENTS: Record<string, ReadonlySet<string>> = {
   ]),
   pull_request_review: new Set(["dismissed", "submitted"]),
 };
-
-/**
- * Keys of the two items that came before the one item per pull request.
- * Each check closes them, so no old item stays open next to the new one.
- * Remove them when no item from before is open.
- */
-const LEGACY_DEDUPE_PREFIXES = [
-  "pull-request-ready:",
-  "pull-request-review-requested:",
-] as const;
-
-function itemName(target: GitHubPullRequestTarget): string {
-  return `${target.repositoryFullName}#${target.number}`.toLowerCase();
-}
-
-function actionDedupeKey(target: GitHubPullRequestTarget): string {
-  return `pull-request-action:${itemName(target)}`;
-}
-
-async function closeLegacyItems(
-  items: PluginInboxItems,
-  name: string,
-): Promise<void> {
-  await Promise.all(
-    LEGACY_DEDUPE_PREFIXES.map((prefix) =>
-      items.close({
-        dedupeKey: `${prefix}${name}`,
-        reason: "One item now shows the next action.",
-        status: "dismissed",
-      }),
-    ),
-  );
-}
 
 /** A pull request whose next action one webhook delivery can change. */
 export interface GitHubPullRequestActionTarget extends GitHubPullRequestTarget {
@@ -316,11 +284,6 @@ function closeReason(
   };
 }
 
-const ACTION_SUBJECTS: Record<GitHubPullRequestAction, string> = {
-  merge: GITHUB_INBOX_SUBJECTS.pullRequestMerge,
-  review: GITHUB_INBOX_SUBJECTS.pullRequestReview,
-};
-
 /** The item text that says why Junior asked for the review again. */
 const REVIEW_AGAIN_TEXT: Record<GitHubReviewAskReason, string> = {
   checks: "Checks now pass, and every comment is handled.",
@@ -331,8 +294,8 @@ async function showAction(
   items: PluginInboxItems,
   args: {
     action: GitHubPullRequestAction | undefined;
-    dedupeKey: string;
     identityId: string;
+    pullRequestId: string;
     number: number;
     previous: GitHubPullRequestAction | undefined;
     reason: GitHubReviewAskReason | undefined;
@@ -340,36 +303,36 @@ async function showAction(
   },
 ): Promise<void> {
   const { action, number, state } = args;
-  // The item of the old action closes first, so the new action gets its
-  // own item with its own kind.
-  if (args.previous) {
-    await items.close({
-      dedupeKey: args.dedupeKey,
-      ...closeReason(state, args.previous),
-    });
+  const subject = pullRequestSubject(
+    GITHUB_INBOX_SUBJECTS.pullRequest,
+    args.pullRequestId,
+  );
+  if (!action) {
+    if (args.previous) {
+      await items.close({ subject, ...closeReason(state, args.previous) });
+    }
+    return;
   }
-  if (action) {
-    await items.upsert({
-      assigneeIdentityIds: [args.identityId],
-      // The URL stands alone, so the dashboard shows the pull request as
-      // one card that carries its title. The text names it by number only.
-      // The Inbox hides the review and merge text under a row head that
-      // says it, so keep it in step with `textRepeatsHead` there.
-      body:
-        action === "merge"
-          ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
-          : `${args.reason ? REVIEW_AGAIN_TEXT[args.reason] : `GitHub asks you to review #${number}.`}\n\n${state.url}`,
-      dedupeKey: args.dedupeKey,
-      // GitHub's canonical URL. The card of the URL gives the title and
-      // state, and it follows a renamed repository.
-      subject: { id: state.url, kind: ACTION_SUBJECTS[action] },
-      title:
-        action === "merge"
-          ? `Ready to merge · #${number}`
-          : `Review requested · #${number}`,
-      waitsOnAssignees: true,
-    });
-  }
+  // A new action changes the open item of the pull request, so the
+  // requester's snooze and pin of it stay, and it pushes to them again.
+  await items.upsert({
+    assigneeIdentityIds: [args.identityId],
+    // The URL stands alone, so the dashboard shows the pull request as one
+    // card that carries its title. The text names it by number only. The
+    // Inbox hides the review and merge text under a row head that says it,
+    // so keep it in step with `textRepeatsHead` there.
+    body:
+      action === "merge"
+        ? `#${number} is approved, and GitHub says that it can merge.\n\n${state.url}`
+        : `${args.reason ? REVIEW_AGAIN_TEXT[args.reason] : `GitHub asks you to review #${number}.`}\n\n${state.url}`,
+    ...(args.previous ? { newAsk: true } : undefined),
+    subject,
+    title:
+      action === "merge"
+        ? `Ready to merge · #${number}`
+        : `Review requested · #${number}`,
+    waitsOnAssignees: true,
+  });
 }
 
 /**
@@ -395,12 +358,23 @@ export async function endedGitHubPullRequestItemChanges(args: {
     })
   ).get(target.number)?.conversationId;
   if (!conversationId) return undefined;
+  const pullRequestId = (
+    await readGitHubPullRequestIds(args.db, {
+      numbers: [target.number],
+      repositoryFullName: target.repositoryFullName,
+    })
+  ).get(target.number);
+  if (!pullRequestId) return undefined;
   const reason = ENDED_REASONS[args.state];
   return {
     conversationId,
-    inboxItems: [actionDedupeKey(target), gitHubConflictItemKey(target)].map(
-      (dedupeKey) => ({ close: { dedupeKey, ...reason }, conversationId }),
-    ),
+    inboxItems: [
+      GITHUB_INBOX_SUBJECTS.pullRequest,
+      GITHUB_INBOX_SUBJECTS.mergeConflict,
+    ].map((kind) => ({
+      close: { subject: pullRequestSubject(kind, pullRequestId), ...reason },
+      conversationId,
+    })),
   };
 }
 
@@ -538,8 +512,6 @@ async function syncOne(
   // and a Conversation for the item.
   if (!opener?.conversationId) return;
   const items = args.inboxItems.forConversation(opener.conversationId);
-  const name = itemName(target);
-  const dedupeKey = actionDedupeKey(target);
   const requesterLogin = await args.loadGitHubLogin?.(opener.identityId);
   if (
     target.commentBy !== undefined &&
@@ -555,7 +527,7 @@ async function syncOne(
     staleMs: READY_SYNC_STALE_MS,
   });
   if (!claim) return;
-  const { id } = claim;
+  const { id, pullRequestId } = claim;
   let saved = claim.action;
   let requests: number | undefined = claim.requests;
   // A failed check still checks the requests that came in during it. The
@@ -593,31 +565,31 @@ async function syncOne(
     if (changed) {
       await showAction(items, {
         action: next.action,
-        dedupeKey,
         identityId: opener.identityId,
         number: target.number,
         previous,
+        pullRequestId,
         reason,
         state,
       });
     }
-    // Close the old items only after the new one shows, so a failed show
-    // does not leave the Inbox with no next-action item.
-    await Promise.all([
-      closeLegacyItems(items, name),
-      // The same read closes the merge conflict item from
-      // `merge-conflict-checks/policy.ts` when the conflict is gone.
+    // The same read closes the merge conflict item from
+    // `merge-conflict-checks/policy.ts` when the conflict is gone.
+    if (
       state.state !== "open" ||
       (state.mergeableState && state.mergeableState !== "dirty")
-        ? items.close({
-            dedupeKey: gitHubConflictItemKey(target),
-            ...(endedReason(state.state) ?? {
-              reason: GITHUB_CONFLICT_GONE_REASON,
-              status: "done",
-            }),
-          })
-        : undefined,
-    ]);
+    ) {
+      await items.close({
+        subject: pullRequestSubject(
+          GITHUB_INBOX_SUBJECTS.mergeConflict,
+          pullRequestId,
+        ),
+        ...(endedReason(state.state) ?? {
+          reason: GITHUB_CONFLICT_GONE_REASON,
+          status: "done",
+        }),
+      });
+    }
     if (changed && next.action === "review" && reason === "handled") {
       await dropGitHubReviewAsked(args.state, target);
     }

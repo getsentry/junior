@@ -24,7 +24,7 @@ import type {
   InboxItemRequest,
 } from "@/chat/inbox-items/evidence";
 import {
-  getOpenInboxItemByDedupeKey,
+  getOpenInboxItemBySubject,
   insertInboxItem,
   ownerConversationId,
   updateInboxItemContent,
@@ -51,7 +51,6 @@ import {
   type InboxItemToolContext,
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
-import { INBOX_SUBJECT_KINDS } from "@/chat/inbox-items/subjects";
 
 const subjectSchema = z
   .object({
@@ -61,7 +60,7 @@ const subjectSchema = z
       .min(1)
       .max(500)
       .describe(
-        "Stable id of the thing the item is about, such as a pull request URL. Search matches it exactly. The Inbox reads the title and state of a URL from its source.",
+        "Stable id of the thing the item is about, such as a pull request URL. It names the item: if an open item has this subject, the call updates that item. Search matches it exactly. The Inbox reads the title and state of a URL from its source.",
       ),
   })
   .strict();
@@ -180,7 +179,7 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .nullable()
         .optional()
         .describe(
-          "Stable key for what the item is about, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
+          "Stable key for what the item is about when it has no `subject`, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
         ),
       request: userInputRequestSchema
         .safeExtend({
@@ -252,13 +251,17 @@ export function createAddInboxItemTool(
       const evidence = evidenceInput(input.request?.evidence);
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
-      // A retry of the same tool call keeps the same key, so it updates the
-      // item that the first attempt added.
-      const dedupeKey =
-        input.dedupe_key ?? `ask:${options.toolCallId ?? randomUUID()}`;
-      const existing = await getOpenInboxItemByDedupeKey(
+      // The subject, else the key, names the item. A retry of the same tool
+      // call keeps the same id, so it updates the item that the first
+      // attempt added.
+      const subject = agentInboxItemSubject(
+        input.subject?.id ??
+          input.dedupe_key ??
+          `ask:${options.toolCallId ?? randomUUID()}`,
+      );
+      const existing = await getOpenInboxItemBySubject(
         db,
-        { dedupeKey, namespace: INBOX_SUBJECT_KINDS.agent },
+        subject,
         scope.tenant,
       );
       if (
@@ -267,7 +270,7 @@ export function createAddInboxItemTool(
           !canAgentChangeInboxItem(existing, scope))
       ) {
         throw new ToolInputError(
-          "Another open item uses this `dedupe_key`. Use a different key.",
+          "Another open item uses this `dedupe_key` or subject. Use a different key.",
         );
       }
       // An item from a private Conversation is private. It stays private.
@@ -340,7 +343,7 @@ export function createAddInboxItemTool(
         body: input.body,
         conversationIds,
         kind: input.kind,
-        subject: agentInboxItemSubject(input.subject?.id, dedupeKey),
+        subject,
         title: input.title,
         visibility,
         ...(input.request
@@ -378,7 +381,6 @@ export function createAddInboxItemTool(
       }
       const item = await insertInboxItem(db, {
         ...content,
-        dedupeKey,
         owner: { id: context.conversationId, kind: "conversation" },
         ...(context.turnId ? { addedByTurnId: context.turnId } : undefined),
         nowMs: Date.now(),
@@ -386,7 +388,7 @@ export function createAddInboxItemTool(
       });
       if (!item) {
         throw new ToolInputError(
-          "Another open item started to use this `dedupe_key`. Add the item again.",
+          "Another open item started to use this `dedupe_key` or subject. Add the item again.",
         );
       }
       await deliverInboxItemChange({

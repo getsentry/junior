@@ -218,7 +218,6 @@ describe("versions API", () => {
       assigneeUserIds: [viewer.id],
       body: "Approve the change.",
       conversationIds: [OWN],
-      dedupeKey: "versions:approve",
       kind: "action",
       nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
       request: {

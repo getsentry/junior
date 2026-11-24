@@ -677,7 +677,6 @@ describe("inbox item tools", () => {
       assigneeUserIds: [ana.id],
       body: "Last run failed.",
       conversationIds: [],
-      dedupeKey: "sched_1:run",
       kind: "action",
       nowMs: Date.now(),
       owner: { id: "sched_1", kind: "automation" },

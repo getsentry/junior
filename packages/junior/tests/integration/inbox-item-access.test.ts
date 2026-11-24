@@ -47,34 +47,33 @@ async function addItem(input: {
   assigneeUserIds: string[];
   automationId?: string;
   conversationId: string;
-  dedupeKey: string;
+  key: string;
   visibility: InboxItemVisibility;
 }): Promise<string> {
   // A run of an Automation adds its item from the run's own Conversation.
   let ownerId = input.conversationId;
   if (input.automationId) {
-    ownerId = `slack:CRUN:${input.dedupeKey}`;
+    ownerId = `slack:CRUN:${input.key}`;
     await conversation(ownerId, input.visibility);
     await recordAutomationExecution(input.automationId, {
       conversationId: ownerId,
-      executionId: `run-${input.dedupeKey}`,
+      executionId: `run-${input.key}`,
     });
   }
   const item = await insertInboxItem(getDb(), {
-    subject: { id: input.dedupeKey, kind: "agent" },
+    subject: { id: input.key, kind: "agent" },
     owner: { id: ownerId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: input.assigneeUserIds,
     body: "Body",
     conversationIds: [input.conversationId],
-    dedupeKey: input.dedupeKey,
     kind: "notice",
     nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
     tenant: T123,
-    title: input.dedupeKey,
+    title: input.key,
     visibility: input.visibility,
   });
-  if (!item) throw new Error(`no item for ${input.dedupeKey}`);
+  if (!item) throw new Error(`no item for ${input.key}`);
   return item.id;
 }
 
@@ -120,20 +119,20 @@ describe("inbox item access", () => {
         assigneeUserIds: [ana],
         automationId: "auto-1",
         conversationId: PUBLIC_CONVERSATION,
-        dedupeKey: "public",
+        key: "public",
         visibility: "public",
       }),
       privateItem: await addItem({
         assigneeUserIds: [ana],
         conversationId: PRIVATE_CONVERSATION,
-        dedupeKey: "private",
+        key: "private",
         visibility: "private",
       }),
       privateAutomationItem: await addItem({
         assigneeUserIds: [carl],
         automationId: "auto-1",
         conversationId: PRIVATE_CONVERSATION,
-        dedupeKey: "private-automation",
+        key: "private-automation",
         visibility: "private",
       }),
     };

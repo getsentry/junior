@@ -24,17 +24,6 @@ import { juniorUsers } from "./users";
 export type InboxItemOwnerKind = "conversation" | "automation";
 
 /**
- * The namespace of an Inbox item's subject kind: the plugin name of a
- * plugin kind such as `github:pull_request_review`, or a core kind such as
- * `todo`. Only the code of that namespace changes the item.
- */
-export function inboxSubjectNamespace(table: {
-  subjectKind: AnyPgColumn;
-}): SQL {
-  return sql`split_part(${table.subjectKind}, ':', 1)`;
-}
-
-/**
  * The words of an Inbox item for search: its title, ranked above its body.
  * The `simple` config keeps each word as typed, so a prefix of it matches.
  */
@@ -83,11 +72,6 @@ export const juniorInboxItems = pgTable(
     assignedToEveryone: boolean("assigned_to_everyone")
       .notNull()
       .default(false),
-    /**
-     * Unique among the open items of one subject namespace in one provider
-     * tenant: the part of `subject_kind` before `:`.
-     */
-    dedupeKey: text("dedupe_key").notNull(),
     subjectKind: text("subject_kind").notNull(),
     subjectId: text("subject_id").notNull(),
     // The default filled the rows from before owners had kinds.
@@ -98,7 +82,7 @@ export const juniorInboxItems = pgTable(
     ownerId: text("owner_id").notNull(),
     /**
      * Turn of the agent that added the item, or that last added it again with
-     * its dedupe key. Null for a plugin item, which has no Turn.
+     * its subject. Null for a plugin item, which has no Turn.
      */
     addedByTurnId: text("added_by_turn_id"),
     /**
@@ -140,15 +124,14 @@ export const juniorInboxItems = pgTable(
       "junior_inbox_items_visibility_check",
       sql`${table.visibility} = 'public' or not ${table.assignedToEveryone}`,
     ),
-    // Add with the key of an open item updates that item. Keys are unique
-    // only inside one provider tenant and one subject namespace, so tenants,
-    // plugins, and core cannot collide.
-    uniqueIndex("junior_inbox_items_open_dedupe_uidx")
+    // The subject names one open item in one provider tenant: an add with
+    // the subject of an open item updates that item.
+    uniqueIndex("junior_inbox_items_open_subject_uidx")
       .on(
         sql`coalesce(${table.provider}, '')`,
         sql`coalesce(${table.providerTenantId}, '')`,
-        inboxSubjectNamespace(table),
-        table.dedupeKey,
+        table.subjectKind,
+        table.subjectId,
       )
       .where(sql`${table.status} = 'open'`),
     index("junior_inbox_items_status_idx").on(

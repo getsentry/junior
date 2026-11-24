@@ -86,7 +86,6 @@ describe("conversation status", () => {
       assigneeUserIds: [],
       body: "Anyone in the thread can answer.",
       conversationIds: [conversationId],
-      dedupeKey: "unassigned",
       kind: "action",
       nowMs: Date.now(),
       request: REQUEST,

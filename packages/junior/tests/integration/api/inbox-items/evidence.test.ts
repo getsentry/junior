@@ -270,7 +270,6 @@ describe("inbox item evidence", () => {
         assigneeUserIds: [ana.id],
         body: "Busy release.",
         conversationIds: [BUSY_ID],
-        dedupeKey: `busy:${index}`,
         kind: "notice",
         nowMs: start + index,
         subject: { id: "release:busy", kind: "agent" },

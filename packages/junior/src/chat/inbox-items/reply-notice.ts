@@ -10,7 +10,7 @@ import {
 import { inboxItemAssignedTo } from "./access";
 import {
   closeInboxItem,
-  getOpenInboxItemByDedupeKey,
+  getOpenInboxItemBySubject,
   insertInboxItem,
   updateInboxItemContent,
   type InboxItemContent,
@@ -21,11 +21,6 @@ import { INBOX_SUBJECT_KINDS } from "./subjects";
 // Conversation has one open reply notice at a time. Each reply replaces its
 // content, and the starter's read of the latest reply closes it. A Slack
 // thread already tells people, so a Conversation with a Location gets none.
-
-// The Conversation is both the subject and the dedupe key of its notice.
-function replyNoticeKey(conversationId: string) {
-  return { dedupeKey: conversationId, namespace: INBOX_SUBJECT_KINDS.reply };
-}
 
 /**
  * Add the reply notice of a Conversation for its starter, or replace the
@@ -47,7 +42,6 @@ export async function upsertReplyNotice(
     await readConversationAccessFromSql(db, [input.conversationId])
   ).get(input.conversationId);
   const tenant = access?.tenant;
-  const key = replyNoticeKey(input.conversationId);
   const content: InboxItemContent = {
     assignedToEveryone: false,
     assigneeUserIds: [input.starterUserId],
@@ -58,7 +52,7 @@ export async function upsertReplyNotice(
     title: input.title,
     visibility: access?.visibility === "public" ? "public" : "private",
   };
-  const open = await getOpenInboxItemByDedupeKey(db, key, tenant);
+  const open = await getOpenInboxItemBySubject(db, content.subject, tenant);
   if (open) {
     const updated = await updateInboxItemContent(db, {
       ...content,
@@ -74,7 +68,6 @@ export async function upsertReplyNotice(
   const inserted = await insertInboxItem(db, {
     ...content,
     addedByTurnId: input.turnId,
-    dedupeKey: key.dedupeKey,
     nowMs: input.nowMs,
     owner: { id: input.conversationId, kind: "conversation" },
     ...(tenant ? { tenant } : undefined),

@@ -9,7 +9,7 @@ import {
   objectFactFields,
   objectPresentation,
 } from "@sentry/junior-plugin-api";
-import { useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { ChangeSize } from "../components/ChangeSize";
 import { ObjectIcon } from "../components/ObjectIcon";
@@ -20,6 +20,7 @@ import {
   DisplayText,
   MessageObjectsProvider,
   objectUrlKey,
+  useResolvedObject,
 } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import { AskKindIcon } from "./askKind";
@@ -32,7 +33,7 @@ type Subject = InboxItemPayload["subject"];
  * one card on every Inbox surface: its title, reference, state and facts,
  * such as a branch, then the first lines of its description. The card is the
  * object annotation that a plugin saved on the item's Conversation for the
- * same URL, or the card that the API read for the whole page when none is
+ * same URL, or the card that the API resolves for the URL when none is
  * saved. The item's text leaves out a bare URL to the subject, so the card
  * shows once (`withoutStandaloneUrl`). Where the row already names the
  * subject, `titled={false}` leaves its title out, and the reference links
@@ -61,8 +62,16 @@ function SubjectCard(props: {
   const { subject } = props;
   const href = subject.url ? inboxItemSubjectHref(subject.url) : undefined;
   const detail = useQuery(conversationDetailQueryOptions(props.conversationId));
-  const card =
-    savedCard(detail.data?.annotations, subject, href) ?? subject.object;
+  const saved = savedCard(detail.data?.annotations, subject, href);
+  // Ask for a live card only once the saved ones are known.
+  const liveUrl =
+    saved || (props.conversationId && detail.isPending) ? undefined : href;
+  const live = useResolvedObject(liveUrl);
+  const { request } = live;
+  useEffect(() => {
+    if (liveUrl) request();
+  }, [liveUrl, request]);
+  const card = saved ?? live.card;
   const title = card?.title ?? href ?? subject.id;
   const type = card
     ? (card.displayType ?? objectPresentation(card).label)
@@ -208,12 +217,28 @@ function SubjectDescription(props: { label: string; text: string }) {
 
 /**
  * Say "Merge conflict" on an ask about a code change that conflicts with its
- * target branch. It reads the live card that the API read for the page,
- * because a saved card keeps the merge state from when it was saved. It is
- * only a line on the ask: it notifies nobody and counts nowhere.
+ * target branch. It reads the live card, because a saved card keeps the
+ * merge state from when it was saved. It is only a line on the ask: it
+ * notifies nobody and counts nowhere.
  */
 export function SubjectMergeConflict(props: { subject: Subject }) {
-  const card = props.subject.object;
+  return (
+    <MessageObjectsProvider>
+      <MergeConflict {...props} />
+    </MessageObjectsProvider>
+  );
+}
+
+function MergeConflict(props: { subject: Subject }) {
+  const { subject } = props;
+  const href =
+    subject.objectType === "code_change" && subject.url
+      ? inboxItemSubjectHref(subject.url)
+      : undefined;
+  const { card, request } = useResolvedObject(href);
+  useEffect(() => {
+    if (href) request();
+  }, [href, request]);
   if (card?.facts?.type !== "code_change" || card.facts.mergeable !== false) {
     return null;
   }

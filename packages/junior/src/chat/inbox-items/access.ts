@@ -428,14 +428,11 @@ export function isPluginInboxItem(item: Pick<InboxItem, "subject">) {
 }
 
 /**
- * Return the subject of an agent's item: the id the agent gave, such as a
- * pull request URL, or else its dedupe key.
+ * Return the subject of an agent's item. Its id is the agent's key, else
+ * the subject that it named, such as a pull request URL.
  */
-export function agentInboxItemSubject(
-  id: string | undefined,
-  dedupeKey: string,
-): InboxItemSubject {
-  return { id: id ?? dedupeKey, kind: INBOX_SUBJECT_KINDS.agent };
+export function agentInboxItemSubject(id: string): InboxItemSubject {
+  return { id, kind: INBOX_SUBJECT_KINDS.agent };
 }
 
 /**

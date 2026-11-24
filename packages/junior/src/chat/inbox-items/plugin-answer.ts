@@ -37,7 +37,10 @@ export async function answerPluginInboxItem(args: {
     ...basePluginContext(plugin),
     choice,
     conversationId,
-    dedupeKey: item.dedupeKey,
+    subject: {
+      id: item.subject.id,
+      kind: item.subject.kind.slice(pluginName.length + 1),
+    },
     events: createPluginEventPublisher(plugin, events),
     itemId: item.id,
     nowMs: args.nowMs,

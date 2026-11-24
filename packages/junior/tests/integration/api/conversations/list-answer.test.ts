@@ -75,24 +75,23 @@ async function closedItem(input: {
   closedBy: User;
   closedMs: number;
   conversationId: string;
-  dedupeKey: string;
+  key: string;
   pick?: string;
 }): Promise<void> {
   const item = await insertInboxItem(getDb(), {
-    subject: { id: input.dedupeKey, kind: "agent" },
+    subject: { id: input.key, kind: "agent" },
     owner: { id: input.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [input.closedBy.id],
     body: "The rollout waits on a go-ahead.",
     conversationIds: [input.conversationId],
-    dedupeKey: input.dedupeKey,
     kind: "action",
     nowMs: START_MS,
     request: REQUEST,
     title: "Roll out payments-v42",
     visibility: "public",
   });
-  if (!item) throw new Error(`no item for ${input.dedupeKey}`);
+  if (!item) throw new Error(`no item for ${input.key}`);
   await closeInboxItem(getDb(), {
     ...(input.pick
       ? {
@@ -135,7 +134,7 @@ describe("conversation list API viewer answers", () => {
       closedBy: ana,
       closedMs: answeredMs,
       conversationId: ROLLOUT_ID,
-      dedupeKey: "rollout:ana",
+      key: "rollout:ana",
       pick: "Hold",
     });
     // Later closes in the same Conversation: someone else's answer and the
@@ -144,14 +143,14 @@ describe("conversation list API viewer answers", () => {
       closedBy: ben,
       closedMs: answeredMs + 1_000,
       conversationId: ROLLOUT_ID,
-      dedupeKey: "rollout:ben",
+      key: "rollout:ben",
       pick: "Roll out",
     });
     await closedItem({
       closedBy: ana,
       closedMs: answeredMs + 2_000,
       conversationId: ROLLOUT_ID,
-      dedupeKey: "rollout:dismissed",
+      key: "rollout:dismissed",
     });
     // A full page of later dismisses elsewhere pushes the answer off the
     // first page of the viewer's closed items.
@@ -160,7 +159,7 @@ describe("conversation list API viewer answers", () => {
         closedBy: ana,
         closedMs: answeredMs + 10_000 + index,
         conversationId: BUSY_ID,
-        dedupeKey: `busy:${index}`,
+        key: `busy:${index}`,
       });
     }
     const read = api(fixture, ana);

@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGitHubFixture } from "./github-db";
 import { memoryState } from "./plugin-harness";
 import {
-  DEDUPE_KEY,
+  SUBJECT,
   PULL_URL,
   checkSuiteCompleted,
   commented,
@@ -105,7 +105,7 @@ describe("review again after a change request", () => {
       const ended = {
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The review request ended.",
           status: "done",
         },
@@ -135,8 +135,7 @@ describe("review again after a change request", () => {
         notice: {
           assigneeIdentityIds: ["identity-requester"],
           body: `Every comment on your change request is handled.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
-          subject: { id: PULL_URL, kind: "pull_request_review" },
+          subject: SUBJECT,
           title: "Review requested · #946",
           waitsOnAssignees: true,
         },
@@ -219,7 +218,6 @@ describe("review again after a change request", () => {
         kind: "upsert",
         notice: expect.objectContaining({
           body: `Every comment on your change request is handled.\n\n${PULL_URL}`,
-          subject: { id: PULL_URL, kind: "pull_request_review" },
           title: "Review requested · #946",
         }),
       };
@@ -239,7 +237,7 @@ describe("review again after a change request", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The review request ended.",
           status: "done",
         },

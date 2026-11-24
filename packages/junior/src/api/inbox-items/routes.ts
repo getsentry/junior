@@ -1,4 +1,4 @@
-import type { OwnedObjectAnnotation, User } from "@sentry/junior-plugin-api";
+import type { User } from "@sentry/junior-plugin-api";
 import { Hono } from "hono";
 import * as z from "zod";
 import { jsonResponse, throwApiError } from "@/api/http";
@@ -27,11 +27,7 @@ import {
   inboxItemReaderForUserInConversation,
   type InboxItemReader,
 } from "@/chat/inbox-items/access";
-import {
-  subjectKindLabel,
-  subjectLink,
-  subjectTodo,
-} from "@/chat/inbox-items/subjects";
+import { subjectKindLabel, subjectTodo } from "@/chat/inbox-items/subjects";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import {
   actOnInboxItem,
@@ -65,7 +61,15 @@ import type { InboxSnoozeWake } from "@/api/schema/inbox-snooze";
 import type { InboxSnoozeWakeReason } from "@/db/schema/inbox-snoozes";
 import { readItemRoots } from "./item-roots";
 import { readInboxItemMentions } from "./mentions";
-import { resolveInboxItemSubjects } from "./resolve-subjects";
+import {
+  codeChangeSubjectProvider,
+  readSubjectLinks,
+  subjectKey,
+} from "@/chat/inbox-items/subject-links";
+import {
+  resolveInboxItemSubjects,
+  type InboxSubjectView,
+} from "./resolve-subjects";
 
 // A list of open items shows at most this many archived matches, with the
 // first page. Open items page oldest first. Creation time never changes, and
@@ -170,14 +174,15 @@ const ERROR_STATUS = {
 
 // The plugin that owns a link type recognizes the subject, such as a pull
 // request from the GitHub plugin, so core keeps no provider URL rules. The
-// title and state come from the subject's card, never from the item.
+// title, state, and ask come from the subject's card, never from the item.
 function subjectPayload(
   subject: InboxItem["subject"],
-  cards: ReadonlyMap<string, OwnedObjectAnnotation>,
+  views: ReadonlyMap<string, InboxSubjectView>,
 ): InboxItemPayload["subject"] {
-  const url = subjectLink(subject);
-  const label = subjectKindLabel(subject.kind, getPlugins());
-  const object = url ? cards.get(url) : undefined;
+  const view = views.get(subjectKey(subject));
+  const url = view?.url;
+  const object = view?.object;
+  const label = subjectKindLabel(subject.kind, getPlugins(), object);
   const objectType = url && readLinkObjectType(url);
   const resource = url && snoozeSubjectResource(getEventCatalog(), url);
   return {
@@ -222,7 +227,7 @@ function inboxItemPayload(
   mentions: readonly ActorIdentity[],
   related: RelatedReviewWork | undefined,
   wake: InboxSnoozeWakeReason | undefined,
-  cards: ReadonlyMap<string, OwnedObjectAnnotation>,
+  views: ReadonlyMap<string, InboxSubjectView>,
 ): InboxItemPayload {
   const conversationId = ownerConversationId(item);
   const root = conversationId ? roots.get(conversationId) : undefined;
@@ -241,7 +246,7 @@ function inboxItemPayload(
     kind: item.kind,
     owner: item.owner,
     status: item.status,
-    subject: subjectPayload(item.subject, cards),
+    subject: subjectPayload(item.subject, views),
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,
@@ -279,7 +284,7 @@ async function inboxItemPayloads(
   reader: InboxItemReader,
 ): Promise<InboxItemPayload[]> {
   const db = getDb();
-  const [roots, mentions, related, snoozes, cards] = await Promise.all([
+  const [roots, mentions, related, snoozes, views] = await Promise.all([
     readItemRoots(db, items, viewer),
     readInboxItemMentions(getSqlExecutor(), items),
     readRelatedReviewWork(db, reader, viewer, items),
@@ -299,7 +304,7 @@ async function inboxItemPayloads(
       mentions[index]!,
       related.get(item.id),
       snoozes.wakeReasons.get(item.id),
-      cards,
+      views,
     );
     return snoozes.snoozed.has(item.id)
       ? { ...payload, snoozedByViewer: true }
@@ -453,6 +458,13 @@ export function createInboxItemRoutes(services: {
         countInboxItemsNeedingUserBySubject(db, viewer.id),
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
       ]);
+      const links = await readSubjectLinks(
+        db,
+        subjects.map((subject) => ({
+          id: subject.subjectId,
+          kind: subject.subjectKind,
+        })),
+      );
       // The Automations badge counts the alerts that its To do lists.
       let automations = 0;
       const linkTypes = readObjectLinkTypes();
@@ -465,11 +477,15 @@ export function createInboxItemRoutes(services: {
         needsViewer += subject.total;
         decisions += subject.decisions;
         todos += subject.todos;
-        const url = subjectLink({
+        const key = {
           id: subject.subjectId,
           kind: subject.subjectKind,
-        });
-        if (url && readLinkObjectType(url, linkTypes) === "code_change") {
+        };
+        const url = links.get(subjectKey(key));
+        if (
+          codeChangeSubjectProvider(key.kind) ||
+          (url && readLinkObjectType(url, linkTypes) === "code_change")
+        ) {
           codeChanges += subject.total;
         }
       }

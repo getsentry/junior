@@ -260,7 +260,8 @@ function validateInboxSubjects(
       typeof subject?.kind !== "string" ||
       !INBOX_SUBJECT_KIND_RE.test(subject.kind) ||
       typeof subject.label !== "string" ||
-      !subject.label.trim()
+      !subject.label.trim() ||
+      (subject.ask !== undefined && typeof subject.ask !== "function")
     ) {
       throw new Error(
         `Plugin "${name}" inbox subjects need a snake_case kind and a label.`,

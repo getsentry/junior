@@ -81,7 +81,6 @@ describe("getConversation MCP tool", () => {
       assigneeUserIds: [],
       body: "Pick one.",
       conversationIds: [CONVERSATION_ID],
-      dedupeKey: "running-ask",
       kind: "action",
       nowMs: Date.now(),
       request: {
@@ -143,7 +142,6 @@ describe("getConversation MCP tool", () => {
       ...ask,
       assignedToEveryone: false,
       assigneeUserIds: [other!.id],
-      dedupeKey: "other-ask",
     });
     const call = await connectMcpTools();
 
@@ -156,7 +154,6 @@ describe("getConversation MCP tool", () => {
       ...ask,
       assignedToEveryone: true,
       assigneeUserIds: [],
-      dedupeKey: "everyone-ask",
     });
     const forEveryone = await call("getConversation", {
       conversationId: CONVERSATION_ID,

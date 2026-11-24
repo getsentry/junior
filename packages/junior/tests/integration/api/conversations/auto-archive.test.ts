@@ -374,7 +374,6 @@ describe("conversation auto-archive API", () => {
       assigneeUserIds: [viewer.id],
       body: "Merge or close the follow-up?",
       conversationIds: [waitingId],
-      dedupeKey: "archive-done:waiting",
       kind: "action",
       nowMs,
       request: {
@@ -668,7 +667,6 @@ describe("conversation auto-archive API", () => {
         assigneeUserIds: [],
         body: "Ship the release now?",
         conversationIds: [`${conversationId}:child`],
-        dedupeKey: `archive-needs:${conversationId}`,
         kind: "action",
         nowMs: quietMs,
         request: REQUEST,
@@ -690,7 +688,6 @@ describe("conversation auto-archive API", () => {
       assigneeUserIds: [],
       body: "Ship the linked release now?",
       conversationIds: [`${childItemId}:child`, linkedItemId],
-      dedupeKey: "archive-needs:linked",
       kind: "action",
       nowMs: quietMs,
       request: REQUEST,

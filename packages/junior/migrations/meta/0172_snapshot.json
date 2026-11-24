@@ -4412,12 +4412,6 @@
           "notNull": true,
           "default": false
         },
-        "dedupe_key": {
-          "name": "dedupe_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
         "subject_kind": {
           "name": "subject_kind",
           "type": "text",
@@ -4493,8 +4487,8 @@
         }
       },
       "indexes": {
-        "junior_inbox_items_open_dedupe_uidx": {
-          "name": "junior_inbox_items_open_dedupe_uidx",
+        "junior_inbox_items_open_subject_uidx": {
+          "name": "junior_inbox_items_open_subject_uidx",
           "columns": [
             {
               "expression": "coalesce(\"provider\", '')",
@@ -4509,13 +4503,13 @@
               "nulls": "last"
             },
             {
-              "expression": "split_part(\"subject_kind\", ':', 1)",
+              "expression": "subject_kind",
+              "isExpression": false,
               "asc": true,
-              "isExpression": true,
               "nulls": "last"
             },
             {
-              "expression": "dedupe_key",
+              "expression": "subject_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"

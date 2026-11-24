@@ -6,7 +6,11 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorInboxItemConversations, juniorInboxItems } from "@/db/schema";
 import { inboxItemVisibleTo, type InboxItemReader } from "./access";
 import { ownerConversationId, type InboxItem } from "./store";
-import { INBOX_SUBJECT_KINDS, subjectKindPlugin } from "./subjects";
+import {
+  INBOX_SUBJECT_KINDS,
+  subjectKindPlugin,
+  subjectLink,
+} from "./subjects";
 
 // Each item keeps at most this many related items, newest first.
 const RELATED_ITEM_LIMIT = 10;
@@ -58,14 +62,12 @@ const candidateColumns = {
 /**
  * The subject id that related work matches: an outside object that an agent
  * or a plugin named, such as a release or a pull request. A core kind, and
- * an agent item that named no subject (its id is its dedupe key), relate to
+ * an agent item whose id is not a link, such as its own key, relate to
  * nothing by subject.
  */
 function relatedSubjectId(item: InboxItem): string | undefined {
   const { id, kind } = item.subject;
-  if (kind === INBOX_SUBJECT_KINDS.agent) {
-    return id === item.dedupeKey ? undefined : id;
-  }
+  if (kind === INBOX_SUBJECT_KINDS.agent) return subjectLink(item.subject);
   return subjectKindPlugin(kind) ? id : undefined;
 }
 

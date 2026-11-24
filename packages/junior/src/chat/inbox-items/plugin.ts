@@ -2,6 +2,7 @@ import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
 import { mapBounded } from "@/chat/fan-out";
 import type {
+  PluginInboxItemSubject,
   PluginInboxItems,
   PluginReviewNotice,
 } from "@sentry/junior-plugin-api";
@@ -14,12 +15,13 @@ import type { ShowInboxItem } from "./changes";
 import { inboxItemRequestSchema, type InboxItemRequest } from "./evidence";
 import {
   closeInboxItem,
-  getOpenInboxItemByDedupeKey,
+  getOpenInboxItemBySubject,
   insertInboxItem,
   ownerConversationId,
   updateInboxItemContent,
   type InboxItemContent,
 } from "./store";
+import { resetInboxItemPushes } from "./deliveries";
 import { pluginSubjectKind, subjectKindLabel } from "./subjects";
 
 /**
@@ -64,9 +66,12 @@ function choicesRequest(notice: PluginReviewNotice): InboxItemRequest {
   });
 }
 
-/** The dedupe key of a plugin item, unique in the plugin's namespace. */
-function pluginItemKey(plugin: string, dedupeKey: string) {
-  return { dedupeKey, namespace: plugin };
+/**
+ * The stored subject of a plugin item: the plugin's own kind as
+ * `<plugin>:<kind>`, so a plugin finds and changes only its own items.
+ */
+function pluginItemSubject(plugin: string, subject: PluginInboxItemSubject) {
+  return { id: subject.id, kind: pluginSubjectKind(plugin, subject.kind) };
 }
 
 async function readAccess(db: JuniorDatabase, conversationId: string) {
@@ -78,7 +83,7 @@ async function readAccess(db: JuniorDatabase, conversationId: string) {
 }
 
 /**
- * Close the open item of a plugin with the key, in the tenant of the
+ * Close the open item of a plugin's subject, in the tenant of the
  * Conversation. Return the id of the item that closed, or undefined when no
  * item was open. Pass a transaction to save it with other changes. The
  * caller shows the item after the write.
@@ -87,16 +92,16 @@ export async function closePluginInboxItem(
   db: JuniorDatabase,
   args: {
     conversationId: string;
-    dedupeKey: string;
     plugin: string;
     reason: string;
+    subject: PluginInboxItemSubject;
     status: "done" | "dismissed";
   },
 ): Promise<string | undefined> {
   const access = await readAccess(db, args.conversationId);
-  const item = await getOpenInboxItemByDedupeKey(
+  const item = await getOpenInboxItemBySubject(
     db,
-    pluginItemKey(args.plugin, args.dedupeKey),
+    pluginItemSubject(args.plugin, args.subject),
     access.tenant,
   );
   if (!item) return undefined;
@@ -125,17 +130,17 @@ export function createPluginInboxItems(args: {
   const { conversationId, show } = args;
   return {
     async upsert(notice: PluginReviewNotice) {
-      const subjectKind = pluginSubjectKind(args.plugin, notice.subject.kind);
-      if (!subjectKindLabel(subjectKind, getPlugins())) {
+      const subject = pluginItemSubject(args.plugin, notice.subject);
+      if (!subjectKindLabel(subject.kind, getPlugins())) {
         throw new Error(
           `Plugin "${args.plugin}" has no inbox subject kind "${notice.subject.kind}"`,
         );
       }
       const db = getDb();
       const access = await readAccess(db, conversationId);
-      const existing = await getOpenInboxItemByDedupeKey(
+      const existing = await getOpenInboxItemBySubject(
         db,
-        pluginItemKey(args.plugin, notice.dedupeKey),
+        subject,
         access.tenant,
       );
       // An item from a private Conversation stays private.
@@ -165,7 +170,7 @@ export function createPluginInboxItems(args: {
         kind: notice.waitsOnAssignees || notice.choices ? "action" : "notice",
         title: notice.title,
         visibility: isPrivate ? "private" : "public",
-        subject: { id: notice.subject.id, kind: subjectKind },
+        subject,
         ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
       };
       let itemId: string;
@@ -179,10 +184,13 @@ export function createPluginInboxItems(args: {
           nowMs: Date.now(),
         });
         itemId = existing.id;
+        // A new ask on the same item pushes to its assignees again.
+        if (open && notice.newAsk) {
+          await resetInboxItemPushes(db, existing.id);
+        }
       } else {
         const item = await insertInboxItem(db, {
           ...content,
-          dedupeKey: notice.dedupeKey,
           owner: { id: conversationId, kind: "conversation" },
           nowMs: Date.now(),
           ...(access.tenant ? { tenant: access.tenant } : undefined),

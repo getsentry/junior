@@ -18,7 +18,7 @@ import { createPluginConversationChanges } from "@/chat/plugins/conversation-cha
 import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import {
   countInboxItemsNeedingUserBySubject,
-  getOpenInboxItemByDedupeKey,
+  getOpenInboxItemBySubject,
   getInboxItem,
 } from "@/chat/inbox-items/store";
 import { listWaitingConversations } from "@/chat/inbox-items/waiting";
@@ -94,7 +94,6 @@ async function participant(
 
 const NOTICE = {
   body: "**Fix the thing** is approved, and GitHub says that it can merge. Merge it, or say why not.",
-  dedupeKey: "pull-request-ready:getsentry/junior#946",
   subject: {
     id: "https://github.com/getsentry/junior/pull/946",
     kind: "ready",
@@ -145,9 +144,9 @@ describe("plugin inbox items", () => {
       waitsOnAssignees: true,
     });
     expect(
-      await getOpenInboxItemByDedupeKey(
+      await getOpenInboxItemBySubject(
         getDb(),
-        { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
+        { id: NOTICE.subject.id, kind: "github:ready" },
         TENANT,
       ),
     ).toMatchObject({ kind: "action", status: "open" });
@@ -190,9 +189,9 @@ describe("plugin inbox items", () => {
     });
 
     await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
-    const added = await getOpenInboxItemByDedupeKey(
+    const added = await getOpenInboxItemBySubject(
       getDb(),
-      { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
+      { id: NOTICE.subject.id, kind: "github:ready" },
       TENANT,
     );
     expect(added).toMatchObject({
@@ -213,9 +212,9 @@ describe("plugin inbox items", () => {
       title: "Still ready to merge",
     });
     expect(
-      await getOpenInboxItemByDedupeKey(
+      await getOpenInboxItemBySubject(
         getDb(),
-        { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
+        { id: NOTICE.subject.id, kind: "github:ready" },
         TENANT,
       ),
     ).toMatchObject({ id: added!.id, title: "Still ready to merge" });
@@ -240,7 +239,7 @@ describe("plugin inbox items", () => {
 
     await expect(
       items.close({
-        dedupeKey: NOTICE.dedupeKey,
+        subject: NOTICE.subject,
         reason: "The pull request merged.",
         status: "done",
       }),
@@ -252,7 +251,7 @@ describe("plugin inbox items", () => {
     // A close with no open item does nothing.
     await expect(
       items.close({
-        dedupeKey: NOTICE.dedupeKey,
+        subject: NOTICE.subject,
         reason: "Again.",
         status: "dismissed",
       }),
@@ -271,9 +270,9 @@ describe("plugin inbox items", () => {
       show,
     }).upsert({ ...NOTICE, assigneeIdentityIds: [] });
     expect(
-      await getOpenInboxItemByDedupeKey(
+      await getOpenInboxItemBySubject(
         getDb(),
-        { dedupeKey: NOTICE.dedupeKey, namespace: "linear" },
+        { id: NOTICE.subject.id, kind: "linear:ready" },
         TENANT,
       ),
     ).toMatchObject({ assignees: [], status: "open" });
@@ -300,9 +299,9 @@ describe("plugin inbox items", () => {
       db: getDb(),
       plugin: "github",
     }).upsert(chip);
-    const item = await getOpenInboxItemByDedupeKey(
+    const item = await getOpenInboxItemBySubject(
       getDb(),
-      { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
+      { id: NOTICE.subject.id, kind: "github:ready" },
       TENANT,
     );
     const changes = createPluginConversationChanges({ plugin: "github", show });
@@ -315,7 +314,7 @@ describe("plugin inbox items", () => {
       )[0]?.version;
     const before = await detailVersion();
     const close = {
-      dedupeKey: NOTICE.dedupeKey,
+      subject: NOTICE.subject,
       reason: "The pull request merged.",
       status: "done",
     } as const;
@@ -385,9 +384,9 @@ describe("plugin inbox items", () => {
         assigneeIdentityIds: [ben.identityId, ana.identityId],
       });
       expect(
-        await getOpenInboxItemByDedupeKey(
+        await getOpenInboxItemBySubject(
           getDb(),
-          { dedupeKey: NOTICE.dedupeKey, namespace: "github" },
+          { id: NOTICE.subject.id, kind: "github:ready" },
           TENANT,
         ),
       ).toMatchObject({

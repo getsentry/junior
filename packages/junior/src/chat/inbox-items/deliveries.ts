@@ -36,6 +36,26 @@ export async function listInboxItemPushUserIds(
 }
 
 /**
+ * Forget the `created` web pushes of one open item, so the next show pushes
+ * it to its assignees again. Call it when the item's ask changes, such as
+ * from review to merge.
+ */
+export async function resetInboxItemPushes(
+  db: JuniorDatabase,
+  itemId: string,
+): Promise<void> {
+  await db
+    .delete(juniorInboxItemDeliveries)
+    .where(
+      and(
+        eq(juniorInboxItemDeliveries.itemId, itemId),
+        eq(juniorInboxItemDeliveries.channel, "web_push"),
+        eq(juniorInboxItemDeliveries.event, "created"),
+      ),
+    );
+}
+
+/**
  * Record the `created` web push of one item to one User. Return false when
  * a row already exists, so only the first caller sends.
  */

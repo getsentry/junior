@@ -4,7 +4,10 @@
  * This module composes GitHub hooks, events, and credentials.
  */
 import { githubAccountLinks } from "./account-links.js";
-import { githubInboxSubjectKinds } from "./inbox-subjects.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  githubInboxSubjectKinds,
+} from "./inbox-subjects.js";
 import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
@@ -23,10 +26,8 @@ import { loadGitHubStatusIncidents } from "./github-status.js";
 import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
-import {
-  GITHUB_CONFLICT_RESUME,
-  parseGitHubConflictItemKey,
-} from "./merge-conflict-checks/policy.js";
+import { GITHUB_CONFLICT_RESUME } from "./merge-conflict-checks/policy.js";
+import { readGitHubPullRequestRef } from "./pull-request-outcomes/store.js";
 import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
@@ -367,8 +368,17 @@ export function githubPlugin(
         ];
       },
       async inboxItemAnswered(ctx) {
-        const ref = parseGitHubConflictItemKey(ctx.dedupeKey);
-        if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
+        if (
+          ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.mergeConflict ||
+          ctx.choice !== GITHUB_CONFLICT_RESUME
+        ) {
+          return;
+        }
+        const ref = await readGitHubPullRequestRef(
+          gitHubDbSchema.parse(ctx.db),
+          ctx.subject.id,
+        );
+        if (!ref) return;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
           db: gitHubDbSchema.parse(ctx.db),

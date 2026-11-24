@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createGitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
-  DEDUPE_KEY,
+  SUBJECT,
   PULL_URL,
   checkSuiteCompleted,
   mockGitHub,
@@ -65,9 +65,8 @@ describe("next action item", () => {
         notice: {
           assigneeIdentityIds: ["identity-requester"],
           body: `#946 is approved, and GitHub says that it can merge.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           // The Inbox reads the title of the pull request from GitHub.
-          subject: { id: PULL_URL, kind: "pull_request_merge" },
           title: "Ready to merge · #946",
           // The merge is the requester's step, so the item waits on them.
           waitsOnAssignees: true,
@@ -96,7 +95,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The pull request is no longer ready to merge.",
           status: "dismissed",
         },
@@ -132,7 +131,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "Auto-merge is on.",
           status: "dismissed",
         },
@@ -166,7 +165,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The pull request merged.",
           status: "done",
         },
@@ -204,19 +203,19 @@ describe("next action item", () => {
       const closes: string[] = [];
       const webhook = route(fixture, [], [], { close: 0 }, closes);
       const conflictCloses = () =>
-        closes.filter((key) => key.startsWith("merge-conflict:"));
+        closes.filter((key) => key.startsWith("merge_conflict:"));
       await webhook.handler(checkSuiteCompleted());
       expect(conflictCloses()).toEqual([]);
 
       github.mergeableStates = ["blocked"];
       await webhook.handler(checkSuiteCompleted());
-      expect(conflictCloses()).toEqual(["merge-conflict:getsentry/junior#946"]);
+      expect(conflictCloses()).toEqual(["merge_conflict:1001"]);
     } finally {
       await fixture.close();
     }
   });
 
-  it("asks for the merge with its own kind after the review", async () => {
+  it("changes the same item from the review ask to the merge ask", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
     const github: GitHubState = {
@@ -235,13 +234,9 @@ describe("next action item", () => {
       const webhook = route(fixture, calls, [], { close: 0 }, otherCloses);
       await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toEqual([]);
-      // Each check closes the items from before one item per pull request,
-      // and the merge conflict notice of a pull request with no conflict.
-      expect(otherCloses).toEqual([
-        "pull-request-ready:getsentry/junior#946",
-        "pull-request-review-requested:getsentry/junior#946",
-        "merge-conflict:getsentry/junior#946",
-      ]);
+      // Each check closes the merge conflict notice of a pull request with
+      // no conflict.
+      expect(otherCloses).toEqual(["merge_conflict:1001"]);
 
       // The GitHub login matches the requester's linked account in any case.
       // A new pull request often has no merge state yet, and the review ask
@@ -255,8 +250,7 @@ describe("next action item", () => {
         notice: {
           assigneeIdentityIds: ["identity-requester"],
           body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
-          dedupeKey: DEDUPE_KEY,
-          subject: { id: PULL_URL, kind: "pull_request_review" },
+          subject: SUBJECT,
           title: "Review requested · #946",
           waitsOnAssignees: true,
         },
@@ -269,7 +263,7 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual({
         conversationId: "slack:C123:1712345.0001",
         input: {
-          dedupeKey: DEDUPE_KEY,
+          subject: SUBJECT,
           reason: "The review request ended.",
           status: "done",
         },
@@ -283,20 +277,20 @@ describe("next action item", () => {
       expect(calls.at(-1)).toEqual(review);
 
       // Someone else approves, and GitHub can merge it. The requester merges
-      // or reviews, not both. The kind says what an item asks, so the ask
-      // for the merge has its own kind, and the Inbox closes the review item.
+      // or reviews, not both. The ask changes on the same item, so a snooze
+      // or pin of it stays, and it pushes to the requester again.
       github.mergeableStates = ["clean"];
       github.reviews = [{ state: "APPROVED", user: { login: "someone-else" } }];
       await webhook.handler(reviewSubmitted("approved"));
       expect(calls.at(-1)).toMatchObject({
         kind: "upsert",
         notice: {
-          dedupeKey: DEDUPE_KEY,
-          subject: { id: PULL_URL, kind: "pull_request_merge" },
+          newAsk: true,
+          subject: SUBJECT,
           title: "Ready to merge · #946",
         },
       });
-      expect(calls).toHaveLength(5);
+      expect(calls).toHaveLength(4);
     } finally {
       await fixture.close();
     }

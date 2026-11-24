@@ -599,7 +599,12 @@ describe("snoozes", () => {
       ).status,
     ).toBe(400);
     // Ana can see Bob's item, but only Bob can dismiss it.
-    const bobs = await addPullRequestItem(ROOT, [bob], "Review initech entry");
+    const bobs = await addPullRequestItem(
+      ROOT,
+      [bob],
+      "Review initech entry",
+      OTHER_PULL_REQUEST.url,
+    );
     const resolve = {
       eventType: "pull_request.merged",
       outcome: "resolve" as const,

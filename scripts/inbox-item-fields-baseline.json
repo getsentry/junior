@@ -9,7 +9,6 @@
     "request",
     "answer",
     "assigned_to_everyone",
-    "dedupe_key",
     "subject_kind",
     "subject_id",
     "owner_kind",

@@ -23,10 +23,7 @@ import {
   inboxItemSnoozedBy,
 } from "@/chat/inbox-snoozes/store";
 import type { JuniorDatabase } from "@/db/db";
-import {
-  inboxSubjectNamespace,
-  type InboxItemOwnerKind,
-} from "@/db/schema/inbox-items";
+import type { InboxItemOwnerKind } from "@/db/schema/inbox-items";
 import {
   hasUserPhoto,
   userAvatarUrlsFromIdentities,
@@ -54,11 +51,7 @@ import {
 } from "./access";
 import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
 import type { InboxItemRequest } from "./evidence";
-import {
-  INBOX_SUBJECT_KINDS,
-  subjectKindPlugin,
-  type InboxItemSubject,
-} from "./subjects";
+import { INBOX_SUBJECT_KINDS, type InboxItemSubject } from "./subjects";
 
 export type { InboxItemSubject } from "./subjects";
 
@@ -132,7 +125,6 @@ export interface InboxItem {
   closedBy?: InboxItemAssignee;
   conversationIds: string[];
   createdAt: Date;
-  dedupeKey: string;
   /**
    * The stored root of the Conversation that owns the item. Only a search
    * sets it; unset means unknown, and null means none, such as for an
@@ -277,7 +269,6 @@ async function hydrate(
         .map((link) => link.conversationId)
         .sort(),
       createdAt: row.createdAt,
-      dedupeKey: row.dedupeKey,
       id: row.id,
       kind: row.kind,
       owner: { id: row.ownerId, kind: row.ownerKind },
@@ -395,26 +386,18 @@ export async function listReplyActionItems(
 }
 
 /**
- * Return the namespace of a subject kind: the plugin of a plugin kind, or
- * the core kind. Dedupe keys are unique inside one namespace.
+ * Read the open Inbox item of one subject in one provider tenant, if there
+ * is one. The subject names at most one open item there.
  */
-export function subjectNamespace(kind: string): string {
-  return subjectKindPlugin(kind) ?? kind;
-}
-
-/**
- * Read the open Inbox item with one dedupe key in one subject namespace and
- * one provider tenant, if there is one. Dedupe keys are unique only there.
- */
-export async function getOpenInboxItemByDedupeKey(
+export async function getOpenInboxItemBySubject(
   db: JuniorDatabase,
-  key: { dedupeKey: string; namespace: string },
+  subject: InboxItemSubject,
   tenant: ProviderTenant | undefined,
 ): Promise<InboxItem | undefined> {
   const rows = await selectItemRows(db).where(
     and(
-      eq(juniorInboxItems.dedupeKey, key.dedupeKey),
-      eq(inboxSubjectNamespace(juniorInboxItems), key.namespace),
+      eq(juniorInboxItems.subjectKind, subject.kind),
+      eq(juniorInboxItems.subjectId, subject.id),
       eq(juniorInboxItems.status, "open"),
       tenant
         ? and(
@@ -429,13 +412,12 @@ export async function getOpenInboxItemByDedupeKey(
 
 /**
  * Add one open Inbox item. Return undefined when another open item in the
- * same tenant already uses its dedupe key.
+ * same tenant already has its subject.
  */
 export async function insertInboxItem(
   db: JuniorDatabase,
   input: InboxItemContent & {
     addedByTurnId?: string;
-    dedupeKey: string;
     nowMs: number;
     owner: InboxItemOwner;
     tenant?: ProviderTenant;
@@ -451,14 +433,13 @@ export async function insertInboxItem(
         ownerKind: input.owner.kind,
         addedByTurnId: input.addedByTurnId ?? null,
         createdAt: now,
-        dedupeKey: input.dedupeKey,
         id: randomUUID(),
         provider: input.tenant?.provider ?? null,
         providerTenantId: input.tenant?.providerTenantId ?? null,
         status: "open",
         updatedAt: now,
       })
-      // The only possible conflict is the open dedupe index. It is an
+      // The only possible conflict is the open subject index. It is an
       // expression index, so the statement names no target.
       .onConflictDoNothing()
       .returning({ id: juniorInboxItems.id });

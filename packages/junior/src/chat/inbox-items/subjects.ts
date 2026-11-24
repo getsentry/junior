@@ -5,7 +5,10 @@
  * are below. The item stores only the pair. Its title, state, and link come
  * from the subject when Junior shows it (`resolve-subjects.ts`).
  */
-import type { PluginRegistration } from "@sentry/junior-plugin-api";
+import type {
+  ObjectAnnotation,
+  PluginRegistration,
+} from "@sentry/junior-plugin-api";
 
 /** What an Inbox item is about. */
 export interface InboxItemSubject {
@@ -55,19 +58,22 @@ export function subjectLink(subject: InboxItemSubject): string | undefined {
 }
 
 /**
- * Return the label that a plugin registered for a stored plugin kind, such
- * as `Review requested`. Core kinds have none: the Inbox names them itself.
+ * Return the label of a stored plugin kind: the ask that the plugin reads
+ * from the object's live card, such as `Ready to merge`, else the label
+ * that it registered. Core kinds have none: the Inbox names them itself.
  */
 export function subjectKindLabel(
   kind: string,
   plugins: readonly PluginRegistration[],
+  object?: ObjectAnnotation,
 ): string | undefined {
   const plugin = subjectKindPlugin(kind);
   if (!plugin) return undefined;
   const own = kind.slice(plugin.length + 1);
-  return plugins
+  const registered = plugins
     .find((registration) => registration.manifest.name === plugin)
-    ?.inboxSubjects?.find((subject) => subject.kind === own)?.label;
+    ?.inboxSubjects?.find((subject) => subject.kind === own);
+  return (object && registered?.ask?.(object)) ?? registered?.label;
 }
 
 /**

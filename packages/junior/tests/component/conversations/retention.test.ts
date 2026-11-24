@@ -124,7 +124,6 @@ describe("retention purge job", () => {
         assigneeUserIds: [],
         body: "The rollout waits on an answer.",
         conversationIds: [conversationId],
-        dedupeKey: `rollout:${conversationId}:${automationId ?? "chat"}`,
         kind: "action",
         nowMs: BASE_MS,
         request: {
@@ -283,7 +282,6 @@ describe("retention purge job", () => {
       assigneeUserIds: [],
       body: "The rollout waits on an answer.",
       conversationIds: ["snoozed"],
-      dedupeKey: "rollout:snoozed",
       kind: "notice",
       nowMs: BASE_MS,
       title: "Rollout paused",
@@ -723,7 +721,6 @@ describe("retention purge job", () => {
       ownerKind: "conversation" as const,
       body: `${conversationId} body`,
       createdAt: new Date(BASE_MS),
-      dedupeKey: `${conversationId}-key`,
       id: `${conversationId}-item`,
       kind: "notice" as const,
       status: "open" as const,
@@ -740,7 +737,7 @@ describe("retention purge job", () => {
         inboxItem("pub", "public"),
         inboxItem("priv", "private"),
         // Added while the destination of "priv" was still public.
-        { ...inboxItem("priv", "public"), dedupeKey: "flip", id: "flip-item" },
+        { ...inboxItem("priv", "public"), id: "flip-item", subjectId: "flip" },
       ]);
     await fixture.sql
       .db()

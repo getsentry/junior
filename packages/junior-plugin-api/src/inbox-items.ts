@@ -1,24 +1,36 @@
 import type { PluginContext } from "./context";
+import type { ObjectAnnotation } from "./object-annotations";
 import type { EventPublisher } from "./events";
 import type { PluginState } from "./state";
 import type { PluginEventToolContext } from "./tools";
 
 /**
- * One kind of Inbox item that a plugin adds, such as `pull_request_review`.
- * Junior stores it as `<plugin>:<kind>`, so each kind is unique. The kind
- * says what the item asks, and `label` names that ask in the Inbox, such as
- * `Review requested`.
+ * One kind of Inbox item that a plugin adds, such as `pull_request`. Junior
+ * stores it as `<plugin>:<kind>`, so each kind is unique. `label` names the
+ * kind in the Inbox when the object's card cannot say more.
  */
 export interface PluginInboxSubjectKind {
   kind: string;
   label: string;
+  /**
+   * Name the item's current ask from the object's live card, such as
+   * `Ready to merge`. Return undefined to show `label`. The ask can change
+   * while the item stays the same, such as from review to merge.
+   */
+  ask?: (object: ObjectAnnotation) => string | undefined;
+  /**
+   * The subject id is the provider id of a code change that this plugin
+   * records (`codeLinks`), such as a GitHub pull request id. Junior then
+   * reads the item's link and its search title from the code change.
+   */
+  codeChange?: boolean;
 }
 
 /**
  * What a plugin item is about: one of the plugin's registered `kind`s and
- * the id of the object, such as the canonical URL of a pull request. Junior
- * reads the object's title, state, and link from the object link that
- * claims the URL, and does not store them.
+ * the id of the object, such as a pull request. The pair names one item: a
+ * plugin has at most one open item for each pair. Junior reads the
+ * object's title, state, and link from the object, and does not store them.
  */
 export interface PluginInboxItemSubject {
   id: string;
@@ -38,11 +50,14 @@ export interface PluginReviewNotice {
   /** Markdown details for the person. */
   body: string;
   /**
-   * Stable key for what the notice is about. A plugin has at most one open
-   * item for each key.
+   * The ask changed for the assignees, such as from review to merge. Junior
+   * pushes the open item to them again. Leave it unset for a change of text.
    */
-  dedupeKey: string;
-  /** What the notice is about, such as a pull request. Search matches `id`. */
+  newAsk?: boolean;
+  /**
+   * What the notice is about, such as a pull request. An upsert with the
+   * subject of an open item changes that item.
+   */
   subject: PluginInboxItemSubject;
   /**
    * For an item that waits on its assignees, name their step, such as
@@ -74,11 +89,11 @@ export interface PluginInboxItems {
   /** Add an open item, or replace the content of the open one with the key. */
   upsert(notice: PluginReviewNotice): Promise<void>;
   /**
-   * Close the open item with the key. Do nothing when no item is open, such
-   * as after a person dismissed it. Return whether an open item closed.
+   * Close the open item of the subject. Do nothing when no item is open,
+   * such as after a person dismissed it. Return whether an open item closed.
    */
   close(input: {
-    dedupeKey: string;
+    subject: PluginInboxItemSubject;
     reason: string;
     status: "done" | "dismissed";
   }): Promise<boolean>;
@@ -95,8 +110,8 @@ export interface InboxItemAnsweredHookContext extends PluginContext {
   choice: string;
   /** The Conversation that the item belongs to. */
   conversationId: string;
-  /** The plugin's own dedupe key of the item. */
-  dedupeKey: string;
+  /** The subject of the item, with the plugin's own kind. */
+  subject: PluginInboxItemSubject;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
   /** The closed item's id. It is the same on a retry of the same answer. */

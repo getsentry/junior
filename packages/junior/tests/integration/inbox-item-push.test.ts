@@ -1,4 +1,5 @@
 import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
+import { defineJuniorPlugin } from "@sentry/junior-plugin-api";
 import { createRequire } from "node:module";
 import {
   createWebSource,
@@ -11,6 +12,7 @@ import { http, HttpResponse } from "msw";
 import webPush from "web-push";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createJuniorApi } from "@/api";
+import { createApp, defineJuniorPlugins } from "@/app";
 import type { JuniorApiEnv } from "@/api/route";
 import { createSlackActor } from "@/chat/actor";
 import { runHeartbeat } from "@/chat/agent-dispatch/heartbeat";
@@ -25,6 +27,7 @@ import {
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { actOnInboxItem } from "@/chat/inbox-items/actions";
+import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import { upsertReplyNotice } from "@/chat/inbox-items/reply-notice";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
@@ -40,6 +43,7 @@ import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import {
   juniorConversationParticipants,
   juniorInboxItemDeliveries,
+  juniorInboxItems,
 } from "@/db/schema";
 import { createConversationFixture } from "../fixtures/conversation";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
@@ -50,6 +54,7 @@ import {
   addPullRequestItem,
   api,
   conversation,
+  OTHER_PULL_REQUEST,
   PULL_REQUEST,
   ROOT,
   user,
@@ -337,6 +342,70 @@ describe("inbox item push", () => {
     });
   });
 
+  it("pushes a plugin item again on the same item when its ask changes", async () => {
+    await createApp({
+      plugins: defineJuniorPlugins([
+        defineJuniorPlugin({
+          inboxSubjects: [{ kind: "change", label: "Change" }],
+          manifest: {
+            description: "Review test plugin",
+            displayName: "Reviews",
+            name: "reviews",
+          },
+        }),
+      ]),
+    });
+    // App setup reads the dashboard link from its own config.
+    setDashboardConversationLinkOptions({
+      baseURL: "https://junior.example.com",
+    });
+    const ana = await anaWithPhone();
+    const identityId = await resolveActorIdentityId(
+      getSqlExecutor(),
+      createSlackActor("T123", "U0ANA", { email: "ana@example.com" }),
+    );
+    const { conversationId } = await turnTools(ana);
+    const items = createPluginInboxItems({
+      conversationId,
+      plugin: "reviews",
+      show: syncInboxItemPush,
+    });
+    const review = {
+      assigneeIdentityIds: [identityId!],
+      body: "GitHub asks you to review #946.",
+      subject: { id: "1001", kind: "change" },
+      title: "Review requested · #946",
+      waitsOnAssignees: true,
+    };
+
+    await items.upsert(review);
+    const [item] = await getDb()
+      .select({ id: juniorInboxItems.id })
+      .from(juniorInboxItems);
+    expect(pushes).toEqual([expect.objectContaining({ tag: item!.id })]);
+    // New content of the same ask does not push again.
+    await items.upsert({ ...review, body: "The review still waits." });
+    expect(pushes).toHaveLength(1);
+    // The subject names the item, so the merge ask changes the same item,
+    // and its snooze and pin stay. A new ask pushes again.
+    await items.upsert({
+      ...review,
+      body: "#946 is approved. Merge it.",
+      newAsk: true,
+      title: "Ready to merge · #946",
+    });
+    expect(pushes).toEqual([
+      expect.objectContaining({ tag: item!.id }),
+      expect.objectContaining({
+        tag: item!.id,
+        title: "Ready to merge · #946",
+      }),
+    ]);
+    expect(
+      await getDb().select({ id: juniorInboxItems.id }).from(juniorInboxItems),
+    ).toEqual([item]);
+  });
+
   it("pushes an item that Slack shows only to an assignee who is away in Slack 5 minutes later", async () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const ana = await anaWithPhone();
@@ -587,7 +656,13 @@ describe("inbox item push", () => {
     expect((await asAna.unsnooze(row)).status).toBe(204);
     await heartbeat(wakeAtMs + 60_000);
     // A trigger that resolves the item closes it and pushes nothing.
-    const globex = await addPullRequestItem(ROOT, [ana], "Review globex entry");
+    // A subject names one open item, so it is about another pull request.
+    const globex = await addPullRequestItem(
+      ROOT,
+      [ana],
+      "Review globex entry",
+      OTHER_PULL_REQUEST.url,
+    );
     expect(
       (
         await asAna.snoozeOn({ conversationId: ROOT, inboxItemId: globex }, [
@@ -595,7 +670,11 @@ describe("inbox item push", () => {
         ])
       ).status,
     ).toBe(201);
-    await publisher.publish(merged);
+    await publisher.publish({
+      ...merged,
+      eventKey: `pull_request.merged:${OTHER_PULL_REQUEST.identifier}`,
+      identifier: OTHER_PULL_REQUEST.identifier,
+    });
     expect((await getInboxItem(getDb(), globex))?.status).toBe("dismissed");
     // An Everyone item does not push when its snooze wakes.
     const everyone = await addEveryoneItem(ROOT, "Review initech entry");
@@ -611,7 +690,12 @@ describe("inbox item push", () => {
     expect(pushes).toHaveLength(3);
 
     // Outside her notification hours, the wake is recorded as skipped.
-    const hooli = await addPullRequestItem(ROOT, [ana], "Review hooli entry");
+    const hooli = await addPullRequestItem(
+      ROOT,
+      [ana],
+      "Review hooli entry",
+      OTHER_PULL_REQUEST.url,
+    );
     await saveNotificationSchedule(
       getDb(),
       ana.id,

@@ -106,7 +106,6 @@ describe("Automation lifecycle API", () => {
           assigneeUserIds: [],
           body: "The digest is empty this week.",
           conversationIds: [],
-          dedupeKey: "digest:empty",
           kind: "action",
           nowMs: Date.now(),
           subject: { id: "digest:empty", kind: "agent" },

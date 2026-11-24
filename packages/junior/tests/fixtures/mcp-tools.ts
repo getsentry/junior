@@ -77,7 +77,6 @@ export async function seedMcpInboxItem(args: {
     assigneeUserIds: [viewer.id],
     body: "Pick one.",
     conversationIds: [args.conversationId],
-    dedupeKey: args.title,
     kind: "action",
     nowMs: Date.now(),
     request: {

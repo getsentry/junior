@@ -84,7 +84,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
   const answers: Array<
     Pick<
       InboxItemAnsweredHookContext,
-      "choice" | "conversationId" | "dedupeKey" | "itemId"
+      "choice" | "conversationId" | "itemId" | "subject"
     >
   > = [];
   const watching: boolean[] = [];
@@ -105,8 +105,8 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
         },
         hooks: {
           async inboxItemAnswered(ctx) {
-            const { choice, conversationId, dedupeKey, itemId } = ctx;
-            answers.push({ choice, conversationId, dedupeKey, itemId });
+            const { choice, conversationId, itemId, subject } = ctx;
+            answers.push({ choice, conversationId, itemId, subject });
             // The plugin can watch again for the item's Conversation, such
             // as when the Watch that the work needs has expired.
             const watch = { eventType: "deploy.stopped", identifier: "api" };
@@ -145,7 +145,6 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     assigneeIdentityIds: [ana.identityId],
     body: "Deploys of `api` stopped after 3 failures.",
     choices: [{ label: "Resume" }],
-    dedupeKey: "deploy-stopped:api",
     subject: { id: "api", kind: "deploy_stopped" },
     title: "Deploys stopped · api",
   });
@@ -178,8 +177,8 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     {
       choice: "Resume",
       conversationId: CONVERSATION_ID,
-      dedupeKey: "deploy-stopped:api",
       itemId: row!.id,
+      subject: { id: "api", kind: "deploy_stopped" },
     },
   ]);
   expect(await getInboxItem(getDb(), row!.id)).toMatchObject({

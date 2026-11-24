@@ -176,7 +176,6 @@ describe("inbox item actions API", () => {
       assigneeUserIds: [ana.id],
       body: "The initech entry changed its license.",
       conversationIds: ["agent:child-of-4"],
-      dedupeKey: "fair-source:entry:initech",
       kind: "action",
       nowMs: Date.now(),
       request: {
@@ -573,7 +572,6 @@ describe("inbox item actions API", () => {
         assigneeUserIds: [ana.id],
         body: `${title}.`,
         conversationIds: [conversationId],
-        dedupeKey: `roll-up:${conversationId}`,
         kind: "notice",
         nowMs,
         title,
@@ -652,7 +650,6 @@ describe("inbox item actions API", () => {
         assigneeUserIds: [ana.id],
         body: `Item ${index}.`,
         conversationIds: ["slack:CPUB:1.000001"],
-        dedupeKey: `waiting-sort:${index}`,
         ...(kind === "action"
           ? {
               kind,

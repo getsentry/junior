@@ -63,7 +63,6 @@ export async function addItem(
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
     conversationIds: [conversationId, ...linkedConversationIds],
-    dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),
     request: {
@@ -153,6 +152,8 @@ export async function addPullRequestItem(
   conversationId: string,
   assignees: User[],
   title: string,
+  // The subject names one open item, so open items need their own.
+  url = PULL_REQUEST.url,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
     owner: { id: conversationId, kind: "conversation" },
@@ -160,7 +161,6 @@ export async function addPullRequestItem(
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
     conversationIds: [conversationId],
-    dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),
     request: {
@@ -174,7 +174,7 @@ export async function addPullRequestItem(
       ],
       question: title,
     },
-    subject: { id: PULL_REQUEST.url, kind: "agent" },
+    subject: { id: url, kind: "agent" },
     tenant: { provider: "slack", providerTenantId: "T123" },
     title,
     visibility: "public",
@@ -194,7 +194,6 @@ export async function addEveryoneItem(
     assigneeUserIds: [],
     body: title,
     conversationIds: [conversationId],
-    dedupeKey: title,
     kind: "action",
     nowMs: Date.now(),
     request: {
@@ -228,7 +227,6 @@ export async function addNotice(
     assigneeUserIds: assignees.map((assignee) => assignee.id),
     body: title,
     conversationIds: [conversationId],
-    dedupeKey: title,
     kind: "notice",
     nowMs: Date.now(),
     title,

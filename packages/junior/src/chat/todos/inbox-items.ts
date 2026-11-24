@@ -182,7 +182,6 @@ export async function syncTodoInboxItems(
     if (!item) {
       await insertInboxItem(db, {
         ...content,
-        dedupeKey: key,
         nowMs,
         owner: { id: conversationId, kind: "conversation" },
         ...(tenant ? { tenant } : undefined),

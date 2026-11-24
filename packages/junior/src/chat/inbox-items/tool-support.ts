@@ -107,7 +107,6 @@ export function itemResult(item: InboxItem) {
       ...item.assignees.map((assignee) => assignee.email),
     ],
     conversation_ids: item.conversationIds,
-    dedupe_key: item.dedupeKey,
     visibility: item.visibility,
     updated_at: item.updatedAt.toISOString(),
     subject: item.subject,

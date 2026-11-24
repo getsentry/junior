@@ -23,7 +23,8 @@ import { mswServer } from "./msw";
 import { memoryState } from "./plugin-harness";
 
 export const PULL_URL = "https://github.com/getsentry/junior/pull/946";
-export const DEDUPE_KEY = "pull-request-action:getsentry/junior#946";
+/** The subject of the pull request's item: GitHub's id of #946. */
+export const SUBJECT = { id: "1001", kind: "pull_request" } as const;
 const BOT_USER_ID = 264270552;
 
 let delivery = 0;
@@ -621,17 +622,18 @@ export function route(
   /** The plugin state, shared with the feedback tool. */
   state: PluginState = memoryState(),
 ): PluginRoute {
-  const isReady = (dedupeKey: string) => dedupeKey === DEDUPE_KEY;
+  const isReady = (subject: { id: string; kind: string }) =>
+    subject.kind === SUBJECT.kind && subject.id === SUBJECT.id;
   const inboxItems: PluginConversationInboxItems = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
-          if (!isReady(notice.dedupeKey)) return;
+          if (!isReady(notice.subject)) return;
           calls.push({ conversationId, kind: "upsert", notice });
         },
         async close(input) {
-          if (!isReady(input.dedupeKey)) {
-            otherCloses.push(input.dedupeKey);
+          if (!isReady(input.subject)) {
+            otherCloses.push(`${input.subject.kind}:${input.subject.id}`);
             return false;
           }
           if (failures.close > 0) {

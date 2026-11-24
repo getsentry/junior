@@ -13,7 +13,7 @@ import {
   inboxItemVisibleTo,
 } from "@/chat/inbox-items/access";
 import { getInboxItem, ownerConversationId } from "@/chat/inbox-items/store";
-import { subjectLink } from "@/chat/inbox-items/subjects";
+import { readSubjectLinks, subjectKey } from "@/chat/inbox-items/subject-links";
 import { juniorConversations } from "@/db/schema/conversations";
 import { juniorInboxItems } from "@/db/schema/inbox-items";
 import {
@@ -112,11 +112,12 @@ async function visibleRowItems(
       inRow &&
       (await canUserReadInboxItem(item, user))
     ) {
+      const links = await readSubjectLinks(getDb(), [item.subject]);
       return [
         {
           canAct: canActOnInboxItem(item, user.id),
           id: item.id,
-          subjectUrl: subjectLink(item.subject),
+          subjectUrl: links.get(subjectKey(item.subject)),
         },
       ];
     }
@@ -139,10 +140,15 @@ async function visibleRowItems(
         inboxItemInRow(root),
       ),
     );
-  return rows.map((row) => ({
+  const subjects = rows.map((row) => ({
+    id: row.subjectId,
+    kind: row.subjectKind,
+  }));
+  const links = await readSubjectLinks(getDb(), subjects);
+  return rows.map((row, index) => ({
     canAct: row.canAct,
     id: row.id,
-    subjectUrl: subjectLink({ id: row.subjectId, kind: row.subjectKind }),
+    subjectUrl: links.get(subjectKey(subjects[index]!)),
   }));
 }
 

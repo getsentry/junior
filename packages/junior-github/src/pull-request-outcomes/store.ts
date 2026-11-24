@@ -1,4 +1,4 @@
-import { and, eq, lt, lte, ne, sql } from "drizzle-orm";
+import { and, eq, inArray, lt, lte, ne, sql } from "drizzle-orm";
 import * as z from "zod";
 import { codeChangeSizeSchema } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
@@ -307,6 +307,41 @@ export function pullRequestRow(target: {
 }
 
 /**
+ * Read GitHub's ids of some pull requests of one repository, by number. A
+ * pull request that Junior does not track has no entry.
+ */
+export async function readGitHubPullRequestIds(
+  db: GitHubDb,
+  input: { numbers: number[]; repositoryFullName: string },
+): Promise<Map<number, string>> {
+  if (input.numbers.length === 0) return new Map();
+  const t = juniorGitHubPullRequests;
+  const rows = await db
+    .select({ id: t.pullRequestId, number: t.number })
+    .from(t)
+    .where(
+      and(
+        sql`lower(${t.repositoryFullName}) = ${input.repositoryFullName.toLowerCase()}`,
+        inArray(t.number, [...new Set(input.numbers)]),
+      ),
+    );
+  return new Map(rows.map((row) => [row.number, row.id]));
+}
+
+/** Read the repository and number of a pull request from GitHub's id. */
+export async function readGitHubPullRequestRef(
+  db: GitHubDb,
+  pullRequestId: string,
+): Promise<{ number: number; repositoryFullName: string } | undefined> {
+  const t = juniorGitHubPullRequests;
+  const [row] = await db
+    .select({ number: t.number, repositoryFullName: t.repositoryFullName })
+    .from(t)
+    .where(eq(t.pullRequestId, pullRequestId));
+  return row;
+}
+
+/**
  * Ask to check the next action of a Junior pull request, and claim the check
  * when no other webhook runs one. A claim older than `staleMs` is free.
  * Return the claim and the saved action, or undefined when another webhook
@@ -321,6 +356,7 @@ export async function claimGitHubPullRequestReadySync(
   | {
       action: GitHubPullRequestAction | undefined;
       id: number;
+      pullRequestId: string;
       requests: number;
     }
   | undefined
@@ -340,12 +376,14 @@ export async function claimGitHubPullRequestReadySync(
     .returning({
       action: t.nextAction,
       id: t.readySyncId,
+      pullRequestId: t.pullRequestId,
       requests: t.readySyncRequests,
     });
   if (!row || row.id !== row.requests) return undefined;
   return {
     action: row.action ?? undefined,
     id: row.id,
+    pullRequestId: row.pullRequestId,
     requests: row.requests,
   };
 }

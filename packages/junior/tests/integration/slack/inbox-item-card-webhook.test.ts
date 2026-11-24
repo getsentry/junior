@@ -509,8 +509,8 @@ describe("Slack webhook: Inbox item cards", () => {
             description: "Deploy test plugin",
           },
           hooks: {
-            inboxItemAnswered: ({ choice, dedupeKey }) => {
-              answers.push(`${dedupeKey}: ${choice}`);
+            inboxItemAnswered: ({ choice, subject }) => {
+              answers.push(`${subject.id}: ${choice}`);
               if (fails) throw new Error("deploy API is down");
             },
           },
@@ -528,7 +528,6 @@ describe("Slack webhook: Inbox item cards", () => {
       assigneeIdentityIds: ["identity:U123"],
       body: "Deploys of `api` stopped after 3 failures.",
       choices: [{ label: "Resume" }],
-      dedupeKey: "deploy-stopped:api",
       subject: { id: "api", kind: "deploy_stopped" },
       title: "Deploys stopped · api",
     });
@@ -557,10 +556,7 @@ describe("Slack webhook: Inbox item cards", () => {
     await resume("1712345.0003").catch(() => undefined);
     fails = false;
     await resume("1712345.0004");
-    expect(answers).toEqual([
-      "deploy-stopped:api: Resume",
-      "deploy-stopped:api: Resume",
-    ]);
+    expect(answers).toEqual(["api: Resume", "api: Resume"]);
     expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
       status: "done",
     });
@@ -782,10 +778,7 @@ describe("Slack webhook: Inbox item cards", () => {
       body: "The deploy key expires on Friday.",
       assignees: ["ana@example.com"],
       dedupe_key: "deploy-key",
-      subject: {
-        id: "acme/infra#12",
-        url: "https://github.com/acme/infra/pull/12",
-      },
+      subject: { id: "https://github.com/acme/infra/pull/12" },
     });
 
     const posts = slackApiOutbox.messages();

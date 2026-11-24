@@ -1,6 +1,6 @@
 import { createECDH, randomBytes, randomUUID, type ECDH } from "node:crypto";
 import { createRequire } from "node:module";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import webPush from "web-push";
@@ -143,7 +143,12 @@ async function replyNotices(conversationId: string) {
   const rows = await getDb()
     .select({ id: juniorInboxItems.id })
     .from(juniorInboxItems)
-    .where(eq(juniorInboxItems.dedupeKey, `reply:${conversationId}`))
+    .where(
+      and(
+        eq(juniorInboxItems.subjectKind, "reply"),
+        eq(juniorInboxItems.subjectId, conversationId),
+      ),
+    )
     .orderBy(juniorInboxItems.createdAt);
   return await Promise.all(rows.map((row) => getInboxItem(getDb(), row.id)));
 }

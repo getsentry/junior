@@ -15,6 +15,12 @@ import { conversationChangesThrough } from "./conversation-changes";
 import type { GitHubFixture } from "./github-db";
 
 /** A signed GitHub webhook delivery. */
+
+/** The key of a plugin item's subject in the harness: `<kind>:<id>`. */
+export function subjectKey(subject: { id: string; kind: string }): string {
+  return `${subject.kind}:${subject.id}`;
+}
+
 export function signedRequest(input: {
   body: unknown;
   deliveryId: string;
@@ -134,14 +140,16 @@ export function createPluginHarness(fixture: GitHubFixture) {
             failures.upsert -= 1;
             throw new Error("The Inbox is down");
           }
-          // Like core, an open item with the key only gets new content.
-          if (openNotices.has(notice.dedupeKey)) return;
-          openNotices.add(notice.dedupeKey);
+          // Like core, an open item of the subject only gets new content.
+          const key = subjectKey(notice.subject);
+          if (openNotices.has(key)) return;
+          openNotices.add(key);
           recorded.notices.push({ conversationId, notice });
         },
         async close(input) {
-          if (!openNotices.delete(input.dedupeKey)) return false;
-          recorded.closedNotices.push(input.dedupeKey);
+          const key = subjectKey(input.subject);
+          if (!openNotices.delete(key)) return false;
+          recorded.closedNotices.push(key);
           return true;
         },
       };
@@ -254,11 +262,11 @@ export function createPluginHarness(fixture: GitHubFixture) {
   async function answer(input: {
     choice: string;
     conversationId: string;
-    dedupeKey: string;
     itemId: string;
     nowMs: number;
+    subject: { id: string; kind: string };
   }): Promise<void> {
-    expect(openNotices.delete(input.dedupeKey)).toBe(true);
+    expect(openNotices.delete(subjectKey(input.subject))).toBe(true);
     await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,
