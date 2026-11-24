@@ -28,6 +28,8 @@ platform :ios do
 
     # TestFlight owns the build number, so a beta commits no version bump.
     build = latest_testflight_build_number(api_key: key, initial_build_number: 0) + 1
+    # ios-beta.yml reports the build number on the pull request.
+    File.open(ENV["GITHUB_OUTPUT"], "a") { |file| file.puts("build=#{build}") } if ENV["GITHUB_OUTPUT"]
 
     # `sh` runs in fastlane/; the project is generated and not committed.
     sh("make -C .. xcodegen")
