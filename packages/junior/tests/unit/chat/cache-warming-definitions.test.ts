@@ -2,7 +2,6 @@ import {
   defineJuniorPlugin,
   definePluginTool,
   pluginToolOutputSchema,
-  type PromptMode,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -11,6 +10,7 @@ import type { CacheWarmupMessage } from "@/chat/cache-warming/queue";
 import { createApp } from "@/app";
 import { defineJuniorPlugins } from "@/plugins";
 import { resolveGatewayModel } from "@/chat/pi/client";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { mockTitleModel } from "../../fixtures/title-model";
 

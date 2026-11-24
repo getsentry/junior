@@ -1,7 +1,7 @@
-import type { PromptMode, Source } from "@sentry/junior-plugin-api";
+import type { Source } from "@sentry/junior-plugin-api";
 import type { RunDispatch } from "@/chat/automation-result";
 import type { ConversationKind } from "@/chat/conversations/store";
-import type { TurnInputSender } from "@/chat/system-prompt-rules";
+import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import type { StaticToolName } from "@/chat/tool-support/registry";
 
 /**

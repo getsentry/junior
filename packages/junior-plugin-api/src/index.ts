@@ -21,7 +21,6 @@ export {
   type PromptHistory,
   type PromptHistoryContext,
   type PromptMessage,
-  type PromptMode,
   type SystemPromptBuildContext,
   type UserPromptContribution,
   type UserPromptContext,

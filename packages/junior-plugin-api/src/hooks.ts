@@ -107,12 +107,12 @@ export interface PluginHooks {
     ctx: ConversationSidebarHookContext,
   ): Promise<ConversationSidebarResult> | ConversationSidebarResult;
   /**
-   * Return static guidance for the system prompt of one platform and Prompt
-   * mode. Junior runs this hook once at build, for each platform and mode,
-   * and freezes its output for the deployment. So every Turn gets the same
-   * system prompt, and the model provider can cache it. The hook may do I/O,
-   * but that I/O happens only at build. Put text that changes per request in
-   * `userPrompt`.
+   * Return static guidance for the system prompts of one platform. Junior
+   * runs this hook once at build for each platform, uses its output in the
+   * system prompt of every Prompt mode on that platform, and freezes it for
+   * the deployment. So every Turn gets the same system prompt, and the model
+   * provider can cache it. The hook may do I/O, but that I/O happens only at
+   * build. Put text that changes per request in `userPrompt`.
    */
   systemPrompt?(
     ctx: SystemPromptBuildContext,

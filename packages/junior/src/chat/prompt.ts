@@ -56,7 +56,6 @@ import {
   renderTag,
   type Destination,
   type Platform,
-  type PromptMode,
   type Source,
   type SystemActor,
 } from "@sentry/junior-plugin-api";
@@ -64,6 +63,7 @@ import type { Workspace } from "@/chat/workspaces/types";
 import {
   buildRuleBlocks,
   SLACK_MENTION_FORMAT_RULE,
+  type PromptMode,
   type TurnInputSender,
 } from "@/chat/system-prompt-rules";
 

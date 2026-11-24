@@ -13,7 +13,7 @@
  * also built by each run, outside `createTools`.
  */
 import { searchInboxItemsToolDefinition } from "@/chat/inbox-items/tools/search";
-import type { Platform, PromptMode } from "@sentry/junior-plugin-api";
+import type { Platform } from "@sentry/junior-plugin-api";
 import type { ZodTypeAny } from "zod";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { deleteAutomationToolDefinition } from "@/chat/automations/tools/delete";
@@ -41,6 +41,7 @@ import { slackListGetItemsToolDefinition } from "@/chat/slack/tools/list/get-ite
 import { slackListUpdateItemToolDefinition } from "@/chat/slack/tools/list/update-item";
 import { slackPublicSearchToolDefinition } from "@/chat/slack/tools/public-search";
 import { slackThreadReadToolDefinition } from "@/chat/slack/tools/thread-read";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 import {
   type StaticZodToolDefinition,
   zodTool,

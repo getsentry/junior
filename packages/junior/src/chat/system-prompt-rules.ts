@@ -38,14 +38,25 @@
  * Put a new rule in the block that owns it. If no block fits, change this map
  * in the same change. The `build-tools` repo skill says how to write a rule.
  */
-import {
-  renderTag,
-  type Platform,
-  type PromptMode,
-} from "@sentry/junior-plugin-api";
+import { renderTag, type Platform } from "@sentry/junior-plugin-api";
 import { REPORT_BLOCKED_TOOL_NAME } from "@/chat/agent-invocations/blocked-report";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
+
+/**
+ * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
+ * interactive conversation rules. `thread` and `automation` are for every
+ * Turn of a Thread and of an Automation Conversation. Each holds the
+ * `conversation` rules for a person's input and the rules for its other
+ * sender, so the Conversation keeps one system prompt. `lead` is for every
+ * Turn of a Lead.
+ */
+export type PromptMode =
+  | "automation"
+  | "child_agent"
+  | "conversation"
+  | "lead"
+  | "thread";
 
 /**
  * Who sent the input of a Turn in a Prompt mode with two senders. The Turn

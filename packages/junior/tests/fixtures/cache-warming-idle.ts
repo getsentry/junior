@@ -4,7 +4,6 @@
  * captured. Each test file must mock `sendCacheWarmup` of
  * `@/chat/cache-warming/queue`.
  */
-import type { PromptMode } from "@sentry/junior-plugin-api";
 import { vi } from "vitest";
 import type { AssistantMessage, Context } from "@earendil-works/pi-ai/compat";
 import {
@@ -19,6 +18,7 @@ import { turnBehavior } from "@/chat/conversations/kind-behavior";
 import { getConversationStore } from "@/chat/db";
 import { resolveGatewayModel } from "@/chat/pi/client";
 import { getStateAdapter } from "@/chat/state/adapter";
+import type { PromptMode } from "@/chat/system-prompt-rules";
 
 export const MINUTE = 60_000;
 export const conversationId = "local:test:cache-warming-segments";

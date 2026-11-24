@@ -21,7 +21,6 @@ import type {
   PluginOperationalTone,
   PluginRouteApp,
   Platform,
-  PromptMode,
   Event,
   EventData,
   EventPublisher,
@@ -629,11 +628,11 @@ async function runPluginHooksAtOnce<T>(
 
 /**
  * Collect stable plugin prompt contributions for the static system prompt of
- * one platform and Prompt mode. A hook gets no database or cache.
+ * one platform. Every Prompt mode reuses them. A hook gets no database or
+ * cache.
  */
 export async function getPluginSystemPromptContributions(
   platform: Platform,
-  mode: PromptMode,
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
@@ -647,7 +646,6 @@ export async function getPluginSystemPromptContributions(
           plugin: { name },
           log: createPluginLogger(name),
           platform,
-          mode,
         }))
     );
   });

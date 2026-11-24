@@ -11,8 +11,8 @@ import {
   renderSystemMessageUpdate,
   type SystemMessage,
 } from "@earendil-works/pi-ai";
-import type { Platform, PromptMode } from "@sentry/junior-plugin-api";
-import type { TurnInputSender } from "@/chat/system-prompt-rules";
+import type { Platform } from "@sentry/junior-plugin-api";
+import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
 import {
   buildCapabilitySections,
