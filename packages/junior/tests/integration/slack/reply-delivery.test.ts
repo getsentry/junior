@@ -197,6 +197,18 @@ describe("sendSlackReply", () => {
     expect(post && markdownBody(post)).toBe(`**Logs**\n\n${line}`);
   });
 
+  it("shows a details section with only a summary as its label", async () => {
+    await sendSlackReply({
+      channelId: "C123",
+      conversationId: "slack:C123:1700000000.000100",
+      text: "<details>\n<summary>No gaps</summary>\n</details>",
+      threadTs: "1700000000.000100",
+    });
+
+    const [post] = getCapturedSlackApiCalls("chat.postMessage");
+    expect(post && markdownBody(post)).toBe("**No gaps**");
+  });
+
   it("posts a lone closing details tag as text", async () => {
     await sendSlackReply({
       channelId: "C123",

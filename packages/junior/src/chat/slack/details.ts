@@ -243,8 +243,13 @@ export function buildReplyBodyBlocks(text: string): AnyBlock[] {
     if (container) {
       flushMarkdown();
       blocks.push(container);
-    } else if (segment.body) {
-      markdown.push(`**${segment.summary}**\n\n${segment.body}`);
+    } else {
+      // A section too large for a container, or one with only a summary.
+      markdown.push(
+        segment.body
+          ? `**${segment.summary}**\n\n${segment.body}`
+          : `**${segment.summary}**`,
+      );
     }
   }
   flushMarkdown();
