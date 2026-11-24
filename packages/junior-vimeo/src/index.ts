@@ -1,8 +1,9 @@
 /**
  * Vimeo plugin runtime boundary.
  *
- * The tools upload sandbox videos into a Vimeo folder as private videos,
- * replace their files and thumbnails, and read their state. They run on the
+ * The tools list the Vimeo folders the account can reach, upload sandbox
+ * videos into the folder that each call names as private videos, replace
+ * their files and thumbnails, and read their state. They run on the
  * host and send files with tus in chunks, so sandbox request limits do not
  * apply. Junior uses only the plugin's service account: an admin connects
  * one shared Vimeo account, and people never connect their own. Junior adds
@@ -19,6 +20,7 @@ import {
 import { vimeoSettings, type VimeoPluginOptions } from "./settings.js";
 import { VIMEO_OPERATIONS } from "./tool-support/vimeo-api.js";
 import { vimeoListFolderTool } from "./tools/list-folder.js";
+import { vimeoListFoldersTool } from "./tools/list-folders.js";
 import { vimeoReplaceFileTool } from "./tools/replace-file.js";
 import { vimeoSetThumbnailTool } from "./tools/set-thumbnail.js";
 import { vimeoStatusTool } from "./tools/status.js";
@@ -27,7 +29,9 @@ import { vimeoUploadTool } from "./tools/upload.js";
 export type { VimeoPluginOptions };
 
 /** Register the Vimeo upload, file, thumbnail, status, and folder tools. */
-export function vimeoPlugin(options: VimeoPluginOptions): PluginRegistration {
+export function vimeoPlugin(
+  options: VimeoPluginOptions = {},
+): PluginRegistration {
   const settings = vimeoSettings(options);
   return defineJuniorPlugin({
     packageName: "@sentry/junior-vimeo",
@@ -35,7 +39,7 @@ export function vimeoPlugin(options: VimeoPluginOptions): PluginRegistration {
       name: "vimeo",
       displayName: "Vimeo",
       description:
-        "Upload private videos to a Vimeo folder, replace their files and thumbnails, and check their processing",
+        "Upload private videos to Vimeo folders, replace their files and thumbnails, and check their processing",
       credentials: {
         type: "oauth-bearer",
         domains: ["api.vimeo.com"],
@@ -61,10 +65,11 @@ export function vimeoPlugin(options: VimeoPluginOptions): PluginRegistration {
       tools() {
         return {
           upload: vimeoUploadTool(settings),
-          replaceFile: vimeoReplaceFileTool(settings),
-          setThumbnail: vimeoSetThumbnailTool(settings),
-          status: vimeoStatusTool(settings),
-          listFolder: vimeoListFolderTool(settings),
+          replaceFile: vimeoReplaceFileTool,
+          setThumbnail: vimeoSetThumbnailTool,
+          status: vimeoStatusTool,
+          listFolder: vimeoListFolderTool,
+          listFolders: vimeoListFoldersTool,
         };
       },
     },
