@@ -32,6 +32,7 @@ import {
   recordSlackRoot,
   recordDashboardRoot,
   recordAnswer,
+  lastSeq,
   addItem,
   watchDeployment,
   DONE,
@@ -408,11 +409,12 @@ describe("conversation tree state", () => {
     });
   });
 
-  it("moves the feed token when the root starts to wait on the viewer", async () => {
+  it("moves the feed token when the root's wait on the viewer starts and ends", async () => {
     const fixture = await createStatusFixture();
-    const conversationId = await recordDashboardRoot(
+    // A Slack root's reply that Slack did not show adds no reply notice.
+    const conversationId = await recordSlackRoot(
       fixture.conversationStore,
-      "local:web:tree-token",
+      "1700000000.000590",
     );
     const other = await resolveViewerUser("bob@example.com");
     await insertInboxItem(getDb(), {
@@ -438,7 +440,23 @@ describe("conversation tree state", () => {
     await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",
     });
-    expect(await feedToken(fixture)).not.toBe(before);
+    const waiting = await feedToken(fixture);
+    expect(waiting).not.toBe(before);
+
+    // The starter's read ends the wait, and the status still reads
+    // `needs_input` for Bob.
+    const read = await fixture.request(
+      `${detailPath(conversationId)}/read-position`,
+      {
+        body: JSON.stringify({ lastReadSeq: await lastSeq(conversationId) }),
+        headers: { "content-type": "application/json" },
+        method: "PUT",
+      },
+    );
+    expect(read.status).toBe(200);
+    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
+    await expect(fixture.feedTree(conversationId)).resolves.toEqual(DONE);
+    expect(await feedToken(fixture)).not.toBe(waiting);
   });
 
   it("reads the tree state of a feed page and a detail in one statement", async () => {
