@@ -43,6 +43,7 @@ import { withConversationEventLock } from "./event-lock";
 import { writeMessageLinks } from "./message-links";
 import {
   recordConversationParticipant,
+  recordMentionedParticipants,
   rootConversationIsArchived,
 } from "./participants";
 
@@ -308,8 +309,9 @@ class SqlConversationEventStore implements ConversationEventStore {
   }
 
   /**
-   * Add the authors of Turn input messages to the conversation.
-   * Only people who start a Turn join it. Thread context, such as backfilled
+   * Add the authors of Turn input messages to the conversation, and the
+   * people that they mention in a public one. Only people who start a Turn,
+   * or whom they mention, join it. Thread context, such as backfilled
    * or skipped messages, and Event Messages keep their author without
    * membership.
    */
@@ -354,6 +356,13 @@ class SqlConversationEventStore implements ConversationEventStore {
         resubscribe: eventAddressesJunior(data) || (rootArchived && unarchives),
       });
       restores ||= isPerson && unarchives;
+      if (isPerson) {
+        await recordMentionedParticipants(this.executor, {
+          atMs: row.createdAt.getTime(),
+          conversationId,
+          text: data.text,
+        });
+      }
     }
     /* oxlint-enable no-await-in-loop */
     // Archive is shared, so any person's message restores it for everyone.

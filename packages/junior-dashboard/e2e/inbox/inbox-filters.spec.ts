@@ -14,8 +14,7 @@ import { expect, test } from "../test";
 
 // The Inbox filters its asks by type, and each filter counts the asks that
 // wait on the viewer.
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // An Other ask: an action with no question, no pull request, and no
   // To-do.
   const other = {

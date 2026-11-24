@@ -10,7 +10,10 @@ import {
   getProviderErrorAttributes,
   getProviderErrorUserMessage,
 } from "@/chat/services/provider-error";
-import type { AgentRunResult } from "@/chat/services/turn-result";
+import {
+  isCutOffStopReason,
+  type AgentRunResult,
+} from "@/chat/services/turn-result";
 
 type TurnFailureEventName =
   | "agent.turn.provider_error"
@@ -64,6 +67,12 @@ export function getTurnFailureReason(
     return (
       findProviderError(reply.diagnostics.providerError)?.kind ?? "unknown"
     );
+  }
+  if (
+    reply.diagnostics.usedPrimaryText &&
+    isCutOffStopReason(reply.diagnostics.stopReason)
+  ) {
+    return "cut_off_output";
   }
   if (reply.diagnostics.toolErrorCount > 0) {
     return "tool_errors";

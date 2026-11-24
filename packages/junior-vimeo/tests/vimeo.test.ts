@@ -444,7 +444,8 @@ describe("Vimeo tools", () => {
   it("uses only the service account, with one operation per tool", () => {
     const manifest = plugin.manifest!;
     expect(manifest.accounts?.userOAuth).toBe(false);
-    expect(manifest.credentials?.authTokenEnv).toBeUndefined();
+    expect(manifest.credentials).toMatchObject({ type: "oauth-bearer" });
+    expect(manifest.credentials).not.toHaveProperty("authTokenEnv");
     expect(manifest.oauth).toMatchObject({
       authorizeEndpoint: "https://api.vimeo.com/oauth/authorize",
       tokenEndpoint: "https://api.vimeo.com/oauth/access_token",

@@ -15,6 +15,7 @@ import { jsonResponse, throwApiError } from "./api/http";
 import { createLocationRoutes } from "./api/locations/routes";
 import { createImageRoutes } from "./api/images/routes";
 import { createLeadRoutes } from "./api/lead/routes";
+import { createSpaceRoutes } from "./api/spaces/routes";
 import { createPeopleRoutes } from "./api/people/routes";
 import { createPersonalTokenRoutes } from "./api/personal-tokens/routes";
 import { createSearchRoutes } from "./api/search/routes";
@@ -164,6 +165,7 @@ export function createJuniorApi(
   app.route("/api/people", createPeopleRoutes({ waitUntil }));
   app.route("/api/locations", createLocationRoutes());
   app.route("/api/search", createSearchRoutes());
+  app.route("/api/spaces", createSpaceRoutes());
   app.route("/api/user-pages", createUserPageRoutes());
   app.route("/api/user-customization", createUserCustomizationRoutes());
   app.route("/api/automations", createAutomationRoutes());

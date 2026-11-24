@@ -124,6 +124,10 @@ export default defineConfig({
             { label: "Plugins", link: "/extend/" },
             { label: "Build a Plugin", link: "/extend/build-a-plugin/" },
             {
+              label: "Workload Identity Credentials",
+              link: "/extend/workload-identity/",
+            },
+            {
               label: "Agent Browser Plugin",
               link: "/extend/agent-browser-plugin/",
             },

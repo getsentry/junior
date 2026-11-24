@@ -3,8 +3,7 @@ import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("opens conversation details beside the chat", async ({
     context,
     page,

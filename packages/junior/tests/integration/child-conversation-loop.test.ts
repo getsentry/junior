@@ -99,8 +99,8 @@ async function sendHelperReply(harness: Harness, sender: ChildAgentSender) {
     nowMs: Date.now(),
     queue: harness.queue,
     result: {
-      kind: "reply",
-      reply: { text: "Helper fact.", toolCallId: "helper-reply" },
+      kind: "completed",
+      text: "Helper fact.",
     },
     sender,
     turnId: "turn_helper",

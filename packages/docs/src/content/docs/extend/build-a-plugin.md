@@ -8,6 +8,7 @@ prerequisites:
 related:
   - /concepts/skills-and-plugins/
   - /concepts/credentials-and-oauth/
+  - /extend/workload-identity/
   - /cli/check/
 ---
 
@@ -80,6 +81,11 @@ mcp:
 This lets Junior validate and load the provider surface before a turn starts.
 Bundled skills are discovered from the package `skills/` directory; they are
 not listed inside `plugin.yaml`.
+
+To reach a service behind Google Cloud or Azure identity, such as Identity-Aware
+Proxy, declare a `workload-identity` credential instead. Junior mints a
+short-lived token from its Vercel OIDC token. See
+[Workload Identity Credentials](/extend/workload-identity/).
 
 ### Placeholders
 
@@ -655,7 +661,9 @@ defineJuniorPlugin({
 ```
 
 The task context has `ctx.payload`, `ctx.state`, `ctx.annotations`,
-`ctx.codeChanges`, and `ctx.conversationChanges`, as in a plugin route.
+`ctx.codeChanges`, `ctx.conversationChanges`, and `ctx.events`, as in a
+plugin route. Use `ctx.events.publish(...)` to publish an Event that the task
+finds.
 
 ### Wait for a provider with a task
 

@@ -139,10 +139,8 @@ describe.sequential("dashboard Nitro production output", () => {
       for (const file of staticFiles) {
         expect(file).toMatch(DASHBOARD_PUBLIC_ASSET_NAME);
       }
-      // The page loads the classic shell for a viewer without the setting.
-      const clientFile = staticFiles.find(
-        (file) =>
-          file.startsWith("classic-") && DASHBOARD_CLIENT_ENTRY_NAME.test(file),
+      const clientFile = staticFiles.find((file) =>
+        DASHBOARD_CLIENT_ENTRY_NAME.test(file),
       );
       expect(clientFile).toBeDefined();
 

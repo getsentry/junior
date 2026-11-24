@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import {
+  digest,
   mockInboxItems,
   pinChecks,
   pinReview,
@@ -83,8 +84,7 @@ async function mockReplyTurn(page: Page, options: { fail?: boolean } = {}) {
   );
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // A pull request card, and the notices that are FYI.
 
   const card = "Pull request: Pin the release train to payments 4.2";
@@ -332,6 +332,40 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       rowHead(page, "Package release and self-update"),
     ).toBeVisible();
+  });
+
+  test("a sweep dismisses the FYIs of a pinned Conversation too", async ({
+    dashboard,
+    page,
+  }) => {
+    // A pin keeps its Conversation in place. It does not keep its notices.
+    await page.route(/\/api\/conversations(\?.*)?$/, async (route) => {
+      const response = await route.fetch();
+      const feed = await response.json();
+      return route.fulfill({
+        response,
+        json: {
+          ...feed,
+          conversations: feed.conversations.map(
+            (conversation: { conversationId: string }) =>
+              conversation.conversationId === releaseNotes.rootConversationId
+                ? { ...conversation, pinnedAt: "2026-08-07T10:00:00.000Z" }
+                : conversation,
+          ),
+        },
+      });
+    });
+    await mockInboxItems(page, { open: [releaseNotes, digest] });
+    // Pinned shows the pinned notice only.
+    await page.goto(`${dashboard.baseURL}/inbox?pinned=1`);
+    const fyi = page.getByRole("region", { name: "FYI" });
+    await expect(rowHead(fyi, releaseNotes.title)).toBeVisible();
+    await expect(rowHead(fyi, digest.title)).toHaveCount(0);
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(rowHead(fyi, digest.title)).toBeVisible();
+    await page.getByRole("button", { name: "Dismiss 2 in FYI" }).click();
+    await expect(page.getByText("Dismissed 2 FYIs")).toBeVisible();
+    await expect(fyi).toHaveCount(0);
   });
 
   for (const view of [desktop, mobile]) {

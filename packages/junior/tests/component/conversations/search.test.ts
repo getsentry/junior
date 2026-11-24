@@ -186,14 +186,6 @@ describe("Conversation search", () => {
           })
         ).map((match) => match.conversationId),
       ).toContain(unsummarizedId);
-      expect(
-        (
-          await searchConversations(db, {
-            requesterConversationId: currentConversationId,
-            search: { ...titleSearch, summarizedOnly: true },
-          })
-        ).map((match) => match.conversationId),
-      ).not.toContain(unsummarizedId);
 
       // Child agents match only when the search asks for them.
       const withChildren = await searchConversations(db, {

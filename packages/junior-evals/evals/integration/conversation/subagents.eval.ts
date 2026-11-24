@@ -37,8 +37,8 @@ describe("Child Agents", () => {
     );
 
     expect(completedToolCalls("startAgent", conversation)).toHaveLength(1);
-    // Only the child's `reply` reaches the parent.
-    expect(requestedTools).toContain("reply");
+    // The child's final text is its reply. It has no `reply` tool.
+    expect(requestedTools).not.toContain("reply");
     expect(conversation.turns).toHaveLength(2);
     // The parent decides whether a status is worth posting; the result
     // itself arrives only in the later Turn.
@@ -198,8 +198,8 @@ describe("Child Agents", () => {
     expect(
       requestedTools.filter((name) => name === "systemTime").length,
     ).toBeGreaterThan(3);
-    // Past the budget, the child can still reply.
-    expect(requestedTools).toContain("reply");
+    // Past the budget, the child still replies with final text.
+    expect(requestedTools).not.toContain("reply");
     expect(conversation.turns).toHaveLength(2);
     expect(conversation.turns[1]?.status).toBe("succeeded");
   });

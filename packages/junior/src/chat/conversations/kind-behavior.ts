@@ -22,8 +22,9 @@ export type AgentTools = "none" | "children" | "children_and_parent" | "lead";
 export type TurnBehavior = {
   /**
    * `location`: the runtime delivers the final response to the Location.
-   * `conversation`: the final response stays in the Conversation. Only the
-   * text of a `reply` call leaves it.
+   * `conversation`: the final response stays in the Conversation. A child
+   * agent's final response also goes to its parent, and an Automation run
+   * posts only the text of its `reply` call.
    */
   delivery: "location" | "conversation";
   /**
@@ -51,14 +52,10 @@ export type TurnBehavior = {
   waitsForSignIn: boolean;
   /**
    * The Turn must end with `reply`, `noReply`, or `reportBlocked`, or it is
-   * reminded once.
+   * reminded once. Its final text is never delivered. Only an Automation run
+   * is gated, because its reply goes to people in a channel.
    */
   gated: boolean;
-  /**
-   * The error that fails a gated Turn that still has no answer after the
-   * reminder. Without it, the Turn ends quietly.
-   */
-  missingAnswerError?: string;
   /**
    * `parent`: a failed Turn, also one that ends without an answer, sends its
    * failure to the parent agent. `none`: the failure stays in the
@@ -68,7 +65,7 @@ export type TurnBehavior = {
   /**
    * `parent`: a Turn that ends with final text, or with `noReply` that also
    * ends the work of its Conversation, sends the parent agent a completed
-   * result. `none`: the Turn sends nothing.
+   * result. The final text is the reply. `none`: the Turn sends nothing.
    */
   endResult: "none" | "parent";
   /**
@@ -76,6 +73,11 @@ export type TurnBehavior = {
    * Memory is public, so a child agent never captures it.
    */
   sessionTasks: boolean;
+  /**
+   * A completed Turn updates the Conversation summary that search reads.
+   * With `sessionTasks`, the session tasks include this update.
+   */
+  conversationMetadata: boolean;
   /**
    * The first request of the Conversation gets the open Conversations that
    * may cover the same work. A child agent or an Automation run already
@@ -88,11 +90,10 @@ export type TurnBehavior = {
     subscriptions: boolean;
     userCustomization: boolean;
     /**
-     * Where a `reply` goes. Only a gated Turn has it. `parent`: the parent
-     * agent's mailbox. `automation`: the run's Destination, then its Slack
-     * thread.
+     * The Turn has `reply`. Only a gated Turn has it. The reply goes to the
+     * run's Destination, then its Slack thread.
      */
-    reply: "none" | "parent" | "automation";
+    reply: boolean;
     /**
      * Who gets a blocked report. `parent`: the parent agent. `automation`:
      * the Automation is blocked with the reason.
@@ -121,13 +122,14 @@ const ROOT: TurnBehavior = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: true,
   tools: {
     agents: "children",
     inbox: true,
     subscriptions: true,
     userCustomization: true,
-    reply: "none",
+    reply: false,
     reportBlocked: "none",
     noReply: true,
   },
@@ -155,27 +157,27 @@ const PERSON_IN_THREAD: TurnBehavior = {
 };
 
 // A child agent's Turn comes from its parent, its child agents, or its
-// Watches. Its final response stays in its Conversation, and only a `reply`
-// reaches the parent. The child does work for its parent, so its parent
-// learns when it fails, ends without an answer, or ends its work with
-// `noReply`.
+// Watches. Its final response stays in its Conversation and is its reply to
+// the parent. The child does work for its parent, so its parent learns when
+// it fails or ends its work with `noReply`.
 const CHILD_AGENT_TURN: TurnBehavior = {
   delivery: "conversation",
   promptMode: "child_agent",
   idleNeedsPendingWork: false,
   waitsForSignIn: false,
-  gated: true,
-  missingAnswerError: "No reply was sent.",
+  gated: false,
   failureNotice: "parent",
   endResult: "parent",
   sessionTasks: false,
+  // Only its parent reads a Task, so a Task has no summary.
+  conversationMetadata: false,
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
     inbox: false,
     subscriptions: false,
     userCustomization: false,
-    reply: "parent",
+    reply: false,
     reportBlocked: "parent",
     noReply: true,
   },
@@ -186,6 +188,8 @@ const AGENT_IN_THREAD: TurnBehavior = {
   ...CHILD_AGENT_TURN,
   promptMode: "thread",
   sender: "agent",
+  // People find a Thread by its summary.
+  conversationMetadata: true,
 };
 
 // Every Turn of a Thread lists the tools of both senders, so the Thread keeps
@@ -209,10 +213,11 @@ const AUTOMATION_RUN: TurnBehavior = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: false,
   tools: {
     ...ROOT.tools,
-    reply: "automation",
+    reply: true,
     reportBlocked: "automation",
   },
 };
@@ -264,6 +269,7 @@ const LEAD: TurnBehavior = {
   ...ROOT,
   promptMode: "lead",
   sessionTasks: false,
+  conversationMetadata: false,
   tools: {
     ...ROOT.tools,
     agents: "lead",

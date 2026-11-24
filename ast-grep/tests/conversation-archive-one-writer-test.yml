@@ -3,6 +3,7 @@ valid:
   - "await setArchivedAt(db, [conversationId], null);"
   - "await db.update(juniorMemories).set({ archivedAtMs: null });"
   - "const row = { archivedAt: null };"
+  - "await getDb().update(juniorSpaces).set({ archivedAt: now, updatedAt: now });"
 invalid:
   - "await db.update(juniorConversations).set({ archivedAt: now, detailVersion: nextDetailVersion });"
   - "await getDb().update(juniorConversations).set({ detailVersion: nextDetailVersion, archivedAt: null }).where(where);"

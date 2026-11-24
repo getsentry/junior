@@ -15,7 +15,6 @@ import { TooltipProvider } from "./client/components/ui/tooltip";
 import { DocumentTitleProvider } from "./client/documentTitle";
 import { getDashboardAgentName } from "./client/agentName";
 import { initDashboardSentry } from "./client/sentry";
-import type { UiShell } from "./client/uiShell";
 import {
   clearAppBadge,
   openNotificationTarget,
@@ -126,14 +125,9 @@ const queryClient = new QueryClient({
   },
 });
 
-/**
- * Render the dashboard with one UI shell. Each shell has its own entry that
- * calls this, so the page loads only the code of the viewer's shell.
- */
-export function startDashboard(Shell: ComponentType, ui: UiShell): void {
-  // Only the shell entry knows its shell, so Sentry starts here, before the
-  // first render.
-  initDashboardSentry(ui);
+/** Render the dashboard with its shell. Sentry starts before the first render. */
+export function startDashboard(Shell: ComponentType): void {
+  initDashboardSentry();
   const root = document.getElementById("dashboard-root");
   if (!root) {
     throw new Error("Dashboard root element was not found");

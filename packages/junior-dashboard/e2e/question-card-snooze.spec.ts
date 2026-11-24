@@ -194,23 +194,19 @@ test("a Slack card's Snooze link opens the item's snooze dialog", async ({
     ]);
 });
 
-// Only the inbox project runs `@new` tests.
-test(
-  "an Inbox question card reads Dismiss, Snooze, then Send",
-  {
-    tag: "@new",
-  },
-  async ({ dashboard, page }) => {
-    await page.setViewportSize(desktop);
-    await page.goto(
-      `${dashboard.baseURL}/inbox?view=inbox&item=qa-migration-negative`,
-    );
-    const inboxCard = page.locator('[data-inbox-card="qa-migration-negative"]');
-    await expect(inboxCard).toContainText(
-      "What should happen to the 12 negative invoices?",
-    );
-    await expect(
-      inboxCard.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
-    ).toHaveText(["Dismiss", "Snooze", "Send"]);
-  },
-);
+test("an Inbox question card reads Dismiss, Snooze, then Send", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  await page.goto(
+    `${dashboard.baseURL}/inbox?view=inbox&item=qa-migration-negative`,
+  );
+  const inboxCard = page.locator('[data-inbox-card="qa-migration-negative"]');
+  await expect(inboxCard).toContainText(
+    "What should happen to the 12 negative invoices?",
+  );
+  await expect(
+    inboxCard.getByRole("button", { name: /^(Dismiss|Snooze|Send)$/ }),
+  ).toHaveText(["Dismiss", "Snooze", "Send"]);
+});
