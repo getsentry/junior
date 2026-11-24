@@ -35,16 +35,6 @@ data, does not run.
   env var holds it, and which domains get the real credential. A command
   that sends that env var to those domains does not expose a secret.
 
-## Entry points
-
-- Slack: an Inbox item in which Junior names an action, its target, and its
-  side effects, and asks the person to confirm it.
-- Dashboard: System, "Guardian reviews"; the "Guardian" line in the costs of
-  a Conversation.
-- Plugin authors: `approvalMode` (`auto`, `review`, or `approve`), tool
-  annotations, and `describeProposal`.
-- Deployment: `AI_GUARDIAN_MODEL` selects the review model.
-
 ## Rules
 
 - Guardian reviews each plugin tool and each MCP tool, unless the tool is
