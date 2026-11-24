@@ -284,19 +284,43 @@ function ConversationTitleHeader(props: {
     <>
       <MobileHeaderTitlePortal>
         {props.state}
-        <h1 className="m-0 flex min-w-0 flex-1 text-dashboard-text">
-          {rename ? (
-            <EditableConversationTitle
-              {...rename}
-              className={MOBILE_TITLE_CLASS}
-              title={props.title}
+        {props.view === "raw" && !rename?.editing ? (
+          // Back leads to the conversation here, so the title is plain text.
+          <h1 className="m-0 flex min-w-0 flex-1 items-center gap-1.5">
+            <span
+              className={cn(
+                MOBILE_TITLE_CLASS,
+                fadeOverflowClass,
+                "text-dashboard-text-muted",
+              )}
+              ref={fadeWhenOverflowing}
             >
+              {titleText}
+            </span>
+            <span aria-hidden="true" className="text-dashboard-text-faint">
+              ›
+            </span>
+            <span
+              className={cn(MOBILE_TITLE_CLASS, "shrink-0 text-dashboard-text")}
+            >
+              Event log
+            </span>
+          </h1>
+        ) : (
+          <h1 className="m-0 flex min-w-0 flex-1 text-dashboard-text">
+            {rename ? (
+              <EditableConversationTitle
+                {...rename}
+                className={MOBILE_TITLE_CLASS}
+                title={props.title}
+              >
+                <span className={MOBILE_TITLE_CLASS}>{titleText}</span>
+              </EditableConversationTitle>
+            ) : (
               <span className={MOBILE_TITLE_CLASS}>{titleText}</span>
-            </EditableConversationTitle>
-          ) : (
-            <span className={MOBILE_TITLE_CLASS}>{titleText}</span>
-          )}
-        </h1>
+            )}
+          </h1>
+        )}
       </MobileHeaderTitlePortal>
       <MobileHeaderActionsPortal>
         <Button

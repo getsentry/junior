@@ -755,7 +755,8 @@ export function ConversationGlanceMetrics(props: {
   if (!props.conversation) return null;
   const cost = conversationCost(props.conversation, props.detail, "below");
   const tokens = tokenMetric({ ...props, conversation: props.conversation });
-  const duration = durationMetric(props.conversation, props.detail);
+  // Named, like "1.9k tokens", so a runtime alone still says what it is.
+  const duration = durationMetric(props.conversation, props.detail, " runtime");
   const rest = [tokens, duration].filter(Boolean);
   if (!cost && rest.length === 0) return null;
   return (
@@ -809,6 +810,7 @@ function tokenMetric(props: {
 function durationMetric(
   conversation: Conversation,
   detail: ConversationDetailReport | undefined,
+  labelSuffix = "",
 ): ReactNode {
   const label = formatConversationDuration(conversation);
   if (label === "none") return null;
@@ -819,7 +821,7 @@ function durationMetric(
       }
       durationMs={conversation.cumulativeDurationMs}
       endedAt={conversation.lastSeenAt}
-      label={label}
+      label={`${label}${labelSuffix}`}
       startedAt={conversation.startedAt}
     />
   );

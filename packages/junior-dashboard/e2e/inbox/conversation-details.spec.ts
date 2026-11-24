@@ -1,3 +1,4 @@
+import { conversationMenuRow } from "./conversationMenu";
 import { openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
@@ -309,9 +310,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     // A phone shows the same card in the details sheet.
     await page.setViewportSize({ height: 844, width: 390 });
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await page
-      .getByRole("menuitem", { exact: true, name: "Conversation details" })
-      .click();
+    await conversationMenuRow(page, "Conversation details").click();
     const sheetHeading = page
       .getByRole("dialog", { name: "Conversation details" })
       .getByRole("heading", { name: /^To-dos/ });

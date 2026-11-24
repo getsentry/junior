@@ -82,6 +82,7 @@ export function ConversationDetailsPanel(props: {
           <ConversationUsageBreakdown
             conversation={conversation}
             detail={detail}
+            glance
           />
         ) : null
       }
