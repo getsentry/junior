@@ -166,6 +166,12 @@ export const juniorConversations = pgTable(
       table.forkedFromConversationId,
     ),
     index("junior_conversations_root_idx").on(table.rootConversationId),
+    // Maps a Conversation to its root with an index-only scan, so time-bounded
+    // reads such as People activity do not read every wide row of this table.
+    index("junior_conversations_root_lookup_idx").on(
+      table.conversationId,
+      table.rootConversationId,
+    ),
     // One lead per Identity. Only web creates a lead, so its root Actor is
     // the web Identity of its User.
     uniqueIndex("junior_conversations_lead_actor_idx")
