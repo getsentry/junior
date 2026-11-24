@@ -18,6 +18,21 @@ ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> sta
 -- Old workers still add items without a subject while this release rolls
 -- out, so a trigger gives each such row its subject by the same rules. The
 -- backfill below fires the same trigger.
+--
+-- New code stores each http(s) evidence link as `URL.href`, so a link
+-- matches the same link that another item cites. Postgres has no URL
+-- parser, so this function makes only the common changes of `URL.href`: it
+-- lowercases the scheme and host, and gives a bare origin its `/`. It goes
+-- with the legacy trigger.
+CREATE OR REPLACE FUNCTION "junior_inbox_items_web_link"(link text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $function$
+  SELECT lower(origin) || CASE WHEN rest = '' OR left(rest, 1) IN ('?', '#') THEN '/' || rest ELSE rest END
+  FROM (SELECT substring(link from '^[A-Za-z][A-Za-z0-9+.-]*://[^/?#]*') AS origin) AS parts,
+  LATERAL (SELECT substr(link, length(origin) + 1) AS rest) AS tail
+$function$;--> statement-breakpoint
 CREATE OR REPLACE FUNCTION "junior_inbox_items_legacy_subject"()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -29,10 +44,10 @@ DECLARE
     END;
   github_id text;
   -- An agent item kept its link in `subject_url`, or else in `subject_id`.
-  legacy_link text := CASE
-      WHEN NEW."subject_url" ~ '^https?://' THEN NEW."subject_url"
-      WHEN NEW."subject_id" ~ '^https?://' THEN NEW."subject_id"
-    END;
+  legacy_link text := "junior_inbox_items_web_link"(CASE
+      WHEN NEW."subject_url" ~* '^https?://' THEN NEW."subject_url"
+      WHEN NEW."subject_id" ~* '^https?://' THEN NEW."subject_id"
+    END);
 BEGIN
   IF github_ref IS NOT NULL THEN
     SELECT c."provider_id" INTO github_id
@@ -60,6 +75,11 @@ BEGIN
       WHEN NEW."dedupe_key" LIKE 'plugin:%' THEN coalesce(NEW."subject_url", NEW."subject_id", substr(NEW."dedupe_key", length('plugin:' || split_part(NEW."dedupe_key", ':', 2) || ':') + 1))
       ELSE coalesce(NEW."dedupe_key", 'ask:' || NEW."id"::text)
     END;
+  -- An open item's http(s) evidence links get the form that new code
+  -- stores.
+  IF NEW."status" = 'open' AND jsonb_typeof(NEW."request"->'evidence') = 'array' THEN
+    NEW."request" := jsonb_set(NEW."request", '{evidence}', (SELECT coalesce(jsonb_agg(CASE WHEN entry->>'url' ~* '^https?://' THEN jsonb_set(entry, '{url}', to_jsonb("junior_inbox_items_web_link"(entry->>'url'))) ELSE entry END ORDER BY position), '[]'::jsonb) FROM jsonb_array_elements(NEW."request"->'evidence') WITH ORDINALITY AS evidence(entry, position)));
+  END IF;
   -- A question reads what it is about from its evidence links, so its old
   -- subject link becomes its first evidence link. A notice has no request.
   IF NEW."subject_kind" = 'question' AND NEW."request" IS NOT NULL
@@ -72,7 +92,7 @@ BEGIN
 END;
 $function$;--> statement-breakpoint
 CREATE TRIGGER "junior_inbox_items_legacy_subject" BEFORE INSERT OR UPDATE ON "junior_inbox_items" FOR EACH ROW WHEN (NEW."subject_kind" IS NULL) EXECUTE FUNCTION "junior_inbox_items_legacy_subject"();--> statement-breakpoint
--- junior:bounded-backfill: every row needs its subject before 0171 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once.
+-- junior:bounded-backfill: every row needs its subject before 0171 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once. The same write gives the evidence links of open items the stored form.
 UPDATE "junior_inbox_items" SET "subject_kind" = NULL;--> statement-breakpoint
 -- junior:bounded-backfill: before the unique open subject index below, the older of two open items that now share a subject closes. It reads only the open items and closes the few duplicates, such as the review and merge asks of one pull request.
 UPDATE "junior_inbox_items" AS "item" SET "status" = 'dismissed', "closed_at" = now(), "close_reason" = 'A newer item asks about the same subject.', "updated_at" = now() WHERE "item"."status" = 'open' AND EXISTS (SELECT 1 FROM "junior_inbox_items" AS "newer" WHERE "newer"."status" = 'open' AND coalesce("newer"."provider", '') = coalesce("item"."provider", '') AND coalesce("newer"."provider_tenant_id", '') = coalesce("item"."provider_tenant_id", '') AND "newer"."subject_kind" = "item"."subject_kind" AND "newer"."subject_id" = "item"."subject_id" AND ("newer"."updated_at", "newer"."id") > ("item"."updated_at", "item"."id"));--> statement-breakpoint

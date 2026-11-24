@@ -83,9 +83,10 @@ describe("inbox item subject migration", () => {
         `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_url, subject_title, owner_id, created_at, updated_at, request) VALUES ('ship', 'action', 'open', 'public', 'Ship it?', 'Checks are green.', 'ship:946', 'https://github.com/${PULL_REQUEST.replace("#", "/pull/")}', 'PR #946', 'slack:C123:1.000003', now(), now(), '{"question":"Ship it?","fields":[],"evidence":[{"label":"CI run","url":"https://ci.example.com/1"}]}')`,
       );
 
-      // Another kept the link of its pull request as its subject id.
+      // Another kept the link of its pull request as its subject id. Its
+      // links have an upper case scheme or host, or no path.
       await fixture.sql.execute(
-        `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_id, owner_id, created_at, updated_at, request) VALUES ('deploy', 'action', 'open', 'public', 'Deploy it?', 'It merged.', 'deploy:947', 'https://github.com/getsentry/junior/pull/947', 'slack:C123:1.000004', now(), now(), '{"question":"Deploy it?","fields":[]}')`,
+        `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_id, owner_id, created_at, updated_at, request) VALUES ('deploy', 'action', 'open', 'public', 'Deploy it?', 'It merged.', 'deploy:947', 'https://GitHub.com/getsentry/junior/pull/947', 'slack:C123:1.000004', now(), now(), '{"question":"Deploy it?","fields":[],"evidence":[{"label":"Docs","url":"HTTPS://Docs.Example.com?page=Deploy"},{"label":"Dashboard","url":"https://Dash.Example.com"}]}')`,
       );
 
       for (const statement of migration.sql.slice(start, end + 1)) {
@@ -138,11 +139,17 @@ describe("inbox item subject migration", () => {
         ),
       ).toEqual([
         {
+          // They get the form that new code stores, `URL.href`.
           evidence: [
             {
               label: "https://github.com/getsentry/junior/pull/947",
               url: "https://github.com/getsentry/junior/pull/947",
             },
+            {
+              label: "Docs",
+              url: "https://docs.example.com/?page=Deploy",
+            },
+            { label: "Dashboard", url: "https://dash.example.com/" },
           ],
         },
       ]);

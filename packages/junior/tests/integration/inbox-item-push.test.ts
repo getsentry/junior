@@ -412,6 +412,17 @@ describe("inbox item push", () => {
       await getDb().select({ id: juniorInboxItems.id }).from(juniorInboxItems),
     ).toEqual([item]);
 
+    // A wake of Ana's snooze pushed the item to her too.
+    await getDb().insert(juniorInboxItemDeliveries).values({
+      channel: "web_push",
+      createdAt: new Date(),
+      event: "wake",
+      itemId: item!.id,
+      status: "sent",
+      updatedAt: new Date(),
+      userId: ana.id,
+    });
+
     // Ana leaves while Ben's ask keeps the item open. A new ask brings her
     // back, and it pushes to her again.
     const ben = await person("ben@example.com");
@@ -441,6 +452,9 @@ describe("inbox item push", () => {
         title: "Review requested again · #946",
       }),
     );
+    // Her rejoin forgets every push of the item that her leave cleared, so
+    // no later push closes it on her phone.
+    expect(pushes.at(-1)).not.toHaveProperty("close");
   });
 
   it("pushes an item that Slack shows only to an assignee who is away in Slack 5 minutes later", async () => {

@@ -395,6 +395,74 @@ describe("inbox item evidence", () => {
     ]);
   });
 
+  it("relates two items that cite one link, in the form that each stored", async () => {
+    const fixture = await createConversationFixture();
+    await slackConversation(ROLLOUT_ID, "CPUB", "public");
+    await slackConversation(LATENCY_ID, "CPUB", "public");
+    const ana = await user("ana@example.com");
+    // Rows added before links were stored as `URL.href` keep the text that
+    // the agent sent.
+    const stored = [];
+    for (const [conversationId, title] of [
+      [ROLLOUT_ID, "Roll out the status page?"],
+      [LATENCY_ID, "Hold the status page?"],
+    ] as const) {
+      const item = await insertInboxItem(getDb(), {
+        assignedToEveryone: false,
+        assigneeUserIds: [ana.id],
+        body: "The status page is up.",
+        conversationIds: [conversationId],
+        kind: "action",
+        nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+        owner: { id: conversationId, kind: "conversation" },
+        request: {
+          ...REQUEST,
+          evidence: [{ label: "Status", url: "https://status.example.com" }],
+        },
+        subject: { id: `status:${conversationId}`, kind: "question" },
+        title,
+        visibility: "public",
+      });
+      if (!item) throw new Error(`${title} was not added`);
+      stored.push(item.id);
+    }
+    // New items store each link as `URL.href`, so two ways to write one
+    // link name the same object.
+    const upper = await add(ROLLOUT_ID, {
+      assignees: ["ana@example.com"],
+      body: "Its docs moved.",
+      kind: "action",
+      request: {
+        ...REQUEST,
+        evidence: [{ label: "Docs", url: "https://Example.com" }],
+      },
+      title: "Publish the docs?",
+    });
+    expect(upper.item.request.evidence).toEqual([
+      { label: "Docs", url: "https://example.com/" },
+    ]);
+    const lower = await add(LATENCY_ID, {
+      assignees: ["ana@example.com"],
+      body: "Its docs moved.",
+      kind: "action",
+      request: {
+        ...REQUEST,
+        evidence: [{ label: "Docs", url: "https://example.com/" }],
+      },
+      title: "Announce the docs?",
+    });
+
+    const list = await (await api(fixture, ana)("")).json();
+    const related = (id: string) =>
+      list.items
+        .find((item: { id: string }) => item.id === id)
+        .related.items.map((item: { id: string }) => item.id);
+    expect(related(stored[0]!)).toEqual([stored[1]]);
+    expect(related(stored[1]!)).toEqual([stored[0]]);
+    expect(related(upper.item.id)).toEqual([lower.item.id]);
+    expect(related(lower.item.id)).toEqual([upper.item.id]);
+  });
+
   it("keeps a quiet release's related work next to a busy release on the page", async () => {
     const fixture = await createConversationFixture();
     for (const id of [ROLLOUT_ID, LATENCY_ID, BUSY_ID]) {

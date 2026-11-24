@@ -235,8 +235,9 @@ export const addInboxItemToolDefinition = zodToolDefinition({
 });
 
 /**
- * Normalize the evidence input: each entry names exactly one source, and
- * null fields mean omitted.
+ * Normalize the evidence input: each entry names exactly one source, null
+ * fields mean omitted, and a link is stored as `URL.href`, so it matches
+ * the same link that another item cites.
  */
 function evidenceInput(
   evidence: z.output<typeof evidenceSchema> | null | undefined,
@@ -249,7 +250,7 @@ function evidenceInput(
     }
     return {
       label: entry.label,
-      ...(entry.url ? { url: entry.url } : undefined),
+      ...(entry.url ? { url: new URL(entry.url).href } : undefined),
       ...(entry.conversation_id
         ? { conversationId: entry.conversation_id }
         : undefined),

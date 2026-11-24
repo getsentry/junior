@@ -71,10 +71,11 @@ export function questionLinks(item: InboxItemLinkSource): string[] {
   return [...new Set(links)];
 }
 
+// A link keeps its stored text, so it matches the same text in SQL.
 function webLink(value: string): string | undefined {
   const url = URL.parse(value);
   return url?.protocol === "https:" || url?.protocol === "http:"
-    ? url.href
+    ? value
     : undefined;
 }
 

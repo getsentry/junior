@@ -36,9 +36,9 @@ export async function listInboxItemPushUserIds(
 }
 
 /**
- * Forget the `created` web pushes of one open item to these Users, so the
- * next show pushes it to them again. Call it when an event gives them a new
- * ask on the item, such as a review request.
+ * Forget every web push of one open item to these Users, so the next show
+ * pushes it to them again and no cleared push closes it. Call it when an
+ * event gives them a new ask on the item, such as a review request.
  */
 export async function resetInboxItemPushes(
   db: JuniorDatabase,
@@ -52,7 +52,6 @@ export async function resetInboxItemPushes(
         eq(juniorInboxItemDeliveries.itemId, input.itemId),
         inArray(juniorInboxItemDeliveries.userId, [...input.userIds]),
         eq(juniorInboxItemDeliveries.channel, "web_push"),
-        eq(juniorInboxItemDeliveries.event, "created"),
       ),
     );
 }
