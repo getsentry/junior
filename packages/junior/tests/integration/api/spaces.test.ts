@@ -145,11 +145,13 @@ describe("Spaces API", () => {
     expect(archived.archivedAt).not.toBeNull();
     expect(await listNames(ana)).not.toContain("Junior for iOS");
     expect(await listNames(ana, "?archived=true")).toContain("Junior for iOS");
-    expect((await send(bo, "PUT", `/${space.id}/members/me`)).status).toBe(409);
-
+    // When every member leaves an archived Space, anyone can still join and
+    // restore it.
+    await send(ana, "DELETE", `/${space.id}/members/me`);
+    expect((await send(bo, "PUT", `/${space.id}/members/me`)).status).toBe(200);
     const restored = spaceSchema.parse(
       await (
-        await send(ana, "PATCH", `/${space.id}/archive`, { archived: false })
+        await send(bo, "PATCH", `/${space.id}/archive`, { archived: false })
       ).json(),
     );
     expect(restored.archivedAt).toBeNull();

@@ -162,10 +162,9 @@ export function createSpaceRoutes(): Hono<JuniorApiEnv> {
     async (context) => {
       const viewerUserId = context.get("viewer").id;
       const { spaceId } = context.req.valid("param");
-      const space = await requireSpace(viewerUserId, spaceId);
-      if (space.archivedAt) {
-        throwApiError(409, "Restore the Space before you join it.");
-      }
+      // An archived Space can be joined too, so a Space that every member
+      // left stays restorable.
+      await requireSpace(viewerUserId, spaceId);
       await joinSpace(spaceId, viewerUserId);
       return await spaceResponse(viewerUserId, spaceId);
     },
