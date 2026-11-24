@@ -8,7 +8,11 @@ import {
   it,
   vi,
 } from "vitest";
-import { createLocalSource, tagJson } from "@sentry/junior-plugin-api";
+import {
+  createLocalSource,
+  tagJson,
+  type Source,
+} from "@sentry/junior-plugin-api";
 import type { PiMessage } from "@/chat/pi/messages";
 import { botConfig } from "@/chat/config";
 import { writeConversationMetadata } from "@/chat/conversations/metadata/store";
@@ -116,6 +120,7 @@ async function recordCompletedTurn(args: {
   conversationId: string;
   instruction: string;
   previousPiMessages?: PiMessage[];
+  source?: Source;
   turnId: string;
 }): Promise<{ piMessages: PiMessage[]; throughSeq: number }> {
   const previousPiMessages = args.previousPiMessages ?? [];
@@ -161,7 +166,7 @@ async function recordCompletedTurn(args: {
     piMessages: allPiMessages,
     turnId: args.turnId,
     sliceId: 1,
-    source: createLocalSource(args.conversationId),
+    source: args.source ?? createLocalSource(args.conversationId),
     state: "completed",
     surface: "internal",
   });
@@ -401,6 +406,27 @@ describe("Conversation metadata task", () => {
     expect(TEST.calls).toHaveLength(3);
     await expect(readMetadata(childConversationId)).resolves.toMatchObject({
       summary: null,
+    });
+
+    // A Thread's Turns come from its parent agent, and it gets a summary.
+    const threadConversationId = `agent:metadata-thread:${idSuffix}`;
+    await getConversationStore().createChild({
+      kind: "thread",
+      childConversationId: threadConversationId,
+      parentConversationId: conversationId,
+      nowMs: 11,
+      source: "internal",
+    });
+    await recordCompletedTurn({
+      conversationId: threadConversationId,
+      instruction: "Open external links in new tabs.",
+      source: { kind: "parent_message" },
+      turnId: "thread-turn",
+    });
+    await processPluginTask(task("thread-turn", threadConversationId));
+    expect(TEST.calls).toHaveLength(4);
+    await expect(readMetadata(threadConversationId)).resolves.toMatchObject({
+      summary: "Metadata summary 4.",
     });
   }, 30_000);
 

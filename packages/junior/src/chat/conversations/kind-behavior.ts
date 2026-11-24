@@ -77,6 +77,11 @@ export type TurnBehavior = {
    */
   sessionTasks: boolean;
   /**
+   * A completed Turn updates the Conversation summary that search reads.
+   * With `sessionTasks`, the session tasks include this update.
+   */
+  conversationMetadata: boolean;
+  /**
    * The first request of the Conversation gets the open Conversations that
    * may cover the same work. A child agent or an Automation run already
    * knows what it works on.
@@ -121,6 +126,7 @@ const ROOT: TurnBehavior = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: true,
   tools: {
     agents: "children",
@@ -169,6 +175,8 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   failureNotice: "parent",
   endResult: "parent",
   sessionTasks: false,
+  // Only its parent reads a Task, so a Task has no summary.
+  conversationMetadata: false,
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
@@ -186,6 +194,8 @@ const AGENT_IN_THREAD: TurnBehavior = {
   ...CHILD_AGENT_TURN,
   promptMode: "thread",
   sender: "agent",
+  // People find a Thread by its summary.
+  conversationMetadata: true,
 };
 
 // Every Turn of a Thread lists the tools of both senders, so the Thread keeps
@@ -209,6 +219,7 @@ const AUTOMATION_RUN: TurnBehavior = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: false,
   tools: {
     ...ROOT.tools,
@@ -264,6 +275,7 @@ const LEAD: TurnBehavior = {
   ...ROOT,
   promptMode: "lead",
   sessionTasks: false,
+  conversationMetadata: false,
   tools: {
     ...ROOT.tools,
     agents: "lead",
