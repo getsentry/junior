@@ -14,7 +14,8 @@ import {
   juniorGitHubPullRequests,
 } from "../db/schema.js";
 
-const githubPullRequestOutcomeInputSchema = z
+/** One pull request lifecycle outcome, as the webhook and reconcile read it. */
+export const githubPullRequestOutcomeInputSchema = z
   .object({
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),

@@ -8,6 +8,7 @@ import {
   type EventMatch,
   type PluginConversationAnnotations,
   type PluginConversationInboxItems,
+  type PluginTaskStartInput,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -21,6 +22,7 @@ import { githubPlugin } from "../src/index";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import { recordJuniorPullRequest } from "./code-index";
 import { conversationChangesThrough } from "./conversation-changes";
+import { memoryState } from "./plugin-harness";
 import {
   buildCheckSuiteUrl,
   needsCheckSuitePullRequestFacts,
@@ -3614,7 +3616,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("retries the whole outcome when the owner lookup fails", async () => {
+  it("starts a task that applies the whole outcome when the owner lookup fails", async () => {
     const fixture = await createGitHubFixture();
     const opener = "slack:C123:1712345.0001";
     const other = "slack:C789:1719999.0003";
@@ -3646,6 +3648,7 @@ describe("GitHub-owned pull request outcomes", () => {
     };
     const lookup = { fails: false };
     const db = failingRequesterReads(fixture.db(), lookup);
+    const started: PluginTaskStartInput[] = [];
     try {
       await fixture
         .db()
@@ -3674,6 +3677,12 @@ describe("GitHub-owned pull request outcomes", () => {
         markFeedbackReviewing: async () => {},
         privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
         events: { async publish() {} },
+        state: memoryState(),
+        tasks: {
+          async start(input) {
+            started.push(input);
+          },
+        },
         webhookSecret: () => "test-secret",
       });
       const opened = pullRequestPayload({
@@ -3704,15 +3713,44 @@ describe("GitHub-owned pull request outcomes", () => {
       });
 
       lookup.fails = true;
-      await expect(route.handler(signedRequest(merged))).rejects.toThrow(
-        "requester read failed",
-      );
+      expect((await route.handler(signedRequest(merged))).status).toBe(202);
       expect(chips.size).toBe(0);
       expect(closes).toEqual([]);
+      expect(started).toEqual([
+        {
+          key: expect.stringMatching(
+            /^pull-request-outcome:.+:merged:2026-07-03T12:00:00\.000Z$/,
+          ),
+          name: "applyPullRequestOutcome",
+          payload: expect.objectContaining({ number: 946, state: "merged" }),
+        },
+      ]);
 
-      // The row stays open, so the next delivery applies the outcome.
+      // Junior sends the payload as JSON and runs the task later.
       lookup.fails = false;
-      expect((await route.handler(signedRequest(merged))).status).toBe(202);
+      const task = githubPlugin().tasks?.["applyPullRequestOutcome"];
+      if (!task?.payload) throw new Error("Expected a started task");
+      await task.run({
+        annotations,
+        cache: {
+          async getOrLoad(_key, load) {
+            return (await load()).value;
+          },
+        },
+        codeChanges: fixture.codeIndex.codeChanges,
+        conversationChanges: conversationChangesThrough({
+          annotations,
+          inboxItems,
+        }),
+        db,
+        log: { error() {}, info() {}, warn() {} },
+        name: "applyPullRequestOutcome",
+        payload: task.payload.parse(
+          JSON.parse(JSON.stringify(started[0]!.payload)),
+        ),
+        plugin: { name: "github" },
+        state: memoryState(),
+      });
       expect(Object.fromEntries(chips)).toEqual({
         [opener]: "merged",
         [other]: "merged",

@@ -18,6 +18,7 @@ import type {
 import type { PluginCodeChanges } from "./code";
 import type { PluginConversationChanges } from "./conversation-changes";
 import type { PluginConversationInboxItems } from "./inbox-items";
+import type { PluginTaskStarter } from "./tasks";
 
 export interface HeartbeatHookContext extends PluginContext {
   agent: {
@@ -45,6 +46,8 @@ export interface HeartbeatHookContext extends PluginContext {
   /** Inbox items, as from a plugin route. */
   inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** Start this plugin's tasks, as from a plugin route. */
+  tasks: PluginTaskStarter;
 }
 
 export interface HeartbeatResult {
@@ -214,6 +217,11 @@ export interface RouteRegistrationHookContext extends PluginContext {
   inboxItems: PluginConversationInboxItems;
   /** Plugin-namespaced state, the same as in heartbeats. */
   state: PluginState;
+  /**
+   * Start a task with a `payload` schema from this plugin's `tasks`. Use it
+   * when a write fails and must run again after the route returns.
+   */
+  tasks: PluginTaskStarter;
   users: {
     /**
      * Read one stored identity and the user it links to now, with every
