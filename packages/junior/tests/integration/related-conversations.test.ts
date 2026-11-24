@@ -7,6 +7,8 @@ import { mockRetrievalModels } from "../fixtures/retrieval-models";
 
 const KAFKA_CONVERSATION_ID = "slack:CKAFKA:1700000000.100000";
 const LUNCH_CONVERSATION_ID = "slack:CLUNCH:1700000000.200000";
+const INBOX_CONVERSATION_ID = "slack:CINBOX:1700000000.300000";
+const LINKS_THREAD_ID = "agent:links-thread";
 
 // Public Conversations that another person started, with a completed Turn.
 async function recordOpenConversation(input: {
@@ -81,6 +83,35 @@ describe("related conversations", () => {
     // in history has the block.
     expect(rerankRequests).toHaveLength(1);
     expect(modelInputText(agent).split(RELATED_CONTEXT)).toHaveLength(2);
+  });
+
+  it("shows a Thread with its root, by title before its first summary", async () => {
+    await recordOpenConversation({
+      channelId: "CINBOX",
+      conversationId: INBOX_CONVERSATION_ID,
+      summary: "BYK is reviewing bundle baselines and snapshot flakes.",
+      title: "New Inbox",
+    });
+    // A Thread has its spawn title before its first Turn completes.
+    await getConversationStore().createChild({
+      childConversationId: LINKS_THREAD_ID,
+      kind: "thread",
+      parentConversationId: INBOX_CONVERSATION_ID,
+      nowMs: Date.now(),
+      title: "Open external links in new tabs",
+    });
+    mockRetrievalModels({
+      rerank: (_query, document) => (/new tabs/i.test(document) ? 0.9 : 0.1),
+    });
+    const agent = await createAgent();
+
+    await agent.run("Open external links in new tabs");
+
+    const input = modelInputText(agent);
+    expect(input).toContain(`- conversation_id: ${LINKS_THREAD_ID}`);
+    expect(input).toContain(`root_conversation_id: ${INBOX_CONVERSATION_ID}`);
+    expect(input).toContain("root_title: New Inbox");
+    expect(input).not.toContain(`- conversation_id: ${INBOX_CONVERSATION_ID}`);
   });
 
   it("runs the Turn without related conversations when reranking fails", async () => {
