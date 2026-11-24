@@ -12,6 +12,7 @@ import {
   type TimeRangeDays,
 } from "../../../components/controls/TimeRangeSelector";
 import { getDashboardAgentName } from "../../../agentName";
+import { MessageObjectsProvider } from "../../../display-text/DisplayText";
 import { useInboxData } from "../../../inbox/inboxData";
 import { inboxViewPath, viewRows } from "../../../inbox/inboxModel";
 import {
@@ -62,7 +63,10 @@ export function CodePage() {
       title="Code"
     >
       {scope === "mine" ? (
-        <CodeMine range={range} rangeSelector={rangeSelector} />
+        // The open changes read their live cards in one request.
+        <MessageObjectsProvider>
+          <CodeMine range={range} rangeSelector={rangeSelector} />
+        </MessageObjectsProvider>
       ) : (
         <CodeAll range={range} rangeSelector={rangeSelector} />
       )}

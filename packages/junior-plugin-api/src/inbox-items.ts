@@ -1,3 +1,4 @@
+import type { PluginCodeChanges } from "./code";
 import type { PluginContext } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type { EventPublisher } from "./events";
@@ -125,6 +126,8 @@ export interface PluginConversationInboxItems {
 export interface InboxItemAnsweredHookContext extends PluginContext {
   /** The label of the picked choice. */
   choice: string;
+  /** Junior's native code index, as from a plugin route. */
+  codeChanges: PluginCodeChanges;
   /** The Conversation that the item belongs to. */
   conversationId: string;
   /** The subject of the item, with the plugin's own kind. */

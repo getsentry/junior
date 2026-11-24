@@ -9,7 +9,7 @@ import {
   bindScheduledAutomationCredentialSubject,
   bindSlackDirectCredentialSubject,
 } from "@/chat/credentials/subject";
-import { createCodeChangePublisher } from "@/chat/code/publisher";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { getDb } from "@/chat/db";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
@@ -129,7 +129,7 @@ export function createHeartbeatContext(args: {
         }),
     },
     cache: createPluginCache(pluginName),
-    codeChanges: createCodeChangePublisher(pluginName),
+    codeChanges: createPluginCodeChanges(pluginName),
     conversationChanges: createPluginConversationChanges({
       plugin: pluginName,
       show: args.showInboxItem ?? (async () => {}),

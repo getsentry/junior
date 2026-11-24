@@ -3,6 +3,7 @@
  *
  * This module composes GitHub hooks, events, and credentials.
  */
+import pLimit from "p-limit";
 import { githubAccountLinks } from "./account-links.js";
 import {
   GITHUB_INBOX_SUBJECTS,
@@ -31,16 +32,19 @@ import { createGitHubWebhookRoute } from "./webhooks/handler.js";
 import { botLoginFromEmail } from "./webhooks/ownership.js";
 import { runGitHubConflictChecks } from "./merge-conflict-checks/heartbeat.js";
 import { GITHUB_CONFLICT_RESUME } from "./merge-conflict-checks/policy.js";
-import { readGitHubPullRequestRef } from "./pull-request-outcomes/store.js";
 import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
+import { listGitHubPullRequestsOpenedIn } from "./pull-request-requesters/store.js";
+import { runGitHubPullRequestPatches } from "./pull-request-patches.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
+  loadRepositoryFullNames,
   loadPullRequestCommitPages,
+  loadPullRequestHeadFacts,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
@@ -83,13 +87,14 @@ import {
   GITHUB_PULL_REQUEST_OUTCOME_TASK,
   githubPullRequestOutcomeTask,
 } from "./pull-request-outcomes/apply-task.js";
+import {
+  GITHUB_REPOSITORY_NAME_REPAIR_TASK,
+  githubRepositoryNameRepairTask,
+  startGitHubRepositoryNameRepair,
+} from "./repository-name-repair.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
-import {
-  listGitHubAssignedWork,
-  listGitHubFinishedWork,
-  listGitHubUnfinishedWork,
-} from "./pull-request-outcomes/store.js";
+import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
 import {
   additionalActorCoauthorTrailers,
   gitHooksPath,
@@ -123,6 +128,8 @@ import {
 // A failed check suite reports incidents that are open or ended in the last
 // hour. Older incidents rarely explain a suite that just finished.
 const CHECK_SUITE_INCIDENT_WINDOW_MS = 60 * 60 * 1000;
+// A Conversation opens pull requests in few repositories.
+const RESUME_LOOKUP_CONCURRENCY = 4;
 
 /** Configure the built-in GitHub plugin manifest and hooks. */
 export interface GitHubPluginOptions {
@@ -210,7 +217,17 @@ export function githubPlugin(
     images: githubImageSource,
     inboxSubjects: githubInboxSubjectKinds,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
-    tasks: { [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask },
+    tasks: {
+      [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
+      [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(
+        async () =>
+          await loadRepositoryFullNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
+    },
     events: {
       resourceTypes: [
         {
@@ -384,13 +401,27 @@ export function githubPlugin(
         ) {
           return;
         }
-        const ref = await readGitHubPullRequestRef(
+        // The item belongs to the Conversation that opened the pull request.
+        const opened = await listGitHubPullRequestsOpenedIn(
           gitHubDbSchema.parse(ctx.db),
-          ctx.subject.id,
+          ctx.conversationId,
         );
-        if (!ref) return;
+        const changes = await pLimit(RESUME_LOOKUP_CONCURRENCY).map(
+          [...opened],
+          async ([name, numbers]) =>
+            await ctx.codeChanges.list({ repository: { name, numbers } }),
+        );
+        const change = changes
+          .flat()
+          .find((candidate) => candidate.providerId === ctx.subject.id);
+        if (!change) return;
+        const ref = {
+          number: change.number,
+          repositoryFullName: change.repository.name,
+        };
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
+          codeChanges: ctx.codeChanges,
           db: gitHubDbSchema.parse(ctx.db),
           events: ctx.events,
           itemId: ctx.itemId,
@@ -408,6 +439,7 @@ export function githubPlugin(
         const db = gitHubDbSchema.parse(ctx.db);
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
+          codeChanges: ctx.codeChanges,
           db,
           events: ctx.events,
           loadHistory: async (ref) =>
@@ -427,6 +459,14 @@ export function githubPlugin(
           },
           state: ctx.state,
         });
+        await runGitHubPullRequestPatches({
+          cache: ctx.cache,
+          loadHeadFacts: async (refs) =>
+            await loadPullRequestHeadFacts(installationEnv, refs),
+          log: ctx.log,
+          nowMs: ctx.nowMs,
+          state: ctx.state,
+        });
         await reconcileGitHubPullRequests({
           annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
@@ -443,23 +483,16 @@ export function githubPlugin(
           inboxItems: ctx.inboxItems,
           state: ctx.state,
         });
+        await startGitHubRepositoryNameRepair({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
       },
       async unfinishedWork(ctx) {
-        const db = gitHubDbSchema.parse(ctx.db);
-        const [
-          conversationIds,
-          assignedConversationIds,
-          finishedWorkAtByConversationId,
-        ] = await Promise.all([
-          listGitHubUnfinishedWork(db, ctx.conversationIds),
-          listGitHubAssignedWork(db, ctx.conversationIds),
-          listGitHubFinishedWork(db, ctx.conversationIds),
-        ]);
-        return {
-          conversationIds,
-          assignedConversationIds,
-          finishedWorkAtByConversationId,
-        };
+        return await listGitHubConversationWork(
+          ctx.codeChanges,
+          ctx.conversationIds,
+        );
       },
       routes(ctx) {
         const installationEnv = {
@@ -474,6 +507,7 @@ export function githubPlugin(
             annotations: ctx.annotations,
             appIdEnv,
             botEmail: () => readEnv(botEmailEnv),
+            cache: ctx.cache,
             ...(options.trustedAuthors
               ? { trustedAuthors: options.trustedAuthors }
               : undefined),

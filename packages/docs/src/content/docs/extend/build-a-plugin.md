@@ -518,7 +518,15 @@ provider reads, such as a user's role. It is not durable. Junior can drop an
 entry at any time, so keep data that must survive in `ctx.state`. Return a
 `ttlMs` to cache the value. Omit `ttlMs` to skip the cache for a result, such
 as an incomplete response. A load that throws is not cached, and concurrent
-callers for one key share one load.
+callers for one key share one load. Set `staleIfError: true` to keep the value
+for a day after its TTL: when a later load throws, such as during a provider
+outage, the cache returns that value. Do not set it on an answer about access,
+because access must expire with its TTL. When a provider webhook carries a
+changed object, write it with `ctx.cache.update(key, next)`. `next` gets the
+cached value and returns the new entry, so the next read needs no provider
+call. When the webhook says only that the cached value is wrong, such as when
+an object moved, drop it with `ctx.cache.delete(key)`, so the next read loads
+it.
 
 ```ts
 const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({
@@ -707,7 +715,9 @@ defineJuniorPlugin({
 - **Resolver.** Return the card, or `undefined` for a missing object. To
   share one provider read with `canView`, read through `ctx.cache` with a
   short TTL. Junior caches the card for one minute for each viewer and URL,
-  and does not save it on a Conversation.
+  and does not save it on a Conversation. When your webhooks keep the object
+  entry current, set `cacheCards: false`. Junior then reads your entry on
+  each card read, after `canView`, so a change shows at once.
 - **People.** For a profile link of a provider account, return
   `await ctx.findPerson({ provider, handle })` when it finds a card. That is
   the Junior person card of the one known person who linked that account.

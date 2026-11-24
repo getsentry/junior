@@ -6,7 +6,6 @@ import {
   type ObjectLinkContext,
   type ObjectType,
   type OwnedObjectAnnotation,
-  type PluginObjectLinkDefinition,
   type PluginRegistration,
   type User,
 } from "@sentry/junior-plugin-api";
@@ -22,7 +21,7 @@ import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { getStateAdapter } from "@/chat/state/adapter";
-import { createCache, hasCachedValue } from "@/chat/state/cache";
+import { createCache } from "@/chat/state/cache";
 import {
   canViewConversationLink,
   resolveConversationLink,
@@ -119,29 +118,20 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
 
 function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
   const name = plugin.manifest.name;
-  // Link types that share one `preload`, such as GitHub issues and pull
-  // requests, share one wrapper, so a page reads them with one call.
-  const preloads = new Map<
-    NonNullable<PluginObjectLinkDefinition["preload"]>,
-    NonNullable<ObjectLinkType["preload"]>
-  >();
-  const preloadOf = (
-    preload: NonNullable<PluginObjectLinkDefinition["preload"]>,
-  ) => {
-    const wrapper =
-      preloads.get(preload) ??
-      ((viewer: User, urls: URL[]) =>
-        preload(objectLinkContext(name, viewer), urls));
-    preloads.set(preload, wrapper);
-    return wrapper;
-  };
   return (plugin.objectLinks ?? []).map((link) => ({
+    ...(link.cacheCards === false ? { cacheCards: false } : undefined),
     canView: (viewer, url) =>
       link.canView(objectLinkContext(name, viewer), url),
     filters: link.filters,
     objectTypes: link.objectTypes,
     owner: name,
-    ...(link.preload ? { preload: preloadOf(link.preload) } : undefined),
+    ...(link.prefetch
+      ? {
+          prefetch: async (viewer: User, urls: URL[]) => {
+            await link.prefetch?.(objectLinkContext(name, viewer), urls);
+          },
+        }
+      : undefined),
     readTool: link.readTool,
     resolve: (viewer, url) =>
       link.resolve(objectLinkContext(name, viewer), url),
@@ -243,79 +233,49 @@ export async function viewerCanViewPluginLink(
   );
 }
 
-/** The card cache namespace. Each viewer has their own entries. */
-const CARD_CACHE = "object-links";
-
-function cardKey(viewer: User, url: string): string {
-  return `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
-}
-
-/**
- * Let each link type that can read many objects at once read the links
- * that the card cache misses, with one call. Return the links whose batch
- * read failed: their provider is likely down, so they get no card and no
- * one-by-one read.
- */
-async function preloadLinks(
+// Each link type loads its URLs in one call, so a page of cards does not
+// read the provider once per card. A failed prefetch only costs the
+// per-card reads.
+async function prefetchLinks(
   viewer: User,
-  links: ReadonlyArray<{ linkType: ObjectLinkType; url: URL; key: string }>,
-): Promise<Set<string>> {
-  const state = getStateAdapter();
-  type Preload = NonNullable<ObjectLinkType["preload"]>;
-  const misses = new Map<Preload, { owner: string; urls: URL[] }>();
-  await mapBounded(links, async ({ key, linkType, url }) => {
-    const preload = linkType.preload;
-    if (!preload) return;
-    if (
-      linkType.cacheCards !== false &&
-      (await hasCachedValue(state, CARD_CACHE, key))
-    ) {
-      return;
-    }
-    const batch = misses.get(preload) ?? { owner: linkType.owner, urls: [] };
-    batch.urls.push(url);
-    misses.set(preload, batch);
-  });
-  const failed = new Set<string>();
-  await mapBounded([...misses], async ([preload, { owner, urls }]) => {
+  links: ReadonlyArray<{ linkType: ObjectLinkType; parsed: URL }>,
+): Promise<void> {
+  const byType = new Map<ObjectLinkType, URL[]>();
+  for (const { linkType, parsed } of links) {
+    if (linkType.prefetch)
+      byType.set(linkType, [...(byType.get(linkType) ?? []), parsed]);
+  }
+  await mapBounded(byType, async ([linkType, typeUrls]) => {
     try {
-      await preload(viewer, urls);
+      await linkType.prefetch?.(viewer, typeUrls);
     } catch (error) {
-      logException(error, "object_link.preload.failed", {
-        "app.plugin.name": owner,
+      logException(error, "object_link.prefetch.failed", {
+        "app.plugin.name": linkType.owner,
       });
-      for (const url of urls) failed.add(url.href);
     }
   });
-  return failed;
 }
 
 /**
- * Resolve links to object cards for one viewer. A link type that reads many
- * objects at once reads the card cache misses first, with one call for the
- * page. A link without a link type, without access, or with a failed read
- * gets no card. Nothing is saved on a Conversation.
+ * Resolve links to object cards for one viewer. A link without a link type,
+ * without access, or with a failed read gets no card. Nothing is saved on a
+ * Conversation.
  */
 export async function resolveObjectLinks(
   viewer: User,
   urls: readonly string[],
 ): Promise<Array<{ object: OwnedObjectAnnotation; url: string }>> {
   const linkTypes = readObjectLinkTypes();
-  const cache = createCache(getStateAdapter(), CARD_CACHE);
+  const cache = createCache(getStateAdapter(), "object-links");
   const links = [...new Set(urls)].flatMap((url) => {
-    const parsed = URL.parse(url);
+    const parsed = URL.canParse(url) ? new URL(url) : undefined;
     const linkType = parsed && findObjectLinkType(linkTypes, parsed);
-    return parsed && linkType
-      ? [{ key: cardKey(viewer, url), linkType, parsed, url }]
-      : [];
+    return parsed && linkType ? [{ linkType, parsed, url }] : [];
   });
-  const failed = await preloadLinks(
-    viewer,
-    links.map((link) => ({ ...link, url: link.parsed })),
-  );
-  const results = await mapBounded(links, async (link) => {
-    const { key, linkType, parsed, url } = link;
-    if (failed.has(parsed.href)) return [];
+  await prefetchLinks(viewer, links);
+  const results = await mapBounded(links, async ({ linkType, parsed, url }) => {
+    // Each viewer has their own entry: a card holds only what they see.
+    const key = `${viewer.id}:${createHash("sha256").update(url).digest("hex")}`;
     const resolve = async () =>
       (await resolveWithLinkType(linkType, viewer, parsed))?.object ?? null;
     try {

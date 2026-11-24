@@ -25,8 +25,13 @@ import {
   PULL_REQUEST_CONFLICT_HISTORY,
   PULL_REQUEST_NEXT_ACTION,
   PULL_REQUEST_REVIEWS_BEFORE,
+  pullRequestHeadFacts,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
+import {
+  type PullRequestRef,
+  pullRequestVariables,
+} from "../pull-request-graphql.js";
 import type { GitHubRead } from "../pull-request-review-again.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
 
@@ -90,6 +95,38 @@ export async function loadPullRequest(
     `/repos/${encodeURIComponent(owner)}/${encodeURIComponent(name)}/pulls/${pullRequest.number}`,
     { responses: env.responses, token: token.token },
   );
+}
+
+/**
+ * Return a reader of repository full names by repository id, with one
+ * metadata-only token for every repository of the installation. The reader
+ * returns undefined when GitHub does not find the repository.
+ */
+export async function loadRepositoryFullNames(
+  env: GitHubInstallationEnv,
+): Promise<(repositoryId: string) => Promise<string | undefined>> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { metadata: "read" },
+  });
+  return async (repositoryId) => {
+    try {
+      return z
+        .object({ full_name: z.string().min(1) })
+        .parse(
+          await githubRequest(
+            "https://api.github.com",
+            `/repositories/${encodeURIComponent(repositoryId)}`,
+            { token: token.token },
+          ),
+        ).full_name;
+    } catch (error) {
+      if (error instanceof GitHubRequestError && error.status === 404) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
 }
 
 /** GitHub cannot reach a repository: it is gone, or the installation lost it. */
@@ -186,6 +223,27 @@ export async function searchOpenPullRequestMergeability(
         after: input.after ?? null,
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
+    },
+    token: token.token,
+  });
+}
+
+/**
+ * Read the merge state and check counts of pull requests by repository and
+ * number, in one aliased query, with a read-only token.
+ */
+export async function loadPullRequestHeadFacts(
+  env: GitHubInstallationEnv,
+  refs: PullRequestRef[],
+): Promise<unknown> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { checks: "read", pull_requests: "read" },
+  });
+  return await githubGraphqlRequest({
+    body: {
+      ...pullRequestHeadFacts(refs.length),
+      variables: pullRequestVariables(refs),
     },
     token: token.token,
   });

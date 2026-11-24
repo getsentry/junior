@@ -155,9 +155,14 @@ function taskContext(args: {
   const values = new Map<string, unknown>();
   return {
     cache: {
+      async get() {
+        return undefined;
+      },
       async getOrLoad(_key, load) {
         return (await load()).value;
       },
+      async update() {},
+      async delete() {},
     },
     db: args.db,
     embedder: args.embedder,

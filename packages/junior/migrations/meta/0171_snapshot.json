@@ -1,6 +1,6 @@
 {
-  "id": "44c1ed35-d455-4003-831a-bdc35f3ad659",
-  "prevId": "50992b8a-81c1-4687-a0e1-59dae121d6cf",
+  "id": "931371fa-b4c2-42c0-a61e-13e39c7cd162",
+  "prevId": "53cebd3e-2849-4abe-9840-450ae0fe2b07",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -790,21 +790,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_automation_runs_conversation_idx": {
-          "name": "junior_automation_runs_conversation_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_automation_runs_incomplete_idx": {
           "name": "junior_automation_runs_incomplete_idx",
           "columns": [
@@ -1383,18 +1368,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "additions": {
-          "name": "additions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "changed_files": {
-          "name": "changed_files",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1407,19 +1380,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
-        },
-        "deletions": {
-          "name": "deletions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft": {
-          "name": "draft",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "last_activity_at": {
           "name": "last_activity_at",
@@ -1583,6 +1543,21 @@
               "expression": "to_tsvector('simple', \"number\"::text || ' ' || coalesce(\"title\", ''))",
               "asc": true,
               "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "junior_code_changes_conversation_ids_idx": {
+          "name": "junior_code_changes_conversation_ids_idx",
+          "columns": [
+            {
+              "expression": "conversation_ids",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],
@@ -4412,8 +4387,8 @@
           "notNull": true,
           "default": false
         },
-        "subject_kind": {
-          "name": "subject_kind",
+        "dedupe_key": {
+          "name": "dedupe_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -4422,7 +4397,25 @@
           "name": "subject_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "subject_title": {
+          "name": "subject_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_url": {
+          "name": "subject_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "owner_kind": {
           "name": "owner_kind",
@@ -4451,6 +4444,12 @@
         },
         "provider_tenant_id": {
           "name": "provider_tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "automation_id": {
+          "name": "automation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -4487,8 +4486,8 @@
         }
       },
       "indexes": {
-        "junior_inbox_items_open_subject_uidx": {
-          "name": "junior_inbox_items_open_subject_uidx",
+        "junior_inbox_items_open_dedupe_uidx": {
+          "name": "junior_inbox_items_open_dedupe_uidx",
           "columns": [
             {
               "expression": "coalesce(\"provider\", '')",
@@ -4503,13 +4502,7 @@
               "nulls": "last"
             },
             {
-              "expression": "subject_kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_id",
+              "expression": "dedupe_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4569,27 +4562,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_inbox_items_subject_kind_idx": {
-          "name": "junior_inbox_items_subject_kind_idx",
-          "columns": [
-            {
-              "expression": "subject_kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_inbox_items_owner_idx": {
           "name": "junior_inbox_items_owner_idx",
           "columns": [
@@ -4623,6 +4595,27 @@
           ],
           "isUnique": false,
           "where": "\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"kind\" = 'action'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_inbox_items_automation_idx": {
+          "name": "junior_inbox_items_automation_idx",
+          "columns": [
+            {
+              "expression": "automation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4687,6 +4680,19 @@
         }
       },
       "foreignKeys": {
+        "junior_inbox_items_automation_id_junior_automations_id_fk": {
+          "name": "junior_inbox_items_automation_id_junior_automations_id_fk",
+          "tableFrom": "junior_inbox_items",
+          "tableTo": "junior_automations",
+          "columnsFrom": [
+            "automation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "junior_inbox_items_closed_by_user_id_junior_users_id_fk": {
           "name": "junior_inbox_items_closed_by_user_id_junior_users_id_fk",
           "tableFrom": "junior_inbox_items",
@@ -4707,11 +4713,11 @@
       "checkConstraints": {
         "junior_inbox_items_kind_check": {
           "name": "junior_inbox_items_kind_check",
-          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" -> 'question' is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" -> 'question' is not null or (\"junior_inbox_items\".\"subject_kind\" not in ('question', 'reply') and \"junior_inbox_items\".\"answer\" is null)))"
+          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%' or \"junior_inbox_items\".\"dedupe_key\" like 'todo:%') and \"junior_inbox_items\".\"answer\" is null)))"
         },
         "junior_inbox_items_owner_check": {
           "name": "junior_inbox_items_owner_check",
-          "value": "(\"junior_inbox_items\".\"owner_kind\" = 'automation') = (\"junior_inbox_items\".\"subject_kind\" = 'automation')"
+          "value": "(\"junior_inbox_items\".\"owner_kind\" = 'conversation' and \"junior_inbox_items\".\"dedupe_key\" not like 'automation:%') or (\"junior_inbox_items\".\"owner_kind\" = 'automation' and \"junior_inbox_items\".\"dedupe_key\" like 'automation:%')"
         },
         "junior_inbox_items_status_check": {
           "name": "junior_inbox_items_status_check",

@@ -38,6 +38,7 @@
  */
 import type {
   ConversationInboxItemChange,
+  PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
   PluginState,
@@ -57,7 +58,7 @@ import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestAction } from "../db/schema.js";
 import {
   claimGitHubPullRequestReadySync,
-  readGitHubPullRequestIds,
+  findGitHubPullRequest,
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestNextAction,
 } from "../pull-request-outcomes/store.js";
@@ -278,7 +279,8 @@ function isRequested(
 export async function endedGitHubPullRequestItemChanges(args: {
   db: GitHubDb;
   state: EndedState;
-  target: GitHubPullRequestTarget;
+  /** The pull request, with GitHub's id, the id of its items. */
+  target: GitHubPullRequestTarget & { pullRequestId: string };
 }): Promise<
   | { conversationId: string; inboxItems: ConversationInboxItemChange[] }
   | undefined
@@ -291,13 +293,6 @@ export async function endedGitHubPullRequestItemChanges(args: {
     })
   ).get(target.number)?.conversationId;
   if (!conversationId) return undefined;
-  const pullRequestId = (
-    await readGitHubPullRequestIds(args.db, {
-      numbers: [target.number],
-      repositoryFullName: target.repositoryFullName,
-    })
-  ).get(target.number);
-  if (!pullRequestId) return undefined;
   const reason = ENDED_REASONS[args.state];
   return {
     conversationId,
@@ -305,7 +300,10 @@ export async function endedGitHubPullRequestItemChanges(args: {
       GITHUB_INBOX_SUBJECTS.pullRequest,
       GITHUB_INBOX_SUBJECTS.mergeConflict,
     ].map((kind) => ({
-      close: { subject: pullRequestSubject(kind, pullRequestId), ...reason },
+      close: {
+        subject: pullRequestSubject(kind, target.pullRequestId),
+        ...reason,
+      },
       conversationId,
     })),
   };
@@ -424,6 +422,7 @@ async function askReason(
 /** What one sync of a pull request's items needs. */
 interface GitHubPullRequestItemSync {
   botEmail: string | undefined;
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   env: GitHubInstallationEnv;
   /** Find the people who linked these GitHub logins. */
@@ -461,6 +460,10 @@ async function syncOne(
   ) {
     return;
   }
+  // Junior owns only the pull requests in its code index.
+  const pullRequestId = (await findGitHubPullRequest(args.codeChanges, target))
+    ?.providerId;
+  if (!pullRequestId) return;
   // Save the reviewer before the claim, so the check that runs asks them,
   // also when another webhook's check holds the claim.
   if (target.reviewRequested) {
@@ -469,12 +472,12 @@ async function syncOne(
   // One webhook at a time checks a pull request. A webhook that arrives
   // during a check asks again, and the running webhook checks once more with
   // a new GitHub read. No connection or lock stays open during the calls.
-  const claim = await claimGitHubPullRequestReadySync(args.db, target, {
+  const claim = await claimGitHubPullRequestReadySync(args.db, pullRequestId, {
     now: new Date(),
     staleMs: READY_SYNC_STALE_MS,
   });
   if (!claim) return;
-  const { id, pullRequestId } = claim;
+  const { id } = claim;
   let saved = claim.action;
   let requests: number | undefined = claim.requests;
   // A failed check still checks the requests that came in during it. The
@@ -563,10 +566,7 @@ async function syncOne(
     if (!changed) return previous;
     // Save after the item changes, so a failure leaves the old action and
     // the next event tries again.
-    await setGitHubPullRequestNextAction(args.db, {
-      ...target,
-      action: next.action,
-    });
+    await setGitHubPullRequestNextAction(args.db, pullRequestId, next.action);
     return next.action;
   };
   while (requests !== undefined) {
@@ -577,7 +577,7 @@ async function syncOne(
       failure ??= error;
     }
     // oxlint-disable-next-line no-await-in-loop -- Each check reads GitHub again for the requests that came in during the check before.
-    requests = await releaseGitHubPullRequestReadySync(args.db, target, {
+    requests = await releaseGitHubPullRequestReadySync(args.db, pullRequestId, {
       id,
       requests,
     });

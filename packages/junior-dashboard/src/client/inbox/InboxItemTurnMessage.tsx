@@ -11,13 +11,19 @@ import { ClampedDisplayText } from "../display-text/DisplayText";
 import { fetchDashboardJson } from "../http";
 import { itemConversationId } from "./inboxItemFormat";
 
+/** The last message that Junior sent in a Turn. */
+type TurnMessage = Pick<ConversationReportEvent, "mentions"> & {
+  messageId: string;
+  text: string;
+};
+
 // The last message Junior sent in the Turn, from its start to its end, with
 // the people it mentions. The page starts around the Turn's start, so a very
 // long Turn can end past it.
 function turnLastMessage(
   events: readonly ConversationReportEvent[],
   turnId: string,
-): (Pick<ConversationReportEvent, "mentions"> & { text: string }) | undefined {
+): TurnMessage | undefined {
   let inTurn = false;
   let message: ConversationReportEvent | undefined;
   for (const event of events) {
@@ -31,8 +37,11 @@ function turnLastMessage(
       message = event;
     }
   }
-  const text = message?.data.type === "message" && message.data.text?.trim();
-  return text ? { mentions: message?.mentions, text } : undefined;
+  if (message?.data.type !== "message") return undefined;
+  const text = message.data.text?.trim();
+  return text
+    ? { mentions: message.mentions, messageId: message.data.messageId, text }
+    : undefined;
 }
 
 /**
@@ -44,15 +53,15 @@ export const TranscriptEvents = createContext<
 >(undefined);
 
 /**
- * The last message of the Turn that asked a question, under the question on
- * its card in the Inbox and in the transcript. It shows about 12 lines, then
- * Show more. Out of the transcript, it reads the page of events around that
- * Turn when the card shows, and shows nothing until then or when the read
- * fails.
+ * Read the last message of the Turn that added the item. Out of the
+ * transcript, it reads the page of events around that Turn, and is
+ * undefined until then or when the read fails. Callers share one read.
  */
-export function InboxItemTurnMessage(props: { item: InboxItemPayload }) {
-  const conversationId = itemConversationId(props.item);
-  const turnId = props.item.addedByTurnId;
+export function useInboxItemTurnMessage(
+  item: InboxItemPayload,
+): TurnMessage | undefined {
+  const conversationId = itemConversationId(item);
+  const turnId = item.addedByTurnId;
   const transcriptEvents = use(TranscriptEvents);
   const { data: read } = useQuery({
     enabled: Boolean(!transcriptEvents && conversationId && turnId),
@@ -69,10 +78,18 @@ export function InboxItemTurnMessage(props: { item: InboxItemPayload }) {
     select: (page) => turnLastMessage(page.events, turnId!),
     staleTime: 60_000,
   });
-  const message =
-    transcriptEvents && turnId
-      ? turnLastMessage(transcriptEvents, turnId)
-      : read;
+  return transcriptEvents && turnId
+    ? turnLastMessage(transcriptEvents, turnId)
+    : read;
+}
+
+/**
+ * The last message of the Turn that asked a question, under the question on
+ * its card in the Inbox and in the transcript. It shows about 12 lines, then
+ * Show more, and nothing until it is read.
+ */
+export function InboxItemTurnMessage(props: { item: InboxItemPayload }) {
+  const message = useInboxItemTurnMessage(props.item);
   if (!message) return null;
   const label = `${agentNamePossessive()} message`;
   return (
@@ -89,5 +106,27 @@ export function InboxItemTurnMessage(props: { item: InboxItemPayload }) {
         text={message.text}
       />
     </section>
+  );
+}
+
+/**
+ * The text of a reply notice: the reply in full, from its Turn's message,
+ * with about 12 lines, then Show more. The notice holds only a short
+ * preview, which shows until the read lands or when it fails.
+ */
+export function ReplyNoticeText(props: {
+  item: InboxItemPayload;
+  label: string;
+  preview: string;
+}) {
+  const reply = useInboxItemTurnMessage(props.item);
+  return (
+    <ClampedDisplayText
+      className="max-w-[80ch] leading-6"
+      label={props.label}
+      lines={reply ? 12 : 4}
+      mentions={reply ? reply.mentions : props.item.mentions}
+      text={reply?.text ?? props.preview}
+    />
   );
 }

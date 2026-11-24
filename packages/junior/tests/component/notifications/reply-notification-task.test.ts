@@ -404,6 +404,14 @@ describe("reply notification task", () => {
       status: "open",
       title: "Deploy status",
     });
+    // The dashboard reads the full reply from the notice's Turn.
+    const read = await (
+      await viewerApp()
+    ).request(`http://localhost/api/inbox-items/${notice!.id}`);
+    expect(await read.json()).toMatchObject({
+      addedByTurnId: expect.any(String),
+      subject: { kind: "reply", id: conversationId },
+    });
     expect(decrypted).toEqual([
       {
         body: "The deploy started.",

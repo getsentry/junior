@@ -1,10 +1,8 @@
 import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
@@ -351,19 +349,21 @@ describe("merge conflict check on webhook events", () => {
           });
         }),
       );
-      const row = (number: number, state: "merged" | "open") => ({
-        number,
-        openedAt: new Date(pushedAt - 60 * minute),
-        pullRequestId: `${number}0`,
-        repositoryFullName: "getsentry/junior",
-        repositoryId: "1",
-        state,
-        updatedAt: new Date(pushedAt - 60 * minute),
+      const updatedAt = new Date(pushedAt - 60 * minute);
+      await recordJuniorPullRequest(fixture, {
+        number: 946,
+        updatedAt,
       });
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequests)
-        .values([row(946, "open"), row(947, "open"), row(948, "merged")]);
+      await recordJuniorPullRequest(fixture, {
+        number: 947,
+        updatedAt,
+      });
+      await recordJuniorPullRequest(fixture, {
+        finishedAt: updatedAt,
+        number: 948,
+        state: "merged",
+        updatedAt,
+      });
     });
 
     afterEach(() => {
@@ -431,6 +431,17 @@ describe("merge conflict check on webhook events", () => {
 
       await heartbeat(pushedAt + 4 * minute);
       expect(searches).toHaveLength(2);
+    });
+
+    it("checks after a push that names the repository in another case", async () => {
+      await deliver(
+        "push-1",
+        pushRequest("refs/heads/main", "GetSentry/Junior"),
+      );
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toEqual([
+        "repo:getsentry/junior is:pr is:open author:app/sentry-junior",
+      ]);
     });
 
     it("does not check after a push to another branch", async () => {

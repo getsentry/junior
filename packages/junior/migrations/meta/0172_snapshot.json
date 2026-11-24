@@ -1,6 +1,6 @@
 {
-  "id": "fc2a2e5d-27f8-4ffa-a090-b7c2e2ceeedc",
-  "prevId": "44c1ed35-d455-4003-831a-bdc35f3ad659",
+  "id": "50992b8a-81c1-4687-a0e1-59dae121d6cf",
+  "prevId": "931371fa-b4c2-42c0-a61e-13e39c7cd162",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1383,18 +1383,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "additions": {
-          "name": "additions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "changed_files": {
-          "name": "changed_files",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1407,19 +1395,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
-        },
-        "deletions": {
-          "name": "deletions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft": {
-          "name": "draft",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "last_activity_at": {
           "name": "last_activity_at",
@@ -1583,6 +1558,21 @@
               "expression": "to_tsvector('simple', \"number\"::text || ' ' || coalesce(\"title\", ''))",
               "asc": true,
               "isExpression": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "junior_code_changes_conversation_ids_idx": {
+          "name": "junior_code_changes_conversation_ids_idx",
+          "columns": [
+            {
+              "expression": "conversation_ids",
+              "isExpression": false,
+              "asc": true,
               "nulls": "last"
             }
           ],

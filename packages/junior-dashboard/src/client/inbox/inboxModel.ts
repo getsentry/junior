@@ -3,9 +3,6 @@ import type {
   InboxItemPayload,
 } from "@sentry/junior/api/schema";
 import { parsePath } from "react-router";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
-
-import type { Conversation } from "../types";
 
 import {
   type InboxBundle,
@@ -409,21 +406,6 @@ export function itemRowSubtitle(
     (part): part is string => Boolean(part) && part !== item.title,
   );
   return parts.length > 0 ? parts.join(" · ") : undefined;
-}
-
-/**
- * The size of the code change that an item is about, as its Conversation's
- * linked work saved it. Undefined when that work has no size.
- */
-export function subjectSize(
-  item: Pick<InboxItemPayload, "subject">,
-  conversation: Pick<Conversation, "sidebarAnnotations"> | undefined,
-): CodeChangeSize | undefined {
-  const url = item.subject?.url;
-  if (!url) return undefined;
-  return conversation?.sidebarAnnotations?.find(
-    (annotation) => annotation.url === url,
-  )?.size;
 }
 
 /**

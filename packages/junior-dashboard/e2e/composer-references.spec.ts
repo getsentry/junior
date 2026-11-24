@@ -261,6 +261,42 @@ test("# finds pull requests and channels", async ({ page, dashboard }) => {
   await readSaved;
 });
 
+test("# inserts a pull request only once its card says whether it is a draft", async ({
+  page,
+  dashboard,
+}) => {
+  // Hold the live cards until the test lets them through.
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(
+    (url) => url.pathname === "/api/objects",
+    async (route) => {
+      await held;
+      await route.continue();
+    },
+  );
+  const composer = await openThread(page, dashboard.baseURL);
+  const references = page.getByRole("listbox", { name: "References" });
+  await composer.pressSequentially("See #3838");
+  const option = references
+    .getByRole("group", { name: "Pull requests" })
+    .getByRole("option", { name: /getsentry\/junior#3838/ });
+  await expect(option).toHaveAttribute("aria-selected", "true");
+  await expect(references).not.toHaveAttribute("aria-busy", "true");
+  // Without its card, the row does not know that it is a draft.
+  await composer.press("Enter");
+  await expect(references).toBeVisible();
+  const chip = composer.getByTitle("getsentry/junior#3838");
+  await expect(chip).toHaveCount(0);
+
+  release();
+  await expect(page.getByText("getsentry/junior#3838 · Draft")).toBeVisible();
+  await composer.press("Enter");
+  await expect(chip).toHaveText("junior#3838");
+});
+
 test("a draft keeps the kind of a chip inserted last", async ({
   page,
   dashboard,

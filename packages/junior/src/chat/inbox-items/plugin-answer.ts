@@ -1,3 +1,4 @@
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { createEventAppPublisher } from "@/chat/events/app-publisher";
 import {
   createPluginEventPublisher,
@@ -36,6 +37,7 @@ export async function answerPluginInboxItem(args: {
   await hook({
     ...basePluginContext(plugin),
     choice,
+    codeChanges: createPluginCodeChanges(pluginName),
     conversationId,
     subject: {
       id: item.subject.id,

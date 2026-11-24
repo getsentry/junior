@@ -8,16 +8,14 @@
  * without access gets the public web page card of the link, which shows
  * only what GitHub shows anyone signed out.
  *
- * A page of links, such as one Inbox page, reads its objects with one
- * GraphQL query first (`preload`). A pull request card splits its title by
- * the change types of the repository's `.github/release.yml`.
+ * A pull request card splits its title by the change types of the
+ * repository's `.github/release.yml`.
  */
 import type {
   ObjectAnnotation,
   ObjectLinkContext,
   PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
-import pLimit from "p-limit";
 import * as z from "zod";
 import { githubObjectAnnotation } from "./annotations.js";
 import {
@@ -26,187 +24,41 @@ import {
   type CodeChangeCategory,
 } from "./code-change-titles/parse.js";
 import { parseReleaseCategories } from "./code-change-titles/release-config.js";
-import { githubObjectCards } from "./graphql-documents.js";
+import {
+  GITHUB_ISSUE_CACHE,
+  githubObjectCacheOptions,
+  githubIssueFieldsSchema,
+  githubObjectCacheKey,
+  githubPullRequestEntry,
+  githubPullRequestFieldsSchema,
+  type GitHubIssueFields,
+  type GitHubPullRequestFields,
+} from "./object-cache.js";
 import {
   githubObjectFacts,
   withGitHubPreviewImages,
   type CodeChangeFacts,
 } from "./object-facts.js";
+import {
+  outOfTimeCacheKey,
+  prefetchGitHubPullRequests,
+} from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
-// The same time as the card cache, so a changed object shows within a minute.
-const OBJECT_CACHE_TTL_MS = 60_000;
 // The change types of a repository change rarely.
 const RELEASE_CONFIG_TTL_MS = 60 * 60_000;
-// Objects that one GraphQL query reads, under GitHub's query cost limits.
-const PRELOAD_BATCH_SIZE = 50;
-// Repository access checks of one page that run at once.
-const REPOSITORY_CHECKS = 4;
-
-const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
-const REPO_PATTERN = /^[\w.-]{1,100}$/;
-const NUMBER_PATTERN = /^[1-9]\d{0,9}$/;
-
-const objectSchema = z.object({
-  html_url: z.string(),
-  number: z.number().int().positive(),
-  state: z.string(),
-  title: z.string(),
-});
-const issueSchema = objectSchema.extend({
-  // The issues API also returns pull requests, with this field set.
-  pull_request: z.unknown().optional(),
-});
-const pullRequestSchema = objectSchema.extend({
-  draft: z.boolean().optional(),
-  merged: z.boolean().optional(),
-});
 
 const contentsSchema = z.object({
   content: z.string(),
   encoding: z.literal("base64"),
 });
 
-const logins = z
-  .object({ nodes: z.array(z.object({ login: z.string() }).nullable()) })
-  .transform(({ nodes }) => nodes.flatMap((node) => (node ? [node] : [])));
-// The GraphQL fields of `githubObjectCards`, mapped to the REST bodies that
-// the cards read, so both reads give the same card.
-const graphqlObjectSchema = z.discriminatedUnion("__typename", [
-  z
-    .object({
-      __typename: z.literal("Issue"),
-      assignees: logins,
-      body: z.string().nullable(),
-      labels: z
-        .object({ nodes: z.array(z.object({ name: z.string() }).nullable()) })
-        .transform(({ nodes }) =>
-          nodes.flatMap((node) => (node ? [node] : [])),
-        ),
-      number: z.number().int().positive(),
-      // An alias: an Issue state and a PullRequest state have other types.
-      issueState: z.string(),
-      title: z.string(),
-      updatedAt: z.string(),
-      url: z.string(),
-    })
-    .transform(({ issueState, updatedAt, url, ...issue }) => ({
-      assignees: issue.assignees,
-      body: issue.body,
-      html_url: url,
-      labels: issue.labels,
-      number: issue.number,
-      state: issueState.toLowerCase(),
-      title: issue.title,
-      updated_at: updatedAt,
-    })),
-  z
-    .object({
-      __typename: z.literal("PullRequest"),
-      additions: z.number().int().nonnegative(),
-      author: z.object({ login: z.string() }).nullable(),
-      baseRefName: z.string(),
-      body: z.string().nullable(),
-      changedFiles: z.number().int().nonnegative(),
-      deletions: z.number().int().nonnegative(),
-      headRefName: z.string(),
-      isDraft: z.boolean(),
-      mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
-      merged: z.boolean(),
-      number: z.number().int().positive(),
-      reviewRequests: z
-        .object({
-          nodes: z.array(
-            z
-              .object({
-                requestedReviewer: z
-                  .object({ login: z.string().optional() })
-                  .nullable(),
-              })
-              .nullable(),
-          ),
-        })
-        .nullable(),
-      reviewDecision: z
-        .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
-        .nullish(),
-      latestOpinionatedReviews: z
-        .object({
-          nodes: z.array(z.object({ state: z.string() }).nullable()),
-        })
-        .nullish(),
-      state: z.string(),
-      title: z.string(),
-      updatedAt: z.string(),
-      url: z.string(),
-    })
-    .transform((pull) => ({
-      additions: pull.additions,
-      base: { ref: pull.baseRefName },
-      body: pull.body,
-      changed_files: pull.changedFiles,
-      deletions: pull.deletions,
-      draft: pull.isDraft,
-      head: { ref: pull.headRefName },
-      html_url: pull.url,
-      mergeable:
-        pull.mergeable === "UNKNOWN" ? null : pull.mergeable === "MERGEABLE",
-      merged: pull.merged,
-      number: pull.number,
-      pull_request: {},
-      requested_reviewers: (pull.reviewRequests?.nodes ?? []).flatMap(
-        (node) => {
-          const login = node?.requestedReviewer?.login;
-          return login ? [{ login }] : [];
-        },
-      ),
-      review: pullRequestReview(pull),
-      // GitHub GraphQL says `MERGED`; REST says `closed` with `merged`.
-      state: pull.state === "OPEN" ? "open" : "closed",
-      title: pull.title,
-      updated_at: pull.updatedAt,
-      user: pull.author,
-    })),
-]);
-/**
- * Return GitHub's review decision. A repository that requires no review has
- * none, so the latest review of each writer decides: approved when one
- * approves and none asks for changes.
- */
-function pullRequestReview(pull: {
-  latestOpinionatedReviews?:
-    | { nodes: Array<{ state: string } | null> }
-    | null
-    | undefined;
-  reviewDecision?:
-    | "APPROVED"
-    | "CHANGES_REQUESTED"
-    | "REVIEW_REQUIRED"
-    | null
-    | undefined;
-}): "approved" | "changes_requested" | "required" | undefined {
-  if (pull.reviewDecision === "APPROVED") return "approved";
-  if (pull.reviewDecision === "CHANGES_REQUESTED") return "changes_requested";
-  if (pull.reviewDecision === "REVIEW_REQUIRED") return "required";
-  const states = (pull.latestOpinionatedReviews?.nodes ?? []).map(
-    (review) => review?.state,
-  );
-  if (states.includes("CHANGES_REQUESTED")) return "changes_requested";
-  return states.includes("APPROVED") ? "approved" : undefined;
-}
-
-const graphqlCardsSchema = z.object({
-  data: z.record(
-    z.string(),
-    z
-      .object({
-        releaseConfig: z.object({ text: z.string().nullable() }).nullable(),
-      })
-      .catchall(z.unknown())
-      .nullable(),
-  ),
-});
+const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
+const REPO_PATTERN = /^[\w.-]{1,100}$/;
+const NUMBER_PATTERN = /^[1-9]\d{0,9}$/;
+// The load of a card that the page read ran out of time for.
+const OUT_OF_TIME = new Error("The page read ran out of time for this card");
 
 interface GitHubObjectLink {
   kind: "issue" | "pull_request";
@@ -259,10 +111,12 @@ function repoRef(htmlUrl: string, link: GitHubObjectLink): string {
   return `${owner}/${name}`;
 }
 
-function issueCard(link: GitHubObjectLink, body: unknown): ObjectAnnotation {
-  const issue = issueSchema.parse(body);
+function issueCard(
+  link: GitHubObjectLink,
+  issue: GitHubIssueFields,
+): ObjectAnnotation {
   return githubObjectAnnotation({
-    ...githubObjectFacts("task", body),
+    ...githubObjectFacts("task", issue),
     repo: repoRef(issue.html_url, link),
     number: issue.number,
     title: issue.title,
@@ -286,11 +140,10 @@ function withTitleParts(
 
 function pullRequestCard(
   link: GitHubObjectLink,
-  body: unknown,
+  pull: GitHubPullRequestFields,
   categories: readonly CodeChangeCategory[],
 ): ObjectAnnotation {
-  const pull = pullRequestSchema.parse(body);
-  const card = githubObjectFacts("code_change", body);
+  const card = githubObjectFacts("code_change", pull);
   const titleParts = parseCodeChangeTitle(pull.title, categories);
   return githubObjectAnnotation({
     ...card,
@@ -362,18 +215,24 @@ async function readCategories(
   }
 }
 
-function objectKey(link: GitHubObjectLink): string {
-  const collection = link.kind === "issue" ? "issues" : "pulls";
-  return `${collection}:${link.owner}/${link.name}#${link.number}`.toLowerCase();
-}
-
-/** Read the object with the App. Nothing for a missing or deleted one. */
-async function readObject(
+/**
+ * Read the object fields through the cache, or with the App. Nothing for a
+ * missing or deleted object.
+ */
+async function readFields<T>(
   ctx: ObjectLinkContext,
   link: GitHubObjectLink,
-): Promise<ObjectAnnotation | null> {
+  schema: z.ZodType<T>,
+  entry: (value: T) => { staleIfError: true; ttlMs: number; value: T },
+): Promise<T | null> {
   const collection = link.kind === "issue" ? "issues" : "pulls";
-  return await ctx.cache.getOrLoad(objectKey(link), async () => {
+  const key = githubObjectCacheKey(
+    collection,
+    `${link.owner}/${link.name}`,
+    link.number,
+  );
+  const options = githubObjectCacheOptions(collection);
+  const load = async () => {
     const response = await githubApi(ctx.egress, {
       followRedirects: true,
       operation: link.kind === "issue" ? "github.issue.get" : "github.pull.get",
@@ -381,144 +240,67 @@ async function readObject(
     });
     // GitHub answers 404 for a missing object, and 410 for a deleted issue.
     if (response.status === 404 || response.status === 410) {
-      return { value: null, ttlMs: OBJECT_CACHE_TTL_MS };
+      return { ...options, value: null };
     }
     if (!response.ok) {
       throw new Error(
         `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
       );
     }
-    if (link.kind === "pull_request") {
-      const pull = pullRequestSchema.parse(response.body);
-      return {
-        value: pullRequestCard(
-          link,
-          response.body,
-          await readCategories(ctx, htmlUrlLink(pull.html_url) ?? link),
-        ),
-        ttlMs: OBJECT_CACHE_TTL_MS,
-      };
-    }
-    // GitHub opens a pull request at its issue URL too, such as a linked
-    // `owner/repo#12`. Only the pulls API has its draft and merge state.
-    const value =
-      issueSchema.parse(response.body).pull_request === undefined
-        ? issueCard(link, response.body)
-        : await readObject(ctx, { ...link, kind: "pull_request" });
-    return { value, ttlMs: OBJECT_CACHE_TTL_MS };
-  });
+    return entry(schema.parse(response.body));
+  };
+  // The page read ran out of time for this card, so it shows its stale
+  // entry, or no card yet, and does not wait for one more read.
+  if (collection === "pulls" && (await ctx.cache.get(outOfTimeCacheKey(key)))) {
+    const stale = await ctx.cache
+      .getOrLoad(key, () => Promise.reject(OUT_OF_TIME))
+      .catch((error: unknown) => {
+        if (error === OUT_OF_TIME) return undefined;
+        throw error;
+      });
+    return schema.nullable().safeParse(stale).data ?? null;
+  }
+  const cached = schema
+    .nullable()
+    .safeParse(await ctx.cache.getOrLoad(key, load));
+  if (cached.success) return cached.data;
+  // An entry from before the cache kept object fields holds a card.
+  return await ctx.cache.getOrLoad(key, load, { refresh: true });
 }
 
-/** Return the card of one object of a `githubObjectCards` reply. */
-function graphqlCard(
+/** Read the card of the object. Nothing for a missing or deleted one. */
+async function readObject(
+  ctx: ObjectLinkContext,
   link: GitHubObjectLink,
-  value: unknown,
-  categories: readonly CodeChangeCategory[],
-): ObjectAnnotation | undefined {
-  const parsed = graphqlObjectSchema.safeParse(value);
-  if (!parsed.success) return undefined;
-  // GitHub reads an issue at a pull number too. That card is not the pull
-  // link's, so the pulls API answers for it.
-  if (link.kind === "pull_request" && !("draft" in parsed.data)) {
-    return undefined;
-  }
-  return "draft" in parsed.data
-    ? pullRequestCard(
-        { ...link, kind: "pull_request" },
-        parsed.data,
-        categories,
+): Promise<ObjectAnnotation | null> {
+  if (link.kind === "pull_request") {
+    const pull = await readFields(
+      ctx,
+      link,
+      githubPullRequestFieldsSchema,
+      githubPullRequestEntry,
+    );
+    return (
+      pull &&
+      pullRequestCard(
+        link,
+        pull,
+        await readCategories(ctx, htmlUrlLink(pull.html_url) ?? link),
       )
-    : issueCard(link, parsed.data);
-}
-
-/**
- * Read the objects of many links with GraphQL, one query for each batch,
- * into the object cache that `readObject` reads. Only the repositories that
- * the viewer can see are read, the same as `canViewLink`. A missing object,
- * such as a transferred issue, is not cached, so its REST read follows the
- * move.
- */
-async function preloadLinks(ctx: ObjectLinkContext, urls: URL[]) {
-  const byRepository = new Map<string, GitHubObjectLink[]>();
-  for (const url of urls) {
-    const link = parseLink(url);
-    if (!link) continue;
-    const key = `${link.owner}/${link.name}`.toLowerCase();
-    byRepository.set(key, [...(byRepository.get(key) ?? []), link]);
+    );
   }
-  const visible = await pLimit(REPOSITORY_CHECKS).map(
-    [...byRepository.values()],
-    async (links) => await viewerCanSeeRepository(ctx, links[0]!),
+  const issue = await readFields(
+    ctx,
+    link,
+    githubIssueFieldsSchema,
+    (value) => ({ ...GITHUB_ISSUE_CACHE, value }),
   );
-  for (const [i, key] of [...byRepository.keys()].entries()) {
-    if (!visible[i]) byRepository.delete(key);
-  }
-  const batches: GitHubObjectLink[][][] = [[]];
-  let size = 0;
-  for (const links of byRepository.values()) {
-    for (let start = 0; start < links.length; start += PRELOAD_BATCH_SIZE) {
-      const chunk = links.slice(start, start + PRELOAD_BATCH_SIZE);
-      if (size + chunk.length > PRELOAD_BATCH_SIZE) {
-        batches.push([]);
-        size = 0;
-      }
-      batches.at(-1)!.push(chunk);
-      size += chunk.length;
-    }
-  }
-  for (const repositories of batches) {
-    if (repositories.length === 0) continue;
-    // oxlint-disable-next-line no-await-in-loop -- Batches run one at a time, under GitHub's rate limits.
-    const response = await githubApi(ctx.egress, {
-      body: {
-        ...githubObjectCards(repositories.map((links) => links.length)),
-        variables: Object.fromEntries(
-          repositories.flatMap((links, r): Array<[string, number | string]> => [
-            [`o${r}`, links[0]!.owner],
-            [`m${r}`, links[0]!.name],
-            ...links.map((link, i): [string, number] => [
-              `n${r}_${i}`,
-              Number(link.number),
-            ]),
-          ]),
-        ),
-      },
-      method: "POST",
-      operation: "github.objects.cards.get",
-      path: "/graphql",
-    });
-    if (!response.ok) {
-      throw new Error(
-        `GitHub object cards lookup failed with HTTP ${response.status}`,
-      );
-    }
-    const { data } = graphqlCardsSchema.parse(response.body);
-    /* oxlint-disable no-await-in-loop -- Cache writes of one reply; each is one state write. */
-    for (const [r, links] of repositories.entries()) {
-      const repository = data[`r${r}`];
-      if (!repository) continue;
-      const config = repository.releaseConfig?.text ?? "";
-      await ctx.cache.getOrLoad(releaseConfigKey(links[0]!), async () => ({
-        value: config,
-        ttlMs: RELEASE_CONFIG_TTL_MS,
-      }));
-      const categories = config
-        ? parseReleaseCategories(config)
-        : DEFAULT_CODE_CHANGE_CATEGORIES;
-      for (const [i, link] of links.entries()) {
-        const card = graphqlCard(link, repository[`n${r}_${i}`], categories);
-        if (!card) continue;
-        // Only this read has GitHub's review decision, so it replaces a
-        // REST card that a single-link read cached first.
-        await ctx.cache.getOrLoad(
-          objectKey(link),
-          async () => ({ value: card, ttlMs: OBJECT_CACHE_TTL_MS }),
-          { refresh: true },
-        );
-      }
-    }
-    /* oxlint-enable no-await-in-loop */
-  }
+  if (!issue) return null;
+  // GitHub opens a pull request at its issue URL too, such as a linked
+  // `owner/repo#12`. Only the pulls API has its draft and merge state.
+  return issue.pull_request === undefined
+    ? issueCard(link, issue)
+    : await readObject(ctx, { ...link, kind: "pull_request" });
 }
 
 async function canViewLink(ctx: ObjectLinkContext, url: URL): Promise<boolean> {
@@ -545,10 +327,11 @@ async function resolveLink(
  * A pull request at its issue URL shows the pull request card.
  */
 export const githubIssueLinks: PluginObjectLinkDefinition = {
+  // The object cache is shared by every viewer, and webhooks refresh it.
+  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/issues/*" }],
   objectTypes: ["task", "code_change"],
-  preload: preloadLinks,
   readTool: (object) =>
     object.objectType === "code_change"
       ? "github_getPullRequest"
@@ -557,12 +340,29 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
   webPageFallback: true,
 };
 
+async function prefetchLinks(
+  ctx: ObjectLinkContext,
+  urls: URL[],
+): Promise<void> {
+  await prefetchGitHubPullRequests(
+    ctx,
+    urls.flatMap((url) => {
+      const link = parseLink(url);
+      return link?.kind === "pull_request"
+        ? [{ name: link.name, number: Number(link.number), owner: link.owner }]
+        : [];
+    }),
+  );
+}
+
 /** GitHub pull request links, such as `https://github.com/owner/repo/pull/12`. */
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
+  cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
   objectTypes: ["code_change"],
-  preload: preloadLinks,
+  // A page of pull request cards reads GitHub in one query.
+  prefetch: prefetchLinks,
   readTool: () => "github_getPullRequest",
   resolve: resolveLink,
   webPageFallback: true,

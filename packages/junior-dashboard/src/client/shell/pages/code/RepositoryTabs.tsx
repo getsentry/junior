@@ -26,7 +26,7 @@ import {
   pinnedOnlyOf,
 } from "../../../inbox/inboxFilters";
 import { useWaitingConversations } from "../../../inbox/queries";
-import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
+import { CodeChangeRows } from "../../../pages/code/CodeChangeRow";
 import { getDashboardTimeZone } from "../../../time";
 
 const PAGE_SIZE = 25;
@@ -167,9 +167,7 @@ export function RepositoryChangesTab(props: { data: CodeRepositoryReport }) {
             </EmptyTelemetry>
           </div>
         ) : (
-          pageItems(changes, page, PAGE_SIZE).map((change) => (
-            <CodeChangeRow change={change} key={change.id} />
-          ))
+          <CodeChangeRows changes={pageItems(changes, page, PAGE_SIZE)} />
         )}
       </Card>
       <PagePagination

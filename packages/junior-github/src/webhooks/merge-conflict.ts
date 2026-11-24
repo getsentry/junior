@@ -12,6 +12,7 @@
 import type {
   EventInput,
   EventPublisher,
+  PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
@@ -135,6 +136,7 @@ function deliveredPullRequest(
  * `merge-conflict-checks/policy.ts` decides if a conflict publishes.
  */
 export async function loadGitHubMergeConflictEvents(args: {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   deliveryId: string;
   events: EventInput[];
@@ -173,6 +175,7 @@ export async function loadGitHubMergeConflictEvents(args: {
         ...(loaded.html_url ? { url: loaded.html_url } : undefined),
       };
       return await applyGitHubConflictPolicy({
+        codeChanges: args.codeChanges,
         conflict,
         db: args.db,
         draft: loaded.draft === true,

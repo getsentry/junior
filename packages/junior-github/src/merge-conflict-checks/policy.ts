@@ -30,10 +30,11 @@
  */
 import type {
   EventInput,
+  PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
@@ -41,10 +42,7 @@ import {
   type GitHubConflictFix,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
-import {
-  pullRequestRow,
-  readGitHubPullRequestIds,
-} from "../pull-request-outcomes/store.js";
+import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import {
   GITHUB_INBOX_SUBJECTS,
@@ -233,23 +231,12 @@ function gitHubConflictAction(input: {
   return !approved && nowMs - fixedAtMs < FIX_INTERVAL_MS ? "skip" : "fix";
 }
 
-/** GitHub's id of a conflicted pull request, the id of its item. */
-async function conflictPullRequestId(
-  db: GitHubDb,
-  ref: GitHubPullRequestRef,
-): Promise<string | undefined> {
-  return (
-    await readGitHubPullRequestIds(db, {
-      numbers: [ref.number],
-      repositoryFullName: ref.repositoryFullName,
-    })
-  ).get(ref.number);
-}
-
 /** Ask the requester to resume a fix that did not land. */
 async function addUnlandedItem(args: {
   conflict: GitHubMergeConflict;
   db: GitHubDb;
+  /** GitHub's id of the pull request, the id of its item. */
+  pullRequestId: string;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
 }): Promise<void> {
@@ -262,8 +249,6 @@ async function addUnlandedItem(args: {
   ).get(ref.number);
   // Only a pull request that a person asked for has a Conversation.
   if (!opener?.conversationId) return;
-  const pullRequestId = await conflictPullRequestId(args.db, ref);
-  if (!pullRequestId) return;
   await args.inboxItems.forConversation(opener.conversationId).upsert({
     // The policy asks once per Resume, so each upsert is a new ask.
     askedIdentityIds: [opener.identityId],
@@ -272,7 +257,7 @@ async function addUnlandedItem(args: {
     choices: [{ label: GITHUB_CONFLICT_RESUME }],
     subject: pullRequestSubject(
       GITHUB_INBOX_SUBJECTS.mergeConflict,
-      pullRequestId,
+      args.pullRequestId,
     ),
     title: `Merge conflict · #${ref.number}`,
   });
@@ -285,6 +270,7 @@ async function addUnlandedItem(args: {
  * so a failure is logged, and the next check tries again.
  */
 export async function applyGitHubConflictPolicy(args: {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   conflict: GitHubMergeConflict;
   db: GitHubDb;
   draft: boolean;
@@ -297,7 +283,10 @@ export async function applyGitHubConflictPolicy(args: {
   inboxItems: PluginConversationInboxItems;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
+  const change = await findGitHubPullRequest(args.codeChanges, args.ref);
+  if (change?.state !== "open") return args.events;
   const t = juniorGitHubPullRequests;
+  const pullRequest = eq(t.pullRequestId, change.providerId);
   const [row] = await args.db
     .select({
       askedAt: t.conflictFixAskedAt,
@@ -305,7 +294,7 @@ export async function applyGitHubConflictPolicy(args: {
       resumedAt: t.conflictFixesResumedAt,
     })
     .from(t)
-    .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
+    .where(pullRequest)
     .limit(1);
   if (!row) return args.events;
   const nowMs = args.now.getTime();
@@ -328,16 +317,16 @@ export async function applyGitHubConflictPolicy(args: {
           headSha: args.conflict.headSha,
         }),
       })
-      .where(pullRequestRow(args.ref));
+      .where(pullRequest);
     return args.events;
   }
   try {
-    await addUnlandedItem(args);
+    await addUnlandedItem({ ...args, pullRequestId: change.providerId });
     // Save the ask after the item, so a failed item is asked again.
     await args.db
       .update(t)
       .set({ conflictFixAskedAt: args.now })
-      .where(pullRequestRow(args.ref));
+      .where(pullRequest);
   } catch (error) {
     logFailOpenFailure(args.log, "GitHub merge conflict item failed", error, {
       number: args.ref.number,
@@ -357,6 +346,8 @@ export const GITHUB_CONFLICT_GONE_REASON =
  */
 export async function closeGitHubConflictItem(args: {
   db: GitHubDb;
+  /** GitHub's id of the pull request, the id of its item. */
+  pullRequestId: string;
   reason: string;
   ref: GitHubPullRequestRef;
   inboxItems: PluginConversationInboxItems;
@@ -369,12 +360,11 @@ export async function closeGitHubConflictItem(args: {
       repositoryFullName: ref.repositoryFullName,
     })
   ).get(ref.number);
-  const pullRequestId = await conflictPullRequestId(args.db, ref);
-  if (!opener?.conversationId || !pullRequestId) return;
+  if (!opener?.conversationId) return;
   await args.inboxItems.forConversation(opener.conversationId).close({
     subject: pullRequestSubject(
       GITHUB_INBOX_SUBJECTS.mergeConflict,
-      pullRequestId,
+      args.pullRequestId,
     ),
     reason: args.reason,
     status: args.status,
@@ -389,6 +379,7 @@ export async function closeGitHubConflictItem(args: {
  * again.
  */
 export async function closeGitHubConflictItems(args: {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   log?: Pick<PluginLogger, "error" | "warn">;
   numbers: number[];
@@ -398,17 +389,16 @@ export async function closeGitHubConflictItems(args: {
   status: "done" | "dismissed";
 }): Promise<void> {
   if (args.numbers.length === 0) return;
-  const { repositoryFullName } = args;
-  const [openers, ids] = await Promise.all([
-    listGitHubPullRequestOpeners(args.db, {
-      numbers: args.numbers,
-      repositoryFullName,
-    }),
-    readGitHubPullRequestIds(args.db, {
-      numbers: args.numbers,
-      repositoryFullName,
+  const { numbers, repositoryFullName } = args;
+  const [openers, changes] = await Promise.all([
+    listGitHubPullRequestOpeners(args.db, { numbers, repositoryFullName }),
+    args.codeChanges.list({
+      repository: { name: repositoryFullName, numbers },
     }),
   ]);
+  const pullRequestIds = new Map(
+    changes.map((change) => [change.number, change.providerId]),
+  );
   const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
   const close = async (
     number: number,
@@ -430,7 +420,7 @@ export async function closeGitHubConflictItems(args: {
         await args.db
           .update(juniorGitHubPullRequests)
           .set({ conflictFixAskedAt: null })
-          .where(pullRequestRow({ number, repositoryFullName }));
+          .where(eq(juniorGitHubPullRequests.pullRequestId, pullRequestId));
       }
     } catch (error) {
       logFailOpenFailure(
@@ -443,7 +433,7 @@ export async function closeGitHubConflictItems(args: {
   };
   await Promise.all(
     [...openers].flatMap(([number, { conversationId }]) => {
-      const pullRequestId = ids.get(number);
+      const pullRequestId = pullRequestIds.get(number);
       return conversationId && pullRequestId
         ? [limit(() => close(number, conversationId, pullRequestId))]
         : [];

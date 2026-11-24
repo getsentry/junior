@@ -117,3 +117,25 @@ export async function listGitHubPullRequestOpeners(
   }
   return openers;
 }
+
+/**
+ * List the pull requests that a person asked Junior to open in one
+ * Conversation, by repository.
+ */
+export async function listGitHubPullRequestsOpenedIn(
+  db: GitHubDb,
+  conversationId: string,
+): Promise<Map<string, number[]>> {
+  const rows = await db
+    .select({ number: table.number, repository: table.repositoryFullName })
+    .from(table)
+    .where(eq(table.conversationId, conversationId));
+  const byRepository = new Map<string, number[]>();
+  for (const row of rows) {
+    byRepository.set(row.repository, [
+      ...(byRepository.get(row.repository) ?? []),
+      row.number,
+    ]);
+  }
+  return byRepository;
+}

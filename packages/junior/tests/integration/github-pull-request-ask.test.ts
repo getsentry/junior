@@ -306,20 +306,21 @@ describe("the ask of a Junior pull request", () => {
         ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { query } = (await request.json()) as { query: string };
-          if (query.includes("GitHubObjectCards")) {
+          if (query.includes("PullRequestCards")) {
             cardReads += 1;
             return HttpResponse.json({
               data: {
-                r0: {
-                  n0_0: {
-                    __typename: "PullRequest",
+                p0: {
+                  pullRequest: {
                     additions: 1,
                     author: { login: BOT },
                     baseRefName: "main",
-                    body: null,
+                    body: "",
                     changedFiles: 1,
+                    commits: { nodes: [] },
                     deletions: 1,
                     headRefName: "fix/check",
+                    headRefOid: "head-1",
                     isDraft: false,
                     mergeable: "MERGEABLE",
                     merged: false,
@@ -331,7 +332,6 @@ describe("the ask of a Junior pull request", () => {
                     updatedAt: "2026-07-02T12:00:00Z",
                     url: PULL_URL,
                   },
-                  releaseConfig: null,
                 },
               },
             });

@@ -242,6 +242,19 @@ test.describe("refreshes each Conversation on screen from its token", () => {
         await route.fulfill({ headers, json: report });
       },
     );
+    // The card reads the pull request live.
+    await page.route(/\/api\/objects\?/, async (route) => {
+      const response = await route.fetch();
+      const report: {
+        objects: { object?: { status?: string }; url: string }[];
+      } = await response.json();
+      for (const entry of report.objects) {
+        if (merged && entry.url.endsWith("/getsentry/payments/pull/91")) {
+          entry.object = { ...entry.object, status: "merged" };
+        }
+      }
+      await route.fulfill({ response, json: report });
+    });
     await page.goto(`${dashboard.baseURL}/inbox?type=prs`);
     await rowHead(page, "Pin the release train").click();
     const card = page.getByRole("region", {
@@ -263,7 +276,7 @@ test.describe("refreshes each Conversation on screen from its token", () => {
     for (let step = 0; step < 6; step += 1) await tick();
     expect(detailReads).toBe(settled);
 
-    // The moved token refreshes the card.
+    // The moved token refreshes the Conversation and the live card.
     merged = true;
     token = "1:2";
     await page.clock.fastForward(5_000);

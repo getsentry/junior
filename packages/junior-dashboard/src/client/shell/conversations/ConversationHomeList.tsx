@@ -19,6 +19,8 @@ import { cn } from "../../styles";
 import type { WaitingConversation } from "../../inbox/queries";
 import type { Conversation } from "../../types";
 import { useConversationActionToasts } from "../../conversations/conversationActionToasts";
+import { MessageObjectsProvider } from "../../display-text/DisplayText";
+import { useLiveAnnotations } from "../../conversations/liveAnnotations";
 import { conversationCardTags } from "../../conversations/ConversationContextTags";
 import {
   ConversationListStatusIcon,
@@ -51,42 +53,45 @@ export function ConversationHomeList(props: {
   // The list stays mounted through the first load, so a pointer that rests
   // on it then still holds the order.
   return (
-    <ConversationSectionList
-      conversations={props.conversations}
-      loading={props.loading ?? false}
-      timeZone={props.timeZone}
-    >
-      {({ releaseHold, sections }) =>
-        props.loading && props.conversations.length === 0 ? (
-          <ConversationHomeListLoading label="Loading conversations" />
-        ) : props.conversations.length === 0 ? (
-          <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
-            <EmptyTelemetry>
-              {props.emptyLabel ?? "No conversations match this view."}
-            </EmptyTelemetry>
-          </div>
-        ) : (
-          <div
-            aria-label="Your conversations"
-            className="grid gap-5"
-            role="list"
-          >
-            {sections.map((section) => (
-              <ConversationCardSection
-                collapsed={collapsedKeys.has(section.key)}
-                key={section.key}
-                onArchiveError={showArchiveError}
-                onArchived={showArchived}
-                onRowAction={releaseHold}
-                onToggle={() => toggleSection(section.key)}
-                waitingConversations={props.waitingConversations}
-                section={section}
-              />
-            ))}
-          </div>
-        )
-      }
-    </ConversationSectionList>
+    // The cards read the live status of their linked work in one request.
+    <MessageObjectsProvider>
+      <ConversationSectionList
+        conversations={props.conversations}
+        loading={props.loading ?? false}
+        timeZone={props.timeZone}
+      >
+        {({ releaseHold, sections }) =>
+          props.loading && props.conversations.length === 0 ? (
+            <ConversationHomeListLoading label="Loading conversations" />
+          ) : props.conversations.length === 0 ? (
+            <div className="rounded-lg border border-dashboard-border-subtle bg-dashboard-fill-faint p-4">
+              <EmptyTelemetry>
+                {props.emptyLabel ?? "No conversations match this view."}
+              </EmptyTelemetry>
+            </div>
+          ) : (
+            <div
+              aria-label="Your conversations"
+              className="grid gap-5"
+              role="list"
+            >
+              {sections.map((section) => (
+                <ConversationCardSection
+                  collapsed={collapsedKeys.has(section.key)}
+                  key={section.key}
+                  onArchiveError={showArchiveError}
+                  onArchived={showArchived}
+                  onRowAction={releaseHold}
+                  onToggle={() => toggleSection(section.key)}
+                  waitingConversations={props.waitingConversations}
+                  section={section}
+                />
+              ))}
+            </div>
+          )
+        }
+      </ConversationSectionList>
+    </MessageObjectsProvider>
   );
 }
 
@@ -218,7 +223,13 @@ function ConversationCard(props: ConversationCardProps) {
   const title = conversationDisplayTitle(conversation);
   const participants = conversationParticipants(conversation);
   const isPrivate = conversation.visibility === "private";
-  const tags = conversationCardTags(conversation, title);
+  const sidebarAnnotations = useLiveAnnotations(
+    conversation.sidebarAnnotations,
+  );
+  const tags = conversationCardTags(
+    { ...conversation, sidebarAnnotations },
+    title,
+  );
   const prefetch = usePrefetchConversation(conversation.id);
   const VisibilityIcon = isPrivate ? LockKeyhole : MessageSquare;
   // Only a wait on the viewer gets a badge. A card whose Turn runs shows its

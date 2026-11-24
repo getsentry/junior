@@ -193,7 +193,7 @@ export const OPEN_PULL_REQUEST_MERGEABILITY = githubGraphql(`
     search(query: $query, type: ISSUE, first: 100, after: $after) {
       pageInfo { hasNextPage endCursor }
       nodes {
-        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName url }
+        ... on PullRequest { number state isDraft mergeable headRefOid baseRefName title url }
       }
     }
   }
@@ -420,139 +420,147 @@ export function pullRequestLifecycles(count: number): GitHubGraphqlOperation {
   );
 }
 
-// The card query for one issue or pull request. `githubObjectCards` repeats
-// its `repository` field for each repository, and its `issueOrPullRequest`
-// field for each number. `repository(owner:, name:)` follows a renamed
-// repository, as the REST reads do.
-const GITHUB_OBJECT_CARD = githubGraphql(`
-  query GitHubObjectCards($owner: String!, $name: String!, $number: Int!) {
+// The card fields of one pull request. `pullRequestCards` repeats its
+// `repository` field and variables for each pull request.
+const PULL_REQUEST_CARD = githubGraphql(`
+  query PullRequestCards($owner: String!, $name: String!, $number: Int!) {
     repository(owner: $owner, name: $name) {
-      releaseConfig: object(expression: "HEAD:.github/release.yml") {
-        ... on Blob { text }
-      }
-      issueOrPullRequest(number: $number) {
-        __typename
-        ... on Issue {
-          assignees(first: 5) { nodes { login } }
-          body
-          labels(first: 5) { nodes { name } }
-          number
-          issueState: state
-          title
-          updatedAt
-          url
+      pullRequest(number: $number) { ...Card }
+    }
+  }
+
+  fragment Card on PullRequest {
+    url
+    number
+    state
+    title
+    body
+    updatedAt
+    author { login }
+    isDraft
+    merged
+    headRefName
+    headRefOid
+    baseRefName
+    mergeable
+    additions
+    deletions
+    changedFiles
+    reviewRequests(first: 5) {
+      nodes {
+        requestedReviewer {
+          ... on User { login }
+          ... on Bot { login }
         }
-        ... on PullRequest {
-          additions
-          author { login }
-          baseRefName
-          body
-          changedFiles
-          deletions
-          headRefName
-          isDraft
-          mergeable
-          merged
-          number
-          reviewRequests(first: 5) {
-            nodes { requestedReviewer { ... on User { login } } }
+      }
+    }
+    reviewDecision
+    latestOpinionatedReviews(first: 5, writersOnly: true) {
+      nodes { state }
+    }
+    commits(last: 1) {
+      nodes {
+        commit {
+          statusCheckRollup {
+            contexts(first: 1) {
+              checkRunCountsByState { state count }
+            }
           }
-          reviewDecision
-          latestOpinionatedReviews(first: 5, writersOnly: true) {
-            nodes { state }
-          }
-          state
-          title
-          updatedAt
-          url
         }
       }
     }
   }
 `);
 
-/**
- * Return the query that reads the cards of many issues and pull requests at
- * once. Repository `r` has the alias `r<r>` and the variables `$o<r>` and
- * `$m<r>`. Its object `i` has the alias `n<r>_<i>` and the variable
- * `$n<r>_<i>`. `counts[r]` is the number of objects of repository `r`.
- */
-export function githubObjectCards(
-  counts: readonly number[],
-): GitHubGraphqlOperation {
-  const variable = (value: string): VariableNode => ({
-    kind: Kind.VARIABLE,
-    name: { kind: Kind.NAME, value },
-  });
-  const repositoryVariables: Record<string, (r: number) => string> = {
-    name: (r) => `m${r}`,
-    owner: (r) => `o${r}`,
-  };
-  const objects = (r: number) =>
-    Array.from({ length: counts[r] ?? 0 }, (_, i) => `n${r}_${i}`);
-  return operation(
-    visit(parse(GITHUB_OBJECT_CARD.query), {
-      OperationDefinition: (node) => ({
-        ...node,
-        variableDefinitions: counts.flatMap((_, r) =>
-          (node.variableDefinitions ?? []).flatMap((definition) => {
-            const name = definition.variable.name.value;
-            const names =
-              name === "number"
-                ? objects(r)
-                : [repositoryVariables[name]?.(r) ?? name];
-            return names.map((value) => ({
-              ...definition,
-              variable: variable(value),
-            }));
-          }),
-        ),
-      }),
-      SelectionSet: (node) => ({
-        ...node,
-        selections: node.selections.flatMap((selection): SelectionNode[] => {
-          if (
-            selection.kind !== Kind.FIELD ||
-            selection.name.value !== "repository"
-          ) {
-            return [selection];
+// Only the merge state and check counts of one pull request, for the patch
+// after a push. `pullRequestHeadFacts` repeats it like the cards.
+const PULL_REQUEST_HEAD_FACT = githubGraphql(`
+  query PullRequestHeadFacts($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) { ...HeadFacts }
+    }
+  }
+
+  fragment HeadFacts on PullRequest {
+    updatedAt
+    headRefOid
+    mergeable
+    commits(last: 1) {
+      nodes {
+        commit {
+          statusCheckRollup {
+            contexts(first: 1) {
+              checkRunCountsByState { state count }
+            }
           }
-          return counts.map((_, r) => ({
-            ...selection,
-            alias: { kind: Kind.NAME, value: `r${r}` },
-            arguments: (selection.arguments ?? []).map((argument) => ({
-              ...argument,
-              value: variable(
-                repositoryVariables[argument.name.value]?.(r) ??
-                  argument.name.value,
+        }
+      }
+    }
+  }
+`);
+
+// Repeat the `repository` field and the variables of a one pull request
+// query `count` times. Pull request `i` has the alias `p<i>` and the
+// variables `$owner<i>`, `$name<i>`, and `$number<i>`.
+function aliasedPullRequests(
+  single: GitHubGraphqlOperation,
+  count: number,
+): GitHubGraphqlOperation {
+  const document = parse(single.query);
+  const indexes = Array.from({ length: count }, (_, index) => index);
+  const indexed = (variable: VariableNode, index: number): VariableNode => ({
+    ...variable,
+    name: { kind: Kind.NAME, value: `${variable.name.value}${index}` },
+  });
+  return operation({
+    ...document,
+    definitions: document.definitions.map((definition) =>
+      definition.kind === Kind.OPERATION_DEFINITION
+        ? {
+            ...definition,
+            variableDefinitions: indexes.flatMap((index) =>
+              (definition.variableDefinitions ?? []).map((variable) => ({
+                ...variable,
+                variable: indexed(variable.variable, index),
+              })),
+            ),
+            selectionSet: {
+              ...definition.selectionSet,
+              selections: indexes.flatMap((index) =>
+                definition.selectionSet.selections.map((selection) => {
+                  const renamed = visit(selection, {
+                    Variable: (variable) => indexed(variable, index),
+                  });
+                  return renamed.kind === Kind.FIELD
+                    ? {
+                        ...renamed,
+                        alias: { kind: Kind.NAME, value: `p${index}` },
+                      }
+                    : renamed;
+                }),
               ),
-            })),
-            ...(selection.selectionSet
-              ? {
-                  selectionSet: {
-                    ...selection.selectionSet,
-                    selections: selection.selectionSet.selections.flatMap(
-                      (child): SelectionNode[] =>
-                        child.kind === Kind.FIELD &&
-                        child.name.value === "issueOrPullRequest"
-                          ? objects(r).map((name) => ({
-                              ...child,
-                              alias: { kind: Kind.NAME, value: name },
-                              arguments: (child.arguments ?? []).map(
-                                (argument) => ({
-                                  ...argument,
-                                  value: variable(name),
-                                }),
-                              ),
-                            }))
-                          : [child],
-                    ),
-                  },
-                }
-              : undefined),
-          }));
-        }),
-      }),
-    }),
-  );
+            },
+          }
+        : definition,
+    ),
+  });
+}
+
+/**
+ * Return the query that reads the cards of `count` pull requests by
+ * repository and number, with the aliases and variables of
+ * `pullRequestVariables`. The check run counts are of each head commit.
+ * The App has no commit status permission, so statuses do not count.
+ */
+export function pullRequestCards(count: number): GitHubGraphqlOperation {
+  return aliasedPullRequests(PULL_REQUEST_CARD, count);
+}
+
+/**
+ * Return the query that reads only the merge state and check counts of
+ * `count` pull requests by repository and number, for the patch after a
+ * push. It has the aliases and variables of `pullRequestCards`.
+ */
+export function pullRequestHeadFacts(count: number): GitHubGraphqlOperation {
+  return aliasedPullRequests(PULL_REQUEST_HEAD_FACT, count);
 }

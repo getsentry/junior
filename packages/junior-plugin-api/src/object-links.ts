@@ -176,6 +176,12 @@ export interface ObjectLinkContext extends PluginContext {
  */
 export interface PluginObjectLinkDefinition {
   /**
+   * Set false when `resolve` reads one cache entry per object that your
+   * webhooks keep current. Junior then keeps no card copy per viewer, so a
+   * change shows on the next read. `canView` still runs on each read.
+   */
+  cacheCards?: false;
+  /**
    * Return whether `ctx.viewer` may see the object. Junior calls it before
    * each card read and again on each Attach. Return true for a public
    * object. Return false when you cannot tell, so the card does not show
@@ -188,6 +194,14 @@ export interface PluginObjectLinkDefinition {
    * one type, such as a GitHub issue URL that opens a pull request.
    */
   objectTypes: ObjectType[];
+  /**
+   * Load many objects into your cache in one provider call, such as one
+   * query for a page of links. Junior calls it once with every URL of one
+   * resolve that this link type claims, before `canView` and `resolve` run
+   * for each URL as usual. Write only to the cache, and never return data:
+   * the viewer may not see every object.
+   */
+  prefetch?(ctx: ObjectLinkContext, urls: URL[]): Promise<void>;
   /**
    * Read the card. Junior calls it only after `canView` returns true.
    * Return nothing for a missing object.
@@ -210,12 +224,4 @@ export interface PluginObjectLinkDefinition {
    * no tool reads this object.
    */
   readTool?(object: ObjectAnnotation): string | undefined;
-  /**
-   * Read many objects at once into `ctx.cache`, such as with one GraphQL
-   * query, so that the `canView` and `resolve` calls that follow read the
-   * cache. Junior calls it for a page of links, such as one Inbox page,
-   * with the links that its card cache does not have. It returns nothing:
-   * a link without a card still shows only after its `canView`.
-   */
-  preload?(ctx: ObjectLinkContext, urls: URL[]): Promise<void>;
 }
