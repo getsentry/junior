@@ -9,9 +9,9 @@ import pLimit, { type LimitFunction } from "p-limit";
 import * as z from "zod";
 import { pullRequestCards } from "./graphql-documents.js";
 import {
-  GITHUB_PULL_REQUEST_CACHE,
   type GitHubPullRequestFields,
   githubObjectCacheKey,
+  githubPullRequestEntry,
   isOlderGitHubObject,
 } from "./object-cache.js";
 import {
@@ -40,9 +40,6 @@ const PAGE_BUDGET_MS = 20_000;
 
 // Long enough for the card reads of the page that ran out of time.
 const OUT_OF_TIME_TTL_MS = 30_000;
-
-// How long a merge state that GitHub still computes shows as pending.
-const COMPUTING_TTL_MS = 15_000;
 
 // A pull request that GitHub cannot read is null, with an error, and the
 // others still come. No data at all means that the query failed.
@@ -88,19 +85,11 @@ async function storeCard(
   node: z.output<typeof pullRequestCardNodeSchema>,
 ): Promise<void> {
   const fields = githubPullRequestFieldsFromNode(node);
-  // GitHub still computes the merge state, so it shows pending, and the
-  // next read soon after asks GitHub again.
-  const computing = fields.mergeable === null && fields.state === "open";
-  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) => {
-    if (isOlderGitHubObject(current, fields)) return undefined;
-    return computing
-      ? {
-          ...GITHUB_PULL_REQUEST_CACHE,
-          ttlMs: COMPUTING_TTL_MS,
-          value: { ...current, ...fields, mergeable: "pending" },
-        }
-      : { ...GITHUB_PULL_REQUEST_CACHE, value: { ...current, ...fields } };
-  });
+  await ctx.cache.update<GitHubPullRequestFields | null>(key, (current) =>
+    isOlderGitHubObject(current, fields)
+      ? undefined
+      : githubPullRequestEntry({ ...current, ...fields }),
+  );
 }
 
 async function loadChunk(

@@ -16,9 +16,11 @@ import type {
 import * as z from "zod";
 import { githubObjectAnnotation } from "./annotations.js";
 import {
+  GITHUB_ISSUE_CACHE,
   githubObjectCacheOptions,
   githubIssueFieldsSchema,
   githubObjectCacheKey,
+  githubPullRequestEntry,
   githubPullRequestFieldsSchema,
   type GitHubIssueFields,
   type GitHubPullRequestFields,
@@ -117,6 +119,7 @@ async function readFields<T>(
   ctx: ObjectLinkContext,
   link: GitHubObjectLink,
   schema: z.ZodType<T>,
+  entry: (value: T) => { staleIfError: true; ttlMs: number; value: T },
 ): Promise<T | null> {
   const collection = link.kind === "issue" ? "issues" : "pulls";
   const key = githubObjectCacheKey(
@@ -140,7 +143,7 @@ async function readFields<T>(
         `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
       );
     }
-    return { ...options, value: schema.parse(response.body) };
+    return entry(schema.parse(response.body));
   };
   // The page read ran out of time for this card, so it shows its stale
   // entry, or no card yet, and does not wait for one more read.
@@ -167,10 +170,20 @@ async function readObject(
   link: GitHubObjectLink,
 ): Promise<ObjectAnnotation | null> {
   if (link.kind === "pull_request") {
-    const pull = await readFields(ctx, link, githubPullRequestFieldsSchema);
+    const pull = await readFields(
+      ctx,
+      link,
+      githubPullRequestFieldsSchema,
+      githubPullRequestEntry,
+    );
     return pull && pullRequestCard(link, pull);
   }
-  const issue = await readFields(ctx, link, githubIssueFieldsSchema);
+  const issue = await readFields(
+    ctx,
+    link,
+    githubIssueFieldsSchema,
+    (value) => ({ ...GITHUB_ISSUE_CACHE, value }),
+  );
   if (!issue) return null;
   // GitHub opens a pull request at its issue URL too, such as a linked
   // `owner/repo#12`. Only the pulls API has its draft and merge state.

@@ -32,6 +32,16 @@ export const GITHUB_PULL_REQUEST_CACHE = {
   ttlMs: GITHUB_PULL_REQUEST_CACHE_TTL_MS,
 } as const;
 
+// A merge state that GitHub still computes stays fresh only this long, so
+// the next read soon after asks GitHub again.
+const GITHUB_PULL_REQUEST_PENDING_TTL_MS = 15_000;
+
+/** How long a pull request entry with a pending merge state is fresh. */
+export const GITHUB_PULL_REQUEST_PENDING_CACHE = {
+  staleIfError: true,
+  ttlMs: GITHUB_PULL_REQUEST_PENDING_TTL_MS,
+} as const;
+
 /** The cache entry options of one collection. */
 export function githubObjectCacheOptions(collection: "issues" | "pulls") {
   return collection === "pulls"
@@ -98,6 +108,19 @@ export type GitHubIssueFields = z.infer<typeof githubIssueFieldsSchema>;
 export type GitHubPullRequestFields = z.infer<
   typeof githubPullRequestFieldsSchema
 >;
+
+/**
+ * The cache entry of pull request fields read from GitHub. An open pull
+ * request whose merge state GitHub still computes shows pending, briefly.
+ */
+export function githubPullRequestEntry(fields: GitHubPullRequestFields) {
+  return fields.state === "open" && fields.mergeable === null
+    ? {
+        ...GITHUB_PULL_REQUEST_PENDING_CACHE,
+        value: { ...fields, mergeable: "pending" as const },
+      }
+    : { ...GITHUB_PULL_REQUEST_CACHE, value: fields };
+}
 
 /**
  * The cache key of one issue or pull request, such as

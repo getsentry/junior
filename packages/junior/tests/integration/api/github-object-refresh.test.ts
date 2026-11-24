@@ -431,6 +431,46 @@ describe("GitHub pull request cache refresh", () => {
     expect(cards.has(urls[1]!)).toBe(false);
   });
 
+  it("shows an unknown merge state from a single read as pending, then reads it again after 15 s", async () => {
+    stubGitHubApp();
+    // The page query has no card for #34, so it reads on its own. GitHub
+    // still computes the merge state on the first read.
+    const answers = [
+      pullRequest(34, { mergeable: null }),
+      pullRequest(34, { mergeable: true }),
+    ];
+    const reads: string[] = [];
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/34`, () => {
+        reads.push("pulls/34");
+        return HttpResponse.json(answers.shift());
+      }),
+    );
+    stubGraphql({});
+    await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+    });
+    vi.setSystemTime(start + 10_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+    });
+    expect(reads).toEqual(["pulls/34"]);
+
+    vi.setSystemTime(start + 16_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: true,
+    });
+    expect(reads).toEqual(["pulls/34", "pulls/34"]);
+  });
+
   it("reconciles pull requests in a heartbeat whose patch query fails", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
