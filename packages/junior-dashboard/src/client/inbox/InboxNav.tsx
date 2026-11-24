@@ -45,6 +45,7 @@ function InFlightRow(props: {
   const { conversation } = props;
   const drag = usePinnedRowDrag(conversation.id);
   const actions = useInboxRowActions(conversation, {
+    move: drag?.move,
     selected: props.selected,
   });
   return (
@@ -167,9 +168,8 @@ export function InboxNav(props: {
             In flight
             <span className={dashboardCountClass}>{data.inFlight.length}</span>
           </h2>
-          {/* Every pin shows, so a drop can place them all. Running pins
-              show first, so a drop moves the pin within the stored order,
-              and the other pins keep theirs. */}
+          {/* Every pin shows, in the stored order, so a drop can place
+              them all. */}
           <PinnedConversationOrder
             conversations={data.pinned}
             onError={onReorderError}

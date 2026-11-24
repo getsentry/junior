@@ -13,9 +13,11 @@ import { deliverInboxItemChange, type InboxItemDelivery } from "./changes";
 import type { InboxItemChange } from "./messages";
 import {
   canActOnInboxItem,
+  canAnswerInboxItem,
   canUserReadInboxItem,
   inboxItemTodo,
   isAutomationAlertItem,
+  isInboxItemForEveryone,
   isOnlyAssignee,
   isPluginInboxItem,
 } from "./access";
@@ -190,7 +192,13 @@ export async function actOnInboxItem(args: {
   let closed = item;
   let closedNow = false;
   if (item.status === "open") {
-    if (!canActOnInboxItem(item, user.id)) {
+    // Anyone who can see a public question can answer it. Dismiss keeps the
+    // assignee rule (`canAnswerInboxItem`).
+    const allowed =
+      action === "submit"
+        ? canAnswerInboxItem(item, user.id)
+        : canActOnInboxItem(item, user.id);
+    if (!allowed) {
       throw new InboxItemActionError(
         "forbidden",
         "Only an assignee can act on this item.",
@@ -290,8 +298,7 @@ async function closeTodoItem(
  */
 function replyAnswers(item: InboxItem, user: User | undefined): boolean {
   if (item.status !== "open") return item.closedBy?.userId === user?.id;
-  if (item.assignedToEveryone) return false;
-  if (item.assignees.length === 0) return true;
+  if (isInboxItemForEveryone(item)) return false;
   return (
     user !== undefined &&
     item.assignees.some((assignee) => assignee.userId === user.id)
@@ -321,14 +328,15 @@ function messageAnswer(
  * A reply closes an item only when all of these are true:
  * - The item is an open `action` item.
  * - The agent added it in this Conversation, its owner.
- * - The replier is an assigned User, or the item has no assignees. A Slack
- *   replier without a Junior User closes only items with no assignees.
+ * - The replier is an assigned User. A Slack replier without a Junior User
+ *   closes no item.
  * - The decision model says that the reply answers this item
  *   (`matchReplyToInboxItems`). Other open items in the thread stay open.
  *   When the decision fails, all items stay open.
  *
- * Items assigned to Everyone, or only to other people, stay open. They need
- * an answer on the card or the Inbox. Each item closes as `done` with
+ * Items for Everyone (`isInboxItemForEveryone`, also an item with no
+ * assignees), or only for other people, stay open. They need an answer on
+ * the card or the Inbox. Each item closes as `done` with
  * `INBOX_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
  * is the answer in this Conversation, so only the other linked
  * Conversations get a message. A click that closes the item first wins.

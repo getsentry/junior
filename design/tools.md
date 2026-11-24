@@ -18,13 +18,6 @@ returns a result that shows the model its next step.
 - No part of a result is lost without notice. When a result is cut, the
   model learns that it was cut, how much there is, and how to get the rest.
 
-## Entry points
-
-- The model: direct tools in every Turn, and deferred tools through
-  `searchTools`.
-- Plugins: the tools that a plugin adds, and MCP tools from an MCP provider.
-- Dashboard: tool calls and results in a Conversation transcript.
-
 ## Rules
 
 - A tool description says what the tool does and what it returns. The

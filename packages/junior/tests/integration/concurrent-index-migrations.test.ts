@@ -16,7 +16,7 @@ const CREATE_GROUP_INDEX = `CREATE INDEX CONCURRENTLY IF NOT EXISTS "${INDEX_NAM
 
 async function writeMigrations(
   dir: string,
-  migrations: readonly { sql: string; tag: string }[],
+  migrations: readonly { sql: string; tag: string; when?: number }[],
 ): Promise<void> {
   await mkdir(join(dir, "meta"), { recursive: true });
   for (const migration of migrations) {
@@ -31,7 +31,7 @@ async function writeMigrations(
         idx,
         tag: migration.tag,
         version: "7",
-        when: (idx + 1) * 1000,
+        when: migration.when ?? (idx + 1) * 1000,
       })),
       version: "7",
     }),
@@ -41,7 +41,7 @@ async function writeMigrations(
 /** Apply the items table, then add migrations as a later release would. */
 async function createItemsWithPendingMigration(
   sql: Parameters<typeof migratePluginSchemas>[0],
-  pending: readonly { sql: string; tag: string }[] = [
+  pending: Parameters<typeof writeMigrations>[1] = [
     { sql: CREATE_GROUP_INDEX, tag: "0001_items_group_index" },
   ],
 ): Promise<{ dir: string; migrate(): Promise<unknown> }> {
@@ -201,6 +201,50 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())(
           definition: `CREATE INDEX ${INDEX_NAME} ON public.concurrent_index_items USING btree (group_id)`,
           usable: true,
         });
+      } finally {
+        await fixture.close();
+        await rm(pending.dir, { force: true, recursive: true });
+      }
+    });
+
+    it("applies a migration that merges after a newer one", async () => {
+      const fixture = await createEmptyJuniorPostgresFixture();
+      const pending = await createItemsWithPendingMigration(fixture.sql, [
+        {
+          sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;`,
+          tag: "0001_items_note",
+          when: 3000,
+        },
+      ]);
+
+      try {
+        await expect(pending.migrate()).resolves.toMatchObject({
+          migrated: 1,
+        });
+        // Another branch made its migration before the one that ran.
+        await writeMigrations(pending.dir, [
+          { sql: CREATE_ITEMS, tag: "0000_items" },
+          {
+            sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "label" text;`,
+            tag: "0001_items_label",
+            when: 2000,
+          },
+          {
+            sql: `ALTER TABLE "concurrent_index_items" ADD COLUMN "note" text;`,
+            tag: "0002_items_note",
+            when: 3000,
+          },
+        ]);
+
+        await expect(pending.migrate()).resolves.toMatchObject({
+          existing: 2,
+          migrated: 1,
+        });
+        await expect(
+          fixture.sql.query(
+            `SELECT "label", "note" FROM "concurrent_index_items"`,
+          ),
+        ).resolves.toEqual([]);
       } finally {
         await fixture.close();
         await rm(pending.dir, { force: true, recursive: true });

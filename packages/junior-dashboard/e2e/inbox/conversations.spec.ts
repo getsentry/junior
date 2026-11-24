@@ -1,3 +1,4 @@
+import { conversationMenuRow } from "./conversationMenu";
 import type { Page } from "@playwright/test";
 import { readClipboard } from "../clipboard";
 import { withRequestedMailbox, waitForOutlineRead } from "../harness";
@@ -800,9 +801,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}`,
     );
     await page.getByRole("button", { name: "Conversation menu" }).click();
-    await expect(
-      page.getByRole("menuitem", { name: "Pin", exact: true }),
-    ).toBeDisabled();
+    await expect(conversationMenuRow(page, "Pin")).toBeDisabled();
   });
 
   test("rates a Junior Reply once, with time to change it", async ({

@@ -15,7 +15,8 @@ import {
   ConversationRowMenu,
   type ConversationRowMenuProps,
 } from "./ConversationRowMenu";
-import { ConversationRowSheet } from "./ConversationRowSheet";
+import { ConversationRowSheet } from "./ConversationMenuSheet";
+import { useMenuSheet } from "./useMenuSheet";
 import type { PinnedRowMove } from "./PinnedConversationOrder";
 import { prefetchConversationDetail } from "./conversationPrefetch";
 import { conversationPath, OPEN_EVENT_LOG_STATE } from "./conversationRoutes";
@@ -64,7 +65,7 @@ export function ConversationRowContextMenu(
   });
   const [renaming, setRenaming] = useState(false);
   const [continueInSlackOpen, setContinueInSlackOpen] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const sheet = useMenuSheet();
   // A finger on the row, and whether the menu opened under it. Any open
   // while a finger is down is a long press, whatever event the browser
   // sends for it: Base UI sends the touch, and a mobile browser can also
@@ -116,7 +117,7 @@ export function ConversationRowContextMenu(
         details.cancel();
         touchRef.current = "opened";
         endPress();
-        setSheetOpen(true);
+        sheet.show();
       }}
     >
       <ContextMenuTrigger
@@ -159,12 +160,8 @@ export function ConversationRowContextMenu(
       <ContextMenuContent>
         <ConversationRowMenu {...menu} />
       </ContextMenuContent>
-      {sheetOpen ? (
-        <ConversationRowSheet
-          {...menu}
-          onClose={() => setSheetOpen(false)}
-          title={title}
-        />
+      {sheet.open ? (
+        <ConversationRowSheet {...menu} onClose={sheet.close} title={title} />
       ) : null}
       {renaming ? (
         <RenameConversationDialog

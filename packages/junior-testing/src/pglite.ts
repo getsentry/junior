@@ -31,7 +31,8 @@ class LocalPgliteExecutor<TDatabase> implements LocalPgliteFixture<TDatabase> {
   db(): TDatabase {
     // Each package passes its own Drizzle database type for the same client.
     // oxlint-disable-next-line anti-slop/no-chained-type-assertions
-    return drizzle(this.queryClient() as PGlite, {
+    return drizzle({
+      client: this.queryClient() as PGlite,
       schema: this.schema,
     }) as unknown as TDatabase;
   }

@@ -231,6 +231,7 @@ export function createGitHubWebhookRoute(args: {
         eventName,
         nowMs: Date.now(),
         state: args.state,
+        tasks: args.tasks,
       });
       const botEmail = args.botEmail();
       const pullRequestOutcome =
