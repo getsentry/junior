@@ -11,6 +11,7 @@ import {
 import type { OwnedObjectAnnotation } from "@sentry/junior-plugin-api";
 import {
   addMockAnnotation,
+  mockCodeChangeLiveCard,
   readMockConversationDetail,
   readMockPeopleCode,
   readMockPeopleDirectory,
@@ -60,6 +61,26 @@ const GITHUB_PULLS: Record<string, Omit<OwnedObjectAnnotation, "url">> = {
       sourceBranch: "fix/slack-upload-retry",
       targetBranch: "main",
       mergeable: false,
+    },
+    plugin: "github",
+  },
+  "https://github.com/getsentry/payments/pull/42": {
+    kind: "object",
+    objectType: "code_change",
+    key: "getsentry/payments#42",
+    label: "getsentry/payments#42",
+    title: "Retry checkout writes after lock timeouts",
+    displayType: "Pull request",
+    status: "draft",
+    facts: {
+      type: "code_change",
+      additions: 86,
+      author: "junior",
+      changedFiles: 4,
+      deletions: 12,
+      sourceBranch: "fix/checkout-lock-retry",
+      targetBranch: "main",
+      mergeable: true,
     },
     plugin: "github",
   },
@@ -538,6 +559,8 @@ function mockObject(href: string): ObjectLinksReport["objects"][number][] {
   }
   const pull = GITHUB_PULLS[url.href];
   if (pull) return [{ object: { ...pull, url: href }, url: href }];
+  const listed = mockCodeChangeLiveCard(url.href);
+  if (listed) return [{ object: listed, url: href }];
   const google = url.hostname.endsWith(".google.com")
     ? GOOGLE_OBJECTS[url.pathname]
     : undefined;

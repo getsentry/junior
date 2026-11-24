@@ -31,7 +31,10 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
+import type {
+  CodeChangeSize,
+  OwnedObjectAnnotation,
+} from "@sentry/junior-plugin-api";
 import {
   activityPreviewText,
   IDLE_CHANGE_DAYS,
@@ -83,6 +86,47 @@ export function mockIdleCount(
   ).length;
 }
 
+// The live sizes of some mock changes, by number. #519 counts no
+// deletions, so that part hides.
+const MOCK_CHANGE_SIZES: Record<number, CodeChangeSize> = {
+  42: { additions: 86, changedFiles: 4, deletions: 12 },
+  85: { additions: 2, changedFiles: 1, deletions: 2 },
+  519: { additions: 64, changedFiles: 2 },
+  2330: { additions: 412, changedFiles: 9, deletions: 37 },
+  2361: { additions: 1204, changedFiles: 12, deletions: 340 },
+  2384: { additions: 18, changedFiles: 2, deletions: 5 },
+  2391: { additions: 148, changedFiles: 5, deletions: 21 },
+  2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
+};
+
+/**
+ * The live card of a mock code change in the Code overview or a person's
+ * Code, as the GitHub plugin resolves it: its draft state and size.
+ */
+export function mockCodeChangeLiveCard(
+  url: string,
+): OwnedObjectAnnotation | undefined {
+  const email = readMockPeopleDirectory().people[0]?.actor.email;
+  const change = [
+    ...readMockCodeOverview().changes,
+    ...(email ? (readMockPeopleCode(email)?.changes ?? []) : []),
+  ].find((candidate) => candidate.url === url);
+  if (!change) return undefined;
+  const label = `${change.repository}#${change.number}`;
+  return {
+    displayType: "Pull request",
+    facts: { type: "code_change", ...MOCK_CHANGE_SIZES[change.number] },
+    key: label,
+    kind: "object",
+    label,
+    objectType: "code_change",
+    plugin: "github",
+    status: change.state,
+    title: change.title ?? label,
+    url,
+  };
+}
+
 /** Build code activity for local dashboard development and QA. */
 export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
   const windowEnd = new Date(nowMs).toISOString();
@@ -100,7 +144,6 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
-        draft: true,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -111,7 +154,6 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
-        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -434,7 +476,6 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         title: "Retry checkout writes after lock timeouts",
         url: "https://github.com/getsentry/payments/pull/42",
         imageUrl: CHECKOUT_PREVIEW_IMAGE_URL,
-        size: { additions: 86, changedFiles: 4, deletions: 12 },
       },
     ],
     annotations: [
@@ -1543,7 +1584,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
         imageUrl: `${MOCK_DASHBOARD_ORIGIN}/api/images/payments-91-before`,
-        size: { additions: 48, changedFiles: 3, deletions: 9 },
       },
       {
         icon: "git-merge",
@@ -2076,7 +2116,6 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
         label: "sentaur",
         title: "Retry a canary stage once on a lost agent",
         url: "https://github.com/getsentry/sentaur/pull/418",
-        size: { additions: 1204, changedFiles: 12, deletions: 340 },
       },
       ...SENTAUR_PULL_REQUESTS.map(([repo, number, status, title]) => ({
         icon:
@@ -4045,17 +4084,6 @@ export function readMockPeopleCode(
   }));
   const daysAgo = (days: number) =>
     new Date(NOW_MS - days * 86_400_000).toISOString();
-  // Sizes for some changes. #519 counts no deletions, so that part hides.
-  const sizes: Record<number, CodeChangeSize> = {
-    42: { additions: 86, changedFiles: 4, deletions: 12 },
-    85: { additions: 2, changedFiles: 1, deletions: 2 },
-    519: { additions: 64, changedFiles: 2 },
-    2330: { additions: 412, changedFiles: 9, deletions: 37 },
-    2361: { additions: 1204, changedFiles: 12, deletions: 340 },
-    2384: { additions: 18, changedFiles: 2, deletions: 5 },
-    2391: { additions: 148, changedFiles: 5, deletions: 21 },
-    2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
-  };
   const openChange = (
     number: number,
     repository: string,
@@ -4063,7 +4091,6 @@ export function readMockPeopleCode(
     days: number,
     idleHours?: number,
   ) => ({
-    draft: false,
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
     lastActivityAt:
       idleHours === undefined ? undefined : daysAgo(idleHours / 24),
@@ -4071,7 +4098,6 @@ export function readMockPeopleCode(
     openedAt: daysAgo(days),
     provider: "github",
     repository,
-    ...(sizes[number] ? { size: sizes[number] } : undefined),
     state: "open" as const,
     title,
     url: `https://github.com/${repository}/pull/${number}`,

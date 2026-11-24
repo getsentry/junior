@@ -14,7 +14,12 @@ import { SkillReferencesProvider } from "./skills";
 
 export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
 export { MentionText } from "./mentions";
-export { MessageObjectsProvider, useResolvedObject } from "./resolvedObjects";
+export {
+  type ListedObject,
+  MessageObjectsProvider,
+  useListedObjects,
+  useResolvedObject,
+} from "./resolvedObjects";
 export { objectUrlKey, withoutStandaloneUrl } from "./knownObjects";
 
 const NO_MENTIONS: readonly ActorIdentity[] = [];

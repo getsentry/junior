@@ -322,7 +322,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       const state = new URL(route.request().url()).searchParams.get("state");
       const changes = (count: number, changeState: string, title: string) =>
         Array.from({ length: count }, (_, index) => ({
-          draft: false,
           id: `00000000-0000-4000-9000-${String(index).padStart(12, "0")}`,
           number: index + 1,
           openedAt: report.generatedAt,
@@ -418,7 +417,6 @@ test.describe("new UI", { tag: "@new" }, () => {
       const response = await route.fetch();
       const report = await response.json();
       const idleChange = {
-        draft: false,
         id: "00000000-0000-4000-8000-000000000099",
         lastActivityAt: new Date(NOW_MS - 10 * day).toISOString(),
         number: 990,

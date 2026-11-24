@@ -570,8 +570,9 @@ export async function mockInboxItems(
 
 /**
  * Serve the viewer's code changes from their person Code overview, for
- * Code · Mine. Each change is in getsentry/payments and opened 30
- * days before the report.
+ * Code · Mine, and their live cards, with the draft state and the size.
+ * Each change is in getsentry/payments and opened 30 days before the
+ * report.
  */
 export async function mockViewerCodeChanges(
   page: Page,
@@ -602,18 +603,55 @@ export async function mockViewerCodeChanges(
         nextCursor:
           offset + 100 < changes.length ? String(offset + 100) : undefined,
         changes: changes.slice(offset, offset + 100).map((change) => ({
-          draft: change.draft ?? false,
           id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,
           lastActivityAt: daysAgo(change.idleDays),
           number: change.number,
           openedAt: daysAgo(30),
           provider: "github",
           repository: "getsentry/payments",
-          ...(change.size ? { size: change.size } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,
         })),
+      },
+    });
+  });
+  const cards = new Map(
+    changes.map((change) => {
+      const label = `getsentry/payments#${change.number}`;
+      const status = change.draft ? "draft" : (change.state ?? "open");
+      return [
+        `https://github.com/getsentry/payments/pull/${change.number}`,
+        {
+          displayType: "Pull request",
+          facts: { type: "code_change", ...change.size },
+          key: label,
+          kind: "object",
+          label,
+          objectType: "code_change",
+          plugin: "github",
+          status,
+          title: change.title,
+        },
+      ];
+    }),
+  );
+  await page.route(/\/api\/objects\?/, async (route) => {
+    const urls = new URL(route.request().url()).searchParams.getAll("url");
+    if (!urls.some((url) => cards.has(url))) return route.fallback();
+    const response = await route.fetch();
+    const report: { objects: { object?: unknown; url: string }[] } =
+      await response.json();
+    // The API leaves out a link it has no card for.
+    await route.fulfill({
+      response,
+      json: {
+        ...report,
+        objects: urls.flatMap((url) => {
+          const card = cards.get(url);
+          if (card) return [{ object: { ...card, url }, url }];
+          return report.objects.filter((entry) => entry.url === url);
+        }),
       },
     });
   });

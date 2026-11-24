@@ -58,6 +58,7 @@ import {
   CodeChangeTitle,
 } from "./CodeChangeTitle";
 import { useCodeChangeFacts } from "./InboxItemSubjectPreview";
+import { useLiveAnnotations } from "../conversations/liveAnnotations";
 import { inboxItemKind } from "./inboxModel";
 import {
   INBOX_ROW_META_CLASS,
@@ -495,7 +496,8 @@ function InboxRowBody(
   const itemSize = useCodeChangeFacts(
     props.itemTitle ? bundle?.newest.subject : undefined,
   );
-  const annotations = conversation?.sidebarAnnotations ?? NO_ANNOTATIONS;
+  const annotations =
+    useLiveAnnotations(conversation?.sidebarAnnotations) ?? NO_ANNOTATIONS;
   // An item row's title already names its ask, so it shows no pill.
   const asks = props.itemTitle ? [] : askPills(openItems, annotations);
   const subjects = new Set(
