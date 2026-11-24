@@ -40,6 +40,15 @@ function removeExampleOnlyServerConfig(source: string): string {
       // Only the example app can show live data in a Preview.
       .replace("  { withExampleLivePreview },\n", "")
       .replace('  import("./live-preview.ts"),\n', "")
+      // Spike for getsentry/junior#3776. Do not merge.
+      .replace(
+        'const { withVersionsListenSpike } = await import("./spike-versions-listen.ts");\n',
+        "",
+      )
+      .replace(
+        "export default withVersionsListenSpike(withExampleLivePreview(app));",
+        "export default app;",
+      )
       .replace(
         "export default withExampleLivePreview(app);",
         "export default app;",
@@ -270,7 +279,10 @@ describe("init cli", () => {
     );
     const exampleNonPluginDeps = Object.fromEntries(
       Object.entries(examplePackage.dependencies).filter(
-        ([name]) => !name.startsWith("@sentry/junior"),
+        // The spike for getsentry/junior#3776 adds the Neon driver.
+        ([name]) =>
+          !name.startsWith("@sentry/junior") &&
+          name !== "@neondatabase/serverless",
       ),
     );
     expect(scaffoldNonPluginDeps).toEqual(exampleNonPluginDeps);
