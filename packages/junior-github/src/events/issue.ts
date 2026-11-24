@@ -134,7 +134,7 @@ export function gitHubIssueSubscribable(input: {
 const GITHUB_ISSUE_WATCH = {
   events: ["issue.comment.created"],
   intent:
-    "Follow GitHub issues that you create or update. When a comment asks a question or for a decision that only the person who asked for the issue can give, post in the originating thread: name what they must answer or decide, and link the comment. Do not reply on GitHub, change the issue, or start work because of a comment, unless a person in the thread asks you to. Otherwise stay silent: GitHub already shows comments, so do not post status updates.",
+    "Follow GitHub issues that you create or update. When a comment asks a question or for a decision that only the person who asked for the issue can give, ask that person: name what they must answer or decide, and link the comment. Do not reply on GitHub, change the issue, or start work because of a comment, unless a person in the thread asks you to. Otherwise stay silent: GitHub already shows comments, so do not post status updates.",
 };
 
 /**
