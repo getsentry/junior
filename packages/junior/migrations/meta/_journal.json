@@ -40,7 +40,7 @@
     {
       "idx": 5,
       "version": "7",
-      "when": 1784137322421,
+      "when": 1784137323421,
       "tag": "0005_conversation_events",
       "breakpoints": true
     },
@@ -1216,29 +1216,36 @@
     {
       "idx": 173,
       "version": "7",
-      "when": 1795530598489,
-      "tag": "0173_inbox_item_subjects",
+      "when": 1795545232587,
+      "tag": "0173_legacy_brief_metadata_fill",
       "breakpoints": true
     },
     {
       "idx": 174,
       "version": "7",
-      "when": 1795530598490,
-      "tag": "0174_inbox_item_subjects_not_null",
+      "when": 1795545232588,
+      "tag": "0174_inbox_item_subjects",
       "breakpoints": true
     },
     {
       "idx": 175,
       "version": "7",
-      "when": 1795530598491,
-      "tag": "0175_inbox_item_subject_indexes",
+      "when": 1795545232589,
+      "tag": "0175_inbox_item_subjects_not_null",
       "breakpoints": true
     },
     {
       "idx": 176,
       "version": "7",
-      "when": 1795530598492,
-      "tag": "0176_automation_run_conversation_index",
+      "when": 1795545232590,
+      "tag": "0176_inbox_item_subject_indexes",
+      "breakpoints": true
+    },
+    {
+      "idx": 177,
+      "version": "7",
+      "when": 1795545232591,
+      "tag": "0177_automation_run_conversation_index",
       "breakpoints": true
     }
   ]

@@ -19,6 +19,7 @@
     "format:check": "oxfmt --check",
     "baseline-growth:check": "node scripts/check.mjs baseline-growth",
     "file-length:check": "node scripts/check.mjs file-length",
+    "db:rebase": "node scripts/db-rebase.mjs",
     "migration-metadata:check": "node scripts/check.mjs drizzle-migrations",
     "migration-locks:check": "node scripts/check.mjs migration-locks",
     "money-units:check": "node scripts/check.mjs money-units",

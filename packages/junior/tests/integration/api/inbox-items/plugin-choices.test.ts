@@ -18,7 +18,11 @@ import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import { getInboxItem } from "@/chat/inbox-items/store";
 import { getConversation } from "@/chat/task-execution/store";
-import { juniorConversationParticipants, juniorIdentities } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorIdentities,
+  juniorInboxItems,
+} from "@/db/schema";
 import {
   closeConversationFixture,
   createConversationFixture,
@@ -151,7 +155,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
   });
 
   // The choice is one button: an action that waits on Ana.
-  const [row] = await getDb().query.juniorInboxItems.findMany();
+  const [row] = await getDb().select().from(juniorInboxItems);
   const shown = await (await api(fixture, ana.user).get(row!.id)).json();
   expect(shown).toMatchObject({
     canAct: true,

@@ -492,7 +492,16 @@ ORDER BY table_name ASC, ordinal_position ASC
       // The schema drops this table, and 0160 keeps it until it drains.
       // Remove this when the follow-up migration drops it.
       actual.delete("junior_agent_invocations");
-      // 0173 keeps these Inbox item columns for one release, for old
+      // The schema drops these, and 0173 keeps them for one release.
+      // Remove this when the follow-up migration drops them.
+      actual.delete("junior_conversation_briefs");
+      actual.set(
+        "junior_conversation_embeddings",
+        (actual.get("junior_conversation_embeddings") ?? []).filter(
+          (column) => column !== "brief_version",
+        ),
+      );
+      // 0174 keeps these Inbox item columns for one release, for old
       // workers. Remove this when the follow-up migration drops them.
       const retired = [
         "automation_id",

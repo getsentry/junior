@@ -8,7 +8,6 @@ import { inboxItemAddedByAnyAutomation } from "@/chat/inbox-items/access";
 import { dismissOpenInboxItems } from "@/chat/inbox-items/store";
 import {
   juniorConversationEvents,
-  juniorConversationBriefs,
   juniorConversationEmbeddings,
   juniorConversations,
   juniorDestinations,
@@ -28,6 +27,14 @@ import { withConversationMutationLock } from "./store";
 const juniorAgentInvocations = pgTable("junior_agent_invocations", {
   parentConversationId: text("parent_conversation_id").notNull(),
   childConversationId: text("child_conversation_id").notNull(),
+});
+
+// No runtime code reads legacy Briefs, but the table stays in the database
+// for one release. A Brief holds Conversation content, so purge still
+// deletes the Briefs of a purged non-public tree.
+// TODO(dcramer): Delete with the migration that drops the table.
+const juniorConversationBriefs = pgTable("junior_conversation_briefs", {
+  conversationId: text("conversation_id").notNull(),
 });
 
 /** An expired root conversation selected for purge, with its resolved visibility. */

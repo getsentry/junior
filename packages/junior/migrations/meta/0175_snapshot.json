@@ -1,6 +1,6 @@
 {
-  "id": "fc2a2e5d-27f8-4ffa-a090-b7c2e2ceeedc",
-  "prevId": "44c1ed35-d455-4003-831a-bdc35f3ad659",
+  "id": "44c1ed35-d455-4003-831a-bdc35f3ad659",
+  "prevId": "50992b8a-81c1-4687-a0e1-59dae121d6cf",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -1868,187 +1868,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_conversation_briefs": {
-      "name": "junior_conversation_briefs",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "turn_id": {
-          "name": "turn_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "through_seq": {
-          "name": "through_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content": {
-          "name": "content",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outcome_status": {
-          "name": "outcome_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "search_text": {
-          "name": "search_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "model_id": {
-          "name": "model_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cost_micro_usd": {
-          "name": "cost_micro_usd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cost_usd": {
-          "name": "cost_usd",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "junior_conversation_briefs_conversation_turn_idx": {
-          "name": "junior_conversation_briefs_conversation_turn_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "turn_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_briefs_conversation_version_idx": {
-          "name": "junior_conversation_briefs_conversation_version_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "version",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_briefs_created_at_idx": {
-          "name": "junior_conversation_briefs_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_briefs_search_idx": {
-          "name": "junior_conversation_briefs_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('english', \"search_text\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_conversation_briefs_conversation_id_junior_conversations_conversation_id_fk": {
-          "name": "junior_conversation_briefs_conversation_id_junior_conversations_conversation_id_fk",
-          "tableFrom": "junior_conversation_briefs",
-          "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_conversation_briefs_conversation_id_version_pk": {
-          "name": "junior_conversation_briefs_conversation_id_version_pk",
-          "columns": [
-            "conversation_id",
-            "version"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.junior_conversation_embeddings": {
       "name": "junior_conversation_embeddings",
       "schema": "",
@@ -2058,12 +1877,6 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true
-        },
-        "brief_version": {
-          "name": "brief_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "through_seq": {
           "name": "through_seq",

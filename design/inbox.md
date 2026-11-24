@@ -168,9 +168,8 @@ how the dashboard groups and acts on its rows.
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
 - The "Needs you" group of the classic Inbox also shows open actions for
-  Everyone and actions with no assignees. To do in the new Inbox shows
-  actions with no assignees, and the Inbox count leaves them out. This
-  breaks "'Needs you' means one thing".
+  Everyone and actions with no assignees. This breaks "'Needs you' means
+  one thing".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "a notice … says what to do".
 - An Automation alert shows only in the dashboard Inbox. Slack shows no

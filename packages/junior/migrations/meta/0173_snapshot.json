@@ -1,5 +1,5 @@
 {
-  "id": "50992b8a-81c1-4687-a0e1-59dae121d6cf",
+  "id": "b13a7187-5d35-4bb0-9b1f-778c72cfb6b1",
   "prevId": "e991f2d9-a56f-4e56-a78a-c2b33f24fff7",
   "version": "7",
   "dialect": "postgresql",
@@ -780,21 +780,6 @@
           "columns": [
             {
               "expression": "completed_at_ms",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_automation_runs_conversation_idx": {
-          "name": "junior_automation_runs_conversation_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -1868,187 +1853,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.junior_conversation_briefs": {
-      "name": "junior_conversation_briefs",
-      "schema": "",
-      "columns": {
-        "conversation_id": {
-          "name": "conversation_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "version": {
-          "name": "version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "turn_id": {
-          "name": "turn_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "through_seq": {
-          "name": "through_seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "content": {
-          "name": "content",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "outcome_status": {
-          "name": "outcome_status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "search_text": {
-          "name": "search_text",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "model_id": {
-          "name": "model_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "cost_micro_usd": {
-          "name": "cost_micro_usd",
-          "type": "bigint",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "cost_usd": {
-          "name": "cost_usd",
-          "type": "double precision",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {
-        "junior_conversation_briefs_conversation_turn_idx": {
-          "name": "junior_conversation_briefs_conversation_turn_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "turn_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_briefs_conversation_version_idx": {
-          "name": "junior_conversation_briefs_conversation_version_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "version",
-              "isExpression": false,
-              "asc": false,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_briefs_created_at_idx": {
-          "name": "junior_conversation_briefs_created_at_idx",
-          "columns": [
-            {
-              "expression": "created_at",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "junior_conversation_briefs_search_idx": {
-          "name": "junior_conversation_briefs_search_idx",
-          "columns": [
-            {
-              "expression": "to_tsvector('english', \"search_text\")",
-              "asc": true,
-              "isExpression": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "gin",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "junior_conversation_briefs_conversation_id_junior_conversations_conversation_id_fk": {
-          "name": "junior_conversation_briefs_conversation_id_junior_conversations_conversation_id_fk",
-          "tableFrom": "junior_conversation_briefs",
-          "tableTo": "junior_conversations",
-          "columnsFrom": [
-            "conversation_id"
-          ],
-          "columnsTo": [
-            "conversation_id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {
-        "junior_conversation_briefs_conversation_id_version_pk": {
-          "name": "junior_conversation_briefs_conversation_id_version_pk",
-          "columns": [
-            "conversation_id",
-            "version"
-          ]
-        }
-      },
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.junior_conversation_embeddings": {
       "name": "junior_conversation_embeddings",
       "schema": "",
@@ -2058,12 +1862,6 @@
           "type": "text",
           "primaryKey": true,
           "notNull": true
-        },
-        "brief_version": {
-          "name": "brief_version",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
         },
         "through_seq": {
           "name": "through_seq",
@@ -3496,6 +3294,27 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversations_root_lookup_idx": {
+          "name": "junior_conversations_root_lookup_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "root_conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_conversations_lead_actor_idx": {
           "name": "junior_conversations_lead_actor_idx",
           "columns": [
@@ -3525,27 +3344,6 @@
           "isUnique": false,
           "concurrently": false,
           "method": "gin",
-          "with": {}
-        },
-        "junior_conversations_root_lookup_idx": {
-          "name": "junior_conversations_root_lookup_idx",
-          "columns": [
-            {
-              "expression": "conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "root_conversation_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
           "with": {}
         }
       },
@@ -4423,8 +4221,8 @@
           "notNull": true,
           "default": false
         },
-        "subject_kind": {
-          "name": "subject_kind",
+        "dedupe_key": {
+          "name": "dedupe_key",
           "type": "text",
           "primaryKey": false,
           "notNull": true
@@ -4433,7 +4231,25 @@
           "name": "subject_id",
           "type": "text",
           "primaryKey": false,
-          "notNull": true
+          "notNull": false
+        },
+        "subject_title": {
+          "name": "subject_title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_url": {
+          "name": "subject_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "subject_title_parts": {
+          "name": "subject_title_parts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "owner_kind": {
           "name": "owner_kind",
@@ -4462,6 +4278,12 @@
         },
         "provider_tenant_id": {
           "name": "provider_tenant_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "automation_id": {
+          "name": "automation_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false
@@ -4498,8 +4320,8 @@
         }
       },
       "indexes": {
-        "junior_inbox_items_open_subject_uidx": {
-          "name": "junior_inbox_items_open_subject_uidx",
+        "junior_inbox_items_open_dedupe_uidx": {
+          "name": "junior_inbox_items_open_dedupe_uidx",
           "columns": [
             {
               "expression": "coalesce(\"provider\", '')",
@@ -4514,13 +4336,7 @@
               "nulls": "last"
             },
             {
-              "expression": "subject_kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "subject_id",
+              "expression": "dedupe_key",
               "isExpression": false,
               "asc": true,
               "nulls": "last"
@@ -4580,27 +4396,6 @@
           "method": "btree",
           "with": {}
         },
-        "junior_inbox_items_subject_kind_idx": {
-          "name": "junior_inbox_items_subject_kind_idx",
-          "columns": [
-            {
-              "expression": "subject_kind",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "status",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
         "junior_inbox_items_owner_idx": {
           "name": "junior_inbox_items_owner_idx",
           "columns": [
@@ -4634,6 +4429,27 @@
           ],
           "isUnique": false,
           "where": "\"junior_inbox_items\".\"status\" = 'open' and \"junior_inbox_items\".\"kind\" = 'action'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "junior_inbox_items_automation_idx": {
+          "name": "junior_inbox_items_automation_idx",
+          "columns": [
+            {
+              "expression": "automation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -4698,6 +4514,19 @@
         }
       },
       "foreignKeys": {
+        "junior_inbox_items_automation_id_junior_automations_id_fk": {
+          "name": "junior_inbox_items_automation_id_junior_automations_id_fk",
+          "tableFrom": "junior_inbox_items",
+          "tableTo": "junior_automations",
+          "columnsFrom": [
+            "automation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
         "junior_inbox_items_closed_by_user_id_junior_users_id_fk": {
           "name": "junior_inbox_items_closed_by_user_id_junior_users_id_fk",
           "tableFrom": "junior_inbox_items",
@@ -4718,11 +4547,11 @@
       "checkConstraints": {
         "junior_inbox_items_kind_check": {
           "name": "junior_inbox_items_kind_check",
-          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" -> 'question' is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" -> 'question' is not null or (\"junior_inbox_items\".\"subject_kind\" not in ('question', 'reply') and \"junior_inbox_items\".\"answer\" is null)))"
+          "value": "(\"junior_inbox_items\".\"kind\" = 'notice' and \"junior_inbox_items\".\"request\" is null and \"junior_inbox_items\".\"answer\" is null) or (\"junior_inbox_items\".\"kind\" = 'action' and (\"junior_inbox_items\".\"request\" is not null or ((\"junior_inbox_items\".\"dedupe_key\" like 'plugin:%' or \"junior_inbox_items\".\"dedupe_key\" like 'automation:%' or \"junior_inbox_items\".\"dedupe_key\" like 'todo:%') and \"junior_inbox_items\".\"answer\" is null)))"
         },
         "junior_inbox_items_owner_check": {
           "name": "junior_inbox_items_owner_check",
-          "value": "(\"junior_inbox_items\".\"owner_kind\" = 'automation') = (\"junior_inbox_items\".\"subject_kind\" = 'automation')"
+          "value": "(\"junior_inbox_items\".\"owner_kind\" = 'conversation' and \"junior_inbox_items\".\"dedupe_key\" not like 'automation:%') or (\"junior_inbox_items\".\"owner_kind\" = 'automation' and \"junior_inbox_items\".\"dedupe_key\" like 'automation:%')"
         },
         "junior_inbox_items_status_check": {
           "name": "junior_inbox_items_status_check",

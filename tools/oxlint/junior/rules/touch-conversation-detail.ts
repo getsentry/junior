@@ -7,7 +7,6 @@ import type { Context, ESTree } from "@oxlint/plugins";
 const detailTables = new Set([
   "juniorAttachments",
   "juniorConversationAnnotations",
-  "juniorConversationBriefs",
   "juniorConversationEvents",
   "juniorConversationParticipants",
   "juniorConversations",
@@ -16,7 +15,6 @@ const detailTables = new Set([
 const detailTableNames = [
   "junior_attachments",
   "junior_conversation_annotations",
-  "junior_conversation_briefs",
   "junior_conversation_events",
   "junior_conversation_participants",
   "junior_conversations",

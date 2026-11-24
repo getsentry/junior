@@ -11,7 +11,7 @@ const migration = readMigrationFiles({
     statement.includes('CREATE TRIGGER "junior_inbox_items_legacy_subject"'),
   ),
 );
-// The steps of 0173 that close the open items that now share a subject,
+// The steps of 0174 that close the open items that now share a subject,
 // up to the unique index that keeps one open item for each subject.
 const start =
   migration?.sql.findIndex((statement) =>
@@ -39,12 +39,12 @@ function legacyQuestion(id: string, key: string): string {
 describe("inbox item subject migration", () => {
   it("keeps one open item for each subject, with the assignees and snoozes and without the pushes of the items it closes", async () => {
     if (!migration || start < 0 || end < start) {
-      throw new Error("0173 subject steps not found");
+      throw new Error("0174 subject steps not found");
     }
     const fixture = createConfiguredJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
-      // Before 0173, the old dedupe keys of one pull request's asks differ.
+      // Before 0174, the old dedupe keys of one pull request's asks differ.
       await fixture.sql.execute(
         `DROP INDEX "junior_inbox_items_open_subject_uidx"`,
       );

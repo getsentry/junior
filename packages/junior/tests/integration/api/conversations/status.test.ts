@@ -23,7 +23,6 @@ import {
   ACTION_ITEM,
   failingAgentRunner,
   lastSeq,
-  recordBrief,
   recordStarterMessage,
   detailPath,
   createStatusFixture,
@@ -315,33 +314,6 @@ describe("conversation status", () => {
       .where(eq(juniorConversations.conversationId, conversationId));
     await recordAnswer(conversationId, 1);
     await expect(fixture.status(conversationId)).resolves.toBe("done");
-  });
-
-  it("reads the Brief outcome", async () => {
-    const fixture = await createStatusFixture();
-    const conversationId = await recordDashboardRoot(
-      fixture.conversationStore,
-      "local:web:status-brief",
-    );
-    await recordAnswer(conversationId, 1);
-    // A `done` Brief that covers the answer needs no read.
-    await recordBrief(conversationId, 1, "done");
-    await expect(fixture.status(conversationId)).resolves.toBe("done");
-    await recordBrief(conversationId, 2, "answered");
-    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    await recordBrief(conversationId, 3, "abandoned");
-    await expect(fixture.status(conversationId)).resolves.toBe("done");
-    // `partial` and `blocked` wait on the starter even after a read.
-    await recordStarterMessage(conversationId);
-    await recordBrief(conversationId, 4, "partial");
-    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    await recordBrief(conversationId, 5, "blocked");
-    await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
-    // A queued Turn works on it, so it waits on no one.
-    await expect(
-      fixture.send(conversationId, "status-brief-retry"),
-    ).resolves.toMatchObject({ status: "accepted" });
-    await expect(fixture.status(conversationId)).resolves.toBe("working");
   });
 
   it("covers only the Conversation's own work, not its child agents", async () => {
