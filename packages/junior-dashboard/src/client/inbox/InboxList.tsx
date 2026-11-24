@@ -356,8 +356,8 @@ export function InboxList(props: {
 
   const sweepControl = (rows: readonly InboxBundle[], scope: string) => (
     <SweepControl
-      clear={sweepOf(rows, data.isPinned).length}
-      onSweep={() => sweeper.sweep(sweepOf(rows, data.isPinned))}
+      clear={sweepOf(rows).length}
+      onSweep={() => sweeper.sweep(sweepOf(rows))}
       scope={scope}
     />
   );
