@@ -1,0 +1,25 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "00a4a9d0-11c3-404a-9b9c-7755ce155799",
+  "prevIds": ["90495786-2c2c-413b-9a2c-fdec2d790fc5"],
+  "footprints": [
+    {
+      "statementType": "drop_column",
+      "statementTarget": ["column", "public", "junior_users", "preferences"],
+      "writes": [
+        "s|col|public.junior_users.preferences",
+        "n|col|public.junior_users.preferences",
+        "e|col|public.junior_users.preferences"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_users\",\"preferences\"]"
+    }
+  ]
+}

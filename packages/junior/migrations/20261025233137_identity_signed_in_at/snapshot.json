@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "f2dd4b37-6caf-4453-9552-3ffafb9ffe5c",
+  "prevIds": ["6936b8a8-1c94-4be1-a259-10512747eb34"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_identities",
+        "signed_in_at"
+      ],
+      "writes": [
+        "s|col|public.junior_identities.signed_in_at",
+        "n|col|public.junior_identities.signed_in_at",
+        "e|col|public.junior_identities.signed_in_at"
+      ],
+      "reads": ["n|tbl|public.junior_identities", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_identities",
+        "name": "signed_in_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

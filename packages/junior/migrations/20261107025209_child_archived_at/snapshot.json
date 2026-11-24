@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "ff567d34-57b2-44b8-adf8-c88d68e35eeb",
+  "prevIds": ["92778f75-fd31-4609-bfed-da5a5a913247"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "child_archived_at"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.child_archived_at",
+        "n|col|public.junior_conversations.child_archived_at",
+        "e|col|public.junior_conversations.child_archived_at"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "child_archived_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

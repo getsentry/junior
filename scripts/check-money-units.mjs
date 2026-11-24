@@ -8,8 +8,8 @@ import { latestSnapshots } from "./lib/drizzle-snapshots.mjs";
  * sums are exact, so no read needs float cleanup. Code converts USD to
  * micro-USD and back only in `MONEY_HELPER`.
  *
- * - Columns: the latest Drizzle snapshot of each package is the schema that
- *   its migrations create. A column with a money word in its name must be a
+ * - Columns: the Drizzle snapshots of each package give the schema that its
+ *   migrations create. A column with a money word in its name must be a
  *   `bigint` named `*_micro_usd`.
  * - Stored names: a snake_case string in production source names a column,
  *   metric, or counter. One with a money word must end in `_micro_usd`.
@@ -103,10 +103,12 @@ export function checkSource(filePath, text) {
   return errors;
 }
 
-/** Check every package's latest snapshot and production source. */
-export function run({ root, files }) {
+/** Check every package's migrated schema and production source. */
+export async function run({ root, files }) {
   const errors = [];
-  for (const { packageName, snapshotPath, snapshot } of latestSnapshots(root)) {
+  for (const { packageName, snapshotPath, snapshot } of await latestSnapshots(
+    root,
+  )) {
     if (EXCLUDED_PACKAGES.has(packageName)) continue;
     errors.push(...checkSnapshotColumns(snapshotPath, snapshot));
   }

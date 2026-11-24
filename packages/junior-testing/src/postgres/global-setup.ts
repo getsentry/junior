@@ -14,14 +14,14 @@ async function applyMigrations(
   skip: ReadonlySet<string>,
 ): Promise<void> {
   const migrations = (await readdir(migrationsDir))
-    .filter((name) => name.endsWith(".sql") && !skip.has(name))
+    .filter((name) => /^\d{14}_/.test(name) && !skip.has(name))
     .sort();
   const client = new pg.Client({ connectionString });
   await client.connect();
   try {
     const statements = await Promise.all(
       migrations.map((migration) =>
-        readFile(resolve(migrationsDir, migration), "utf8"),
+        readFile(resolve(migrationsDir, migration, "migration.sql"), "utf8"),
       ),
     );
     for (const statement of statements) {
@@ -35,9 +35,9 @@ async function applyMigrations(
 
 /**
  * Vitest global setup for a package with SQL migrations. It applies every
- * file in `<package>/migrations` to one template database, except the files
- * in the `postgresSkipMigrations` provide value. Each worker copies the
- * template.
+ * migration folder in `<package>/migrations` to one template database, except
+ * the folders in the `postgresSkipMigrations` provide value. Each worker
+ * copies the template.
  */
 export default async function setup(
   project: TestProject,

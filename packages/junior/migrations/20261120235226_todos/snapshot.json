@@ -1,0 +1,473 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "e4360a71-8d25-444f-8f38-1751b93e874f",
+  "prevIds": ["0848acd7-d2ff-4ac6-90c5-d2a2b4af905e"],
+  "footprints": [
+    {
+      "statementType": "create_sequence",
+      "statementTarget": ["sequence", "public", "junior_todo_version_seq"],
+      "writes": [
+        "s|seq|public.junior_todo_version_seq",
+        "n|seq|public.junior_todo_version_seq",
+        "e|seq|public.junior_todo_version_seq",
+        "n|rel|public.junior_todo_version_seq"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_todos"],
+      "writes": [
+        "s|tbl|public.junior_todos",
+        "n|tbl|public.junior_todos",
+        "e|tbl|public.junior_todos",
+        "n|rel|public.junior_todos",
+        "n|type|public.junior_todos",
+        "n|rel|public.junior_todos_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_plan_items"],
+      "writes": [
+        "s|tbl|public.junior_plan_items",
+        "n|tbl|public.junior_plan_items",
+        "e|tbl|public.junior_plan_items",
+        "n|rel|public.junior_plan_items",
+        "n|type|public.junior_plan_items"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_todos"],
+      "writes": [
+        "s|fk|public.junior_todos.junior_todos_assignee_user_id_junior_users_id_fk",
+        "n|fk|public.junior_todos.junior_todos_assignee_user_id_junior_users_id_fk",
+        "e|fk|public.junior_todos.junior_todos_assignee_user_id_junior_users_id_fk",
+        "n|con|public.junior_todos.junior_todos_assignee_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_todos",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_todos.assignee_user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_todos"],
+      "writes": [
+        "s|fk|public.junior_todos.junior_todos_changed_by_user_id_junior_users_id_fk",
+        "n|fk|public.junior_todos.junior_todos_changed_by_user_id_junior_users_id_fk",
+        "e|fk|public.junior_todos.junior_todos_changed_by_user_id_junior_users_id_fk",
+        "n|con|public.junior_todos.junior_todos_changed_by_user_id_junior_users_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_todos",
+        "n|sch|public",
+        "n|tbl|public.junior_users",
+        "n|sch|public",
+        "n|col|public.junior_todos.changed_by_user_id",
+        "n|col|public.junior_users.id",
+        "e|uniqueness|public.junior_users.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_todos"],
+      "writes": [
+        "s|fk|public.junior_todos.junior_todos_conversation_id_fk",
+        "n|fk|public.junior_todos.junior_todos_conversation_id_fk",
+        "e|fk|public.junior_todos.junior_todos_conversation_id_fk",
+        "n|con|public.junior_todos.junior_todos_conversation_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_todos",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_todos.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    },
+    {
+      "statementType": "drop_sequence",
+      "statementTarget": ["sequence", "public", "junior_plan_item_version_seq"],
+      "writes": [
+        "s|seq|public.junior_plan_item_version_seq",
+        "n|seq|public.junior_plan_item_version_seq",
+        "e|seq|public.junior_plan_item_version_seq",
+        "n|rel|public.junior_plan_item_version_seq"
+      ],
+      "reads": ["n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_todos",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "id",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "notes",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "assignee_conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "assignee_user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "version",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "changed_by_user_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_assignee_user_id_junior_users_id_fk",
+        "nameExplicit": false,
+        "columns": ["assignee_user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_changed_by_user_id_junior_users_id_fk",
+        "nameExplicit": false,
+        "columns": ["changed_by_user_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_users",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_conversation_id_fk",
+        "nameExplicit": true,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_pk",
+        "columns": ["conversation_id", "id"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_status_check",
+        "value": "\"junior_todos\".\"status\" in ('open', 'in_progress', 'done', 'dropped')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_todos",
+        "name": "junior_todos_assignee_check",
+        "value": "\"junior_todos\".\"assignee_conversation_id\" is null or \"junior_todos\".\"assignee_user_id\" is null",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_todo_version_seq",
+        "incrementBy": "1",
+        "minValue": "1",
+        "maxValue": "9223372036854775807",
+        "startWith": "1",
+        "cacheSize": 1,
+        "cycle": false,
+        "entityType": "sequences"
+      }
+    },
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_plan_items\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"title\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"notes\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"status\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"assignee_conversation_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"assignee_user_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"version\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"changed_by_user_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"created_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_plan_items\",\"updated_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_plan_items_in_progress_uidx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_plan_items\",\"junior_plan_items_assignee_user_id_junior_users_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_plan_items\",\"junior_plan_items_changed_by_user_id_junior_users_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_plan_items\",\"junior_plan_items_conversation_id_fk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_plan_items\",\"junior_plan_items_pk\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_plan_items\",\"junior_plan_items_status_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "checks\u0000[\"public\",\"junior_plan_items\",\"junior_plan_items_assignee_check\"]"
+    },
+    {
+      "op": "drop",
+      "key": "sequences\u0000[\"public\",\"junior_plan_item_version_seq\"]"
+    }
+  ]
+}

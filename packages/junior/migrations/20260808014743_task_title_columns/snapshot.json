@@ -1,0 +1,68 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "86dbef33-04cf-4e3d-b324-b321a3af4af8",
+  "prevIds": ["108c9745-ff35-44a0-a964-26e2809e2023"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_event_tasks", "title"],
+      "writes": [
+        "s|col|public.junior_event_tasks.title",
+        "n|col|public.junior_event_tasks.title",
+        "e|col|public.junior_event_tasks.title"
+      ],
+      "reads": ["n|tbl|public.junior_event_tasks", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_scheduler_tasks",
+        "title"
+      ],
+      "writes": [
+        "s|col|public.junior_scheduler_tasks.title",
+        "n|col|public.junior_scheduler_tasks.title",
+        "e|col|public.junior_scheduler_tasks.title"
+      ],
+      "reads": ["n|tbl|public.junior_scheduler_tasks", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_scheduler_tasks",
+        "name": "title",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

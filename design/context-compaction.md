@@ -30,13 +30,6 @@ prompt cache warm while a person is away, so that a return is fast and cheap.
   make an answer worse. This is a good trade: the mark is 306K tokens for
   a 400K context window, and the Turn compacts at 360K anyway.
 
-## Entry points
-
-- Dashboard: the "context compacted" row in a Conversation transcript.
-- Dashboard: Admin, Cache warming, to turn a paused provider back on.
-- Deployment settings: `JUNIOR_CACHE_WARMING_ENABLED` and
-  `JUNIOR_IDLE_COMPACTION_ENABLED`. Both are on by default.
-
 ## Rules
 
 - Compaction on idle starts at the background compaction mark, 0.85 × the

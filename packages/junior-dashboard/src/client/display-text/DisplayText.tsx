@@ -17,8 +17,10 @@ export { MentionText } from "./mentions";
 export {
   type ListedObject,
   MessageObjectsProvider,
+  NearScreenObjects,
   sameTypeCard,
   useListedObjects,
+  useNearScreen,
   useResolvedObject,
 } from "./resolvedObjects";
 export { objectUrlKey, withoutStandaloneUrl } from "./knownObjects";

@@ -244,8 +244,7 @@ test.describe("new UI", () => {
             .first(),
         ).toBeVisible();
       },
-      // The rows' GitHub and Linear links read their live state (#4162).
-      { requests: 12, serialRounds: 3 },
+      { requests: 9, serialRounds: 2 },
     );
     expect(requests).toBe(1);
 
@@ -291,6 +290,43 @@ test.describe("new UI", () => {
       },
       { requests: 11, serialRounds: 2 },
     );
+  });
+
+  test("reads the card of each link once, for rows near the screen", async ({
+    page,
+    dashboard,
+  }) => {
+    const asked: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === "/api/objects") {
+        asked.push(...url.searchParams.getAll("url"));
+      }
+    });
+    const repeated = () => asked.filter((url, at) => asked.indexOf(url) !== at);
+    // A pull request of a row below the fold.
+    const below = "https://github.com/getsentry/relay/pull/3396";
+    const firstRead = page.waitForResponse(
+      (response) => new URL(response.url()).pathname === "/api/objects",
+    );
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
+    await firstRead;
+    // A row's links and the links in its summary share one read.
+    expect(repeated()).toEqual([]);
+    expect(asked).not.toContain(below);
+
+    const belowRead = page.waitForResponse((response) =>
+      new URL(response.url()).searchParams
+        .getAll("url")
+        .some((url) => url === below),
+    );
+    await page
+      .getByRole("region", { exact: true, name: "Conversations" })
+      .getByRole("link", { name: /Inbox comfortable rows pass/ })
+      .first()
+      .scrollIntoViewIfNeeded();
+    await belowRead;
+    expect(repeated()).toEqual([]);
   });
 
   test("keeps cached conversation and draft available through reconnect", async ({

@@ -1,0 +1,396 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "2d154736-5c0f-47c7-a700-ba3fe7791778",
+  "prevIds": ["2975fcbf-7615-4d37-b9ee-aa182fc7fbb4"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_event_embeddings"
+      ],
+      "writes": [
+        "s|tbl|public.junior_conversation_event_embeddings",
+        "n|tbl|public.junior_conversation_event_embeddings",
+        "e|tbl|public.junior_conversation_event_embeddings",
+        "n|rel|public.junior_conversation_event_embeddings",
+        "n|type|public.junior_conversation_event_embeddings",
+        "n|rel|public.junior_conversation_event_embeddings_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_event_lexemes"
+      ],
+      "writes": [
+        "s|tbl|public.junior_conversation_event_lexemes",
+        "n|tbl|public.junior_conversation_event_lexemes",
+        "e|tbl|public.junior_conversation_event_lexemes",
+        "n|rel|public.junior_conversation_event_lexemes",
+        "n|type|public.junior_conversation_event_lexemes",
+        "n|rel|public.junior_conversation_event_lexemes_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_event_lexemes",
+        "junior_conversation_event_lexemes_lexemes_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_event_lexemes_lexemes_idx",
+        "n|idx|public.junior_conversation_event_lexemes_lexemes_idx",
+        "e|idx|public.junior_conversation_event_lexemes_lexemes_idx",
+        "n|rel|public.junior_conversation_event_lexemes_lexemes_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_event_lexemes",
+        "n|sch|public",
+        "n|col|public.junior_conversation_event_lexemes.lexemes"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_event_embeddings"
+      ],
+      "writes": [
+        "s|fk|public.junior_conversation_event_embeddings.junior_conversation_event_embeddings_event_fk",
+        "n|fk|public.junior_conversation_event_embeddings.junior_conversation_event_embeddings_event_fk",
+        "e|fk|public.junior_conversation_event_embeddings.junior_conversation_event_embeddings_event_fk",
+        "n|con|public.junior_conversation_event_embeddings.junior_conversation_event_embeddings_event_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_event_embeddings",
+        "n|sch|public",
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_event_embeddings.conversation_id",
+        "n|col|public.junior_conversation_event_embeddings.seq",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.seq",
+        "e|uniqueness|public.junior_conversation_events.conversation_id.seq"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_conversation_event_lexemes"
+      ],
+      "writes": [
+        "s|fk|public.junior_conversation_event_lexemes.junior_conversation_event_lexemes_event_fk",
+        "n|fk|public.junior_conversation_event_lexemes.junior_conversation_event_lexemes_event_fk",
+        "e|fk|public.junior_conversation_event_lexemes.junior_conversation_event_lexemes_event_fk",
+        "n|con|public.junior_conversation_event_lexemes.junior_conversation_event_lexemes_event_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_event_lexemes",
+        "n|sch|public",
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_event_lexemes.conversation_id",
+        "n|col|public.junior_conversation_event_lexemes.seq",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.seq",
+        "e|uniqueness|public.junior_conversation_events.conversation_id.seq"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_conversation_event_embeddings",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_conversation_event_lexemes",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "model",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "dimensions",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "embedding",
+        "type": "halfvec",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_lexemes",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_lexemes",
+        "name": "seq",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_lexemes",
+        "name": "lexemes",
+        "type": "tsvector",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_lexemes",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "now()",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_lexemes",
+        "name": "junior_conversation_event_lexemes_lexemes_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "lexemes",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "junior_conversation_event_embeddings_event_fk",
+        "nameExplicit": true,
+        "columns": ["conversation_id", "seq"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversation_events",
+        "columnsTo": ["conversation_id", "seq"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_lexemes",
+        "name": "junior_conversation_event_lexemes_event_fk",
+        "nameExplicit": true,
+        "columns": ["conversation_id", "seq"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversation_events",
+        "columnsTo": ["conversation_id", "seq"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "junior_conversation_event_embeddings_pk",
+        "columns": ["conversation_id", "seq"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_lexemes",
+        "name": "junior_conversation_event_lexemes_pk",
+        "columns": ["conversation_id", "seq"],
+        "nameExplicit": true,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_event_embeddings",
+        "name": "junior_conversation_event_embeddings_dimensions_check",
+        "value": "vector_dims(\"junior_conversation_event_embeddings\".\"embedding\") = \"junior_conversation_event_embeddings\".\"dimensions\"",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

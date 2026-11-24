@@ -224,6 +224,14 @@ test.describe("new UI", () => {
     // Each conversation opens with details beside the chat.
     await expect(details).toBeVisible();
     await expect(page.getByRole("note")).toContainText("Private conversation");
+    // The viewer is not a participant, so the dock says why there is no
+    // reply box.
+    await expect(
+      page.getByText("Only participants can reply to a private conversation."),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("textbox", { name: "Continue this conversation" }),
+    ).toHaveCount(0);
   });
 
   test("shows a Watch on linked work in its linked work row", async ({

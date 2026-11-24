@@ -1,0 +1,70 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "4317956b-0fe4-45e6-b785-215cffb349ff",
+  "prevIds": ["327dcd99-2e9b-401c-8212-57400f212633"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_events",
+        "junior_conversation_events_author_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_events_author_idx",
+        "n|idx|public.junior_conversation_events_author_idx",
+        "e|idx|public.junior_conversation_events_author_idx",
+        "n|rel|public.junior_conversation_events_author_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_events",
+        "n|sch|public",
+        "n|col|public.junior_conversation_events.conversation_id",
+        "n|col|public.junior_conversation_events.actor_identity_id",
+        "n|col|public.junior_conversation_events.seq"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_events",
+        "name": "junior_conversation_events_author_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "actor_identity_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "seq",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_conversation_events\".\"actor_identity_id\" is not null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}
