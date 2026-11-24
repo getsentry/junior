@@ -70,7 +70,13 @@ struct Drawer: View {
 
       ServerFooter(
         host: app.server.isDemo ? "Demo" : app.server.baseURL.host() ?? app.server.baseURL.absoluteString,
-        version: app.serverVersion)
+        version: app.serverVersion,
+        changelogBadge: app.changelogBadge
+      ) {
+        BundledChangelog.markSeen()
+        app.changelogBadge = false
+        window.changelogOpen = true
+      }
     }
     .background(Tokens.bgElevated)
     .overlay(alignment: .trailing) {
@@ -157,21 +163,42 @@ struct ThemeRow: View {
   }
 }
 
+/// The Junior the app is signed in to, and the changelog beside it.
 private struct ServerFooter: View {
   let host: String
   let version: String?
+  let changelogBadge: Bool
+  let openChangelog: () -> Void
 
   var body: some View {
-    VStack(alignment: .leading, spacing: 2) {
-      Text(host).type(.xs, .semibold).foregroundStyle(Tokens.text)
-      if let version {
-        Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
+    HStack(spacing: 8) {
+      VStack(alignment: .leading, spacing: 2) {
+        Text(host).type(.xs, .semibold).foregroundStyle(Tokens.text)
+        if let version {
+          Text("junior version \(version)").type(.xs).foregroundStyle(Tokens.textMuted)
+        }
+        Text("iOS app \(AppBuild.current.label)").type(.xs).foregroundStyle(Tokens.textMuted)
       }
+      .frame(maxWidth: .infinity, alignment: .leading)
+      .accessibilityElement(children: .combine)
+      Button(action: openChangelog) {
+        HStack(spacing: 6) {
+          Text("Changelog")
+          if changelogBadge { Dot(color: Color.palette(.red, 500), size: 8) }
+        }
+        .type(.xs, .medium)
+        .foregroundStyle(Tokens.textMuted)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+      }
+      .buttonStyle(PressableStyle(radius: 6))
+      .accessibilityLabel(changelogBadge ? "Changelog, new" : "Changelog")
+      .accessibilityIdentifier("show-changelog")
     }
-    .frame(maxWidth: .infinity, alignment: .leading)
-    .padding(.horizontal, 16)
+    .padding(.leading, 16)
+    .padding(.trailing, 8)
     .padding(.vertical, 12)
     .hairline(.top, Tokens.borderSubtle)
-    .accessibilityElement(children: .combine)
   }
 }

@@ -60,8 +60,8 @@ import {
 } from "../../lead/LeadFirstRun";
 import { LeadPageScope } from "../../lead/LeadPageProvider";
 import { ContinueInSlackDialog } from "../../conversations/ContinueInSlackDialog";
-import { ConversationPageDock } from "../../conversations/ConversationPageDock";
 import { ConversationDetailsPanel } from "./ConversationDetailsPanel";
+import { ConversationDock } from "./ConversationDock";
 import {
   saveDetailsOpen,
   useDetailsStartOpen,
@@ -100,13 +100,8 @@ import {
   itemConversationId,
   inboxItemIdFromToolCall,
 } from "../../inbox/inboxItemFormat";
-import { conversationContextTags } from "../../conversations/ConversationContextTags";
 import { conversationLinks } from "../../conversations/ConversationLinkedWork";
-import {
-  ConversationAnnotations,
-  conversationCost,
-  ConversationPrivacyChip,
-} from "../../conversations/ConversationMeta";
+import { ConversationPrivacyChip } from "../../conversations/ConversationMeta";
 import {
   buildConversations,
   conversationDetailTitle,
@@ -721,14 +716,6 @@ export function ConversationPage(props: {
             <ConversationHeader
               lead={kindKnown ? lead : undefined}
               agentTree={conversationDetail?.agentTree}
-              autoArchive={conversationDetail?.autoArchive}
-              summary={conversationDetail?.summary}
-              summaryMentions={conversationDetail?.summaryMentions}
-              contextTags={conversationContextTags(
-                conversation,
-                conversationDetail?.annotations,
-              )}
-              cost={conversationCost(conversation, conversationDetail, "below")}
               detailsOpen={showDetails}
               errors={[
                 // A refused restore names the archived ancestor to restore
@@ -766,9 +753,6 @@ export function ConversationPage(props: {
                     forks={detail.data.forks}
                   />
                 ) : null
-              }
-              linkedWork={
-                links.length ? <ConversationAnnotations links={links} /> : null
               }
               menu={{
                 actions: {
@@ -930,25 +914,20 @@ export function ConversationPage(props: {
             </TranscriptColumn>
           }
           dock={
-            canReply ? (
-              <div
-                className="contents"
-                onFocusCapture={engageComposer}
-                onPointerDownCapture={engageComposer}
-              >
-                <ConversationPageDock
-                  conversationId={conversationId}
-                  detail={detail}
-                  focusRequest={replyFocusRequest}
-                  hasNewerPage={Boolean(history.newer)}
-                  live={live}
-                  onFocusRequestDone={setReplyFocusDoneKey}
-                  onPinRequest={requestPin}
-                  placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
-                  ref={replyRef}
-                />
-              </div>
-            ) : undefined
+            <ConversationDock
+              canReply={canReply}
+              conversationId={conversationId}
+              detail={detail}
+              focusRequest={replyFocusRequest}
+              hasNewerPage={Boolean(history.newer)}
+              live={live}
+              onEngage={engageComposer}
+              onFocusRequestDone={setReplyFocusDoneKey}
+              onPinRequest={requestPin}
+              placeholder={lead ? LEAD_REPLY_PLACEHOLDER : undefined}
+              ref={replyRef}
+              view={view}
+            />
           }
         />
       </ConversationSidePanelLayout>

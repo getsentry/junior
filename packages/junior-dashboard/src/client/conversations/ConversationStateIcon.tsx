@@ -31,22 +31,44 @@ export function conversationDisplayState(
   return conversation.pinnedAt ? "pinned" : undefined;
 }
 
+const STATE_LABELS: Record<ConversationDisplayState, string> = {
+  needs_you: "Waiting on you",
+  pinned: "Pinned",
+  watching: "Watching for an event",
+  working: "Working",
+};
+
 /**
  * Render the one state icon of a Conversation row: a question mark when it
- * waits on the viewer, a spinner while it works, an eye that blinks now and
- * then while it watches for an Event or Timer, and a pin when it is pinned.
- * Nothing otherwise.
+ * waits on the viewer, a spinner while it works, an eye while it watches for
+ * an Event or Timer, and a pin when it is pinned. Nothing otherwise. Hover
+ * shows the label, since an icon alone does not say what it means.
  */
 export function ConversationStateIcon(props: {
   className?: string;
   state: ConversationDisplayState | undefined;
 }) {
-  const className = cn("size-3.5 shrink-0", props.className);
-  switch (props.state) {
+  if (!props.state) return null;
+  const label = STATE_LABELS[props.state];
+  // A `title` attribute, not an SVG `<title>`, so the label stays out of the
+  // text of the row or chip that holds the icon.
+  return (
+    <span
+      className={cn("inline-flex size-3.5 shrink-0", props.className)}
+      title={label}
+    >
+      {stateIcon(props.state, label)}
+    </span>
+  );
+}
+
+function stateIcon(state: ConversationDisplayState, label: string) {
+  const className = "size-full";
+  switch (state) {
     case "needs_you":
       return (
         <CircleHelp
-          aria-label="Waiting on you"
+          aria-label={label}
           className={cn(className, "text-dashboard-accent-text")}
           role="img"
           strokeWidth={2.2}
@@ -55,30 +77,25 @@ export function ConversationStateIcon(props: {
     case "working":
       return (
         <Spinner
-          aria-label="Working"
+          aria-label={label}
           className={cn(className, "text-emerald-500 dark:text-emerald-300")}
         />
       );
     case "watching":
       return (
         <Eye
-          aria-label="Watching for an event"
-          className={cn(
-            className,
-            "animate-[junior-watch-blink_30s_ease-in-out_infinite] text-dashboard-text-faint motion-reduce:animate-none",
-          )}
+          aria-label={label}
+          className={cn(className, "text-dashboard-text-faint")}
           role="img"
         />
       );
     case "pinned":
       return (
         <Pin
-          aria-label="Pinned"
+          aria-label={label}
           className={cn(className, "text-dashboard-text-muted")}
           role="img"
         />
       );
-    default:
-      return null;
   }
 }

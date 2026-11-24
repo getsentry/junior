@@ -8,7 +8,18 @@ on:
     paths:
       - "apps/ios/**"
       - ".github/workflows/ios.yml"
+  # CI calls this workflow for pull requests into main and core-next that
+  # change apps/ios, so `ci / required` waits for it.
+  workflow_call:
+    inputs:
+      skip_ui:
+        description: Skip the UI tests and screenshots, and run only the build.
+        type: boolean
+        default: false
+  # CI does not run for stacked pull requests, so this workflow runs on its
+  # own for them.
   pull_request:
+    branches-ignore: [main, core-next]
     paths:
       - "apps/ios/**"
       - ".github/workflows/ios.yml"
@@ -43,6 +54,7 @@ jobs:
 
   ui:
     name: test / ui and screenshots
+    if: ${{ !inputs.skip_ui }}
     runs-on: xcode-27
     timeout-minutes: 45
     steps:
@@ -89,6 +101,7 @@ jobs:
 
   ipad:
     name: screenshots / ipad ${{ matrix.orientation }}
+    if: ${{ !inputs.skip_ui }}
     runs-on: xcode-27
     timeout-minutes: 30
     strategy:
