@@ -108,10 +108,11 @@ export const juniorInboxItems = pgTable(
     // An agent's action asks a question. A plugin's action asks for a step
     // outside Junior, such as a merge, and the plugin closes it. An
     // Automation alert asks its creator to fix the Automation, and core
-    // closes it when the Automation recovers.
+    // closes it when the Automation recovers. A To-do's action asks its
+    // assignee to do the To-do, and core closes it when the To-do closes.
     check(
       "junior_inbox_items_kind_check",
-      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or ((${table.dedupeKey} like 'plugin:%' or ${table.dedupeKey} like 'automation:%') and ${table.answer} is null)))`,
+      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or ((${table.dedupeKey} like 'plugin:%' or ${table.dedupeKey} like 'automation:%' or ${table.dedupeKey} like 'todo:%') and ${table.answer} is null)))`,
     ),
     // Only core adds Automation alerts, with the reserved key prefix.
     check(

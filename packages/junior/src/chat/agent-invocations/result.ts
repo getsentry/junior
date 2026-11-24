@@ -11,8 +11,7 @@ import {
   getConversationStoppedAtMs,
 } from "@/chat/conversations/session-stop";
 import { turnBehavior } from "@/chat/conversations/kind-behavior";
-import { getConversationStore, getSqlExecutor } from "@/chat/db";
-import { closeOpenTodosOfChild } from "@/chat/todos/store";
+import { getConversationStore } from "@/chat/db";
 import { buildDeterministicTurnId } from "@/chat/state/turn-id";
 import {
   listActiveMailboxTurns,
@@ -110,22 +109,6 @@ function renderResultUnderLock(
         listChildMessages(parentInboundMessageIds, messageSenders),
       ),
     );
-}
-
-/**
- * Drop the child's open To-dos of the parent before the parent reads that
- * the child was stopped.
- */
-async function dropTodosOfStoppedChild(
-  sender: ChildAgentSender,
-  nowMs: number,
-): Promise<void> {
-  await closeOpenTodosOfChild(getSqlExecutor(), {
-    childConversationId: sender.childConversationId,
-    nowMs,
-    parentConversationId: sender.parentConversationId,
-    status: "dropped",
-  });
 }
 
 /**
@@ -281,19 +264,6 @@ export async function enqueueChildResultToParent(args: {
       turnId: args.turnId,
     }),
   };
-  // A `stopped` result drops the child's open To-dos. Only the first send
-  // drops them: a retry must not drop To-dos assigned after it.
-  if (
-    args.result.kind === "stopped" &&
-    !(
-      await readParentChildMessages(
-        args.sender.parentConversationId,
-        args.state,
-      )
-    ).some((message) => message.inboundMessageId === inboundMessageId)
-  ) {
-    await dropTodosOfStoppedChild(args.sender, nowMs);
-  }
   await enqueueAutomatedInput({
     message: {
       conversationId: args.sender.parentConversationId,

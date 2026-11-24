@@ -14,6 +14,7 @@ const PLURALS: Record<string, string> = {
   Approval: "Approvals",
   FYI: "FYIs",
   Question: "Questions",
+  "To do for you": "To dos for you",
 };
 
 // The kind of a pull request ask in short words, before its change's title.
@@ -125,7 +126,7 @@ export function Pill(props: { pill: AskPill }) {
   return (
     <span
       className={cn(
-        "inline-flex h-5 min-w-0 max-w-60 items-center gap-1 text-xs leading-none whitespace-nowrap",
+        "inline-flex h-5 min-w-0 max-w-60 items-center gap-1 text-xs leading-4 whitespace-nowrap",
         pill.strong ? "text-dashboard-text" : "text-dashboard-text-muted",
       )}
       data-ask-pill={pill.kind}

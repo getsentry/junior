@@ -613,6 +613,7 @@ export type InboxItemCall =
 export function route(
   fixture: GitHubFixture,
   calls: InboxItemCall[],
+  /** Each logged error, as `message: cause name` when it has a cause. */
   errors: string[] = [],
   failures = { close: 0 },
   /** Keys of the other closed items, such as from before one item per pull request. */
@@ -672,8 +673,10 @@ export function route(
     }),
     db: fixture.db(),
     log: {
-      error(message) {
-        errors.push(message);
+      error(message, _metadata, cause) {
+        errors.push(
+          cause instanceof Error ? `${message}: ${cause.name}` : message,
+        );
       },
       info() {},
       warn() {},

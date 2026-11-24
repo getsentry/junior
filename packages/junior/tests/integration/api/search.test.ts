@@ -6,18 +6,27 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { searchReportSchema } from "@/api/schema";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { closeDb, getDb, getSqlExecutor } from "@/chat/db";
+import {
+  closeDb,
+  getConversationStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import { reembedMemories } from "@/chat/memory/reembed";
 import { memoryDb } from "@/chat/memory/store";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { saveScheduledAutomation } from "@/chat/scheduled-automations/tasks";
+import { changeTodos } from "@/chat/todos/store";
+import type { TodoStatus } from "@/chat/todos/types";
 import {
   fallbackShortTitle,
   SHORT_TITLE_MAX_LENGTH,
 } from "@/chat/services/short-title";
+import { juniorConversationParticipants } from "@/db/schema";
 import { juniorMemoryMemories } from "@/db/schema/memory";
+import { readStats } from "@/stats";
 import { mockEmbeddings } from "../../fixtures/retrieval-models";
 import { expectResponseBudget } from "../../fixtures/response-budget";
 import {
@@ -31,6 +40,8 @@ const VIEWER = { email: "ana@example.com", slackUserId: "UANA" };
 const OTHER = { email: "bob@example.com", slackUserId: "UBOB" };
 // The longest title that the add tool takes.
 const INBOX_ITEM_TITLE_MAX_LENGTH = 200;
+// The longest title that `updateTodos` takes.
+const TODO_TITLE_MAX_LENGTH = 200;
 // Vectors of a stored size that the exact search reads.
 const MEMORY_VECTOR = [1, ...Array<number>(1_535).fill(0)];
 const UNRELATED_VECTOR = [0, 1, ...Array<number>(1_534).fill(0)];
@@ -178,6 +189,46 @@ async function memory(
       .update(juniorMemoryMemories)
       .set(changes)
       .where(eq(juniorMemoryMemories.id, id));
+  }
+}
+
+/** Add To-dos to a stored Conversation, one change each, so each is newer. */
+async function todos(
+  conversationId: string,
+  rows: readonly { status: TodoStatus; title: string }[],
+) {
+  for (const row of rows) {
+    await changeTodos(getSqlExecutor(), {
+      conversationId,
+      nowMs: Date.now(),
+      change: {
+        add: [{ ...row, assignee: { conversationId } }],
+        remove: [],
+        update: [],
+      },
+    });
+  }
+}
+
+/** Store a local root Conversation, with `participantId` as a Participant. */
+async function rootConversation(args: {
+  conversationId: string;
+  participantId?: string;
+  visibility: "private" | "public";
+}) {
+  await getConversationStore().recordActivity({
+    conversationId: args.conversationId,
+    destination: { platform: "local", conversationId: args.conversationId },
+    nowMs: Date.now(),
+    source: "internal",
+    visibility: args.visibility,
+  });
+  if (args.participantId) {
+    await getDb().insert(juniorConversationParticipants).values({
+      lastMessageAt: new Date(),
+      rootConversationId: args.conversationId,
+      userId: args.participantId,
+    });
   }
 }
 
@@ -393,6 +444,114 @@ describe("search API", () => {
     expect(await ids("zebra")).toEqual(["memory-visible"]);
   });
 
+  it("finds To-dos only where the viewer sees the Conversation's private content, open ones first", async () => {
+    const viewer = await person(VIEWER);
+    await rootConversation({
+      conversationId: "local:search:public",
+      visibility: "public",
+    });
+    await rootConversation({
+      conversationId: "local:search:mine",
+      participantId: viewer.id,
+      visibility: "private",
+    });
+    await getConversationStore().createChild({
+      childConversationId: "local:search:mine-task",
+      kind: "task",
+      parentConversationId: "local:search:mine",
+    });
+    // The viewer sees only redacted To-dos here, at the root and in a child.
+    await rootConversation({
+      conversationId: "local:search:redacted",
+      visibility: "private",
+    });
+    await getConversationStore().createChild({
+      childConversationId: "local:search:redacted-task",
+      kind: "task",
+      parentConversationId: "local:search:redacted",
+    });
+    await todos("local:search:mine", [
+      { status: "done", title: "Ship the hotfix" },
+      { status: "in_progress", title: "Ship the documentation" },
+    ]);
+    await todos("local:search:mine-task", [
+      { status: "dropped", title: "Ship the old plan" },
+      { status: "open", title: "Ship the task summary" },
+    ]);
+    await todos("local:search:public", [
+      { status: "open", title: "Ship the release notes" },
+    ]);
+    await todos("local:search:redacted", [
+      { status: "open", title: "Ship the secret plan" },
+    ]);
+    await todos("local:search:redacted-task", [
+      { status: "done", title: "Ship the secret task" },
+    ]);
+    const search = signedIn(viewer);
+    const titles = async (q: string) =>
+      (await report(search(q, "todos"))).todos?.map(({ title }) => title);
+
+    // Open and in-progress To-dos first, newest first on equal matches, then
+    // the closed ones.
+    expect(await titles("shi")).toEqual([
+      "Ship the release notes",
+      "Ship the task summary",
+      "Ship the documentation",
+      "Ship the old plan",
+      "Ship the hotfix",
+    ]);
+    expect(await titles("secret")).toEqual([]);
+    // A typo in a title still matches.
+    expect(await titles("documentaton")).toEqual(["Ship the documentation"]);
+  });
+
+  it("finds a memory by a half-typed inflected word", async () => {
+    mockEmbeddings((text) =>
+      text === "runn" ? UNRELATED_VECTOR : MEMORY_VECTOR,
+    );
+    const viewer = await person(VIEWER);
+    await memory("memory-running", "Running the deploy checklist first.");
+    const ids = async (q: string) =>
+      (await report(signedIn(viewer)(q, "memories"))).memories?.map(
+        ({ id }) => id,
+      );
+
+    // `english` stems "running" to "run", which "runn" does not start.
+    expect(await ids("runn")).toEqual(["memory-running"]);
+  });
+
+  it("embeds typed text of 3 or more characters once, and records its cost", async () => {
+    // 50 tokens of the default embedding model cost 1 micro-USD.
+    const calls = mockEmbeddings(() => MEMORY_VECTOR, { tokensPerText: 50 });
+    const viewer = await person(VIEWER);
+    await memory("memory-release", "Release notes go in the changelog.");
+    calls.length = 0;
+    const search = signedIn(viewer);
+    const ids = async (q: string) =>
+      (await report(search(q, "memories"))).memories?.map(({ id }) => id);
+
+    // Words alone match 2 characters.
+    expect(await ids("re")).toEqual(["memory-release"]);
+    expect(calls).toEqual([]);
+    expect(await ids("release")).toEqual(["memory-release"]);
+    expect(await ids("release")).toEqual(["memory-release"]);
+    expect(calls).toEqual([["release"]]);
+    const today = new Date().toISOString().slice(0, 10);
+    expect(
+      (await readStats(today, today)).filter(
+        ({ namespace }) => namespace === "search",
+      ),
+    ).toEqual([
+      {
+        count: 1,
+        date: today,
+        metric: "embedding_cost_micro_usd",
+        name: "openai/text-embedding-3-small",
+        namespace: "search",
+      },
+    ]);
+  });
+
   it("reads every source at once from its index, within a size budget", async () => {
     const viewer = await person(VIEWER);
     await inboxItem({
@@ -408,27 +567,42 @@ describe("search API", () => {
       title: `Deploy ${"x".repeat(SHORT_TITLE_MAX_LENGTH - 7)}`,
       visibility: "private",
     });
-    mockEmbeddings(() => MEMORY_VECTOR);
+    // The query embedding costs 1 micro-USD, so its cost is always recorded.
+    mockEmbeddings(() => MEMORY_VECTOR, { tokensPerText: 50 });
     // As long as a stored id: a UUID.
     await memory(randomUUID(), `Deploy ${"x".repeat(1_000)}`);
+    // As long as a stored id: an agent id.
+    const budgetConversationId = `agent:${"0".repeat(32)}`;
+    await rootConversation({
+      conversationId: budgetConversationId,
+      participantId: viewer.id,
+      visibility: "private",
+    });
+    await todos(budgetConversationId, [
+      {
+        status: "open",
+        title: `Deploy ${"x".repeat(TODO_TITLE_MAX_LENGTH - 7)}`,
+      },
+    ]);
     const search = signedIn(viewer);
-    const sources = "inboxItems,automations,memories";
+    const sources = "inboxItems,automations,memories,todos";
 
     const response = await expectResponseBudget(
       () =>
         expectNoFullScan(() =>
           expectSqlBudget(() => search("deploy", sources), {
-            statements: 4,
+            statements: 7,
             serialRounds: 1,
           }),
         ),
-      { automations: 155, inboxItems: 272, memories: 176 },
+      { automations: 155, inboxItems: 272, memories: 176, todos: 300 },
     );
 
     const found = await report(response);
     expect(found.automations).toHaveLength(1);
     expect(found.inboxItems).toHaveLength(1);
     expect(found.memories).toHaveLength(1);
+    expect(found.todos).toHaveLength(1);
     // Text with no letters or digits matches nothing and reads nothing.
     const punctuation = await measureSql(() => search("&|!", sources));
     expect(punctuation.sql.statements).toBe(0);
@@ -436,7 +610,8 @@ describe("search API", () => {
       automations: [],
       inboxItems: [],
       memories: [],
+      todos: [],
     });
-    expect((await search("deploy", "inboxItems,todos")).status).toBe(400);
+    expect((await search("deploy", "inboxItems,plans")).status).toBe(400);
   });
 });

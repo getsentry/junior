@@ -11,7 +11,7 @@ the check first. A rule that only review enforces is a judgment call.
 | --- | --- |
 | Don't state the obvious. Minimize visual noise in UI. In UI copy, agent replies, Slack messages, docs, and PR text, cut what the context already shows. | Review |
 | Use the words in `TERMINOLOGY.md`. Do not invent synonyms. | Review |
-| Never ask a person to do the obviously right thing; do it. Ask for a person's attention only as `design/attention.md` allows. | Review |
+| A person's attention is the scarcest thing Junior spends. Ask for it only for an answer, a result, or a step that only they can take, and name which. Do the obviously right work, including upkeep of Junior's own work, and tell nobody. | Review |
 | Build the smallest design that solves the proven problem. When output lacks information, use the data the system already stores before you add a hook or lookup. No speculative abstractions, hooks, configuration, or wrappers. | Review, `policies/correctness-complexity.md` |
 | Generate deterministic output, such as links, IDs, and formats, in code. Do not fix it with prompt or tool text. | Review, `design/prompts.md` |
 | Write TypeScript, not Java: functions, plain objects, simple types, small modules. | Review |
@@ -21,10 +21,12 @@ the check first. A rule that only review enforces is a judgment call.
 | No mutable runtime globals. No test-only singleton mutation APIs. | `test-architecture:check` for tests, review elsewhere |
 | Query tables with the Drizzle query builder. Use `sql` only for expressions inside a builder query, or for statements without a table. | oxlint `junior/no-raw-sql-queries` |
 | Store money in Postgres as whole micro-USD: a `bigint` column or an integer metric named `*_micro_usd`. Convert with `packages/junior/src/db/micro-usd.ts`. | `money-units:check` |
+| Read GitHub state from GitHub through the plugin cache. Do not copy it into tables. | `provider-state:check` |
 | Group files by feature and name paths by role. No feature-directory barrels. | Review |
 | Exported functions get a brief JSDoc that states intent. | Review |
 | Docs use ASD-STE100 English: common words, active voice, short sentences. | Review |
 | A check baseline may only shrink. Fix the new violation. Do not add or raise an entry. | `baseline-growth:check` |
+| A Frameshift screenshot change that your diff did not cause is a bug. Find why the shot changed and fix it, or open an issue with the before and after. Do not ignore it or call it noise. | Review, `e2e/screenshot.ts` fails a shot that keeps changing |
 | This is the only `AGENTS.md`. Do not add one in a directory. Put intent in a code comment next to the code that it governs. | `file-length:check` |
 | Change this file or a `README.md` only when intent, an invariant, or a boundary changes. Do not commit implementation plans. Track planned work in GitHub issues. | Review |
 | `design/` states the intent that people set for each system. Add, change, or remove a line there only after the person you work for confirms that exact text and its intent. Never change it as part of other work. | Review |

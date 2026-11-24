@@ -31,8 +31,8 @@ table documents its attributes and how to read them. Paths are under
 - `gen_ai.conversation.id` also names child agents. Count root Conversations
   by `app.conversation.root_id`.
 - Each provider event records a Code change again. Count Code changes by
-  `vcs.repository.url.full` and `vcs.change.id`. `vcs.change.state` is
-  `open`, `closed`, or `merged`.
+  `vcs.provider.name`, `vcs.repository.name`, and `vcs.change.id`.
+  `vcs.change.state` is `open`, `closed`, or `merged`.
 - A fire Conversation uses `agent-dispatch:<dispatch_id>` as
   `gen_ai.conversation.id`.
 - Production keeps only warnings and audit info events (`app.log.audit:true`),

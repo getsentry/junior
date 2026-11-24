@@ -18,15 +18,13 @@ import {
   signQueueMessage,
   verifyQueueMessage,
 } from "@/chat/queue/sign";
+import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 /** Options for one plugin task send. */
 export interface PluginTaskSendOptions {
   /** Queue dedupe key of a started task. A session task derives its own. */
   idempotencyKey?: string;
 }
-
-/** Deploy topic name. Keep stable for Vercel queue wiring. */
-export const PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
 
 /** Queue deliveries of one plugin task before it stops. */
 export const PLUGIN_TASK_MAX_DELIVERIES = 5;

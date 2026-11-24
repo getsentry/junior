@@ -250,7 +250,9 @@ vi.mock("@/chat/guardian/reviewer", () => ({
 
 vi.mock("@/chat/prompt", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@/chat/prompt")>()),
-  buildSystemPrompt: () => "System prompt",
+  buildCoreSystemPromptSections: () => [
+    { name: "core", text: "System prompt" },
+  ],
 }));
 
 vi.mock("@/chat/runtime/dev-agent-trace", () => ({

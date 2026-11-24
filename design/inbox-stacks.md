@@ -37,13 +37,14 @@ can act on it.
   icons with their names as tooltips. The main step comes last. On a code
   change row it opens the change on its provider, such as "Review on
   GitHub". A row with no main step, such as a question, shows Expand. A
-  touch screen has no hover, so there a row shows its actions only once it
-  is open. Rows do not repeat them.
+  "To do for you" row's main step is Done. A touch screen has no
+  hover, so there a row shows its actions only once it is open. Rows do
+  not repeat them.
 - On a stack: Dismiss and Snooze, as quiet buttons in the order of a
   row's actions, and the stack's item count once, right-most. The buttons
   do not repeat the count. Their names say what they cover, such as
   "Snooze 3 items in this stack". Snooze covers every row. Dismiss covers
-  the open asks that the viewer can act on.
+  the open asks that the viewer can act on, except To-dos.
 - On a Conversation row, on hover: Archive, Pin, then Open, last.
 - A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
 
@@ -89,7 +90,8 @@ Grouping:
 Actions:
 
 - Each row carries its own answer, Dismiss, and Snooze. An answer closes
-  the item as done. None of them act on the other rows of the stack.
+  the item as done. A "To do for you" row carries Dismiss, Snooze, and
+  Done: only its assignee closes their To-do. None of them act on the other rows of the stack.
 - A row that closes leaves with one motion, whatever closed it: its own
   action, another person, an agent, or Slack. The other rows stay.
 - A row's own action applies before the server answers. When it fails, only
@@ -134,3 +136,6 @@ Snooze:
 
 - A stack shows only the root's title. The Conversation row's kind pills,
   Brief, and activity do not show for a root with more than one item.
+- When a Snooze fails, the row comes back with an error toast that offers
+  no Retry. This breaks "when it fails, only that row comes back, and a
+  toast offers Retry".
