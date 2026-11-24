@@ -1,4 +1,5 @@
 import pLimit from "p-limit";
+import { enqueueChildDismissToParent } from "@/chat/agent-invocations/result";
 import { FAN_OUT_CONCURRENCY } from "@/chat/fan-out";
 import type { User } from "@sentry/junior-plugin-api";
 import { and, inArray, isNull } from "drizzle-orm";
@@ -210,6 +211,19 @@ async function sendOne(args: {
 }): Promise<void> {
   if (recordsOnly(args.item, args.change, args.conversationId)) {
     await recordInboxItemChange(args);
+    // The parent of a child that asked still waits on it. The dismiss ends
+    // that wait, so the parent hears whether the child's work ended.
+    if (
+      args.change.kind === "dismissed" &&
+      ownerConversationId(args.item) === args.conversationId
+    ) {
+      await enqueueChildDismissToParent({
+        conversationId: args.conversationId,
+        inboxItemId: args.item.id,
+        queue: args.queue,
+        text: args.text,
+      });
+    }
     return;
   }
   // Only the first close wins, so one close message per item is enough.
@@ -278,7 +292,8 @@ async function sendOne(args: {
  * purges its transcript; archive is only a per-viewer list state. A
  * person's answer starts a Turn only in the Conversation that added the item,
  * an agent close starts one in each, and a take or a dismiss starts none.
- * Every other change is only recorded. Repeat calls for the same change are
+ * A dismiss of a child agent's item can end its work, which reaches its
+ * parent. Every other change is only recorded. Repeat calls for the same change are
  * safe.
  */
 export async function sendInboxItemMessages(args: {

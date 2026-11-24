@@ -3,9 +3,16 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { resultAuthorId } from "@/chat/agent-invocations/result-actors";
 import type { AgentRun } from "@/chat/agent/types";
 import { webActorFromUser } from "@/chat/conversations/web-input";
-import { getConversationEventStore } from "@/chat/db";
+import { getConversationEventStore, getDb } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { actOnInboxItem } from "@/chat/inbox-items/actions";
+import {
+  actOnInboxItem,
+  closeInboxItemsAnsweredByReply,
+} from "@/chat/inbox-items/actions";
+import {
+  closeInboxItem,
+  INBOX_ITEM_REPLIED_REASON,
+} from "@/chat/inbox-items/store";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
@@ -164,6 +171,99 @@ describe("a child agent asks a person", () => {
       const result = (await parentMessages()).at(-1);
       expect(result?.input.text).toContain("Deleted preview-42.");
       expect(result?.input.authorId).toBe(resultAuthorId(EVENT_SYSTEM_ACTOR));
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("sends a reply in the root's thread that answers a child's card only to that child", async () => {
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-reply", {
+        kind: "task",
+      });
+      const itemId = await askInTask(harness, childId, person);
+      // Which open item a reply answers is a decision model choice, which
+      // the classifier eval checks. Here the reply already closed the item,
+      // as when its first delivery did not finish, so no decision runs.
+      await closeInboxItem(getDb(), {
+        answer: { other: "Keep it.", requestId: itemId, values: {} },
+        closedByUserId: person.id,
+        id: itemId,
+        nowMs: Date.now(),
+        reason: INBOX_ITEM_REPLIED_REASON,
+        status: "done",
+      });
+
+      await closeInboxItemsAnsweredByReply({
+        conversationId: slackParentConversationId,
+        delivery: { queue: harness.queue, show: async () => {} },
+        resolveUser: async () => person,
+        text: "Keep it.",
+      });
+
+      // The root already has the reply as its own input, so it gets only
+      // the `waiting` update. The child gets the answer as the person's.
+      expect(await parentMessages()).toHaveLength(1);
+      expect(await childMessages(childId)).toEqual([
+        expect.objectContaining({ source: "web" }),
+      ]);
+      let answerRun: AgentRun | undefined;
+      harness.onRun(async (run) => {
+        answerRun = run;
+        return await finishRun(run, { noReply: {} });
+      });
+      await harness.drain(childId);
+      expect(answerRun).toMatchObject({
+        actor: webActorFromUser(person),
+        conversationId: childId,
+      });
+      expect(answerRun?.instruction.text).toContain(
+        `<inbox-item-answer id="${itemId}">`,
+      );
+      expect(answerRun?.instruction.text).toContain("Keep it.");
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("tells the parent when a person dismisses its child's item", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-dismiss", {
+        kind: "task",
+      });
+      const itemId = await askInTask(harness, childId, person);
+
+      await actOnInboxItem({
+        action: "dismiss",
+        delivery: { queue: harness.queue, show: async () => {} },
+        id: itemId,
+        user: person,
+      });
+
+      // The child learns of it as a root owner does, with no Turn. Its work
+      // ended, so the parent gets its result and stops waiting on it.
+      expect(await childMessages(childId)).toEqual([]);
+      const messages = await parentMessages();
+      expect(messages.map((message) => message.input.text)).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/status="waiting"/),
+          expect.stringMatching(
+            /status="completed"[\s\S]*dismissed inbox item "Delete preview-42"/,
+          ),
+        ]),
+      );
+      expect(messages).toHaveLength(2);
+      expect(
+        messages.every(
+          (message) =>
+            message.input.authorId === resultAuthorId(EVENT_SYSTEM_ACTOR),
+        ),
+      ).toBe(true);
     } finally {
       await harness.close();
     }

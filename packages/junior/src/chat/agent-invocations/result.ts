@@ -19,6 +19,7 @@ import {
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
 import {
+  childWorkEnded,
   parentResultActor,
   type DeliverToParent,
   type ParentResult,
@@ -339,6 +340,33 @@ export async function enqueueChildWaitingToParent(args: {
     },
     sender,
     turnId: `waiting:${args.inboxItemId}`,
+  });
+}
+
+/**
+ * Report to the parent of a child agent that a person dismissed the child's
+ * Inbox item. A dismiss starts no Turn, like for a root owner, so the child's
+ * quiet end that waited on the answer reports now, the way a Turn that ends
+ * with `noReply` does: only when the child has no other work, as the Event
+ * system Actor. The item keys it, so a repeat call is safe. A Conversation
+ * with no parent sends nothing.
+ */
+export async function enqueueChildDismissToParent(args: {
+  conversationId: string;
+  inboxItemId: string;
+  queue: ConversationWorkQueue;
+  text: string;
+}): Promise<void> {
+  const turnId = `dismissed:${args.inboxItemId}`;
+  if (!(await childWorkEnded(args.conversationId, turnId))) return;
+  await createDeliverToParent({ queue: args.queue })({
+    actor: EVENT_SYSTEM_ACTOR,
+    conversationId: args.conversationId,
+    result: {
+      kind: "completed",
+      text: `${args.text}\nIt closed with no answer, so this child agent did not continue.`,
+    },
+    turnId,
   });
 }
 
