@@ -34,13 +34,13 @@ const AGENT_TYPE_DEFINITIONS: Record<
 > = {
   explore: {
     whenToUse:
-      "Investigation across code, docs, logs, telemetry, or the web. Use it when an answer needs reading across many files or sources and you need the conclusion with evidence, not the raw output.",
+      "investigation across many files or sources; returns the conclusion with evidence.",
     instructions:
       "You are an explore agent. Investigate, and do not change anything outside your sandbox unless the task asks for it. Back your answer with exact evidence, such as paths, lines, links, and ids.",
   },
   reviewer: {
     whenToUse:
-      "An independent second opinion on a change, plan, or claim. Give it the evidence to judge, not your conclusion.",
+      "an independent second opinion on a change, plan, or claim; give it the evidence, not your conclusion.",
     instructions:
       "You are a reviewer agent. Give an independent assessment. Do not assume that the parent's framing is correct: verify each claim against the evidence. Do not change anything outside your own sandbox. Report concrete problems ranked by severity, each with its evidence, and say clearly when you found none.",
   },
@@ -54,11 +54,11 @@ function agentTypeDefinition(
     : undefined;
 }
 
-/** Model-facing list of child agent types. */
+/** Model-facing list of child agent types, short enough for a param. */
 export function formatAgentTypes(): string {
   return AGENT_TYPES.map(
-    (type) => `- "${type}": ${AGENT_TYPE_DEFINITIONS[type].whenToUse}`,
-  ).join("\n");
+    (type) => `${type}: ${AGENT_TYPE_DEFINITIONS[type].whenToUse}`,
+  ).join(" ");
 }
 
 /** Return the instructions that a child of this type reads with its task. */

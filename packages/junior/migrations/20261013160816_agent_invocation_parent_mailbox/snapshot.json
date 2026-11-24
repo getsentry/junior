@@ -1,0 +1,93 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "f878a4e2-2d00-4ce0-bc10-a803f6a84236",
+  "prevIds": ["d080cfda-09a6-453f-a19a-b6dc6c766a54"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_agent_invocations",
+        "parent_mailbox_status"
+      ],
+      "writes": [
+        "s|col|public.junior_agent_invocations.parent_mailbox_status",
+        "n|col|public.junior_agent_invocations.parent_mailbox_status",
+        "e|col|public.junior_agent_invocations.parent_mailbox_status"
+      ],
+      "reads": ["n|tbl|public.junior_agent_invocations", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_agent_invocations",
+        "junior_agent_invocations_parent_mailbox_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_agent_invocations_parent_mailbox_idx",
+        "n|idx|public.junior_agent_invocations_parent_mailbox_idx",
+        "e|idx|public.junior_agent_invocations_parent_mailbox_idx",
+        "n|rel|public.junior_agent_invocations_parent_mailbox_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_agent_invocations",
+        "n|sch|public",
+        "n|col|public.junior_agent_invocations.parent_mailbox_status",
+        "n|col|public.junior_agent_invocations.terminal_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "parent_mailbox_status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_agent_invocations",
+        "name": "junior_agent_invocations_parent_mailbox_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "parent_mailbox_status",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "terminal_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

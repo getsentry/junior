@@ -12,13 +12,15 @@ import { MentionPeopleProvider } from "./mentions";
 import { MessageObjectsProvider, ResolveWhenVisible } from "./resolvedObjects";
 import { SkillReferencesProvider } from "./skills";
 
-export { KnownObjectsProvider, useTextShowsObjectCard } from "./ObjectLinks";
+export { KnownObjectsProvider } from "./ObjectLinks";
 export { MentionText } from "./mentions";
 export {
   type ListedObject,
   MessageObjectsProvider,
+  NearScreenObjects,
   sameTypeCard,
   useListedObjects,
+  useNearScreen,
   useResolvedObject,
 } from "./resolvedObjects";
 export { objectUrlKey, withoutStandaloneUrl } from "./knownObjects";

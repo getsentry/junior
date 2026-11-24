@@ -23,8 +23,6 @@ export const dashboardIdentitySchema = z
     autoArchiveDefault: z.boolean().optional(),
     /** Hours done work and the conversation stay quiet before auto-archive. */
     autoArchiveGraceHours: z.number().int().positive().optional(),
-    /** Show the new dashboard UI instead of the current one. */
-    experimentalUi: z.boolean().optional(),
     user: dashboardSessionUserSchema
       .extend({
         /** Junior API path of the viewer's Slack photo, then Google photo. */
@@ -46,7 +44,6 @@ export const dashboardProfileUpdateSchema = z
       .max(AUTO_ARCHIVE_MAX_GRACE_HOURS)
       .optional(),
     displayName: z.string().trim().min(1).max(80).optional(),
-    experimentalUi: z.boolean().optional(),
   })
   .strict()
   .refine(

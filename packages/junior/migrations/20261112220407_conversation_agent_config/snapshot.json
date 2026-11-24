@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "df55d2df-8ffd-443f-ab18-573457ae4c17",
+  "prevIds": ["a41723dd-2231-40e1-a167-2cad4eeba283"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "agent_config_json"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.agent_config_json",
+        "n|col|public.junior_conversations.agent_config_json",
+        "e|col|public.junior_conversations.agent_config_json"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "agent_config_json",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

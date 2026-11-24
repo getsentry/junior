@@ -4,7 +4,6 @@ import type { RefObject } from "react";
 import { SearchInput } from "../components/SearchInput";
 import { Button } from "../components/ui/button";
 import { cn } from "../styles";
-import { useInboxUi } from "../uiShell";
 import type { TranscriptSearchMatch } from "./transcriptSearch";
 
 /**
@@ -21,8 +20,6 @@ export function TranscriptSearchBar(props: {
   onClose(): void;
   value: string;
 }) {
-  // The current UI closes search from the header button alone.
-  const inbox = useInboxUi();
   return (
     <div
       className={cn(
@@ -61,17 +58,15 @@ export function TranscriptSearchBar(props: {
             : `${props.match.index + 1}/${props.match.count}`}
         </span>
       ) : null}
-      {inbox ? (
-        <Button
-          aria-label="Close search"
-          onClick={props.onClose}
-          className="size-7"
-          size="icon"
-          variant="ghost"
-        >
-          <X aria-hidden="true" size={14} strokeWidth={2} />
-        </Button>
-      ) : null}
+      <Button
+        aria-label="Close search"
+        onClick={props.onClose}
+        className="size-7"
+        size="icon"
+        variant="ghost"
+      >
+        <X aria-hidden="true" size={14} strokeWidth={2} />
+      </Button>
     </div>
   );
 }

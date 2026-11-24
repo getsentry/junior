@@ -48,7 +48,6 @@
     "e2e/conversation-object-attach.spec.ts",
     "e2e/conversation-rename.spec.ts",
     "e2e/conversation-watches.spec.ts",
-    "e2e/dashboard-switch.spec.ts",
     "e2e/highlighted-code.ts",
     "e2e/inbox/**/*.ts",
     "e2e/clipboard.ts",
@@ -65,8 +64,10 @@
     "e2e/request-budget.ts",
     "e2e/search-fixture.ts",
     "e2e/skill-references.ts",
+    "e2e/tab-icon.ts",
     "e2e/inbox-item-evidence.spec.ts",
     "e2e/conversations-outline.spec.ts",
+    "e2e/long-press.ts",
     "e2e/long-transcript-fixture.ts",
     "playwright.config.ts",
     "tsdown.client.config.ts"

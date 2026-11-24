@@ -1,0 +1,88 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "8a2ddd49-b5da-4186-a155-a87fb14dfaec",
+  "prevIds": ["d5abaea4-86aa-4eb8-9763-4f44340f586c"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_conversations", "kind"],
+      "writes": [
+        "s|col|public.junior_conversations.kind",
+        "n|col|public.junior_conversations.kind",
+        "e|col|public.junior_conversations.kind"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_kind_check",
+        "n|ck|public.junior_conversations.junior_conversations_kind_check",
+        "e|ck|public.junior_conversations.junior_conversations_kind_check",
+        "n|con|public.junior_conversations.junior_conversations_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.kind"
+      ]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_kind_parent_check",
+        "n|ck|public.junior_conversations.junior_conversations_kind_parent_check",
+        "e|ck|public.junior_conversations.junior_conversations_kind_parent_check",
+        "n|con|public.junior_conversations.junior_conversations_kind_parent_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.kind",
+        "n|col|public.junior_conversations.parent_conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "kind",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_kind_check",
+        "value": "\"junior_conversations\".\"kind\" in ('root', 'thread', 'task')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_kind_parent_check",
+        "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" = 'root') = (\"junior_conversations\".\"parent_conversation_id\" is null))",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

@@ -156,7 +156,7 @@ describe("conversation archive API", () => {
       source: "internal",
       title: "Thread archive",
     });
-    // Only spawnAgent creates children today, and always as Tasks.
+    // Only startAgent creates children today.
     for (const [childConversationId, parentConversationId, kind, nowMs] of [
       [threadId, rootId, "thread", 2_000],
       [taskId, rootId, "task", 3_000],

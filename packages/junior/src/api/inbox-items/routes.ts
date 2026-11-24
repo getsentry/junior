@@ -21,6 +21,7 @@ import { requireViewer } from "@/api/viewer";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
+  canAnswerInboxItem,
   inboxItemTodo,
   isInboxItemForEveryone,
   isOnlyAssignee,
@@ -220,6 +221,7 @@ function inboxItemPayload(
     assignees: item.assignees,
     body: item.body,
     canAct: canActOnInboxItem(item, viewer.id),
+    canAnswer: canAnswerInboxItem(item, viewer.id),
     canTake:
       canActOnInboxItem(item, viewer.id) && !isOnlyAssignee(item, viewer.id),
     conversationIds: item.conversationIds,
@@ -433,8 +435,7 @@ export function createInboxItemRoutes(services: {
       const query = context.req.valid("query");
       const db = getDb();
       // One query counts the badge, both bundles, and the Automation alerts.
-      // The snoozed count runs only when the request asks for it, so the
-      // classic dashboard pays for one query.
+      // The snoozed count runs only when the request asks for it.
       const [subjects, snoozed] = await Promise.all([
         countInboxItemsNeedingUserBySubject(db, viewer.id),
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,

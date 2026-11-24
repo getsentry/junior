@@ -1,0 +1,167 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "eb40e0ee-9b09-4ffd-b666-be867a43a1b6",
+  "prevIds": ["7a4938a8-6b94-4147-9d8e-299e2f1d768e"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_search_idx",
+        "n|idx|public.junior_automations_search_idx",
+        "e|idx|public.junior_automations_search_idx",
+        "n|rel|public.junior_automations_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_automations", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automations",
+        "junior_automations_title_trgm_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automations_title_trgm_idx",
+        "n|idx|public.junior_automations_title_trgm_idx",
+        "e|idx|public.junior_automations_title_trgm_idx",
+        "n|rel|public.junior_automations_title_trgm_idx"
+      ],
+      "reads": ["n|tbl|public.junior_automations", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_search_idx",
+        "n|idx|public.junior_inbox_items_search_idx",
+        "e|idx|public.junior_inbox_items_search_idx",
+        "n|rel|public.junior_inbox_items_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_inbox_items",
+        "junior_inbox_items_title_trgm_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_inbox_items_title_trgm_idx",
+        "n|idx|public.junior_inbox_items_title_trgm_idx",
+        "e|idx|public.junior_inbox_items_title_trgm_idx",
+        "n|rel|public.junior_inbox_items_title_trgm_idx"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "(setweight(to_tsvector('simple', coalesce(\"title\", '')), 'A') || setweight(to_tsvector('simple', coalesce(\"instruction\", '') || ' ' || coalesce(\"skill\", '') || ' ' || case when \"kind\" = 'event' then coalesce(\"identifier\", '') || ' ' || coalesce(\"record\"->'trigger'->>'label', '') || ' ' || coalesce(\"namespace\", '') else '' end), 'B'))",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"status\" <> 'deleted'",
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_title_trgm_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "lower(coalesce(\"title\", '')) gin_trgm_ops",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automations\".\"status\" <> 'deleted'",
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "(setweight(to_tsvector('simple', \"title\"), 'A') || setweight(to_tsvector('simple', \"body\"), 'B'))",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "junior_inbox_items_title_trgm_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "lower(\"title\") gin_trgm_ops",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

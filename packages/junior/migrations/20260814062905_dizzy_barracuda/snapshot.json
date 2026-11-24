@@ -1,0 +1,342 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "7868d07f-46bb-436d-9a71-dd4a34e40435",
+  "prevIds": ["963c3e75-9ad9-4851-ba96-50c87ef04855"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_workspace_repos"],
+      "writes": [
+        "s|tbl|public.junior_workspace_repos",
+        "n|tbl|public.junior_workspace_repos",
+        "e|tbl|public.junior_workspace_repos",
+        "n|rel|public.junior_workspace_repos",
+        "n|type|public.junior_workspace_repos",
+        "n|rel|public.junior_workspace_repos_workspace_id_provider_repo_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_workspaces"],
+      "writes": [
+        "s|tbl|public.junior_workspaces",
+        "n|tbl|public.junior_workspaces",
+        "e|tbl|public.junior_workspaces",
+        "n|rel|public.junior_workspaces",
+        "n|type|public.junior_workspaces",
+        "n|rel|public.junior_workspaces_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_workspace_repos",
+        "junior_workspace_repos_primary_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_workspace_repos_primary_idx",
+        "n|idx|public.junior_workspace_repos_primary_idx",
+        "e|idx|public.junior_workspace_repos_primary_idx",
+        "n|rel|public.junior_workspace_repos_primary_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_workspace_repos",
+        "n|sch|public",
+        "n|col|public.junior_workspace_repos.workspace_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_workspaces",
+        "junior_workspaces_name_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_workspaces_name_idx",
+        "n|idx|public.junior_workspaces_name_idx",
+        "e|idx|public.junior_workspaces_name_idx",
+        "n|rel|public.junior_workspaces_name_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_workspaces",
+        "n|sch|public",
+        "n|col|public.junior_workspaces.name"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_workspace_repos"],
+      "writes": [
+        "s|fk|public.junior_workspace_repos.junior_workspace_repos_workspace_id_junior_workspaces_id_fk",
+        "n|fk|public.junior_workspace_repos.junior_workspace_repos_workspace_id_junior_workspaces_id_fk",
+        "e|fk|public.junior_workspace_repos.junior_workspace_repos_workspace_id_junior_workspaces_id_fk",
+        "n|con|public.junior_workspace_repos.junior_workspace_repos_workspace_id_junior_workspaces_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_workspace_repos",
+        "n|sch|public",
+        "n|tbl|public.junior_workspaces",
+        "n|sch|public",
+        "n|col|public.junior_workspace_repos.workspace_id",
+        "n|col|public.junior_workspaces.id",
+        "e|uniqueness|public.junior_workspaces.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_workspace_repos",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_workspaces",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspace_repos",
+        "name": "workspace_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspace_repos",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspace_repos",
+        "name": "repo",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspace_repos",
+        "name": "is_primary",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "name",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "setup_script",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "''",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "created_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "updated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspace_repos",
+        "name": "junior_workspace_repos_primary_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "workspace_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_workspace_repos\".\"is_primary\"",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "junior_workspaces_name_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "name",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspace_repos",
+        "name": "junior_workspace_repos_workspace_id_junior_workspaces_id_fk",
+        "nameExplicit": false,
+        "columns": ["workspace_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_workspaces",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspace_repos",
+        "name": "junior_workspace_repos_workspace_id_provider_repo_pk",
+        "columns": ["workspace_id", "provider", "repo"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "junior_workspaces_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    }
+  ]
+}

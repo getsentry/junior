@@ -1,0 +1,120 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "3d0ee9af-ae1f-4bf8-9181-b0ecd25aa8c0",
+  "prevIds": ["b83d9902-a77d-4fbc-8c38-d38d3d472201"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "forked_from_conversation_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.forked_from_conversation_id",
+        "n|col|public.junior_conversations.forked_from_conversation_id",
+        "e|col|public.junior_conversations.forked_from_conversation_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_forked_from_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_forked_from_idx",
+        "n|idx|public.junior_conversations_forked_from_idx",
+        "e|idx|public.junior_conversations_forked_from_idx",
+        "n|rel|public.junior_conversations_forked_from_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.forked_from_conversation_id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|fk|public.junior_conversations.junior_conversations_forked_from_conversation_id_junior_convers",
+        "n|fk|public.junior_conversations.junior_conversations_forked_from_conversation_id_junior_convers",
+        "e|fk|public.junior_conversations.junior_conversations_forked_from_conversation_id_junior_convers",
+        "n|con|public.junior_conversations.junior_conversations_forked_from_conversation_id_junior_convers"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.forked_from_conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "forked_from_conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_forked_from_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "forked_from_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_forked_from_conversation_id_junior_convers",
+        "nameExplicit": false,
+        "columns": ["forked_from_conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "SET NULL",
+        "entityType": "fks"
+      }
+    }
+  ]
+}

@@ -1,4 +1,8 @@
-import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
+import type {
+  PluginCache,
+  PluginState,
+  PluginTaskStarter,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GITHUB_ISSUE_CACHE,
@@ -10,7 +14,8 @@ import {
   mergeGitHubObject,
   mergeGitHubPullRequest,
 } from "../object-cache.js";
-import { scheduleGitHubPullRequestPatch } from "../pull-request-patches.js";
+import { markGitHubConflict } from "../merge-conflict-checks/resolved.js";
+import { startGitHubPullRequestPatch } from "../pull-request-patches.js";
 
 const repositorySchema = z.object({ full_name: z.string().min(1) });
 const issueEventSchema = z.object({
@@ -56,6 +61,7 @@ interface RefreshArgs {
   cache: PluginCache;
   nowMs: number;
   state: PluginState;
+  tasks: PluginTaskStarter;
 }
 
 async function refreshPullRequest(
@@ -69,16 +75,31 @@ async function refreshPullRequest(
     payload.number,
   );
   let patch = false;
+  let conflicted = false;
   await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
     const merged = mergeGitHubPullRequest(current, payload);
     patch = merged?.patch ?? false;
+    // A push or a new base hides the merge state of the old pair, so a
+    // conflict that the entry knew, such as from a card read, is marked too.
+    conflicted =
+      merged?.fields.state === "open" &&
+      (payload.mergeable === false || (patch && current?.mergeable === false));
     return merged && { ...GITHUB_PULL_REQUEST_CACHE, value: merged.fields };
   });
-  if (patch) {
-    await scheduleGitHubPullRequestPatch({
+  if (conflicted) {
+    await markGitHubConflict(args.state, {
+      number: payload.number,
+      repositoryFullName: repository.full_name,
+    });
+  }
+  // GitHub names the head commit in each pull request webhook.
+  const sha = payload.head?.sha;
+  if (patch && sha) {
+    await startGitHubPullRequestPatch({
       key,
       nowMs: args.nowMs,
-      state: args.state,
+      sha,
+      tasks: args.tasks,
     });
   }
 }
@@ -104,10 +125,11 @@ async function refreshChecks(
     });
     if (patch) {
       // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
-      await scheduleGitHubPullRequestPatch({
+      await startGitHubPullRequestPatch({
         key,
         nowMs: args.nowMs,
-        state: args.state,
+        sha,
+        tasks: args.tasks,
       });
     }
   }

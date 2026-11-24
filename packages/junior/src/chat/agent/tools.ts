@@ -809,7 +809,7 @@ export function bindAgentTools(
   // The rule reads only the Turn behavior and the deployment, so a child gets
   // the same tools on every path. Every child has depth 1 or more, so with
   // maxAgentDepth 0 no child can spawn. With more, a child past the limit
-  // still sees spawnAgent, and the depth check in spawn.ts refuses it.
+  // still sees startAgent, and the depth check in spawn.ts refuses it.
   const canSpawn =
     agents === "children" ||
     (agents === "children_and_parent" && botConfig.maxAgentDepth > 0);

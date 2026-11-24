@@ -340,7 +340,7 @@ describe("Pi tool adapter integration", () => {
       "noReply",
       "reply",
       "reportBlocked",
-      "spawnAgent",
+      "startAgent",
     ];
 
     expect(tools.map((candidate) => candidate.name)).toEqual(

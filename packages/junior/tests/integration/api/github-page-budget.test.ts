@@ -70,7 +70,7 @@ describe("GitHub card reads after a page runs out of time", () => {
     await closeDb();
   });
 
-  it("reads GitHub when an uncached pull request is attached right after its page ran out of time", async () => {
+  it("skips GitHub for every link to a pull request on a page that ran out of time, and reads it on Attach", async () => {
     stubGitHubApp();
     const reads: string[] = [];
     mswServer.use(
@@ -103,6 +103,7 @@ describe("GitHub card reads after a page runs out of time", () => {
     // The page's card query answers late, and fails.
     mswServer.use(
       http.post("https://api.github.com/graphql", async () => {
+        reads.push("graphql");
         reachGitHub();
         await answered;
         return HttpResponse.json({ message: "Server Error" }, { status: 502 });
@@ -113,13 +114,16 @@ describe("GitHub card reads after a page runs out of time", () => {
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
     vi.useFakeTimers({ toFake: ["Date"] });
-    const page = read(PULL_URL);
+    // The page links the pull request twice.
+    const page = read(PULL_URL, `${PULL_URL}#discussion_r1`);
     await reachedGitHub;
     vi.setSystemTime(Date.now() + 21_000);
     answerGitHub();
     // The page shows no card yet, and makes no read of its own.
-    expect((await page).objects.has(PULL_URL)).toBe(false);
-    expect(reads).toEqual([]);
+    const { objects } = await page;
+    expect(objects.has(PULL_URL)).toBe(false);
+    expect(objects.has(`${PULL_URL}#discussion_r1`)).toBe(false);
+    expect(reads).toEqual(["graphql"]);
 
     // An Attach is not part of the page, so it asks GitHub.
     expect(await attachAsAlice(PULL_URL)).toBe(200);

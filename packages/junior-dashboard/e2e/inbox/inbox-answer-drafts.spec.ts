@@ -1,8 +1,7 @@
 import { license, mockInboxItems } from "./inbox-fixture";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test("a row keeps unsent answers after it collapses or reloads", async ({
     dashboard,
     page,

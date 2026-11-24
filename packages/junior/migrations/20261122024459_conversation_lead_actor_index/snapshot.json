@@ -1,0 +1,54 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "5a1e63c6-65ba-4b46-bafc-7d4f3585369b",
+  "prevIds": ["77e12133-945e-475c-8833-49894f9abf45"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversations",
+        "junior_conversations_lead_actor_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversations_lead_actor_idx",
+        "n|idx|public.junior_conversations_lead_actor_idx",
+        "e|idx|public.junior_conversations_lead_actor_idx",
+        "n|rel|public.junior_conversations_lead_actor_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.actor_identity_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "junior_conversations_lead_actor_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "actor_identity_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_conversations\".\"kind\" = 'lead'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

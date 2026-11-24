@@ -100,10 +100,16 @@ export function createPluginHarness(fixture: GitHubFixture) {
     }>,
   };
   /**
-   * Whether any Watch gets comments and conflicts on 946, and whether the
-   * Conversation that asked for 946 has its own conflict Watch.
+   * Whether any Watch gets comments, conflicts, and conflict fixes on 946,
+   * and whether the Conversation that asked for 946 has its own conflict
+   * Watch.
    */
-  const watches = { comments: true, conflicts: true, ownConflicts: true };
+  const watches = {
+    comments: true,
+    conflicts: true,
+    fixes: false,
+    ownConflicts: true,
+  };
   /** Inbox and publish calls that fail before one succeeds. */
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
@@ -117,7 +123,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
           event.identifier === "getsentry/junior#946" &&
           (event.eventType === "pull_request.merge_conflict"
             ? watches.conflicts
-            : watches.comments),
+            : event.eventType === "pull_request.merge_conflict.resolved"
+              ? watches.fixes
+              : watches.comments),
       );
     },
     async publish(event) {
@@ -149,15 +157,34 @@ export function createPluginHarness(fixture: GitHubFixture) {
       };
     },
   };
+  // An in-memory cache with no TTL, so a test can read what a hook wrote.
+  const cacheEntries = new Map<string, unknown>();
   const cache: HeartbeatHookContext["cache"] = {
-    async get() {
-      return undefined;
+    async get<T>(key: string) {
+      return cacheEntries.get(key) as T | undefined;
     },
-    async getOrLoad(_key, load) {
-      return (await load()).value;
+    async getOrLoad<T>(
+      key: string,
+      load: () => Promise<{ value: T }>,
+      options?: { refresh?: boolean },
+    ) {
+      if (!options?.refresh && cacheEntries.has(key)) {
+        return cacheEntries.get(key) as T;
+      }
+      const { value } = await load();
+      cacheEntries.set(key, value);
+      return value;
     },
-    async update() {},
-    async delete() {},
+    async update<T>(
+      key: string,
+      next: (current: T | undefined) => { value: T } | undefined,
+    ) {
+      const entry = next(cacheEntries.get(key) as T | undefined);
+      if (entry) cacheEntries.set(key, entry.value);
+    },
+    async delete(key) {
+      cacheEntries.delete(key);
+    },
   };
 
   async function deliver(request: Request): Promise<void> {
@@ -264,6 +291,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
         codeChanges,
         conversationChanges: { apply: unused },
         db: fixture.db(),
+        events,
+        lastDelivery: false,
         log: {
           error: (message) => recorded.heartbeatLogs.push(["error", message]),
           info() {},
@@ -334,6 +363,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
   return {
     ...recorded,
     answer,
+    cache,
     deliver,
     dismiss,
     events,

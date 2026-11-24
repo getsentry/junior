@@ -41,7 +41,6 @@ import {
 import type { DashboardCoreData } from "../../../types";
 import { AutoArchiveSettings } from "../../../pages/settings/AutoArchiveSettings";
 import { ConnectionsSettings } from "../../../pages/settings/ConnectionsSettings";
-import { ExperimentalUiSetting } from "../../../pages/settings/ExperimentalUiSetting";
 import { McpSettings } from "../../../pages/settings/McpSettings";
 import { PersonalTokensSettings } from "../../../pages/settings/PersonalTokensSettings";
 import { SettingFrame } from "../../../pages/settings/SettingFrame";
@@ -65,7 +64,7 @@ export function SettingsPage({ identity }: SettingsPageProps) {
   return (
     <SettingsPageLayout>
       <GeneralSettings identity={identity} />
-      <InterfaceSettings identity={identity} />
+      <InterfaceSettings />
       <PersonalTokensSettings />
       <ConnectionsSettings />
       <McpSettings />
@@ -158,11 +157,11 @@ function GeneralSettings({ identity }: SettingsPageProps) {
 }
 
 /** Group the choices for how the dashboard looks and works. */
-function InterfaceSettings({ identity }: SettingsPageProps) {
+function InterfaceSettings() {
   return (
     <SettingsSection
       anchor="interface"
-      description="The new dashboard applies to your account. The other choices apply to this browser."
+      description="These choices apply to this browser."
       title="Interface"
     >
       <Card
@@ -170,7 +169,6 @@ function InterfaceSettings({ identity }: SettingsPageProps) {
         padding="md"
         variant="raised"
       >
-        <ExperimentalUiSetting frame="row" identity={identity} />
         <ConversationStartSetting />
         <TranscriptScrollerSetting frame="row" />
         <MessageBoxSetting />

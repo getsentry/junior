@@ -38,7 +38,7 @@ final class NavigationUITests: XCTestCase {
 
   /// The whole OAuth flow: the browser sheet, the mock's consent, the
   /// `junior-ios` redirect, the token exchange, and a Keychain that survives a
-  /// relaunch. Sign out returns to Sign in.
+  /// relaunch. The drawer shows the changelog, and Sign out returns to Sign in.
   func testSignInAndOut() {
     var app = launch(auth: .signedOut)
     let signIn = app.buttons["sign-in"]
@@ -47,7 +47,15 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(card(app, "Investigate checkout latency").waitForExistence(timeout: 30))
     app.terminate()
 
-    app = launch(open: "/settings", auth: .kept)
+    app = launch(open: "/settings?drawer=1", auth: .kept)
+    // The iOS entries of the bundled root CHANGELOG.md open from the drawer.
+    let showChangelog = app.buttons["show-changelog"]
+    XCTAssertTrue(showChangelog.waitForExistence(timeout: 10))
+    showChangelog.tap()
+    XCTAssertTrue(app.staticTexts["0.311.0"].waitForExistence(timeout: 10))
+    app.buttons["Close Changelog"].tap()
+    XCTAssertTrue(app.staticTexts["0.311.0"].waitForNonExistence(timeout: 10))
+    app.buttons["Close navigation"].tap()
     let signOut = app.buttons["sign-out"]
     XCTAssertTrue(signOut.waitForExistence(timeout: 10))
     signOut.tap()

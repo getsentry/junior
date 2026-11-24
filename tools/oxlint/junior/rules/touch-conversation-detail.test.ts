@@ -76,7 +76,7 @@ new RuleTester().run("touch-conversation-detail", touchConversationDetailRule, {
       errors: missingTouch,
     },
     {
-      code: "async function raw(db) { await db.execute(sql`update ${juniorConversationBriefs} set x = 1`); }",
+      code: "async function raw(db) { await db.execute(sql`update ${juniorConversationAnnotations} set x = 1`); }",
       errors: missingTouch,
     },
     {

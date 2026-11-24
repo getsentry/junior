@@ -37,7 +37,15 @@ import {
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { instructionActorFor } from "@/chat/agent/prompt";
 import { renderCurrentInstruction } from "@/chat/current-instruction";
-import { getConversationEventStore, getConversationStore } from "@/chat/db";
+import {
+  getConversationEventStore,
+  getConversationStore,
+  getSqlExecutor,
+} from "@/chat/db";
+import { resolveActorIdentityId } from "@/chat/identities/actor";
+import { buildWebInboundMessage } from "@/chat/conversations/web-input";
+import { webTurnInputMessages } from "@/chat/task-execution/mailbox-input";
+import { webMessageAuthor } from "@/chat/task-execution/mailbox-turn";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { toPiReasoningLevel } from "@/chat/reasoning-level";
 import { createSlackDestination } from "@/chat/destination";
@@ -337,6 +345,18 @@ async function historyUserMessage(args: {
       throw new Error("Web history needs webMessage() inputs");
     }
     const actor = await webViewerActor(WEB_VIEWER_EMAIL);
+    // Web ingress builds the mailbox Message, and the Turn saves it.
+    const message = buildWebInboundMessage({
+      actor,
+      authorIdentityId: await resolveActorIdentityId(getSqlExecutor(), actor),
+      conversationId: conversation.conversationId,
+      createdAtMs: args.createdAtMs,
+      message: input.text,
+      messageId: `api-msg:${randomUUID().replaceAll("-", "").slice(0, 24)}`,
+    });
+    const [conversationMessage] = webTurnInputMessages([
+      { author: webMessageAuthor(actor), message },
+    ]);
     return {
       actor,
       agentMessage: {
@@ -352,18 +372,7 @@ async function historyUserMessage(args: {
         ],
         timestamp: args.createdAtMs,
       },
-      conversationMessage: {
-        author: {
-          email: actor.email,
-          userId: actor.userId,
-          userName: actor.userName,
-        },
-        createdAtMs: args.createdAtMs,
-        id: `api-msg:${randomUUID().replaceAll("-", "").slice(0, 24)}`,
-        meta: { explicitMention: true, source: "web" },
-        role: "user",
-        text: input.text,
-      },
+      conversationMessage: conversationMessage!,
     };
   }
   if (input.kind === "web_message") {

@@ -14,6 +14,7 @@ const rootTurn = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: true,
   tools: {
     agents: "children",
@@ -49,6 +50,7 @@ const agentInThreadTurn = {
   failureNotice: "parent",
   endResult: "parent",
   sessionTasks: false,
+  conversationMetadata: true,
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
@@ -62,7 +64,11 @@ const agentInThreadTurn = {
 };
 
 const { sender: _sender, ...childAgentTurn } = agentInThreadTurn;
-const agentInTaskTurn = { ...childAgentTurn, promptMode: "child_agent" };
+const agentInTaskTurn = {
+  ...childAgentTurn,
+  promptMode: "child_agent",
+  conversationMetadata: false,
+};
 
 // An Automation run almost never gets an answer, so only pending work keeps
 // its cache warm.
@@ -76,6 +82,7 @@ const automationTurn = {
   failureNotice: "none",
   endResult: "none",
   sessionTasks: true,
+  conversationMetadata: true,
   relatedConversations: false,
   tools: {
     ...rootTurn.tools,

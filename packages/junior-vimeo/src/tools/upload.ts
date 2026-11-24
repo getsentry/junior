@@ -4,7 +4,9 @@ import { readVideo, tusUpload } from "../tool-support/media.js";
 import {
   describeVideo,
   embedDomainSchema,
+  folderSchema,
   MAX_EMBED_DOMAINS,
+  parseFolder,
   resolveEmbedDomains,
   sandboxPathSchema,
   uploadAttemptSchema,
@@ -25,13 +27,14 @@ export function vimeoUploadTool(settings: VimeoSettings) {
       readOnlyHint: false,
     },
     description:
-      "Upload a video file from the sandbox into the install's Vimeo folder as a private video: hidden from vimeo.com or unlisted, embeddable only on allowed domains, not downloadable. Returns the video ID, the privacy hash for unlisted videos, and the embed URL once the bytes are sent; Vimeo finishes processing later. Each call creates a new video. To change the file of an existing video, use vimeo_replaceFile.",
+      "Upload a video file from the sandbox into a Vimeo folder as a private video: hidden from vimeo.com or unlisted, embeddable only on allowed domains, not downloadable. Returns the video ID, the privacy hash for unlisted videos, and the embed URL once the bytes are sent; Vimeo finishes processing later. Each call creates a new video. To change the file of an existing video, use vimeo_replaceFile.",
     // Review may see the raw input, before defaults apply.
     describeProposal: (input) =>
-      `Upload ${input.path} to Vimeo as "${input.title}" (${input.view ?? "disable"}, embeds on ${(input.embed_domains ?? settings.embedDomains).join(", ") || "no domain"})`,
+      `Upload ${input.path} to Vimeo folder ${input.folder} as "${input.title}" (${input.view ?? "disable"}, embeds on ${(input.embed_domains ?? settings.embedDomains).join(", ") || "no domain"})`,
     inputSchema: z
       .object({
         path: sandboxPathSchema("MP4, MOV, or WebM file to upload"),
+        folder: folderSchema,
         title: z.string().trim().min(1).max(128).describe("Video title."),
         description: z
           .string()
@@ -61,7 +64,7 @@ export function vimeoUploadTool(settings: VimeoSettings) {
       status_error: z.string().optional(),
     }),
     async execute(input, options, ctx) {
-      const { folder } = settings;
+      const folder = parseFolder(input.folder)!;
       const embedDomains = resolveEmbedDomains(input.embed_domains, settings);
       const bytes = await readVideo(input.path, ctx.sandbox);
       const signal = options.signal;

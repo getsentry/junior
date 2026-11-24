@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  buildConversationSections,
+  buildTimeSections,
   pinnedFirst,
 } from "../src/client/conversations/conversationSections";
 import type { Conversation } from "../src/client/types";
@@ -27,7 +27,7 @@ const NOW = {
   timeZone: "America/Los_Angeles",
 };
 
-function sectionIds(sections: ReturnType<typeof buildConversationSections>) {
+function sectionIds(sections: ReturnType<typeof buildTimeSections>) {
   return sections.map((section) => ({
     conversations: section.conversations.map((item) => item.id),
     label: section.label,
@@ -36,7 +36,7 @@ function sectionIds(sections: ReturnType<typeof buildConversationSections>) {
 
 describe("conversation activity sections", () => {
   it("groups by last activity into rolling windows, then months", () => {
-    const sections = buildConversationSections(
+    const sections = buildTimeSections(
       [
         conversation("last-year", "2025-12-01T12:00:00-08:00"),
         conversation("june", "2026-06-20T12:00:00-07:00"),
@@ -64,7 +64,7 @@ describe("conversation activity sections", () => {
   });
 
   it("keeps conversations that wait on the viewer in their time section", () => {
-    const sections = buildConversationSections(
+    const sections = buildTimeSections(
       [
         conversation("today", "2026-08-03T11:00:00-07:00"),
         // A Turn parked for authorization leaves the conversation idle.
@@ -84,62 +84,8 @@ describe("conversation activity sections", () => {
     ]);
   });
 
-  it("puts pinned conversations only in Pinned, first", () => {
-    const pinned = (
-      id: string,
-      lastSeenAt: string,
-      pinnedAt: string,
-      pinPosition?: number,
-    ) => ({ ...conversation(id, lastSeenAt), pinnedAt, pinPosition });
-    const sections = buildConversationSections(
-      [
-        conversation("today", "2026-08-03T11:00:00-07:00"),
-        // The older pin has the newer activity.
-        pinned(
-          "pinned-earlier",
-          "2026-08-03T10:00:00-07:00",
-          "2026-07-01T08:00:00-07:00",
-        ),
-        pinned(
-          "pinned-later",
-          "2026-06-20T12:00:00-07:00",
-          "2026-08-01T15:00:00Z",
-        ),
-        pinned(
-          "placed-second",
-          "2026-08-03T11:30:00-07:00",
-          "2026-06-01T08:00:00-07:00",
-          1,
-        ),
-        pinned(
-          "placed-first",
-          "2026-06-01T12:00:00-07:00",
-          "2026-08-02T08:00:00-07:00",
-          0,
-        ),
-        conversation("earlier", "2026-08-03T09:00:00-07:00"),
-      ],
-      NOW,
-    );
-
-    // Pins without a place go first, newest pin first, then the viewer's
-    // order. Activity does not move a pin.
-    expect(sectionIds(sections)).toEqual([
-      {
-        conversations: [
-          "pinned-later",
-          "pinned-earlier",
-          "placed-first",
-          "placed-second",
-        ],
-        label: "Pinned",
-      },
-      { conversations: ["today", "earlier"], label: "Today" },
-    ]);
-  });
-
   it("sorts and groups by the last Message, not by later tool or status events", () => {
-    const sections = buildConversationSections(
+    const sections = buildTimeSections(
       [
         // A tool event moved its activity today; its last Message was
         // yesterday.

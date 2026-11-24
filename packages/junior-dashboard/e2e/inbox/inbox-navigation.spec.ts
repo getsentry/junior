@@ -11,8 +11,7 @@ import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   /** Show or hide Details beside the chat. A wide screen opens it at first. */
@@ -234,6 +233,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
+      canAnswer: false,
       id: "item-other",
       title: "Pick the rollout window",
     };
@@ -257,6 +257,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
+      canAnswer: false,
       id: "item-other",
       title: "Pick the rollout window",
     };
@@ -301,6 +302,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...kept,
       assignees: [],
       canAct: false,
+      canAnswer: false,
       createdAt: "2026-08-05T09:00:00.000Z",
       id: "item-sibling",
       title: "Pick the rollout window",
@@ -343,6 +345,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...kept,
       assignees: [],
       canAct: false,
+      canAnswer: false,
       createdAt: "2026-08-05T09:00:00.000Z",
       id: "item-sibling",
       title: "Pick the rollout window",

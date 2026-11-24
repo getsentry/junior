@@ -18,8 +18,7 @@ import { expect, test } from "../test";
 // The mock Conversation whose asks include a release review and notes.
 const RELEASE_CONVERSATION_ID = "slack:CQA456:1770021600.000600";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const SLOTS = ["dot", "title", "summary", "meta"];
 
   async function comfortable(page: Page) {

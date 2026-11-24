@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "b0120888-befa-4b42-b9cb-80f8275a4d94",
+  "prevIds": ["2e88a3fb-855b-4eef-927c-23647c6a70bf"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "detail_version"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.detail_version",
+        "n|col|public.junior_conversations.detail_version",
+        "e|col|public.junior_conversations.detail_version"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "detail_version",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "0",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

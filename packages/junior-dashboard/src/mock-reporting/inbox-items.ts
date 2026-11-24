@@ -155,6 +155,7 @@ function payload(
     assignedToEveryone: everyone,
     assignees: everyone ? [] : shared ? [viewer, teammate] : [viewer],
     canAct: item.status === "open",
+    canAnswer: item.status === "open",
     canTake: false,
     // A To-do's item links no Conversation, like the API.
     conversationIds:

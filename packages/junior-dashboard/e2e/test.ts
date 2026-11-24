@@ -6,14 +6,11 @@ import {
   trackOpenRequests,
   type DashboardE2eServer,
 } from "./harness";
-import type { DashboardShell } from "../src/public-assets";
 
 /** Options that a Playwright project or a spec can set. */
 export type DashboardOptions = {
   /** When true, install controllable timers for tests that fast-forward time. */
   controlTimers: boolean;
-  /** UI shell the viewer sees. */
-  ui: DashboardShell;
 };
 
 type DashboardWorkerFixtures = {
@@ -27,7 +24,6 @@ type DashboardWorkerFixtures = {
  */
 export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
   controlTimers: [false, { option: true }],
-  ui: ["classic", { option: true }],
   dashboard: [
     async ({}, use) => {
       const server = await startDashboardE2eServer();
@@ -39,21 +35,13 @@ export const test = base.extend<DashboardOptions, DashboardWorkerFixtures>({
     // because a retry starts a new worker. Give the boot its own limit.
     { scope: "worker", timeout: 60_000 },
   ],
-  page: async ({ page, controlTimers, dashboard, ui }, use, testInfo) => {
+  page: async ({ page, controlTimers }, use, testInfo) => {
     // The dashboard server is shared per worker; reset its mutable mock
     // state before every test so archive/restore and profile-update tests
     // cannot leak into unrelated specs.
     await resetDashboardMockState();
     await mockDashboardApis(page, { controlTimers });
     const requests = trackOpenRequests(page);
-    // The page shell reads the viewer's setting on the server, so a page
-    // route cannot choose the shell.
-    if (ui === "inbox") {
-      const response = await page.request.patch(`${dashboard.baseURL}/api/me`, {
-        data: { experimentalUi: true },
-      });
-      expect(response.ok()).toBe(true);
-    }
     await use(page);
     try {
       // A test that already failed can stop with any request open.

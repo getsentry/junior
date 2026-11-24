@@ -1,7 +1,6 @@
 import * as z from "zod";
 import {
   normalizeUserInputAnswer,
-  type ConversationReportEvent,
   type InboxItemPayload,
 } from "@sentry/junior/api/schema";
 
@@ -17,7 +16,7 @@ export function inboxItemPath(id: string): string {
 }
 
 /**
- * Return the new UI's Inbox route that expands one item's row: Done for a
+ * Return the Inbox route that expands one item's row: Done for a
  * closed item. The route names the entry, because phones show the entries
  * at `/inbox`.
  */
@@ -108,22 +107,6 @@ export function inboxItemIdFromToolCall(call: {
 }
 
 /**
- * Return a message for another item's excerpt, without the Inbox item
- * changes that it records: those show on their own items. Returns undefined
- * when nothing else remains.
- */
-export function excerptMessage(
-  event: ConversationReportEvent,
-): ConversationReportEvent | undefined {
-  const { data } = event;
-  if (data.type !== "message" || !data.reviewItemChanges) return event;
-  // A message with changes lists its own Events. With none, it only
-  // records changes.
-  if (!data.events) return undefined;
-  return { ...event, data: { ...data, reviewItemChanges: undefined } };
-}
-
-/**
  * True when an open item asks a question that the viewer can answer, and
  * they did not snooze it.
  */
@@ -132,7 +115,7 @@ export function inboxItemWaitsForAnswer(item: InboxItemPayload): boolean {
     item.status === "open" &&
     item.kind === "action" &&
     Boolean(item.request) &&
-    item.canAct &&
+    item.canAnswer &&
     !item.snoozedByViewer
   );
 }
@@ -193,12 +176,6 @@ export function conversationAnswerLine(
     return undefined;
   return answeredLine(answer.choices);
 }
-
-/** The open Inbox items, in the groups and order that the Inbox shows. */
-export type InboxGroups = {
-  fyi: InboxItemPayload[];
-  needsYou: InboxItemPayload[];
-};
 
 /**
  * The Conversation that owns an item, or undefined when something else owns
@@ -339,30 +316,5 @@ export function inboxBundles(
       Number(b.needsYou) - Number(a.needsYou) ||
       Date.parse(a.waitingSince) - Date.parse(b.waitingSince) ||
       a.key.localeCompare(b.key),
-  );
-}
-
-/**
- * Split open items into inbox groups, oldest first, so the item that waited
- * longest is at the top. Archived items are in no group.
- */
-export function inboxGroups(items: readonly InboxItemPayload[]): InboxGroups {
-  const open = items.filter((item) => item.status === "open");
-  return {
-    fyi: open.filter((item) => item.kind === "notice").sort(inboxOrder),
-    needsYou: open.filter((item) => item.kind === "action").sort(inboxOrder),
-  };
-}
-
-/**
- * The open item that follows `current` in inbox order. `current` can be an
- * item that closed and left the open groups.
- */
-export function nextInboxItem(
-  groups: InboxGroups,
-  current: InboxItemPayload,
-): InboxItemPayload | undefined {
-  return [...groups.needsYou, ...groups.fyi].find(
-    (item) => inboxOrder(current, item) < 0,
   );
 }

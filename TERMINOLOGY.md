@@ -26,12 +26,12 @@ Canonical words for Junior code and docs. One concept, one word.
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
-  `task` type, the `spawnAgent` `task` field) keep their meaning.
+  `task` type, the `startAgent` `task` field) keep their meaning.
 - **Team**: an agent and the agents that it started: its child agents, and
   the roots that a Lead starts. It sets who manages an agent, not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
-- **Subagent**: the mechanism behind Threads and Tasks (`spawnAgent`, Agent
+- **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
   bindings, Parent messages). Not a UI word.
 - **Conversation metadata**: the stored facts about a Conversation: its
   title and summary. A core task updates the summary after each Turn. A
@@ -55,8 +55,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Conversation status**: what one Conversation's own work needs, shared
   by everyone and derived from runtime state only. `needs_input`: it waits on
   a person: an open action Inbox item it added, a sign-in, or its starter
-  while no Turn is queued or running (a failed latest Turn, a `partial` or
-  `blocked` Brief, or an answer the starter has not read). `working`: a Turn is queued or running. `done`:
+  while no Turn is queued or running (a failed latest Turn or an answer the
+  starter has not read). `working`: a Turn is queued or running. `done`:
   anything else, also a stop. The first that applies wins, in that order.
   `completed` is a Turn or run outcome, never a Conversation status.
 - **Starter**: the User of a root's actor, the person whose message started
@@ -131,7 +131,7 @@ Canonical words for Junior code and docs. One concept, one word.
   spawned or messaged after the stop. A person's input sent after the stop,
   or new work from a child's parent, ends the stop. A stopped parent gives no
   new work: `messageAgent` to a child leaves a Conversation note, and
-  `spawnAgent` fails. A person's stop keeps the
+  `startAgent` fails. A person's stop keeps the
   Watches; an agent's `stopAgent` also cancels them. Reports show it as
   `stopped` while no work runs.
 - **Event reach**: `"all"`, `{ anyOf }` (needs a named filter), or `"resource"`
@@ -177,8 +177,8 @@ Canonical words for Junior code and docs. One concept, one word.
   Turn.
   To a parent or a top-level agent it is an Event Inbound message, and it
   gives no user approval.
-- **Agent type**: a `spawnAgent` preset: when to pick it, whether it forks
-  history, and per-task instructions. It does not limit tools.
+- **Agent type**: a `startAgent` preset for a child agent: when to pick it,
+  whether it forks history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.
