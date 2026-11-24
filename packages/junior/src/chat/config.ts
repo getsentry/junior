@@ -146,6 +146,12 @@ export interface ChatConfig {
   idleCompactionEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
+  /**
+   * Opt-in for `GET /api/versions/stream`, which pushes dashboard change
+   * tokens over SSE. Each function instance with an open stream holds one
+   * direct Postgres session. Defaults to false; the dashboard then polls.
+   */
+  versionsStreamEnabled: boolean;
   /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
   encryption: EncryptionKeyring;
   sql: {
@@ -249,10 +255,18 @@ function parseOptionalPositiveInteger(
   return value;
 }
 
-// Operational kill switches default to on. Only "false" turns them off.
-function parseKillSwitch(name: string, rawValue: string | undefined): boolean {
+// Operational kill switches default to on, and opt-in flags to off. Only
+// "true" or "false" overrides the default.
+function parseKillSwitch(
+  name: string,
+  rawValue: string | undefined,
+  defaultValue = true,
+): boolean {
   const value = toOptionalTrimmed(rawValue)?.toLowerCase();
-  if (value === undefined || value === "true") {
+  if (value === undefined) {
+    return defaultValue;
+  }
+  if (value === "true") {
     return true;
   }
   if (value === "false") {
@@ -460,6 +474,11 @@ export function readChatConfig(
     ),
     conversationWorkSoftYieldAfterMs: resolveConversationWorkSoftYieldAfterMs(
       resolvedFunctionMaxDurationSeconds,
+    ),
+    versionsStreamEnabled: parseKillSwitch(
+      "JUNIOR_VERSIONS_STREAM_ENABLED",
+      env["JUNIOR_VERSIONS_STREAM_ENABLED"],
+      false,
     ),
     encryption: readEncryptionKeyring(env),
     sql: {

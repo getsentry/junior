@@ -12,6 +12,7 @@ import {
   CONVERSATION_VERSION_HEADER,
   type Versions,
   VERSIONS_CONVERSATION_LIMIT,
+  VERSIONS_STREAM_HEADER,
   versionsSchema,
 } from "@/api/schema";
 import {
@@ -609,5 +610,14 @@ describe("versions API", () => {
       `http://localhost/api/versions?${new URLSearchParams({ conversationIds: [...onScreen, "slack:CVERSIONS:extra"].join(",") })}`,
     );
     expect(tooMany.status).toBe(400);
+  });
+
+  it("leaves the stream off by default, so the dashboard polls", async () => {
+    const { app } = await authenticatedApi();
+    const polled = await app.request("http://localhost/api/versions");
+    expect(polled.headers.get(VERSIONS_STREAM_HEADER)).toBeNull();
+    // A 204 stops `EventSource`.
+    const stream = await app.request("http://localhost/api/versions/stream");
+    expect(stream.status).toBe(204);
   });
 });

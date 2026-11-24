@@ -103,6 +103,7 @@ attributes. Nested logs and spans inherit them.
 | Started plugin task retried or failed | span `plugin.task` (`app.plugin.task.attempt` is the queue delivery), `plugin.task.failed` | `chat/plugins/started-task-runner.ts` |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
+| Dashboard update late with push on  | `versions_stream.listener_lost`, `versions_stream.read_failed`; Postgres `application_name` `junior-versions-listen` | `api/versions/` |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |
 | Dashboard feedback by UI shell      | `app.dashboard.ui` (`classic`, `inbox`) on browser spans and feedback; `app.feedback.topic`          | `packages/junior-dashboard/src/client/sentry.ts`                |
 | Catch-up offered but not asked      | browser span `Catch-up offered` (`ui.render`) vs. `http.server` `POST /api/conversations/:conversationId/catch-up` (`user.id`) | `packages/junior-dashboard/src/client/sentry.ts`, `api/conversations/routes.ts` |
