@@ -116,7 +116,8 @@ function submittedAnswer(
 
 /**
  * Do one person action on an Inbox item and tell its linked Conversations.
- * The first submit or dismiss closes the item for every
+ * Only the Conversation that added the item gets an answer as input; see
+ * `sendInboxItemMessages`. The first submit or dismiss closes the item for every
  * assignee. A retry of the same close sends any missing messages again and
  * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
  * only the call that closes the item succeeds, and every other call gets a
@@ -330,8 +331,8 @@ function messageAnswer(
  * Items assigned to Everyone, or only to other people, stay open. They need
  * an answer on the card or the Inbox. Each item closes as `done` with
  * `INBOX_ITEM_REPLIED_REASON`, and the replier closes it. The reply itself
- * is the answer in this Conversation, so only the other linked
- * Conversations get a message. A click that closes the item first wins.
+ * is the answer in this Conversation, the owner, so the other linked
+ * Conversations only record the close. A click that closes the item first wins.
  * A retry of the reply, or a later reply from the same person, delivers
  * the items that it closed again: the cards show the close, and only the
  * missing messages go. Each message has a key, so a message that was sent

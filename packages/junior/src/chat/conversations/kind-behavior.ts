@@ -44,9 +44,10 @@ export type TurnBehavior = {
    */
   idleNeedsPendingWork: boolean;
   /**
-   * The Turn can pause until its web Actor signs in. A child agent's Turn
-   * cannot wait for a person, even when it runs as the web user who started
-   * it. Missing auth blocks it instead.
+   * The Turn can pause until its web Actor signs in. Only a person's Turn
+   * waits. An agent's Turn in a child agent cannot wait for a person, even
+   * when it runs as the web user who started it. Missing auth blocks it
+   * instead.
    */
   waitsForSignIn: boolean;
   /**
@@ -84,7 +85,6 @@ export type TurnBehavior = {
   relatedConversations: boolean;
   tools: {
     agents: AgentTools;
-    inbox: boolean;
     subscriptions: boolean;
     userCustomization: boolean;
     /**
@@ -124,7 +124,6 @@ const ROOT: TurnBehavior = {
   relatedConversations: true,
   tools: {
     agents: "children",
-    inbox: true,
     subscriptions: true,
     userCustomization: true,
     reply: "none",
@@ -172,13 +171,22 @@ const CHILD_AGENT_TURN: TurnBehavior = {
   relatedConversations: false,
   tools: {
     agents: "children_and_parent",
-    inbox: false,
     subscriptions: false,
     userCustomization: false,
     reply: "parent",
     reportBlocked: "parent",
     noReply: true,
   },
+};
+
+// A person's answer to an Inbox item of a Task. The Task keeps its one
+// system prompt and tool list, and it still reports to its parent. The Turn
+// runs as the person, so it can wait for their sign-in, and like a person's
+// Turn in a Thread it does not start or message child agents.
+const PERSON_IN_TASK: TurnBehavior = {
+  ...CHILD_AGENT_TURN,
+  waitsForSignIn: true,
+  tools: { ...CHILD_AGENT_TURN.tools, agents: "none" },
 };
 
 // Every Turn on a Thread that a person did not send.
@@ -192,7 +200,6 @@ const AGENT_IN_THREAD: TurnBehavior = {
 // one tool list. The Turn's own tools say which of them it can use.
 const THREAD_TOOLS: TurnBehavior["tools"] = {
   ...AGENT_IN_THREAD.tools,
-  inbox: PERSON_IN_THREAD.tools.inbox,
   subscriptions: PERSON_IN_THREAD.tools.subscriptions,
   userCustomization: PERSON_IN_THREAD.tools.userCustomization,
 };
@@ -230,14 +237,15 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
 // A Lead finds, starts, and steers its person's other Conversations, and
 // never does their work. So it gets only the tools for that, and no sandbox,
 // skills, MCP, provider, or child-agent tools. Automation tools stay out
-// until a Lead can pick a Slack Destination for one. `updateInboxItem` stays
-// out: a Lead is private and adds no items, so it can change none.
+// until a Lead can pick a Slack Destination for one. It asks its person with
+// an Inbox item, which stays private like the Lead.
 const LEAD_TOOLS = [
   "startConversation",
   "messageAgent",
   "searchConversations",
   "searchConversationEvents",
   "readConversationEvent",
+  "addInboxItem",
   "searchInboxItems",
   "searchEventTypes",
   "watchEvents",
@@ -286,9 +294,8 @@ export function turnBehavior(args: {
     case "thread":
       return args.personInput ? PERSON_IN_THREAD : AGENT_IN_THREAD;
     case "task":
-      if (!args.personInput) return CHILD_AGENT_TURN;
-      // Only an agent writes input to a task.
-      throw new Error("A task Conversation cannot have a person's input");
+      // A person's only input to a Task is the answer to its own Inbox item.
+      return args.personInput ? PERSON_IN_TASK : CHILD_AGENT_TURN;
     case "lead":
       return LEAD;
   }
@@ -320,6 +327,16 @@ export function promptModeTurnTools(mode: PromptMode): TurnBehavior["tools"] {
  */
 export function hasConversationMetadata(kind: ConversationKind): boolean {
   return kind !== "task";
+}
+
+/**
+ * Return whether a Conversation of this kind takes a person's answer to its
+ * own Inbox item as the person's web input, also when it takes no other web
+ * input. Every child agent asks its own questions, so a Task gets its
+ * answers too.
+ */
+export function takesInboxAnswersAsWebInput(kind: ConversationKind): boolean {
+  return !isTopLevelKind(kind);
 }
 
 /** Return whether a Conversation of this kind has no parent. */

@@ -55,11 +55,17 @@ import {
 import { renderAgentResult } from "./agent-update";
 import type { ChildAgent, ChildAgentSender } from "./types";
 
-// TODO(dcramer): Add a `waiting` agent update from a child when it can pause
-// for input or auth instead of failing (#881).
+/**
+ * How one child result that reaches the parent ended, or `waiting` while the
+ * child waits on a person's answer to its Inbox item.
+ */
+type ResultStatus = "blocked" | "completed" | "failed" | "stopped" | "waiting";
 
-/** How one child result that reaches the parent ended. */
-type ResultStatus = "blocked" | "completed" | "failed" | "stopped";
+/**
+ * What a child sends its parent: a Turn's result, or a `waiting` update when
+ * it asks a person. A `waiting` update ends nothing.
+ */
+type ChildUpdate = ParentResult | { kind: "waiting"; text: string };
 
 /**
  * Render the parent agent input for one child agent result as one
@@ -212,6 +218,7 @@ const RESULT_SUMMARIES = {
   failed: "failed.",
   reply: "replied.",
   stopped: "was stopped.",
+  waiting: "waits on a person.",
 } as const;
 
 /**
@@ -225,7 +232,7 @@ const RESULT_SUMMARIES = {
  */
 export async function enqueueChildResultToParent(args: {
   actor: Actor;
-  result: ParentResult;
+  result: ChildUpdate;
   messageKey: string;
   nowMs?: number;
   queue: ConversationWorkQueue;
@@ -306,6 +313,31 @@ const PARENT_RESULT_OUTCOMES = {
   reply: "success",
   stopped: "aborted",
 } as const satisfies Record<ParentResult["kind"], SubagentOutcome>;
+
+/**
+ * Tell the parent of a child agent that the child asked a person with an
+ * Inbox item and waits on the answer, so the parent does not ask again. The
+ * update gives no authority, so the parent runs it as the Event system Actor.
+ * The item keys it, so a later update of the same item reports nothing new.
+ * A Conversation with no parent sends nothing.
+ */
+export async function enqueueChildWaitingToParent(args: {
+  conversationId: string;
+  inboxItemId: string;
+  queue: ConversationWorkQueue;
+  text: string;
+}): Promise<void> {
+  const sender = await readChildConversationSender(args.conversationId);
+  if (!sender) return;
+  await enqueueChildResultToParent({
+    actor: EVENT_SYSTEM_ACTOR,
+    messageKey: `waiting:${args.inboxItemId}`,
+    queue: args.queue,
+    result: { kind: "waiting", text: args.text },
+    sender,
+    turnId: `waiting:${args.inboxItemId}`,
+  });
+}
 
 /**
  * Build the parent delivery of child agent Turns. The child Conversation

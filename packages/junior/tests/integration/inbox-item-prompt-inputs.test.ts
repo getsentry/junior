@@ -197,7 +197,12 @@ describe("inbox item prompt inputs", () => {
       const item = await getInboxItem(getDb(), id);
       await sendInboxItemMessages({
         change: { kind: "submitted", user: alice },
-        item: { ...item!, conversationIds: [CLI_CONVERSATION_ID] },
+        // The same items, as if the CLI Conversation asked them.
+        item: {
+          ...item!,
+          conversationIds: [CLI_CONVERSATION_ID],
+          owner: { kind: "conversation", id: CLI_CONVERSATION_ID },
+        },
         nowMs: Date.now(),
         queue: fixture.queue,
       });

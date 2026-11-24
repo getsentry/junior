@@ -278,14 +278,9 @@ describe("static tool registry", () => {
         ]),
       );
       expect(person.disabled).not.toContain("addInboxItem");
-      expect(agent.disabled).toEqual(
-        expect.arrayContaining([
-          "setConversationSubscription",
-          "addInboxItem",
-          "searchInboxItems",
-          "updateInboxItem",
-        ]),
-      );
+      expect(agent.disabled).toContain("setConversationSubscription");
+      // Every agent, also a child agent, asks a person with an Inbox item.
+      expect(agent.disabled).not.toContain("addInboxItem");
       expect(agent.disabled).not.toContain("spawnAgent");
       expect(agent.disabled).not.toContain("reply");
 
@@ -299,9 +294,6 @@ describe("static tool registry", () => {
       ).rejects.toThrow(
         "setConversationSubscription is disabled in this Turn.",
       );
-      await expect(callTool(agent, "addInboxItem")).rejects.toThrow(
-        "addInboxItem is disabled in this Turn.",
-      );
       expect(person.spawnAgent).not.toHaveBeenCalled();
       expect(person.messageAgent).not.toHaveBeenCalled();
 
@@ -311,6 +303,48 @@ describe("static tool registry", () => {
       expect(turnInputFact(agent)).toContain(
         "<turn-input>\nAn agent sent the input of this Turn.\n</turn-input>",
       );
+    } finally {
+      await createApp({ plugins: plugins() });
+    }
+  });
+
+  // A person answers an Inbox item of a Task between the Turns that its
+  // parent starts. The Task keeps its cached tools and system prompt, and the
+  // person's Turn still cannot start or message child agents.
+  it("sends one system prompt and one tool list on every Turn of a Task", async () => {
+    await createApp({ plugins: plugins(), limits: { maxAgentDepth: 1 } });
+    try {
+      const [person, agent] = await Promise.all(
+        [true, false].map((personInput) =>
+          sentTurn(
+            turnBehavior({ kind: "task", personInput }),
+            turnRun("slack:T0:C0:1.0:task", personInput, {
+              kind: "parent_message",
+            }),
+          ),
+        ),
+      ).then((turns) => turns as [SentTurn, SentTurn]);
+
+      expectSameCachedPrefix([person, agent]);
+      expect(person.disabled).toEqual(
+        expect.arrayContaining([
+          "spawnAgent",
+          "stopAgent",
+          "archiveAgent",
+          "listAgents",
+          "messageAgent",
+        ]),
+      );
+      for (const turn of [person, agent]) {
+        expect(turn.disabled).not.toContain("addInboxItem");
+        expect(turn.disabled).not.toContain("reply");
+        expect(turn.disabled).not.toContain("reportBlocked");
+      }
+      expect(agent.disabled).not.toContain("spawnAgent");
+      await expect(callTool(person, "spawnAgent")).rejects.toThrow(
+        "spawnAgent is disabled in this Turn.",
+      );
+      expect(person.spawnAgent).not.toHaveBeenCalled();
     } finally {
       await createApp({ plugins: plugins() });
     }
@@ -393,6 +427,7 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "addInboxItem",
         "listWatches",
         "messageAgent",
         "noReply",
@@ -414,6 +449,7 @@ describe("static tool registry", () => {
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
+        "addInboxItem",
         "listWatches",
         "readConversationEvent",
         "searchConversationEvents",

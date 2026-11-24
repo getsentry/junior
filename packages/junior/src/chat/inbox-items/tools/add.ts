@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import * as z from "zod";
+import { enqueueChildWaitingToParent } from "@/chat/agent-invocations/result";
 import { publishAgentUpdate } from "@/chat/conversations/watch-events";
 import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
@@ -430,7 +431,8 @@ export function createAddInboxItemTool(
 
 /**
  * Report that the item's owner Conversation waits on a person when the item
- * is an action, also when an update makes a notice an action. An update can
+ * is an action, also when an update makes a notice an action: to its Watches,
+ * and to its parent agent, so the parent does not ask again. An update can
  * come from another Conversation, so the owner, not the caller, reports it.
  * The Event key is the item, so a later update of the same action does not
  * report it again.
@@ -441,15 +443,19 @@ async function publishWaiting(
 ): Promise<void> {
   const conversationId = ownerConversationId(item);
   if (item.kind !== "action" || !conversationId) return;
+  const text = item.request?.question ?? item.body;
+  await enqueueChildWaitingToParent({
+    conversationId,
+    inboxItemId: item.id,
+    queue: services.queue(),
+    text,
+  });
   await publishAgentUpdate(
     conversationId,
     { type: "waiting", inboxItemId: item.id },
     {
       queue: services.queue(),
-      update: async () => ({
-        status: "waiting",
-        text: item.request?.question ?? item.body,
-      }),
+      update: async () => ({ status: "waiting", text }),
     },
   );
 }

@@ -7,6 +7,7 @@ import {
   appendAndEnqueueWebMessage,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
+import { takesInboxAnswersAsWebInput } from "@/chat/conversations/kind-behavior";
 import { addConversationNote } from "@/chat/conversations/notes";
 import {
   getConversationEventStore,
@@ -26,7 +27,7 @@ import { formatUserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import { juniorConversations } from "@/db/schema";
 import type { InboxItemChangeRecord } from "./change-record";
 import { isPluginInboxItem } from "./access";
-import type { InboxItem } from "./store";
+import { ownerConversationId, type InboxItem } from "./store";
 
 /** One change to an Inbox item that linked Conversations learn about. */
 export type InboxItemChange =
@@ -117,44 +118,40 @@ async function openConversationIds(
   return rows.map((row) => row.conversationId).sort();
 }
 
-// A change that only records a Message. It starts no Turn.
-type RecordedChange = Extract<
-  InboxItemChange,
-  { kind: "taken" } | { kind: "dismissed" } | { kind: "submitted" }
->;
-
-// Return the change when it only records a Message. The plugin that added
-// an item does the work of its answer, so the answer starts no Turn.
-function recordedChange(
+// Return whether a change only records a Message in one Conversation. A
+// take or a dismiss is not a decision, and the plugin that added an item
+// does the work of its answer. A person's answer goes only to the agent that
+// asked, so every other linked Conversation only records it. An agent close
+// is not an answer.
+function recordsOnly(
   item: InboxItem,
   change: InboxItemChange,
-): RecordedChange | undefined {
-  if (change.kind === "taken" || change.kind === "dismissed") return change;
-  return change.kind === "submitted" && isPluginInboxItem(item)
-    ? change
-    : undefined;
+  conversationId: string,
+): boolean {
+  if (change.kind === "taken" || change.kind === "dismissed") return true;
+  if (change.kind === "submitted" && isPluginInboxItem(item)) return true;
+  if (change.kind === "closed") return false;
+  return ownerConversationId(item) !== conversationId;
 }
 
-// Each take has its own key. A dismiss or an answer is a close, so it uses
+// Each take has its own key. Every other change closes the item, so it uses
 // the close key.
-function recordedMessageId(item: InboxItem, change: RecordedChange): string {
+function recordedMessageId(item: InboxItem, change: InboxItemChange): string {
   return change.kind === "taken"
     ? `inbox-item:${item.id}:taken:${change.user.id}:${item.updatedAt.getTime()}`
     : `inbox-item:${item.id}:closed`;
 }
 
 /**
- * Save a take, a dismiss, or the answer to a plugin item as a handled
- * Message in one Conversation. None starts a Turn or reaches the model as a
- * Message: a take or a dismiss is not a decision, and the plugin does the
- * work of its answer. The dashboard shows the Message from its record. A
- * dismiss also adds a Conversation note, so the next Turn knows the item
- * closed. Without it, the agent only has its own `addInboxItem` result and
- * still treats the item as open. A retry is safe, because the Message id and
- * the note key are the change key.
+ * Save a change as a handled Message in one Conversation. It starts no Turn
+ * and does not reach the model as a Message. The dashboard shows the Message
+ * from its record. A dismiss also adds a Conversation note, so the next Turn
+ * knows the item closed. Without it, the agent only has its own
+ * `addInboxItem` result and still treats the item as open. A retry is safe,
+ * because the Message id and the note key are the change key.
  */
 async function recordInboxItemChange(args: {
-  change: RecordedChange;
+  change: InboxItemChange;
   conversationId: string;
   item: InboxItem;
   nowMs: number;
@@ -169,6 +166,7 @@ async function recordInboxItemChange(args: {
       text: `${personName(change.user)} dismissed inbox item "${args.item.title}" (${args.item.id}). It is closed with no answer. Do not treat it as open.`,
     });
   }
+  const record = inboxItemChangeRecord(args.item, change);
   await getConversationEventStore().append(args.conversationId, [
     {
       idempotencyKey: `message:${messageId}`,
@@ -179,14 +177,18 @@ async function recordInboxItemChange(args: {
         role: "user",
         text: renderInboxItemMessage(args.item, change),
         meta: {
-          author: {
-            email: change.user.email,
-            ...(change.user.displayName
-              ? { fullName: change.user.displayName }
-              : undefined),
-          },
+          ...("user" in change
+            ? {
+                author: {
+                  email: change.user.email,
+                  ...(change.user.displayName
+                    ? { fullName: change.user.displayName }
+                    : undefined),
+                },
+              }
+            : undefined),
           replied: false,
-          reviewItemChanges: [inboxItemChangeRecord(args.item, change)],
+          ...(record ? { reviewItemChanges: [record] } : undefined),
         },
       },
     },
@@ -206,14 +208,8 @@ async function sendOne(args: {
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
-  const recorded = recordedChange(args.item, args.change);
-  if (recorded) {
-    await recordInboxItemChange({
-      change: recorded,
-      conversationId: args.conversationId,
-      item: args.item,
-      nowMs: args.nowMs,
-    });
+  if (recordsOnly(args.item, args.change, args.conversationId)) {
+    await recordInboxItemChange(args);
     return;
   }
   // Only the first close wins, so one close message per item is enough.
@@ -223,7 +219,11 @@ async function sendOne(args: {
     const conversation = await getConversationStore().get({
       conversationId: args.conversationId,
     });
-    if (conversation && acceptsWebMessages(conversation)) {
+    if (
+      conversation &&
+      (acceptsWebMessages(conversation) ||
+        takesInboxAnswersAsWebInput(conversation.kind))
+    ) {
       // A person action comes from that person, like a reply in Slack.
       await appendAndEnqueueWebMessage(
         {
@@ -275,9 +275,11 @@ async function sendOne(args: {
 /**
  * Send one change to every open linked Conversation, except the
  * Conversation that made the change. A Conversation is open until Junior
- * purges its transcript; archive is only a per-viewer list state. Each
- * message starts a new Turn, except a take or a dismiss, which is only
- * recorded. Repeat calls for the same change are safe.
+ * purges its transcript; archive is only a per-viewer list state. A
+ * person's answer starts a Turn only in the Conversation that added the item,
+ * an agent close starts one in each, and a take or a dismiss starts none.
+ * Every other change is only recorded. Repeat calls for the same change are
+ * safe.
  */
 export async function sendInboxItemMessages(args: {
   change: InboxItemChange;

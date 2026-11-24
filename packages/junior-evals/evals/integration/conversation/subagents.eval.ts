@@ -93,12 +93,12 @@ describe("Child Agents", () => {
     ]);
   });
 
-  test("when a child agent needs a person's confirmation, it reports the block in one result turn", async ({
+  test("when a child agent needs a person's confirmation, it asks that person and the parent gets one waiting turn", async ({
     agent,
   }) => {
     // Injected faults: Guardian allows the spawn and asks the person to
-    // confirm the child's doc update. A child cannot ask a person itself, so
-    // it reports what it needs to the parent.
+    // confirm the child's doc update. The child asks the person with an
+    // Inbox item, and its parent only learns that it waits.
     forceNextGuardianDecision("allow", { tool: "spawnAgent" });
     forceNextGuardianDecision("ask", { tool: UPDATE_DOC_TOOL });
     const { run } = await agent({
@@ -116,11 +116,13 @@ describe("Child Agents", () => {
     expect(guardianReviews().map((review) => review.tool)).toContain(
       UPDATE_DOC_TOOL,
     );
-    // Only the child agent has reportBlocked.
-    expect(requestedTools).toContain("reportBlocked");
+    // Only the child asks. The parent does not ask again.
+    expect(requestedTools).toContain("addInboxItem");
+    expect(requestedTools).not.toContain("reportBlocked");
+    expect(completedToolCalls("addInboxItem", conversation)).toHaveLength(0);
     expect(conversation.turns).toHaveLength(2);
-    // The parent can end the result Turn with only an inbox item card, so
-    // `no_reply` is a success. `asking.eval.ts` owns how the parent asks.
+    // The `waiting` update needs nothing from people, so `no_reply` is a
+    // success.
     expect(["no_reply", "succeeded"]).toContain(conversation.turns[1]?.status);
   });
 

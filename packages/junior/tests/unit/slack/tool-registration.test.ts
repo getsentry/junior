@@ -349,12 +349,12 @@ describe("Slack tool registration", () => {
     expect(tools).not.toHaveProperty("addReaction");
   });
 
-  it("loads the tool that asks a person in every root Turn", () => {
+  it("loads the tool that asks a person in every Turn", () => {
     const tools = createTools([], {}, ctx());
     expect(tools["addInboxItem"]?.exposure).not.toBe("deferred");
     expect(tools["addInboxItem"]?.disabledReason).toBeUndefined();
 
-    // A child agent reports the need to its parent.
+    // A child agent asks a person itself.
     const childTools = createTools(
       [],
       {},
@@ -367,9 +367,8 @@ describe("Slack tool registration", () => {
         }).tools,
       },
     );
-    expect(childTools["addInboxItem"]?.disabledReason).toContain(
-      "reportBlocked",
-    );
+    expect(childTools["addInboxItem"]?.exposure).not.toBe("deferred");
+    expect(childTools["addInboxItem"]?.disabledReason).toBeUndefined();
   });
 
   it("does not register Slack tools for local destinations", () => {

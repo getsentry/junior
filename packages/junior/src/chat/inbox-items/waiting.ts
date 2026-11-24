@@ -1,11 +1,16 @@
-import { and, eq, like, sql } from "drizzle-orm";
+import { and, eq, like, notLike, sql } from "drizzle-orm";
 import type { JuniorDatabase } from "@/db/db";
 import {
   juniorConversations,
   juniorInboxItemConversations,
   juniorInboxItems,
 } from "@/db/schema";
-import { TODO_INBOX_ITEM_KEY_PREFIX, inboxItemPlugin } from "./access";
+import {
+  PLUGIN_INBOX_ITEM_KEY_PREFIX,
+  TODO_INBOX_ITEM_KEY_PREFIX,
+  inboxItemOwnedByConversation,
+  inboxItemPlugin,
+} from "./access";
 import { inboxItemNeedsUserNow } from "./store";
 
 /** One open Inbox item that a Conversation waits on a User for. */
@@ -124,4 +129,29 @@ export async function listWaitingConversations(
   return [...waiting.values()].sort((left, right) =>
     left.conversationId.localeCompare(right.conversationId),
   );
+}
+
+/**
+ * Return whether a Conversation waits on a person's answer to an open
+ * question that its agent asked. The answer starts its next Turn. A plugin
+ * item or a To-do starts no Turn, so neither counts.
+ */
+export async function waitsOnInboxAnswer(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<boolean> {
+  const [row] = await db
+    .select({ id: juniorInboxItems.id })
+    .from(juniorInboxItems)
+    .where(
+      and(
+        inboxItemOwnedByConversation(conversationId),
+        eq(juniorInboxItems.kind, "action"),
+        eq(juniorInboxItems.status, "open"),
+        notLike(juniorInboxItems.dedupeKey, `${PLUGIN_INBOX_ITEM_KEY_PREFIX}%`),
+        notLike(juniorInboxItems.dedupeKey, `${TODO_INBOX_ITEM_KEY_PREFIX}%`),
+      ),
+    )
+    .limit(1);
+  return row !== undefined;
 }

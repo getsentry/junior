@@ -21,7 +21,7 @@ import {
   renderInboxItemMessage,
   inboxItemChangeRecord,
 } from "@/chat/inbox-items/messages";
-import type { InboxItem } from "@/chat/inbox-items/store";
+import { ownerConversationId, type InboxItem } from "@/chat/inbox-items/store";
 import { parseSlackChannelId } from "@/chat/slack/ids";
 import {
   openSlackModal,
@@ -114,11 +114,13 @@ async function refreshCards(
 }
 
 /**
- * Do one person action from a Slack card. The thread of the card gets an
- * answer as Slack input from the person, like a typed reply. A dismiss, or
- * the answer to a plugin item, starts no Turn, so the thread gets the same
- * recorded Message as the other linked Conversations, from
- * `actOnInboxItem`. An expected failure, such as
+ * Do one person action from a Slack card. When the Conversation of the card
+ * thread added the item, it gets an answer as Slack input from the person,
+ * like a typed reply. The answer goes only to the agent that asked, so a
+ * card that shows the item of another Conversation, such as of a child
+ * agent, leaves its delivery to `actOnInboxItem`. A dismiss, or the answer
+ * to a plugin item, starts no Turn, so the thread gets the same recorded
+ * Message as the other linked Conversations. An expected failure, such as
  * an item that is already closed, goes to the person as an ephemeral
  * message.
  */
@@ -144,17 +146,20 @@ async function act(args: {
     queue: services.queue,
     show: createInboxItemShow(() => services.adapter),
   };
-  let recordOnly = args.action === "dismiss";
+  let slackInput = false;
   let item: InboxItem;
   try {
     const current = await readInboxItemForUser(actor.user, args.itemId);
     // The plugin that added an item does the work of its answer, so the
     // thread gets the recorded Message, not input that starts a Turn.
     const pluginAnswer = args.action === "submit" && isPluginInboxItem(current);
-    recordOnly ||= pluginAnswer;
+    slackInput =
+      args.action !== "dismiss" &&
+      !pluginAnswer &&
+      ownerConversationId(current) === conversationId;
     item = await actOnInboxItem({
       action: args.action,
-      ...(recordOnly ? undefined : { exceptConversationId: conversationId }),
+      ...(slackInput ? { exceptConversationId: conversationId } : undefined),
       // Two clicks can both see an open item. Only the click that closes it
       // adds the input to this thread, so one action adds one Turn. A plugin
       // answer adds no input, so a retry of it after a failed plugin hook
@@ -171,7 +176,7 @@ async function act(args: {
     await refreshCards(services, actor.user, args.itemId);
     return;
   }
-  if (recordOnly || !item.conversationIds.includes(conversationId)) return;
+  if (!slackInput) return;
   const change = reviewItemChange(args.action, actor.user);
   try {
     await services.persistMessage(

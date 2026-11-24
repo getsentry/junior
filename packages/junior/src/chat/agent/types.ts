@@ -1,6 +1,9 @@
 import type { MessageAttachment } from "@/chat/attachments/input";
 /** Input for one Run through Junior's agent. */
-import type { AgentTools } from "@/chat/conversations/kind-behavior";
+import {
+  isTopLevelKind,
+  type AgentTools,
+} from "@/chat/conversations/kind-behavior";
 import type {
   Destination,
   ReplyAttribution,
@@ -465,9 +468,9 @@ export function assertRunConsistency(
       }
       switch (destination.platform) {
         case "local": {
-          // A person's Turn in a Thread replies in the Thread. Its
-          // Destination is the Thread's own copy of its root's.
-          if (conversationKind === "thread") {
+          // A person's Turn in a child agent replies in the child. Its
+          // Destination is the child's own copy of its root's.
+          if (conversationKind && !isTopLevelKind(conversationKind)) {
             break;
           }
           if (source.conversationId !== destination.conversationId) {

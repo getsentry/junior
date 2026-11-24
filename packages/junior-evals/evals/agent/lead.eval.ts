@@ -22,6 +22,25 @@ describe("Lead", () => {
     ).toBeGreaterThan(0);
   });
 
+  // The Lead is private, so it could ask in its reply. The case measures
+  // whether it asks with an Inbox item, as every agent does.
+  test("when the Lead needs a decision that is the person's, it asks with an inbox item", async ({
+    run,
+  }) => {
+    const conversation = await run(
+      webMessage(
+        "start a Conversation that renames our billing-api service. I haven't settled the new name yet, it's either payments-api or ledger-api, so check with me which one first",
+        { lead: true },
+      ),
+    );
+
+    expect(
+      completedToolCalls("addInboxItem", conversation).filter(
+        (call) => (call.input as { kind?: string }).kind === "action",
+      ),
+    ).not.toHaveLength(0);
+  });
+
   // `searchConversations` is a catalog tool, but the Lead rules name it like
   // a tool in the list, so the model can call it directly. That call fails,
   // and its result names the `executeTool` call to make. The case measures
