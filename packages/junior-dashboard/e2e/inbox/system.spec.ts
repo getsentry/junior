@@ -74,7 +74,9 @@ test.describe("new UI", () => {
     await expect(page.getByText("Conversation activity")).toBeVisible();
     await expect(page.getByLabel("Conversations per day")).toBeVisible();
     await expect(page.getByText("Input cache")).toBeVisible();
-    await expect(page.getByText(/6 merged changes\. Lines are/)).toBeVisible();
+    await expect(
+      page.getByText(/6 merged changes used \d+% of spend\. Lines are/),
+    ).toBeVisible();
     await expect(
       page.getByLabel("7-day rolling cost per merged change per day"),
     ).toBeVisible();

@@ -25,10 +25,7 @@ const PER_PERSON = {
 
 const BY_ACTOR = {
   people: { color: "var(--color-amber-400)", label: "People" },
-  unattributed: {
-    color: "var(--color-slate-400)",
-    label: "No verified person",
-  },
+  unattributed: { color: "var(--color-slate-400)", label: "Overhead" },
 } as const;
 
 type Point = PersonSpendDay & { mean: number | null };
@@ -47,9 +44,9 @@ function formatAxisCost(value: number): string {
 
 /**
  * Plot daily spend per active person next to the daily split of spend
- * between people and Turns with no verified person. People spend is active
- * people times the mean, so the two charts show whether spend grows with
- * people, with use per person, or outside any person.
+ * between people and overhead, which is Turns with no verified person.
+ * People spend is active people times the mean, so the two charts show
+ * whether spend grows with people, with use per person, or with overhead.
  */
 export function PersonSpendCharts(props: {
   days: readonly PersonSpendDay[];
@@ -162,7 +159,7 @@ export function PersonSpendCharts(props: {
       </Card>
       <Card>
         <ChartHeader
-          description="Daily model spend, split by whether a verified person ran the Turn."
+          description="Overhead is spend with no verified person, such as Automation runs."
           title="Spend by Actor"
           trailing={
             <ChartLegend
@@ -202,10 +199,7 @@ export function PersonSpendCharts(props: {
                   <ActivityChartTooltipContent
                     rows={(day: Point) => [
                       ["People", formatCost(day.personCostUsd)],
-                      [
-                        "No verified person",
-                        formatCost(day.unattributedCostUsd),
-                      ],
+                      ["Overhead", formatCost(day.unattributedCostUsd)],
                     ]}
                   />
                 }

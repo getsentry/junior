@@ -96,6 +96,13 @@ function rollingCosts(
   });
 }
 
+// Merged-change cost counts each tree's spend over all time, so a short range
+// can show more than 100%.
+function spendYield(totals: CostTotals): string {
+  if (!totals.costUsd) return "";
+  return ` used ${Math.round((totals.mergedCodeChangeCostUsd / totals.costUsd) * 100)}% of spend`;
+}
+
 function formatUnitCost(value: number | null): string {
   return value === null ? "—" : formatCostSummary({ total: value });
 }
@@ -110,8 +117,9 @@ function formatAxisCost(value: number): string {
 /**
  * Plot the rolling cost per merged code change at the bucket size of the
  * selected range, next to all model spend over the same merges. The gap is
- * spend that no merged change used. `history` holds the same buckets as
- * `days`, and may start earlier so the first points get a full window.
+ * spend that no merged change used, and the header shows the share of spend
+ * that merged changes used. `history` holds the same buckets as `days`, and
+ * may start earlier so the first points get a full window.
  */
 export function MergedChangeCostChart(props: {
   bucketUnit: TimeRangeBucketUnit;
@@ -129,7 +137,7 @@ export function MergedChangeCostChart(props: {
   return (
     <Card>
       <ChartHeader
-        description={`${formatCompactNumber(period.mergedCodeChanges)} merged changes. Lines are ${window.label} rolling means; the legend shows the period mean. All spend includes spend that merged nothing.`}
+        description={`${formatCompactNumber(period.mergedCodeChanges)} merged changes${spendYield(period)}. Lines are ${window.label} rolling means; the legend shows the period mean. All spend includes spend that merged nothing.`}
         title="Cost per merged change"
         trailing={
           <ChartLegend
