@@ -26,6 +26,7 @@ import {
   itemNeedsUser,
   inboxItemReaderForUser,
   inboxItemReaderForUserInConversation,
+  REPLY_NOTICE_KEY_PREFIX,
   type InboxItemReader,
 } from "@/chat/inbox-items/access";
 import {
@@ -242,6 +243,10 @@ function inboxItemPayload(
     ...(related &&
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
+      : undefined),
+    // Derived from the reply notice's dedupe key, so nothing more is stored.
+    ...(item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)
+      ? { replyNotice: true as const }
       : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
