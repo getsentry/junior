@@ -435,6 +435,7 @@ export function githubPlugin(
         });
         await runGitHubPullRequestPatches({
           cache: ctx.cache,
+          events: ctx.events,
           loadHeadFacts: async (refs) =>
             await loadPullRequestHeadFacts(installationEnv, refs),
           log: ctx.log,

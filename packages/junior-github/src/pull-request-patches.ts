@@ -13,6 +13,7 @@
  * (`pull-request-prefetch.ts`).
  */
 import type {
+  EventPublisher,
   PluginCache,
   PluginLogger,
   PluginState,
@@ -25,6 +26,10 @@ import {
   type GitHubPullRequestFields,
   isOlderGitHubObject,
 } from "./object-cache.js";
+import {
+  markGitHubConflict,
+  publishGitHubConflictResolved,
+} from "./merge-conflict-checks/resolved.js";
 import {
   aliasedPullRequests,
   githubCheckCounts,
@@ -142,6 +147,44 @@ async function writeHeadFacts(
   return readAgain;
 }
 
+// A patch reads the merge state that a push or a new base changes, so it
+// also marks a conflict and publishes its fix
+// (`merge-conflict-checks/resolved.ts`). A failure is logged, and the mark
+// waits for the next read.
+async function observeMergeState(
+  args: {
+    events: Pick<EventPublisher, "publish">;
+    log: PluginLogger;
+    state: PluginState;
+  },
+  ref: PullRequestRef,
+  node: HeadFactsNode,
+): Promise<void> {
+  const mergeable = githubMergeable(node.mergeable);
+  const pullRequest = {
+    number: ref.number,
+    repositoryFullName: `${ref.owner}/${ref.name}`,
+  };
+  try {
+    if (mergeable === false) {
+      await markGitHubConflict(args.state, pullRequest);
+    } else if (mergeable === true) {
+      await publishGitHubConflictResolved({
+        events: args.events,
+        headSha: node.headRefOid,
+        ref: pullRequest,
+        state: args.state,
+      });
+    }
+  } catch (error) {
+    args.log.error(
+      "GitHub merge conflict mark failed",
+      { number: ref.number, repository: pullRequest.repositoryFullName },
+      error,
+    );
+  }
+}
+
 // A dropped patch leaves its pending fields fresh only briefly, so the
 // next read loads the entry from GitHub. The stale copy stays for errors.
 async function expirePending(cache: PluginCache, key: string): Promise<void> {
@@ -163,6 +206,7 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
  */
 export async function runGitHubPullRequestPatches(args: {
   cache: PluginCache;
+  events: Pick<EventPublisher, "publish">;
   loadHeadFacts(refs: PullRequestRef[]): Promise<unknown>;
   log: PluginLogger;
   nowMs: number;
@@ -179,6 +223,7 @@ export async function runGitHubPullRequestPatches(args: {
   type Due = (typeof due)[number];
   const again: Due[] = [];
   const dropped: string[] = [];
+  const observed: { node: HeadFactsNode; ref: PullRequestRef }[] = [];
   const reads = due.flatMap(([key, patch]) => {
     const ref = pullRequestRefFromCacheKey(key);
     if (!ref) dropped.push(key);
@@ -212,13 +257,14 @@ export async function runGitHubPullRequestPatches(args: {
             part.length,
             pullRequestHeadFactsNodeSchema,
           );
-          for (const [index, { due: entry }] of part.entries()) {
+          for (const [index, { due: entry, ref }] of part.entries()) {
             const [key, patch] = entry;
             const node = nodes[index];
             if (!node) {
               dropped.push(key);
               continue;
             }
+            observed.push({ node, ref });
             const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
             // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
             if (await writeHeadFacts(args.cache, key, node, last)) {
@@ -228,6 +274,10 @@ export async function runGitHubPullRequestPatches(args: {
         },
       }),
   );
+  for (const { node, ref } of observed) {
+    // oxlint-disable-next-line no-await-in-loop -- Publish in order; only a mark or a fix writes.
+    await observeMergeState(args, ref, node);
+  }
   const retries = again.filter(
     ([, patch]) => patch.attempts + 1 < PATCH_MAX_ATTEMPTS,
   );

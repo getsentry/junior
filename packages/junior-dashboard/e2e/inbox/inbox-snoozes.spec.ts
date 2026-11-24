@@ -430,6 +430,53 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row).toHaveCount(0);
   });
 
+  test("a pull request row snoozes until it gets new commits or its merge conflict clears", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Custom…" }).click();
+    const dialog = customOf(page);
+    await dialog.getByRole("button", { name: "Add condition" }).click();
+    const events = await openEvents(page, 0);
+    for (const phrase of [
+      "is reopened",
+      "is converted to a draft",
+      "gets new commits",
+      "gets a review request",
+      "no longer has a merge conflict",
+    ]) {
+      await expect(
+        events.getByRole("option", { exact: true, name: phrase }),
+      ).toBeVisible();
+    }
+    await screenshot(page, "inbox-snooze-pull-request-events", {
+      lightTheme: true,
+    });
+    await pickOption(
+      events.getByRole("option", { exact: true, name: "gets new commits" }),
+    );
+    await dialog.getByRole("button", { name: "Add condition" }).click();
+    await pickEvent(page, 1, "no longer has a merge conflict");
+    await expect(
+      dialog.getByRole("group", {
+        name: "When this pull request no longer has a merge conflict",
+      }),
+    ).toBeVisible();
+    const created = snoozePost(page);
+    await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
+    expect((await created).postDataJSON()).toEqual({
+      conversationId: prReview.rootConversationId,
+      inboxItemId: prReview.id,
+      triggers: [
+        { eventType: "pull_request.synchronized", outcome: "wake" },
+        { eventType: "pull_request.merge_conflict.resolved", outcome: "wake" },
+      ],
+    });
+  });
+
   test("many conditions keep Snooze on a short screen", async ({
     dashboard,
     page,

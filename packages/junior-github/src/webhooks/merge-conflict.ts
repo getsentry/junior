@@ -15,6 +15,7 @@ import type {
   PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
@@ -23,6 +24,7 @@ import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
 import { applyGitHubConflictPolicy } from "../merge-conflict-checks/policy.js";
+import { markGitHubConflict } from "../merge-conflict-checks/resolved.js";
 import { pullRequestTargets } from "./event-targets.js";
 import { logFailOpenFailure } from "./fail-open-log.js";
 
@@ -31,10 +33,15 @@ const PULL_REQUEST_CHECK_CONCURRENCY = 5;
 
 const EVENT_TYPE = "pull_request.merge_conflict";
 
-/** Events after which the pull request cannot get a conflict. */
-const CLOSED_EVENT_TYPES = new Set([
+/**
+ * Events that start no check: after a close, the pull request cannot get a
+ * conflict. After a push, GitHub has not calculated the merge state yet,
+ * and the merge state patch reads it (`pull-request-patches.ts`).
+ */
+const UNCHECKED_EVENT_TYPES = new Set([
   "pull_request.closed_unmerged",
   "pull_request.merged",
+  "pull_request.synchronized",
 ]);
 
 /** The pull request fields that tell if it has a conflict. */
@@ -95,7 +102,7 @@ function pullRequestRefs(events: EventInput[]): GitHubPullRequestRef[] {
     const { pullRequest, repo } = event.data ?? {};
     if (
       !event.eventType.startsWith("pull_request.") ||
-      CLOSED_EVENT_TYPES.has(event.eventType) ||
+      UNCHECKED_EVENT_TYPES.has(event.eventType) ||
       typeof pullRequest !== "number" ||
       typeof repo !== "string"
     ) {
@@ -154,6 +161,7 @@ export async function loadGitHubMergeConflictEvents(args: {
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
   inboxItems: PluginConversationInboxItems;
+  state: PluginState;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
@@ -172,6 +180,7 @@ export async function loadGitHubMergeConflictEvents(args: {
       ) {
         return [];
       }
+      await markGitHubConflict(args.state, ref);
       const conflict: GitHubMergeConflict = {
         baseBranch: loaded.base.ref,
         headSha: loaded.head.sha,
