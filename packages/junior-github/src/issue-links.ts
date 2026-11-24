@@ -495,10 +495,13 @@ async function preloadLinks(ctx: ObjectLinkContext, urls: URL[]) {
       for (const [i, link] of links.entries()) {
         const card = graphqlCard(link, repository[`n${r}_${i}`], categories);
         if (!card) continue;
-        await ctx.cache.getOrLoad(objectKey(link), async () => ({
-          value: card,
-          ttlMs: OBJECT_CACHE_TTL_MS,
-        }));
+        // Only this read has GitHub's review decision, so it replaces a
+        // REST card that a single-link read cached first.
+        await ctx.cache.getOrLoad(
+          objectKey(link),
+          async () => ({ value: card, ttlMs: OBJECT_CACHE_TTL_MS }),
+          { refresh: true },
+        );
       }
     }
     /* oxlint-enable no-await-in-loop */

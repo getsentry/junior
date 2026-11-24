@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
 import { createJuniorApi } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
+import { resolveObjectLinkNow } from "@/api/objects/resolve";
 import type { JuniorApiEnv } from "@/api/route";
 import { objectLinksReportSchema } from "@/api/schema";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
@@ -368,6 +369,7 @@ describe("object links API", () => {
           mergeable: "CONFLICTING",
           merged: false,
           number: 34,
+          reviewDecision: "APPROVED",
           reviewRequests: { nodes: [] },
           state: "OPEN",
           title: "Add GitHub link cards",
@@ -434,6 +436,18 @@ describe("object links API", () => {
         providerSubjectId: "1002",
       });
 
+      // A single-link read, such as Attach, caches the REST card first. It
+      // has no review decision, so the page's GraphQL read replaces it.
+      const viewer = await signedInViewer("alice@example.com");
+      const single = await resolveObjectLinkNow(
+        viewer,
+        new URL(`${repo}/pull/34`),
+      );
+      expect(single?.object.facts).toMatchObject({ type: "code_change" });
+      expect(
+        (single?.object.facts as { review?: string } | undefined)?.review,
+      ).toBeUndefined();
+      reads.length = 0;
       const member = await (
         await viewerApi("alice@example.com")
       )(
@@ -470,6 +484,7 @@ describe("object links API", () => {
           author: "byk",
           // The live merge state: the Inbox says "Merge conflict".
           mergeable: false,
+          review: "approved",
           sourceBranch: "feat/github-link-cards",
           targetBranch: "main",
           type: "code_change",

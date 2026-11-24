@@ -32,5 +32,12 @@ describe("pull request ask", () => {
       }),
     ).toBe("Review requested");
     expect(pullRequestAsk(card({}), {})).toBe("Review requested");
+    // GitHub does not merge a draft, even an approved one.
+    expect(
+      pullRequestAsk(
+        { ...card({ review: "approved" }), status: "draft" },
+        { handle: "ana" },
+      ),
+    ).toBe("Review requested");
   });
 });

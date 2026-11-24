@@ -22,7 +22,8 @@ export const GITHUB_INBOX_SUBJECTS = {
 /**
  * Name the viewer's ask on a Junior pull request from its live card. A
  * reviewer whose review GitHub requests reviews it. The requester merges it
- * after approval with no conflict. A conflict has its own item.
+ * after approval with no conflict, once it is no draft. A conflict has its
+ * own item.
  */
 export function pullRequestAsk(
   object: ObjectAnnotation,
@@ -37,7 +38,9 @@ export function pullRequestAsk(
   ) {
     return "Review requested";
   }
-  return facts.review === "approved" && facts.mergeable !== false
+  return facts.review === "approved" &&
+    facts.mergeable !== false &&
+    object.status !== "draft"
     ? "Ready to merge"
     : "Review requested";
 }
