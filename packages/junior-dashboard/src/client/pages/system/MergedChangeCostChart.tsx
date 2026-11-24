@@ -23,9 +23,16 @@ const SERIES = [
     key: "merged",
     label: "Per merged change",
   },
+  {
+    color: "var(--color-amber-400)",
+    key: "allSpend",
+    label: "All spend",
+  },
 ] as const;
 
 type Point = {
+  /** All model spend over merged changes, including spend of no merge. */
+  allSpend: number | null;
   date: string;
   merged: number | null;
   mergedCodeChanges: number;
@@ -43,26 +50,28 @@ const ROLLING_WINDOW: Record<
 };
 
 type CostTotals = Pick<Point, "mergedCodeChanges"> & {
+  costUsd: number;
   mergedCodeChangeCostUsd: number;
 };
 
 function sumCosts(buckets: readonly ConversationMetricDay[]): CostTotals {
   return buckets.reduce(
     (total, bucket) => ({
+      costUsd: total.costUsd + (bucket.costUsd ?? 0),
       mergedCodeChangeCostUsd:
         total.mergedCodeChangeCostUsd + (bucket.mergedCodeChangeCostUsd ?? 0),
       mergedCodeChanges:
         total.mergedCodeChanges + (bucket.mergedCodeChanges ?? 0),
     }),
-    { mergedCodeChangeCostUsd: 0, mergedCodeChanges: 0 },
+    { costUsd: 0, mergedCodeChangeCostUsd: 0, mergedCodeChanges: 0 },
   );
 }
 
-function unitCosts(totals: CostTotals): Pick<Point, "merged"> {
+function unitCosts(totals: CostTotals): Pick<Point, "allSpend" | "merged"> {
+  if (!totals.mergedCodeChanges) return { allSpend: null, merged: null };
   return {
-    merged: totals.mergedCodeChanges
-      ? totals.mergedCodeChangeCostUsd / totals.mergedCodeChanges
-      : null,
+    allSpend: totals.costUsd / totals.mergedCodeChanges,
+    merged: totals.mergedCodeChangeCostUsd / totals.mergedCodeChanges,
   };
 }
 
@@ -100,8 +109,9 @@ function formatAxisCost(value: number): string {
 
 /**
  * Plot the rolling cost per merged code change at the bucket size of the
- * selected range. `history` holds the same buckets as `days`, and
- * may start earlier so the first points get a full window.
+ * selected range, next to all model spend over the same merges. The gap is
+ * spend that no merged change used. `history` holds the same buckets as
+ * `days`, and may start earlier so the first points get a full window.
  */
 export function MergedChangeCostChart(props: {
   bucketUnit: TimeRangeBucketUnit;
@@ -114,12 +124,12 @@ export function MergedChangeCostChart(props: {
   const periodCosts = unitCosts(period);
   const maximum = Math.max(
     Number.EPSILON,
-    ...data.map((point) => point.merged ?? 0),
+    ...data.flatMap((point) => [point.merged ?? 0, point.allSpend ?? 0]),
   );
   return (
     <Card>
       <ChartHeader
-        description={`${formatCompactNumber(period.mergedCodeChanges)} merged changes. The line is a ${window.label} rolling mean; the legend shows the period mean.`}
+        description={`${formatCompactNumber(period.mergedCodeChanges)} merged changes. Lines are ${window.label} rolling means; the legend shows the period mean. All spend includes spend that merged nothing.`}
         title="Cost per merged change"
         trailing={
           <ChartLegend
@@ -156,6 +166,7 @@ export function MergedChangeCostChart(props: {
                       `Per merged change (${formatCompactNumber(point.mergedCodeChanges)})`,
                       formatUnitCost(point.merged),
                     ],
+                    ["All spend", formatUnitCost(point.allSpend)],
                   ]}
                 />
               }

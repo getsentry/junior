@@ -153,6 +153,7 @@ export type {
   ConversationStatsReport,
   GuardianMetricDay,
   GuardianStats,
+  PersonSpendDay,
 } from "./schema/conversation-stats";
 export { stopConversationTurnResponseSchema } from "./schema/conversation-stop";
 export {
