@@ -44,7 +44,6 @@
 // cannot deadlock.
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, inArray, lte, or, sql } from "drizzle-orm";
-import type { Source } from "@sentry/junior-plugin-api";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -97,7 +96,6 @@ export async function createTurn(
   args: {
     conversationId: string;
     actorIdentityId: string;
-    source: Source["kind"];
     priority: number;
   },
 ): Promise<Turn> {
@@ -122,7 +120,6 @@ export type TurnFailure = {
 /** A Turn with the facts that `reconcileTurn` needs, and its failure. */
 export type TurnRecord = Turn & {
   conversationId: string;
-  source: Source["kind"];
   actorIdentityId: string;
   failureCode: ConversationTurnFailureCode | null;
   failureReason: ConversationTurnFailureReason | null;
@@ -140,7 +137,6 @@ export async function findTurn(
       turnId: juniorTurns.id,
       state: juniorTurns.state,
       conversationId: juniorTurns.conversationId,
-      source: juniorTurns.source,
       actorIdentityId: juniorTurns.actorIdentityId,
       failureCode: juniorTurns.failureCode,
       failureReason: juniorTurns.failureReason,

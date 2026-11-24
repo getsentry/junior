@@ -107,7 +107,6 @@ export async function startTurnEngine(): Promise<TurnEngine> {
     actorIdentityId: "identity:actor",
     state: "queued",
     priority: 0,
-    source: "slack",
   });
 
   const queue = createInProcessQueue();
@@ -144,6 +143,7 @@ export async function startTurnEngine(): Promise<TurnEngine> {
         conversationId: CONVERSATION_ID,
         turnId,
         actorIdentityId: "identity:actor",
+        source: "slack",
         payload: { text },
         idempotencyKey: `slack-event:${inputId}`,
         sentAt: new Date(),

@@ -448,7 +448,6 @@ describe("Turn delivery with a test step", () => {
       actorIdentityId: "identity:actor",
       state: "queued",
       priority: 0,
-      source: "slack",
     });
     const childInputId = randomUUID();
     await fixture.sql
@@ -459,6 +458,7 @@ describe("Turn delivery with a test step", () => {
         conversationId: childId,
         turnId: childTurnId,
         actorIdentityId: "identity:actor",
+        source: "slack",
         payload: { text: "How many Turns?" },
         idempotencyKey: `slack-event:${childInputId}`,
         sentAt: new Date(),

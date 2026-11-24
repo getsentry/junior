@@ -9,7 +9,6 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { Source } from "@sentry/junior-plugin-api";
 import type {
   ConversationTurnFailureCode,
   ConversationTurnFailureReason,
@@ -17,9 +16,6 @@ import type {
 import { juniorConversations } from "./conversations";
 import { juniorIdentities } from "./identities";
 import { timestamptz } from "./timestamps";
-
-/** The kind of the Source that started a Turn. */
-type SourceKind = Source["kind"];
 
 /** The state of a Turn. */
 export type TurnState =
@@ -46,9 +42,6 @@ export const juniorTurns = pgTable(
     state: text("state").$type<TurnState>().notNull(),
     // Lower runs first. The scheduler sets it; core only sorts by it.
     priority: integer("priority").notNull(),
-    // The kind of the Source that started the Turn. The scheduler compares
-    // it, with the Actor, when it attaches new input.
-    source: text("source").$type<SourceKind>().notNull(),
     stepSeq: integer("step_seq").default(0).notNull(),
     leaseEpoch: integer("lease_epoch").default(0).notNull(),
     leaseOwner: text("lease_owner"),
