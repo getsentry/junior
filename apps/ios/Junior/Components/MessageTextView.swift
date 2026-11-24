@@ -108,7 +108,7 @@ struct MessageTextView: UIViewRepresentable {
       else { return true }
       // The composer decides whether the text can send; Return never adds a newline.
       onSubmit()
-      view.note("delegateSubmit:cs=\(ComposerTextView.diagCanSend)")  // DIAG
+      view.note("delegateSubmit:cs=\(String(describing: ComposerTextView.diagCanSend))")  // DIAG
       return false
     }
 
@@ -175,7 +175,7 @@ final class ComposerTextView: UITextView {
 
   @objc private func submit() {
     onSubmit?()
-    note("submit:cs=\(Self.diagCanSend)")  // DIAG
+    note("submit:cs=\(String(describing: Self.diagCanSend))")  // DIAG
   }
 
   // DIAG start
