@@ -154,7 +154,10 @@ export async function recordRepeatInboxItemPush(
   });
 }
 
-/** Mark the sent deliveries of closed items as cleared. */
+/**
+ * Mark the sent deliveries of items as cleared: items that closed, or a
+ * To-do item that moved to another User.
+ */
 export async function clearInboxItemDeliveries(
   db: JuniorDatabase,
   itemIds: readonly string[],

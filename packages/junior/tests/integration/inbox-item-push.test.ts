@@ -340,7 +340,7 @@ describe("inbox item push", () => {
     });
   });
 
-  it("pushes a To-do for a person to each new assignee once, and closes it with the next push", async () => {
+  it("pushes a To-do for a person to each new assignee once, and closes it when it moves on", async () => {
     const ana = await anaWithPhone();
     await user("bob@example.com");
     await conversation(ROOT, "public");
@@ -383,13 +383,12 @@ describe("inbox item push", () => {
     });
     expect(pushes).toHaveLength(1);
 
-    // Done closes the item, and the next push closes its push.
-    await actOnInboxItem({
-      action: "done",
-      delivery: { queue, show: services.show },
-      id: itemId,
-      user: ana,
+    // Ana can no longer see the item once it moves to Bob, so her next push
+    // closes its push.
+    await updateTodos({
+      update: [{ id: todo.id, assignee: "bob@example.com" }],
     });
+    expect(pushes).toHaveLength(1);
     const next = await execute((await turnTools(ana)).add, ASK);
     expect(pushes[1]).toMatchObject({ close: [itemId], tag: next.item.id });
   });
