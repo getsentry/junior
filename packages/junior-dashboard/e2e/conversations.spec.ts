@@ -734,6 +734,23 @@ test("inspects and copies a child agent transcript", async ({
     "Review complete; no blocking issues found.",
   );
 
+  // Its input copies too, and links to itself. Only replies take a rating.
+  const input = drawer
+    .getByRole("article")
+    .filter({ hasText: "Review the dashboard plan before editing." });
+  await input.hover();
+  await expect(input.getByRole("button", { name: "Good reply" })).toHaveCount(
+    0,
+  );
+  await input.getByRole("button", { name: "Copy message" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    "Review the dashboard plan before editing.",
+  );
+  await input.getByRole("button", { name: "Copy link to message" }).click();
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
+  );
+
   // The shortcut searches the drawer's transcript, not the page behind it.
   await page.keyboard.press("ControlOrMeta+f");
   await expect(

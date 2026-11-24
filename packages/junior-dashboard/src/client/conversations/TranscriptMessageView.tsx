@@ -125,9 +125,7 @@ export const TranscriptMessageView = memo(
           }
         })}
         {props.footer}
-        {roleKind === "assistant" &&
-        !props.message.pending &&
-        (rawText || forkMessageId) ? (
+        {chatText && !props.message.pending && (rawText || forkMessageId) ? (
           // The margins line the first icon up with the text edge and let the
           // icon padding use the space that is already around the message.
           <MessageActions className="-mt-1.5 -mb-2.5 -ml-2 [&>button]:size-8">
@@ -146,7 +144,7 @@ export const TranscriptMessageView = memo(
                 messageId={forkMessageId}
               />
             ) : null}
-            {props.message.messageId ? (
+            {roleKind === "assistant" && props.message.messageId ? (
               <ReplyRatingActions
                 conversationId={props.conversation.conversationId}
                 messageId={props.message.messageId}
