@@ -60,6 +60,21 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 10))
   }
 
+  /// Sign in suggests Sentry's Junior until the app has signed in to another
+  /// server. `-serverURL` stands in for the server that the app remembers.
+  func testSignInSuggestsProduction() {
+    let production = "https://junior-prod.sentry.dev"
+    for (saved, shown) in [("", production), ("https://demo.junior.invalid", production), (server, server)] {
+      let app = XCUIApplication()
+      app.launchArguments = ["-serverURL", saved, "-JuniorSignOut", "YES", "-JuniorTheme", "dark"]
+      app.launch()
+      let field = app.textFields["Dashboard URL"]
+      XCTAssertTrue(field.waitForExistence(timeout: 10))
+      XCTAssertEqual(field.value as? String, shown, "remembered: \(saved)")
+      app.terminate()
+    }
+  }
+
   /// The built-in demo answers without the mock server: a reply to a sent
   /// message, and a notice instead of the dashboard it does not have.
   func testTryDemo() {

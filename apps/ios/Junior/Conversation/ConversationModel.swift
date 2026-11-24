@@ -74,7 +74,7 @@ final class ConversationModel {
         let next = try await app.call(
           "getConversation", ["conversationId": id, "after": .string(after)], as: ConversationState.self)
         messages = mergeMessages(messages, next.messages ?? [])
-        // `brief` and the conversation come with every read.
+        // The conversation and its summary come with every read.
         state = next
         after = next.cursor
         if next.hasMore != true { break }
