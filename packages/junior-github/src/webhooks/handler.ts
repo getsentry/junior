@@ -43,8 +43,6 @@ import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhoo
 import {
   pullRequestActionTargets,
   syncGitHubPullRequestActions,
-  syncGitHubPullRequestItem,
-  type GitHubPullRequestItemSync,
 } from "./pull-request-action.js";
 import { requestGitHubReviewersWhenReady } from "./pull-request-ready-reviewers.js";
 import {
@@ -407,23 +405,6 @@ export function createGitHubWebhookRoute(args: {
           });
         }
       }
-      const itemSync: GitHubPullRequestItemSync = {
-        botEmail,
-        db: args.db,
-        env: {
-          appIdEnv: args.appIdEnv,
-          installationIdEnv: args.installationIdEnv,
-          privateKeyEnv: args.privateKeyEnv,
-          responses: args.state,
-          tokens: args.tokens,
-        },
-        findLinkedIdentityIds: args.findLinkedIdentityIds,
-        loadGitHubLogin: args.loadGitHubLogin,
-        log: args.log,
-        inboxItems: args.inboxItems,
-        state: args.state,
-      };
-      const { env } = itemSync;
       // GitHub sends no webhook for a new conflict, so check on every other
       // event for a watched pull request. Add these after the feedback
       // reaction, so a Watch that wants only conflicts does not mark a comment.
@@ -437,11 +418,7 @@ export function createGitHubWebhookRoute(args: {
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
-          showItem: async (ref) =>
-            await syncGitHubPullRequestItem(itemSync, {
-              ...ref,
-              conflictAsked: true,
-            }),
+          inboxItems: args.inboxItems,
         })),
       );
       for (const event of events) {
@@ -457,9 +434,23 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
+      const env = {
+        appIdEnv: args.appIdEnv,
+        installationIdEnv: args.installationIdEnv,
+        privateKeyEnv: args.privateKeyEnv,
+        responses: args.state,
+        tokens: args.tokens,
+      };
       await syncGitHubPullRequestActions({
-        ...itemSync,
+        botEmail,
+        db: args.db,
         deliveryId,
+        env,
+        findLinkedIdentityIds: args.findLinkedIdentityIds,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        inboxItems: args.inboxItems,
+        state: args.state,
         targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({

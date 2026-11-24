@@ -49,11 +49,7 @@ import {
   inboxItemVisibleTo,
   type InboxItemReader,
 } from "./access";
-import {
-  claimInboxItemPush,
-  clearInboxItemDeliveries,
-  leaveInboxItem,
-} from "./deliveries";
+import { claimInboxItemPush, clearInboxItemDeliveries } from "./deliveries";
 import type { InboxItemRequest } from "./evidence";
 import { INBOX_SUBJECT_KINDS, type InboxItemSubject } from "./subjects";
 
@@ -623,47 +619,6 @@ export async function takeInboxItem(
       nowMs: input.nowMs,
       skipReason: "taken",
       userId: input.userId,
-    });
-    await touchConversationDetail(tx, ownerConversationIds(updated));
-    return true;
-  });
-}
-
-/**
- * Take one assignee off an open item that has others, such as a person who
- * dismissed their own ask on a shared plugin item. Their snooze and pushes
- * of it end. Return false when the item closed, or when they are not on it.
- */
-export async function leaveOpenInboxItem(
-  db: JuniorDatabase,
-  input: { id: string; nowMs: number; userId: string },
-): Promise<boolean> {
-  return await db.transaction(async (tx) => {
-    const updated = await tx
-      .update(juniorInboxItems)
-      .set({ updatedAt: new Date(input.nowMs) })
-      .where(
-        and(
-          eq(juniorInboxItems.id, input.id),
-          eq(juniorInboxItems.status, "open"),
-        ),
-      )
-      .returning(ownerColumns);
-    if (!updated[0]) return false;
-    const removed = await tx
-      .delete(juniorInboxItemAssignees)
-      .where(
-        and(
-          eq(juniorInboxItemAssignees.itemId, input.id),
-          eq(juniorInboxItemAssignees.userId, input.userId),
-        ),
-      )
-      .returning({ itemId: juniorInboxItemAssignees.itemId });
-    if (!removed[0]) return false;
-    await leaveInboxItem(tx, {
-      itemId: input.id,
-      nowMs: input.nowMs,
-      userIds: [input.userId],
     });
     await touchConversationDetail(tx, ownerConversationIds(updated));
     return true;

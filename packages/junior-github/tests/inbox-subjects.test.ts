@@ -24,9 +24,13 @@ describe("pull request ask", () => {
     expect(pullRequestAsk(approved, { handle: "bo" })).toBe("Review requested");
     // The requester's ask on the same pull request is the merge.
     expect(pullRequestAsk(approved, { handle: "ana" })).toBe("Ready to merge");
-    expect(pullRequestAsk(card({ mergeable: false }), { handle: "ana" })).toBe(
-      "Merge conflict",
-    );
+    // A conflict has its own item, so a pull request that cannot merge is
+    // no merge ask.
+    expect(
+      pullRequestAsk(card({ mergeable: false, review: "approved" }), {
+        handle: "ana",
+      }),
+    ).toBe("Review requested");
     expect(pullRequestAsk(card({}), {})).toBe("Review requested");
   });
 });

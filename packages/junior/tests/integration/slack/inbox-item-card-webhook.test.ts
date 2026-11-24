@@ -552,15 +552,14 @@ describe("Slack webhook: Inbox item cards", () => {
         userId: "U123",
         value: buttonValue(card, "junior_review_item:choice:0"),
       });
-    // The plugin fails. The item stays open, so the card keeps its button,
-    // and a second click calls the plugin again.
+    // The plugin fails after the click closes the item. The card keeps its
+    // button, and a second click calls the plugin again.
     await resume("1712345.0003").catch(() => undefined);
     fails = false;
     await resume("1712345.0004");
     expect(answers).toEqual(["api: Resume", "api: Resume"]);
-    // The plugin changes the item after its answer, so it stays open.
     expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
-      status: "open",
+      status: "done",
     });
     // The plugin does the work, so the thread starts no Turn.
     const work = await getConversationWorkState({

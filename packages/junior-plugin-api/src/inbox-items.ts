@@ -3,7 +3,6 @@ import type { ObjectAnnotation } from "./object-annotations";
 import type { EventPublisher } from "./events";
 import type { PluginState } from "./state";
 import type { PluginEventToolContext } from "./tools";
-import type { PluginUsers } from "./operations";
 
 /**
  * One kind of Inbox item that a plugin adds, such as `pull_request`. Junior
@@ -84,9 +83,8 @@ export interface PluginReviewNotice {
   title: string;
   /**
    * Buttons that answer the item, in display order, such as `Resume`. An
-   * item with choices waits on its assignees. A click calls the plugin's
-   * `inboxItemAnswered` hook with the choice, and the item stays open: the
-   * plugin changes it, such as to drop the ask that the choice answered.
+   * item with choices waits on its assignees. The first click closes it as
+   * done and calls the plugin's `inboxItemAnswered` hook with the choice.
    * The answer starts no Turn: the plugin does the work.
    */
   choices?: Array<{ label: string; description?: string }>;
@@ -105,12 +103,8 @@ export interface PluginReviewNotice {
  * the Slack cards.
  */
 export interface PluginInboxItems {
-  /**
-   * Add an open item, or change the open one of the subject. Return the
-   * ones of `assigneeIdentityIds` who were on the open item before, such
-   * as to know that a person did not dismiss it.
-   */
-  upsert(notice: PluginReviewNotice): Promise<string[]>;
+  /** Add an open item, or change the open one of the subject. */
+  upsert(notice: PluginReviewNotice): Promise<void>;
   /**
    * Close the open item of the subject. Do nothing when no item is open,
    * such as after a person dismissed it. Return whether an open item closed.
@@ -137,14 +131,12 @@ export interface InboxItemAnsweredHookContext extends PluginContext {
   subject: PluginInboxItemSubject;
   /** Publish events, as from a plugin route. */
   events: EventPublisher;
-  /** The answered item's id. It is the same on a retry of the same answer. */
+  /** The closed item's id. It is the same on a retry of the same answer. */
   itemId: string;
   nowMs: number;
   /** Inbox items, as from a plugin route. */
   inboxItems: PluginConversationInboxItems;
   state: PluginState;
-  /** People, as from a plugin route. */
-  users: PluginUsers;
   /** Watches of the item's Conversation. */
   watches: PluginConversationWatches;
 }

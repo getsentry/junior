@@ -5,8 +5,6 @@ import {
 } from "@/chat/plugins/agent-hooks";
 import { basePluginContext } from "@/chat/plugins/hook-context";
 import { createPluginState } from "@/chat/plugins/state";
-import { createPluginUsers } from "@/chat/plugins/viewer";
-import type { UserInputAnswer } from "@/chat/inbox-items/user-input-request";
 import { createPluginConversationWatches } from "@/chat/plugins/watches";
 import { inboxItemPlugin } from "./access";
 import type { InboxItemDelivery } from "./changes";
@@ -14,19 +12,18 @@ import { createPluginInboxItems, PLUGIN_CHOICE_FIELD_ID } from "./plugin";
 import { ownerConversationId, type InboxItem } from "./store";
 
 /**
- * Give a person's choice on a plugin item to the plugin that added it, so
- * the plugin does the work and changes the item. The answer starts no Turn.
- * Throws when the plugin fails, so the person can retry the same answer.
+ * Give the answer of a plugin item with choices to the plugin that added it,
+ * so the plugin does the work. The answer starts no Turn. Throws when the
+ * plugin fails, so the person can retry the same answer.
  */
 export async function answerPluginInboxItem(args: {
-  answer: UserInputAnswer;
   delivery: InboxItemDelivery;
   item: InboxItem;
   nowMs: number;
 }): Promise<void> {
   const { item } = args;
   const pluginName = inboxItemPlugin(item);
-  const choice = args.answer.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
+  const choice = item.answer?.values[PLUGIN_CHOICE_FIELD_ID]?.[0];
   // A plugin adds items only for a Conversation.
   const conversationId = ownerConversationId(item);
   if (!pluginName || !choice || !conversationId) return;
@@ -56,7 +53,6 @@ export async function answerPluginInboxItem(args: {
         }),
     },
     state: createPluginState(pluginName),
-    users: createPluginUsers(pluginName),
     watches: createPluginConversationWatches(plugin, conversationId),
   });
 }

@@ -8,20 +8,22 @@
  */
 import type {
   EventPublisher,
+  PluginConversationInboxItems,
   PluginLogger,
   PluginState,
 } from "@sentry/junior-plugin-api";
-import { and, eq, inArray, isNotNull } from "drizzle-orm";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
-import { juniorGitHubPullRequests } from "../db/schema.js";
-import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import {
   gitHubMergeConflictEvents,
   type GitHubMergeConflict,
   type GitHubPullRequestRef,
 } from "../webhooks/merge-conflict.js";
-import { applyGitHubConflictPolicy } from "./policy.js";
+import {
+  applyGitHubConflictPolicy,
+  closeGitHubConflictItems,
+  GITHUB_CONFLICT_GONE_REASON,
+} from "./policy.js";
 import {
   claimGitHubConflictCheck,
   listGitHubRepositoriesWithOpenPullRequests,
@@ -103,8 +105,7 @@ async function checkConflict(
     log: args.log,
     now: args.now,
     ref: input.ref,
-    showItem: async (ref) =>
-      await args.showItem({ ...ref, conflictAsked: true }),
+    inboxItems: args.inboxItems,
   })) {
     // oxlint-disable-next-line no-await-in-loop -- Publish in order, so watchers see events in the order they happened.
     await args.events.publish(event);
@@ -142,48 +143,19 @@ async function checkRepository(
       });
     }
     // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
-    await showResolvedConflicts(args, repositoryFullName, mergeable);
+    await closeGitHubConflictItems({
+      db: args.db,
+      log: args.log,
+      numbers: mergeable,
+      reason: GITHUB_CONFLICT_GONE_REASON,
+      repositoryFullName,
+      inboxItems: args.inboxItems,
+      status: "done",
+    });
     if (!search.pageInfo.hasNextPage || !search.pageInfo.endCursor) break;
     after = search.pageInfo.endCursor;
   }
   return unknown;
-}
-
-/**
- * Change the item of each mergeable pull request that still has a merge
- * conflict ask, so the ask leaves it. A failed item is logged, and the next
- * check tries again.
- */
-async function showResolvedConflicts(
-  args: CheckArgs,
-  repositoryFullName: string,
-  numbers: number[],
-): Promise<void> {
-  if (numbers.length === 0) return;
-  const t = juniorGitHubPullRequests;
-  const asked = await args.db
-    .select({ number: t.number })
-    .from(t)
-    .where(
-      and(
-        eq(t.repositoryFullName, repositoryFullName),
-        inArray(t.number, numbers),
-        isNotNull(t.conflictFixAskedAt),
-      ),
-    );
-  for (const { number } of asked) {
-    try {
-      // oxlint-disable-next-line no-await-in-loop -- The sweep reads one pull request at a time, under GitHub rate limits.
-      await args.showItem({ number, repositoryFullName });
-    } catch (error) {
-      logFailOpenFailure(
-        args.log,
-        "GitHub merge conflict ask change failed",
-        error,
-        { number, repository: repositoryFullName },
-      );
-    }
-  }
 }
 
 interface CheckArgs {
@@ -192,14 +164,8 @@ interface CheckArgs {
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
   log: Pick<PluginLogger, "error" | "warn">;
   now: Date;
+  inboxItems: PluginConversationInboxItems;
   search: SearchOpenPullRequests;
-  /**
-   * Read one pull request from GitHub and change its Inbox item. Throws
-   * when it fails.
-   */
-  showItem(
-    target: GitHubPullRequestRef & { conflictAsked?: boolean },
-  ): Promise<void>;
   state: PluginState;
 }
 

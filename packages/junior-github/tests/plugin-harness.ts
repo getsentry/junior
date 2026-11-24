@@ -145,20 +145,16 @@ export function createPluginHarness(fixture: GitHubFixture) {
           // opens and each ask that pushes.
           const key = subjectKey(notice.subject);
           const on = openNotices.get(key);
-          const wereOn = notice.assigneeIdentityIds.filter((id) =>
-            on?.includes(id),
-          );
           const assignees = notice.assigneeIdentityIds.filter(
             (id) => notice.askedIdentityIds.includes(id) || on?.includes(id),
           );
           if (assignees.length === 0) {
             if (openNotices.delete(key)) recorded.closedNotices.push(key);
-            return wereOn;
+            return;
           }
           openNotices.set(key, assignees);
-          if (on && notice.askedIdentityIds.length === 0) return wereOn;
+          if (on && notice.askedIdentityIds.length === 0) return;
           recorded.notices.push({ conversationId, notice });
-          return wereOn;
         },
         async close(input) {
           const key = subjectKey(input.subject);
@@ -276,8 +272,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
   }
 
   /**
-   * A person picks a choice on an open item. Like core, the item stays
-   * open, and the plugin gets the answer.
+   * A person picks a choice on an open item. Like core, the item closes
+   * first, then the plugin gets the answer.
    */
   async function answer(input: {
     choice: string;
@@ -286,7 +282,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     nowMs: number;
     subject: { id: string; kind: string };
   }): Promise<void> {
-    expect(openNotices.has(subjectKey(input.subject))).toBe(true);
+    expect(openNotices.delete(subjectKey(input.subject))).toBe(true);
     await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,
@@ -296,7 +292,6 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
-      users,
       watches: {
         canSubscribe: true,
         // Only the Conversation's own Watch counts, not `hasMatch`.

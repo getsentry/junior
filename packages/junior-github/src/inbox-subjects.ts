@@ -13,13 +13,16 @@ import type {
   PluginInboxViewer,
 } from "@sentry/junior-plugin-api";
 
-/** The subject kind of the Inbox item of a Junior pull request. */
-export const PULL_REQUEST_SUBJECT_KIND = "pull_request";
+/** The subject kinds of GitHub Inbox items. */
+export const GITHUB_INBOX_SUBJECTS = {
+  mergeConflict: "merge_conflict",
+  pullRequest: "pull_request",
+} as const;
 
 /**
  * Name the viewer's ask on a Junior pull request from its live card. A
  * reviewer whose review GitHub requests reviews it. The requester merges it
- * after approval, or resumes the fix of a conflict.
+ * after approval with no conflict. A conflict has its own item.
  */
 export function pullRequestAsk(
   object: ObjectAnnotation,
@@ -34,8 +37,9 @@ export function pullRequestAsk(
   ) {
     return "Review requested";
   }
-  if (facts.mergeable === false) return "Merge conflict";
-  return facts.review === "approved" ? "Ready to merge" : "Review requested";
+  return facts.review === "approved" && facts.mergeable !== false
+    ? "Ready to merge"
+    : "Review requested";
 }
 
 /** The registered kinds and labels, for the plugin registration. */
@@ -43,14 +47,20 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
   {
     ask: pullRequestAsk,
     codeChange: true,
-    kind: PULL_REQUEST_SUBJECT_KIND,
+    kind: GITHUB_INBOX_SUBJECTS.pullRequest,
     label: "Pull request",
+  },
+  {
+    codeChange: true,
+    kind: GITHUB_INBOX_SUBJECTS.mergeConflict,
+    label: "Merge conflict",
   },
 ];
 
-/** The subject of the Inbox item of one pull request. */
+/** The subject of an Inbox item about one pull request. */
 export function pullRequestSubject(
+  kind: (typeof GITHUB_INBOX_SUBJECTS)[keyof typeof GITHUB_INBOX_SUBJECTS],
   pullRequestId: string,
 ): PluginInboxItemSubject {
-  return { id: pullRequestId, kind: PULL_REQUEST_SUBJECT_KIND };
+  return { id: pullRequestId, kind };
 }

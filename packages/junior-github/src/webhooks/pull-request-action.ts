@@ -23,13 +23,13 @@
  * no read.
  *
  * One `pull_request` item per pull request holds every ask on it
- * (`pull-request-item.ts`): the requester's review or merge, the requester's
- * merge conflict ask, and the review of each other requested reviewer.
- * Each webhook that can change one of these facts reads them again from
- * GitHub and changes the item. A person joins it, and gets a push, only
- * with the event that gives them an ask: a review request for them, a new
- * action of the requester, or a conflict ask. Junior saves the derived
- * action, so it knows when the requester's action changes.
+ * (`pull-request-item.ts`): the requester's review or merge, and the review
+ * of each other requested reviewer. Each webhook that can change one of
+ * these facts reads them again from GitHub and changes the item. A person
+ * joins it, and gets a push, only with the event that gives them an ask: a
+ * review request for them, or a new action of the requester. Junior saves
+ * the derived action, so it knows when the requester's action changes. A
+ * merge conflict has its own item.
  *
  * The item goes to the Conversation where a person asked Junior to open the
  * pull request. Each person is assigned only when they are in that
@@ -44,11 +44,12 @@ import type {
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
-import { pullRequestSubject } from "../inbox-subjects.js";
+import {
+  GITHUB_INBOX_SUBJECTS,
+  pullRequestSubject,
+} from "../inbox-subjects.js";
 import {
   ENDED_REASONS,
-  forgetConflictAsk,
-  readConflictAsk,
   showPullRequestItem,
   type EndedState,
 } from "./pull-request-item.js";
@@ -60,6 +61,7 @@ import {
   releaseGitHubPullRequestReadySync,
   setGitHubPullRequestNextAction,
 } from "../pull-request-outcomes/store.js";
+import { GITHUB_CONFLICT_GONE_REASON } from "../merge-conflict-checks/policy.js";
 import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
 import {
   dropGitHubReviewAsked,
@@ -115,8 +117,6 @@ export interface GitHubPullRequestActionTarget extends GitHubPullRequestTarget {
    * people and by Junior with no GitHub read.
    */
   commentBy?: string;
-  /** The merge conflict policy asked the requester to resume a fix. */
-  conflictAsked?: boolean;
   /** The login of the reviewer that a `review_requested` webhook asks. */
   reviewRequested?: string;
 }
@@ -297,14 +297,12 @@ export async function endedGitHubPullRequestItemChanges(args: {
   return {
     conversationId,
     inboxItems: [
-      {
-        close: {
-          subject: pullRequestSubject(pullRequestId),
-          ...reason,
-        },
-        conversationId,
-      },
-    ],
+      GITHUB_INBOX_SUBJECTS.pullRequest,
+      GITHUB_INBOX_SUBJECTS.mergeConflict,
+    ].map((kind) => ({
+      close: { subject: pullRequestSubject(kind, pullRequestId), ...reason },
+      conversationId,
+    })),
   };
 }
 
@@ -418,8 +416,8 @@ async function askReason(
     : undefined;
 }
 
-/** What one sync of a pull request's item needs. */
-export interface GitHubPullRequestItemSync {
+/** What one sync of a pull request's items needs. */
+interface GitHubPullRequestItemSync {
   botEmail: string | undefined;
   db: GitHubDb;
   env: GitHubInstallationEnv;
@@ -436,18 +434,8 @@ export interface GitHubPullRequestItemSync {
   state: PluginState;
 }
 
-// The people that one read of GitHub gives an ask, for the next check of
-// the same sync.
-interface CheckedAsks {
-  conflict: boolean;
-  requested: ReadonlySet<string>;
-}
-
-/**
- * Read one Junior pull request from GitHub and change its item. Throws when
- * GitHub or the Inbox fails, so a caller with no later check can try again.
- */
-export async function syncGitHubPullRequestItem(
+/** Read one Junior pull request from GitHub and change its items. */
+async function syncOne(
   args: GitHubPullRequestItemSync,
   target: GitHubPullRequestActionTarget,
 ): Promise<void> {
@@ -482,9 +470,9 @@ export async function syncGitHubPullRequestItem(
   // A failed check still checks the requests that came in during it. The
   // first failure is thrown after the last check.
   let failure: unknown;
-  // The asks of the check before. A webhook that came in during it gave
-  // the asks that are new since, such as a second review request.
-  let checked: CheckedAsks | undefined;
+  // The reviewers of the check before. A webhook that came in during it
+  // gave the review requests that are new since.
+  let checked: ReadonlySet<string> | undefined;
   // One check: read GitHub, change the item, and return the saved action.
   const check = async (
     previous: GitHubPullRequestAction | undefined,
@@ -514,7 +502,6 @@ export async function syncGitHubPullRequestItem(
     // later event decides.
     const changed = next !== undefined && next.action !== previous;
     const action = next === undefined ? previous : next.action;
-    const conflict = await readConflictAsk(args.db, target, state);
     // The requester's review is their action, so the other reviewers are
     // the other people whose review GitHub requests.
     const reviewers = state.requestedReviewers.filter(
@@ -522,27 +509,23 @@ export async function syncGitHubPullRequestItem(
     );
     const requested = new Set(reviewers.map((login) => login.toLowerCase()));
     const newlyRequested = checked
-      ? [...requested].filter((login) => !checked!.requested.has(login))
+      ? [...requested].filter((login) => !checked!.has(login))
       : target.reviewRequested
         ? [target.reviewRequested.toLowerCase()]
         : [];
-    const conflictAsked =
-      conflict?.state === "asked" &&
-      (checked ? !checked.conflict : target.conflictAsked === true);
-    checked = { conflict: conflict?.state === "asked", requested };
+    checked = requested;
     const linked = await args.findLinkedIdentityIds(reviewers);
-    const requesterWasOn = await showPullRequestItem(items, {
+    await showPullRequestItem(items, {
       action,
       askedReviewerIdentityIds: newlyRequested.flatMap(
         (login) => linked.get(login) ?? [],
       ),
-      conflict,
       number: target.number,
       previous,
       pullRequestId,
       reason,
       requester: {
-        asked: (changed && next.action !== undefined) || conflictAsked,
+        asked: changed && next.action !== undefined,
         identityId: opener.identityId,
       },
       reviewerIdentityIds: [...requested].flatMap(
@@ -550,8 +533,21 @@ export async function syncGitHubPullRequestItem(
       ),
       state,
     });
-    if (conflict?.state === "ended" && requesterWasOn) {
-      await forgetConflictAsk(args.db, target, conflict.askedAt);
+    // The same read closes the merge conflict item from
+    // `merge-conflict-checks/policy.ts` when the conflict is gone.
+    if (
+      state.state !== "open" ||
+      (state.mergeableState && state.mergeableState !== "dirty")
+    ) {
+      await items.close({
+        subject: pullRequestSubject(
+          GITHUB_INBOX_SUBJECTS.mergeConflict,
+          pullRequestId,
+        ),
+        ...(state.state === "open"
+          ? { reason: GITHUB_CONFLICT_GONE_REASON, status: "done" as const }
+          : ENDED_REASONS[state.state]),
+      });
     }
     if (changed && next.action === "review" && reason === "handled") {
       await dropGitHubReviewAsked(args.state, target);
@@ -596,7 +592,7 @@ export async function syncGitHubPullRequestActions(
     args.targets,
     async (target) => {
       try {
-        await syncGitHubPullRequestItem(args, target);
+        await syncOne(args, target);
       } catch (error) {
         logFailOpenFailure(
           args.log,

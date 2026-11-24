@@ -5,8 +5,8 @@
  */
 import { githubAccountLinks } from "./account-links.js";
 import {
+  GITHUB_INBOX_SUBJECTS,
   githubInboxSubjectKinds,
-  PULL_REQUEST_SUBJECT_KIND,
 } from "./inbox-subjects.js";
 import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
@@ -14,11 +14,7 @@ import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
   defineJuniorPlugin,
   mergeEventMatchFields,
-  type PluginConversationInboxItems,
-  type PluginLogger,
   type PluginRegistration,
-  type PluginState,
-  type PluginUsers,
 } from "@sentry/junior-plugin-api";
 import {
   type GitHubAppPermissions,
@@ -77,11 +73,7 @@ import {
   GITHUB_REPOSITORY_IDENTIFIER,
   GITHUB_REPOSITORY_SUGGESTED_EVENTS,
 } from "./events/repository.js";
-import { gitHubDbSchema, type GitHubDb } from "./db/database.js";
-import {
-  syncGitHubPullRequestItem,
-  type GitHubPullRequestItemSync,
-} from "./webhooks/pull-request-action.js";
+import { gitHubDbSchema } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
@@ -198,25 +190,6 @@ export function githubPlugin(
   const loadReadPermissions = createPermissionCache();
   const userScopes = normalizeScopeList(options.additionalUserScopes);
   const userScope = userScopes.length ? userScopes.join(" ") : undefined;
-  // What a sync of one pull request's Inbox item needs outside a webhook.
-  const pullRequestItemSync = (ctx: {
-    db: GitHubDb;
-    inboxItems: PluginConversationInboxItems;
-    log: Pick<PluginLogger, "error" | "warn">;
-    state: PluginState;
-    users: PluginUsers;
-  }): GitHubPullRequestItemSync => ({
-    botEmail: readEnv(botEmailEnv),
-    db: ctx.db,
-    env: { appIdEnv, installationIdEnv, privateKeyEnv, responses: ctx.state },
-    findLinkedIdentityIds: async (logins) =>
-      await ctx.users.findLinkedIdentityIds(logins),
-    loadGitHubLogin: async (identityId) =>
-      linkedGitHubLogin((await ctx.users.readIdentity(identityId))?.user),
-    log: ctx.log,
-    inboxItems: ctx.inboxItems,
-    state: ctx.state,
-  });
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
@@ -396,17 +369,19 @@ export function githubPlugin(
       },
       async inboxItemAnswered(ctx) {
         if (
-          ctx.subject.kind !== PULL_REQUEST_SUBJECT_KIND ||
+          ctx.subject.kind !== GITHUB_INBOX_SUBJECTS.mergeConflict ||
           ctx.choice !== GITHUB_CONFLICT_RESUME
         ) {
           return;
         }
-        const db = gitHubDbSchema.parse(ctx.db);
-        const ref = await readGitHubPullRequestRef(db, ctx.subject.id);
+        const ref = await readGitHubPullRequestRef(
+          gitHubDbSchema.parse(ctx.db),
+          ctx.subject.id,
+        );
         if (!ref) return;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
-          db,
+          db: gitHubDbSchema.parse(ctx.db),
           events: ctx.events,
           itemId: ctx.itemId,
           loadPullRequest: async (pullRequest) =>
@@ -418,12 +393,6 @@ export function githubPlugin(
           ),
           watches: ctx.watches,
         });
-        // The Resume answered the conflict ask, so it leaves the item. The
-        // other asks on it stay.
-        await syncGitHubPullRequestItem(
-          pullRequestItemSync({ ...ctx, db }),
-          ref,
-        );
       },
       async heartbeat(ctx) {
         const db = gitHubDbSchema.parse(ctx.db);
@@ -435,6 +404,7 @@ export function githubPlugin(
             await loadPullRequestConflictHistory(installationEnv, ref),
           log: ctx.log,
           now: new Date(ctx.nowMs),
+          inboxItems: ctx.inboxItems,
           search: async (input) => {
             const login = botLoginFromEmail(requireEnv(botEmailEnv));
             if (!login) {
@@ -445,11 +415,6 @@ export function githubPlugin(
               author: `app/${login.replace(/\[bot\]$/, "")}`,
             });
           },
-          showItem: async (target) =>
-            await syncGitHubPullRequestItem(
-              pullRequestItemSync({ ...ctx, db }),
-              target,
-            ),
           state: ctx.state,
         });
         await reconcileGitHubPullRequests({
@@ -465,6 +430,7 @@ export function githubPlugin(
             await loadPullRequestLifecycles(installationEnv, input),
           log: ctx.log,
           nowMs: ctx.nowMs,
+          inboxItems: ctx.inboxItems,
           state: ctx.state,
         });
       },

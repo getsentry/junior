@@ -309,8 +309,7 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2188",
-        kind: "github:pull_request",
-        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        kind: "github:merge_conflict",
         label: "Merge conflict",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,

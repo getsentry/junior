@@ -101,7 +101,7 @@ describe("inbox item subject migration", () => {
       // pull request while this release rolls out.
       await expect(
         fixture.sql.execute(
-          legacyItem("conflict", "merge-conflict", "2026-10-03T12:00:00Z"),
+          legacyItem("action", "pull-request-action", "2026-10-03T12:00:00Z"),
         ),
       ).rejects.toThrow(/duplicate key/);
     } finally {

@@ -15,10 +15,7 @@ import {
   listConversationAnnotations,
 } from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
-import {
-  actOnInboxItem,
-  closeInboxItemsAnsweredByReply,
-} from "@/chat/inbox-items/actions";
+import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
 import {
   countInboxItemsNeedingUserBySubject,
   getOpenInboxItemBySubject,
@@ -292,10 +289,12 @@ describe("plugin inbox items", () => {
     ).toMatchObject({ assignees: [], status: "open" });
   });
 
-  it("keeps one item for the asks of several people, and a Dismiss takes off only that person", async () => {
+  it("keeps one item for the asks of several people, and closes it when nobody is left", async () => {
     await conversation("slack:C1:1.000001", "public");
     const ana = await person("ana@example.com");
     const bo = await person("bo@example.com");
+    // Cy is not in the Conversation, so Junior cannot assign him.
+    const cy = await person("cy@example.com");
     await participant("slack:C1:1.000001", ana.user);
     await participant("slack:C1:1.000001", bo.user);
     const items = createPluginInboxItems({
@@ -304,14 +303,14 @@ describe("plugin inbox items", () => {
       show,
     });
     const both = [ana.identityId, bo.identityId];
+    const open = async () =>
+      await getOpenInboxItemBySubject(
+        getDb(),
+        { id: NOTICE.subject.id, kind: "github:ready" },
+        TENANT,
+      );
     const assignees = async () =>
-      (
-        await getOpenInboxItemBySubject(
-          getDb(),
-          { id: NOTICE.subject.id, kind: "github:ready" },
-          TENANT,
-        )
-      )?.assignees.map((assignee) => assignee.userId) ?? [];
+      (await open())?.assignees.map((assignee) => assignee.userId) ?? [];
 
     // Only the person whom an event asks joins the item.
     await items.upsert({
@@ -328,11 +327,7 @@ describe("plugin inbox items", () => {
     expect((await assignees()).sort()).toEqual(
       [ana.user.id, bo.user.id].sort(),
     );
-    const item = await getOpenInboxItemBySubject(
-      getDb(),
-      { id: NOTICE.subject.id, kind: "github:ready" },
-      TENANT,
-    );
+    const item = await open();
     await getDb().insert(juniorInboxSnoozes).values({
       createdAt: new Date(),
       id: "snooze-bo",
@@ -341,13 +336,11 @@ describe("plugin inbox items", () => {
       userId: bo.user.id,
     });
 
-    // Bo's Dismiss takes off only Bo, and ends his snooze. Ana keeps it.
-    const delivery = { queue: createConversationWorkQueueTestAdapter(), show };
-    await actOnInboxItem({
-      action: "dismiss",
-      delivery,
-      id: item!.id,
-      user: bo.user,
+    // Bo's ask ends, so he leaves the item, and his snooze ends. Ana keeps it.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [],
+      assigneeIdentityIds: [ana.identityId],
     });
     expect(await assignees()).toEqual([ana.user.id]);
     expect(
@@ -356,8 +349,7 @@ describe("plugin inbox items", () => {
         .from(juniorInboxSnoozes),
     ).toEqual([{ state: "cancelled" }]);
 
-    // Bo still has an ask, but he left, so he comes back only with a new
-    // one.
+    // Bo has an ask again, but no event gave it, so he does not come back.
     await items.upsert({
       ...NOTICE,
       askedIdentityIds: [],
@@ -366,16 +358,17 @@ describe("plugin inbox items", () => {
     });
     expect(await assignees()).toEqual([ana.user.id]);
 
-    // The last person's Dismiss closes the item.
-    await actOnInboxItem({
-      action: "dismiss",
-      delivery,
-      id: item!.id,
-      user: ana.user,
+    // Ana's ask ends too. The only ask now is Cy's, and Junior cannot
+    // assign him, so nobody is left and the item closes.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [cy.identityId],
+      assigneeIdentityIds: [cy.identityId],
     });
+    expect(await open()).toBeUndefined();
     expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
-      closedBy: { userId: ana.user.id },
-      status: "dismissed",
+      closeReason: "Nobody on the item has an ask now.",
+      status: "done",
     });
   });
 

@@ -1,4 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
+import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
@@ -156,7 +157,7 @@ describe("daily reconcile of open pull requests", () => {
     vi.restoreAllMocks();
   });
 
-  /** Add the item of pull request 949, with Jane's review ask. */
+  /** Add a merge conflict notice for pull request 949. */
   async function noticeFor949(): Promise<void> {
     await fixture
       .db()
@@ -172,18 +173,28 @@ describe("daily reconcile of open pull requests", () => {
     await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       askedIdentityIds: ["identity-jane"],
       assigneeIdentityIds: ["identity-jane"],
-      body: "GitHub asks you to review #949.",
-      subject: { id: "9490", kind: "pull_request" },
-      title: "Review requested · #949",
-      waitsOnAssignees: true,
+      body: "Pull request 949 has merge conflicts.",
+      subject: { id: "9490", kind: "merge_conflict" },
+      title: "Merge conflict · #949",
     });
   }
 
   it("records closes that GitHub did not deliver, once a day", async () => {
     await noticeFor949();
+    await h.inboxItems.forConversation("slack:C1:1.0").upsert({
+      askedIdentityIds: ["identity-jane"],
+      assigneeIdentityIds: ["identity-jane"],
+      body: "GitHub asks you to review #949.",
+      subject: { id: "9490", kind: "pull_request" },
+      title: "Review requested · #949",
+      waitsOnAssignees: true,
+    });
     await h.heartbeat(now);
     // No webhook closes the ask after a missed close, so the close does.
-    expect(h.closedNotices).toEqual(["pull_request:9490"]);
+    expect(h.closedNotices).toEqual([
+      "merge_conflict:9490",
+      "pull_request:9490",
+    ]);
     // The chip and the ask change in one write.
     expect(h.batches).toContainEqual({
       annotations: [
@@ -195,16 +206,14 @@ describe("daily reconcile of open pull requests", () => {
           }),
         },
       ],
-      inboxItems: [
-        {
-          close: {
-            subject: { id: "9490", kind: "pull_request" },
-            reason: "The pull request closed without merging.",
-            status: "dismissed",
-          },
-          conversationId: "slack:C1:1.0",
+      inboxItems: ["pull_request", "merge_conflict"].map((kind) => ({
+        close: {
+          subject: { id: "9490", kind },
+          reason: "The pull request closed without merging.",
+          status: "dismissed",
         },
-      ],
+        conversationId: "slack:C1:1.0",
+      })),
     });
 
     expect(queries.map((numbers) => numbers.sort())).toEqual([
@@ -377,6 +386,31 @@ describe("daily reconcile of open pull requests", () => {
     expect(new Set((await rowStates()).map(([, state]) => state))).toEqual(
       new Set(["open"]),
     );
+  });
+
+  it("keeps a close open for the next reconcile when its notice close fails", async () => {
+    await noticeFor949();
+    const desk = h.inboxItems.forConversation("slack:C1:1.0");
+    vi.spyOn(h.inboxItems, "forConversation").mockReturnValueOnce({
+      ...desk,
+      close: () => Promise.reject(new Error("The Inbox is down")),
+    });
+    await h.heartbeat(now);
+    const state949 = async () =>
+      (
+        await fixture
+          .db()
+          .select({ state: juniorGitHubPullRequests.state })
+          .from(juniorGitHubPullRequests)
+          .where(eq(juniorGitHubPullRequests.number, 949))
+      )[0]?.state;
+    expect(await state949()).toBe("open");
+    expect(h.closedNotices).toEqual([]);
+
+    vi.setSystemTime(now + day);
+    await h.heartbeat(now + day);
+    expect(await state949()).toBe("closed_unmerged");
+    expect(h.closedNotices).toEqual(["merge_conflict:9490"]);
   });
 
   it("keeps a close open for the next reconcile when its event fails", async () => {

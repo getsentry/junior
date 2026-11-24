@@ -189,6 +189,34 @@ describe("next action item", () => {
     }
   });
 
+  it("closes the merge conflict notice when the conflict is gone", async () => {
+    const fixture = await createGitHubFixture();
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["dirty"],
+      merged: false,
+      requestedReviewers: [],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const closes: string[] = [];
+      const webhook = route(fixture, [], [], { close: 0 }, closes);
+      const conflictCloses = () =>
+        closes.filter((key) => key.startsWith("merge_conflict:"));
+      await webhook.handler(checkSuiteCompleted());
+      expect(conflictCloses()).toEqual([]);
+
+      github.mergeableStates = ["blocked"];
+      await webhook.handler(checkSuiteCompleted());
+      expect(conflictCloses()).toEqual(["merge_conflict:1001"]);
+    } finally {
+      await fixture.close();
+    }
+  });
+
   it("changes the same item from the review ask to the merge ask", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
@@ -208,7 +236,9 @@ describe("next action item", () => {
       const webhook = route(fixture, calls, [], { close: 0 }, otherCloses);
       await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toEqual([]);
-      expect(otherCloses).toEqual([]);
+      // Each check closes the merge conflict notice of a pull request with
+      // no conflict.
+      expect(otherCloses).toEqual(["merge_conflict:1001"]);
 
       // The GitHub login matches the requester's linked account in any case.
       // A new pull request often has no merge state yet, and the review ask

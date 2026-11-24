@@ -27,7 +27,6 @@ import {
   getInboxItem,
   listReplyActionItems,
   INBOX_ITEM_REPLIED_REASON,
-  leaveOpenInboxItem,
   takeInboxItem,
   type InboxItem,
 } from "./store";
@@ -117,9 +116,8 @@ function submittedAnswer(
 
 /**
  * Do one person action on an Inbox item and tell its linked Conversations.
- * The first submit or dismiss closes the item for every assignee, except
- * on a plugin item: a choice goes to the plugin, and a dismiss by one of
- * several assignees takes only them off it. A retry of the same close sends any missing messages again and
+ * The first submit or dismiss closes the item for every
+ * assignee. A retry of the same close sends any missing messages again and
  * succeeds, so a client can retry after a failure. With `firstCloseOnly`,
  * only the call that closes the item succeeds, and every other call gets a
  * conflict. Use it when the caller adds its own input for the action, such
@@ -189,46 +187,6 @@ export async function actOnInboxItem(args: {
     return taken;
   }
 
-  // A plugin item holds one ask for each assignee. A choice goes to the
-  // plugin, which changes the item, so the item stays open. A dismiss by
-  // one of several assignees takes only them off it.
-  if (
-    item.status === "open" &&
-    isPluginInboxItem(item) &&
-    (action === "submit" || item.assignees.length > 1)
-  ) {
-    if (!canActOnInboxItem(item, user.id)) {
-      throw new InboxItemActionError(
-        "forbidden",
-        "Only an assignee can act on this item.",
-      );
-    }
-    if (action === "dismiss") {
-      await leaveOpenInboxItem(db, { id: item.id, nowMs, userId: user.id });
-      await args.delivery.show(item.id);
-      return (await getInboxItem(db, item.id)) ?? item;
-    }
-    const answer = submittedAnswer(item, args.answer);
-    await answerPluginInboxItem({
-      answer,
-      delivery: args.delivery,
-      item,
-      nowMs,
-    });
-    const answered = (await getInboxItem(db, item.id)) ?? item;
-    // The linked Conversations record the answer, as for a closed item. The
-    // plugin can drop the question as it changes the item, so the answer
-    // goes with the question it answers.
-    await deliverInboxItemChange({
-      change: reviewItemChange(action, user),
-      delivery: args.delivery,
-      exceptConversationId: args.exceptConversationId,
-      item: { ...answered, answer, request: item.request },
-      nowMs,
-    });
-    return answered;
-  }
-
   let closed = item;
   let closedNow = false;
   if (item.status === "open") {
@@ -251,6 +209,15 @@ export async function actOnInboxItem(args: {
   }
   if (args.firstCloseOnly ? !closedNow : !isSameClose(closed, action, user)) {
     throw new InboxItemActionError("conflict", "Inbox item is closed.");
+  }
+  // The plugin that added the item does the work, so its answer starts no
+  // Turn. A retry of the same answer calls the plugin again.
+  if (action === "submit" && isPluginInboxItem(closed)) {
+    await answerPluginInboxItem({
+      delivery: args.delivery,
+      item: closed,
+      nowMs,
+    });
   }
   // Core takes the step that a person picked on an Automation alert. A
   // retry of the same answer takes it again.

@@ -412,7 +412,12 @@ describe("inbox item push", () => {
 
     // Ana leaves while Ben's ask keeps the item open. A new ask brings her
     // back, and it pushes to her again.
-    await person("ben@example.com");
+    const ben = await person("ben@example.com");
+    await getDb().insert(juniorConversationParticipants).values({
+      lastMessageAt: new Date(),
+      rootConversationId: conversationId,
+      userId: ben.id,
+    });
     const benIdentityId = await resolveActorIdentityId(
       getSqlExecutor(),
       createSlackActor("T123", "U0BEN", { email: "ben@example.com" }),

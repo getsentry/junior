@@ -5,8 +5,7 @@ ALTER TABLE "junior_inbox_items" ADD COLUMN "subject_kind" text;--> statement-br
 ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> statement-breakpoint
 -- Each item gets its subject. The kind comes from the old key prefix. The
 -- subject kind and id now name the item, so new code writes no dedupe key.
--- A GitHub pull request has one item for all of its asks, also its merge
--- conflict ask, and its id is
+-- A GitHub pull request has one item for all of its asks, and its id is
 -- GitHub's id of the pull request, read from the code change records by the
 -- repository and number in the old key. A plugin or agent item uses its
 -- subject link as the id when it had one. `automation_id` needs no copy:
@@ -37,6 +36,7 @@ BEGIN
   END IF;
   NEW."subject_kind" := CASE
       WHEN NEW."owner_kind" = 'automation' THEN 'automation'
+      WHEN NEW."dedupe_key" LIKE 'plugin:github:merge-conflict:%' THEN 'github:merge_conflict'
       WHEN github_ref IS NOT NULL THEN 'github:pull_request'
       WHEN NEW."dedupe_key" LIKE 'plugin:%' THEN split_part(NEW."dedupe_key", ':', 2) || ':item'
       WHEN NEW."dedupe_key" LIKE 'reply:%' THEN 'reply'

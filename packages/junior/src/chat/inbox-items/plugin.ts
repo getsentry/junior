@@ -185,18 +185,16 @@ export function createPluginInboxItems(args: {
       const current = new Set(
         existing?.assignees.map((assignee) => assignee.userId),
       );
-      const wereOn = withAsk
-        .filter((user) => current.has(user.userId))
-        .map((user) => user.identityId);
       const askedNow = new Set(asked.map((user) => user.userId));
       const userIds = withAsk
         .map((user) => user.userId)
         .filter((userId) => askedNow.has(userId) || current.has(userId));
-      // An item for people who all left closes. One for nobody Junior knows,
-      // such as a person with no linked account, stays open with no
+      // The item closes when nobody is left: everyone with an ask left it,
+      // or everyone who was on it no longer has one. One for nobody Junior
+      // knows, such as a person with no linked account, stays open with no
       // assignees.
-      if (withAsk.length > 0 && userIds.length === 0) {
-        if (!existing) return wereOn;
+      if (userIds.length === 0 && (withAsk.length > 0 || current.size > 0)) {
+        if (!existing) return;
         const itemId = await closePluginInboxItem(db, {
           conversationId,
           plugin: args.plugin,
@@ -205,7 +203,7 @@ export function createPluginInboxItems(args: {
           subject: notice.subject,
         });
         if (itemId) await show(itemId);
-        return wereOn;
+        return;
       }
       const content: InboxItemContent = {
         assignedToEveryone: false,
@@ -224,7 +222,7 @@ export function createPluginInboxItems(args: {
       // A plugin may show the same item on each event. One with no change
       // and no new ask writes nothing and shows nothing.
       if (existing && askedNow.size === 0 && sameContent(existing, content)) {
-        return wereOn;
+        return;
       }
       let itemId: string;
       // False when the item closed after the read above. A closed item does
@@ -259,7 +257,7 @@ export function createPluginInboxItems(args: {
           ...(access.tenant ? { tenant: access.tenant } : undefined),
         });
         // Undefined means a concurrent upsert added the item first.
-        if (!item) return wereOn;
+        if (!item) return;
         itemId = item.id;
       }
       await show(itemId);
@@ -279,7 +277,7 @@ export function createPluginInboxItems(args: {
           },
         );
       }
-      return wereOn;
+      return;
     },
     async close(input) {
       const itemId = await closePluginInboxItem(getDb(), {

@@ -123,14 +123,6 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
               },
             });
             watching.push(await ctx.watches.watching(watch));
-            // The plugin drops the ask that the choice answered.
-            await ctx.inboxItems.forConversation(conversationId).upsert({
-              askedIdentityIds: [],
-              assigneeIdentityIds: [],
-              body: "Deploys of `api` resume.",
-              subject,
-              title: "Deploys stopped · api",
-            });
           },
         },
       }),
@@ -190,10 +182,9 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
       subject: { id: "api", kind: "deploy_stopped" },
     },
   ]);
-  // The item stays open: the plugin changes it, such as to drop the ask
-  // that the choice answered.
   expect(await getInboxItem(getDb(), row!.id)).toMatchObject({
-    status: "open",
+    closedBy: { userId: ana.user.id },
+    status: "done",
   });
   expect(watching).toEqual([false, true]);
   expect(await listWatches({ conversationId: CONVERSATION_ID })).toEqual([
@@ -211,16 +202,11 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
   const messages = projectConversationMessages(
     await getConversationEventStore().loadMessageHistory(CONVERSATION_ID),
   );
-  const submitted = messages.filter((message) =>
-    message.meta?.reviewItemChanges?.some(
-      (change) => change.kind === "submitted",
+  expect(
+    messages.filter((message) =>
+      message.meta?.reviewItemChanges?.some(
+        (change) => change.kind === "submitted",
+      ),
     ),
-  );
-  // The plugin dropped the question, and the message still says which
-  // choice answered it.
-  expect(submitted).toEqual([
-    expect.objectContaining({
-      text: expect.stringContaining("Deploys stopped · api (choice): Resume"),
-    }),
-  ]);
+  ).toHaveLength(1);
 });

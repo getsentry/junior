@@ -45,7 +45,7 @@ const conflict = {
     ],
   },
   subject: pullRequestSubject({
-    kind: "github:pull_request",
+    kind: "github:merge_conflict",
     label: "Merge conflict",
     resource: prMerge.subject.resource,
     title: "fix(slack): Keep thread replies in order",

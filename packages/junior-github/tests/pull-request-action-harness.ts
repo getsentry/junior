@@ -642,24 +642,23 @@ export function route(
     forConversation(conversationId) {
       return {
         async upsert(notice) {
-          if (!isReady(notice.subject)) return [];
+          if (!isReady(notice.subject)) return;
           const on = new Set(open?.assigneeIdentityIds);
-          const wereOn = notice.assigneeIdentityIds.filter((id) => on.has(id));
           const assigneeIdentityIds = notice.assigneeIdentityIds.filter(
             (id) => notice.askedIdentityIds.includes(id) || on.has(id),
           );
-          if (assigneeIdentityIds.length === 0) return wereOn;
+          if (assigneeIdentityIds.length === 0) return;
           const shown = { ...notice, assigneeIdentityIds };
           if (
             notice.askedIdentityIds.length === 0 &&
             JSON.stringify({ ...open, askedIdentityIds: [] }) ===
               JSON.stringify({ ...shown, askedIdentityIds: [] })
           ) {
-            return wereOn;
+            return;
           }
           open = shown;
           calls.push({ conversationId, kind: "upsert", notice });
-          return wereOn;
+          return;
         },
         async close(input) {
           if (!isReady(input.subject)) {
