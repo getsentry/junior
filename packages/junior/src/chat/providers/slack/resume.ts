@@ -7,6 +7,7 @@
  * consistent.
  */
 import { loadPendingMessageCards } from "@/chat/conversations/pending-cards";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { botConfig } from "@/chat/config";
 import { configValueSchema } from "@/chat/configuration/types";
 import type {
@@ -291,6 +292,10 @@ async function handleResumeFailure(args: {
     failureCode: args.failureCode,
     eventId,
   });
+  await indexEndedTurnEvents({
+    conversationId: args.resume.conversationId,
+    turnId: args.resume.turnId,
+  });
 }
 
 /** Record a stopped resume as a cancelled Turn without a visible reply. */
@@ -302,6 +307,10 @@ async function completeStoppedResume(
     conversationId: resume.conversationId,
     createdAtMs: Date.now(),
     outcome: "cancelled",
+    turnId: resume.turnId,
+  });
+  await indexEndedTurnEvents({
+    conversationId: resume.conversationId,
     turnId: resume.turnId,
   });
 }
@@ -796,6 +805,11 @@ async function resumeSlackTurnInContext(
           "plugin.session.completed_task_schedule.failed",
         );
       }
+    } else if (outcome.status === "completed") {
+      await indexEndedTurnEvents({
+        conversationId: runArgs.conversationId,
+        turnId: runArgs.turnId,
+      });
     }
   } catch (error) {
     await status.clear();
@@ -854,6 +868,10 @@ async function resumeSlackTurnInContext(
       createdAtMs: Date.now(),
       failureCode: "persistence_failed",
       ...(eventId ? { eventId } : undefined),
+    });
+    await indexEndedTurnEvents({
+      conversationId: runArgs.conversationId,
+      turnId: runArgs.turnId,
     });
     throw postDeliveryCommitError;
   }
