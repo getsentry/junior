@@ -10,8 +10,7 @@ import {
 } from "./inbox-fixture";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("snooze times", { tag: "@new" }, () => {
+test.describe("snooze times", () => {
   // NOW_MS is Friday 08:00 in New York, so every choice for today shows.
   test.use({ locale: "en-US", timezoneId: "America/New_York" });
 

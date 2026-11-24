@@ -11,8 +11,7 @@ import {
 } from "../harness";
 import { pickOption } from "../pick-option";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   test.use({ locale: "en-US", timezoneId: "America/New_York" });
 
   const conversationId = "slack:CQA123:1770003600.000200";

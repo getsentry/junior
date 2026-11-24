@@ -36,6 +36,7 @@ import {
   ZEN_MODE_SHORTCUT,
 } from "../components/layout/PaneNav";
 import {
+  ComfortableDensityContext,
   useConversationDensity,
   useDensityRoot,
 } from "../conversations/conversationDensity";
@@ -95,7 +96,6 @@ import { LinkedSnooze } from "../inbox/LinkedSnooze";
 import { InboxListProvider, useInboxReturnPath } from "../inbox/inboxListState";
 import { useInboxTabCount } from "../inbox/inboxTabIcon";
 import { cn } from "../styles";
-import { ComfortableDensityContext, UiShellContext } from "../uiShell";
 import { useVersionsPoll } from "../versions";
 import { getDashboardAgentName } from "../agentName";
 import { canSendFeedback } from "../sentry";
@@ -924,21 +924,16 @@ function ShellCommandPalette({
   );
 }
 
-/**
- * Render the new dashboard UI for users who turned on `experimentalUi`.
- * Its providers live here, so the current UI does not load them.
- */
-export function InboxShell() {
+/** Render the dashboard UI with its providers. */
+export function DashboardShell() {
   const [density] = useConversationDensity();
   return (
-    <UiShellContext value="inbox">
-      <ComfortableDensityContext value={density === "comfortable"}>
-        <InboxSweepProvider>
-          <EventLogShownProvider>
-            <InboxRoutes />
-          </EventLogShownProvider>
-        </InboxSweepProvider>
-      </ComfortableDensityContext>
-    </UiShellContext>
+    <ComfortableDensityContext value={density === "comfortable"}>
+      <InboxSweepProvider>
+        <EventLogShownProvider>
+          <InboxRoutes />
+        </EventLogShownProvider>
+      </InboxSweepProvider>
+    </ComfortableDensityContext>
   );
 }

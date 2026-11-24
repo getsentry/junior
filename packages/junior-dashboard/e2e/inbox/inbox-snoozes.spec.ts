@@ -18,8 +18,7 @@ import { automationReport } from "./automation-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   const checkout = "Investigate checkout latency";
 
   test("snooze hides a row until it wakes", async ({ dashboard, page }) => {

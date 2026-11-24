@@ -1,4 +1,4 @@
-// The new UI fades one line of text at its right edge where it does not
+// The dashboard fades one line of text at its right edge where it does not
 // fit, in place of an ellipsis. A mask hides an element's own focus ring,
 // so fade the text inside a link or button, not the link or button.
 

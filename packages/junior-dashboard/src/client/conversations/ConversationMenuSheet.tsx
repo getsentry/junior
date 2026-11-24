@@ -9,10 +9,6 @@ import {
 import { useSheet } from "../components/ui/useSheet";
 import { cn } from "../styles";
 import type { ConversationMenuItem } from "./conversationMenuItems";
-import {
-  useConversationRowMenuGroups,
-  type ConversationRowMenuProps,
-} from "./ConversationRowMenu";
 
 const ROW_CLASS =
   "flex min-h-12 w-full cursor-pointer items-center gap-3 px-4 text-left font-sans text-base text-dashboard-text no-underline transition-colors active:bg-dashboard-fill-soft disabled:cursor-not-allowed disabled:opacity-50 [&_svg]:size-5 [&_svg]:shrink-0 [&_svg]:text-dashboard-text-muted";
@@ -20,23 +16,6 @@ const ROW_CLASS =
 const PLAIN_ROW_CLASS = cn(ROW_CLASS, "border-0 bg-transparent");
 const GROUP_CLASS =
   "overflow-hidden rounded-xl border border-dashboard-border-subtle bg-dashboard-fill-faint";
-
-/**
- * Show the row menu as a bottom sheet for a long press on a touch screen.
- * It opens away from the finger, and a swipe down closes it.
- */
-export function ConversationRowSheet(
-  props: ConversationRowMenuProps & {
-    onClose(action?: () => void): void;
-    title: string;
-  },
-) {
-  const { onClose, title, ...menu } = props;
-  const groups = useConversationRowMenuGroups(menu);
-  return (
-    <ConversationMenuSheet groups={groups} onClose={onClose} title={title} />
-  );
-}
 
 /**
  * Show Conversation menu rows as a bottom sheet: the phone form of the `⋯`

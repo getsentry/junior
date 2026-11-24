@@ -41,8 +41,7 @@ async function restOnRow(head: Locator) {
     .toBe(true);
 }
 
-// Only the inbox project runs `@new` tests.
-test.describe("new UI", { tag: "@new" }, () => {
+test.describe("new UI", () => {
   // Only participants can archive or restore.
   test.beforeEach(async ({ page }) => viewAsParticipant(page));
 

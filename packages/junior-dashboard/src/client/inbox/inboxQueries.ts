@@ -18,8 +18,7 @@ import {
   INBOX_ITEMS_QUERY_KEY,
 } from "./queries";
 
-// The new UI's reads for the Inbox count and the Automations that need
-// attention. The current UI does not load them.
+// The reads for the Inbox count and the Automations that need attention.
 
 const INBOX_ITEM_COUNT_QUERY_KEY = [...INBOX_ITEMS_QUERY_KEY, "count"];
 const ATTENTION_PAGE_READS = 8;

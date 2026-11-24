@@ -21,7 +21,7 @@ async function emptyLead(page: Page) {
   );
 }
 
-test("home shows the Lead and the Conversations it started @classic", async ({
+test("home shows the Lead and the Conversations it started", async ({
   page,
   dashboard,
 }) => {
@@ -33,19 +33,13 @@ test("home shows the Lead and the Conversations it started @classic", async ({
   await expect(transcript.getByText(LEAD_REPLY)).toBeVisible();
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   await expect(page.getByRole("heading", { name: "Your Lead" })).toBeVisible();
-  // Home is the Lead alone: no list and no details.
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toHaveCount(0);
+  // Home is the Lead alone: no details.
   await expect(page.getByRole("button", { name: /details/i })).toHaveCount(0);
-  // The Lead nav item is home. The Conversations item is the list.
+  // The Lead nav item is home.
   const primary = page.getByRole("navigation", { name: "Primary" });
   await expect(
     primary.getByRole("link", { name: "Lead", exact: true }),
   ).toHaveAttribute("aria-current", "page");
-  await expect(
-    primary.getByRole("link", { name: "Conversations" }),
-  ).not.toHaveAttribute("aria-current", "page");
   await expect(
     transcript.getByRole("separator", { name: "Today" }),
   ).toBeVisible();
@@ -117,26 +111,16 @@ test("home shows the Lead and the Conversations it started @classic", async ({
   await failed.getByRole("button", { name: "Message it" }).click();
   await expect(reply).toContainText("Deployment investigation failed");
 
-  // A card opens its Conversation, with the list beside it. New
-  // conversation comes back to the Lead.
+  // A card opens its Conversation.
   await working
     .getByRole("link", { name: /Investigate checkout latency/ })
     .click();
   await expect(
     page.getByRole("heading", { name: "Investigate checkout latency" }),
   ).toBeVisible();
-  await expect(
-    page.getByRole("navigation", { name: "Your conversations" }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "New conversation" }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/`);
-  await expect(reply).toBeFocused();
 });
 
-test("loads home within its request budget @classic", async ({
-  page,
-  dashboard,
-}) => {
+test("loads home within its request budget", async ({ page, dashboard }) => {
   await page.setViewportSize(desktop);
   await expectRequestBudget(
     page,
@@ -169,7 +153,7 @@ test("the Lead nav item opens the Lead from other pages", async ({
   await expect(page.getByRole("button", { name: /details/i })).toHaveCount(0);
 });
 
-test("home is the Lead, even with its id slow to load @new", async ({
+test("home is the Lead, even with its id slow to load", async ({
   page,
   dashboard,
 }) => {
@@ -213,54 +197,10 @@ test("a new Lead introduces itself", async ({ page, dashboard }) => {
   await expect(reply).toContainText("What's waiting on me?");
 });
 
-test("the Conversations link opens the list beside the Lead @classic", async ({
-  page,
-  dashboard,
-}) => {
-  await page.setViewportSize(desktop);
-  await page.goto(dashboard.baseURL);
-  await expect(page.getByRole("heading", { name: "Your Lead" })).toBeVisible();
-  await page.getByRole("link", { name: "Conversations", exact: true }).click();
-  await expect(page).toHaveURL(`${dashboard.baseURL}/conversations`);
-  const list = page.getByRole("navigation", { name: "Your conversations" });
-  await expect(list).toBeVisible();
-  // The Lead is not in the list of Conversations.
-  await expect(list).not.toContainText("Lead");
-  await expect(page.getByRole("heading", { name: "Your Lead" })).toBeVisible();
-});
-
 test.describe("on a touch screen", () => {
   test.use({ hasTouch: true });
 
-  test("narrow home is the Lead @classic", async ({ page, dashboard }) => {
-    await page.clock.setFixedTime(NOW_MS);
-    await page.setViewportSize(mobile);
-    await page.goto(dashboard.baseURL);
-    await expect(
-      page.getByRole("heading", { name: "Your Lead" }),
-    ).toBeVisible();
-    const transcript = page.getByLabel("Conversation transcript");
-    await expect(transcript.getByText(LEAD_REPLY)).toBeVisible();
-
-    await expect(
-      transcript.getByRole("article", { name: "Investigate checkout latency" }),
-    ).toBeVisible();
-
-    // The list is its own page, with a link back to the Lead.
-    await page.goto(`${dashboard.baseURL}/conversations`);
-    await expect(
-      page.getByRole("list", { name: "Your conversations" }),
-    ).toBeVisible();
-    await page.getByRole("link", { name: "Your Lead" }).click();
-    await expect(transcript.getByText(LEAD_REPLY)).toBeVisible();
-    // The app bar names the open Lead, and no list is beside it to toggle.
-    await expect(page.getByRole("heading", { name: "Your Lead" })).toBeHidden();
-    await expect(
-      page.getByRole("button", { name: "Show conversation list" }),
-    ).toHaveCount(0);
-  });
-
-  test("the phone home is the Lead, and the entries list it first @new", async ({
+  test("the phone home is the Lead, and the entries list it first", async ({
     page,
     dashboard,
   }) => {
@@ -279,10 +219,7 @@ test.describe("on a touch screen", () => {
     ).toBeVisible();
   });
 
-  test("the navigation sheet lists the Lead @classic", async ({
-    page,
-    dashboard,
-  }) => {
+  test("the navigation sheet lists the Lead", async ({ page, dashboard }) => {
     await page.setViewportSize(mobile);
     await page.goto(`${dashboard.baseURL}/automations`);
     await page.getByRole("button", { name: "Open navigation" }).click();
