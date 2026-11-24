@@ -696,6 +696,89 @@ describe("object links API", () => {
     }
   });
 
+  it("keeps a webhook that could not wait for a slow card read", async () => {
+    stubGitHubApp();
+    const issue = {
+      closed_at: null,
+      created_at: "2026-01-01T00:00:00Z",
+      html_url: `${GITHUB_REPO}/issues/15`,
+      id: 15_000,
+      number: 15,
+      state: "open",
+      title: "Read me slowly",
+      updated_at: "2026-01-02T03:04:05Z",
+      user: { login: "byk" },
+    };
+    const closed = {
+      ...issue,
+      closed_at: "2026-01-02T04:00:00Z",
+      state: "closed",
+      updated_at: "2026-01-02T04:00:00Z",
+    };
+    let reachGitHub!: () => void;
+    const reachedGitHub = new Promise<void>((resolve) => {
+      reachGitHub = resolve;
+    });
+    let answerGitHub!: () => void;
+    const answered = new Promise<void>((resolve) => {
+      answerGitHub = resolve;
+    });
+    let slow = true;
+    mswServer.use(
+      http.get(`${GITHUB_API}/issues/15`, async () => {
+        if (!slow) return HttpResponse.json(closed);
+        slow = false;
+        // The first read answers late, with the issue from before the
+        // webhook.
+        reachGitHub();
+        await answered;
+        return HttpResponse.json(issue);
+      }),
+    );
+    try {
+      const app = await createApp({
+        plugins: defineJuniorPlugins([githubPlugin()]),
+      });
+      await migratePluginSchemas(getSqlExecutor(), [
+        {
+          dir: path.resolve(process.cwd(), "../junior-github/migrations"),
+          pluginName: "github",
+        },
+      ]);
+      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      await linkGitHubMember();
+      const read = await viewerApi("alice@example.com");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const start = Date.now();
+      const slowRead = read(`${GITHUB_REPO}/issues/15`);
+      await reachedGitHub;
+      // The webhook waits for the read's lock, then gives up.
+      const webhook = sendGitHubWebhook(app, "issues", {
+        action: "closed",
+        issue: closed,
+      });
+      // Move the clock past the wait until the webhook gives up.
+      let settled = false;
+      void webhook.finally(() => {
+        settled = true;
+      });
+      for (let step = 1; !settled; step += 1) {
+        vi.setSystemTime(start + step * 11_000);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await webhook;
+      answerGitHub();
+      await slowRead;
+
+      const next = await read(`${GITHUB_REPO}/issues/15`);
+      expect(next.objects.get(`${GITHUB_REPO}/issues/15`)).toMatchObject({
+        status: "closed",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   // Reads in the first seconds after an Identity write skip the cache.
   function passIdentityWriteWindow() {
     vi.useFakeTimers({ toFake: ["Date"] });
