@@ -367,6 +367,8 @@ export function conversationFeedVersionQuery(
     end`;
   // The tree's members, and the state of each one but the root, which its
   // row holds. The tree counts the root's live authorization requests too.
+  // A running Thread hides its version, but its row shows its title, which
+  // a Turn can set, and an archive hides it, so the tree holds both.
   const child = sql`${feedTree.conversationId} <> ${conversationId}`;
   const active = conversationIsActiveSql(feedTree);
   const tree = db
@@ -376,6 +378,10 @@ export function conversationFeedVersionQuery(
         sum(${feedTree.detailVersion}) filter (where ${child} and not ${active}),
         count(*) filter (where ${child} and ${active}),
         count(*) filter (where ${child} and ${active} and ${ownedItemWaits(feedTree.conversationId)}),
+        count(*) filter (where ${child} and ${active} and ${feedTree.archivedAt} is not null),
+        md5(string_agg(${feedTree.title}, ',' order by ${feedTree.conversationId}) filter (
+          where ${child} and ${active} and ${feedTree.kind} = 'thread'
+        )),
         count(*) filter (where ${hasUnexpiredAuthorizationRequest(feedTree.conversationId)})
       )`,
     })

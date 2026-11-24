@@ -19,7 +19,10 @@ import {
   getConversationEventStore,
   getConversationStore,
   getDb,
+  getSqlExecutor,
 } from "@/chat/db";
+import { setConversationArchive } from "@/api/conversations/archive";
+import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
 import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
@@ -419,8 +422,23 @@ describe("versions API", () => {
     expect(feedMoved(withThread, threadRunning)).toEqual(["threads"]);
     const threadEvent = await threadTurn("running", nowMs + 240_000);
     expect(changed(threadRunning, threadEvent)).toEqual(["conversation"]);
+    // A live Turn can name its Thread, and the Thread row shows the name.
+    await setConversationTitle(getSqlExecutor(), threadId, "Deploy check");
+    const threadTitled = await read();
+    expect(feedMoved(threadEvent, threadTitled)).toEqual(["threads"]);
     const threadEnded = await threadTurn("idle", nowMs + 240_000);
-    expect(feedMoved(threadEvent, threadEnded)).toEqual(["threads"]);
+    expect(feedMoved(threadTitled, threadEnded)).toEqual(["threads"]);
+    // An archive hides a running Thread from the feed.
+    const threadRestarted = await threadTurn("running", nowMs + 250_000);
+    expect(
+      await setConversationArchive({
+        applyToChildren: false,
+        archived: true,
+        conversationId: threadId,
+        lastSeenAt: new Date(nowMs + 250_000).toISOString(),
+      }),
+    ).toMatchObject({ status: "archived" });
+    expect(feedMoved(threadRestarted, await read())).toEqual(["threads"]);
 
     // A Task has no row, but its work moves the root's tree state.
     const taskTurn = async (status: "idle" | "running", atMs: number) => {
