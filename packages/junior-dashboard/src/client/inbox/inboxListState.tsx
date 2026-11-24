@@ -48,7 +48,7 @@ type InboxListValue = {
   origin: ConversationOrigin | undefined;
   /** Mark that the composer shows; true the first time this session. */
   showComposer(): boolean;
-  /** Places by list, so `/` and `/?view=inbox` share the Inbox's. */
+  /** Places by list, so `/inbox` and `/inbox?view=inbox` share the Inbox's. */
   places: Readonly<Partial<Record<InboxView, ListPlace>>>;
   /** The list that Back returns to: the last one shown. */
   returnPath: string;
@@ -74,7 +74,7 @@ export function InboxListProvider(props: { children: ReactNode }) {
   >({});
   const [linkedItems, setLinkedItems] = useState<LinkedItems>({});
   const [inFlightExpanded, setInFlightExpanded] = useState(false);
-  const [returnPath, setReturnPath] = useState("/");
+  const [returnPath, setReturnPath] = useState(inboxViewPath("inbox"));
   const location = useLocation();
   // The list of the page shown last, if it was one: an Inbox view or Code.
   // Plugin pages are neither, so the row needs no nav items.

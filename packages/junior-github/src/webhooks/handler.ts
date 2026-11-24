@@ -12,24 +12,22 @@ import type {
   EventInput,
   EventPublisher,
   PluginState,
+  PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import type { GitHubPullRequestCommitComposition } from "../db/schema.js";
-import {
-  recordGitHubIssueConversations,
-  recordGitHubIssueOutcome,
-} from "../issue-outcomes/store.js";
 import { applyGitHubPullRequestOutcome } from "../pull-request-outcomes/apply.js";
+import {
+  GITHUB_PULL_REQUEST_OUTCOME_TASK,
+  githubPullRequestOutcomeTaskKey,
+} from "../pull-request-outcomes/apply-task.js";
 import {
   recordGitHubPullRequestConversations,
   recordGitHubPullRequestOutcome,
 } from "../pull-request-outcomes/store.js";
-import {
-  normalizeGitHubIssueConversations,
-  normalizeGitHubIssueOutcome,
-} from "./issue-outcome.js";
+import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
 import {
   normalizeGitHubPullRequestConversations,
   normalizeGitHubPullRequestOutcome,
@@ -182,6 +180,8 @@ export function createGitHubWebhookRoute(args: {
   events: EventPublisher;
   inboxItems: PluginConversationInboxItems;
   state: PluginState;
+  /** Starts the task that applies a failed pull request outcome again. */
+  tasks: PluginTaskStarter;
   /** Tokens to reuse, as in `reuseInstallationToken`. */
   tokens?: InstallationTokens | undefined;
   /** Logins from the `trustedAuthors` plugin option. */
@@ -229,29 +229,44 @@ export function createGitHubWebhookRoute(args: {
         eventName === "pull_request"
           ? normalizeGitHubPullRequestOutcome({ body, botEmail })
           : undefined;
-      const issueOutcome =
+      const closedIssue =
         eventName === "issues"
-          ? normalizeGitHubIssueOutcome({ body, botEmail })
-          : undefined;
-      const issueConversations =
-        eventName === "issues"
-          ? normalizeGitHubIssueConversations({ body, botEmail })
+          ? normalizeGitHubClosedIssue({ body, botEmail })
           : undefined;
       const pullRequestConversations =
         eventName === "pull_request"
           ? normalizeGitHubPullRequestConversations({ body, botEmail })
           : undefined;
       if (pullRequestOutcome) {
-        const recordedOutcome = await applyGitHubPullRequestOutcome({
-          annotations: args.annotations,
-          codeChanges: args.codeChanges,
-          conversationChanges: args.conversationChanges,
-          db: args.db,
-          log: args.log,
-          outcome: pullRequestOutcome,
-        });
+        let recordedOutcome:
+          | Awaited<ReturnType<typeof applyGitHubPullRequestOutcome>>
+          | undefined;
+        try {
+          recordedOutcome = await applyGitHubPullRequestOutcome({
+            annotations: args.annotations,
+            codeChanges: args.codeChanges,
+            conversationChanges: args.conversationChanges,
+            db: args.db,
+            log: args.log,
+            outcome: pullRequestOutcome,
+          });
+        } catch (error) {
+          // GitHub does not send a failed delivery again. A task applies the
+          // whole outcome later, with retries.
+          args.log?.warn("GitHub PR outcome write failed; retrying in a task", {
+            deliveryId,
+            errorType: error instanceof Error ? error.name : "UnknownError",
+            number: pullRequestOutcome.number,
+            repository: pullRequestOutcome.repositoryFullName,
+          });
+          await args.tasks.start({
+            key: githubPullRequestOutcomeTaskKey(pullRequestOutcome),
+            name: GITHUB_PULL_REQUEST_OUTCOME_TASK,
+            payload: pullRequestOutcome,
+          });
+        }
         if (
-          recordedOutcome.applied &&
+          recordedOutcome?.applied &&
           !recordedOutcome.commitComposition &&
           pullRequestOutcome.state === "merged" &&
           args.classifyPullRequestCommits
@@ -278,28 +293,21 @@ export function createGitHubWebhookRoute(args: {
           }
         }
       }
-      if (issueOutcome) {
-        const recordedOutcome = await recordGitHubIssueOutcome(
-          args.db,
-          issueOutcome,
-        );
-        if (recordedOutcome.applied && issueOutcome.state === "closed") {
-          await updateGitHubAnnotations({
-            annotations: args.annotations,
-            conversationIds: recordedOutcome.conversationIds,
-            log: args.log,
-            update: {
-              repo: issueOutcome.repositoryFullName,
-              number: issueOutcome.number,
-              objectType: "task",
-              status: "closed",
-            },
-          });
-        }
+      if (closedIssue) {
+        await updateGitHubAnnotations({
+          annotations: args.annotations,
+          conversationIds: closedIssue.conversationIds,
+          // A person can edit the footer, so it cannot add a card.
+          existingOnly: true,
+          log: args.log,
+          update: {
+            repo: closedIssue.repositoryFullName,
+            number: closedIssue.number,
+            objectType: "task",
+            status: "closed",
+          },
+        });
       }
-      const recordedIssueConversations = issueConversations
-        ? await recordGitHubIssueConversations(args.db, issueConversations)
-        : false;
       const recordedPullRequestConversations = pullRequestConversations
         ? await recordGitHubPullRequestConversations(
             args.db,
@@ -482,8 +490,7 @@ export function createGitHubWebhookRoute(args: {
       });
       if (
         !pullRequestOutcome &&
-        !issueOutcome &&
-        !recordedIssueConversations &&
+        !closedIssue &&
         !recordedPullRequestConversations &&
         events.length === 0
       ) {

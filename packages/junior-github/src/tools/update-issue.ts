@@ -177,6 +177,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
               ),
               nonEmptyString(ctx.conversationId, "conversationId"),
               ctx.conversationLink?.url,
+              currentBody,
             ),
           }
         : undefined),

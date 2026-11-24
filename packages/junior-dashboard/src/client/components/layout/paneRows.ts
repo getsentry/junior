@@ -23,6 +23,8 @@ export type ConversationOrigin = InboxView | "code";
 /** A row shows the page, or the list that opened it. */
 export type PaneRowMark = "page" | "origin";
 
+const INBOX_PATH = inboxViewPath("inbox");
+
 const under = (pathname: string, root: string) =>
   pathname === root || pathname.startsWith(`${root}/`);
 
@@ -60,30 +62,26 @@ export function isOldAutomationsPath(location: {
   );
 }
 
-// A link may leave the colons of a Conversation id unencoded, so compare
-// decoded paths.
-const decodedPath = (path: string) => {
-  try {
-    return decodeURIComponent(path);
-  } catch {
-    return path;
-  }
-};
-
 /** True when a path opens the Lead, the Lead nav item's page. */
 export function isLeadPath(
   pathname: string,
   navItems: readonly DashboardHeaderNavItem[],
 ): boolean {
   const lead = navItems.find((item) => item.key === LEAD_NAV_KEY);
-  return lead !== undefined && decodedPath(pathname) === decodedPath(lead.to);
+  return lead !== undefined && pathname === lead.to;
 }
 
 /** Name the part of the destinations that a path is in, if any. */
 export function paneDestinationForPath(
   pathname: string,
 ): "automations" | "inbox" | undefined {
-  if (pathname === "/" || under(pathname, "/conversations")) return "inbox";
+  // The Lead, at `/`, heads the Inbox's destinations.
+  if (
+    pathname === "/" ||
+    pathname === INBOX_PATH ||
+    under(pathname, "/conversations")
+  )
+    return "inbox";
   if (under(pathname, "/automations")) return "automations";
   return undefined;
 }
@@ -101,9 +99,9 @@ export function paneRowForPath(
   const { pathname } = location;
   if (isOldAutomationsPath(location)) return "automations";
   if (isCodePath(pathname)) return "code";
-  if (pathname === "/")
+  if (pathname === INBOX_PATH)
     return parseInboxView(new URLSearchParams(location.search).get("view"));
-  // The Lead is a Conversation with its own row.
+  // The Lead is home, with its own row.
   if (isLeadPath(pathname, navItems)) return LEAD_NAV_KEY;
   if (under(pathname, "/conversations")) return origin ?? "conversations";
   if (under(pathname, "/automations")) return "automations";

@@ -134,6 +134,13 @@
       "when": 1795468842953,
       "tag": "0018_drop_pull_request_issues",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1795471772394,
+      "tag": "0019_drop_github_issues",
+      "breakpoints": true
     }
   ]
 }

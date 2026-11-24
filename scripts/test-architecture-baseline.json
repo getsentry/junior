@@ -140,7 +140,7 @@
     "packages/junior/tests/unit/mcp/auth-store.test.ts": 2,
     "packages/junior/tests/unit/mcp/oauth.test.ts": 2,
     "packages/junior/tests/unit/pi/client.test.ts": 2,
-    "packages/junior/tests/unit/plugins/agent-hooks.test.ts": 79,
+    "packages/junior/tests/unit/plugins/agent-hooks.test.ts": 75,
     "packages/junior/tests/unit/plugins/plugin-egress.test.ts": 5,
     "packages/junior/tests/unit/plugins/unfinished-work.test.ts": 3,
     "packages/junior/tests/unit/slack/tool-registration.test.ts": 4

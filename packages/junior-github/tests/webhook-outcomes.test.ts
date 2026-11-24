@@ -9,12 +9,12 @@ import {
   type EventMatch,
   type PluginConversationAnnotations,
   type PluginConversationInboxItems,
+  type PluginTaskStartInput,
 } from "@sentry/junior-plugin-api";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type GitHubPullRequestCommitComposition,
-  juniorGitHubIssues,
   juniorGitHubPullRequestRequesters,
   juniorGitHubPullRequests,
 } from "../src/db/schema";
@@ -27,6 +27,7 @@ import {
 } from "../src/pull-request-outcomes/store";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
 import { conversationChangesThrough } from "./conversation-changes";
+import { memoryState } from "./plugin-harness";
 import {
   buildCheckSuiteUrl,
   needsCheckSuitePullRequestFacts,
@@ -312,6 +313,7 @@ function webhookRoute(
   >[0]["markFeedbackReviewing"] = async () => {},
   hasMatch: () => Promise<boolean> = async () => true,
   codeChanges: CodeChangeInput[] = [],
+  stored: Record<string, ConversationAnnotationInput[]> = {},
 ) {
   const stores: PluginConversationAnnotations = {
     forConversation(conversationId) {
@@ -321,7 +323,12 @@ function webhookRoute(
         },
         async remove() {},
         async list() {
-          return [];
+          return (stored[conversationId] ?? []).map((annotation) => ({
+            ...annotation,
+            createdAt: "2026-07-01T12:00:00.000Z",
+            plugin: "github",
+            updatedAt: "2026-07-01T12:00:00.000Z",
+          }));
         },
       };
     },
@@ -1842,144 +1849,21 @@ describe("GitHub webhook events", () => {
 });
 
 describe("GitHub-owned issue outcomes", () => {
-  it("tracks the newest lifecycle for Junior-owned issues without adopting human issues", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      const route = webhookRoute(fixture);
-      const opened = issueLifecyclePayload({
-        createdAt: "2026-07-01T12:00:00.000Z",
-        id: 3001,
-        number: 970,
-      });
-      await route.handler(signedRequest(opened, "issues"));
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            action: "closed",
-            closedAt: "2026-07-03T12:00:00.000Z",
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3001,
-            number: 970,
-            stateReason: "duplicate",
-            updatedAt: "2026-07-03T12:00:00.000Z",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            body: "bot issue without a Junior footer",
-            createdAt: "2026-07-02T13:00:00.000Z",
-            id: 3003,
-            number: 972,
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-07-02T14:00:00.000Z",
-            id: 3004,
-            number: 973,
-            user: "human",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            action: "reopened",
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3001,
-            number: 970,
-            stateReason: "reopened",
-            updatedAt: "2026-07-02T12:00:00.000Z",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            body: "ordinary human issue",
-            createdAt: "2026-07-02T12:00:00.000Z",
-            id: 3002,
-            number: 971,
-            user: "human",
-          }),
-          "issues",
-        ),
-      );
-
-      await expect(
-        fixture.db().select().from(juniorGitHubIssues),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          issueId: "3001",
-          repositoryFullName: "getsentry/junior",
-          state: "closed",
-          stateReason: "duplicate",
-          updatedAt: new Date("2026-07-03T12:00:00.000Z"),
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("keeps a terminal issue when its opening delivery arrives late", async () => {
-    const fixture = await createGitHubFixture();
-    try {
-      const route = webhookRoute(fixture);
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            action: "closed",
-            closedAt: "2026-07-03T12:00:00.000Z",
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3010,
-            number: 980,
-            updatedAt: "2026-07-03T12:00:00.000Z",
-          }),
-          "issues",
-        ),
-      );
-      await route.handler(
-        signedRequest(
-          issueLifecyclePayload({
-            createdAt: "2026-07-01T12:00:00.000Z",
-            id: 3010,
-            number: 980,
-          }),
-          "issues",
-        ),
-      );
-
-      await expect(
-        fixture.db().select().from(juniorGitHubIssues),
-      ).resolves.toEqual([
-        expect.objectContaining({
-          issueId: "3010",
-          state: "closed",
-          stateReason: null,
-          updatedAt: new Date("2026-07-03T12:00:00.000Z"),
-        }),
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("marks associated conversation resource annotations closed", async () => {
+  it("marks a closed Junior issue closed only where its card is", async () => {
     const fixture = await createGitHubFixture();
     try {
       const annotations: Array<{
         annotation: ConversationAnnotationInput;
         conversationId: string;
       }> = [];
+      const card = (number: number): ConversationAnnotationInput => ({
+        kind: "resource_link",
+        objectType: "task",
+        key: `getsentry/junior#${number}`,
+        label: `getsentry/junior#${number}`,
+        status: "open",
+        url: `https://github.com/getsentry/junior/issues/${number}`,
+      });
       const route = webhookRoute(
         fixture,
         [],
@@ -1987,49 +1871,38 @@ describe("GitHub-owned issue outcomes", () => {
         undefined,
         undefined,
         annotations,
+        undefined,
+        undefined,
+        undefined,
+        { "slack:C123:1712345.0001": [card(990), card(991)] },
       );
-      expect(
-        (
-          await route.handler(
-            signedRequest(
-              issueLifecyclePayload({
-                createdAt: "2026-07-01T12:00:00.000Z",
-                id: 3020,
-                number: 990,
-              }),
-              "issues",
-            ),
-          )
-        ).status,
-      ).toBe(202);
-      expect(
-        (
-          await route.handler(
-            signedRequest(
-              issueLifecyclePayload({
-                action: "closed",
-                closedAt: "2026-07-03T12:00:00.000Z",
-                createdAt: "2026-07-01T12:00:00.000Z",
-                id: 3020,
-                number: 990,
-                updatedAt: "2026-07-03T12:00:00.000Z",
-              }),
-              "issues",
-            ),
-          )
-        ).status,
-      ).toBe(202);
+      // The footer also names a Conversation with no card for the issue,
+      // such as one that a person added by editing the footer.
+      const footer =
+        "Created by Junior\n\n<!-- junior-session-footer:start -->\n<!-- junior-conversation-id:slack%3AC123%3A1712345.0001 -->\n<!-- junior-conversation-id:slack%3AC999%3A1.0001 -->\n<!-- junior-session-footer:end -->";
+      const closed = (input: { number: number; user?: string }) =>
+        route.handler(
+          signedRequest(
+            issueLifecyclePayload({
+              action: "closed",
+              body: footer,
+              closedAt: "2026-07-03T12:00:00.000Z",
+              createdAt: "2026-07-01T12:00:00.000Z",
+              id: 3030 + input.number,
+              updatedAt: "2026-07-03T12:00:00.000Z",
+              ...input,
+            }),
+            "issues",
+          ),
+        );
+      // Junior never saw the opening delivery of this issue.
+      expect((await closed({ number: 990 })).status).toBe(202);
+      // A person's issue with a copied footer is not Junior's.
+      await closed({ number: 991, user: "human" });
 
       expect(annotations).toEqual([
         {
-          annotation: {
-            kind: "resource_link",
-            objectType: "task",
-            key: "getsentry/junior#990",
-            label: "getsentry/junior#990",
-            status: "closed",
-            url: "https://github.com/getsentry/junior/issues/990",
-          },
+          annotation: { ...card(990), status: "closed" },
           conversationId: "slack:C123:1712345.0001",
         },
       ]);
@@ -3841,7 +3714,7 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("retries the whole outcome when the owner lookup fails", async () => {
+  it("starts a task that applies the whole outcome when the owner lookup fails", async () => {
     const fixture = await createGitHubFixture();
     const opener = "slack:C123:1712345.0001";
     const other = "slack:C789:1719999.0003";
@@ -3873,6 +3746,7 @@ describe("GitHub-owned pull request outcomes", () => {
     };
     const lookup = { fails: false };
     const db = failingRequesterReads(fixture.db(), lookup);
+    const started: PluginTaskStartInput[] = [];
     try {
       await fixture
         .db()
@@ -3905,6 +3779,12 @@ describe("GitHub-owned pull request outcomes", () => {
         markFeedbackReviewing: async () => {},
         privateKeyEnv: "GITHUB_APP_PRIVATE_KEY",
         events: { async publish() {} },
+        state: memoryState(),
+        tasks: {
+          async start(input) {
+            started.push(input);
+          },
+        },
         webhookSecret: () => "test-secret",
       });
       const opened = pullRequestPayload({
@@ -3935,15 +3815,48 @@ describe("GitHub-owned pull request outcomes", () => {
       });
 
       lookup.fails = true;
-      await expect(route.handler(signedRequest(merged))).rejects.toThrow(
-        "requester read failed",
-      );
+      expect((await route.handler(signedRequest(merged))).status).toBe(202);
       expect(chips.size).toBe(0);
       expect(closes).toEqual([]);
+      expect(started).toEqual([
+        {
+          key: expect.stringMatching(
+            /^pull-request-outcome:.+:merged:2026-07-03T12:00:00\.000Z$/,
+          ),
+          name: "applyPullRequestOutcome",
+          payload: expect.objectContaining({ number: 946, state: "merged" }),
+        },
+      ]);
 
-      // The row stays open, so the next delivery applies the outcome.
+      // Junior sends the payload as JSON and runs the task later.
       lookup.fails = false;
-      expect((await route.handler(signedRequest(merged))).status).toBe(202);
+      const task = githubPlugin().tasks?.["applyPullRequestOutcome"];
+      if (!task?.payload) throw new Error("Expected a started task");
+      await task.run({
+        annotations,
+        cache: {
+          async getOrLoad(_key, load) {
+            return (await load()).value;
+          },
+        },
+        codeChanges: {
+          async associateConversations() {},
+          async recordActivity() {},
+          async record() {},
+        },
+        conversationChanges: conversationChangesThrough({
+          annotations,
+          inboxItems,
+        }),
+        db,
+        log: { error() {}, info() {}, warn() {} },
+        name: "applyPullRequestOutcome",
+        payload: task.payload.parse(
+          JSON.parse(JSON.stringify(started[0]!.payload)),
+        ),
+        plugin: { name: "github" },
+        state: memoryState(),
+      });
       expect(Object.fromEntries(chips)).toEqual({
         [opener]: "merged",
         [other]: "merged",

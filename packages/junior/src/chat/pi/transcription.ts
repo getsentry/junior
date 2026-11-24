@@ -10,7 +10,6 @@ import {
   gatewayCostUsd,
   GEN_AI_PROVIDER_NAME,
   GEN_AI_SERVER_ADDRESS,
-  GEN_AI_SERVER_PORT,
   resolveGatewayCredential,
 } from "@/chat/pi/client";
 import {
@@ -199,16 +198,10 @@ export async function transcribeFromUrl(params: {
               text: segment.text,
             }));
         setSpanAttributes({
-          ...(typeof generationId === "string"
-            ? { "gen_ai.response.id": generationId }
-            : undefined),
-          ...(result.durationInSeconds !== undefined
-            ? { "app.transcription.audio_seconds": result.durationInSeconds }
-            : undefined),
+          "gen_ai.response.id": generationId,
+          "app.transcription.audio_seconds": result.durationInSeconds,
           "app.transcription.entry_count": entries.length,
-          ...extractGenAiUsageAttributes(
-            costUsd !== undefined ? { cost: { total: costUsd } } : undefined,
-          ),
+          ...extractGenAiUsageAttributes({ cost: { total: costUsd } }),
         });
         return {
           ...(costUsd !== undefined ? { costUsd } : undefined),
@@ -224,7 +217,6 @@ export async function transcribeFromUrl(params: {
         "gen_ai.operation.name": GEN_AI_OPERATION_TRANSCRIPTION,
         "gen_ai.request.model": params.modelId,
         "server.address": GEN_AI_SERVER_ADDRESS,
-        "server.port": GEN_AI_SERVER_PORT,
         "gen_ai.provider.auth_mode": credential.mode,
       },
     );

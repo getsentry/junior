@@ -158,19 +158,54 @@ accounts:
 - `accounts.user-oauth` is `true` by default. Set it to `false` when people
   must not use their own accounts. Then Junior uses only the service account,
   never asks a person to connect, and ignores connections that people already
-  made. Junior hides the tools that the service account does not list. Until
+  made. Junior hides the MCP tools that the service account does not list. Until
   an admin connects the account, the plugin is not available.
   `user-oauth: false` requires `service-account`.
 - You cannot use `service-account` with `mcp.auth` or `mcp.oauth-client`.
-  Plugins with only a top-level `oauth` block do not support a service
-  account yet.
 - Junior rejects unknown keys in `accounts`, so a typo cannot change which
   accounts Junior uses.
 
+A plugin with a top-level `oauth` block and `oauth-bearer` credentials, and
+no `mcp`, lists operations instead of tools. An operation is the `operation`
+name that the plugin's host code passes to `ctx.egress.fetch`:
+
+```yaml title="plugin.yaml"
+credentials:
+  type: oauth-bearer
+  domains:
+    - api.my-provider.example
+
+oauth:
+  client-id-env: MY_PROVIDER_CLIENT_ID
+  client-secret-env: MY_PROVIDER_CLIENT_SECRET
+  authorize-endpoint: https://my-provider.example/oauth/authorize
+  token-endpoint: https://my-provider.example/oauth/token
+  scope: read upload
+
+accounts:
+  user-oauth: false
+  service-account:
+    operations:
+      - my-provider.upload
+```
+
+- `auth-token-env` is optional when the plugin has `oauth`. Leave it out
+  when only host code calls the provider: then there is no env token
+  fallback and no Sandbox placeholder.
+- Junior adds the service account's token only to `ctx.egress.fetch` calls
+  that name a listed operation. Commands in the sandbox name no operation,
+  so they never get the service account.
+- Junior refreshes the token when the provider returns `expires_in` and a
+  refresh token. A token without `expires_in` does not expire. If the
+  provider rejects the refresh, Junior removes the account, and an admin
+  must connect it again.
 The declaration has no effect until a Junior admin connects the account. In
 the dashboard, open **Admin**, find the plugin under **Service accounts**, and
 click **Connect**. Sign in as the account that Junior uses, not as yourself.
 The same card shows who connected the account and lets an admin disconnect it.
+For a plugin with a top-level `oauth` block, add
+`<base URL>/api/service-accounts/<plugin>/callback` as a redirect URI in the
+provider's OAuth app first.
 
 If the dashboard is not available, an operator can use the CLI on a machine
 with a browser and the deployment `REDIS_URL`:
@@ -181,8 +216,12 @@ junior service-account status my-provider
 junior service-account disconnect my-provider
 ```
 
+The CLI uses a loopback redirect URI on a random port. Use it only with a
+provider that accepts that redirect URI.
+
 When the account is connected, Junior uses it only for an actor who has not
-connected their own account, and only for the tools that it lists.
+connected their own account, and only for the tools or operations that it
+lists.
 Other requests ask the actor to connect their own account, as before. An
 actor's own connection always wins. Everyone who can talk to Junior can read what the
 service account can read, so give that account only the access that all of
@@ -324,7 +363,7 @@ Use the smallest surface that matches the deterministic boundary your plugin nee
 | `heartbeat(ctx)`         | Run bounded periodic work from Junior's internal heartbeat route.                                                                                                                            |
 | `apiRoutes(ctx)`         | Return a Hono or fetch-compatible app mounted under `/api/plugins/:pluginName/*` with auth already applied. Use `ctx.users.resolve(email)` only when the route must link work to one person. |
 | `searchUsers(ctx)`       | Return the provider accounts that match `ctx.query`, such as an exact login. `userLookup` links each account to a known person. A search that fails is logged and left out of the result. |
-| `tasks`                  | Register plugin-owned background tasks. V1 tasks run after completed sessions and load bounded run context with `ctx.run.load()`.                                                            |
+| `tasks`                  | Register plugin-owned background tasks. A task without `payload` runs after each completed session and loads bounded run context with `ctx.run.load()`. A task with `payload` runs only when `ctx.tasks.start(...)` starts it. |
 
 When a hook, tool, or task belongs to a Conversation, Junior records the cost
 of each `ctx.model`, `ctx.decider`, `ctx.embedder`, and `ctx.reranker` call.
@@ -547,6 +586,68 @@ that created them. Plugins can dispatch only to validated Slack destinations
 and receive projection records, not raw runtime state. Pass `title` to name
 the dispatch Conversation. When you omit it, Junior generates one from
 `input`.
+
+### Retry a failed write with a task
+
+A provider can send a webhook only once. When a write in your route fails,
+start a task with `ctx.tasks.start(...)` and return success. Junior sends the
+task on its plugin task queue, then runs it in the background. When the send
+fails, `ctx.tasks.start` throws. Heartbeats can also start tasks.
+
+Register the task in `tasks` with a Zod `payload` schema. Junior sends the
+payload as JSON in the queue message and parses it with the schema before
+each run. When a run throws, the queue runs the task again after 30, 60, 120,
+and then 240 seconds. After the fifth run fails, Junior logs
+`plugin.task.failed` and stops.
+
+Junior turns the plugin, task name, and `key` into a hash and uses it as the
+queue idempotency key, so a key can be longer than the queue allows. A second
+start with the same key does nothing while the queue keeps the first
+message. Use a key that names one change, such as the pull request id and its
+update time. A run can happen more than once, so make the write safe to
+repeat.
+
+```ts title="index.ts"
+const statusPayload = z.object({ id: z.string(), status: z.string() });
+
+defineJuniorPlugin({
+  manifest,
+  tasks: {
+    applyStatus: {
+      payload: statusPayload,
+      async run(ctx: PluginStartedTaskContext<z.output<typeof statusPayload>>) {
+        await saveStatus(ctx.db, ctx.payload);
+      },
+    },
+  },
+  hooks: {
+    routes(ctx) {
+      return [
+        {
+          method: "POST",
+          path: "/api/webhooks/my-provider",
+          async handler(request) {
+            const change = statusPayload.parse(await request.json());
+            try {
+              await saveStatus(ctx.db, change);
+            } catch {
+              await ctx.tasks.start({
+                key: `status:${change.id}:${change.status}`,
+                name: "applyStatus",
+                payload: change,
+              });
+            }
+            return new Response("Accepted", { status: 202 });
+          },
+        },
+      ];
+    },
+  },
+});
+```
+
+The task context has `ctx.payload`, `ctx.state`, `ctx.annotations`,
+`ctx.codeChanges`, and `ctx.conversationChanges`, as in a plugin route.
 
 ## Add a link type
 

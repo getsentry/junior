@@ -1,5 +1,6 @@
 import { withSpan } from "@/chat/logging";
 import { getQueueProvider, type QueueProvider } from "@/chat/queue/provider";
+import { resolveConversationWorkQueueTopic } from "@/chat/queue/topics";
 import type {
   ConversationQueueMessage,
   ConversationQueueSendOptions,
@@ -11,7 +12,6 @@ import {
   signConversationQueueMessage,
 } from "./queue-signing";
 
-export const DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC = "junior_conversation_work";
 export const CONVERSATION_WORK_QUEUE_RETENTION_SECONDS =
   CONVERSATION_WORK_QUEUE_SIGNATURE_MAX_SKEW_MS / 1000;
 export interface VercelConversationWorkQueueOptions {
@@ -21,18 +21,6 @@ export interface VercelConversationWorkQueueOptions {
 }
 
 let defaultQueue: ConversationWorkQueue | undefined;
-
-/** Resolve the Vercel Queue topic used for conversation wake-up nudges. */
-export function resolveConversationWorkQueueTopic(
-  options: Pick<VercelConversationWorkQueueOptions, "topic"> = {},
-): string {
-  const topic = options.topic?.trim();
-  return (
-    topic ||
-    process.env["JUNIOR_CONVERSATION_WORK_QUEUE_TOPIC"]?.trim() ||
-    DEFAULT_CONVERSATION_WORK_QUEUE_TOPIC
-  );
-}
 
 function toDelaySeconds(
   options: ConversationQueueSendOptions | undefined,

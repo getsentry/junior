@@ -54,8 +54,10 @@ of it.
   This exception applies only to the Lead.
 - Search looks first at Conversations where the person is a Participant,
   and can also find other Conversations that the person can read.
-- Nothing reports to the Lead on its own. The Lead hears back from a
-  Conversation only through a Watch that it chose to create.
+- The Lead watches each Conversation that it starts, the same as any agent
+  that starts another. Each update starts a Lead Turn, and the Lead decides
+  whether to tell its person. It hears back from other Conversations only
+  through a Watch that it chose to create.
 - An Automation that the Lead creates posts to a public Slack channel. An
   Automation never delivers to the Lead or to the dashboard.
 - Private Conversations that the Lead starts are not supported.
