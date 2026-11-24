@@ -39,7 +39,9 @@ for (const relativePath of files) {
   fs.writeFileSync(absolutePath, `${JSON.stringify(pkg, null, 2)}\n`);
 }
 
-// The iOS app ships the same version, so its changelog versions match.
+// The iOS app ships the same version, so its changelog versions match. App
+// Store Connect takes only `X.Y.Z`, so a prerelease gives the app its core version.
+const iosVersion = newVersion.replace(/[-+].*$/, "");
 const iosProject = path.resolve(process.cwd(), "apps/ios/project.yml");
 const project = fs.readFileSync(iosProject, "utf8");
 const marketingVersion = /^(\s*MARKETING_VERSION: )"[^"]*"$/m;
@@ -49,7 +51,7 @@ if (!marketingVersion.test(project)) {
 }
 fs.writeFileSync(
   iosProject,
-  project.replace(marketingVersion, `$1"${newVersion}"`),
+  project.replace(marketingVersion, `$1"${iosVersion}"`),
 );
 
 console.log(
