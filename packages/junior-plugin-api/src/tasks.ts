@@ -122,6 +122,12 @@ export interface PluginStartedTaskContext<
   annotations: PluginConversationAnnotations;
   codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
+  /**
+   * True on the last delivery that Junior makes. An attempt that throws
+   * now is not run again, so a task that waits for a provider can write
+   * its fallback instead.
+   */
+  lastDelivery: boolean;
   name: string;
   /** The payload from `tasks.start`, parsed with the task's `payload` schema. */
   payload: Payload;
@@ -159,6 +165,8 @@ export const pluginTaskStartInputSchema = z
     key: nonBlankStringSchema.max(500),
     /** Name of a task with a `payload` schema in this plugin's `tasks`. */
     name: nonBlankStringSchema,
+    /** Seconds before the first attempt. Without it, the task runs soon. */
+    delaySeconds: z.number().int().positive().optional(),
     /** JSON value that the task's `payload` schema accepts. */
     payload: z.unknown(),
   })

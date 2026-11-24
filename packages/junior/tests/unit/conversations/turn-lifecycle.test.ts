@@ -105,6 +105,15 @@ class MemoryConversationEventStore implements ConversationEventStore {
     return this.history.filter((event) => event.data.type === type);
   }
 
+  async loadLatestEventOfTypes(
+    _conversationId: string,
+    types: readonly string[],
+  ): Promise<ConversationEvent | undefined> {
+    return [...this.history]
+      .reverse()
+      .find((event) => types.includes(event.data.type));
+  }
+
   async loadCurrentEventsOfType(
     conversationId: string,
     type: string,

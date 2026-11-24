@@ -19,7 +19,7 @@ const startConversationInputSchema = z.object({ title: z.string().min(1) });
 
 /**
  * Show a Conversation that a Lead started as a card, not a tool call: its
- * state, title, latest Brief, and whether the Lead watches it. A card that
+ * state, title, summary, and whether the Lead watches it. A card that
  * needs the viewer or failed offers to open it or to message it.
  */
 export function TranscriptStartedConversation(props: {

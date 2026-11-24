@@ -234,6 +234,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
+      canAnswer: false,
       id: "item-other",
       title: "Pick the rollout window",
     };
@@ -257,6 +258,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       rootConversationId: "slack:COTHER:1770000000.000100",
       assignees: [],
       canAct: false,
+      canAnswer: false,
       id: "item-other",
       title: "Pick the rollout window",
     };
@@ -301,6 +303,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...kept,
       assignees: [],
       canAct: false,
+      canAnswer: false,
       createdAt: "2026-08-05T09:00:00.000Z",
       id: "item-sibling",
       title: "Pick the rollout window",
@@ -343,6 +346,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       ...kept,
       assignees: [],
       canAct: false,
+      canAnswer: false,
       createdAt: "2026-08-05T09:00:00.000Z",
       id: "item-sibling",
       title: "Pick the rollout window",

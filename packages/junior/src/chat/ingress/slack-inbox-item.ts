@@ -3,7 +3,7 @@ import type { User } from "@sentry/junior-plugin-api";
 import type { Message, StateAdapter } from "chat";
 import { logException } from "@/chat/logging";
 import {
-  canActOnInboxItem,
+  canAnswerInboxItem,
   isPluginInboxItem,
 } from "@/chat/inbox-items/access";
 import {
@@ -234,7 +234,7 @@ async function openAnswerForm(args: {
     await tellPerson(target, actor.slackUserId, error.message);
     return;
   }
-  if (!canActOnInboxItem(item, actor.user.id)) {
+  if (!canAnswerInboxItem(item, actor.user.id)) {
     await tellPerson(
       target,
       actor.slackUserId,
