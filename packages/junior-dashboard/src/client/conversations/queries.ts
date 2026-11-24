@@ -54,6 +54,7 @@ import {
   type ConversationOutboxMessage,
 } from "./conversationOutbox";
 import { refreshSideReadsOnChange } from "./conversationSideReads";
+import { useAnswerAwaitsTurn } from "../inbox/queries";
 import {
   buildConversationTranscript,
   conversationHistoryBridgeCursor,
@@ -603,6 +604,7 @@ export function useConversationData(
       ? deferredDetail
       : detail.data;
   const mailbox = detailData?.mailbox;
+  const answerAwaitsTurn = useAnswerAwaitsTurn(conversationId, detailData);
   // Accept is not visibility. Keep a local row until the server snapshot
   // shows it. History and mailbox arrive in one render.
   useEffect(() => {
@@ -758,6 +760,8 @@ export function useConversationData(
   }, [fetchNextHistoryPage, historyNeedsReconciliation]);
 
   return {
+    /** An answer of the viewer starts a Turn that `data` does not show yet. */
+    answerAwaitsTurn,
     data,
     /**
      * The latest page alone, without earlier pages. It is not deferred, so it

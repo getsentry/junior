@@ -326,10 +326,31 @@ const INBOX_ITEM_ACTION_KEY = [...INBOX_ITEMS_QUERY_KEY, "action"];
 const inboxItemActionVariablesSchema = z.object({
   body: inboxItemActionSchema,
   id: z.string(),
+  /** The Conversations where this action starts a Turn. */
+  turnConversationIds: z.array(z.string()).optional(),
 });
 
 /** One action on one Inbox item, as `useInboxItemAction` sends it. */
 type InboxItemAction = z.output<typeof inboxItemActionVariablesSchema>;
+
+/**
+ * The arguments of one action on an item, for `useInboxItemAction`. An
+ * answer to a question that a Turn added starts a Turn in each linked
+ * Conversation, so it names them. A plugin does the work of its item's
+ * answer, and a dismiss or a take starts no Turn.
+ */
+export function inboxItemActionArgs(
+  item: Pick<InboxItemPayload, "addedByTurnId" | "conversationIds" | "id">,
+  body: InboxItemActionBody,
+): InboxItemAction {
+  return {
+    body,
+    id: item.id,
+    ...(body.action === "submit" && item.addedByTurnId
+      ? { turnConversationIds: item.conversationIds }
+      : undefined),
+  };
+}
 
 /** The action that a mutation of `useInboxItemAction` sends. */
 function actionOf(mutation: Mutation<unknown, Error, unknown, unknown>) {
@@ -595,6 +616,49 @@ export function useClosedByViewerInboxItemIds(): ReadonlySet<string> {
   });
   const key = [...new Set(ids.filter(Boolean))].sort().join("\n");
   return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
+}
+
+/**
+ * Whether an answer of the viewer starts a Turn in this Conversation that
+ * the snapshot does not show yet: the answer is in flight, the snapshot read
+ * its mailbox no later than the answer, or the mailbox still holds the
+ * answer. A Turn takes the answer out of the mailbox only after it starts.
+ */
+export function useAnswerAwaitsTurn(
+  conversationId: string | undefined,
+  snapshot:
+    | Pick<ConversationSnapshot, "mailbox" | "mailboxReadAtMs">
+    | undefined,
+): boolean {
+  // `useMutationState` reads `select` again only when a mutation changes, so
+  // `select` does not depend on the Conversation, which can change.
+  const answers = useMutationState({
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      const { status, submittedAt } = mutation.state;
+      return action?.turnConversationIds &&
+        (status === "pending" || status === "success")
+        ? {
+            conversationIds: action.turnConversationIds,
+            id: action.id,
+            pending: status === "pending",
+            submittedAt,
+          }
+        : undefined;
+    },
+  });
+  return answers.some(
+    (answer) =>
+      answer !== undefined &&
+      conversationId !== undefined &&
+      answer.conversationIds.includes(conversationId) &&
+      (answer.pending ||
+        (snapshot?.mailboxReadAtMs ?? 0) <= answer.submittedAt ||
+        snapshot?.mailbox?.messages.some(
+          (message) => message.reviewItemChange?.reviewItemId === answer.id,
+        )),
+  );
 }
 
 /**
