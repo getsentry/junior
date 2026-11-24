@@ -400,4 +400,40 @@ describe("Thread spawn and archive", () => {
       await harness.close();
     }
   });
+
+  it("does not archive a nested Thread that a person uses with its Task", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      let nested = "";
+      const task = await createIdleChild(harness, "task-parent", "task", {
+        withOpenWork: async (parentConversationId) => {
+          nested = await createIdleChild(harness, "task-nested", "thread", {
+            parentConversationId,
+          });
+        },
+      });
+      vi.setSystemTime(Date.now() + 1_000);
+      await sendPersonMessage(harness, nested, "person-nested");
+      await failQueuedTurn(harness, nested);
+      // New work from the parent keeps the Task itself free to archive.
+      vi.setSystemTime(Date.now() + 1_000);
+      await messageChild(harness, task, "task-parent:again");
+      await finishTask(harness, task);
+
+      await expect(
+        archiveAgent(slackParentConversationId, task, {
+          apply_to_children: true,
+        }),
+      ).rejects.toMatchObject({
+        name: "ToolInputError",
+        message: expect.stringContaining(`A person messaged ${nested}`),
+      });
+      await expect(archivedAtMs(harness, task)).resolves.toBeUndefined();
+      await expect(archivedAtMs(harness, nested)).resolves.toBeUndefined();
+    } finally {
+      vi.useRealTimers();
+      await harness.close();
+    }
+  });
 });
