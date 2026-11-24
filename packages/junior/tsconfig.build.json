@@ -13,6 +13,7 @@
     "src/app.ts",
     "src/cli/**/*.ts",
     "src/handlers/**/*.ts",
+    "src/import.ts",
     "src/instrumentation.ts",
     "src/nitro.ts",
     "src/reporting.ts",
