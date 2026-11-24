@@ -136,9 +136,12 @@ how the dashboard groups and acts on its rows.
 
 ## Gaps
 
-- An item can have no assignees, and then anyone who can see it can answer
-  it. It does not dismiss itself. This breaks "every item has at least one
-  assignee" and "only an assignee answers".
+- An item can have no assignees. Junior then handles it as an item for
+  Everyone, also in a private Conversation, and its Slack card says "For
+  Everyone". Anyone who can see it can answer it, and it does not dismiss
+  itself. This breaks "every item has at least one assignee", "only an
+  assignee answers", and "an item from a private Conversation … cannot go
+  to Everyone".
 - An agent in any public Conversation can change, reassign, or close a
   public item that an agent added, and a new item with the same key
   overwrites it. This breaks "only the Conversation or the plugin that added
@@ -153,13 +156,12 @@ how the dashboard groups and acts on its rows.
 - A "To do for you" item has no Slack card. In Slack, the person learns of
   the To-do only from the reply. This breaks "its assignees see it in the
   Inbox and in its linked Slack threads".
-- Core adds a "To do for you" item only when its To-do changes. A person
+- Junior adds a "To do for you" item only when its To-do changes. A person
   who can see the Conversation only after that gets no item until the
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
-- The "Needs you" group of the classic Inbox also shows open actions for
-  Everyone and actions with no assignees. To do in the new Inbox shows
-  actions with no assignees, and the Inbox count leaves them out. This
+- With the New dashboard setting off, the "Needs you" group of the Inbox
+  also shows open actions for Everyone and actions with no assignees. This
   breaks "'Needs you' means one thing".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "a notice … says what to do".
@@ -177,3 +179,5 @@ how the dashboard groups and acts on its rows.
 - When an item closes, its push stays on a device until the next push to
   that User. This breaks "when the item closes, its push goes away on every
   device".
+- A "To do for you" item sends no push. This breaks "a push goes to each
+  User assigned to an open action".

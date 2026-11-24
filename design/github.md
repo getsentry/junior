@@ -71,9 +71,9 @@ also wake a Conversation or run an Event automation.
 - A pull request that Junior opens ready for review asks for a review at
   once, before the required checks pass. This breaks "asks for a review
   only when the required checks pass".
-- Some asks are only a Slack message: a draft PR that waits for the
-  requester's review, and a decision on a watched issue. They add no Inbox
-  item. This breaks "there is one way to ask a person"
+- Some asks are only a reply in the Conversation: a draft PR that waits
+  for the requester's review, and a decision on a watched issue. They add
+  no Inbox item. This breaks "there is one way to ask a person"
   ([Inbox](./inbox.md)).
 - Junior can upload a file to GitHub with the requester's account.
   This breaks "acts as its own App" and "images are links to public Junior

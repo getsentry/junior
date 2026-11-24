@@ -47,7 +47,7 @@ can act on it.
   "Snooze 3 items in this stack". Snooze covers every row. Dismiss covers
   the open asks that the viewer can act on, except To-dos.
 - On a Conversation row, on hover: Archive, Pin, then Open, last.
-- A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
+- A link to one item, such as `/inbox?item=<id>`, opens its row.
 
 ## Rules
 
@@ -102,9 +102,9 @@ Actions:
   stack has no other row, the next row of the list opens.
 - When a stack shrinks to one row, the tray goes and the row stays. An
   open row stays open.
-- A stack's Snooze and Dismiss put the whole stack away with the same leave
-  motion as a row. When a row of the stack was open, the next row after the
-  stack opens.
+- A stack's Snooze puts the whole stack away with the same leave motion as
+  a row. A stack's Dismiss does the same, but its To-do rows stay. When a
+  row of the stack was open, the next row after the stack opens.
 - In To do, a stack leaves with its last row that waits on the viewer, and
   the next row of the list opens.
 - A notice about the subject of an ask folds into the ask's row. Other

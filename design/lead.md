@@ -60,7 +60,6 @@ of it.
   through a Watch that it chose to create.
 - An Automation that the Lead creates posts to a public Slack channel. An
   Automation never delivers to the Lead or to the dashboard.
-- Private Conversations that the Lead starts are not supported.
 
 ## Gaps
 
@@ -76,3 +75,15 @@ of it.
 - The Lead cannot archive a Conversation that it started, so finished work
   stays in the person's lists. This breaks "the Lead archives the work it
   started when the work is done".
+- The Lead watches a Conversation that it starts only when the person asks
+  to hear back about it. This breaks "the Lead watches each Conversation
+  that it starts".
+- The Lead finds and messages only public Conversations. It cannot find or
+  steer a private Conversation of its person, such as a Slack DM with
+  Junior. This breaks "one place reaches all of a person's work" and "can
+  also find other Conversations that the person can read".
+- In the new dashboard, "New conversation" opens a separate page that
+  starts a Conversation without the Lead. This breaks "there is no
+  separate new conversation page".
+- A person can archive their Lead through the API and the MCP server. This
+  breaks "it is never archived".

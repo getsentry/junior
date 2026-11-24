@@ -55,9 +55,9 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 
 ## Gaps
 
-- Some behavior of a child agent branches on `kind` outside the one switch.
-  This breaks "its `kind` is the only switch". getsentry/junior#3435,
-  getsentry/junior#3060, and getsentry/junior#2567 track it.
+- Some behavior of a child agent depends on its kind in more than one
+  place. This breaks "its `kind` is the only switch". getsentry/junior#3060
+  and getsentry/junior#2567 track it.
 - When a stop ends, the parent messages to a grandchild that the stop
   skipped run again. This breaks "one stop stops the whole tree".
 - A parent does not archive its child agents when their work is done. This
@@ -75,3 +75,10 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 - A Task cannot take a person's input, and a Turn that a parent starts in a
   child does not wait for a sign-in. This breaks "a child agent follows
   `./agent-teams.md`".
+- A Slack root runs its Turns on a different path than other
+  Conversations, so a fix to one path does not reach the other. This
+  breaks "one execution path runs every Conversation".
+  getsentry/junior#2567 tracks it.
+- Junior reads the id of a message or a Turn to tell if it came from a
+  Watch Event or from a person's stop. This breaks "a message id is an
+  opaque key".
