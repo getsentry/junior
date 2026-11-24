@@ -523,7 +523,23 @@ describe("GitHub pull request cache refresh", () => {
     expect(reads).toEqual(["pulls/34", "pulls/34"]);
   });
 
-  it("reads a pull request again soon after its patch finds no node", async () => {
+  it.each([
+    // The patch query answers with no node for #34.
+    ["finds no node", []],
+    // A push that GitHub has and no webhook brought yet.
+    [
+      "reads another head commit",
+      [
+        {
+          commits: checkRuns({ SUCCESS: 1 }),
+          headRefOid: "ccc333",
+          mergeable: "MERGEABLE",
+          number: 34,
+          updatedAt: "2026-01-02T03:00:11Z",
+        },
+      ],
+    ],
+  ])("reads a pull request again soon after its patch %s", async (_, patch) => {
     stubGitHubApp();
     const reads: string[] = [];
     mswServer.use(
@@ -537,8 +553,7 @@ describe("GitHub pull request cache refresh", () => {
         );
       }),
     );
-    // The patch query answers with no node for #34.
-    const queries = stubGraphql({ patches: [[]] });
+    const queries = stubGraphql({ patches: [patch] });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();

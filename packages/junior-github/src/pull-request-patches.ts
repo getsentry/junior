@@ -105,27 +105,34 @@ export async function scheduleGitHubPullRequestPatch(args: {
 type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 
 // Write the read fields, only over an entry of the same head commit that
-// is not newer than the read. Return whether to read again: GitHub still
+// is not newer than the read. Return `again` to read again: GitHub still
 // computes the merge state, or a webhook came after the read and its
-// fields still wait. After the last attempt, a merge state that GitHub
-// still computes stays pending only briefly, so the next read asks GitHub.
+// fields still wait. Return `expire` when the read is of another head
+// commit than the entry, as for a dropped patch. After the last attempt, a
+// merge state that GitHub still computes stays pending only briefly, so
+// the next read asks GitHub.
 async function writeHeadFacts(
   cache: PluginCache,
   key: string,
   node: HeadFactsNode,
   last: boolean,
-): Promise<boolean> {
+): Promise<"again" | "done" | "expire"> {
   const mergeable = githubMergeable(node.mergeable);
-  let readAgain = false;
+  let outcome: "again" | "done" | "expire" = "done";
   await cache.update<GitHubPullRequestFields | null>(key, (current) => {
-    if (!current || current.head?.sha !== node.headRefOid) return undefined;
+    if (!current) return undefined;
+    if (current.head?.sha !== node.headRefOid) {
+      outcome = "expire";
+      return undefined;
+    }
     if (isOlderGitHubObject(current, { updated_at: node.updatedAt })) {
-      readAgain =
-        current.checks === "pending" || current.mergeable === "pending";
+      if (current.checks === "pending" || current.mergeable === "pending") {
+        outcome = "again";
+      }
       return undefined;
     }
     const computing = mergeable === null && current.mergeable === "pending";
-    readAgain = computing && !last;
+    if (computing && !last) outcome = "again";
     return {
       ...(computing && last
         ? GITHUB_PULL_REQUEST_PENDING_CACHE
@@ -138,7 +145,7 @@ async function writeHeadFacts(
       },
     };
   });
-  return readAgain;
+  return outcome;
 }
 
 // A dropped patch leaves its pending fields fresh only briefly, so the
@@ -156,8 +163,8 @@ async function expirePending(cache: PluginCache, key: string): Promise<void> {
  * to 25 pull requests. A patch whose merge state GitHub still computes,
  * whose read is older than its entry, or whose query fails, waits for the
  * next heartbeat. A failed query does not split, so an outage costs one
- * query per chunk. A patch with no pull request in the answer, or out of
- * attempts, is dropped, and its entry is read again
+ * query per chunk. A patch with no pull request in the answer, of another
+ * head commit, or out of attempts, is dropped, and its entry is read again
  * soon. A failed query is logged, not thrown, so the rest of the heartbeat
  * still runs.
  */
@@ -214,9 +221,9 @@ export async function runGitHubPullRequestPatches(args: {
         }
         const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
         // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
-        if (await writeHeadFacts(args.cache, key, node, last)) {
-          again.push(entry);
-        }
+        const outcome = await writeHeadFacts(args.cache, key, node, last);
+        if (outcome === "again") again.push(entry);
+        if (outcome === "expire") dropped.push(key);
       }
     },
   );
