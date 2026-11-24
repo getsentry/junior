@@ -392,18 +392,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await menu.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
-    // Nothing picked yet ends the snooze.
-    await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
-    await expect(dialog.getByText("Pick a time or an event.")).toBeVisible();
-    // A new condition starts on the row's own pull request.
-    await dialog.getByRole("button", { name: "Add condition" }).click();
+    // The dialog opens with one condition on the row's own pull request, at
+    // its Event.
     await expect(
       dialog.getByRole("button", { exact: true, name: "This pull request" }),
     ).toBeVisible();
+    await expect(dialog.getByRole("combobox", { name: "Event" })).toBeFocused();
+    // Snooze skips the untouched condition, so nothing ends the snooze yet.
     await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
-    await expect(
-      dialog.getByText("Finish each condition, or remove it."),
-    ).toBeVisible();
+    await expect(dialog.getByText("Pick a time or an event.")).toBeVisible();
     await pickEvent(page, 0, "is merged");
     await dialog.getByRole("button", { name: "Add condition" }).click();
     await pickEvent(page, 1, "is closed without merging");
@@ -430,6 +427,31 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(row).toHaveCount(0);
   });
 
+  test("a time with the untouched condition snoozes until the time", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Custom…" }).click();
+    const dialog = customOf(page);
+    await expect(
+      dialog.getByRole("group", { name: "New condition" }),
+    ).toBeVisible();
+    await screenshot(page, "inbox-snooze-custom-condition", {
+      lightTheme: true,
+    });
+    await dialog.getByLabel("Wake at").fill("2099-01-05T09:00");
+    const created = snoozePost(page);
+    await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
+    expect((await created).postDataJSON()).toEqual({
+      conversationId: prReview.rootConversationId,
+      inboxItemId: prReview.id,
+      wakeAt: expect.stringMatching(/^2099-01-05T/),
+    });
+  });
+
   test("a pull request row snoozes until it gets new commits or its merge conflict clears", async ({
     dashboard,
     page,
@@ -439,7 +461,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
-    await dialog.getByRole("button", { name: "Add condition" }).click();
     const events = await openEvents(page, 0);
     for (const phrase of [
       "is reopened",
@@ -486,7 +507,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
     await page.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
-    await dialog.getByRole("button", { name: "Add condition" }).click();
     const events = await openEvents(page, 0);
     await expect(
       events.getByRole("group", { name: "Review" }).getByRole("option"),
@@ -555,7 +575,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
-    await dialog.getByRole("button", { name: "Add condition" }).click();
     await expect(
       dialog.getByRole("group", { name: "On the event" }),
     ).toHaveCount(0);
@@ -587,8 +606,14 @@ test.describe("new UI", { tag: "@new" }, () => {
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
-    // The ask names no resource, so a new condition opens the search.
-    await dialog.getByRole("button", { name: "Add condition" }).click();
+    // The ask names no resource, so the dialog opens at the condition's
+    // page, and the search waits for the viewer.
+    const pick = dialog.getByRole("button", {
+      name: "Pick a pull request or issue",
+    });
+    await expect(pick).toBeFocused();
+    await expect(dialog.getByLabel("Wake at")).toBeInViewport();
+    await page.keyboard.press("Enter");
     const search = page.getByPlaceholder(
       "Search pull requests or paste a link",
     );
@@ -659,7 +684,9 @@ test.describe("new UI", { tag: "@new" }, () => {
       .getByRole("dialog", { name: "Snooze until" })
       .getByRole("button", { name: "Custom…" })
       .click();
-    await customOf(page).getByRole("button", { name: "Add condition" }).click();
+    await customOf(page)
+      .getByRole("button", { name: "Pick a pull request or issue" })
+      .click();
     await page
       .getByPlaceholder("Search pull requests or paste a link")
       .fill("reference chips");
@@ -688,7 +715,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
-    await dialog.getByRole("button", { name: "Add condition" }).click();
     await pickEvent(page, 0, "gets a new comment");
     await dialog.getByRole("button", { name: "Add condition" }).click();
     await dialog
@@ -741,7 +767,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     const menu = page.getByRole("dialog", { name: "Snooze until" });
     await menu.getByRole("button", { name: "Custom…" }).click();
     const dialog = customOf(page);
-    await dialog.getByRole("button", { name: "Add condition" }).click();
     // The page button opens the search, which takes the keys at once.
     await dialog
       .getByRole("button", { exact: true, name: "This pull request" })
@@ -760,6 +785,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await pickOption(page.getByRole("option", { name: hidden }));
     await expect(
       dialog.getByText("You cannot snooze on this link."),
+    ).toBeVisible();
+    // A condition on another page is not skipped while it has no Event.
+    await dialog.getByRole("button", { exact: true, name: "Snooze" }).click();
+    await expect(
+      dialog.getByText("Finish each condition, or remove it."),
     ).toBeVisible();
     await expect(
       dialog.getByRole("combobox", { name: "Event" }),

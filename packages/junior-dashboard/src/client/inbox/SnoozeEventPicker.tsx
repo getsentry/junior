@@ -1,5 +1,5 @@
 import { ChevronDownIcon } from "lucide-react";
-import { useId, useState } from "react";
+import { useId, useState, type Ref } from "react";
 
 import {
   Command,
@@ -97,6 +97,8 @@ export function SnoozeEventPicker(props: {
   onPick(eventType: string): void;
   /** The text while there is no Event, such as while the page loads. */
   placeholder: string;
+  /** The select button, such as for the dialog to focus when it opens. */
+  triggerRef?: Ref<HTMLButtonElement>;
   value: string | undefined;
 }) {
   const { events, value } = props;
@@ -109,6 +111,7 @@ export function SnoozeEventPicker(props: {
         aria-label="Event"
         className={cn(selectTriggerClass, "row-start-2 min-w-0 sm:flex-1")}
         disabled={!events}
+        ref={props.triggerRef}
         role="combobox"
       >
         <span className={cn(fadeTextClass, "flex-1 text-left")}>
