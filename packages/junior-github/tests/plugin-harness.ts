@@ -1,6 +1,5 @@
 import { createHmac } from "node:crypto";
 import type {
-  CodeChangeInput,
   ConversationAnnotationInput,
   ConversationChangeBatch,
   EventInput,
@@ -83,7 +82,6 @@ export function createPluginHarness(fixture: GitHubFixture) {
     /** Batches of annotation and Inbox item changes, in order. */
     batches: [] as ConversationChangeBatch[],
     closedNotices: [] as string[],
-    codeChanges: [] as CodeChangeInput[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
     /** Inbox items added. A change to an open item adds none. */
     notices: [] as Array<{
@@ -106,6 +104,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
   /** Inbox and publish calls that fail before one succeeds. */
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
+  const { codeChanges } = fixture.codeIndex;
   /** Dedupe keys of the open inbox items. */
   const openNotices = new Set<string>();
   const events: EventPublisher = {
@@ -172,11 +171,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       agent: { dispatchForIdentity: unused },
       annotations,
       cache,
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record() {},
-      },
+      codeChanges,
       conversationChanges: conversationChangesThrough({
         annotations,
         batches: recorded.batches,
@@ -221,13 +216,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       agent: { dispatch: unused, dispatchForIdentity: unused, get: unused },
       annotations,
       cache,
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record(input) {
-          recorded.codeChanges.push(input);
-        },
-      },
+      codeChanges,
       conversationChanges: conversationChangesThrough({
         annotations,
         batches: recorded.batches,
@@ -264,6 +253,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,
+      codeChanges,
       db: fixture.db(),
       events,
       log: { error() {}, info() {}, warn() {} },

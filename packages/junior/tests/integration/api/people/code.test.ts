@@ -7,7 +7,7 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { codePersonReportSchema } from "@/api/schema";
 import { recordAutomationExecution } from "@/chat/automations/execution-stats";
-import { createCodeChangePublisher } from "@/chat/code/publisher";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -133,7 +133,7 @@ describe("people code API", () => {
       await recordCodeChange(fixture.sql.db(), "github", aliceStaleChange);
       await recordCodeChange(fixture.sql.db(), "github", aliceFreshChange);
       await recordCodeChange(fixture.sql.db(), "github", bobChange);
-      const codeChanges = createCodeChangePublisher("github");
+      const codeChanges = createPluginCodeChanges("github");
       const activity = { number: 10, repositoryProviderId: "repository-1" };
       await codeChanges.recordActivity({
         ...activity,

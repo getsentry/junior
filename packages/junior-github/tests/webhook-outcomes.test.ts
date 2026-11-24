@@ -3,7 +3,6 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import {
   conversationAnnotationInputSchema,
   eventMatches,
-  type CodeChangeInput,
   type ConversationAnnotationInput,
   type EventInput,
   type EventMatch,
@@ -20,12 +19,8 @@ import {
 } from "../src/db/schema";
 import type { GitHubDb } from "../src/db/database";
 import { githubPlugin } from "../src/index";
-import {
-  listGitHubAssignedWork,
-  listGitHubFinishedWork,
-  listGitHubUnfinishedWork,
-} from "../src/pull-request-outcomes/store";
 import { createGitHubWebhookRoute } from "../src/webhooks/handler";
+import { recordJuniorPullRequest } from "./code-index";
 import { conversationChangesThrough } from "./conversation-changes";
 import { memoryState } from "./plugin-harness";
 import {
@@ -91,75 +86,50 @@ it("combines open, merged, and closed pull requests into conversation work", asy
   const at = new Date("2026-07-01T12:00:00.000Z");
   const closedAt = new Date("2026-07-02T12:00:00.000Z");
   try {
-    await fixture
-      .db()
-      .insert(juniorGitHubPullRequests)
-      .values([
-        {
-          pullRequestId: "open-pr",
-          repositoryId: "repo-1",
-          repositoryFullName: "getsentry/junior",
-          number: 1,
-          state: "open",
-          conversationIds: ["conversation-open", "conversation-shared"],
-          openedAt: at,
-          updatedAt: at,
-        },
-        {
-          pullRequestId: "merged-pr",
-          repositoryId: "repo-1",
-          repositoryFullName: "getsentry/junior",
-          number: 2,
-          state: "merged",
-          conversationIds: ["conversation-merged", "conversation-shared"],
-          openedAt: at,
-          finishedAt: at,
-          updatedAt: at,
-        },
-        {
-          pullRequestId: "closed-pr",
-          repositoryId: "repo-1",
-          repositoryFullName: "getsentry/junior",
-          number: 3,
-          state: "closed_unmerged",
-          conversationIds: ["conversation-closed", "conversation-merged"],
-          openedAt: at,
-          finishedAt: closedAt,
-          updatedAt: closedAt,
-        },
-      ]);
+    await recordJuniorPullRequest(fixture, {
+      conversationIds: ["conversation-open", "conversation-shared"],
+      number: 1,
+      updatedAt: at,
+    });
+    await recordJuniorPullRequest(fixture, {
+      conversationIds: ["conversation-merged", "conversation-shared"],
+      finishedAt: at,
+      number: 2,
+      state: "merged",
+      updatedAt: at,
+    });
+    await recordJuniorPullRequest(fixture, {
+      conversationIds: ["conversation-closed", "conversation-merged"],
+      finishedAt: closedAt,
+      number: 3,
+      state: "closed_unmerged",
+      updatedAt: closedAt,
+    });
 
-    await expect(
-      listGitHubUnfinishedWork(fixture.db(), [
+    const work = await githubPlugin().hooks!.unfinishedWork!({
+      cache: { getOrLoad: async (_key, load) => (await load()).value },
+      codeChanges: fixture.codeIndex.codeChanges,
+      conversationIds: [
         "conversation-open",
         "conversation-merged",
         "conversation-closed",
         "conversation-shared",
         "conversation-unrelated",
-      ]),
-    ).resolves.toEqual(["conversation-open", "conversation-shared"]);
-    await expect(
-      listGitHubFinishedWork(fixture.db(), [
-        "conversation-open",
-        "conversation-merged",
-        "conversation-closed",
-        "conversation-shared",
-        "conversation-unrelated",
-      ]),
-    ).resolves.toEqual({
+      ],
+      db: fixture.db(),
+      log: { error() {}, info() {}, warn() {} },
+      plugin: { name: "github" },
+    });
+    expect([...work.conversationIds].sort()).toEqual([
+      "conversation-open",
+      "conversation-shared",
+    ]);
+    expect(work.finishedWorkAtByConversationId).toEqual({
       "conversation-merged": "2026-07-02T12:00:00.000Z",
       "conversation-closed": "2026-07-02T12:00:00.000Z",
       "conversation-shared": "2026-07-01T12:00:00.000Z",
     });
-    await expect(
-      listGitHubAssignedWork(fixture.db(), [
-        "conversation-open",
-        "conversation-merged",
-        "conversation-closed",
-        "conversation-shared",
-        "conversation-unrelated",
-      ]).then((ids) => [...ids].sort()),
-    ).resolves.toEqual([
+    expect([...(work.assignedConversationIds ?? [])].sort()).toEqual([
       "conversation-closed",
       "conversation-merged",
       "conversation-open",
@@ -312,7 +282,6 @@ function webhookRoute(
     typeof createGitHubWebhookRoute
   >[0]["markFeedbackReviewing"] = async () => {},
   hasMatch: () => Promise<boolean> = async () => true,
-  codeChanges: CodeChangeInput[] = [],
   stored: Record<string, ConversationAnnotationInput[]> = {},
 ) {
   const stores: PluginConversationAnnotations = {
@@ -338,13 +307,7 @@ function webhookRoute(
     appIdEnv: "GITHUB_APP_ID",
     botEmail,
     classifyPullRequestCommits,
-    codeChanges: {
-      async associateConversations() {},
-      async recordActivity() {},
-      async record(input) {
-        codeChanges.push(input);
-      },
-    },
+    codeChanges: fixture.codeIndex.codeChanges,
     conversationChanges: conversationChangesThrough({ annotations: stores }),
     db: fixture.db(),
     installationId: () => "456",
@@ -1873,7 +1836,6 @@ describe("GitHub-owned issue outcomes", () => {
         annotations,
         undefined,
         undefined,
-        undefined,
         { "slack:C123:1712345.0001": [card(990), card(991)] },
       );
       // The footer also names a Conversation with no card for the issue,
@@ -2270,19 +2232,16 @@ describe("GitHub-owned pull request outcomes", () => {
         expect((await route.handler(signedRequest(opened))).status).toBe(202);
         expect((await route.handler(signedRequest(closed))).status).toBe(202);
       }
-      const rows = await fixture
-        .db()
-        .select()
-        .from(juniorGitHubPullRequests)
-        .orderBy(juniorGitHubPullRequests.number);
-      expect(rows).toMatchObject([
+      expect(await fixture.codeIndex.changes()).toMatchObject([
         {
-          finishedAt: new Date("2026-07-03T12:05:00.000Z"),
+          mergedAt: new Date("2026-07-03T12:05:00.000Z"),
+          number: 946,
           state: "merged",
         },
         {
-          finishedAt: new Date("2026-07-04T12:05:00.000Z"),
-          state: "closed_unmerged",
+          closedAt: new Date("2026-07-04T12:05:00.000Z"),
+          number: 947,
+          state: "closed",
         },
       ]);
       expect(
@@ -2301,7 +2260,6 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("derives ownership identity from the configured bot email environment", async () => {
     const fixture = await createGitHubFixture();
-    const codeChangesRecord = vi.fn(async () => {});
     vi.stubEnv(
       "CUSTOM_GITHUB_BOT_EMAIL",
       "264270552+sentry-junior[bot]@users.noreply.github.com",
@@ -2327,11 +2285,7 @@ describe("GitHub-owned pull request outcomes", () => {
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          record: codeChangesRecord,
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         events: { async publish() {} },
       });
 
@@ -2340,10 +2294,8 @@ describe("GitHub-owned pull request outcomes", () => {
       ).toBe(202);
       await expect(
         fixture.db().select().from(juniorGitHubPullRequests),
-      ).resolves.toEqual([
-        expect.objectContaining({ pullRequestId: "1001", state: "open" }),
-      ]);
-      expect(codeChangesRecord).toHaveBeenCalledWith(
+      ).resolves.toEqual([expect.objectContaining({ pullRequestId: "1001" })]);
+      expect(fixture.codeIndex.recorded).toContainEqual(
         expect.objectContaining({
           number: 946,
           providerId: "1001",
@@ -2384,11 +2336,7 @@ describe("GitHub-owned pull request outcomes", () => {
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
-        codeChanges: {
-          async associateConversations() {},
-          async record() {},
-          recordActivity,
-        },
+        codeChanges: { ...fixture.codeIndex.codeChanges, recordActivity },
         events: { async publish() {} },
       });
       const comment = (input: { number: number; senderType: string }) => ({
@@ -2503,11 +2451,7 @@ describe("GitHub-owned pull request outcomes", () => {
             };
           },
         },
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
@@ -2633,11 +2577,7 @@ describe("GitHub-owned pull request outcomes", () => {
             };
           },
         },
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
@@ -2762,11 +2702,7 @@ describe("GitHub-owned pull request outcomes", () => {
             };
           },
         },
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         db: fixture.db(),
         log: { error() {}, info() {}, warn() {} },
         plugin: { name: "github" },
@@ -2908,11 +2844,7 @@ describe("GitHub-owned pull request outcomes", () => {
           };
         },
       },
-      codeChanges: {
-        async associateConversations() {},
-        async recordActivity() {},
-        async record() {},
-      },
+      codeChanges: fixture.codeIndex.codeChanges,
       users: {
         async readIdentity(identityId: string) {
           return identityOf(identityId.replace("slack-identity-", ""));
@@ -3215,12 +3147,20 @@ describe("GitHub-owned pull request outcomes", () => {
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({
         pullRequestId: "1001",
-        repositoryFullName: "getsentry/junior",
         commitComposition: "mixed",
-        conversationIds: ["slack:C123:1712345.0001", "slack:C456:1719999.0002"],
-        state: "merged",
       });
       expect(rows[0]?.updatedAt.toISOString()).toBe("2026-07-03T12:00:00.000Z");
+      expect(await fixture.codeIndex.changes()).toEqual([
+        expect.objectContaining({
+          conversationIds: [
+            "slack:C123:1712345.0001",
+            "slack:C456:1719999.0002",
+          ],
+          providerId: "1001",
+          repository: { name: "getsentry/junior", providerId: "2001" },
+          state: "merged",
+        }),
+      ]);
       expect(annotations.slice(-2)).toEqual(
         expect.arrayContaining([
           {
@@ -3303,19 +3243,9 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("writes the draft state from opens and draft changes", async () => {
     const fixture = await createGitHubFixture();
-    const codeChanges: CodeChangeInput[] = [];
+    const codeChanges = fixture.codeIndex.recorded;
     try {
-      const route = webhookRoute(
-        fixture,
-        [],
-        undefined,
-        undefined,
-        undefined,
-        [],
-        undefined,
-        undefined,
-        codeChanges,
-      );
+      const route = webhookRoute(fixture);
       const opened = pullRequestPayload();
       const deliver = async (action: string, updatedAt: string, draft = {}) =>
         await route.handler(
@@ -3359,19 +3289,9 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("writes the size that a pull request payload counts", async () => {
     const fixture = await createGitHubFixture();
-    const codeChanges: CodeChangeInput[] = [];
+    const codeChanges = fixture.codeIndex.recorded;
     try {
-      const route = webhookRoute(
-        fixture,
-        [],
-        undefined,
-        undefined,
-        undefined,
-        [],
-        undefined,
-        undefined,
-        codeChanges,
-      );
+      const route = webhookRoute(fixture);
       const opened = pullRequestPayload();
       await route.handler(
         signedRequest(
@@ -3440,19 +3360,9 @@ describe("GitHub-owned pull request outcomes", () => {
 
   it("keeps the size of a push that arrives before opened", async () => {
     const fixture = await createGitHubFixture();
-    const codeChanges: CodeChangeInput[] = [];
+    const codeChanges = fixture.codeIndex.recorded;
     try {
-      const route = webhookRoute(
-        fixture,
-        [],
-        undefined,
-        undefined,
-        undefined,
-        [],
-        undefined,
-        undefined,
-        codeChanges,
-      );
+      const route = webhookRoute(fixture);
       const opened = pullRequestPayload();
       await route.handler(
         signedRequest(
@@ -3540,11 +3450,7 @@ describe("GitHub-owned pull request outcomes", () => {
         appIdEnv: "GITHUB_APP_ID",
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
         classifyPullRequestCommits: async () => "mixed",
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({ annotations }),
         db: fixture.db(),
         installationId: () => "456",
@@ -3647,11 +3553,7 @@ describe("GitHub-owned pull request outcomes", () => {
         annotations,
         appIdEnv: "GITHUB_APP_ID",
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({
           annotations,
           inboxItems,
@@ -3763,11 +3665,7 @@ describe("GitHub-owned pull request outcomes", () => {
         annotations,
         appIdEnv: "GITHUB_APP_ID",
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({
           annotations,
           inboxItems,
@@ -3839,11 +3737,7 @@ describe("GitHub-owned pull request outcomes", () => {
             return (await load()).value;
           },
         },
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         conversationChanges: conversationChangesThrough({
           annotations,
           inboxItems,
@@ -3914,11 +3808,7 @@ describe("GitHub-owned pull request outcomes", () => {
         },
         appIdEnv: "GITHUB_APP_ID",
         botEmail: () => "264270552+sentry-junior[bot]@users.noreply.github.com",
-        codeChanges: {
-          async associateConversations() {},
-          async recordActivity() {},
-          async record() {},
-        },
+        codeChanges: fixture.codeIndex.codeChanges,
         db: fixture.db(),
         installationId: () => "456",
         installationIdEnv: "GITHUB_INSTALLATION_ID",
@@ -4041,8 +3931,10 @@ describe("GitHub-owned pull request outcomes", () => {
         expect.objectContaining({
           commitComposition: null,
           pullRequestId: "1001",
-          state: "merged",
         }),
+      ]);
+      expect(await fixture.codeIndex.changes()).toEqual([
+        expect.objectContaining({ providerId: "1001", state: "merged" }),
       ]);
       expect(error).toHaveBeenCalledWith(
         "GitHub PR commit classification failed",
@@ -4121,10 +4013,10 @@ describe("GitHub-owned pull request outcomes", () => {
       await expect(
         fixture.db().select().from(juniorGitHubPullRequests),
       ).resolves.toEqual([
-        expect.objectContaining({
-          commitComposition: null,
-          state: "closed_unmerged",
-        }),
+        expect.objectContaining({ commitComposition: null }),
+      ]);
+      expect(await fixture.codeIndex.changes()).toEqual([
+        expect.objectContaining({ state: "closed" }),
       ]);
     } finally {
       await fixture.close();
@@ -4164,9 +4056,11 @@ describe("GitHub-owned pull request outcomes", () => {
       ).resolves.toEqual([
         expect.objectContaining({
           pullRequestId: "1051",
-          state: "merged",
           updatedAt: new Date("2026-07-03T12:00:00.000Z"),
         }),
+      ]);
+      expect(await fixture.codeIndex.changes()).toEqual([
+        expect.objectContaining({ providerId: "1051", state: "merged" }),
       ]);
     } finally {
       await fixture.close();
@@ -4274,8 +4168,11 @@ describe("GitHub-owned pull request outcomes", () => {
       await route.handler(signedRequest(reopened));
 
       const [row] = await fixture.db().select().from(juniorGitHubPullRequests);
-      expect(row?.state).toBe("open");
       expect(row?.updatedAt.toISOString()).toBe("2026-07-04T12:00:00.000Z");
+      expect(fixture.codeIndex.recorded.at(-1)).toMatchObject({
+        state: "open",
+        updatedAt: new Date("2026-07-04T12:00:00.000Z"),
+      });
     } finally {
       await fixture.close();
     }

@@ -1,23 +1,22 @@
 import pLimit from "p-limit";
 import type {
+  PluginCodeChanges,
   PluginConversationAnnotations,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { GitHubDb } from "../db/database.js";
 import {
   githubPreviewImageUrls,
   withGitHubPreviewImages,
 } from "../object-facts.js";
 import { ANNOTATION_UPDATE_CONCURRENCY } from "../annotations.js";
-import { readGitHubPullRequestConversationIds } from "../pull-request-outcomes/store.js";
+import { findGitHubPullRequest } from "../pull-request-outcomes/store.js";
 
 // These actions carry the current body. `edited` can add or remove an image.
 const previewWebhookSchema = z.object({
   action: z.enum(["opened", "edited", "synchronize", "ready_for_review"]),
   pull_request: z.object({
     body: z.string().nullable().optional(),
-    id: z.number().int().positive(),
     number: z.number().int().positive(),
     updated_at: z.iso.datetime({ offset: true }),
   }),
@@ -31,16 +30,19 @@ const previewWebhookSchema = z.object({
 export async function refreshGitHubPullRequestPreview(args: {
   annotations: PluginConversationAnnotations;
   body: unknown;
-  db: GitHubDb;
+  codeChanges: Pick<PluginCodeChanges, "list">;
   log?: Pick<PluginLogger, "error"> | undefined;
 }): Promise<void> {
   const parsed = previewWebhookSchema.safeParse(args.body);
   if (!parsed.success) return;
   const { pull_request: pullRequest, repository } = parsed.data;
-  const conversationIds = await readGitHubPullRequestConversationIds(
-    args.db,
-    String(pullRequest.id),
-  );
+  const conversationIds =
+    (
+      await findGitHubPullRequest(args.codeChanges, {
+        number: pullRequest.number,
+        repositoryFullName: repository.full_name,
+      })
+    )?.conversationIds ?? [];
   if (conversationIds.length === 0) return;
   const key = `${repository.full_name.toLowerCase()}#${pullRequest.number}`;
   const previewImageUrls = githubPreviewImageUrls(pullRequest.body);
