@@ -8,7 +8,13 @@ on:
     paths:
       - "apps/ios/**"
       - ".github/workflows/ios.yml"
+  # CI calls this workflow for pull requests into main and core-next that
+  # change apps/ios, so `ci / required` waits for it.
+  workflow_call:
+  # CI does not run for stacked pull requests, so this workflow runs on its
+  # own for them.
   pull_request:
+    branches-ignore: [main, core-next]
     paths:
       - "apps/ios/**"
       - ".github/workflows/ios.yml"

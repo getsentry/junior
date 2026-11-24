@@ -33,6 +33,7 @@ jobs:
       docs: ${{ steps.filter.outputs.docs }}
       evals: ${{ steps.filter.outputs.evals }}
       example: ${{ steps.filter.outputs.example }}
+      ios: ${{ steps.filter.outputs.ios }}
       full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
@@ -673,6 +674,14 @@ jobs:
           min-severity: medium
           version: 1.32.0
 
+  # Pull requests only: path filters return true on every push, and ios.yml
+  # runs on its own for pushes to main that change apps/ios.
+  ios:
+    name: ios
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.ios == 'true'
+    uses: ./.github/workflows/ios.yml
+
   required:
     name: ci / required
     runs-on: blacksmith-4vcpu-ubuntu-2404
@@ -695,6 +704,7 @@ jobs:
       - docs-check
       - pack-release-artifacts
       - workflow-lint
+      - ios
     if: ${{ always() && !cancelled() }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
