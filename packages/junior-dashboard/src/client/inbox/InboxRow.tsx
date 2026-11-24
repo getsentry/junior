@@ -607,7 +607,8 @@ function InboxRowBody(
                   : undefined
             }
             className={cn(
-              "col-start-1 row-start-1 mt-[0.55rem] size-2 justify-self-center rounded-full",
+              // Centered on the title's first line (`leading-snug`, 1.375rem).
+              "col-start-1 row-start-1 mt-[0.4375rem] size-2 justify-self-center rounded-full",
               waiting
                 ? "bg-dashboard-text"
                 : openItems.length > 0
@@ -617,8 +618,10 @@ function InboxRowBody(
             data-inbox-slot="dot"
             role={waiting || openItems.length > 0 ? "img" : undefined}
           />
+          {/* The title slot spans the meta's column too. The title stays
+              left of the meta, and the lines under it use the full width. */}
           <span
-            className="col-start-2 row-start-1 grid min-w-0 gap-1"
+            className="col-span-2 col-start-2 row-start-1 grid min-w-0 grid-cols-subgrid gap-y-1"
             data-inbox-slot="title"
           >
             <RowTitle expanded={props.expanded} menu={props.titleMenu}>
@@ -701,7 +704,10 @@ function InboxRowBody(
             </RowTitle>
             {wake ? (
               <span
-                className={cn(lineClass, "text-xs text-dashboard-text-muted")}
+                className={cn(
+                  lineClass,
+                  "col-span-2 text-xs text-dashboard-text-muted",
+                )}
                 data-inbox-slot="wake"
                 ref={fadeWhenOverflowing}
               >
@@ -713,7 +719,7 @@ function InboxRowBody(
             {cast || hasChips ? (
               // No wrap: the pills and the linked work fit to one shared
               // line, and wrapping would let each one's fit move the other.
-              <span className="flex min-w-0 items-center gap-2">
+              <span className="col-span-2 flex min-w-0 items-center gap-2">
                 {cast}
                 {pills.length > 0 ? (
                   // One line of pills: those that do not fit become +N.
