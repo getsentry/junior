@@ -23,7 +23,7 @@ export function stubGoogleEnv(): void {
 /** Connect to this worker's migrated Google plugin database. */
 export async function createGoogleDb(): Promise<PostgresTestFixture<GoogleDb>> {
   return await createPostgresTestFixture((pool) =>
-    drizzle(pool, { schema: googleSqlSchema }),
+    drizzle({ client: pool, schema: googleSqlSchema }),
   );
 }
 

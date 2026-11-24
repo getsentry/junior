@@ -13,6 +13,9 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   /// A Turn runs or waits to start. `status` can read `needs_input` meanwhile,
   /// so live views poll and show work on this, not on `status`.
   public var turnActive: Bool
+  /// The viewer state over this Conversation and its child agents. Lists
+  /// show this, not `status`.
+  public var treeState: ConversationTreeState
   /// `slack`, `api` (the dashboard or MCP), `scheduler`, or `internal`.
   public var surface: String
   public var channelName: String?
@@ -27,8 +30,8 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
   public var id: String { conversationId }
 
   private enum CodingKeys: String, CodingKey {
-    case conversationId, title, summary, status, turnActive, surface, channelName, locationUrl, startedAt, lastSeenAt
-    case archivedAt, pinnedAt, url
+    case conversationId, title, summary, status, turnActive, treeState, surface, channelName, locationUrl, startedAt
+    case lastSeenAt, archivedAt, pinnedAt, url
   }
 
   public init(from decoder: Decoder) throws {
@@ -42,6 +45,11 @@ public struct MCPConversation: Decodable, Sendable, Hashable, Identifiable {
     turnActive =
       try container.decodeIfPresent(Bool.self, forKey: .turnActive)
       ?? (status == .working || status.rawValue == "active")
+    // Junior 0.310 and older send no `treeState` either, so their lists keep
+    // the old reading of `status`.
+    treeState =
+      try container.decodeIfPresent(ConversationTreeState.self, forKey: .treeState)
+      ?? (status == .needsInput ? .needsYou : turnActive ? .working : .done)
     surface = try container.decode(String.self, forKey: .surface)
     channelName = try container.decodeIfPresent(String.self, forKey: .channelName)
     locationUrl = try container.decodeIfPresent(String.self, forKey: .locationUrl)

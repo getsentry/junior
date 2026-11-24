@@ -271,10 +271,11 @@ test("keeps memories out of the transcript and jumps to their Turn", async ({
     .filter({ hasText: "Dashboard transcript events should remain" })
     .getByRole("button", { name: "Go to message" })
     .click();
-  await expect(
-    page
-      .getByLabel("Conversation transcript")
-      .locator("[data-transcript-seq][data-highlighted]"),
-  ).toBeInViewport();
+  const jumped = page
+    .getByLabel("Conversation transcript")
+    .locator("[data-transcript-seq][data-highlighted]");
+  await expect(jumped).toBeInViewport();
+  // The jump mark clears after 2 s, so shoot the row once it clears.
+  await expect(jumped).toHaveCount(0);
   await screenshot(page, "conversation-memory-list");
 });

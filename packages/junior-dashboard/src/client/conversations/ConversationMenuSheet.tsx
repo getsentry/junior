@@ -26,13 +26,36 @@ const GROUP_CLASS =
  * It opens away from the finger, and a swipe down closes it.
  */
 export function ConversationRowSheet(
-  props: ConversationRowMenuProps & { onClose(): void; title: string },
+  props: ConversationRowMenuProps & {
+    onClose(action?: () => void): void;
+    title: string;
+  },
 ) {
   const { onClose, title, ...menu } = props;
   const groups = useConversationRowMenuGroups(menu);
+  return (
+    <ConversationMenuSheet groups={groups} onClose={onClose} title={title} />
+  );
+}
+
+/**
+ * Show Conversation menu rows as a bottom sheet: the phone form of the `⋯`
+ * menu. Each group is a card, Cancel closes it, and a swipe down does too.
+ */
+export function ConversationMenuSheet(props: {
+  groups: readonly (readonly ConversationMenuItem[])[];
+  /** Gets the chosen row's action, which `useMenuSheet` runs. */
+  onClose(action?: () => void): void;
+  title: string;
+}) {
   // Focus the list, not its first row, so a touch open shows no focus ring.
   const listRef = useRef<HTMLDivElement>(null);
-  const sheet = useSheet(onClose, listRef);
+  const chosen = useRef<(() => void) | undefined>(undefined);
+  const sheet = useSheet(() => props.onClose(chosen.current), listRef);
+  const choose = (action: (() => void) | undefined) => {
+    chosen.current = action;
+    sheet.close();
+  };
   return (
     <Drawer {...sheet.rootProps}>
       <DrawerContent
@@ -45,14 +68,14 @@ export function ConversationRowSheet(
           className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-dashboard-border-strong"
         />
         <DrawerTitle className="m-0 truncate px-5 pt-3 pb-2 text-center font-sans text-sm font-medium text-dashboard-text-muted">
-          {title}
+          {props.title}
         </DrawerTitle>
         <div
           className="grid min-h-0 gap-2 overflow-y-auto overscroll-contain px-3 outline-none"
           ref={listRef}
           tabIndex={-1}
         >
-          {groups.map((items, index) => (
+          {props.groups.map((items, index) => (
             <ul
               className={cn(
                 GROUP_CLASS,
@@ -62,7 +85,11 @@ export function ConversationRowSheet(
             >
               {items.map((item) => (
                 <li key={item.key}>
-                  <SheetRow item={item} onClose={sheet.close} />
+                  <SheetRow
+                    item={item}
+                    onChoose={choose}
+                    onClose={sheet.close}
+                  />
                 </li>
               ))}
             </ul>
@@ -78,7 +105,11 @@ export function ConversationRowSheet(
   );
 }
 
-function SheetRow(props: { item: ConversationMenuItem; onClose(): void }) {
+function SheetRow(props: {
+  item: ConversationMenuItem;
+  onChoose(action: (() => void) | undefined): void;
+  onClose(): void;
+}) {
   const { item } = props;
   if (item.href) {
     return (
@@ -100,9 +131,9 @@ function SheetRow(props: { item: ConversationMenuItem; onClose(): void }) {
         className={PLAIN_ROW_CLASS}
         disabled={item.disabled}
         onClick={() => {
-          item.onClick?.();
           // Share and copy show their result in the label, so they stay.
-          if (!item.stayOpen) props.onClose();
+          if (item.stayOpen) item.onClick?.();
+          else props.onChoose(item.onClick);
         }}
         type="button"
       >

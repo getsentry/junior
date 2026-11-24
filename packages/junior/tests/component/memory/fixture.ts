@@ -16,7 +16,7 @@ export async function createMemoryFixture(): Promise<MemoryFixture> {
     throw new Error("Memory tests need the Junior Postgres test harness.");
   }
   const pool = new pg.Pool({ connectionString });
-  const db = drizzle(pool, { schema: memorySqlSchema });
+  const db = drizzle({ client: pool, schema: memorySqlSchema });
   return {
     db: () => db,
     execute: async (statement, params = []) => {

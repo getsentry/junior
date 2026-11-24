@@ -22,8 +22,10 @@ how the dashboard groups and acts on its rows.
   as a reply or a blocked Automation, and says what to do. It never asks.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers, and the answer carries their authority. Junior,
-  an Event, or a trigger never answers or approves for a person.
+- Only an assignee answers a private item. Anyone who can see a public
+  question can answer it, but only an assignee dismisses or takes it. The
+  answer carries the authority of the person who gives it. Junior, an
+  Event, or a trigger never answers or approves for a person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
   tree that waits on you.
 
@@ -138,7 +140,7 @@ how the dashboard groups and acts on its rows.
 
 - An item can have no assignees, and then anyone who can see it can answer
   it. It does not dismiss itself. This breaks "every item has at least one
-  assignee" and "only an assignee answers".
+  assignee" and "only an assignee answers a private item".
 - An agent in any public Conversation can change, reassign, or close a
   public item that an agent added, and a new item with the same key
   overwrites it. This breaks "only the Conversation or the plugin that added
@@ -158,9 +160,8 @@ how the dashboard groups and acts on its rows.
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
 - The "Needs you" group of the classic Inbox also shows open actions for
-  Everyone and actions with no assignees. To do in the new Inbox shows
-  actions with no assignees, and the Inbox count leaves them out. This
-  breaks "'Needs you' means one thing".
+  Everyone and actions with no assignees. This breaks "'Needs you' means
+  one thing".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "a notice … says what to do".
 - An Automation alert shows only in the dashboard Inbox. Slack shows no

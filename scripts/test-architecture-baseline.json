@@ -319,7 +319,6 @@
     "packages/junior-dashboard/e2e/inbox/conversations-event-log.spec.ts": 15,
     "packages/junior-dashboard/e2e/inbox/conversations-mobile.spec.ts": 8,
     "packages/junior-dashboard/e2e/inbox/conversations.spec.ts": 4,
-    "packages/junior-dashboard/e2e/inbox/in-flight.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/inbox-answer-drafts.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/inbox-answers.spec.ts": 3,
     "packages/junior-dashboard/e2e/inbox/inbox-cards.spec.ts": 22,
