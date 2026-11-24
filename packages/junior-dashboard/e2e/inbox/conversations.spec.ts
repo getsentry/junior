@@ -291,7 +291,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     expect(asked).not.toContain(below);
 
     const belowRead = page.waitForResponse((response) =>
-      new URL(response.url()).searchParams.getAll("url").includes(below),
+      new URL(response.url()).searchParams
+        .getAll("url")
+        .some((url) => url === below),
     );
     await page
       .getByRole("region", { exact: true, name: "Conversations" })
