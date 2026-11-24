@@ -84,9 +84,8 @@ struct SettingsScreen: View {
   private func copyLogs() {
     do {
       let lines = try recentLogLines()
-      let info = Bundle.main.infoDictionary
       let header = [
-        "Junior iOS \(info?["CFBundleShortVersionString"] as? String ?? "?") (\(info?["CFBundleVersion"] as? String ?? "?"))",
+        "Junior iOS \(AppBuild.current.label)",
         "Server \(app.server.baseURL.absoluteString), junior \(app.serverVersion ?? "unknown")",
       ]
       UIPasteboard.general.string = (header + lines).joined(separator: "\n")
