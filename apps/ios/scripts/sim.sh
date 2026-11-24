@@ -24,7 +24,8 @@ set -euo pipefail
 ios_dir="$(cd "$(dirname "$0")/.." && pwd)"
 lock_dir="/tmp/ios-simulator.lock"
 device_prefix="junior-throwaway"
-device_type="${JUNIOR_IOS_DEVICE:-com.apple.CoreSimulator.SimDeviceType.iPhone-17-Pro}"
+# iPhone 17 runs on both the iOS 26 and iOS 27 runtimes; iOS 27 drops the 17 Pro.
+device_type="${JUNIOR_IOS_DEVICE:-com.apple.CoreSimulator.SimDeviceType.iPhone-17}"
 server="${JUNIOR_IOS_SERVER:-http://127.0.0.1:4317}"
 fixed_now="${JUNIOR_IOS_NOW:-2026-08-07T12:00:00Z}"
 udid=""

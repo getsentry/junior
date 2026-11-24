@@ -97,7 +97,7 @@ jobs:
         orientation: [portrait, landscape]
     env:
       # With regular width, lists and the open item show side by side.
-      JUNIOR_IOS_DEVICE: iPad Pro 13-inch (M4)
+      JUNIOR_IOS_DEVICE: iPad Pro 13-inch (M5)
       ORIENTATION: ${{ matrix.orientation }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
