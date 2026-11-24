@@ -577,6 +577,27 @@ export function useClosingInboxItemIds(): ReadonlySet<string> {
 }
 
 /**
+ * The ids of the items that a viewer's action closes while it runs or after
+ * it succeeded. A list can still hold them as open until it reads again.
+ */
+export function useClosedByViewerInboxItemIds(): ReadonlySet<string> {
+  const ids = useMutationState({
+    filters: { mutationKey: INBOX_ITEM_ACTION_KEY },
+    select: (mutation) => {
+      const action = actionOf(mutation);
+      const { status } = mutation.state;
+      return action &&
+        closesItem(action.body) &&
+        (status === "pending" || status === "success")
+        ? action.id
+        : "";
+    },
+  });
+  const key = [...new Set(ids.filter(Boolean))].sort().join("\n");
+  return useMemo(() => new Set(key ? key.split("\n") : []), [key]);
+}
+
+/**
  * The answer of the viewer's last action on an item, when that action was
  * an answer that failed, so the form shows it again.
  */

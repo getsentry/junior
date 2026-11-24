@@ -12,7 +12,7 @@ import type { InboxItemPayload } from "@sentry/junior/api/schema";
 import { Button } from "../components/ui/button";
 import { scrollRootFor } from "../conversations/transcriptBottomPinning";
 import {
-  useClosingInboxItemIds,
+  useClosedByViewerInboxItemIds,
   useInboxItemsData,
   useWaitingConversations,
 } from "./queries";
@@ -44,7 +44,7 @@ export function useWaitingQuestions(conversationId: string | undefined) {
   const pageCount = query.data?.pages.length ?? 0;
   // A card closes as the viewer's action on it starts, before the list
   // drops its item.
-  const closing = useClosingInboxItemIds();
+  const closing = useClosedByViewerInboxItemIds();
   useEffect(() => {
     if (stale || failed || !hasNextPage || isFetching) return;
     void fetchNextPage();
