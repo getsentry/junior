@@ -478,8 +478,16 @@ function ResolvedParagraph(props: {
   const resolved = useResolvedObject(props.objectUrl);
   useRequestWhenSaved(props.saved, resolved.request);
   const card = sameTypeCard(resolved.card, props.saved?.objectType);
+  // A saved object is already part of the Conversation, so its row has no
+  // Attach slot.
   if (card) {
-    return <StandaloneObject card={card} href={props.objectUrl} live />;
+    return (
+      <StandaloneObject
+        card={card}
+        href={props.objectUrl}
+        live={!props.saved}
+      />
+    );
   }
   if (props.saved) {
     return <StandaloneObject card={props.saved} href={props.objectUrl} />;

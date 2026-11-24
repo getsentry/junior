@@ -741,6 +741,23 @@ test("a participant attaches a Google Doc from its hover card", async ({
   await expect(docCard).toContainText("Attached");
 });
 
+test("a participant sees no Attach slot on the row of a saved object", async ({
+  page,
+  dashboard,
+}) => {
+  await viewAsParticipant(page);
+  await page.goto(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
+  );
+  await waitForResolvedLinks(page);
+  const card = page.getByRole("region", {
+    name: "Pull request: Pin the release train to payments 4.2",
+  });
+  await expect(card).toBeVisible();
+  await expect(card.getByText("Attached", { exact: true })).toHaveCount(0);
+  await expect(card.getByRole("button", { name: "Attach" })).toHaveCount(0);
+});
+
 test("a Doc attached by another link shows as attached", async ({
   page,
   dashboard,
