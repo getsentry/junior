@@ -111,6 +111,8 @@ interface BaseToolRuntimeContext {
   destination: Destination;
 
   actor?: Actor | undefined;
+  /** The Actor is an app or bot, not a person. From `AgentRun.actorIsApp`. */
+  actorIsApp?: boolean | undefined;
   resolveActorIdentity?:
     | (() => Promise<{ identity: Identity; user?: User } | undefined>)
     | undefined;

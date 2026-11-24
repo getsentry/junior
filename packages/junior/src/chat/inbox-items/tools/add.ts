@@ -118,10 +118,10 @@ const evidenceSchema = z
 /**
  * Pick the assignees of a new item when the agent names none: the User of
  * the Actor, or else the creator of the Automation of this run. A Turn with
- * a system Actor, such as an event Turn, falls back to the active
- * Participants of the Conversation. A Slack Actor without a Junior User gets
- * an item with no assignees, so that the agent can still ask; any person in
- * the thread can then answer it.
+ * a system Actor, such as an event Turn, or an app Actor falls back to the
+ * active Participants of the Conversation, except the app. A Slack Actor
+ * without a Junior User gets an item with no assignees, so that the agent can
+ * still ask; any person in the thread can then answer it.
  */
 async function defaultAssignees(
   scope: InboxItemAgentScope,
@@ -133,11 +133,11 @@ async function defaultAssignees(
       ? await automationCreatorUserId(getDb(), scope.reader.automationId)
       : undefined);
   if (userId) return { everyone: false, userIds: [userId] };
+  if (scope.actorIsPerson) return { everyone: false, userIds: [] };
+  const participants = await activeParticipantUserIds(getDb(), conversationId);
   return {
     everyone: false,
-    userIds: scope.actorIsPerson
-      ? []
-      : await activeParticipantUserIds(getDb(), conversationId),
+    userIds: participants.filter((id) => id !== scope.appUserId),
   };
 }
 
@@ -338,14 +338,15 @@ export function createAddInboxItemTool(
             }
           : await defaultAssignees(scope, context.conversationId);
       // Only an assignee gets the item in their Inbox count. A Turn
-      // without a person has nobody to show it to, so it needs an assignee.
+      // without a person, such as one that an app asked for, has nobody to
+      // show it to, so it needs an assignee.
       if (
         !assignees.everyone &&
         assignees.userIds.length === 0 &&
         !scope.actorIsPerson
       ) {
         throw new ToolInputError(
-          "No person would see this item: no default assignee has a User, and this Turn has no person. Set `assignees`.",
+          "Only people act on items, and this one would have none: this Turn has no person, and no default assignee has a User. Set `assignees` to the person who should act, or reply in text.",
         );
       }
       await requireInboxItemAssignees({
