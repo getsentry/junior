@@ -537,6 +537,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await screenshot(page, "inbox-snooze-event-filter", { lightTheme: true });
     await filter.fill("nothing like this");
     await expect(events.getByText("No events match.")).toBeVisible();
+    // Every Event here is a pull request Event, so that part matches none.
+    await filter.fill("pull");
+    await expect(events.getByText("No events match.")).toBeVisible();
     await filter.fill("draft");
     await page.keyboard.press("Enter");
     await expect(

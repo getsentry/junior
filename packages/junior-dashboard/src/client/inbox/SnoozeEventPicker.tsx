@@ -43,12 +43,8 @@ interface EventGroup {
  * their first Event in the catalog.
  */
 function groupEvents(events: SnoozeEvents): EventGroup[] {
-  const prefix = `${events.resourceType}.`;
   const partOf = (eventType: string) =>
-    (eventType.startsWith(prefix)
-      ? eventType.slice(prefix.length)
-      : eventType
-    ).split(".")[0] ?? eventType;
+    nameAfterType(eventType, events.resourceType).split(".")[0] ?? eventType;
   const counts = new Map<string, number>();
   for (const eventType of events.events) {
     const part = partOf(eventType);
@@ -73,18 +69,24 @@ function groupEvents(events: SnoozeEvents): EventGroup[] {
   return [loose, ...groups.values()].filter((group) => group.events.length > 0);
 }
 
+/** An Event's name after its resource type, such as `review.approved`. */
+function nameAfterType(eventType: string, resourceType: string): string {
+  const prefix = `${resourceType}.`;
+  return eventType.startsWith(prefix)
+    ? eventType.slice(prefix.length)
+    : eventType;
+}
+
 // Words of an Event name or phrase, so "merge conflict" finds
 // `pull_request.merge_conflict.resolved`.
 const words = (text: string) => text.toLowerCase().replaceAll(/[._]/g, " ");
 
-// Match the typed text inside an Event's name or phrase, in the catalog
-// order, not by fuzzy score.
-function matchEvent(value: string, search: string, keywords?: string[]) {
-  return words([value, ...(keywords ?? [])].join(" ")).includes(
-    words(search).trim(),
-  )
-    ? 1
-    : 0;
+// Match the typed text inside an Event's name after its resource type, or
+// inside its phrase, in the catalog order, not by fuzzy score. Every Event
+// of a page shares its resource type, so that part would match them all.
+function matchEvent(_value: string, search: string, keywords?: string[]) {
+  const typed = words(search).trim();
+  return keywords?.some((keyword) => words(keyword).includes(typed)) ? 1 : 0;
 }
 
 /**
@@ -137,7 +139,10 @@ export function SnoozeEventPicker(props: {
                   {group.events.map((eventType) => (
                     <CommandItem
                       key={eventType}
-                      keywords={[eventPhrase(eventType, events)]}
+                      keywords={[
+                        nameAfterType(eventType, events.resourceType),
+                        eventPhrase(eventType, events),
+                      ]}
                       onSelect={() => {
                         props.onPick(eventType);
                         setOpen(false);
