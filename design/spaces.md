@@ -34,20 +34,6 @@ not need a home stays a one-off Conversation.
   work is done. Archiving a Space stops and archives every Conversation in
   it, so no work in it keeps running.
 
-## Entry points
-
-- Dashboard sidebar: the Spaces list, above In flight, and "New space".
-- Dashboard: the Space page, with the Lead's transcript, the Space's
-  Conversations, its members, and its configuration.
-- Dashboard: "Share" on a Space, to add members and set public or private.
-- Dashboard: "Archive" on a Space.
-- Dashboard: the Space picker on a new Conversation. It selects the
-  current Space by default, and "No space" starts a one-off.
-- Dashboard: the Space name above a Conversation, which opens its Space.
-- The Lead's tools: `startConversation`, `messageAgent`, the Conversation
-  search and read tools, `watchEvents` and timers, the Inbox tools, and the
-  Automation tools.
-
 ## Rules
 
 - A Conversation joins a Space only when a person or the Space's Lead puts
