@@ -9,6 +9,7 @@ import {
   rollout,
   rowHead,
 } from "./inbox-fixture";
+import { tabIconAccentSpots } from "../tab-icon";
 import { expect, test } from "../test";
 
 test.describe("new UI", () => {
@@ -92,6 +93,16 @@ test.describe("new UI", () => {
     await closeCheckoutAsks(page);
     await expect(page).toHaveTitle("Inbox - Junior");
     await expect(icon).toHaveAttribute("href", "/favicon.ico");
+  });
+
+  test("the tab icon count fills the top-left corner, clear of the eye", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockOneAsk(page);
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const accentSpots = await tabIconAccentSpots(page);
+    expect(accentSpots).toEqual(["badgeRight", "topLeft"]);
   });
 
   test("turning off the tab count hides it in the title and on the icon", async ({

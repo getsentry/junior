@@ -13,7 +13,6 @@
   "packages/junior-dashboard/e2e/conversations-quick-question.spec.ts",
   "packages/junior-dashboard/e2e/conversations-read-position-links.spec.ts",
   "packages/junior-dashboard/e2e/harness.ts",
-  "packages/junior-dashboard/e2e/inbox-tab-count.spec.ts",
   "packages/junior-dashboard/e2e/mcp-settings.spec.ts",
   "packages/junior-dashboard/e2e/personal-tokens.spec.ts",
   "packages/junior-dashboard/e2e/read-position-fixture.ts",

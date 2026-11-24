@@ -58,6 +58,7 @@
     "e2e/request-budget.ts",
     "e2e/search-fixture.ts",
     "e2e/skill-references.ts",
+    "e2e/tab-icon.ts",
     "e2e/inbox-item-evidence.spec.ts",
     "e2e/conversations-outline.spec.ts",
     "e2e/long-press.ts",
