@@ -565,6 +565,10 @@ export function createAgentDispatchConversationWorker(
       const blockingError = getDispatchBlockingError(error);
       if (blockingError) {
         await persistBlockedDispatchTurn(dispatch, blockingError);
+        await indexEndedTurnEvents({
+          conversationId: context.conversationId,
+          turnId: getDispatchTurnId(dispatch.id),
+        });
         await acknowledge();
         return { status: "completed" };
       }
