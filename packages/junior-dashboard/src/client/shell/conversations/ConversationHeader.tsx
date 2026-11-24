@@ -287,6 +287,16 @@ function ConversationTitleHeader(props: {
     Boolean(props.forks) ||
     Boolean(props.agentTree);
 
+  // A long title fades before the `⋯` button instead of running under it.
+  const mobileTitle = (
+    <span
+      className={cn(MOBILE_TITLE_CLASS, fadeOverflowClass)}
+      ref={fadeWhenOverflowing}
+    >
+      {titleText}
+    </span>
+  );
+
   return (
     <>
       <MobileHeaderTitlePortal>
@@ -321,10 +331,10 @@ function ConversationTitleHeader(props: {
                 className={MOBILE_TITLE_CLASS}
                 title={props.title}
               >
-                <span className={MOBILE_TITLE_CLASS}>{titleText}</span>
+                {mobileTitle}
               </EditableConversationTitle>
             ) : (
-              <span className={MOBILE_TITLE_CLASS}>{titleText}</span>
+              mobileTitle
             )}
           </h1>
         )}
