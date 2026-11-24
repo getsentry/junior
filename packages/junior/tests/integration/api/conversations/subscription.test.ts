@@ -19,6 +19,7 @@ import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+import { createConversationWorkQueueTestAdapter } from "../../../fixtures/conversation-work";
 
 const rootTurnTools = turnBehavior({
   kind: "root",
@@ -33,6 +34,11 @@ const rootTurnTools = turnBehavior({
 const CONVERSATION_ID = "slack:C1:subscription";
 let nowMs = 1_000;
 
+/** The Slack user id of a test person, such as `UANA`. */
+function slackUserId(name: string): string {
+  return `U${name.toUpperCase()}`;
+}
+
 /** A dashboard viewer who is also a Slack user, by default in this workspace. */
 async function person(name: string, teamId = "T1") {
   const email = `${name}@example.com`;
@@ -42,14 +48,19 @@ async function person(name: string, teamId = "T1") {
     email,
     platform: "slack",
     teamId,
-    userId: `U-${name}`,
+    userId: slackUserId(name),
   });
   const app = new Hono<JuniorApiEnv>();
   app.use("*", async (context, next) => {
     context.set("viewer", viewer);
     await next();
   });
-  app.route("/", createJuniorApi());
+  app.route(
+    "/",
+    createJuniorApi({
+      conversationWorkQueue: createConversationWorkQueueTestAdapter(),
+    }),
+  );
   const api = (path: string, init?: RequestInit) =>
     app.request(`http://localhost/api/conversations${path}`, init);
   const patch = (path: string, body: unknown) =>
@@ -80,6 +91,16 @@ async function person(name: string, teamId = "T1") {
         headers: { "content-type": "application/json" },
         method: "POST",
       });
+    },
+    /** Send a dashboard Message. */
+    async post(message: string) {
+      nowMs += 1_000;
+      const response = await api(`/${CONVERSATION_ID}/messages`, {
+        body: JSON.stringify({ idempotencyKey: `post-${nowMs}`, message }),
+        headers: { "content-type": "application/json" },
+        method: "POST",
+      });
+      expect(response.status).toBe(200);
     },
     async pin() {
       const response = await patch(`/${CONVERSATION_ID}/pin`, {
@@ -170,7 +191,7 @@ async function sharedThread(
       ? {
           actor: {
             platform: "slack" as const,
-            slackUserId: `U-${starter}`,
+            slackUserId: slackUserId(starter),
             teamId: "T1",
           },
         }
@@ -290,7 +311,7 @@ describe("conversation subscription", () => {
     const cleo = await person("cleo");
     expect(await cleo.feed()).toEqual([]);
 
-    const invited = await ana.invite("U-cleo");
+    const invited = await ana.invite(slackUserId("cleo"));
     expect(invited.status).toBe(200);
     expect(await invited.json()).toEqual({ added: true });
     expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
@@ -298,15 +319,35 @@ describe("conversation subscription", () => {
 
     // An existing Participant keeps their own choice to unsubscribe.
     await ben.setSubscribed(false);
-    expect(await (await ana.invite("U-ben")).json()).toEqual({ added: false });
+    expect(await (await ana.invite(slackUserId("ben"))).json()).toEqual({
+      added: false,
+    });
     expect(await ben.feed()).toEqual([]);
+  });
+
+  it("a dashboard Message that mentions a person adds them, like Invite", async () => {
+    const { ana, ben } = await sharedThread();
+    const cleo = await person("cleo");
+    await ben.setSubscribed(false);
+
+    await ana.post(`<@${slackUserId("cleo")}> <@${slackUserId("ben")}> look`);
+    expect(await cleo.feed()).toEqual([CONVERSATION_ID]);
+    expect(await ben.feed()).toEqual([]);
+  });
+
+  it("a dashboard Message in a private conversation adds nobody", async () => {
+    const { ana } = await sharedThread(undefined, "private");
+    const cleo = await person("cleo");
+
+    await ana.post(`<@${slackUserId("cleo")}> look`);
+    expect(await cleo.feed("?q=shared")).toEqual([]);
   });
 
   it("Invite on a private conversation is refused and shares nothing", async () => {
     const { ana } = await sharedThread(undefined, "private");
     const cleo = await person("cleo");
 
-    const invited = await ana.invite("U-cleo");
+    const invited = await ana.invite(slackUserId("cleo"));
     expect(invited.status).toBe(404);
     expect(await cleo.feed()).toEqual([]);
     expect(await cleo.feed("?q=shared")).toEqual([]);
@@ -316,7 +357,7 @@ describe("conversation subscription", () => {
     const { ana } = await sharedThread();
     const dana = await person("dana", "T2");
 
-    expect((await ana.invite("U-dana")).status).toBe(404);
+    expect((await ana.invite(slackUserId("dana"))).status).toBe(404);
     expect(await dana.feed()).toEqual([]);
   });
 
@@ -326,7 +367,7 @@ describe("conversation subscription", () => {
     await ana.setSubscribed(false);
     await ben.setSubscribed(false);
 
-    expect((await ana.invite("U-cleo")).status).toBe(409);
+    expect((await ana.invite(slackUserId("cleo"))).status).toBe(409);
     expect(await cleo.feed("?status=archived")).toEqual([]);
   });
 });
