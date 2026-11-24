@@ -23,7 +23,10 @@ export function lookupTool() {
   });
 }
 
-/** Store a Slack person who linked a GitHub account. */
+/**
+ * Store a Slack person who linked a GitHub account, and return their Slack
+ * Identity.
+ */
 export async function seedLinkedIdentities(input: {
   githubId: string;
   githubHandle: string;
@@ -47,4 +50,5 @@ export async function seedLinkedIdentities(input: {
     providerSubjectId: input.githubId,
     handle: input.githubHandle,
   });
+  return slackIdentity;
 }
