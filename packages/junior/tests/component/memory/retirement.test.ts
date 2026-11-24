@@ -162,6 +162,7 @@ function taskContext(args: {
         return (await load()).value;
       },
       async update() {},
+      async delete() {},
     },
     db: args.db,
     embedder: args.embedder,

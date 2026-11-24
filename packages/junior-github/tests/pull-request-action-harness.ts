@@ -686,6 +686,7 @@ export function route(
     cache: {
       // The pull request webhook refreshes its cached object.
       async update() {},
+      delete: unused,
       get: unused,
       getOrLoad: unused,
     },

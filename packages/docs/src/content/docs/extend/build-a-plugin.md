@@ -524,7 +524,9 @@ outage, the cache returns that value. Do not set it on an answer about access,
 because access must expire with its TTL. When a provider webhook carries a
 changed object, write it with `ctx.cache.update(key, next)`. `next` gets the
 cached value and returns the new entry, so the next read needs no provider
-call.
+call. When the webhook says only that the cached value is wrong, such as when
+an object moved, drop it with `ctx.cache.delete(key)`, so the next read loads
+it.
 
 ```ts
 const role = await ctx.cache.getOrLoad(`role:${repo}:${login}`, async () => ({

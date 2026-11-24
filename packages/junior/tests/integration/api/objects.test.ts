@@ -452,7 +452,42 @@ describe("object links API", () => {
       id: 13_000,
       number: 13,
     };
+    const moving = {
+      ...issue,
+      html_url: `${GITHUB_REPO}/issues/14`,
+      id: 14_000,
+      number: 14,
+      title: "Move this issue",
+    };
+    let moved = false;
     mswServer.use(
+      http.get(`${GITHUB_API}/issues/14`, () => {
+        reads.push("issues/14");
+        return moved
+          ? new HttpResponse(null, {
+              headers: {
+                location: "https://api.github.com/repositories/2002/issues/9",
+              },
+              status: 301,
+            })
+          : HttpResponse.json(moving);
+      }),
+      // The moved issue, in a repository that the viewer can also see.
+      http.get("https://api.github.com/repositories/2002/issues/9", () =>
+        HttpResponse.json({
+          ...moving,
+          html_url: "https://github.com/getsentry/relay/issues/9",
+          number: 9,
+          updated_at: after,
+        }),
+      ),
+      http.get(
+        "https://api.github.com/repos/getsentry/relay/collaborators/:login/permission",
+        ({ params }) =>
+          HttpResponse.json({
+            permission: params["login"] === "alice_acme" ? "read" : "none",
+          }),
+      ),
       http.get(`${GITHUB_API}/issues/12`, () => {
         reads.push("issues/12");
         return HttpResponse.json(issue);
@@ -467,8 +502,8 @@ describe("object links API", () => {
       ),
       http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
         reads.push(`pulls/${params["number"]}`);
-        return params["number"] === "34"
-          ? HttpResponse.json(pullRequest(34))
+        return ["34", "56"].includes(String(params["number"]))
+          ? HttpResponse.json(pullRequest(Number(params["number"])))
           : HttpResponse.json({ message: "Server Error" }, { status: 502 });
       }),
     );
@@ -482,7 +517,9 @@ describe("object links API", () => {
       const first = await read(
         `${GITHUB_REPO}/issues/12`,
         `${GITHUB_REPO}/issues/13`,
+        `${GITHUB_REPO}/issues/14`,
         `${GITHUB_REPO}/pull/34`,
+        `${GITHUB_REPO}/pull/56`,
       );
       expect(first.objects.get(`${GITHUB_REPO}/issues/13`)).toMatchObject({
         status: "open",
@@ -506,6 +543,11 @@ describe("object links API", () => {
         action: "deleted",
         issue: deleted,
       });
+      moved = true;
+      await sendGitHubWebhook(app, "issues", {
+        action: "transferred",
+        issue: { ...moving, updated_at: after },
+      });
       // A push marks the pull request ready. The payload leaves out the
       // size and the merge state.
       const { additions: _, mergeable: __, ...pushed } = pullRequest(34);
@@ -524,6 +566,16 @@ describe("object links API", () => {
         changes: { title: { from: "Add link cards" } },
         pull_request: { ...pullRequest(34), title: "Older title" },
       });
+      // A label on the same head commit. GitHub computes the merge state
+      // again, so the payload has it as null.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "labeled",
+        pull_request: {
+          ...pullRequest(56),
+          mergeable: null,
+          updated_at: after,
+        },
+      });
       // No card has read #78 yet.
       await sendGitHubWebhook(app, "pull_request", {
         action: "opened",
@@ -536,15 +588,23 @@ describe("object links API", () => {
       const next = await read(
         `${GITHUB_REPO}/issues/12`,
         `${GITHUB_REPO}/issues/13`,
+        `${GITHUB_REPO}/issues/14`,
         `${GITHUB_REPO}/pull/34`,
+        `${GITHUB_REPO}/pull/56`,
         `${GITHUB_REPO}/pull/78`,
       );
-      expect(reads.slice(readsBefore)).toEqual([]);
+      // Only the moved issue is read again.
+      expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
       expect(next.objects.get(`${GITHUB_REPO}/issues/12`)).toMatchObject({
         status: "closed",
       });
       // The deleted issue has no card.
       expect(next.objects.has(`${GITHUB_REPO}/issues/13`)).toBe(false);
+      // The moved issue shows where GitHub redirects it.
+      expect(next.objects.get(`${GITHUB_REPO}/issues/14`)).toMatchObject({
+        title: "Move this issue",
+        url: "https://github.com/getsentry/relay/issues/9",
+      });
       const pull = next.objects.get(`${GITHUB_REPO}/pull/34`);
       expect(pull).toMatchObject({
         // A field that the payload leaves out stays as cached.
@@ -557,9 +617,89 @@ describe("object links API", () => {
         checks: "pending",
         mergeable: "pending",
       });
+      // GitHub sends a null merge state while it computes it, so it turns
+      // pending until its patch reads it.
+      expect(next.objects.get(`${GITHUB_REPO}/pull/56`)).toMatchObject({
+        facts: { mergeable: "pending" },
+      });
       expect(next.objects.get(`${GITHUB_REPO}/pull/78`)).toMatchObject({
         status: "draft",
         title: "Cache GitHub objects",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("keeps a webhook that could not wait for a slow card read", async () => {
+    stubGitHubApp();
+    const issue = {
+      closed_at: null,
+      created_at: "2026-01-01T00:00:00Z",
+      html_url: `${GITHUB_REPO}/issues/15`,
+      id: 15_000,
+      number: 15,
+      state: "open",
+      title: "Read me slowly",
+      updated_at: "2026-01-02T03:04:05Z",
+      user: { login: "byk" },
+    };
+    const closed = {
+      ...issue,
+      closed_at: "2026-01-02T04:00:00Z",
+      state: "closed",
+      updated_at: "2026-01-02T04:00:00Z",
+    };
+    let reachGitHub!: () => void;
+    const reachedGitHub = new Promise<void>((resolve) => {
+      reachGitHub = resolve;
+    });
+    let answerGitHub!: () => void;
+    const answered = new Promise<void>((resolve) => {
+      answerGitHub = resolve;
+    });
+    let slow = true;
+    mswServer.use(
+      http.get(`${GITHUB_API}/issues/15`, async () => {
+        if (!slow) return HttpResponse.json(closed);
+        slow = false;
+        // The first read answers late, with the issue from before the
+        // webhook.
+        reachGitHub();
+        await answered;
+        return HttpResponse.json(issue);
+      }),
+    );
+    try {
+      const app = await createGitHubApp();
+      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+      await linkGitHubMember();
+      const read = await viewerApi("alice@example.com");
+      vi.useFakeTimers({ toFake: ["Date"] });
+      const start = Date.now();
+      const slowRead = read(`${GITHUB_REPO}/issues/15`);
+      await reachedGitHub;
+      // The webhook waits for the read's lock, then gives up.
+      const webhook = sendGitHubWebhook(app, "issues", {
+        action: "closed",
+        issue: closed,
+      });
+      // Move the clock past the wait until the webhook gives up.
+      let settled = false;
+      void webhook.finally(() => {
+        settled = true;
+      });
+      for (let step = 1; !settled; step += 1) {
+        vi.setSystemTime(start + step * 11_000);
+        await new Promise((resolve) => setTimeout(resolve, 50));
+      }
+      await webhook;
+      answerGitHub();
+      await slowRead;
+
+      const next = await read(`${GITHUB_REPO}/issues/15`);
+      expect(next.objects.get(`${GITHUB_REPO}/issues/15`)).toMatchObject({
+        status: "closed",
       });
     } finally {
       vi.unstubAllEnvs();

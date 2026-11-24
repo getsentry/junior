@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import type { CacheEntry, PluginCache } from "@sentry/junior-plugin-api";
 import type { StateAdapter } from "chat";
 import { withLock } from "@/chat/state/locks";
@@ -7,6 +8,9 @@ const MAX_CACHE_KEY_LENGTH = 512;
 const LOAD_WAIT_MS = 10_000;
 // How long a `staleIfError` entry outlives its TTL as the last good value.
 const LAST_GOOD_MS = 24 * 60 * 60 * 1000;
+// How long a write without the load lock stays marked. A load that runs
+// longer than this can still store a value older than that write.
+const WRITE_MARK_TTL_MS = 60 * 60 * 1000;
 
 interface StoredEntry<T> {
   /** Set on `staleIfError` entries: after this time, the entry is stale. */
@@ -31,6 +35,30 @@ async function storeEntry<T>(
       : { value: entry.value },
     entry.staleIfError ? entry.ttlMs + LAST_GOOD_MS : entry.ttlMs,
   );
+}
+
+function writeMarkKey(cacheKey: string): string {
+  return `${cacheKey}:written`;
+}
+
+// The load lock keeps a load that started before this write from replacing
+// it. Without the lock, the entry goes, so the next read loads it, and the
+// mark tells the running load not to keep its older value.
+async function writeUnderLoadLock(
+  state: StateAdapter,
+  cacheKey: string,
+  write: (cacheKey: string) => Promise<void>,
+): Promise<void> {
+  await state.connect();
+  const attempt = await withLock(
+    state,
+    `${cacheKey}:load`,
+    async () => await write(cacheKey),
+    { keepAlive: true, waitMs: LOAD_WAIT_MS },
+  );
+  if (attempt.acquired) return;
+  await state.set(writeMarkKey(cacheKey), randomUUID(), WRITE_MARK_TTL_MS);
+  await state.delete(cacheKey);
 }
 
 /** The prefix of every state key of one cache namespace. */
@@ -86,12 +114,19 @@ export function createCache(
             if (loadedMeanwhile && isFresh(loadedMeanwhile)) {
               return loadedMeanwhile.value;
             }
+            const mark = await state.get<string>(writeMarkKey(cacheKey));
             const entry = await load();
             if (entry.ttlMs !== undefined) {
               await storeEntry(state, cacheKey, {
                 ...entry,
                 ttlMs: entry.ttlMs,
               });
+              // A write that could not wait for this load came meanwhile.
+              // This value is older than it, so the next read loads again.
+              const markNow = await state.get<string>(writeMarkKey(cacheKey));
+              if ((markNow ?? null) !== (mark ?? null)) {
+                await state.delete(cacheKey);
+              }
             }
             return entry.value;
           },
@@ -110,24 +145,18 @@ export function createCache(
       key: string,
       next: (current: T | undefined) => CacheEntry<T> | undefined,
     ): Promise<void> {
-      const cacheKey = stateKey(key);
-      await state.connect();
-      // The load lock keeps a load that started before this write from
-      // replacing it.
-      const attempt = await withLock(
-        state,
-        `${cacheKey}:load`,
-        async () => {
-          const current = await state.get<StoredEntry<T>>(cacheKey);
-          const entry = next(current?.value);
-          if (entry?.ttlMs !== undefined) {
-            await storeEntry(state, cacheKey, { ...entry, ttlMs: entry.ttlMs });
-          }
-        },
-        { keepAlive: true, waitMs: LOAD_WAIT_MS },
-      );
-      // Without the lock, drop the entry so the next read loads it.
-      if (!attempt.acquired) await state.delete(cacheKey);
+      await writeUnderLoadLock(state, stateKey(key), async (cacheKey) => {
+        const current = await state.get<StoredEntry<T>>(cacheKey);
+        const entry = next(current?.value);
+        if (entry?.ttlMs !== undefined) {
+          await storeEntry(state, cacheKey, { ...entry, ttlMs: entry.ttlMs });
+        }
+      });
+    },
+    async delete(key: string): Promise<void> {
+      await writeUnderLoadLock(state, stateKey(key), async (cacheKey) => {
+        await state.delete(cacheKey);
+      });
     },
   };
 }
