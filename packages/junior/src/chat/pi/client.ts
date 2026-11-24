@@ -28,16 +28,18 @@ import {
   experimental_decide,
   Experimental_DecisionRefusalError,
   generateImage,
-  generateObject,
   generateText,
   NoImageGeneratedError,
   NoObjectGeneratedError,
+  NoOutputGeneratedError,
+  Output,
   rerank,
+  type EmbedEndEvent,
   type GeneratedFile,
+  type Experimental_DecideEndEvent,
   type Experimental_DecisionQuestion,
   type Experimental_DecisionResult,
   type Experimental_DecisionState,
-  type GenerateObjectResult,
   type LanguageModelUsage,
 } from "ai";
 
@@ -55,16 +57,16 @@ registerApiProvider({
 import type * as z from "zod";
 import type { ZodTypeAny } from "zod";
 import {
-  objectCompletionAttributes,
   structuredOutputErrorCause,
+  structuredOutputLengthError,
   structuredOutputTokenLimit,
 } from "@/chat/pi/object-completion";
 import {
   extractGenAiUsageAttributes,
   logException,
   logWarn,
+  setSpanAttributes,
   withLogContext,
-  withSpan,
   type LogContext,
 } from "@/chat/logging";
 import {
@@ -201,7 +203,6 @@ export const GEN_AI_SERVER_PORT = 443;
 const GEN_AI_OPERATION_CHAT = "chat" as const;
 const GEN_AI_OPERATION_EMBEDDINGS = "embeddings" as const;
 const GEN_AI_OPERATION_RERANK = "rerank" as const;
-const GEN_AI_OPERATION_DECIDE = "decide" as const;
 // AI Gateway input rates in USD per million tokens. Keep estimates
 // model-specific so unlisted configured models remain explicitly unknown.
 const EMBEDDING_INPUT_COST_USD_PER_MILLION_TOKENS: Readonly<
@@ -248,6 +249,28 @@ function embeddingCostUsd(
   return costPerMillionTokens === undefined
     ? undefined
     : (inputTokens * costPerMillionTokens) / 1_000_000;
+}
+
+function inputCostAttributes(costUsd: number | undefined) {
+  return extractGenAiUsageAttributes({
+    cost: { input: costUsd, total: costUsd },
+  });
+}
+
+/**
+ * `ai` runs `onStart` and `onEnd` inside the span that the SDK's
+ * `vercelAIIntegration` starts for the call. Spans are sent when they end, so
+ * call attributes must be set here, not after the call returns.
+ */
+function aiSdkSpanCallbacks<TEndEvent>(
+  attributes: Record<string, unknown>,
+  endAttributes?: (event: TEndEvent) => Record<string, unknown>,
+) {
+  return {
+    onStart: () => setSpanAttributes(attributes),
+    onEnd: (event: TEndEvent) =>
+      setSpanAttributes(endAttributes?.(event) ?? {}),
+  };
 }
 
 function extractText(message: {
@@ -462,16 +485,13 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
   );
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
-  let result: GenerateObjectResult<unknown>;
   try {
-    result = await withSpan(
-      `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
-      "gen_ai.chat",
+    const result = await withLogContext(
       logContextFromMetadata(params.modelId, params.metadata),
-      async (setSpanAttributes) => {
-        const result = await generateObject({
+      () =>
+        generateText({
           model: provider.chat(params.modelId),
-          schema: params.schema,
+          output: Output.object({ schema: params.schema }),
           prompt: params.prompt,
           ...(params.system !== undefined
             ? { system: params.system }
@@ -480,30 +500,35 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
-        }).catch((error: unknown) => {
-          if (NoObjectGeneratedError.isInstance(error)) {
-            setSpanAttributes(
-              objectCompletionAttributes(error.finishReason, error.usage),
-            );
-          }
-          throw error;
-        });
-        setSpanAttributes(
-          objectCompletionAttributes(result.finishReason, result.usage),
-        );
-        return result;
-      },
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-        "gen_ai.request.model": params.modelId,
-        "gen_ai.prompt.name": params.promptName,
-        "server.address": GEN_AI_SERVER_ADDRESS,
-        "gen_ai.provider.auth_mode": credential.mode,
-        "gen_ai.request.reasoning.level": params.thinkingLevel,
-        "gen_ai.request.max_tokens": maxOutputTokens,
-      },
+          ...(params.promptName
+            ? { telemetry: { functionId: params.promptName } }
+            : undefined),
+          ...aiSdkSpanCallbacks({
+            "gen_ai.prompt.name": params.promptName,
+            "gen_ai.provider.auth_mode": credential.mode,
+            "gen_ai.request.reasoning.level": params.thinkingLevel,
+            "gen_ai.request.max_tokens": maxOutputTokens,
+          }),
+        }),
     );
+    // When the budget runs out before any text, the SDK parses no output and
+    // `result.output` throws a NoOutputGeneratedError without the finish
+    // reason. Report it as a spent budget, like a truncated object.
+    if (result.finishReason === "length" && result.text.length === 0) {
+      throw createProviderError(structuredOutputLengthError(), {
+        kind: "invalid_response",
+        modelId: params.modelId,
+      });
+    }
+    const object = result.output as z.infer<TSchema>;
+    const costUsd = bestEffortObjectCompletionCost(
+      params.modelId,
+      result.usage,
+    );
+    return {
+      object,
+      ...(costUsd !== undefined ? { costUsd } : undefined),
+    };
   } catch (error) {
     if (NoObjectGeneratedError.isInstance(error)) {
       throw createProviderError(structuredOutputErrorCause(error), {
@@ -511,13 +536,14 @@ export async function completeObject<TSchema extends ZodTypeAny>(params: {
         modelId: params.modelId,
       });
     }
+    if (NoOutputGeneratedError.isInstance(error)) {
+      throw createProviderError(error, {
+        kind: "invalid_response",
+        modelId: params.modelId,
+      });
+    }
     throw createProviderError(error, { modelId: params.modelId });
   }
-  const costUsd = bestEffortObjectCompletionCost(params.modelId, result.usage);
-  return {
-    object: result.object as z.infer<TSchema>,
-    ...(costUsd !== undefined ? { costUsd } : undefined),
-  };
 }
 
 /** Answer typed decision questions with an AI Gateway decision model, such as Jev. */
@@ -537,44 +563,32 @@ export async function completeDecision<
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
   try {
-    const result = await withSpan(
-      `${GEN_AI_OPERATION_DECIDE} ${params.modelId}`,
-      "gen_ai.decide",
+    const result = await withLogContext(
       logContextFromMetadata(params.modelId, params.metadata),
-      async (setSpanAttributes) => {
-        const result = await experimental_decide({
+      () =>
+        experimental_decide({
           model: provider.decisionModel(params.modelId),
           state: params.state,
           questions: params.questions,
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
-        });
-        const costUsd = decisionCostUsd(
-          params.modelId,
-          result.usage.inputTokens,
-        );
-        setSpanAttributes(
-          extractGenAiUsageAttributes(result.usage, {
-            cost: { input: costUsd, total: costUsd },
-          }),
-        );
-        return { answers: result.answers, costUsd };
-      },
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_DECIDE,
-        "gen_ai.request.model": params.modelId,
-        "gen_ai.prompt.name": params.promptName,
-        "server.address": GEN_AI_SERVER_ADDRESS,
-        "gen_ai.provider.auth_mode": credential.mode,
-      },
+          ...aiSdkSpanCallbacks(
+            {
+              "gen_ai.prompt.name": params.promptName,
+              "gen_ai.provider.auth_mode": credential.mode,
+            },
+            (event: Experimental_DecideEndEvent) =>
+              inputCostAttributes(
+                decisionCostUsd(params.modelId, event.usage.inputTokens),
+              ),
+          ),
+        }),
     );
+    const costUsd = decisionCostUsd(params.modelId, result.usage.inputTokens);
     return {
       answers: result.answers,
-      ...(result.costUsd !== undefined
-        ? { costUsd: result.costUsd }
-        : undefined),
+      ...(costUsd !== undefined ? { costUsd } : undefined),
     };
   } catch (error) {
     throw createProviderError(error, {
@@ -622,61 +636,53 @@ export async function embedTexts(params: {
     params.inputType,
   );
   try {
-    const result = await withSpan(
-      `${GEN_AI_OPERATION_EMBEDDINGS} ${params.modelId}`,
-      "gen_ai.embeddings",
+    const result = await withLogContext(
       logContextFromMetadata(params.modelId, params.metadata),
-      async (setSpanAttributes) => {
-        const result = await embedMany({
+      () =>
+        embedMany({
           model: provider.embeddingModel(params.modelId),
           values: texts,
           ...(providerOptions !== undefined ? { providerOptions } : undefined),
           ...(params.signal !== undefined
             ? { abortSignal: params.signal }
             : undefined),
-        });
-        const dimensions = result.embeddings[0]?.length;
-        if (
-          result.embeddings.length !== texts.length ||
-          !dimensions ||
-          !result.embeddings.every(
-            (embedding) => embedding.length === dimensions,
-          )
-        ) {
-          throw createProviderError(
-            "Embedding provider returned invalid vectors.",
-            {
-              kind: "invalid_response",
-              modelId: params.modelId,
+          ...aiSdkSpanCallbacks(
+            { "gen_ai.provider.auth_mode": credential.mode },
+            (event: EmbedEndEvent) => {
+              const first = event.embedding[0];
+              return {
+                "gen_ai.embeddings.dimension.count": Array.isArray(first)
+                  ? first.length
+                  : undefined,
+                ...inputCostAttributes(
+                  embeddingCostUsd(params.modelId, event.usage.tokens),
+                ),
+              };
             },
-          );
-        }
-        const costUsd = embeddingCostUsd(params.modelId, result.usage.tokens);
-        setSpanAttributes({
-          "gen_ai.embeddings.dimension.count": dimensions,
-          ...extractGenAiUsageAttributes({
-            inputTokens: result.usage.tokens,
-            cost: { input: costUsd, total: costUsd },
-          }),
-        });
-        return { costUsd, dimensions, result };
-      },
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_EMBEDDINGS,
-        "gen_ai.request.model": params.modelId,
-        "server.address": GEN_AI_SERVER_ADDRESS,
-        "gen_ai.provider.auth_mode": credential.mode,
-      },
+          ),
+        }),
     );
+    const dimensions = result.embeddings[0]?.length;
+    if (
+      result.embeddings.length !== texts.length ||
+      !dimensions ||
+      !result.embeddings.every((embedding) => embedding.length === dimensions)
+    ) {
+      throw createProviderError(
+        "Embedding provider returned invalid vectors.",
+        {
+          kind: "invalid_response",
+          modelId: params.modelId,
+        },
+      );
+    }
+    const costUsd = embeddingCostUsd(params.modelId, result.usage.tokens);
     return {
-      ...(result.costUsd !== undefined
-        ? { costUsd: result.costUsd }
-        : undefined),
-      dimensions: result.dimensions,
+      ...(costUsd !== undefined ? { costUsd } : undefined),
+      dimensions,
       model: params.modelId,
       provider: GEN_AI_PROVIDER_NAME,
-      vectors: result.result.embeddings,
+      vectors: result.embeddings,
     };
   } catch (error) {
     const providerError = createProviderError(error, {
@@ -720,51 +726,38 @@ export async function rerankTexts(params: {
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
   try {
-    return await withSpan(
-      `${GEN_AI_OPERATION_RERANK} ${params.modelId}`,
-      "gen_ai.rerank",
+    const result = await withLogContext(
       logContextFromMetadata(params.modelId, params.metadata),
-      async (setSpanAttributes) => {
-        const result = await rerank({
+      () =>
+        rerank({
           model: provider.rerankingModel(params.modelId),
           query,
           documents: params.documents,
-        });
-        // The SDK sorts by score. Plugins get scores in input order.
-        const scores = params.documents.map(() => Number.NaN);
-        for (const { originalIndex, score } of result.ranking) {
-          scores[originalIndex] = score;
-        }
-        if (
-          result.ranking.length !== params.documents.length ||
-          !scores.every(Number.isFinite)
-        ) {
-          throw createProviderError(
-            "Reranking provider returned invalid scores.",
-            {
-              kind: "invalid_response",
-              modelId: params.modelId,
-            },
-          );
-        }
-        const costUsd = gatewayCostUsd(result.providerMetadata);
-        setSpanAttributes(
-          extractGenAiUsageAttributes({ cost: { total: costUsd } }),
-        );
-        return {
-          ...(costUsd !== undefined ? { costUsd } : undefined),
-          scores,
-        };
-      },
-      {
-        "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-        "gen_ai.operation.name": GEN_AI_OPERATION_RERANK,
-        "gen_ai.request.model": params.modelId,
-        "server.address": GEN_AI_SERVER_ADDRESS,
-        "gen_ai.provider.auth_mode": credential.mode,
-        "app.rerank.document.count": params.documents.length,
-      },
+          ...aiSdkSpanCallbacks({
+            "gen_ai.provider.auth_mode": credential.mode,
+            "app.rerank.document.count": params.documents.length,
+          }),
+        }),
     );
+    // The SDK sorts by score. Plugins get scores in input order.
+    const scores = params.documents.map(() => Number.NaN);
+    for (const { originalIndex, score } of result.ranking) {
+      scores[originalIndex] = score;
+    }
+    if (
+      result.ranking.length !== params.documents.length ||
+      !scores.every(Number.isFinite)
+    ) {
+      throw createProviderError("Reranking provider returned invalid scores.", {
+        kind: "invalid_response",
+        modelId: params.modelId,
+      });
+    }
+    const costUsd = gatewayCostUsd(result.providerMetadata);
+    return {
+      ...(costUsd !== undefined ? { costUsd } : undefined),
+      scores,
+    };
   } catch (error) {
     const providerError = createProviderError(error, {
       modelId: params.modelId,
@@ -784,7 +777,7 @@ export async function rerankTexts(params: {
 
 const WEB_SEARCH_TOOL_NAME = "parallelSearch";
 
-/** Run one AI Gateway parallel search inside a `gen_ai.chat` span. */
+/** Run one AI Gateway parallel search. */
 export async function searchWeb(params: {
   modelId: string;
   query: string;
@@ -797,46 +790,32 @@ export async function searchWeb(params: {
   // project attribution as unknown while the key remains set.
   const credential = await resolveGatewayCredential();
   const provider = createGatewayProvider({ apiKey: credential.token });
-  return await withSpan(
-    `${GEN_AI_OPERATION_CHAT} ${params.modelId}`,
-    "gen_ai.chat",
-    {},
-    async (setSpanAttributes) => {
-      const response = await generateText({
-        model: provider.chat(params.modelId),
-        prompt: params.query,
-        tools: {
-          [WEB_SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
-            mode: "agentic",
-            maxResults: params.maxResults,
-          }),
-        },
-        toolChoice: { type: "tool", toolName: WEB_SEARCH_TOOL_NAME },
-        abortSignal: params.signal,
-      });
-      const costUsd = gatewayCostUsd(response.providerMetadata);
-      setSpanAttributes({
-        "gen_ai.response.finish_reasons": [response.finishReason],
-        ...extractGenAiUsageAttributes(response.usage, {
-          cost: { total: costUsd },
-        }),
-      });
-      return {
-        ...(costUsd !== undefined ? { costUsd } : undefined),
-        outputs: response.toolResults
-          .filter((result) => result.toolName === WEB_SEARCH_TOOL_NAME)
-          .map((result): unknown => result.output),
-      };
+  const response = await generateText({
+    model: provider.chat(params.modelId),
+    prompt: params.query,
+    tools: {
+      [WEB_SEARCH_TOOL_NAME]: provider.tools.parallelSearch({
+        mode: "agentic",
+        maxResults: params.maxResults,
+      }),
     },
-    {
-      "gen_ai.provider.name": GEN_AI_PROVIDER_NAME,
-      "gen_ai.operation.name": GEN_AI_OPERATION_CHAT,
-      "gen_ai.request.model": params.modelId,
+    toolChoice: { type: "tool", toolName: WEB_SEARCH_TOOL_NAME },
+    abortSignal: params.signal,
+    ...(params.promptName
+      ? { telemetry: { functionId: params.promptName } }
+      : undefined),
+    ...aiSdkSpanCallbacks({
       "gen_ai.prompt.name": params.promptName,
-      "server.address": GEN_AI_SERVER_ADDRESS,
       "gen_ai.provider.auth_mode": credential.mode,
-    },
-  );
+    }),
+  });
+  const costUsd = gatewayCostUsd(response.providerMetadata);
+  return {
+    ...(costUsd !== undefined ? { costUsd } : undefined),
+    outputs: response.toolResults
+      .filter((result) => result.toolName === WEB_SEARCH_TOOL_NAME)
+      .map((result): unknown => result.output),
+  };
 }
 
 /** Generate or edit images with an AI Gateway image model. */

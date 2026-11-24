@@ -1,5 +1,6 @@
 import * as Sentry from "@/chat/sentry";
 import { getCurrentConversationPrivacy } from "@/chat/conversation-privacy";
+import { getLogContextAttributesForSpan } from "@/chat/logging";
 import { setChatSpanEndAttributes } from "@/chat/pi/chat-span";
 import { subscribeGatewayRequestTiming } from "@/chat/pi/gateway-request-timing";
 import {
@@ -75,6 +76,15 @@ export function getBrowserSentryConfig(): BrowserSentryConfig | undefined {
 // Conversations. They decide when each call starts.
 const recordAiContent = () => getCurrentConversationPrivacy() === "public";
 
+// Runs for every AI SDK span, in the async context of the call. The spans are
+// not Junior agent spans, so they get no `gen_ai.agent.name`.
+function setAiSdkSpanAttributes(span: Sentry.Span): void {
+  span.setAttributes({
+    ...getLogContextAttributesForSpan("gen_ai.chat"),
+    "app.conversation.privacy": getCurrentConversationPrivacy() ?? "private",
+  });
+}
+
 /** Initialize Sentry for the Junior runtime. Call at the top of your entry point. */
 export function initSentry(): void {
   if (Sentry.getClient()) {
@@ -136,18 +146,21 @@ export function initSentry(): void {
     beforeSendSpan: scrubPrivateSentrySpan,
     integrations: (defaultIntegrations) => [
       ...defaultIntegrations.filter(
-        (integration) =>
-          integration.name !== "VercelAI" &&
-          // Dedupe drops an error event that matches the previous one, after
-          // `captureException` has returned its id. A failed Turn shows that
-          // id to the person as its reference, so each capture must send its
-          // event. Sentry still groups the events into one issue.
-          integration.name !== "Dedupe",
+        // Dedupe drops an error event that matches the previous one, after
+        // `captureException` has returned its id. A failed Turn shows that
+        // id to the person as its reference, so each capture must send its
+        // event. Sentry still groups the events into one issue.
+        (integration) => integration.name !== "Dedupe",
       ),
       Sentry.piAiIntegration({
         recordInputs: recordAiContent,
         recordOutputs: recordAiContent,
         onSpanEnd: setChatSpanEndAttributes,
+      }),
+      Sentry.vercelAIIntegration({
+        recordInputs: recordAiContent,
+        recordOutputs: recordAiContent,
+        onSpanStart: setAiSdkSpanAttributes,
       }),
     ],
   });
