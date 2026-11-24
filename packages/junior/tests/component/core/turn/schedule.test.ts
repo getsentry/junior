@@ -1,6 +1,7 @@
 import { eq } from "drizzle-orm";
 import * as z from "zod";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { getQueueProvider } from "@/chat/queue/provider";
 import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";
@@ -247,6 +248,27 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     await expect(claimTurn(engineCtx, second.turnId)).resolves.toMatchObject({
       turnId: second.turnId,
     });
+  });
+
+  it("waits for the Conversation lock before it claims a Turn", async () => {
+    const turn = await schedule("event-1");
+    let claimed: Awaited<ReturnType<typeof claimTurn>> | "pending" = "pending";
+    let claiming: Promise<void> | undefined;
+
+    // The observer holds the lock the way scheduleInput does while it places
+    // an input, so the claim cannot start the Turn in between.
+    await observer.sql.transaction(() =>
+      withConversationEventLock(observer.sql, CONVERSATION_ID, async () => {
+        claiming = claimTurn(engineCtx, turn.turnId).then((result) => {
+          claimed = result;
+        });
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(claimed).toBe("pending");
+      }),
+    );
+    await claiming;
+
+    expect(claimed).toMatchObject({ turnId: turn.turnId });
   });
 
   it("refuses an input row whose Source differs from its Turn's other inputs", async () => {
