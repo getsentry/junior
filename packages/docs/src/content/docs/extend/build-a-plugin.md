@@ -546,18 +546,20 @@ the dispatch Conversation. When you omit it, Junior generates one from
 ### Retry a failed write with a task
 
 A provider can send a webhook only once. When a write in your route fails,
-start a task with `ctx.tasks.start(...)` and return success. Junior saves the
-task before the route returns, then runs it in the background. Heartbeats can
-also start tasks.
+start a task with `ctx.tasks.start(...)` and return success. Junior sends the
+task on its plugin task queue, then runs it in the background. When the send
+fails, `ctx.tasks.start` throws. Heartbeats can also start tasks.
 
-Register the task in `tasks` with a Zod `payload` schema. Junior stores the
-payload as JSON and parses it with the schema before each run. When a run
-throws, Junior runs the task again after 30, 60, 120, and then 240 seconds.
-After five runs fail, the task stops. When a queue message is lost, the
-heartbeat sends the task again.
+Register the task in `tasks` with a Zod `payload` schema. Junior sends the
+payload as JSON in the queue message and parses it with the schema before
+each run. When a run throws, the queue runs the task again after 30, 60, 120,
+and then 240 seconds. After the fifth run fails, Junior logs
+`plugin.task.failed` and stops.
 
-A plugin has one task for each `key`. A second start with the same key does
-nothing. Use a key that names one change, such as the pull request id and its
+Junior turns the plugin, task name, and `key` into a hash and uses it as the
+queue idempotency key, so a key can be longer than the queue allows. A second
+start with the same key does nothing while the queue keeps the first
+message. Use a key that names one change, such as the pull request id and its
 update time. A run can happen more than once, so make the write safe to
 repeat.
 
@@ -600,9 +602,8 @@ defineJuniorPlugin({
 });
 ```
 
-The task context has `ctx.payload`, `ctx.key`, `ctx.state`,
-`ctx.annotations`, `ctx.codeChanges`, and `ctx.conversationChanges`, as in a
-plugin route.
+The task context has `ctx.payload`, `ctx.state`, `ctx.annotations`,
+`ctx.codeChanges`, and `ctx.conversationChanges`, as in a plugin route.
 
 ## Add a link type
 

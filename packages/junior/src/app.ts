@@ -556,7 +556,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       dispatchForIdentity,
       events,
       // The queue is chosen below, before any route runs.
-      sendPluginTask: (message) => sendPluginTask(message),
+      sendPluginTask: (message, options) => sendPluginTask(message, options),
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     if (dashboard && !dashboard.disabled) {

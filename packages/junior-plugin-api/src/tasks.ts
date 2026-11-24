@@ -122,18 +122,17 @@ export interface PluginStartedTaskContext<
   annotations: PluginConversationAnnotations;
   codeChanges: CodeChangePublisher;
   conversationChanges: PluginConversationChanges;
-  /** The key that started this task. */
-  key: string;
   name: string;
-  /** The stored payload, parsed with the task's `payload` schema. */
+  /** The payload from `tasks.start`, parsed with the task's `payload` schema. */
   payload: Payload;
   state: PluginState;
 }
 
 /**
  * Task that runs only when the plugin starts it with `tasks.start`. Junior
- * stores the payload as JSON and parses it with `payload` before each
- * attempt. A failed attempt runs again later, a bounded number of times.
+ * sends the payload as JSON in the queue message and parses it with
+ * `payload` before each attempt. A failed attempt runs again later, a
+ * bounded number of times.
  */
 export interface PluginStartedTaskDefinition<
   Schema extends z.ZodType = z.ZodType,
@@ -153,7 +152,10 @@ export type PluginTasks = Record<string, PluginTaskDefinition>;
 /** Input of `tasks.start`. */
 export const pluginTaskStartInputSchema = z
   .object({
-    /** One task per plugin and key. A second start with the key does nothing. */
+    /**
+     * One task per plugin and key while the queue keeps the message. A
+     * second start with the key in that time does nothing.
+     */
     key: nonBlankStringSchema.max(500),
     /** Name of a task with a `payload` schema in this plugin's `tasks`. */
     name: nonBlankStringSchema,
@@ -164,7 +166,7 @@ export const pluginTaskStartInputSchema = z
 
 export type PluginTaskStartInput = z.output<typeof pluginTaskStartInputSchema>;
 
-/** Starts this plugin's tasks. Junior stores each one before it runs. */
+/** Starts this plugin's tasks on the plugin task queue. */
 export interface PluginTaskStarter {
   start(input: PluginTaskStartInput): Promise<void>;
 }

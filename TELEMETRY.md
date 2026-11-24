@@ -100,7 +100,7 @@ attributes. Nested logs and spans inherit them.
 | Table growth or size                 | `db.table.rows`, `db.table.size` gauges by `db.collection.name`, `db.table_size.failed`              | `db/table-size.ts`                                              |
 | Slow or failing SQL                  | automatic `db` spans; group by `db.query.text`; `app.db.transport`                                   | `db/neon.ts`                                                    |
 | Push notification missing or late    | `notification.*`, spans `plugin.task` (`notifyReply`), `notification.inbox_item.push`, `notification.push.send` | `chat/notifications/`                                           |
-| Started plugin task retried or failed | span `plugin.task` (`app.plugin.task.attempt`), `plugin.task.failed`, `plugin.task.recovery.failed` | `chat/plugins/started-task-runner.ts` |
+| Started plugin task retried or failed | span `plugin.task` (`app.plugin.task.attempt` is the queue delivery), `plugin.task.failed` | `chat/plugins/started-task-runner.ts` |
 | Dashboard page or API slow           | `pageload`, `navigation`, `ui.render`, `deserialize`, `serialize`, `function` spans                  | `packages/junior-dashboard/src/client/sentry.ts`, `api/http.ts` |
 | Dashboard report stale or slow      | spans `cache.get` (`cache.hit`, `cache.key`, `cache.item_size`, `app.cache.stale`, `app.cache.age_ms`), `cache.refresh` | `api/cached-report.ts`                                          |
 | Dashboard feed response too big     | `app.api.response.field_chars.*`, `app.conversation_feed.{rows,threads,waiting_rows}` on `serialize`; `conversation_feed.*` metrics | `api/conversations/feed-response.ts` |

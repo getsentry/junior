@@ -15,7 +15,6 @@ import {
   type AppEventPublisher,
 } from "@/chat/plugins/agent-hooks";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
-import { recoverStartedPluginTasks } from "@/chat/plugins/started-task-runner";
 import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import { logException, logInfo } from "@/chat/logging";
 import { recoverConversationWork } from "@/chat/task-execution/heartbeat";
@@ -226,15 +225,6 @@ export async function runHeartbeat(args: {
   } catch (error) {
     // Timer claims expire for retry; a failure must not block plugin heartbeats.
     logException(error, "watches.timer.heartbeat.failed");
-  }
-  try {
-    await recoverStartedPluginTasks({
-      nowMs: args.nowMs,
-      send: args.sendPluginTask,
-    });
-  } catch (error) {
-    // Each lease expires again, and a later heartbeat retries.
-    logException(error, "plugin.task.recovery.failed");
   }
   await runPluginHeartbeats({
     conversationWorkQueue: queue,

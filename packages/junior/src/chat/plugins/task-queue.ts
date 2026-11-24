@@ -19,10 +19,16 @@ import {
   verifyQueueMessage,
 } from "@/chat/queue/sign";
 
+/** Options for one plugin task send. */
+export interface PluginTaskSendOptions {
+  /** Queue dedupe key of a started task. A session task derives its own. */
+  idempotencyKey?: string;
+}
+
 /** Deploy topic name. Keep stable for Vercel queue wiring. */
 export const PLUGIN_TASK_QUEUE_TOPIC = "junior_plugin_tasks";
 
-/** Queue deliveries, and runs of a started task, before a task stops. */
+/** Queue deliveries of one plugin task before it stops. */
 export const PLUGIN_TASK_MAX_DELIVERIES = 5;
 const PLUGIN_TASK_SIGN_CONTEXT = "junior.plugin_task_queue.v1";
 const PLUGIN_TASK_SIGN_VERSION = "v1" as const;
@@ -48,12 +54,12 @@ export type SessionPluginTaskMessage = z.output<
   typeof sessionPluginTaskMessageSchema
 >;
 
-/** A task that a plugin started. Its row in `junior_plugin_tasks` holds the payload. */
+/** A task that a plugin started with `tasks.start`, with its JSON payload. */
 const startedPluginTaskMessageSchema = z
   .object({
     name: z.string().min(1),
+    payload: z.json(),
     plugin: z.string().min(1),
-    taskId: z.uuid(),
   })
   .strict();
 
@@ -74,11 +80,11 @@ const pluginTaskSign = {
   context: PLUGIN_TASK_SIGN_CONTEXT,
   schema: pluginTaskQueueMessageSchema,
   signatureVersion: PLUGIN_TASK_SIGN_VERSION,
-  // A task id is a UUID, so its parts cannot match the parts of a session
-  // task message.
+  // JSON text has no raw null byte, so the parts of a started task cannot
+  // match the parts of a session task message.
   parts: (message: PluginTaskQueueMessage) =>
-    "taskId" in message
-      ? [message.plugin, message.name, message.taskId]
+    "payload" in message
+      ? [message.plugin, message.name, JSON.stringify(message.payload)]
       : [
           message.plugin,
           message.name,
@@ -114,6 +120,25 @@ export function pluginTaskId(args: {
   return `plugin-task_${digest}`;
 }
 
+/**
+ * Build the queue idempotency key of a started task. Vercel Queues accepts
+ * at most 256 characters, so send a hash, never the plugin's key.
+ */
+export function startedPluginTaskIdempotencyKey(args: {
+  key: string;
+  name: string;
+  plugin: string;
+}): string {
+  const digest = createHash("sha256")
+    .update(args.plugin)
+    .update("\0")
+    .update(args.name)
+    .update("\0")
+    .update(args.key)
+    .digest("hex");
+  return `plugin-task-start_${digest}`;
+}
+
 /** Sign a plugin task message for tests and local checks. */
 export function signPluginTaskQueueMessage(
   message: PluginTaskQueueMessage,
@@ -145,9 +170,12 @@ function pluginTaskCallback(options: { showInboxItem?: ShowInboxItem }) {
     onRejected: logPluginTaskQueueMessageRejected,
     retryDelaySeconds: pluginTaskRetryDelaySeconds,
     // Load the runner on first use so this module can send without a cycle.
-    run: async (message) => {
+    run: async (message, metadata) => {
       const { processPluginTask } = await import("./task-runner");
-      await processPluginTask(message, options);
+      await processPluginTask(message, {
+        ...options,
+        deliveryCount: metadata.deliveryCount,
+      });
     },
     verify: verifyPluginTaskQueueMessage,
   });
@@ -156,14 +184,14 @@ function pluginTaskCallback(options: { showInboxItem?: ShowInboxItem }) {
 /** Send one plugin task through the shared signed delivery path. */
 export async function sendVercelPluginTask(
   message: PluginTaskQueueMessage,
+  options: PluginTaskSendOptions = {},
 ): Promise<void> {
   await getQueueProvider().send(
     PLUGIN_TASK_QUEUE_TOPIC,
     signPluginTaskQueueMessage(message),
     {
-      // A started task's row claims each run, and the heartbeat sends a lost
-      // task again, so a key must not drop that send.
-      idempotencyKey: "taskId" in message ? undefined : pluginTaskId(message),
+      idempotencyKey:
+        "params" in message ? pluginTaskId(message) : options.idempotencyKey,
       retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
     },
   );

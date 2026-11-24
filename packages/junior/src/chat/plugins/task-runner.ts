@@ -62,6 +62,7 @@ import {
   pluginTaskParamsSchema,
   type PluginTaskParams,
   type PluginTaskQueueMessage,
+  type PluginTaskSendOptions,
   type SessionPluginTaskMessage,
 } from "./task-queue";
 import { processStartedPluginTask } from "./started-task-runner";
@@ -81,9 +82,14 @@ const PLUGIN_TASK_LOCK_TTL_MS = 5 * 60 * 1000;
  * Send one plugin task to its queue. The app chooses the queue: Vercel Queue
  * by default, or an in-process queue.
  */
-export type SendPluginTask = (message: PluginTaskQueueMessage) => Promise<void>;
+export type SendPluginTask = (
+  message: PluginTaskQueueMessage,
+  options?: PluginTaskSendOptions,
+) => Promise<void>;
 
 interface ProcessPluginTaskOptions {
+  /** Queue delivery of this message, when the queue reports it. */
+  deliveryCount?: number | undefined;
   /** Shows an Inbox item that a started task changed. */
   showInboxItem?: ShowInboxItem | undefined;
   signal?: AbortSignal;
@@ -530,7 +536,7 @@ export async function processPluginTask(
   message: PluginTaskQueueMessage,
   options: ProcessPluginTaskOptions = {},
 ): Promise<void> {
-  if ("taskId" in message) {
+  if ("payload" in message) {
     await processStartedPluginTask(message, options);
     return;
   }

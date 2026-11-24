@@ -4007,7 +4007,7 @@ describe("GitHub-owned pull request outcomes", () => {
         },
       ]);
 
-      // Junior stores the payload as JSON and runs the task later.
+      // Junior sends the payload as JSON and runs the task later.
       lookup.fails = false;
       const task = githubPlugin().tasks?.["applyPullRequestOutcome"];
       if (!task?.payload) throw new Error("Expected a started task");
@@ -4028,7 +4028,6 @@ describe("GitHub-owned pull request outcomes", () => {
           inboxItems,
         }),
         db,
-        key: started[0]!.key,
         log: { error() {}, info() {}, warn() {} },
         name: "applyPullRequestOutcome",
         payload: task.payload.parse(

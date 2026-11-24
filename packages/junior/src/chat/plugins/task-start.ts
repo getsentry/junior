@@ -1,26 +1,19 @@
 /**
  * Start a plugin task from a plugin route or heartbeat.
  *
- * Core stores the task and its JSON payload before it sends the small signed
- * queue message, so a lost message only delays the task. The heartbeat sends
- * it again.
+ * The signed queue message carries the task's JSON payload. Its idempotency
+ * key is a hash of the plugin, task name, and key, so a second start for the
+ * key does nothing while the queue keeps the message.
  */
-import { randomUUID } from "node:crypto";
 import {
   pluginTaskStartInputSchema,
   type PluginStartedTaskDefinition,
   type PluginTasks,
   type PluginTaskStarter,
 } from "@sentry/junior-plugin-api";
-import { getDb } from "@/chat/db";
-import { juniorPluginTasks } from "@/db/schema/plugin-tasks";
+import * as z from "zod";
+import { startedPluginTaskIdempotencyKey } from "./task-queue";
 import type { SendPluginTask } from "./task-runner";
-
-/**
- * How long a task may stay `pending` or `running` before the heartbeat sends
- * it again. It is longer than a run and the longest retry delay.
- */
-export const PLUGIN_TASK_LEASE_MS = 10 * 60 * 1000;
 
 /** Return the task that `tasks.start` can start, or undefined. */
 export function startedTaskDefinition(
@@ -48,30 +41,20 @@ export function createPluginTaskStarter(args: {
           `Plugin task "${pluginName}.${name}" has no payload schema, so tasks.start cannot start it`,
         );
       }
-      // Store the JSON form, and check that the task can read it back.
-      const stored: unknown = JSON.parse(JSON.stringify(payload) ?? "null");
-      task.payload.parse(stored);
-      const now = Date.now();
-      const [row] = await getDb()
-        .insert(juniorPluginTasks)
-        .values({
-          attempts: 0,
-          createdAt: new Date(now),
-          id: randomUUID(),
-          key,
-          leaseExpiresAt: new Date(now + PLUGIN_TASK_LEASE_MS),
-          name,
-          payload: stored,
-          plugin: pluginName,
-          status: "pending",
-          updatedAt: new Date(now),
-        })
-        .onConflictDoNothing({
-          target: [juniorPluginTasks.plugin, juniorPluginTasks.key],
-        })
-        .returning({ id: juniorPluginTasks.id });
-      if (!row) return;
-      await args.send({ name, plugin: pluginName, taskId: row.id });
+      // Send the JSON form, and check that the task can read it back.
+      const json: unknown = JSON.parse(JSON.stringify(payload) ?? "null");
+      const sent = z.json().parse(json);
+      task.payload.parse(sent);
+      await args.send(
+        { name, payload: sent, plugin: pluginName },
+        {
+          idempotencyKey: startedPluginTaskIdempotencyKey({
+            key,
+            name,
+            plugin: pluginName,
+          }),
+        },
+      );
     },
   };
 }

@@ -14,14 +14,14 @@ import {
 
 export const GITHUB_PULL_REQUEST_OUTCOME_TASK = "applyPullRequestOutcome";
 
-const storedDateSchema = z.iso.datetime().transform((value) => new Date(value));
+const isoDateSchema = z.iso.datetime().transform((value) => new Date(value));
 
 const pullRequestOutcomePayloadSchema =
   githubPullRequestOutcomeInputSchema.extend({
-    closedAt: storedDateSchema.optional(),
-    mergedAt: storedDateSchema.optional(),
-    openedAt: storedDateSchema,
-    updatedAt: storedDateSchema,
+    closedAt: isoDateSchema.optional(),
+    mergedAt: isoDateSchema.optional(),
+    openedAt: isoDateSchema,
+    updatedAt: isoDateSchema,
   });
 
 /** One task per outcome. A later change of the pull request is a new outcome. */
@@ -31,7 +31,7 @@ export function githubPullRequestOutcomeTaskKey(
   return `pull-request-outcome:${outcome.pullRequestId}:${outcome.state}:${outcome.updatedAt.toISOString()}`;
 }
 
-/** Apply a stored outcome. The stored row, code index, chips, and Inbox closes all repeat safely. */
+/** Apply the outcome in the task payload. The outcome row, code index, chips, and Inbox closes all repeat safely. */
 export const githubPullRequestOutcomeTask: PluginStartedTaskDefinition<
   typeof pullRequestOutcomePayloadSchema
 > = {
