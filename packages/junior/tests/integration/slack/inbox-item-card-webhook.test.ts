@@ -34,6 +34,7 @@ import {
 } from "@/chat/inbox-items/store";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { getConversationWorkState } from "@/chat/task-execution/store";
+import { juniorInboxItems } from "@/db/schema";
 import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { resetSlackApiMockState } from "../../msw/handlers/slack-api";
@@ -541,7 +542,7 @@ describe("Slack webhook: Inbox item cards", () => {
         ?.elements?.map((element) => element.action_id),
     ).toEqual(["junior_review_item:dismiss", "junior_review_item:choice:0"]);
 
-    const [item] = await getDb().query.juniorInboxItems.findMany();
+    const [item] = await getDb().select().from(juniorInboxItems);
     const resume = (actionTs: string) =>
       click({
         actionId: "junior_review_item:choice:0",
