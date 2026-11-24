@@ -11,7 +11,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
 
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
     await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
     await expect(page).toHaveTitle(/^\(\d+\) Conversations - Junior$/);

@@ -1,6 +1,7 @@
 import type { Hono } from "hono";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createApp } from "@/app";
+import { JUNIOR_IOS_CLIENT } from "@/api/mcp/oauth/client-metadata";
 import { createPersonalToken } from "@/personal-tokens/store";
 import {
   approveMcpClient,
@@ -182,6 +183,50 @@ describe("remote MCP HTTP", () => {
     expect(rotatedSearch).toMatchObject({
       structuredContent: { conversations: [] },
     });
+  });
+
+  it("signs in Junior's iOS app with no client document and its URL scheme redirect", async () => {
+    const app = await createApp({ allowedDomains: MCP_TEST_ALLOWED_DOMAINS });
+    const pkce = createPkce();
+    const [redirectUri] = JUNIOR_IOS_CLIENT.redirectUris;
+
+    const authorize = await app.request(
+      mcpAuthorizeUrl({
+        client_id: JUNIOR_IOS_CLIENT.clientId,
+        code_challenge: pkce.challenge,
+        redirect_uri: redirectUri ?? "",
+        state: "app-state",
+      }),
+    );
+    const consentUrl = authorize.headers.get("location") ?? "";
+    const page = await openMcpConsentPage(app, consentUrl, MCP_TEST_VIEWER);
+    const approved = await approveMcpConsent(app, {
+      consentUrl,
+      csrf: page.csrf ?? "",
+      email: MCP_TEST_VIEWER,
+      referrerPolicy: page.referrerPolicy,
+    });
+    const callback = new URL(approved.headers.get("location") ?? "");
+    const issued = await requestMcpTokens(app, {
+      client_id: JUNIOR_IOS_CLIENT.clientId,
+      code: callback.searchParams.get("code") ?? "",
+      code_verifier: pkce.verifier,
+      grant_type: "authorization_code",
+      redirect_uri: redirectUri ?? "",
+      resource: MCP_TEST_URL,
+    });
+
+    expect(page.html).toContain("Connect iOS app");
+    expect(page.html).toContain("junior.sentry.dev");
+    // The browser checks the redirect after the consent POST against this.
+    expect(page.contentSecurityPolicy).toContain(
+      "form-action 'self' junior-ios:",
+    );
+    expect(`${callback.protocol}//${callback.host}${callback.pathname}`).toBe(
+      redirectUri,
+    );
+    expect(callback.searchParams.get("state")).toBe("app-state");
+    expect(issued.status).toBe(200);
   });
 
   it("rejects a personal token and a token for a domain that is no longer allowed", async () => {

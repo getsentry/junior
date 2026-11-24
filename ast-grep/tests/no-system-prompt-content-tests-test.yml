@@ -1,0 +1,15 @@
+id: no-system-prompt-content-tests
+valid:
+  - 'import { buildPluginSystemPromptContributions } from "@/chat/prompt";'
+  - 'import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";'
+  - "expect(result.systemPrompt).toBe(other.systemPrompt);"
+  - "expect(result.systemPrompt).toEqual(other.systemPrompt);"
+  - 'expect(sections.join("\\n\\n")).toBe(await buildDeploymentSystemPrompt("local", "conversation"));'
+invalid:
+  - 'import { buildCoreSystemPromptSections } from "@/chat/prompt";'
+  - 'import { buildCoreSystemPromptSections, type SystemPromptSection } from "@/chat/prompt";'
+  - 'import { buildPluginSystemPromptContributions, buildCoreSystemPromptSections } from "@/chat/prompt";'
+  - 'import { a, buildCoreSystemPromptSections, b } from "@/chat/prompt";'
+  - 'expect(result.systemPrompt).toContain("# Personality");'
+  - "expect(result.systemPrompt).not.toMatch(/World/);"
+  - 'expect(result.systemPrompt).toBe("You are Junior");'

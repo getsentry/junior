@@ -3,6 +3,7 @@ import type { Locator, Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
 import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
+import { mockSearchRows } from "../search-fixture";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -48,6 +49,20 @@ export const rollout = {
     ],
   },
   title: "Approve the payments-v42 rollout",
+};
+
+// A To-do that the checkout Conversation's agent gave the viewer. Its item
+// links no Conversation, as the server sends it.
+export const todoForYou = {
+  ...base,
+  owner: { id: conversationId, kind: "conversation" },
+  rootConversationId: conversationId,
+  body: "Check the deploy calendar before the next release.",
+  createdAt: "2026-08-07T11:56:00.000Z",
+  id: "item-todo-rollback-window",
+  title: "Confirm the rollback window",
+  todoId: 13,
+  visibility: "private" as const,
 };
 
 export const license = {
@@ -424,6 +439,21 @@ export async function mockInboxItems(
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
   const closedNow: MockItem[] = [];
+  // A search finds snoozed and closed items too, as on the server.
+  await mockSearchRows(page, {
+    inboxItems: () =>
+      [...open, ...closedNow, ...archived].map((i) => ({
+        body: i.body,
+        id: i.id,
+        status:
+          i.status === "open"
+            ? "open"
+            : i.status === "dismissed"
+              ? "dismissed"
+              : "done",
+        title: i.title,
+      })),
+  });
   await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
     const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
@@ -450,6 +480,7 @@ export async function mockInboxItems(
           snoozed: new Set(
             open.filter((i) => asleep(sleeping, i)).map((i) => i.owner.id),
           ).size,
+          todos: needsViewer.filter((i) => "todoId" in i).length,
         },
       });
     }
@@ -538,8 +569,8 @@ export async function mockInboxItems(
 }
 
 /**
- * Serve the viewer's code changes from their person Code overview, for the
- * Pull requests view. Each change is in getsentry/payments and opened 30
+ * Serve the viewer's code changes from their person Code overview, for
+ * Code · Mine. Each change is in getsentry/payments and opened 30
  * days before the report.
  */
 export async function mockViewerCodeChanges(
@@ -549,6 +580,11 @@ export async function mockViewerCodeChanges(
     idleDays: number;
     number: number;
     size?: { additions?: number; changedFiles?: number; deletions?: number };
+    stack?: {
+      id: string;
+      kind: "automation" | "conversation";
+      title?: string;
+    };
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
@@ -579,6 +615,7 @@ export async function mockViewerCodeChanges(
           provider: "github",
           repository: "getsentry/payments",
           ...(change.size ? { size: change.size } : undefined),
+          ...(change.stack ? { stack: change.stack } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,
@@ -603,13 +640,18 @@ export function rowHead(scope: Page | Locator, title: string) {
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
  * row's Open action: on hover on a Conversation row, or on the open card
- * of an item row.
+ * of an item row. A phone hides a closed row's actions, so there a row
+ * with nothing to expand opens from its head.
  */
 export async function openRow(head: Locator) {
   const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
   const open = row.getByRole("link", { name: "Open conversation" }).first();
   await head.hover();
-  if (!(await open.isVisible())) await expandRow(head);
+  if (!(await open.isVisible())) {
+    const expand = row.locator('[aria-controls^="inbox-row-"]').first();
+    if ((await expand.count()) === 0) return head.click();
+    await expand.click();
+  }
   await open.click();
 }
 

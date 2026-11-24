@@ -17,6 +17,7 @@ import {
   githubRequest,
   issueInstallationToken,
 } from "../credential-support.js";
+import { githubGraphqlRequest } from "./graphql-request.js";
 import type { InstallationTokens } from "../installation-tokens.js";
 import {
   ADD_REVIEW_REACTION,
@@ -91,6 +92,38 @@ export async function loadPullRequest(
   );
 }
 
+/**
+ * Return a reader of repository full names by repository id, with one
+ * metadata-only token for every repository of the installation. The reader
+ * returns undefined when GitHub does not find the repository.
+ */
+export async function loadRepositoryFullNames(
+  env: GitHubInstallationEnv,
+): Promise<(repositoryId: string) => Promise<string | undefined>> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { metadata: "read" },
+  });
+  return async (repositoryId) => {
+    try {
+      return z
+        .object({ full_name: z.string().min(1) })
+        .parse(
+          await githubRequest(
+            "https://api.github.com",
+            `/repositories/${encodeURIComponent(repositoryId)}`,
+            { token: token.token },
+          ),
+        ).full_name;
+    } catch (error) {
+      if (error instanceof GitHubRequestError && error.status === 404) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
+}
+
 /** GitHub cannot reach a repository: it is gone, or the installation lost it. */
 export class GitHubRepositoryUnreachableError extends Error {
   constructor(repositoryId: number) {
@@ -142,7 +175,7 @@ export async function loadPullRequestLifecycles(
     repository.full_name,
     "pull request lifecycle",
   );
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...pullRequestLifecycles(input.numbers.length),
       variables: {
@@ -153,7 +186,6 @@ export async function loadPullRequestLifecycles(
         ),
       },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -179,7 +211,7 @@ export async function searchOpenPullRequestMergeability(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...OPEN_PULL_REQUEST_MERGEABILITY,
       variables: {
@@ -187,7 +219,6 @@ export async function searchOpenPullRequestMergeability(
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -206,12 +237,11 @@ export async function loadPullRequestConflictHistory(
     permissions: { pull_requests: "read" },
     repositories: [name],
   });
-  return await githubRequest("https://api.github.com", "/graphql", {
+  return await githubGraphqlRequest({
     body: {
       ...PULL_REQUEST_CONFLICT_HISTORY,
       variables: { name, number: pullRequest.number, owner },
     },
-    method: "POST",
     token: token.token,
   });
 }
@@ -542,9 +572,8 @@ export async function loadPullRequestMergeState(
     document: typeof PULL_REQUEST_NEXT_ACTION,
     extra?: { before: string },
   ) =>
-    await githubRequest("https://api.github.com", "/graphql", {
+    await githubGraphqlRequest({
       body: { ...document, variables: { ...variables, ...extra } },
-      method: "POST",
       token: token.token,
     });
   const readPull = async () =>

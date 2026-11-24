@@ -11,6 +11,10 @@ public struct JuniorServer: Equatable, Sendable, Codable {
   /// so nothing leaves the device.
   public static let demo = JuniorServer(baseURL: URL(string: "https://demo.junior.invalid")!)
 
+  /// Sentry's Junior. Sign in suggests it until the app has signed in to
+  /// another server.
+  public static let production = JuniorServer(baseURL: URL(string: "https://junior-prod.sentry.dev")!)
+
   public var isDemo: Bool { self == .demo }
 
   /// The MCP endpoint, which is also the OAuth resource indicator.

@@ -45,7 +45,8 @@ export interface OAuthBearerCredentials {
   type: "oauth-bearer";
   domains: string[];
   apiHeaders?: Record<string, string>;
-  authTokenEnv: string;
+  /** Env var of a host token, and the Sandbox placeholder's name. Optional with `oauth`. */
+  authTokenEnv?: string;
   authTokenPlaceholder?: string;
 }
 

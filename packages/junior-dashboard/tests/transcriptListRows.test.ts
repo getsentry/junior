@@ -97,14 +97,18 @@ function messageEntry(
   };
 }
 
-function toolEntry(seq: number, name = "bash"): RenderedTranscriptEntry {
+function toolEntry(
+  seq: number,
+  name = "bash",
+  itemId = `item-${seq}`,
+): RenderedTranscriptEntry {
   return {
     key: `${seq}:tool:0`,
     kind: "tool",
     part: {
       id: `call-${seq}`,
       name,
-      output: JSON.stringify({ item: { id: `item-${seq}` } }),
+      output: JSON.stringify({ item: { id: itemId } }),
       status: "completed",
       type: "tool_call",
     },
@@ -204,6 +208,34 @@ describe("transcriptListRows", () => {
       { keys: ["3:tool:0"], kind: "entry", seq: 5 },
       { keys: ["6:message:0"], kind: "entry", seq: 6 },
       { keys: ["7:tool:0"], kind: "entry", seq: 6 },
+    ]);
+  });
+
+  it("shows an item that Junior asked twice once, at its last ask", () => {
+    const rows = transcriptListRows({
+      entries: [
+        messageEntry(1, "user"),
+        toolEntry(2, "addInboxItem", "item-a"),
+        toolEntry(3, "addInboxItem", "item-a"),
+        messageEntry(4),
+        messageEntry(5, "user"),
+        toolEntry(6, "addInboxItem", "item-b"),
+        messageEntry(7),
+        messageEntry(8, "user"),
+        toolEntry(9, "addInboxItem", "item-b"),
+      ],
+      keyPrefix: "c",
+      knownActivityKeys: new Map(),
+    });
+
+    expect(rowSummary(rows)).toEqual([
+      { keys: ["1:message:0"], kind: "entry", seq: 1 },
+      { keys: ["4:message:0"], kind: "entry", seq: 4 },
+      { keys: ["3:tool:0"], kind: "entry", seq: 4 },
+      { keys: ["5:message:0"], kind: "entry", seq: 5 },
+      { keys: ["7:message:0"], kind: "entry", seq: 7 },
+      { keys: ["8:message:0"], kind: "entry", seq: 8 },
+      { keys: ["9:tool:0"], kind: "entry", seq: 8 },
     ]);
   });
 

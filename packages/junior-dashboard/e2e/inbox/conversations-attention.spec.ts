@@ -39,7 +39,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const title = "Investigate checkout latency";
       const row = rowLink(list, title);
@@ -114,7 +114,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       page,
       dashboard,
     }) => {
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const rows = list.getByRole("listitem");
       const waiting = rows.filter({
@@ -130,6 +130,18 @@ test.describe("new UI", { tag: "@new" }, () => {
       const filter = (name: string) =>
         filters.getByRole("link", { exact: true, name });
       await expect(filter("All")).toHaveAttribute("aria-current", "page");
+      // All, the default, is at the right edge, after Pinned.
+      await expect(filters.getByRole("link")).toHaveText([
+        /^Done$/,
+        /^Watching$/,
+        /^Working$/,
+        /^Needs you$/,
+        /^Pinned$/,
+        /^All$/,
+      ]);
+      await screenshot(page, "conversation-state-filters", {
+        lightTheme: true,
+      });
 
       // Needs you lists only the rows that wait on the viewer.
       await filter("Needs you").click();
@@ -172,7 +184,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const finishedRow = list.getByRole("link", {
         name: /Closed issue summary/,
@@ -199,7 +211,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       dashboard,
     }) => {
       await viewAsParticipant(page);
-      await page.goto(`${dashboard.baseURL}/?view=conversations`);
+      await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
       const list = conversationsList(page);
       const renameRequest = page.waitForRequest(
         (request) =>

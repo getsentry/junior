@@ -8,6 +8,7 @@
  */
 import type {
   EventPublisher,
+  PluginCodeChanges,
   PluginConversationInboxItems,
   PluginLogger,
   PluginState,
@@ -100,6 +101,7 @@ async function checkConflict(
   // Conflict events match only `repo` and `pullRequest`.
   if (!(await args.events.hasMatch?.(events))) return;
   for (const event of await applyGitHubConflictPolicy({
+    codeChanges: args.codeChanges,
     conflict: input.conflict,
     db: args.db,
     draft: input.draft,
@@ -150,6 +152,7 @@ async function checkRepository(
     }
     // oxlint-disable-next-line no-await-in-loop -- Each page needs the cursor from the page before.
     await closeGitHubConflictItems({
+      codeChanges: args.codeChanges,
       db: args.db,
       log: args.log,
       numbers: mergeable,
@@ -165,6 +168,7 @@ async function checkRepository(
 }
 
 interface CheckArgs {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   events: EventPublisher;
   loadHistory(ref: GitHubPullRequestRef): Promise<unknown>;
@@ -184,11 +188,15 @@ async function runCheck(
   try {
     unknown = await checkRepository(args, check.repositoryFullName);
   } catch (error) {
-    args.log.error("GitHub merge conflict check failed", {
-      attempts: check.attempts,
-      errorType: error instanceof Error ? error.name : "UnknownError",
-      repository: check.repositoryFullName,
-    });
+    args.log.error(
+      "GitHub merge conflict check failed",
+      {
+        attempts: check.attempts,
+        errorType: error instanceof Error ? error.name : "UnknownError",
+        repository: check.repositoryFullName,
+      },
+      error,
+    );
     // Keep the claim, so the check runs again when the claim ends.
     if (check.attempts >= MAX_ATTEMPTS) {
       await settleGitHubConflictCheck(args.state, check);
@@ -212,7 +220,7 @@ export async function runGitHubConflictChecks(args: CheckArgs): Promise<void> {
   const nowMs = args.now.getTime();
   let checked = 0;
   for (const repositoryFullName of await listGitHubRepositoriesWithOpenPullRequests(
-    args.db,
+    args.codeChanges,
   )) {
     if (checked >= CHECK_LIMIT) break;
     // oxlint-disable-next-line no-await-in-loop -- Claim and check one repository at a time, up to CHECK_LIMIT.

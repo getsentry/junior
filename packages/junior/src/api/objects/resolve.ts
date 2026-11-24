@@ -119,6 +119,7 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
 function pluginLinkTypes(plugin: PluginRegistration): ObjectLinkType[] {
   const name = plugin.manifest.name;
   return (plugin.objectLinks ?? []).map((link) => ({
+    ...(link.cacheCards === false ? { cacheCards: false } : undefined),
     canView: (viewer, url) =>
       link.canView(objectLinkContext(name, viewer), url),
     filters: link.filters,

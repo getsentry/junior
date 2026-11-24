@@ -176,6 +176,12 @@ export interface ObjectLinkContext extends PluginContext {
  */
 export interface PluginObjectLinkDefinition {
   /**
+   * Set false when `resolve` reads one cache entry per object that your
+   * webhooks keep current. Junior then keeps no card copy per viewer, so a
+   * change shows on the next read. `canView` still runs on each read.
+   */
+  cacheCards?: false;
+  /**
    * Return whether `ctx.viewer` may see the object. Junior calls it before
    * each card read and again on each Attach. Return true for a public
    * object. Return false when you cannot tell, so the card does not show

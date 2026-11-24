@@ -16,10 +16,13 @@ export interface QueueMessageMetadata {
   topicName: string;
 }
 
-/** Tells the provider to acknowledge a failed message so it is not retried. */
-export interface QueueRetryDirective {
-  acknowledge: true;
-}
+/**
+ * Tells the provider what to do with a failed message: acknowledge it so it
+ * is not retried, or deliver it again after `afterSeconds`.
+ */
+export type QueueRetryDirective =
+  | { acknowledge: true }
+  | { afterSeconds: number };
 
 /** Options for one queue send. */
 export interface QueueSendOptions {
@@ -39,7 +42,7 @@ export interface QueueSendResult {
 /** One consumer of one topic. */
 export interface QueueConsumer {
   handler(payload: unknown, metadata: QueueMessageMetadata): Promise<void>;
-  /** Return a directive to stop retries, or `undefined` to retry. */
+  /** Return a directive, or `undefined` to retry after the visibility timeout. */
   retry(
     error: unknown,
     metadata: QueueMessageMetadata,

@@ -21,10 +21,12 @@ import { requireViewer } from "@/api/viewer";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
+  inboxItemTodo,
   isOnlyAssignee,
   itemNeedsUser,
   inboxItemReaderForUser,
   inboxItemReaderForUserInConversation,
+  REPLY_NOTICE_KEY_PREFIX,
   type InboxItemReader,
 } from "@/chat/inbox-items/access";
 import {
@@ -38,13 +40,13 @@ import {
 } from "@/chat/inbox-items/related";
 import {
   countInboxItemsNeedingUserBySubject,
-  listWaitingConversations,
   ownerConversationId,
   searchInboxItems,
   type InboxItem,
   type InboxItemFilters,
   type InboxItemPosition,
 } from "@/chat/inbox-items/store";
+import { listWaitingConversations } from "@/chat/inbox-items/waiting";
 import type { InboxItemDelivery } from "@/chat/inbox-items/changes";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import {
@@ -210,6 +212,7 @@ function inboxItemPayload(
 ): InboxItemPayload {
   const conversationId = ownerConversationId(item);
   const root = conversationId ? roots.get(conversationId) : undefined;
+  const todo = inboxItemTodo(item);
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
     assignedToEveryone: item.assignedToEveryone,
@@ -241,8 +244,13 @@ function inboxItemPayload(
     (related.items.length > 0 || related.conversationIds.length > 0)
       ? { related }
       : undefined),
+    // Derived from the reply notice's dedupe key, so nothing more is stored.
+    ...(item.dedupeKey.startsWith(REPLY_NOTICE_KEY_PREFIX)
+      ? { replyNotice: true as const }
+      : undefined),
     ...(item.request ? { request: item.request } : undefined),
     ...(item.subject ? { subject: subjectPayload(item.subject) } : undefined),
+    ...(todo ? { todoId: todo.id } : undefined),
     ...(wake ? { wake: wakePayload(wake) } : undefined),
   };
 }
@@ -436,10 +444,12 @@ export function createInboxItemRoutes(services: {
       let codeChanges = 0;
       let decisions = 0;
       let needsViewer = 0;
+      let todos = 0;
       for (const subject of subjects) {
         automations += subject.automations;
         needsViewer += subject.total;
         decisions += subject.decisions;
+        todos += subject.todos;
         if (
           subject.subjectUrl &&
           readLinkObjectType(subject.subjectUrl, linkTypes) === "code_change"
@@ -455,6 +465,7 @@ export function createInboxItemRoutes(services: {
         decisions,
         needsViewer,
         snoozed,
+        todos,
       });
     },
   );

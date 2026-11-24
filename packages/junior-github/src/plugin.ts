@@ -35,6 +35,7 @@ import {
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
+  loadRepositoryFullNames,
   loadPullRequestCommitPages,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
@@ -74,13 +75,18 @@ import {
 } from "./events/repository.js";
 import { gitHubDbSchema } from "./db/database.js";
 import { classifyGitHubPullRequestCommitComposition } from "./pull-request-outcomes/commit-composition.js";
+import {
+  GITHUB_PULL_REQUEST_OUTCOME_TASK,
+  githubPullRequestOutcomeTask,
+} from "./pull-request-outcomes/apply-task.js";
+import {
+  GITHUB_REPOSITORY_NAME_REPAIR_TASK,
+  githubRepositoryNameRepairTask,
+  startGitHubRepositoryNameRepair,
+} from "./repository-name-repair.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
-import {
-  listGitHubAssignedWork,
-  listGitHubFinishedWork,
-  listGitHubUnfinishedWork,
-} from "./pull-request-outcomes/store.js";
+import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
 import {
   additionalActorCoauthorTrailers,
   gitHooksPath,
@@ -192,8 +198,24 @@ export function githubPlugin(
 
   return defineJuniorPlugin({
     packageName: "@sentry/junior-github",
+    codeLinks: {
+      change: ({ number, repository }) =>
+        `https://github.com/${repository}/pull/${number}`,
+      repository: (name) => `https://github.com/${name}`,
+    },
     images: githubImageSource,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
+    tasks: {
+      [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
+      [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(
+        async () =>
+          await loadRepositoryFullNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
+    },
     events: {
       resourceTypes: [
         {
@@ -365,6 +387,7 @@ export function githubPlugin(
         if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
+          codeChanges: ctx.codeChanges,
           db: gitHubDbSchema.parse(ctx.db),
           events: ctx.events,
           itemId: ctx.itemId,
@@ -382,6 +405,7 @@ export function githubPlugin(
         const db = gitHubDbSchema.parse(ctx.db);
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
+          codeChanges: ctx.codeChanges,
           db,
           events: ctx.events,
           loadHistory: async (ref) =>
@@ -423,23 +447,16 @@ export function githubPlugin(
           inboxItems: ctx.inboxItems,
           state: ctx.state,
         });
+        await startGitHubRepositoryNameRepair({
+          state: ctx.state,
+          tasks: ctx.tasks,
+        });
       },
       async unfinishedWork(ctx) {
-        const db = gitHubDbSchema.parse(ctx.db);
-        const [
-          conversationIds,
-          assignedConversationIds,
-          finishedWorkAtByConversationId,
-        ] = await Promise.all([
-          listGitHubUnfinishedWork(db, ctx.conversationIds),
-          listGitHubAssignedWork(db, ctx.conversationIds),
-          listGitHubFinishedWork(db, ctx.conversationIds),
-        ]);
-        return {
-          conversationIds,
-          assignedConversationIds,
-          finishedWorkAtByConversationId,
-        };
+        return await listGitHubConversationWork(
+          ctx.codeChanges,
+          ctx.conversationIds,
+        );
       },
       routes(ctx) {
         const installationEnv = {
@@ -454,6 +471,7 @@ export function githubPlugin(
             annotations: ctx.annotations,
             appIdEnv,
             botEmail: () => readEnv(botEmailEnv),
+            cache: ctx.cache,
             ...(options.trustedAuthors
               ? { trustedAuthors: options.trustedAuthors }
               : undefined),
@@ -499,6 +517,7 @@ export function githubPlugin(
             events: ctx.events,
             inboxItems: ctx.inboxItems,
             state: ctx.state,
+            tasks: ctx.tasks,
             tokens: installationEnv.tokens,
             webhookSecret: () => readEnv("GITHUB_WEBHOOK_SECRET"),
           }),

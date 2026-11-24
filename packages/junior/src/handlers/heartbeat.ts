@@ -4,6 +4,7 @@ import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { logException } from "@/chat/logging";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import type { SendPluginTask } from "@/chat/plugins/task-runner";
 import { verifySchedulerRequest } from "@/handlers/scheduler-auth";
 import type { WaitUntilFn } from "@/handlers/types";
 
@@ -11,6 +12,7 @@ export interface HeartbeatHandlerOptions {
   conversationWorkQueue?: ConversationWorkQueue;
   dispatchForIdentity: IdentityDispatcher;
   events: AppEventPublisher;
+  sendPluginTask: SendPluginTask;
   showInboxItem?: ShowInboxItem;
 }
 
@@ -31,6 +33,7 @@ export async function GET(
       dispatchForIdentity: options.dispatchForIdentity,
       events: options.events,
       nowMs,
+      sendPluginTask: options.sendPluginTask,
       showInboxItem: options.showInboxItem,
     }).catch((error) => {
       logException(error, "heartbeat.run.failed", {

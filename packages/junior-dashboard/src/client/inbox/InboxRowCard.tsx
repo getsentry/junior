@@ -20,7 +20,7 @@ import {
   InboxItemSubjectPreview,
   SubjectMergeConflict,
 } from "./InboxItemSubjectPreview";
-import { InboxItemTurnMessage } from "./InboxItemTurnMessage";
+import { InboxItemTurnMessage, ReplyNoticeText } from "./InboxItemTurnMessage";
 import type { InboxCardActions } from "./RowHoverActions";
 import { RowDismissButton } from "./RowDismissButton";
 import { RowSnoozeButton } from "./RowSnoozeDismiss";
@@ -117,7 +117,9 @@ export function InboxRowCard(props: {
           Conversation, so each ask keeps them. */}
       {props.headTitled ? null : (
         <>
-          <div className="flex min-w-0 items-baseline gap-2">
+          {/* Centered: the pill leads with its icon, so it has no text
+              baseline to share with the title. */}
+          <div className="flex min-w-0 items-center gap-2">
             <Pill
               pill={{
                 count: 1,
@@ -165,7 +167,13 @@ export function InboxRowCard(props: {
         </>
       )}
       <InboxItemObjects conversationId={itemConversationId(item)}>
-        {showBody ? (
+        {showBody && item.replyNotice ? (
+          <ReplyNoticeText
+            item={item}
+            label={inboxItemTitleText(item)}
+            preview={text}
+          />
+        ) : showBody ? (
           <ClampedDisplayText
             className="max-w-[80ch] leading-6"
             label={inboxItemTitleText(item)}

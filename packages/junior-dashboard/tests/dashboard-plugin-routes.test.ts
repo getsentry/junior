@@ -21,6 +21,7 @@ vi.mock("@sentry/junior/api", async (importOriginal) => ({
 
 function mockDashboardVirtualConfig() {
   vi.doMock("#junior/config", () => ({
+    botName: "junior",
     createDashboardApp,
     functionMaxDurationSeconds: undefined,
     dashboard: undefined,

@@ -153,6 +153,7 @@ export default defineConfig({
             { label: "Restream Plugin", link: "/extend/restream-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
+            { label: "Vimeo Plugin", link: "/extend/vimeo-plugin/" },
             { label: "X Plugin", link: "/extend/xdotcom-plugin/" },
           ],
         },

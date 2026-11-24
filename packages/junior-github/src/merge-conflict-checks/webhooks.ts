@@ -3,9 +3,8 @@
  * calls, so a busy default branch costs one database read and a state
  * write.
  */
-import type { PluginState } from "@sentry/junior-plugin-api";
+import type { PluginCodeChanges, PluginState } from "@sentry/junior-plugin-api";
 import * as z from "zod";
-import type { GitHubDb } from "../db/database.js";
 import { scheduleGitHubConflictCheck } from "./store.js";
 
 /**
@@ -30,7 +29,7 @@ const pushSchema = z.object({
  */
 export async function scheduleGitHubPushConflictCheck(args: {
   body: unknown;
-  db: GitHubDb;
+  codeChanges: Pick<PluginCodeChanges, "list">;
   now: Date;
   state: PluginState;
 }): Promise<boolean> {
@@ -43,7 +42,7 @@ export async function scheduleGitHubPushConflictCheck(args: {
     return false;
   }
   return await scheduleGitHubConflictCheck({
-    db: args.db,
+    codeChanges: args.codeChanges,
     dueAtMs: args.now.getTime() + CONFLICT_CHECK_DELAY_MS,
     repositoryFullName: parsed.data.repository.full_name,
     state: args.state,

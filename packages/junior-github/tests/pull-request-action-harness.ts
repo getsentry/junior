@@ -12,11 +12,9 @@ import type {
 import { bindPluginTool } from "@sentry/junior-testing/plugin-tool";
 import { http, HttpResponse } from "msw";
 import { vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
 import { githubPlugin } from "../src/index";
+import { recordJuniorPullRequest } from "./code-index";
 import { conversationChangesThrough } from "./conversation-changes";
 import type { GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
@@ -613,6 +611,7 @@ export type InboxItemCall =
 export function route(
   fixture: GitHubFixture,
   calls: InboxItemCall[],
+  /** Each logged error, as `message: cause name` when it has a cause. */
   errors: string[] = [],
   failures = { close: 0 },
   /** Keys of the other closed items, such as from before one item per pull request. */
@@ -661,28 +660,32 @@ export function route(
   const [webhook] = githubPlugin().hooks!.routes!({
     agent: { dispatchForIdentity: unused },
     annotations,
-    codeChanges: {
-      async associateConversations() {},
-      async recordActivity() {},
-      async record() {},
-    },
+    codeChanges: fixture.codeIndex.codeChanges,
     conversationChanges: conversationChangesThrough({
       annotations,
       inboxItems,
     }),
     db: fixture.db(),
     log: {
-      error(message) {
-        errors.push(message);
+      error(message, _metadata, cause) {
+        errors.push(
+          cause instanceof Error ? `${message}: ${cause.name}` : message,
+        );
       },
       info() {},
       warn() {},
     },
     plugin: { name: "github" },
     events: { hasMatch: async () => false, async publish() {} },
-    cache: { getOrLoad: unused },
+    cache: {
+      // The pull request webhook refreshes its cached object.
+      async update() {},
+      delete: unused,
+      getOrLoad: unused,
+    },
     inboxItems,
     state,
+    tasks: { start: unused },
     // The requester linked the GitHub account `Requester`.
     users: {
       readIdentity: async (identityId: string) =>
@@ -718,19 +721,13 @@ export async function seedJuniorPullRequest(
   conversationId: string | null,
 ): Promise<void> {
   const at = new Date("2026-07-01T12:00:00.000Z");
-  await fixture
-    .db()
-    .insert(juniorGitHubPullRequests)
-    .values({
-      conversationIds: ["slack:C123:1712345.0001"],
-      number: 946,
-      openedAt: at,
-      pullRequestId: "1001",
-      repositoryFullName: "getsentry/junior",
-      repositoryId: "2001",
-      state: "open",
-      updatedAt: at,
-    });
+  await recordJuniorPullRequest(fixture, {
+    conversationIds: ["slack:C123:1712345.0001"],
+    number: 946,
+    pullRequestId: "1001",
+    repositoryId: "2001",
+    updatedAt: at,
+  });
   await fixture.db().insert(juniorGitHubPullRequestRequesters).values({
     conversationId,
     createdAt: at,
