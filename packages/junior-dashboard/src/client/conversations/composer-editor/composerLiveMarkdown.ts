@@ -1,4 +1,5 @@
 import {
+  $createTabNode,
   $createTextNode,
   $getRoot,
   $getSelection,
@@ -14,12 +15,14 @@ import {
   type PointType,
 } from "lexical";
 
+import { mentionText } from "../composerMentionToken";
 import {
+  referenceText,
   splitComposerText,
   type ComposerTextPart,
 } from "../composerReferences";
 import { $composerPieces, type ComposerLookup } from "./composerEditorText";
-import { listEnter, orderedListNumbers } from "./composerMarkdownLists";
+import { listEnter } from "./composerMarkdownLists";
 import {
   parseMarkdownLines,
   type MarkdownLine,
@@ -32,9 +35,6 @@ import {
   type ComposerMarkerNode,
 } from "./ComposerMarkerNode";
 
-// A mention or reference chip stands for one character of a line.
-const CHIP = "\uFFFC";
-
 /** True when the node is code, where `$` and `@` are only text. */
 export function $isInCode(node: LexicalNode): boolean {
   return $isTextNode(node) && node.hasFormat("code");
@@ -46,7 +46,7 @@ type Line = { nodes: LexicalNode[]; start: number };
  * Style the draft's Markdown in place: split each line into marker and
  * text nodes with formats. The text does not change, so the draft stays
  * the raw Markdown that the message sends. Tokens outside code become
- * chips. The selection keeps its place in the text. Without `markdown`,
+ * chips. The selection keeps its offset in the text. Without `markdown`,
  * the draft is plain text with chips.
  */
 export function $styleComposerDraft(
@@ -59,33 +59,29 @@ export function $styleComposerDraft(
     : [];
   for (const paragraph of $getRoot().getChildren()) {
     if (!$isElementNode(paragraph)) continue;
-    let lines = $lines(paragraph);
-    const texts = lines.map(lineText);
+    const texts = paragraph.getTextContent().split("\n");
     const parsed = markdown ? parseMarkdownLines(texts) : texts.map(plainLine);
+    const map = $sourceMap(paragraph);
     const saved = points.flatMap((point) => {
-      const at = $pointInLine(point, paragraph, lines);
-      return at ? [{ point, ...at }] : [];
+      const offset = $offsetOf(point, paragraph, map);
+      return offset === undefined ? [] : [{ point, offset }];
     });
+    const lines = $lines(paragraph);
     let changed = false;
     // From the last line, so the child indexes of earlier lines hold.
     for (let index = lines.length - 1; index >= 0; index--) {
       const line = lines[index]!;
-      const pieces = $restyledLine(line, parsed[index]!, lookup);
-      if (!pieces) continue;
+      const nodes = $restyledLine(line, parsed[index]!, lookup);
+      if (!nodes) continue;
       changed = true;
-      paragraph.splice(
-        line.start,
-        line.nodes.length,
-        pieces.map(({ node }) => node),
-      );
-      for (const at of saved) {
-        if (at.line === index) at.offset = movedOffset(pieces, at.offset);
-      }
+      paragraph.splice(line.start, line.nodes.length, nodes);
     }
     if (!changed) continue;
-    lines = $lines(paragraph);
-    for (const at of saved) {
-      $setPoint(at.point, paragraph, lines[at.line]!, at.offset);
+    // The text is the same, so each offset finds its place in the new
+    // nodes.
+    const restyled = $sourceMap(paragraph);
+    for (const { point, offset } of saved) {
+      $setPointAt(point, paragraph, restyled, offset);
     }
   }
 }
@@ -103,22 +99,22 @@ export function $enterInMarkdownList(): boolean {
   const paragraph =
     anchor.type === "element" ? anchor.getNode() : anchor.getNode().getParent();
   if (!$isElementNode(paragraph)) return false;
-  const lines = $lines(paragraph);
-  const at = $pointInLine(anchor, paragraph, lines);
-  if (!at) return false;
-  const texts = lines.map(lineText);
+  const offset = $offsetOf(anchor, paragraph, $sourceMap(paragraph));
+  if (offset === undefined) return false;
+  const texts = paragraph.getTextContent().split("\n");
+  const at = lineAt(texts, offset);
   const text = texts[at.line]!;
-  const { kind } = parseMarkdownLines(texts)[at.line]!;
+  const { kind, number } = parseMarkdownLines(texts)[at.line]!;
   const enter =
     at.offset === text.length && (kind === "bullet" || kind === "ordered")
-      ? listEnter(text, $orderedListNumbers(texts)[at.line])
+      ? listEnter(text, number)
       : undefined;
   if (!enter) return false;
   if (enter.kind === "continue") {
     selection.insertRawText(`\n${enter.marker}`);
     return true;
   }
-  const line = lines[at.line]!;
+  const line = $lines(paragraph)[at.line]!;
   for (const node of line.nodes) node.remove();
   anchor.set(paragraph.getKey(), line.start, "element");
   selection.focus.set(paragraph.getKey(), line.start, "element");
@@ -139,24 +135,24 @@ export function syncComposerMarkers(editor: LexicalEditor): void {
       ? $selectedRanges(paragraphs)
       : new Map<string, [number, number]>();
     for (const paragraph of paragraphs) {
-      const lines = $lines(paragraph);
-      const texts = lines.map(lineText);
-      const numbers = $orderedListNumbers(texts);
-      for (const [index, line] of lines.entries()) {
-        const range = selected.get(`${paragraph.getKey()}:${index}`);
-        for (const { node, span } of $lineMarkers(line)) {
-          const { edge, line: kind } = node.getMarker();
-          const element = editor.getElementByKey(node.getKey());
-          const hidden =
-            edge === "line"
-              ? !range && kind !== "fence"
-              : !range || range[0] > span[1] || range[1] < span[0];
-          element?.toggleAttribute("data-hidden", hidden);
-          const number = numbers[index];
-          if (element && edge === "line" && number !== undefined) {
-            const delimiter = node.getTextContent().trimEnd().slice(-1);
-            element.dataset["number"] = `${number}${delimiter}`;
-          }
+      const range = selected.get(paragraph.getKey());
+      const texts = paragraph.getTextContent().split("\n");
+      const lines = parseMarkdownLines(texts);
+      const touches = ([start, end]: [number, number]) =>
+        Boolean(range && range[0] <= end && range[1] >= start);
+      for (const { node, span, line } of $markers(
+        $sourceMap(paragraph),
+        texts,
+      )) {
+        const { edge, line: kind } = node.getMarker();
+        const element = editor.getElementByKey(node.getKey());
+        const hidden =
+          edge === "line" ? kind !== "fence" && !touches(line) : !touches(span);
+        element?.toggleAttribute("data-hidden", hidden);
+        const number = lines[lineAt(texts, line[0]).line]?.number;
+        if (element && edge === "line" && number !== undefined) {
+          const delimiter = node.getTextContent().trimEnd().slice(-1);
+          element.dataset["number"] = `${number}${delimiter}`;
         }
       }
     }
@@ -230,26 +226,70 @@ function $lines(paragraph: ElementNode): Line[] {
   return lines;
 }
 
-function $orderedListNumbers(texts: string[]): (number | undefined)[] {
-  return orderedListNumbers(
-    parseMarkdownLines(texts).map(({ kind }, index) => ({
-      kind,
-      text: texts[index]!,
-    })),
-  );
+// Each child of a paragraph with the offsets of its text in the
+// paragraph's text: the source map between the text and the nodes. A chip
+// covers its token.
+type Source = { node: LexicalNode; start: number; end: number }[];
+
+function $sourceMap(paragraph: ElementNode): Source {
+  let offset = 0;
+  return paragraph.getChildren().map((node) => {
+    const start = offset;
+    offset += node.getTextContentSize();
+    return { node, start, end: offset };
+  });
+}
+
+function $offsetOf(
+  point: PointType,
+  paragraph: ElementNode,
+  map: Source,
+): number | undefined {
+  if (point.type === "element") {
+    if (point.key !== paragraph.getKey()) return undefined;
+    return map[point.offset]?.start ?? map.at(-1)?.end ?? 0;
+  }
+  const at = map.find(({ node }) => node.getKey() === point.key);
+  return at ? at.start + point.offset : undefined;
+}
+
+// Put the point at a text offset. An offset in a chip's token goes after
+// the chip.
+function $setPointAt(
+  point: PointType,
+  paragraph: ElementNode,
+  map: Source,
+  offset: number,
+): void {
+  for (const [index, { node, start, end }] of map.entries()) {
+    if ($isTextNode(node) && offset <= end) {
+      point.set(node.getKey(), offset - start, "text");
+      return;
+    }
+    if (!$isTextNode(node) && offset < end) {
+      const after = offset > start ? 1 : 0;
+      point.set(paragraph.getKey(), index + after, "element");
+      return;
+    }
+  }
+  point.set(paragraph.getKey(), map.length, "element");
+}
+
+// The line of a text offset, and the offset in that line.
+function lineAt(
+  texts: string[],
+  offset: number,
+): { line: number; offset: number } {
+  let start = 0;
+  for (const [line, text] of texts.entries()) {
+    if (offset <= start + text.length) return { line, offset: offset - start };
+    start += text.length + 1;
+  }
+  return { line: texts.length - 1, offset: texts.at(-1)!.length };
 }
 
 function plainLine(text: string): MarkdownLine {
   return { kind: "text", segments: text ? [{ format: 0, text }] : [] };
-}
-
-function nodeText(node: LexicalNode): string {
-  if ($isTabNode(node)) return "\t";
-  return $isTextNode(node) ? node.getTextContent() : CHIP;
-}
-
-function lineText(line: Line): string {
-  return line.nodes.map(nodeText).join("");
 }
 
 // Tabs and chips keep their nodes when a line is styled again.
@@ -269,39 +309,66 @@ type Planned =
   | { kind: "kept"; node: LexicalNode }
   | { kind: "token"; part: ComposerTextPart };
 
-type Piece = { node: LexicalNode; oldLength: number; newLength: number };
-
 // The nodes of a restyled line, or undefined when it is styled already.
+// Its text stays the same: a chip keeps the token text that it stands for.
 function $restyledLine(
   line: Line,
   parsed: MarkdownLine,
   lookup: ComposerLookup,
-): Piece[] | undefined {
-  const kept = line.nodes.filter(isKept);
+): LexicalNode[] | undefined {
+  // The tabs and chips of the line, by their offset in it.
+  const kept = new Map<number, LexicalNode>();
+  let offset = 0;
+  for (const node of line.nodes) {
+    if (isKept(node)) kept.set(offset, node);
+    offset += node.getTextContentSize();
+  }
   const plan: Planned[] = [];
+  offset = 0;
+  const push = (item: Planned, length: number) => {
+    plan.push(item);
+    offset += length;
+  };
   for (const segment of parsed.segments) {
-    for (const text of segment.text.split(/([\t\uFFFC])/)) {
-      if (!text) continue;
-      if (text === "\t" || text === CHIP) {
-        const node = kept.shift();
-        if (node) plan.push({ kind: "kept", node });
-      } else if (segment.marker) {
-        plan.push({
-          kind: "marker",
-          format: segment.format,
-          line: parsed.kind,
-          marker: segment.marker,
-          text,
-        });
-      } else if (segment.format & IS_CODE) {
-        plan.push({ kind: "text", format: segment.format, text });
-      } else {
-        for (const part of splitComposerText(text, lookup.origin)) {
-          plan.push(
-            "text" in part
-              ? { kind: "text", format: segment.format, text: part.text }
-              : { kind: "token", part },
+    const parts =
+      segment.marker || segment.format & IS_CODE
+        ? [{ text: segment.text }]
+        : splitComposerText(segment.text, lookup.origin);
+    for (const part of parts) {
+      if (!("text" in part)) {
+        const node = kept.get(offset);
+        const text = tokenText(part);
+        push(
+          node && !$isTabNode(node) && node.getTextContent() === text
+            ? { kind: "kept", node }
+            : { kind: "token", part },
+          text.length,
+        );
+        continue;
+      }
+      for (const text of part.text.split(/(\t)/)) {
+        if (!text) continue;
+        const node = kept.get(offset);
+        if (text === "\t") {
+          push(
+            node && $isTabNode(node)
+              ? { kind: "kept", node }
+              : { kind: "text", format: 0, text },
+            1,
           );
+        } else if (segment.marker) {
+          push(
+            {
+              kind: "marker",
+              format: segment.format,
+              line: parsed.kind,
+              marker: segment.marker,
+              text,
+            },
+            text.length,
+          );
+        } else {
+          push({ kind: "text", format: segment.format, text }, text.length);
         }
       }
     }
@@ -313,31 +380,29 @@ function $restyledLine(
   ) {
     return undefined;
   }
-  return plan.map((item): Piece => {
+  return plan.map((item): LexicalNode => {
     switch (item.kind) {
       case "kept":
-        return { node: item.node, oldLength: 1, newLength: 1 };
+        return item.node;
       case "text":
-        return {
-          node: $createTextNode(item.text).setFormat(item.format),
-          oldLength: item.text.length,
-          newLength: item.text.length,
-        };
+        return item.text === "\t"
+          ? $createTabNode()
+          : $createTextNode(item.text).setFormat(item.format);
       case "marker":
-        return {
-          node: $createComposerMarkerNode(item.text, {
-            ...item.marker,
-            line: item.line,
-          }).setFormat(item.format),
-          oldLength: item.text.length,
-          newLength: item.text.length,
-        };
-      case "token": {
-        const [chip] = $composerPieces([item.part], lookup);
-        return { node: chip!.node, oldLength: chip!.length, newLength: 1 };
-      }
+        return $createComposerMarkerNode(item.text, {
+          ...item.marker,
+          line: item.line,
+        }).setFormat(item.format);
+      case "token":
+        return $composerPieces([item.part], lookup)[0]!.node;
     }
   });
+}
+
+function tokenText(part: Exclude<ComposerTextPart, { text: string }>): string {
+  return "slackUserId" in part
+    ? mentionText(part.slackUserId)
+    : referenceText(part.reference);
 }
 
 function $plannedFromNode(node: LexicalNode): Planned {
@@ -376,100 +441,37 @@ function samePlan(a: Planned, b: Planned): boolean {
   return a.kind === b.kind && a.text === b.text && a.format === b.format;
 }
 
-// An offset in the old line text, in the restyled line. A caret inside a
-// token that became a chip goes after the chip.
-function movedOffset(pieces: Piece[], offset: number): number {
-  let oldStart = 0;
-  let newStart = 0;
-  for (const { oldLength, newLength } of pieces) {
-    if (offset <= oldStart + oldLength) {
-      if (oldLength === newLength) return newStart + offset - oldStart;
-      return offset === oldStart ? newStart : newStart + newLength;
-    }
-    oldStart += oldLength;
-    newStart += newLength;
-  }
-  return newStart;
-}
-
-function $pointInLine(
-  point: PointType,
-  paragraph: ElementNode,
-  lines: Line[],
-): { line: number; offset: number } | undefined {
-  if (point.type === "text") {
-    const node = point.getNode();
-    if (!node.getParent()?.is(paragraph)) return undefined;
-    for (const [index, line] of lines.entries()) {
-      let offset = 0;
-      for (const child of line.nodes) {
-        if (child.is(node))
-          return { line: index, offset: offset + point.offset };
-        offset += nodeText(child).length;
-      }
-    }
-    return undefined;
-  }
-  if (point.key !== paragraph.getKey()) return undefined;
-  for (const [index, line] of lines.entries()) {
-    if (
-      point.offset < line.start ||
-      point.offset > line.start + line.nodes.length
-    ) {
-      continue;
-    }
-    const before = line.nodes.slice(0, point.offset - line.start);
-    return {
-      line: index,
-      offset: before.reduce((sum, child) => sum + nodeText(child).length, 0),
-    };
-  }
-  return undefined;
-}
-
-function $setPoint(
-  point: PointType,
-  paragraph: ElementNode,
-  line: Line,
-  offset: number,
-): void {
-  let start = 0;
-  for (const [index, node] of line.nodes.entries()) {
-    const length = nodeText(node).length;
-    if ($isTextNode(node) && offset <= start + length) {
-      point.set(node.getKey(), offset - start, "text");
-      return;
-    }
-    if (!$isTextNode(node) && offset <= start) {
-      point.set(paragraph.getKey(), line.start + index, "element");
-      return;
-    }
-    start += length;
-  }
-  point.set(paragraph.getKey(), line.start + line.nodes.length, "element");
-}
-
-// Each inline or line marker of a line, with the offsets of its span.
-function $lineMarkers(
-  line: Line,
-): { node: ComposerMarkerNode; span: [number, number] }[] {
+// Each marker of a paragraph with the offsets of its span and its line.
+function $markers(
+  map: Source,
+  texts: string[],
+): {
+  node: ComposerMarkerNode;
+  span: [number, number];
+  line: [number, number];
+}[] {
   const spans = new Map<number, [number, number]>();
-  const markers: { node: ComposerMarkerNode; id: number }[] = [];
-  let offset = 0;
-  for (const node of line.nodes) {
-    const length = nodeText(node).length;
-    if ($isComposerMarkerNode(node)) {
-      const id = node.getMarker().span;
-      const span = spans.get(id);
-      spans.set(id, [span?.[0] ?? offset, offset + length]);
-      markers.push({ node, id });
-    }
-    offset += length;
-  }
-  return markers.map(({ node, id }) => ({ node, span: spans.get(id)! }));
+  const markers = map.flatMap(({ node, start, end }) => {
+    if (!$isComposerMarkerNode(node)) return [];
+    const id = node.getMarker().span;
+    const span = spans.get(id);
+    spans.set(id, [span?.[0] ?? start, end]);
+    const at = lineAt(texts, start);
+    const lineStart = start - at.offset;
+    const line: [number, number] = [
+      lineStart,
+      lineStart + texts[at.line]!.length,
+    ];
+    return [{ node, id, line }];
+  });
+  return markers.map(({ node, id, line }) => ({
+    node,
+    span: spans.get(id)!,
+    line,
+  }));
 }
 
-// The selected offsets of each line, keyed `paragraph:line`.
+// The selected offsets of each paragraph, keyed by its node key.
 function $selectedRanges(
   paragraphs: ElementNode[],
 ): Map<string, [number, number]> {
@@ -478,34 +480,21 @@ function $selectedRanges(
   if (!$isRangeSelection(selection)) return ranges;
   const located = [selection.anchor, selection.focus].map((point) => {
     for (const [order, paragraph] of paragraphs.entries()) {
-      const at = $pointInLine(point, paragraph, $lines(paragraph));
-      if (at) return { order, ...at };
+      const offset = $offsetOf(point, paragraph, $sourceMap(paragraph));
+      if (offset !== undefined) return { order, offset };
     }
     return undefined;
   });
   const [a, b] = located;
   if (!a || !b) return ranges;
-  const [start, end] = compareAt(a, b) <= 0 ? [a, b] : [b, a];
+  const [start, end] =
+    (a.order - b.order || a.offset - b.offset) <= 0 ? [a, b] : [b, a];
   for (let order = start.order; order <= end.order; order++) {
     const paragraph = paragraphs[order]!;
-    for (const [index, line] of $lines(paragraph).entries()) {
-      const at = { order, line: index, offset: 0 };
-      if (compareAt({ ...at, offset: Infinity }, start) < 0) continue;
-      if (compareAt(at, end) > 0) continue;
-      const from =
-        order === start.order && index === start.line ? start.offset : 0;
-      const to =
-        order === end.order && index === end.line
-          ? end.offset
-          : lineText(line).length;
-      ranges.set(`${paragraph.getKey()}:${index}`, [from, to]);
-    }
+    ranges.set(paragraph.getKey(), [
+      order === start.order ? start.offset : 0,
+      order === end.order ? end.offset : paragraph.getTextContentSize(),
+    ]);
   }
   return ranges;
-}
-
-type At = { order: number; line: number; offset: number };
-
-function compareAt(a: At, b: At): number {
-  return a.order - b.order || a.line - b.line || a.offset - b.offset;
 }

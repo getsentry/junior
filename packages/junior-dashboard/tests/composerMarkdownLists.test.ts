@@ -1,19 +1,11 @@
 import { expect, it } from "vitest";
 
-import {
-  listEnter,
-  orderedListNumbers,
-} from "../src/client/conversations/composer-editor/composerMarkdownLists";
+import { listEnter } from "../src/client/conversations/composer-editor/composerMarkdownLists";
 import { parseMarkdownLines } from "../src/client/conversations/composer-editor/composerMarkdownSyntax";
 
 // The number each line renders with, or undefined.
 function numbers(lines: string[]) {
-  return orderedListNumbers(
-    parseMarkdownLines(lines).map(({ kind }, index) => ({
-      kind,
-      text: lines[index]!,
-    })),
-  );
+  return parseMarkdownLines(lines).map((line) => line.number);
 }
 
 // No describe block: CI parses the JUnit report, and each " > " in a test
@@ -61,7 +53,9 @@ it("numbers an ordered list from its first item, as CommonMark renders it", () =
 
 it("numbers nested lists on their own and resumes the outer list", () => {
   expect(numbers(["1. a", "   1. x", "   1. y", "1. b"])).toEqual([1, 1, 2, 2]);
-  expect(numbers(["1. a", "  - x", "1. b"])).toEqual([1, undefined, 2]);
+  expect(numbers(["1. a", "   - x", "1. b"])).toEqual([1, undefined, 2]);
+  // Indented less than the item's text, a bullet starts a new list.
+  expect(numbers(["1. a", "  - x", "1. b"])).toEqual([1, undefined, 1]);
 });
 
 it("keeps a list across blank and continuation lines", () => {

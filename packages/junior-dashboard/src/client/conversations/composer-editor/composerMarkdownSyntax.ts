@@ -5,10 +5,11 @@ import {
   IS_STRIKETHROUGH,
   IS_UNDERLINE,
 } from "lexical";
+import { parseMarkdown, type MarkdownNode } from "@sentry/junior-plugin-api";
 
 /**
  * What one line of the draft is. List and quote markers show only when the
- * caret is on their line. Code fences always show. Lines between fences
+ * caret is on their line. Code fences always show. Lines in a code block
  * are code.
  */
 export type MarkdownLineKind =
@@ -31,271 +32,198 @@ export type MarkdownSegment = {
   text: string;
 };
 
-/** One line, split into the Markdown that styles it. */
+/**
+ * One line, split into the Markdown that styles it. `number` is the number
+ * that an ordered list item renders with.
+ */
 export type MarkdownLine = {
   kind: MarkdownLineKind;
+  number?: number;
   segments: MarkdownSegment[];
 };
 
-const FENCE = /^\s*(```|~~~)/;
-const LINE_PREFIX: [MarkdownLineKind, RegExp][] = [
-  ["bullet", /^\s*[-*+] /],
-  ["ordered", /^\s*\d{1,9}[.)] /],
-  ["quote", /^> ?/],
-];
-const LINK = /^\[([^[\]]+)\]\(([^()\s]+)\)/;
-const ESCAPABLE = /[\\`*_~[\]()<>#-]/;
-const DELIMITERS: [string, number][] = [
-  ["***", IS_BOLD | IS_ITALIC],
-  ["___", IS_BOLD | IS_ITALIC],
-  ["~~", IS_STRIKETHROUGH],
-  ["**", IS_BOLD],
-  ["__", IS_BOLD],
-  ["*", IS_ITALIC],
-  ["_", IS_ITALIC],
-];
+type Marker = NonNullable<MarkdownSegment["marker"]>;
+
+const LINE_MARKER: Marker = { edge: "line", span: -1 };
+const FENCE = /^[ \t]*(```|~~~)/;
+const FENCED_CODE = /^ {0,3}(```|~~~)/;
+const SPAN_FORMATS: Partial<Record<MarkdownNode["type"], number>> = {
+  delete: IS_STRIKETHROUGH,
+  emphasis: IS_ITALIC,
+  link: IS_UNDERLINE,
+  strong: IS_BOLD,
+};
 
 /**
- * Split the lines of a draft into Markdown: fenced code, list and quote
- * markers, and inline bold, italic, strike, code, and links. The segments
- * of each line join back to exactly that line.
+ * Split the lines of a draft into its Markdown: the CommonMark and GFM
+ * syntax that the parser finds, at the source offsets that it reports. The
+ * segments of each line join back to exactly that line.
  */
 export function parseMarkdownLines(lines: string[]): MarkdownLine[] {
-  let inFence = false;
-  return lines.map((line) => {
-    if (FENCE.test(line)) {
-      inFence = !inFence;
-      return { kind: "fence", segments: lineMarker(line) };
+  const text = lines.join("\n");
+  const starts = lineStarts(lines);
+  // The style of each character of the draft, by its offset.
+  const formats = Array.from({ length: text.length }, () => 0);
+  const markers: (Marker | undefined)[] = [];
+  const kinds = lines.map((): MarkdownLineKind => "text");
+  const numbers = new Map<number, number>();
+  let nextSpan = 0;
+
+  const mark = (start: number, end: number, marker: Marker) => {
+    for (let at = start; at < end; at++) markers[at] ??= marker;
+  };
+  const format = (start: number, end: number, flag: number) => {
+    for (let at = start; at < end; at++) formats[at]! |= flag;
+  };
+  // The marker at the start of each line in a block quote.
+  const quoteMarkers = (
+    node: MarkdownNode,
+    firstLine: number,
+    lastLine: number,
+  ) => {
+    const quoteMarker = /[ \t]*(?:>[ \t]?)+/y;
+    for (let line = firstLine; line <= lastLine; line++) {
+      quoteMarker.lastIndex =
+        line === firstLine ? node.position!.start.offset! : starts[line]!;
+      const match = quoteMarker.exec(text);
+      if (!match?.[0].includes(">")) continue;
+      mark(match.index, match.index + match[0].length, LINE_MARKER);
+      kinds[line] = "quote";
     }
-    if (inFence) {
-      return {
-        kind: "code",
-        segments: line ? [{ format: IS_CODE, text: line }] : [],
-      };
+  };
+
+  const visit = (node: MarkdownNode, ordered: boolean, number: number) => {
+    const start = node.position?.start.offset;
+    const end = node.position?.end.offset;
+    if (start === undefined || end === undefined) return;
+    const firstLine = node.position!.start.line - 1;
+    const lastLine = node.position!.end.line - 1;
+    switch (node.type) {
+      case "blockquote":
+        quoteMarkers(node, firstLine, lastLine);
+        break;
+      case "listItem": {
+        const content = node.children[0]?.position?.start;
+        const markerEnd =
+          content && content.line - 1 === firstLine
+            ? content.offset!
+            : lineEnd(starts, text, firstLine);
+        mark(start, markerEnd, LINE_MARKER);
+        kinds[firstLine] = ordered ? "ordered" : "bullet";
+        if (ordered) numbers.set(firstLine, number);
+        break;
+      }
+      case "code": {
+        const isFenced = FENCED_CODE.test(text.slice(start));
+        for (let line = firstLine; line <= lastLine; line++) {
+          const fenced =
+            isFenced &&
+            (line === firstLine ||
+              (line === lastLine && FENCE.test(lines[line]!)));
+          const from = line === firstLine ? start : starts[line]!;
+          const to = Math.min(lineEnd(starts, text, line), end);
+          kinds[line] = fenced ? "fence" : "code";
+          if (fenced) mark(starts[line]!, to, LINE_MARKER);
+          else format(from, to, IS_CODE);
+        }
+        return;
+      }
+      case "inlineCode": {
+        const source = text.slice(start, end);
+        const fence = /^`+/.exec(source)![0].length;
+        const span = nextSpan++;
+        mark(start, start + fence, { edge: "open", span });
+        mark(end - fence, end, { edge: "close", span });
+        format(start + fence, end - fence, IS_CODE);
+        return;
+      }
+      case "link":
+        // A bare or `<url>` link is one piece of text, with no syntax to
+        // show or hide.
+        if (text[start] !== "[") return;
+        spanMarkers(node, start, end);
+        break;
+      case "delete":
+      case "emphasis":
+      case "strong":
+        spanMarkers(node, start, end);
+        break;
+      default:
+        break;
     }
-    for (const [kind, prefix] of LINE_PREFIX) {
-      const match = prefix.exec(line);
-      if (!match) continue;
-      return {
-        kind,
-        segments: [
-          ...lineMarker(match[0]),
-          ...parseInline(line.slice(match[0].length), 0, { next: 0 }),
-        ],
-      };
+    if (!("children" in node)) return;
+    const list = node.type === "list" ? node : undefined;
+    for (const [index, child] of node.children.entries()) {
+      visit(
+        child,
+        list ? Boolean(list.ordered) : ordered,
+        (list?.start ?? 1) + index,
+      );
     }
-    return { kind: "text", segments: parseInline(line, 0, { next: 0 }) };
+  };
+
+  // The source before the first child and after the last one is syntax.
+  const spanMarkers = (
+    node: Extract<MarkdownNode, { children: unknown }>,
+    start: number,
+    end: number,
+  ) => {
+    const first = node.children[0]?.position?.start.offset ?? end;
+    const last = node.children.at(-1)?.position?.end.offset ?? first;
+    const span = nextSpan++;
+    mark(start, first, { edge: "open", span });
+    mark(last, end, { edge: "close", span });
+    format(start, end, SPAN_FORMATS[node.type] ?? 0);
+  };
+
+  visit(parseMarkdown(text), false, 1);
+  return lines.map((line, index) => {
+    const parsed: MarkdownLine = {
+      kind: kinds[index]!,
+      segments: lineSegments(line, starts[index]!, formats, markers),
+    };
+    const number = numbers.get(index);
+    if (number !== undefined) parsed.number = number;
+    return parsed;
   });
 }
 
-function lineMarker(text: string): MarkdownSegment[] {
-  return text ? [{ format: 0, marker: { edge: "line", span: -1 }, text }] : [];
-}
-
-type SpanCounter = { next: number };
-
-function parseInline(
-  text: string,
-  format: number,
-  spans: SpanCounter,
-): MarkdownSegment[] {
-  const out: MarkdownSegment[] = [];
-  let plain = "";
-  const flush = () => {
-    if (plain) out.push({ format, text: plain });
-    plain = "";
-  };
-  // Markers carry the span's format, so `**` looks bold, but not code or
-  // link styles, whose padding and underline would show on hidden markers.
-  const span = (
-    open: string,
-    close: string,
-    inner: MarkdownSegment[],
-    spanFormat: number,
-  ) => {
-    flush();
-    const id = spans.next++;
-    const markerFormat = spanFormat & ~(IS_CODE | IS_UNDERLINE);
-    out.push(
-      { format: markerFormat, marker: { edge: "open", span: id }, text: open },
-      ...inner,
-      {
-        format: markerFormat,
-        marker: { edge: "close", span: id },
-        text: close,
-      },
-    );
-  };
-
-  let i = 0;
-  while (i < text.length) {
-    const char = text[i]!;
-    if (char === "\\" && ESCAPABLE.test(text[i + 1] ?? "")) {
-      plain += text.slice(i, i + 2);
-      i += 2;
-      continue;
-    }
-    if (char === "`") {
-      const run = runLength(text, i, "`");
-      const close = findBacktickClose(text, i + run, run);
-      if (close < 0) {
-        plain += text.slice(i, i + run);
-        i += run;
-        continue;
-      }
-      const fence = text.slice(i, i + run);
-      const content = text.slice(i + run, close);
-      span(
-        fence,
-        fence,
-        content ? [{ format: format | IS_CODE, text: content }] : [],
-        format | IS_CODE,
-      );
-      i = close + run;
-      continue;
-    }
-    const atom = atomAt(text, i);
-    if (atom) {
-      plain += atom;
-      i += atom.length;
-      continue;
-    }
-    const link = char === "[" ? LINK.exec(text.slice(i)) : null;
-    if (link) {
-      const linkFormat = format | IS_UNDERLINE;
-      span(
-        "[",
-        `](${link[2]})`,
-        parseInline(link[1]!, linkFormat, spans),
-        linkFormat,
-      );
-      i += link[0].length;
-      continue;
-    }
-    if (char === "*" || char === "_" || char === "~") {
-      const run = runLength(text, i, char);
-      const matched = matchDelimiter(text, i, run);
-      if (!matched) {
-        plain += text.slice(i, i + run);
-        i += run;
-        continue;
-      }
-      const { close, delimiter, delimiterFormat } = matched;
-      const spanFormat = format | delimiterFormat;
-      span(
-        delimiter,
-        delimiter,
-        parseInline(text.slice(i + delimiter.length, close), spanFormat, spans),
-        spanFormat,
-      );
-      i = close + delimiter.length;
-      continue;
-    }
-    plain += char;
-    i++;
-  }
-  flush();
-  return out;
-}
-
-// The longest delimiter of the run at `start` that has a closing match.
-function matchDelimiter(
-  text: string,
+// Runs of characters with one format and marker. Markers carry their
+// span's format, so `**` looks bold, but not code or link styles, whose
+// padding and underline would show on hidden markers.
+function lineSegments(
+  line: string,
   start: number,
-  run: number,
-): { close: number; delimiter: string; delimiterFormat: number } | undefined {
-  for (const [delimiter, delimiterFormat] of DELIMITERS) {
-    if (delimiter.length > run || !text.startsWith(delimiter, start)) continue;
-    // A run longer than its delimiter, such as `****`, is text.
-    if (delimiter.length !== run && run !== 3) continue;
-    const contentStart = start + delimiter.length;
-    if (/\s/.test(text[contentStart] ?? " ")) continue;
-    if (delimiter[0] === "_" && isWordChar(text[start - 1])) continue;
-    const close = findDelimiterClose(text, contentStart, delimiter);
-    if (close > contentStart) return { close, delimiter, delimiterFormat };
+  formats: number[],
+  markers: (Marker | undefined)[],
+): MarkdownSegment[] {
+  const segments: MarkdownSegment[] = [];
+  for (let at = 0; at < line.length; at++) {
+    const marker = markers[start + at];
+    const format = marker
+      ? formats[start + at]! & ~(IS_CODE | IS_UNDERLINE)
+      : formats[start + at]!;
+    const previous = segments.at(-1);
+    if (previous && previous.format === format && previous.marker === marker) {
+      previous.text += line[at];
+      continue;
+    }
+    const segment: MarkdownSegment = { format, text: line[at]! };
+    if (marker) segment.marker = marker;
+    segments.push(segment);
   }
-  return undefined;
+  return segments;
 }
 
-// The start of the closing delimiter, skipping code and tokens, or -1.
-function findDelimiterClose(
-  text: string,
-  from: number,
-  delimiter: string,
-): number {
-  const char = delimiter[0]!;
-  let j = from;
-  while (j < text.length) {
-    const here = text[j]!;
-    if (here === "\\") {
-      j += 2;
-      continue;
-    }
-    if (here === "`") {
-      const run = runLength(text, j, "`");
-      const close = findBacktickClose(text, j + run, run);
-      j = close < 0 ? j + run : close + run;
-      continue;
-    }
-    const atom = atomAt(text, j);
-    if (atom) {
-      j += atom.length;
-      continue;
-    }
-    if (here !== char) {
-      j++;
-      continue;
-    }
-    const run = runLength(text, j, char);
-    // A run of three closes a span of one or two inside a span of the rest.
-    const close =
-      run === delimiter.length
-        ? j
-        : run === 3 && delimiter.length < 3
-          ? j + run - delimiter.length
-          : -1;
-    if (
-      close > from &&
-      !/\s/.test(text[close - 1]!) &&
-      !(char === "_" && isWordChar(text[j + run]))
-    ) {
-      return close;
-    }
-    j += run;
-  }
-  return -1;
+function lineStarts(lines: string[]): number[] {
+  let offset = 0;
+  return lines.map((line) => {
+    const start = offset;
+    offset += line.length + 1;
+    return start;
+  });
 }
 
-// The start of a backtick run of exactly `run` after `from`, or -1.
-function findBacktickClose(text: string, from: number, run: number): number {
-  let j = text.indexOf("`", from);
-  while (j >= 0) {
-    const length = runLength(text, j, "`");
-    if (length === run) return j;
-    j = text.indexOf("`", j + length);
-  }
-  return -1;
-}
-
-// Text at `index` that inline Markdown does not split: a Slack or
-// reference token, or a bare URL, which can hold `_` and `*`.
-function atomAt(text: string, index: number): string | undefined {
-  if (!isWordStart(text, index)) return undefined;
-  const atom = /<[^<>]+>|https?:\/\/[^\s<>]+/gy;
-  atom.lastIndex = index;
-  return atom.exec(text)?.[0];
-}
-
-function runLength(text: string, start: number, char: string): number {
-  let end = start;
-  while (text[end] === char) end++;
-  return end - start;
-}
-
-function isWordChar(char: string | undefined): boolean {
-  return char !== undefined && /[\p{L}\p{N}]/u.test(char);
-}
-
-function isWordStart(text: string, index: number): boolean {
-  return !isWordChar(text[index - 1]);
+function lineEnd(starts: number[], text: string, line: number): number {
+  return (starts[line + 1] ?? text.length + 1) - 1;
 }

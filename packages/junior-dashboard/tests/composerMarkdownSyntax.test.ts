@@ -100,3 +100,22 @@ it("finds list, quote, and fenced code lines", () => {
   });
   expect(lines[4]!.segments).toEqual([{ format: IS_CODE, text: "**code**" }]);
 });
+
+it("styles a span across lines and nested lists in quotes", () => {
+  const lines = parseMarkdownLines(["**bold", "still bold**", "> - item"]);
+  expect(lines[0]!.segments[0]).toMatchObject({
+    marker: { edge: "open" },
+    text: "**",
+  });
+  expect(lines[1]!.segments.at(-1)).toMatchObject({
+    marker: { edge: "close", span: lines[0]!.segments[0]!.marker!.span },
+    text: "**",
+  });
+  expect(lines[2]).toMatchObject({
+    kind: "bullet",
+    segments: [
+      { marker: { edge: "line" }, text: "> - " },
+      { format: 0, text: "item" },
+    ],
+  });
+});
