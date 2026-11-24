@@ -1,5 +1,5 @@
 {
-  "id": "dd03d3e0-f5ba-4e30-8e63-9481aefc7975",
+  "id": "e991f2d9-a56f-4e56-a78a-c2b33f24fff7",
   "prevId": "931371fa-b4c2-42c0-a61e-13e39c7cd162",
   "version": "7",
   "dialect": "postgresql",
@@ -3481,6 +3481,27 @@
           "method": "btree",
           "with": {}
         },
+        "junior_conversations_root_lookup_idx": {
+          "name": "junior_conversations_root_lookup_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "root_conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
         "junior_conversations_lead_actor_idx": {
           "name": "junior_conversations_lead_actor_idx",
           "columns": [
@@ -6312,6 +6333,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 24
+        },
+        "preferences": {
+          "name": "preferences",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "created_at": {
           "name": "created_at",

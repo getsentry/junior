@@ -1,0 +1,1 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_conversations_root_lookup_idx" ON "junior_conversations" USING btree ("conversation_id","root_conversation_id");

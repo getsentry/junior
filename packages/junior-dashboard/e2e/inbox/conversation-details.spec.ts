@@ -300,6 +300,88 @@ test.describe("new UI", () => {
     await screenshot(page, "conversation-details-watched-linked-work");
   });
 
+  test("lists To-dos, and a Participant changes their status", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("slack:CQA123:1770003600.000200")}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    // The heading counts the open and in-progress To-dos.
+    const heading = details.getByRole("heading", { name: /^To-dos/ });
+    await expect(heading).toHaveText("To-dos3");
+    const change = page.getByRole("button", {
+      name: "Change Confirm the rollback window",
+    });
+    const rollback = details.getByRole("listitem").filter({ has: change });
+    await expect(rollback.getByRole("img", { name: "Open" })).toBeVisible();
+    await screenshot(page, "conversation-details-todos", {
+      lightTheme: true,
+      target: details,
+      view: "desktop",
+    });
+
+    await change.click();
+    await expect(page.getByRole("menuitem")).toHaveText([
+      "Start",
+      "Mark done",
+      "Drop",
+    ]);
+    const save = page.waitForRequest(
+      (request) =>
+        request.method() === "PATCH" && request.url().endsWith("/todos/13"),
+    );
+    await page.getByRole("menuitem", { name: "Mark done" }).click();
+    expect((await save).postDataJSON()).toEqual({ status: "done" });
+    await expect(rollback.getByRole("img", { name: "Done" })).toBeVisible();
+    await expect(heading).toHaveText("To-dos2");
+
+    await change.click();
+    await page.getByRole("menuitem", { name: "Reopen" }).click();
+    await expect(rollback.getByRole("img", { name: "Open" })).toBeVisible();
+
+    // A phone shows the same card in the details sheet.
+    await page.setViewportSize({ height: 844, width: 390 });
+    await page.getByRole("button", { name: "Conversation menu" }).click();
+    await page
+      .getByRole("menuitem", { exact: true, name: "Conversation details" })
+      .click();
+    const sheetHeading = page
+      .getByRole("dialog", { name: "Conversation details" })
+      .getByRole("heading", { name: /^To-dos/ });
+    await sheetHeading.scrollIntoViewIfNeeded();
+    await expect(sheetHeading).toBeInViewport();
+    await screenshot(page, "conversation-details-todos", {
+      lightTheme: true,
+      view: "mobile",
+    });
+  });
+
+  test("a viewer who is not a Participant sees To-dos without actions", async ({
+    dashboard,
+    page,
+  }) => {
+    await page.setViewportSize({ height: 900, width: 1600 });
+    await page.goto(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:dashboard-qa")}`,
+    );
+    const details = page.getByRole("complementary", {
+      exact: true,
+      name: "Conversation details",
+    });
+    await expect(
+      details.getByText("Fix the failing dashboard checks"),
+    ).toBeVisible();
+    await expect(details.getByRole("button", { name: /^Change / })).toHaveCount(
+      0,
+    );
+  });
+
   test("keeps memories out of the transcript and jumps to their Turn", async ({
     page,
     dashboard,

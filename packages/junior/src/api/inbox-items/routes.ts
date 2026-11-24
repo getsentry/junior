@@ -22,6 +22,7 @@ import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
   inboxItemTodo,
+  isInboxItemForEveryone,
   isOnlyAssignee,
   itemNeedsUser,
   inboxItemReaderForUser,
@@ -215,7 +216,7 @@ function inboxItemPayload(
   const todo = inboxItemTodo(item);
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
-    assignedToEveryone: item.assignedToEveryone,
+    assignedToEveryone: isInboxItemForEveryone(item),
     assignees: item.assignees,
     body: item.body,
     canAct: canActOnInboxItem(item, viewer.id),
