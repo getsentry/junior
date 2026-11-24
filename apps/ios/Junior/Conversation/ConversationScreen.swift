@@ -333,7 +333,7 @@ private struct ConversationComposer: View {
   @Environment(AppModel.self) private var app
   let model: ConversationModel
   @State private var text = ""
-  @FocusState private var focused: Bool
+  @State private var focused = false
 
   private var canSend: Bool {
     // Not before the page loads: the send's refresh needs the cursor.
@@ -351,7 +351,9 @@ private struct ConversationComposer: View {
     } content: {
       ComposerSurface(focused: focused) {
         HStack(alignment: .bottom, spacing: 0) {
-          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused)
+          ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused) {
+            if canSend { send(interrupt: false) }
+          }
           HStack(spacing: 12) {
             if working {
               Button {
