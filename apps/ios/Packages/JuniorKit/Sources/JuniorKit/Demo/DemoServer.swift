@@ -321,6 +321,7 @@ public actor DemoServer {
     conversations[index].replyAt = nil
     conversations[index].summary["turnActive"] = false
     conversations[index].summary["status"] = "done"
+    conversations[index].summary["treeState"] = "done"
     return .object([
       "conversationId": id, "status": "requested", "stoppedInboundMessageIds": .array(dropped),
       "stoppedMessages": .array([]),

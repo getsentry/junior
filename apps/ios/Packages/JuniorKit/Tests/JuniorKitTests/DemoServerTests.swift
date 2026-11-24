@@ -100,6 +100,11 @@ final class ManualClock: @unchecked Sendable {
     let list = try await client.call("searchConversations", as: ConversationList.self)
     #expect(list.conversations.first?.conversationId == accepted.conversationId)
     #expect(list.conversations.first?.title == "Check the deploy")
+    #expect(list.conversations.first?.treeState == .working)
+    struct Stopped: Decodable, Sendable { var status: String }
+    _ = try await client.call("stopConversation", id(accepted.conversationId), as: Stopped.self)
+    let stopped = try await client.call("searchConversations", as: ConversationList.self)
+    #expect(stopped.conversations.first?.treeState == .done)
   }
 
   @Test func archivesAndPins() async throws {
