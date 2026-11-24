@@ -502,7 +502,7 @@ describe("object links API", () => {
       ),
       http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
         reads.push(`pulls/${params["number"]}`);
-        return ["34", "56"].includes(String(params["number"]))
+        return ["34", "56", "90"].includes(String(params["number"]))
           ? HttpResponse.json(pullRequest(Number(params["number"])))
           : HttpResponse.json({ message: "Server Error" }, { status: 502 });
       }),
@@ -520,6 +520,7 @@ describe("object links API", () => {
         `${GITHUB_REPO}/issues/14`,
         `${GITHUB_REPO}/pull/34`,
         `${GITHUB_REPO}/pull/56`,
+        `${GITHUB_REPO}/pull/90`,
       );
       expect(first.objects.get(`${GITHUB_REPO}/issues/13`)).toMatchObject({
         status: "open",
@@ -576,6 +577,18 @@ describe("object links API", () => {
           updated_at: after,
         },
       });
+      // A new base on the same head commit. The merge state is about the
+      // old base.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "edited",
+        changes: { base: { ref: { from: "main" } } },
+        pull_request: {
+          ...pullRequest(90),
+          base: { ref: "release" },
+          mergeable: null,
+          updated_at: after,
+        },
+      });
       // No card has read #78 yet.
       await sendGitHubWebhook(app, "pull_request", {
         action: "opened",
@@ -592,6 +605,7 @@ describe("object links API", () => {
         `${GITHUB_REPO}/pull/34`,
         `${GITHUB_REPO}/pull/56`,
         `${GITHUB_REPO}/pull/78`,
+        `${GITHUB_REPO}/pull/90`,
       );
       // Only the moved issue is read again.
       expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
@@ -618,6 +632,9 @@ describe("object links API", () => {
       expect(next.objects.get(`${GITHUB_REPO}/pull/56`)).toMatchObject({
         facts: { mergeable: false },
       });
+      expect(
+        next.objects.get(`${GITHUB_REPO}/pull/90`)?.facts,
+      ).not.toHaveProperty("mergeable");
       expect(next.objects.get(`${GITHUB_REPO}/pull/78`)).toMatchObject({
         status: "draft",
         title: "Cache GitHub objects",

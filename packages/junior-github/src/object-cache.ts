@@ -90,10 +90,13 @@ export function mergeGitHubObject<
   }
   const merged = { ...current, ...payload };
   if (!("head" in merged) || !current || !("head" in current)) return merged;
-  // GitHub computes mergeability for one head commit. After a push, the
-  // cached value is about the old commit, so it is unknown until GitHub
-  // sends or answers it again.
-  if (current.head?.sha !== merged.head?.sha) {
+  // GitHub computes mergeability for one head commit and base branch. After
+  // a push or a new base, the cached value is about the old pair, so it is
+  // unknown until GitHub sends or answers it again.
+  if (
+    current.head?.sha !== merged.head?.sha ||
+    current.base?.ref !== merged.base?.ref
+  ) {
     if (!("mergeable" in payload)) delete merged.mergeable;
   } else if (merged.mergeable === null) {
     // GitHub sends `mergeable: null` while it computes it, so it is a
