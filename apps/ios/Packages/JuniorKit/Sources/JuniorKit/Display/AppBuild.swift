@@ -22,7 +22,7 @@ public struct AppBuild: Equatable, Sendable {
   /// The build of the running app.
   public static var current: AppBuild { AppBuild(info: Bundle.main.infoDictionary ?? [:]) }
 
-  /// `0.313.0 beta 42 · abc1234`, `0.313.0 RC · abc1234`, or `0.1.0 dev` for a
+  /// `0.313.0 beta 42 · abc1234`, `0.313.0 RC · abc1234`, or `0.313.0 dev` for a
   /// local build.
   public var label: String {
     let kind =
