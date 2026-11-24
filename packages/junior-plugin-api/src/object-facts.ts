@@ -45,11 +45,18 @@ export const objectFactsSchema = z.discriminatedUnion("type", [
     targetBranch: text.optional(),
     reviewers: z.array(text).max(5).optional(),
     review: z.enum(["required", "approved", "changes_requested"]).optional(),
+    /** `pending` while the provider counts the checks of a new head. */
     checks: z
-      .strictObject({ passed: count, failed: count, pending: count })
+      .union([
+        z.strictObject({ passed: count, failed: count, pending: count }),
+        z.literal("pending"),
+      ])
       .optional(),
-    /** False while an open change conflicts with its target branch. */
-    mergeable: z.boolean().optional(),
+    /**
+     * False while an open change conflicts with its target branch.
+     * `pending` while the provider computes it for a new head.
+     */
+    mergeable: z.union([z.boolean(), z.literal("pending")]).optional(),
     // The same counts as `codeChangeSizeSchema`.
     changedFiles: count.optional(),
     additions: count.optional(),

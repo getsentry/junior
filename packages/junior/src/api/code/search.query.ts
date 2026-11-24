@@ -114,7 +114,6 @@ export async function readCodeChangeSearchFromSql(
   );
   const rows = await db
     .select({
-      draft: juniorCodeChanges.draft,
       number: juniorCodeChanges.number,
       provider: juniorCodeChanges.provider,
       repository: juniorCodeRepositories.name,

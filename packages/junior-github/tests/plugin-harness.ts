@@ -150,6 +150,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
     },
   };
   const cache: HeartbeatHookContext["cache"] = {
+    async get() {
+      return undefined;
+    },
     async getOrLoad(_key, load) {
       return (await load()).value;
     },

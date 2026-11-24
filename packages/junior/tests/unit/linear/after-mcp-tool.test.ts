@@ -7,6 +7,9 @@ function baseContext(
 ): AfterMcpToolHookContext {
   return {
     cache: {
+      async get() {
+        return undefined;
+      },
       async getOrLoad(_key, load) {
         return (await load()).value;
       },

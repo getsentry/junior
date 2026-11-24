@@ -116,15 +116,13 @@ describe("GitHub conversation sidebar", () => {
     ]);
   });
 
-  it("carries a saved object's title, URL, first image and size for row cards", () => {
+  it("carries a saved object's title, URL and first image for row cards", () => {
     expect(
       githubSidebarAnnotations([
         {
           createdAt: "2026-01-01T00:00:00.000Z",
           facts: {
             type: "code_change",
-            additions: 1204,
-            changedFiles: 12,
             previewImageUrls: [
               "https://junior.example/public/artifacts/before.png",
               "https://junior.example/public/artifacts/after.png",
@@ -150,8 +148,6 @@ describe("GitHub conversation sidebar", () => {
         title: "Show your week under the home composer",
         url: "https://github.com/getsentry/junior/pull/7",
         imageUrl: "https://junior.example/public/artifacts/before.png",
-        // An unknown part stays unset, so no card shows it as 0.
-        size: { additions: 1204, changedFiles: 12 },
       },
     ]);
   });

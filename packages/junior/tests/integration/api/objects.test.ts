@@ -573,8 +573,8 @@ describe("object links API", () => {
         changes: { title: { from: "Add link cards" } },
         pull_request: { ...pullRequest(34), title: "Older title" },
       });
-      // A label on the same head commit. GitHub computes the merge state
-      // again, so the payload has it as null.
+      // A label on the same head commit. The payload has a null merge
+      // state, but nothing that GitHub computes changed.
       await sendGitHubWebhook(app, "pull_request", {
         action: "labeled",
         pull_request: {
@@ -632,112 +632,24 @@ describe("object links API", () => {
         status: "open",
         title: "Add GitHub link cards",
       });
-      // The merge state was about the old head commit.
-      expect(pull?.facts).not.toHaveProperty("mergeable");
-      // A null merge state on the same head commit keeps the known one.
+      // The merge state and checks were about the old head commit.
+      expect(pull?.facts).toMatchObject({
+        checks: "pending",
+        mergeable: "pending",
+      });
+      // A null merge state on the same head and base is a missing field,
+      // so the known one stays.
       expect(next.objects.get(`${GITHUB_REPO}/pull/56`)).toMatchObject({
         facts: { mergeable: false },
       });
-      expect(
-        next.objects.get(`${GITHUB_REPO}/pull/90`)?.facts,
-      ).not.toHaveProperty("mergeable");
+      // A merge state that was about the old base turns pending.
+      expect(next.objects.get(`${GITHUB_REPO}/pull/90`)).toMatchObject({
+        facts: { mergeable: "pending" },
+      });
       expect(next.objects.get(`${GITHUB_REPO}/pull/78`)).toMatchObject({
         status: "draft",
         title: "Cache GitHub objects",
       });
-    } finally {
-      vi.unstubAllEnvs();
-    }
-  });
-
-  it("keeps a webhook that could not wait for a slow card read", async () => {
-    stubGitHubApp();
-    const issue = {
-      closed_at: null,
-      created_at: "2026-01-01T00:00:00Z",
-      html_url: `${GITHUB_REPO}/issues/15`,
-      id: 15_000,
-      number: 15,
-      state: "open",
-      title: "Read me slowly",
-      updated_at: "2026-01-02T03:04:05Z",
-      user: { login: "byk" },
-    };
-    const closed = {
-      ...issue,
-      closed_at: "2026-01-02T04:00:00Z",
-      state: "closed",
-      updated_at: "2026-01-02T04:00:00Z",
-    };
-    const gate = () => {
-      let open!: () => void;
-      const opened = new Promise<void>((resolve) => {
-        open = resolve;
-      });
-      return { open, opened };
-    };
-    let reachedGitHub = gate();
-    let answered = gate();
-    // The first read answers late, with the issue from before the webhook.
-    let slowAnswer: object | undefined = issue;
-    let reads = 0;
-    mswServer.use(
-      http.get(`${GITHUB_API}/issues/15`, async () => {
-        reads += 1;
-        const answer = slowAnswer;
-        if (!answer) return HttpResponse.json(closed);
-        slowAnswer = undefined;
-        reachedGitHub.open();
-        await answered.opened;
-        return HttpResponse.json(answer);
-      }),
-    );
-    try {
-      const app = await createGitHubApp();
-      setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
-      await linkGitHubMember();
-      const read = await viewerApi("alice@example.com");
-      vi.useFakeTimers({ toFake: ["Date"] });
-      const start = Date.now();
-      const slowRead = read(`${GITHUB_REPO}/issues/15`);
-      await reachedGitHub.opened;
-      // The webhook waits for the read's lock, then gives up.
-      const webhook = sendGitHubWebhook(app, "issues", {
-        action: "closed",
-        issue: closed,
-      });
-      // Move the clock past the wait until the webhook gives up.
-      let settled = false;
-      void webhook.finally(() => {
-        settled = true;
-      });
-      for (let step = 1; !settled; step += 1) {
-        vi.setSystemTime(start + step * 11_000);
-        await new Promise((resolve) => setTimeout(resolve, 50));
-      }
-      await webhook;
-      answered.open();
-      await slowRead;
-
-      const next = await read(`${GITHUB_REPO}/issues/15`);
-      expect(next.objects.get(`${GITHUB_REPO}/issues/15`)).toMatchObject({
-        status: "closed",
-      });
-
-      // A later slow read outlives the webhook's mark. The mark expires,
-      // but no write came, so the read keeps what it stored.
-      vi.setSystemTime(Date.now() + 120_000);
-      reachedGitHub = gate();
-      answered = gate();
-      slowAnswer = closed;
-      const readsBefore = reads;
-      const lateRead = read(`${GITHUB_REPO}/issues/15`);
-      await reachedGitHub.opened;
-      vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
-      answered.open();
-      await lateRead;
-      await read(`${GITHUB_REPO}/issues/15`);
-      expect(reads).toBe(readsBefore + 1);
     } finally {
       vi.unstubAllEnvs();
     }

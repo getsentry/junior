@@ -195,6 +195,14 @@ export interface PluginObjectLinkDefinition {
    */
   objectTypes: ObjectType[];
   /**
+   * Load many objects into your cache in one provider call, such as one
+   * query for a page of links. Junior calls it once with every URL of one
+   * resolve that this link type claims, before `canView` and `resolve` run
+   * for each URL as usual. Write only to the cache, and never return data:
+   * the viewer may not see every object.
+   */
+  prefetch?(ctx: ObjectLinkContext, urls: URL[]): Promise<void>;
+  /**
    * Read the card. Junior calls it only after `canView` returns true.
    * Return nothing for a missing object.
    */

@@ -25,8 +25,13 @@ import {
   PULL_REQUEST_CONFLICT_HISTORY,
   PULL_REQUEST_NEXT_ACTION,
   PULL_REQUEST_REVIEWS_BEFORE,
+  pullRequestHeadFacts,
   pullRequestLifecycles,
 } from "../graphql-documents.js";
+import {
+  type PullRequestRef,
+  pullRequestVariables,
+} from "../pull-request-graphql.js";
 import type { GitHubRead } from "../pull-request-review-again.js";
 import { githubErrorMessage } from "../tool-support/github-api.js";
 
@@ -218,6 +223,27 @@ export async function searchOpenPullRequestMergeability(
         after: input.after ?? null,
         query: `repo:${input.repositoryFullName} is:pr is:open author:${input.author}`,
       },
+    },
+    token: token.token,
+  });
+}
+
+/**
+ * Read the merge state and check counts of pull requests by repository and
+ * number, in one aliased query, with a read-only token.
+ */
+export async function loadPullRequestHeadFacts(
+  env: GitHubInstallationEnv,
+  refs: PullRequestRef[],
+): Promise<unknown> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { checks: "read", pull_requests: "read" },
+  });
+  return await githubGraphqlRequest({
+    body: {
+      ...pullRequestHeadFacts(refs.length),
+      variables: pullRequestVariables(refs),
     },
     token: token.token,
   });

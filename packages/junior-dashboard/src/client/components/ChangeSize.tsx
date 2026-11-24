@@ -1,6 +1,8 @@
 import type { CodeChangeSize } from "@sentry/junior-plugin-api";
 
 import { codeChangeSize } from "../codeChangeSize";
+import type { ListedObject } from "../display-text/DisplayText";
+import { listedChangeSize } from "../listedCodeChange";
 import {
   CLOSED_TONE_CLASS,
   OPEN_TONE_CLASS,
@@ -42,5 +44,34 @@ export function ChangeSize(props: {
       </span>
       <span className="sr-only">{size.label}</span>
     </span>
+  );
+}
+
+/**
+ * The live size of a code change in a list: a placeholder until its card
+ * comes, then its size, or nothing when the card has none.
+ */
+export function ListedChangeSize(props: {
+  className?: string;
+  listed: ListedObject;
+}) {
+  if (!props.listed.settled) {
+    // A span, as the skeleton's div cannot sit in a line of text.
+    return (
+      <span
+        aria-hidden="true"
+        className={cn(
+          "inline-block h-3 w-16 animate-pulse rounded-md bg-dashboard-fill-soft align-middle motion-reduce:animate-none",
+          props.className,
+        )}
+        data-code-change-size-pending=""
+      />
+    );
+  }
+  return (
+    <ChangeSize
+      className={props.className}
+      size={listedChangeSize(props.listed)}
+    />
   );
 }

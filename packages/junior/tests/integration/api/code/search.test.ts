@@ -133,7 +133,6 @@ describe("code change search API", () => {
     // only to another person's private Conversation never shows.
     expect(byNumber.map((change) => change.number)).toEqual([12, 1250, 1234]);
     expect(byNumber[0]).toEqual({
-      draft: false,
       number: 12,
       repository: "getsentry/sentry-docs",
       state: "open",
