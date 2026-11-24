@@ -33,6 +33,8 @@ export function betaStatusLine({ state, sha, build, runUrl }) {
   switch (state) {
     case "queued":
       return `**iOS beta:** queued · [runs](${runUrl})`;
+    case "outdated":
+      return "**iOS beta:** not started. This branch's `ios-beta.yml` is older than the label: merge `main`, then add the label again.";
     case "building":
       return `**iOS beta:** building ${commit} · ${run}`;
     case "success":
@@ -77,22 +79,35 @@ export async function dispatchBeta({ github, context, core }) {
     // Someone removed it already.
     if (error.status !== 404) throw error;
   }
-  await github.rest.actions.createWorkflowDispatch({
-    owner,
-    repo,
-    workflow_id: WORKFLOW,
-    ref: pullRequest.head.ref,
-    inputs: { pull_request: String(pullRequest.number) },
-  });
+  const runUrl = `${context.serverUrl}/${owner}/${repo}/actions/workflows/${WORKFLOW}`;
+  try {
+    await github.rest.actions.createWorkflowDispatch({
+      owner,
+      repo,
+      workflow_id: WORKFLOW,
+      ref: pullRequest.head.ref,
+      inputs: { pull_request: String(pullRequest.number) },
+    });
+  } catch (error) {
+    // GitHub answers 422 "Unexpected inputs provided".
+    if (error.status !== 422 || !/unexpected inputs/i.test(error.message))
+      throw error;
+    // The dispatch runs the branch's own ios-beta.yml. A branch from before
+    // the `pull_request` input has an older one, which rejects the input.
+    await setBetaStatus({
+      github,
+      context,
+      pullNumber: pullRequest.number,
+      line: betaStatusLine({ state: "outdated", runUrl }),
+    });
+    throw error;
+  }
   core.info(`Dispatched ${WORKFLOW} on ${pullRequest.head.ref}.`);
   await setBetaStatus({
     github,
     context,
     pullNumber: pullRequest.number,
-    line: betaStatusLine({
-      state: "queued",
-      runUrl: `${context.serverUrl}/${owner}/${repo}/actions/workflows/${WORKFLOW}`,
-    }),
+    line: betaStatusLine({ state: "queued", runUrl }),
   });
 }
 

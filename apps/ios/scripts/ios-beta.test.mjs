@@ -9,7 +9,12 @@ import {
 
 const repo = { owner: "getsentry", repo: "junior" };
 
-function fakeGithub({ body = "Fixes a bug.", removeLabelStatus } = {}) {
+function fakeGithub({
+  body = "Fixes a bug.",
+  removeLabelStatus,
+  dispatchStatus,
+  dispatchMessage = "dispatch failed",
+} = {}) {
   const calls = [];
   return {
     calls,
@@ -26,6 +31,10 @@ function fakeGithub({ body = "Fixes a bug.", removeLabelStatus } = {}) {
       actions: {
         createWorkflowDispatch: async (params) => {
           calls.push(["createWorkflowDispatch", params]);
+          if (dispatchStatus)
+            throw Object.assign(new Error(dispatchMessage), {
+              status: dispatchStatus,
+            });
         },
       },
       pulls: {
@@ -117,6 +126,32 @@ test("dispatchBeta stops on other label errors", async () => {
     /failed/,
   );
   assert.equal(github.calls.length, 1);
+});
+
+test("dispatchBeta says to merge main when the branch's workflow is older", async () => {
+  const github = fakeGithub({
+    dispatchStatus: 422,
+    dispatchMessage: 'Unexpected inputs provided: ["pull_request"]',
+  });
+  await assert.rejects(
+    dispatchBeta({ github, context: labelContext(), core }),
+    /Unexpected inputs/,
+  );
+  const [name, update] = github.calls.at(-1);
+  assert.equal(name, "update");
+  assert.match(
+    update.body,
+    /not started\. .*merge `main`, then add the label again/,
+  );
+});
+
+test("dispatchBeta writes no status on other dispatch errors", async () => {
+  const github = fakeGithub({ dispatchStatus: 422 });
+  await assert.rejects(
+    dispatchBeta({ github, context: labelContext(), core }),
+    /dispatch failed/,
+  );
+  assert.equal(github.calls.at(-1)[0], "createWorkflowDispatch");
 });
 
 test("reportBeta writes the result with the build and run link", async () => {
