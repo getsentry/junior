@@ -1,11 +1,8 @@
 import { Hono } from "hono";
 import { createSpace, listSpaces, updateSpace } from "@/chat/spaces/store";
-import { setSpaceArchive } from "@/chat/spaces/conversations";
-import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { jsonResponse } from "../http";
 import type { JuniorApiEnv } from "../route";
 import {
-  archiveSpaceBodySchema,
   createSpaceBodySchema,
   spaceListQuerySchema,
   spaceListSchema,
@@ -20,16 +17,9 @@ import {
   spaceReport,
   spaceResponse,
 } from "./access";
-import { createSpaceMemberRoutes } from "./members";
 
-/**
- * Create the Space routes: list, create, read, change, and archive Spaces,
- * with the member routes under each Space.
- */
-export function createSpaceRoutes(options: {
-  /** Archive stops the Conversations of the Space through it. */
-  queue: ConversationWorkQueue;
-}): Hono<JuniorApiEnv> {
+/** Create the routes that list, create, read, and change Spaces. */
+export function createSpaceRoutes(): Hono<JuniorApiEnv> {
   const app = new Hono<JuniorApiEnv>();
 
   app.get(
@@ -77,26 +67,6 @@ export function createSpaceRoutes(options: {
       return await spaceResponse(viewerUserId, spaceId);
     },
   );
-
-  app.patch(
-    "/:spaceId/archive",
-    requireViewer,
-    spaceParamsValidator,
-    validateRequest("json", archiveSpaceBodySchema, "Invalid request body."),
-    async (context) => {
-      const viewerUserId = context.get("viewer").id;
-      const { spaceId } = context.req.valid("param");
-      await requireMemberSpace(viewerUserId, spaceId);
-      await setSpaceArchive({
-        archived: context.req.valid("json").archived,
-        queue: options.queue,
-        spaceId,
-      });
-      return await spaceResponse(viewerUserId, spaceId);
-    },
-  );
-
-  app.route("/", createSpaceMemberRoutes());
 
   return app;
 }
