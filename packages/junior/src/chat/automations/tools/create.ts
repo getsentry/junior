@@ -73,6 +73,35 @@ import { zodTool } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
+// Outcomes name `current_conversation` for the Automation's own
+// destination, which is not always the Conversation that creates it. Say in
+// code where each message goes, so action review reads the real target.
+function describeDelivery(input: {
+  destination?: string | null;
+  outcomes?: TaskOutcomeInput[];
+}): string {
+  const target =
+    input.destination ?? "the Slack channel or DM of this conversation";
+  const lines = [`The automation delivers to ${target}.`];
+  if (
+    input.outcomes?.some(
+      (outcome) => outcome.destination === "current_conversation",
+    )
+  ) {
+    lines.push(
+      `Each send_message outcome with destination current_conversation posts to ${target}.`,
+    );
+  }
+  if (
+    input.outcomes?.some((outcome) => outcome.destination === "task_creator")
+  ) {
+    lines.push(
+      "Each send_message outcome with destination task_creator sends a direct message to the person who creates the automation.",
+    );
+  }
+  return lines.join(" ");
+}
+
 type NewAutomation = {
   creator: ReturnType<typeof requireToolCreator>;
   credentialMode: "creator" | "system";
@@ -209,6 +238,7 @@ export function createAutomationTool(
     exposure: "deferred",
     source: AUTOMATIONS_TOOL_SOURCE,
     approvalMode: "review",
+    describeProposal: describeDelivery,
     annotations: {
       destructiveHint: false,
       idempotentHint: true,
