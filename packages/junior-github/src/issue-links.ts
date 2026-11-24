@@ -124,6 +124,8 @@ function issueCard(
   });
 }
 
+const TITLE_PART_MAX_LENGTH = 160;
+
 /**
  * Add the title parts to code change facts. The preview images are packed
  * again after them, so the facts stay in the 4 KiB limit.
@@ -142,7 +144,15 @@ function pullRequestCard(
   categories: readonly CodeChangeCategory[],
 ): ObjectAnnotation {
   const card = githubObjectFacts("code_change", pull);
-  const titleParts = parseCodeChangeTitle(pull.title, categories);
+  const parsed = parseCodeChangeTitle(pull.title, categories);
+  // Card facts cap a title part at 160 characters, and a longer one would
+  // drop the whole card, so such a title shows without its parts.
+  const titleParts =
+    parsed &&
+    (parsed.scope?.length ?? 0) <= TITLE_PART_MAX_LENGTH &&
+    (parsed.type?.length ?? 0) <= TITLE_PART_MAX_LENGTH
+      ? parsed
+      : undefined;
   return githubObjectAnnotation({
     ...card,
     ...(titleParts && card.facts?.type === "code_change"
