@@ -774,12 +774,10 @@ function InboxRowBody(
               <span
                 className={cn(
                   "-my-1 flex gap-0.5 transition",
-                  // A touch screen has no hover. In the Inbox, a row there
-                  // shows its actions once it is open, so each row does not
-                  // repeat them. Elsewhere they always show there.
-                  !props.expanded &&
-                    props.itemActions &&
-                    "max-sm:hidden pointer-coarse:hidden",
+                  // A touch screen has no hover, and on a phone the actions
+                  // crowd out the title. There a closed row hides them: a
+                  // tap opens the row, and a long press opens its menu.
+                  !props.expanded && "max-sm:hidden pointer-coarse:hidden",
                   !props.expanded &&
                     "sm:pointer-fine:pointer-events-none sm:pointer-fine:opacity-0 sm:pointer-fine:group-focus-within:pointer-events-auto sm:pointer-fine:group-focus-within:opacity-100 sm:pointer-fine:group-hover:pointer-events-auto sm:pointer-fine:group-hover:opacity-100",
                 )}
