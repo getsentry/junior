@@ -102,7 +102,7 @@ export const rollout = {
     ],
   },
   title: "Approve the payments-v42 rollout",
-  subject: { id: "item-rollout", kind: "agent" as const },
+  subject: { id: "item-rollout", kind: "question" as const },
 };
 
 // A To-do that the checkout Conversation's agent gave the viewer. Its item
@@ -137,7 +137,7 @@ export const license = {
     ],
   },
   title: "Review the acme license entry",
-  subject: { id: "item-license", kind: "agent" as const },
+  subject: { id: "item-license", kind: "question" as const },
 };
 
 export const audit = {
@@ -154,7 +154,7 @@ export const prReady = {
   kind: "notice" as const,
   subject: pullRequestSubject({
     id: "acme/payments#42",
-    kind: "agent",
+    kind: "question",
     title: "fix(payments): Retry declined webhooks",
     url: "https://github.com/acme/payments/pull/42",
   }),
@@ -186,7 +186,7 @@ const dismissedNotice = {
   kind: "notice" as const,
   status: "dismissed" as const,
   title: "Digest skipped two alerts",
-  subject: { id: "item-digest", kind: "agent" as const },
+  subject: { id: "item-digest", kind: "question" as const },
 };
 
 // The agent added this item in the Conversation, so a message there closes it.
@@ -290,7 +290,7 @@ export const releaseNotes = {
   id: "item-release-notes",
   kind: "notice" as const,
   title: "Release notes drafted",
-  subject: { id: "item-release-notes", kind: "agent" as const },
+  subject: { id: "item-release-notes", kind: "question" as const },
 };
 
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
@@ -305,7 +305,7 @@ export const digest = {
   id: "item-digest-open",
   kind: "notice" as const,
   title: "Digest skipped two noisy alerts",
-  subject: { id: "item-digest-open", kind: "agent" as const },
+  subject: { id: "item-digest-open", kind: "question" as const },
 };
 
 // An ask for Everyone in its own Conversation: up for grabs until someone
@@ -332,7 +332,7 @@ export const grab = {
     ],
   },
   title: "Cover the Friday deploy",
-  subject: { id: "item-grab", kind: "agent" as const },
+  subject: { id: "item-grab", kind: "question" as const },
 };
 
 /**

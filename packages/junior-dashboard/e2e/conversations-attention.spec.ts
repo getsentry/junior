@@ -22,7 +22,7 @@ const inboxItem = {
   canTake: false,
   createdAt: "2026-08-07T08:00:00.000Z",
   id: "item-checkout-fix",
-  subject: { id: "item-checkout-fix", kind: "agent" },
+  subject: { id: "item-checkout-fix", kind: "question" },
   kind: "action" as const,
   request: {
     question: "Merge the checkout fix?",

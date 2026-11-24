@@ -26,7 +26,7 @@ function ask(
       type === "prQuestion"
         ? {
             id: `https://github.com/getsentry/junior/pull/${id}`,
-            kind: "agent",
+            kind: "question",
             objectType: "code_change",
             url: `https://github.com/getsentry/junior/pull/${id}`,
           }

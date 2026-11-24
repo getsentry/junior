@@ -170,7 +170,7 @@ describe("inbox item actions API", () => {
       parentConversationId: "slack:CPUB:1.000004",
     });
     await insertInboxItem(getDb(), {
-      subject: { id: "fair-source:entry:initech", kind: "agent" },
+      subject: { id: "fair-source:entry:initech", kind: "question" },
       owner: { id: "agent:child-of-4", kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [ana.id],
@@ -566,7 +566,7 @@ describe("inbox item actions API", () => {
     });
     const add = async (conversationId: string, title: string) => {
       const created = await insertInboxItem(getDb(), {
-        subject: { id: `roll-up:${conversationId}`, kind: "agent" },
+        subject: { id: `roll-up:${conversationId}`, kind: "question" },
         owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
@@ -644,7 +644,7 @@ describe("inbox item actions API", () => {
       nowMs: number,
     ) => {
       const created = await insertInboxItem(getDb(), {
-        subject: { id: `waiting-sort:${index}`, kind: "agent" },
+        subject: { id: `waiting-sort:${index}`, kind: "question" },
         owner: { id: "slack:CPUB:1.000001", kind: "conversation" },
         assignedToEveryone: false,
         assigneeUserIds: [ana.id],
@@ -725,7 +725,7 @@ describe("inbox item actions API", () => {
       index: number,
       input: {
         assignee?: User;
-        kind: "decision" | "notice" | "pr";
+        kind: "decision" | "notice" | "pr" | "prQuestion";
       },
     ) => {
       const pr = {
@@ -743,7 +743,7 @@ describe("inbox item actions API", () => {
               dedupeKey: `bundles:${index}`,
               kind: "action",
               request: REQUEST,
-              subject: { id: `bundles:${index}`, kind: "agent" },
+              subject: { id: `bundles:${index}`, kind: "question" },
             }
           : input.kind === "pr"
             ? {
@@ -751,7 +751,17 @@ describe("inbox item actions API", () => {
                 kind: "action",
                 subject: pr,
               }
-            : { dedupeKey: `bundles:${index}`, kind: "notice", subject: pr }),
+            : input.kind === "prQuestion"
+              ? {
+                  // A question about a pull request cites it as evidence.
+                  kind: "action",
+                  request: {
+                    ...REQUEST,
+                    evidence: [{ label: "The pull request", url: pr.id }],
+                  },
+                  subject: { id: `bundles:${index}`, kind: "question" },
+                }
+              : { dedupeKey: `bundles:${index}`, kind: "notice", subject: pr }),
         nowMs: base + index * 1_000,
         title: `Item ${index}`,
         visibility: "private",
@@ -764,7 +774,7 @@ describe("inbox item actions API", () => {
       await item(index, { kind: "decision" });
     }
     await item(27, { kind: "pr" });
-    await item(28, { kind: "pr" });
+    await item(28, { kind: "prQuestion" });
     // A notice and Ben's pull request do not wait on Ana.
     await item(29, { kind: "notice" });
     await item(30, { assignee: ben, kind: "pr" });
@@ -790,8 +800,10 @@ describe("inbox item actions API", () => {
     ).toEqual(["code_change", "code_change", undefined]);
 
     // The counts cover every page.
+    // The question about a pull request counts as a decision and as a pull
+    // request.
     expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
-      decisions: 27,
+      decisions: 28,
       needsViewer: 29,
       codeChanges: 2,
       snoozed: 0,

@@ -427,12 +427,9 @@ export function isPluginInboxItem(item: Pick<InboxItem, "subject">) {
   return inboxItemPlugin(item) !== undefined;
 }
 
-/**
- * Return the subject of an agent's item. Its id is the agent's key, else
- * the subject that it named, such as a pull request URL.
- */
-export function agentInboxItemSubject(id: string): InboxItemSubject {
-  return { id, kind: INBOX_SUBJECT_KINDS.agent };
+/** Return the subject of an agent's item: its key, or a new id. */
+export function questionSubject(id: string): InboxItemSubject {
+  return { id, kind: INBOX_SUBJECT_KINDS.question };
 }
 
 /**
@@ -442,13 +439,13 @@ export function agentInboxItemSubject(id: string): InboxItemSubject {
  * item changes only from the Conversation or Automation that added it. An
  * agent never changes an item that a plugin added, or an item that another
  * owner kind, such as an Automation, owns, or a reply notice: only items
- * of the `agent` kind.
+ * of the `question` kind.
  */
 export function canAgentChangeInboxItem(
   item: InboxItem,
   scope: InboxItemAgentScope,
 ): boolean {
-  if (item.subject.kind !== INBOX_SUBJECT_KINDS.agent) return false;
+  if (item.subject.kind !== INBOX_SUBJECT_KINDS.question) return false;
   if (item.owner.kind !== "conversation") return false;
   if (!isSameTenant(item.tenant, scope.tenant)) return false;
   if (item.visibility === "public") return !scope.inPrivateConversation;

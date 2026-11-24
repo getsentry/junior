@@ -112,7 +112,7 @@ async function visibleRowItems(
       inRow &&
       (await canUserReadInboxItem(item, user))
     ) {
-      const links = await readSubjectLinks(getDb(), [item.subject]);
+      const links = await readSubjectLinks(getDb(), [item]);
       return [
         {
           canAct: canActOnInboxItem(item, user.id),
@@ -129,6 +129,7 @@ async function visibleRowItems(
     .select({
       canAct: sql<boolean>`${inboxItemForUser(user.id)}`,
       id: juniorInboxItems.id,
+      request: juniorInboxItems.request,
       subjectId: juniorInboxItems.subjectId,
       subjectKind: juniorInboxItems.subjectKind,
     })
@@ -140,15 +141,15 @@ async function visibleRowItems(
         inboxItemInRow(root),
       ),
     );
-  const subjects = rows.map((row) => ({
-    id: row.subjectId,
-    kind: row.subjectKind,
+  const items = rows.map((row) => ({
+    request: row.request,
+    subject: { id: row.subjectId, kind: row.subjectKind },
   }));
-  const links = await readSubjectLinks(getDb(), subjects);
+  const links = await readSubjectLinks(getDb(), items);
   return rows.map((row, index) => ({
     canAct: row.canAct,
     id: row.id,
-    subjectUrl: links.get(subjectKey(subjects[index]!)),
+    subjectUrl: links.get(subjectKey(items[index]!.subject)),
   }));
 }
 

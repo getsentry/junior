@@ -207,7 +207,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       conversationIds: [],
       createdAt: new Date(NOW_MS - (60 - index) * 3_600_000).toISOString(),
       id: `item-notice-${index}`,
-      subject: { id: `item-notice-${index}`, kind: "agent" },
+      subject: { id: `item-notice-${index}`, kind: "question" },
       title: `Deploy note ${index}`,
     }));
     const ask = {

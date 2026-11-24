@@ -114,7 +114,6 @@ describe("inbox item tools", () => {
       assignees: ["ana@example.com", "ben@example.com"],
       dedupe_key: "fair-source:entry:acme",
       request: REQUEST,
-      subject: { id: "https://github.com/example/list/pull/7" },
     };
 
     await expect(
@@ -167,7 +166,7 @@ describe("inbox item tools", () => {
       "turn-3",
     );
 
-    // A person in another public Conversation finds it by subject.
+    // A person in another public Conversation finds it by its key.
     await conversation("slack:COTHER:1.000003", "COTHER", "public");
     const reader = tools({
       conversationId: "slack:COTHER:1.000003",
@@ -175,7 +174,7 @@ describe("inbox item tools", () => {
       source: { kind: "web", conversationId: "web:1" } as any,
     });
     const found = await execute(reader.search, {
-      subject_id: "https://github.com/example/list/pull/7",
+      subject_id: "fair-source:entry:acme",
     });
     expect(found.items.map((item: any) => item.id)).toEqual([added.item.id]);
     expect(

@@ -80,7 +80,7 @@ describe("conversation status", () => {
     // a User adds an item that no one is assigned to, and anyone in the
     // thread can answer it.
     const unassigned = await insertInboxItem(getDb(), {
-      subject: { id: "unassigned", kind: "agent" },
+      subject: { id: "unassigned", kind: "question" },
       owner: { id: conversationId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],

@@ -1,6 +1,7 @@
 /**
- * The web links of Inbox item subjects. A subject whose id is a web URL is
- * its own link. A plugin kind that names a code change (`codeChange`) has
+ * The web links of Inbox item subjects. A question's link is the first
+ * link of its evidence. Another subject whose id is a web URL is its own
+ * link. A plugin kind that names a code change (`codeChange`) has
  * the code change's provider id, so its link comes from the code change
  * records, which follow a renamed or moved repository. The item stores no
  * link.
@@ -12,8 +13,11 @@ import { getPlugins } from "@/chat/plugins/agent-hooks";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
 import {
+  INBOX_SUBJECT_KINDS,
+  questionLinks,
   subjectKindPlugin,
   subjectLink,
+  type InboxItemLinkSource,
   type InboxItemSubject,
 } from "./subjects";
 
@@ -40,17 +44,23 @@ export function codeChangeSubjectProvider(
 }
 
 /**
- * Read the link of each subject that has one, by `subjectKey`. One query
- * reads the code changes of every code change kind.
+ * Read the link of each item's subject that has one, by `subjectKey`. One
+ * query reads the code changes of every code change kind.
  */
 export async function readSubjectLinks(
   db: JuniorDatabase,
-  subjects: readonly InboxItemSubject[],
+  items: readonly InboxItemLinkSource[],
   plugins: readonly PluginRegistration[] = getPlugins(),
 ): Promise<Map<string, string>> {
   const links = new Map<string, string>();
   const changes: Array<{ provider: string; subject: InboxItemSubject }> = [];
-  for (const subject of subjects) {
+  for (const item of items) {
+    const { subject } = item;
+    if (subject.kind === INBOX_SUBJECT_KINDS.question) {
+      const [url] = questionLinks(item);
+      if (url) links.set(subjectKey(subject), url);
+      continue;
+    }
     const provider = codeChangeSubjectProvider(subject.kind, plugins);
     if (provider) {
       changes.push({ provider, subject });

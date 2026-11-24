@@ -23,14 +23,17 @@ const OTHER_ID = "slack:CPUB:1.000004";
 const PRIVATE_ID = "slack:DPRIV:1.000005";
 const OTHER_TENANT_ID = "slack:CEXT:1.000006";
 const BUSY_ID = "slack:CPUB:1.000007";
-const RELEASE = "release:payments-v42";
+const SMOKE_ID = "slack:CPUB:1.000008";
+// A question is about the links of its evidence, such as a release page.
+const RELEASE_URL = "https://sentry.example.com/releases/payments-v42";
+const BUSY_URL = "https://sentry.example.com/releases/busy";
 
 const REQUEST = {
   question: "Roll out payments-v42 to every region?",
   fields: [
     {
       id: "go",
-      kind: "choice",
+      kind: "choice" as const,
       label: "Rollout",
       options: [{ label: "Roll out", recommended: true }, { label: "Hold" }],
     },
@@ -104,15 +107,21 @@ describe("inbox item evidence", () => {
 
   it("shows a question's evidence and the open work on the same release", async () => {
     const fixture = await createConversationFixture();
-    for (const id of [ROLLOUT_ID, LATENCY_ID, ROLLBACK_ID, OTHER_ID]) {
+    for (const id of [
+      ROLLOUT_ID,
+      LATENCY_ID,
+      ROLLBACK_ID,
+      OTHER_ID,
+      SMOKE_ID,
+    ]) {
       await slackConversation(id, "CPUB", "public");
     }
     await slackConversation(PRIVATE_ID, "DPRIV", "private");
     await slackConversation(OTHER_TENANT_ID, "CEXT", "public", "T999");
     const ana = await user("ana@example.com");
     await user("ben@example.com");
-    const subject = { id: RELEASE };
     const evidence = [
+      { label: "Release", url: RELEASE_URL },
       {
         label: "Canary error rate",
         note: "Flat for 30 minutes.",
@@ -131,7 +140,6 @@ describe("inbox item evidence", () => {
       dedupe_key: "rollout:payments-v42",
       kind: "action",
       request: { ...REQUEST, evidence },
-      subject,
       title: "Approve the payments-v42 rollout",
     };
 
@@ -145,7 +153,7 @@ describe("inbox item evidence", () => {
           evidence: [
             {
               label: "Both",
-              url: evidence[0]!.url,
+              url: RELEASE_URL,
               conversation_id: LATENCY_ID,
             },
           ],
@@ -173,12 +181,12 @@ describe("inbox item evidence", () => {
 
     const added = await add(ROLLOUT_ID, ask);
     expect(added.item.request.evidence).toEqual(evidence);
-    // Other work on the same release, and in the linked Conversation.
+    // Other work in the cited Conversation, in the linked Conversation, and
+    // a question that cites the same release.
     const rose = await add(LATENCY_ID, {
       assignees: ["ana@example.com"],
       body: "p95 went from 210 ms to 890 ms after payments-v42.",
       kind: "notice",
-      subject,
       title: "Checkout p95 rose after payments-v42",
     });
     const hold = await add(ROLLBACK_ID, {
@@ -187,25 +195,46 @@ describe("inbox item evidence", () => {
       kind: "notice",
       title: "Hold the payments-v42 deploy",
     });
+    const smoke = await add(SMOKE_ID, {
+      assignees: ["ana@example.com"],
+      body: "The smoke tests have not run yet.",
+      kind: "action",
+      request: {
+        ...REQUEST,
+        evidence: [{ label: "payments-v42", url: RELEASE_URL }],
+      },
+      title: "Run the payments-v42 smoke tests?",
+    });
     await add(OTHER_ID, {
       assignees: ["ana@example.com"],
       body: "Unrelated.",
-      kind: "notice",
-      subject: { id: "release:billing-v7" },
-      title: "Billing v7 is out",
+      kind: "action",
+      request: {
+        ...REQUEST,
+        evidence: [
+          {
+            label: "billing-v7",
+            url: "https://sentry.example.com/releases/billing-v7",
+          },
+        ],
+      },
+      title: "Roll out billing-v7?",
     });
     // An open item that Ana cannot see stays out of her related work.
     await add(OTHER_TENANT_ID, {
       assignees: ["ben@example.com"],
       body: "Notes in another workspace.",
-      kind: "notice",
-      subject,
+      kind: "action",
+      request: {
+        ...REQUEST,
+        evidence: [{ label: "payments-v42", url: RELEASE_URL }],
+      },
       title: "Release notes elsewhere",
     });
 
     // The page reads its items, then the related work of the whole page at
-    // once: the same subject, the linked work, and the access of the linked
-    // Conversations. More items do not add statements.
+    // once: the same release, the linked and cited work, and the access of
+    // the linked Conversations. More items do not add statements.
     const list = await (
       await expectSqlBudget(() => api(fixture, ana)("?sort=waiting"), {
         statements: 9,
@@ -217,15 +246,23 @@ describe("inbox item evidence", () => {
     );
     expect(rollout.request.evidence).toEqual([
       evidence[0],
+      evidence[1],
       {
         conversationId: LATENCY_ID,
         label: "Checkout latency",
         note: "p95 rose after payments-v42.",
       },
     ]);
+    // The question's first evidence link is its card.
+    expect(rollout.subject).toMatchObject({
+      id: "rollout:payments-v42",
+      kind: "question",
+      url: RELEASE_URL,
+    });
     expect(rollout.related).toEqual({
       conversationIds: [ROLLBACK_ID],
       items: [
+        { id: smoke.item.id, title: "Run the payments-v42 smoke tests?" },
         { id: hold.item.id, title: "Hold the payments-v42 deploy" },
         { id: rose.item.id, title: "Checkout p95 rose after payments-v42" },
       ],
@@ -246,19 +283,23 @@ describe("inbox item evidence", () => {
     expect(changed.item.request.evidence).toEqual(evidence);
   });
 
-  it("keeps a quiet subject's related work next to a busy subject on the page", async () => {
+  it("keeps a quiet release's related work next to a busy release on the page", async () => {
     const fixture = await createConversationFixture();
     for (const id of [ROLLOUT_ID, LATENCY_ID, BUSY_ID]) {
       await slackConversation(id, "CPUB", "public");
     }
     const ana = await user("ana@example.com");
-    const subject = { id: RELEASE };
-    // The related notice is older than every item on the busy subject.
+    const cites = (url: string) => ({
+      ...REQUEST,
+      evidence: [{ label: "Release", url }],
+    });
+    // The related question is older than every question on the busy
+    // release.
     const rose = await add(LATENCY_ID, {
       assignees: ["ana@example.com"],
       body: "p95 went from 210 ms to 890 ms after payments-v42.",
-      kind: "notice",
-      subject,
+      kind: "action",
+      request: cites(RELEASE_URL),
       title: "Checkout p95 rose after payments-v42",
     });
     const tenant = { provider: "slack", providerTenantId: "T123" };
@@ -270,9 +311,10 @@ describe("inbox item evidence", () => {
         assigneeUserIds: [ana.id],
         body: "Busy release.",
         conversationIds: [BUSY_ID],
-        kind: "notice",
+        kind: "action",
         nowMs: start + index,
-        subject: { id: "release:busy", kind: "agent" },
+        request: cites(BUSY_URL),
+        subject: { id: `busy:${index}`, kind: "question" },
         tenant,
         title: `Busy release ${index}`,
         visibility: "public",
@@ -282,13 +324,12 @@ describe("inbox item evidence", () => {
       assignees: ["ana@example.com"],
       body: "The canary is clean.",
       kind: "action",
-      request: REQUEST,
-      subject,
+      request: cites(RELEASE_URL),
       title: "Approve the payments-v42 rollout",
     });
 
-    // The busy subject keeps only its own newest candidates, so the quiet
-    // subject on the same page still finds its older related notice.
+    // The busy release keeps only its own newest candidates, so the quiet
+    // release on the same page still finds its older related question.
     const list = await (
       await expectSqlBudget(() => api(fixture, ana)("?sort=waiting"), {
         statements: 8,
@@ -297,8 +338,8 @@ describe("inbox item evidence", () => {
     ).json();
     expect(
       list.items.some(
-        (item: { subject?: { id: string } }) =>
-          item.subject?.id === "release:busy",
+        (item: { subject?: { url?: string } }) =>
+          item.subject?.url === BUSY_URL,
       ),
     ).toBe(true);
     const rollout = list.items.find(

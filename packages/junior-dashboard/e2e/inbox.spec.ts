@@ -49,7 +49,7 @@ const rollout = {
     ],
   },
   title: "Approve the payments-v42 rollout",
-  subject: { id: "item-rollout", kind: "agent" as const },
+  subject: { id: "item-rollout", kind: "question" as const },
 };
 
 const license = {
@@ -69,7 +69,7 @@ const license = {
     ],
   },
   title: "Review the acme license entry",
-  subject: { id: "item-license", kind: "agent" as const },
+  subject: { id: "item-license", kind: "question" as const },
 };
 
 const audit = {
@@ -86,7 +86,7 @@ const prReady = {
   kind: "notice" as const,
   subject: {
     id: "acme/payments#42",
-    kind: "agent",
+    kind: "question",
     object: {
       key: "acme/payments#42",
       kind: "object",

@@ -108,7 +108,7 @@ describe("Automation lifecycle API", () => {
           conversationIds: [],
           kind: "action",
           nowMs: Date.now(),
-          subject: { id: "digest:empty", kind: "agent" },
+          subject: { id: "digest:empty", kind: "question" },
           request: {
             question: "Post an empty digest?",
             fields: [{ id: "note", kind: "text", label: "Note" }],

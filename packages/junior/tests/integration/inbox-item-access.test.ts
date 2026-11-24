@@ -61,7 +61,7 @@ async function addItem(input: {
     });
   }
   const item = await insertInboxItem(getDb(), {
-    subject: { id: input.key, kind: "agent" },
+    subject: { id: input.key, kind: "question" },
     owner: { id: ownerId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: input.assigneeUserIds,

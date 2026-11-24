@@ -336,7 +336,7 @@ export async function insertWebInboxItem(args: {
     conversationIds: [args.conversationId],
     kind: args.item.request ? "action" : "notice",
     nowMs: Date.now() - 60_000,
-    subject: { id: fixtureId("inbox-item", 20), kind: "agent" },
+    subject: { id: fixtureId("inbox-item", 20), kind: "question" },
     title: args.item.title,
     visibility: "public",
     ...(args.item.request ? { request: args.item.request } : undefined),

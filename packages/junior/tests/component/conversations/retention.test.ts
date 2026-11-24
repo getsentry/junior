@@ -117,7 +117,7 @@ describe("retention purge job", () => {
       (await insertInboxItem(fixture.sql.db(), {
         subject: {
           id: `rollout:${conversationId}:${automationId ?? "chat"}`,
-          kind: "agent",
+          kind: "question",
         },
         owner: { id: conversationId, kind: "conversation" },
         assignedToEveryone: false,
@@ -276,7 +276,7 @@ describe("retention purge job", () => {
         updatedAt: new Date(BASE_MS),
       });
     const item = await insertInboxItem(fixture.sql.db(), {
-      subject: { id: "rollout:snoozed", kind: "agent" },
+      subject: { id: "rollout:snoozed", kind: "question" },
       owner: { id: "snoozed", kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [],
@@ -725,7 +725,7 @@ describe("retention purge job", () => {
       kind: "notice" as const,
       status: "open" as const,
       subjectId: `${conversationId}-key`,
-      subjectKind: "agent",
+      subjectKind: "question",
       title: `${conversationId} item`,
       updatedAt: new Date(BASE_MS),
       visibility,

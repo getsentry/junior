@@ -375,7 +375,7 @@ export async function listReplyActionItems(
     and(
       inboxItemOwnedByConversation(conversationId),
       eq(juniorInboxItems.kind, "action"),
-      eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.agent),
+      eq(juniorInboxItems.subjectKind, INBOX_SUBJECT_KINDS.question),
       or(
         eq(juniorInboxItems.status, "open"),
         eq(juniorInboxItems.closeReason, INBOX_ITEM_REPLIED_REASON),
@@ -807,6 +807,8 @@ export async function countInboxItemsNeedingUserBySubject(
   Array<{
     automations: number;
     decisions: number;
+    /** A question's first evidence link, which its card reads. */
+    evidenceUrl: string | null;
     subjectId: string;
     subjectKind: string;
     todos: number;
@@ -820,6 +822,9 @@ export async function countInboxItemsNeedingUserBySubject(
           Number,
         ),
       decisions: count(juniorInboxItems.request),
+      evidenceUrl: sql<
+        string | null
+      >`max(jsonb_path_query_first(${juniorInboxItems.request}, '$.evidence[*].url') #>> '{}')`,
       subjectId: juniorInboxItems.subjectId,
       subjectKind: juniorInboxItems.subjectKind,
       todos:

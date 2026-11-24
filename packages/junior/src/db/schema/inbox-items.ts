@@ -105,7 +105,7 @@ export const juniorInboxItems = pgTable(
     // and the code that added it closes it.
     check(
       "junior_inbox_items_kind_check",
-      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or (${table.subjectKind} not in ('agent', 'reply') and ${table.answer} is null)))`,
+      sql`(${table.kind} = 'notice' and ${table.request} is null and ${table.answer} is null) or (${table.kind} = 'action' and (${table.request} is not null or (${table.subjectKind} not in ('question', 'reply') and ${table.answer} is null)))`,
     ),
     // Only an Automation owns an Automation alert.
     check(

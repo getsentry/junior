@@ -293,7 +293,7 @@ describe("event automations", () => {
       conversationIds: [runConversationId],
       kind: "notice",
       nowMs: Date.now(),
-      subject: { id: "review:1174", kind: "agent" },
+      subject: { id: "review:1174", kind: "question" },
       title: "Answer the review",
       visibility: "private",
     });

@@ -187,7 +187,7 @@ function subjectOf(seed: MockItemSeed): InboxItemPayload["subject"] {
       ? "todo"
       : seed.automationId
         ? "automation"
-        : "agent";
+        : "question";
   if (!seed.subject) {
     return {
       id: seed.todoId?.toString() ?? seed.automationId ?? seed.id,

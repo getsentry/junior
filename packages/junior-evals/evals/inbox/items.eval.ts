@@ -43,6 +43,12 @@ const DECISION_REQUEST = {
   ],
 };
 
+// An earlier run keyed its question by the pull request and cited it.
+const ENTRY_REQUEST = {
+  ...DECISION_REQUEST,
+  evidence: [{ label: "Acme entry", url: PULL_REQUEST_URL }],
+};
+
 function ownerItem(bug: string): InboxItem {
   return {
     body: `The ${bug} bug has no owner.`,
@@ -77,8 +83,8 @@ describe("Inbox", () => {
       body: "Acme uses BUSL with a six-year change date.",
       destination,
       kind: "action",
-      request: DECISION_REQUEST,
-      subject: { id: PULL_REQUEST_URL, kind: "agent" },
+      request: ENTRY_REQUEST,
+      subject: { id: PULL_REQUEST_URL, kind: "question" },
       title: "Review the Acme entry",
     });
 
@@ -105,8 +111,8 @@ describe("Inbox", () => {
       body: "Acme uses BUSL with a six-year change date.",
       destination,
       kind: "action",
-      request: DECISION_REQUEST,
-      subject: { id: PULL_REQUEST_URL, kind: "agent" },
+      request: ENTRY_REQUEST,
+      subject: { id: PULL_REQUEST_URL, kind: "question" },
       title: "Review the Acme entry",
     });
 

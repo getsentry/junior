@@ -212,7 +212,7 @@ describe("versions API", () => {
     expect(await detailVersion()).toBe(withPin.conversation);
 
     const item = await insertInboxItem(getDb(), {
-      subject: { id: "versions:approve", kind: "agent" },
+      subject: { id: "versions:approve", kind: "question" },
       owner: { id: OWN, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],

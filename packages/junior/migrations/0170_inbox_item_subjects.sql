@@ -7,8 +7,10 @@ ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> sta
 -- subject kind and id now name the item, so new code writes no dedupe key.
 -- A GitHub pull request has one item for all of its asks, and its id is
 -- GitHub's id of the pull request, read from the code change records by the
--- repository and number in the old key. A plugin or agent item uses its
--- subject link as the id when it had one. `automation_id` needs no copy:
+-- repository and number in the old key. A plugin item uses its subject
+-- link as the id when it had one. An agent's item is a question, and its
+-- old key is its id, so two questions about one object stay two items.
+-- `automation_id` needs no copy:
 -- the run of the owner Conversation names the same Automation.
 --
 -- Old workers still add items without a subject while this release rolls
@@ -41,7 +43,7 @@ BEGIN
       WHEN NEW."dedupe_key" LIKE 'plugin:%' THEN split_part(NEW."dedupe_key", ':', 2) || ':item'
       WHEN NEW."dedupe_key" LIKE 'reply:%' THEN 'reply'
       WHEN NEW."dedupe_key" LIKE 'todo:%' THEN 'todo'
-      ELSE 'agent'
+      ELSE 'question'
     END;
   NEW."subject_id" := CASE
       WHEN NEW."owner_kind" = 'automation' THEN NEW."owner_id"
@@ -49,7 +51,7 @@ BEGIN
       WHEN NEW."dedupe_key" LIKE 'todo:%' THEN substr(NEW."dedupe_key", length('todo:') + 1)
       WHEN github_ref IS NOT NULL THEN coalesce(github_id, NEW."subject_url", github_ref)
       WHEN NEW."dedupe_key" LIKE 'plugin:%' THEN coalesce(NEW."subject_url", NEW."subject_id", substr(NEW."dedupe_key", length('plugin:' || split_part(NEW."dedupe_key", ':', 2) || ':') + 1))
-      ELSE coalesce(NEW."subject_url", NEW."subject_id", NEW."dedupe_key")
+      ELSE coalesce(NEW."dedupe_key", 'ask:' || NEW."id"::text)
     END;
   RETURN NEW;
 END;
@@ -74,7 +76,7 @@ CREATE UNIQUE INDEX "junior_inbox_items_open_subject_uidx" ON "junior_inbox_item
 -- lock that blocks reads, then sets NOT NULL.
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_kind_not_null" CHECK ("subject_kind" IS NOT NULL) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_id_not_null" CHECK ("subject_id" IS NOT NULL) NOT VALID;--> statement-breakpoint
-ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_kind_check" CHECK (("junior_inbox_items"."kind" = 'notice' and "junior_inbox_items"."request" is null and "junior_inbox_items"."answer" is null) or ("junior_inbox_items"."kind" = 'action' and ("junior_inbox_items"."request" is not null or ("junior_inbox_items"."subject_kind" not in ('agent', 'reply') and "junior_inbox_items"."answer" is null)))) NOT VALID;--> statement-breakpoint
+ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_kind_check" CHECK (("junior_inbox_items"."kind" = 'notice' and "junior_inbox_items"."request" is null and "junior_inbox_items"."answer" is null) or ("junior_inbox_items"."kind" = 'action' and ("junior_inbox_items"."request" is not null or ("junior_inbox_items"."subject_kind" not in ('question', 'reply') and "junior_inbox_items"."answer" is null)))) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_owner_check" CHECK (("junior_inbox_items"."owner_kind" = 'automation') = ("junior_inbox_items"."subject_kind" = 'automation')) NOT VALID;
 -- The snapshot no longer has subject_title, subject_url, subject_title_parts,
 -- automation_id, its foreign key, or junior_inbox_items_automation_idx. They

@@ -14,8 +14,8 @@ import type {
 /** What an Inbox item is about. */
 export interface InboxItemSubject {
   /**
-   * The object, such as the canonical URL of a pull request, a To-do, or an
-   * Automation. Search matches it exactly.
+   * The object, such as a pull request, a To-do, or an Automation, or a
+   * question's key. Search matches it exactly.
    */
   id: string;
   kind: string;
@@ -23,15 +23,16 @@ export interface InboxItemSubject {
 
 /**
  * The core subject kinds:
- * - `agent`: an agent's question or notice. The id is the one the agent
- *   gave, such as a pull request URL, or else the item's dedupe key.
+ * - `question`: an item that an agent adds, a question or a notice. The id
+ *   is the agent's key, or a new id for an item without a key, so it names
+ *   only that item. What a question is about comes from its evidence.
  * - `automation`: an Automation alert. The id is the Automation.
  * - `reply`: a reply notice. The id is the Conversation.
  * - `todo`: a To-do for a person. The id is `<conversationId>:<todoId>`.
  */
 export const INBOX_SUBJECT_KINDS = {
-  agent: "agent",
   automation: "automation",
+  question: "question",
   reply: "reply",
   todo: "todo",
 } as const;
@@ -48,14 +49,40 @@ export function subjectKindPlugin(kind: string): string | undefined {
 }
 
 /**
+ * An item as its link and related work read it: its subject, and the
+ * request whose evidence says what a question is about.
+ */
+export interface InboxItemLinkSource {
+  request?: { evidence?: ReadonlyArray<{ url?: string }> } | null | undefined;
+  subject: InboxItemSubject;
+}
+
+/**
+ * Return what a question is about: the http(s) links of its evidence, such
+ * as a pull request. Its key is no link. Other kinds return none.
+ */
+export function questionLinks(item: InboxItemLinkSource): string[] {
+  if (item.subject.kind !== INBOX_SUBJECT_KINDS.question) return [];
+  const links = (item.request?.evidence ?? []).flatMap((entry) => {
+    const url = entry.url ? webLink(entry.url) : undefined;
+    return url ? [url] : [];
+  });
+  return [...new Set(links)];
+}
+
+function webLink(value: string): string | undefined {
+  const url = URL.parse(value);
+  return url?.protocol === "https:" || url?.protocol === "http:"
+    ? url.href
+    : undefined;
+}
+
+/**
  * Return the link of a subject whose id is a web URL, such as a pull
  * request, for the object link resolvers.
  */
 export function subjectLink(subject: InboxItemSubject): string | undefined {
-  const url = URL.parse(subject.id);
-  return url?.protocol === "https:" || url?.protocol === "http:"
-    ? url.href
-    : undefined;
+  return webLink(subject.id);
 }
 
 /**

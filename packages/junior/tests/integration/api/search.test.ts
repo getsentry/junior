@@ -100,7 +100,7 @@ async function inboxItem(args: {
     assigneeUserIds: args.assigneeUserIds ?? [],
     body: args.body ?? "",
     conversationIds: [],
-    subject: { id: args.title, kind: "agent" },
+    subject: { id: args.title, kind: "question" },
     kind: "notice",
     nowMs: args.nowMs,
     owner: { id: "slack:C123:owner", kind: "conversation" },

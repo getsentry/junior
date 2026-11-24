@@ -5,7 +5,7 @@ import { getDb } from "@/chat/db";
 import { NO_REPLY_TOOL_NAME } from "@/chat/no-reply";
 import { deliverInboxItemChange } from "@/chat/inbox-items/changes";
 import {
-  agentInboxItemSubject,
+  questionSubject,
   canAgentChangeInboxItem,
   canReadInboxItem,
   readInboxItemAgentScope,
@@ -52,19 +52,6 @@ import {
   type InboxItemToolServices,
 } from "@/chat/inbox-items/tool-support";
 
-const subjectSchema = z
-  .object({
-    id: z
-      .string()
-      .trim()
-      .min(1)
-      .max(500)
-      .describe(
-        "Stable id of the thing the item is about, such as a pull request URL. It names the item: if an open item has this subject, the call updates that item. Search matches it exactly. The Inbox reads the title and state of a URL from its source.",
-      ),
-  })
-  .strict();
-
 const evidenceSchema = z
   .array(
     z
@@ -82,7 +69,9 @@ const evidenceSchema = z
           )
           .nullable()
           .optional()
-          .describe("Link to the source, such as a chart or a log search."),
+          .describe(
+            "Link to the source, such as a chart, a log search, or the pull request that the question is about. The card and related work read these links.",
+          ),
         conversation_id: z
           .string()
           .trim()
@@ -179,7 +168,7 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .nullable()
         .optional()
         .describe(
-          "Stable key for what the item is about when it has no `subject`, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question.",
+          "Stable key for this item, such as `fair-source:entry:acme`. If an open item has this key, the call updates that item instead of adding another. Use the same key on each run. Omit for a one-time question. Results show it as the `subject` id.",
         ),
       request: userInputRequestSchema
         .safeExtend({
@@ -195,7 +184,6 @@ export const addInboxItemToolDefinition = zodToolDefinition({
         .describe(
           "Required for an action item. Not allowed for a notice. Ask for related input in one item. Write the question so it stands alone: a person who sees only the card must understand it.",
         ),
-      subject: subjectSchema.nullable().optional(),
       conversation_ids: conversationIdsSchema
         .nullable()
         .optional()
@@ -251,13 +239,11 @@ export function createAddInboxItemTool(
       const evidence = evidenceInput(input.request?.evidence);
       const db = getDb();
       const scope = await readInboxItemAgentScope(context);
-      // The subject, else the key, names the item. A retry of the same tool
-      // call keeps the same id, so it updates the item that the first
-      // attempt added.
-      const subject = agentInboxItemSubject(
-        input.subject?.id ??
-          input.dedupe_key ??
-          `ask:${options.toolCallId ?? randomUUID()}`,
+      // The key names the item, else a new id. A retry of the same tool call
+      // keeps the same id, so it updates the item that the first attempt
+      // added. What a question is about is in its evidence.
+      const subject = questionSubject(
+        input.dedupe_key ?? `ask:${options.toolCallId ?? randomUUID()}`,
       );
       const existing = await getOpenInboxItemBySubject(
         db,
@@ -270,7 +256,7 @@ export function createAddInboxItemTool(
           !canAgentChangeInboxItem(existing, scope))
       ) {
         throw new ToolInputError(
-          "Another open item uses this `dedupe_key` or subject. Use a different key.",
+          "Another open item uses this `dedupe_key`. Use a different key.",
         );
       }
       // An item from a private Conversation is private. It stays private.
@@ -388,7 +374,7 @@ export function createAddInboxItemTool(
       });
       if (!item) {
         throw new ToolInputError(
-          "Another open item started to use this `dedupe_key` or subject. Add the item again.",
+          "Another open item started to use this `dedupe_key`. Add the item again.",
         );
       }
       await deliverInboxItemChange({

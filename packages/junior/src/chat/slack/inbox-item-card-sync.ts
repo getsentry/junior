@@ -212,8 +212,8 @@ export async function syncInboxItemSlackCards(args: {
             )
           ).flat();
           // The item stores no link: a code change subject reads it from
-          // the code change records.
-          const subjectUrl = (await readSubjectLinks(db, [item.subject])).get(
+          // the code change records, and a question from its evidence.
+          const subjectUrl = (await readSubjectLinks(db, [item])).get(
             subjectKey(item.subject),
           );
           const results = await Promise.allSettled([

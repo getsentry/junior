@@ -79,7 +79,7 @@ async function closedItem(input: {
   pick?: string;
 }): Promise<void> {
   const item = await insertInboxItem(getDb(), {
-    subject: { id: input.key, kind: "agent" },
+    subject: { id: input.key, kind: "question" },
     owner: { id: input.conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: [input.closedBy.id],

@@ -57,7 +57,7 @@ export async function addItem(
   linkedConversationIds: string[] = [],
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
-    subject: { id: title, kind: "agent" },
+    subject: { id: title, kind: "question" },
     owner: { id: ownerConversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),
@@ -152,7 +152,6 @@ export async function addPullRequestItem(
   conversationId: string,
   assignees: User[],
   title: string,
-  // The subject names one open item, so open items need their own.
   url = PULL_REQUEST.url,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
@@ -173,8 +172,10 @@ export async function addPullRequestItem(
         },
       ],
       question: title,
+      // A question about a pull request cites it as evidence.
+      evidence: [{ label: "Pull request", url }],
     },
-    subject: { id: url, kind: "agent" },
+    subject: { id: `review:${url}:${title}`, kind: "question" },
     tenant: { provider: "slack", providerTenantId: "T123" },
     title,
     visibility: "public",
@@ -188,7 +189,7 @@ export async function addEveryoneItem(
   title: string,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
-    subject: { id: title, kind: "agent" },
+    subject: { id: title, kind: "question" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: true,
     assigneeUserIds: [],
@@ -221,7 +222,7 @@ export async function addNotice(
   title: string,
 ): Promise<string> {
   const item = await insertInboxItem(getDb(), {
-    subject: { id: title, kind: "agent" },
+    subject: { id: title, kind: "question" },
     owner: { id: conversationId, kind: "conversation" },
     assignedToEveryone: false,
     assigneeUserIds: assignees.map((assignee) => assignee.id),

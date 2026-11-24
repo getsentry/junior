@@ -462,8 +462,10 @@ export function createInboxItemRoutes(services: {
       const links = await readSubjectLinks(
         db,
         subjects.map((subject) => ({
-          id: subject.subjectId,
-          kind: subject.subjectKind,
+          request: subject.evidenceUrl
+            ? { evidence: [{ url: subject.evidenceUrl }] }
+            : null,
+          subject: { id: subject.subjectId, kind: subject.subjectKind },
         })),
       );
       // The Automations badge counts the alerts that its To do lists.

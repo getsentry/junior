@@ -31,6 +31,11 @@ function legacyItem(id: string, prefix: string, updatedAt: string): string {
   return `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, owner_id, created_at, updated_at) VALUES ('${id}', 'action', 'open', 'public', 'PR #946', 'GitHub asks about #946.', 'plugin:github:${prefix}:${PULL_REQUEST}', 'slack:C123:1.000001', '${updatedAt}', '${updatedAt}')`;
 }
 
+/** Add an agent's open question as a worker of the last release does. */
+function legacyQuestion(id: string, key: string): string {
+  return `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_id, owner_id, created_at, updated_at, request) VALUES ('${id}', 'action', 'open', 'public', 'Roll out?', 'The canary is clean.', '${key}', 'release:payments-v42', 'slack:C123:1.000002', now(), now(), '{"question":"Roll out?","fields":[]}')`;
+}
+
 describe("inbox item subject migration", () => {
   it("keeps one open item for each subject, with the snoozes and without the pushes of the items it closes", async () => {
     if (!migration || start < 0 || end < start) {
@@ -66,6 +71,10 @@ describe("inbox item subject migration", () => {
         `INSERT INTO junior_inbox_item_deliveries (item_id, user_id, channel, event, status, created_at, updated_at) VALUES ('review', 'user:ana', 'web_push', 'created', 'sent', now(), now()), ('merge', 'user:ben', 'web_push', 'created', 'sent', now(), now())`,
       );
 
+      // Two questions about one release had their own keys.
+      await fixture.sql.execute(legacyQuestion("rollout", "rollout:v42"));
+      await fixture.sql.execute(legacyQuestion("hold", "hold:v42"));
+
       for (const statement of migration.sql.slice(start, end + 1)) {
         await fixture.sql.execute(statement);
       }
@@ -75,8 +84,19 @@ describe("inbox item subject migration", () => {
           `SELECT id, status FROM junior_inbox_items ORDER BY id`,
         ),
       ).toEqual([
+        { id: "hold", status: "open" },
         { id: "merge", status: "open" },
         { id: "review", status: "dismissed" },
+        { id: "rollout", status: "open" },
+      ]);
+      // A question's key names it, so both questions stay open.
+      expect(
+        await fixture.sql.query(
+          `SELECT id, subject_kind, subject_id FROM junior_inbox_items WHERE subject_kind = 'question' ORDER BY id`,
+        ),
+      ).toEqual([
+        { id: "hold", subject_id: "hold:v42", subject_kind: "question" },
+        { id: "rollout", subject_id: "rollout:v42", subject_kind: "question" },
       ]);
       // Ana's snooze still hides the item that stays open. Ben keeps his
       // own snooze of it.
