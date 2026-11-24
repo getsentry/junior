@@ -1,11 +1,16 @@
 name: iOS Beta
 
-# Builds a signed Release of apps/ios and uploads it to TestFlight.
-# Run it from the Actions tab or `gh workflow run ios-beta.yml --ref <branch>`,
-# or add the `trigger-ios-beta` label to a pull request (ios-beta-label.yml).
-# With the `pull_request` input, the run keeps its status in that pull
-# request's description.
+# Builds a signed Release of apps/ios and uploads it to TestFlight. It runs
+# when a change to apps/ios lands on main, so testers get each app fix
+# without a manual step. Run it by hand from the Actions tab or
+# `gh workflow run ios-beta.yml --ref <branch>`, or add the `trigger-ios-beta`
+# label to a pull request (ios-beta-label.yml). With the `pull_request`
+# input, the run keeps its status in that pull request's description.
 on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/ios/**"
   workflow_dispatch:
     inputs:
       pull_request:
@@ -23,7 +28,7 @@ concurrency:
 jobs:
   start:
     name: Report start
-    if: inputs.pull_request != ''
+    if: inputs.pull_request
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
@@ -98,7 +103,7 @@ jobs:
   report:
     name: Report result
     needs: testflight
-    if: always() && inputs.pull_request != ''
+    if: always() && inputs.pull_request
     runs-on: blacksmith-4vcpu-ubuntu-2404
     permissions:
       contents: read
