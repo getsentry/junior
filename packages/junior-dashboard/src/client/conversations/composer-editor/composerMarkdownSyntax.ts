@@ -94,7 +94,8 @@ export function parseMarkdownLines(lines: string[]): MarkdownLine[] {
         const to = quoteMarkerEnd(text, from);
         if (to === from) continue;
         mark(from, to, LINE_MARKER);
-        kinds[line] = "quote";
+        // A list item visits first when the quote is inside it.
+        if (kinds[line] === "text") kinds[line] = "quote";
       }
     },
     code: (_, { start, end, firstLine, lastLine }) => {

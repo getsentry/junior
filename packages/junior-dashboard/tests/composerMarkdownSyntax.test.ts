@@ -130,3 +130,15 @@ it("tells fences from code by the parsed block", () => {
   expect(kinds(["> ```", "> a", "> ```"])).toEqual(["fence", "code", "fence"]);
   expect(kinds(["    indented"])).toEqual(["code"]);
 });
+
+it("keeps a list item that holds a quote a list item", () => {
+  expect(parseMarkdownLines(["- > quote"])).toMatchObject([
+    {
+      kind: "bullet",
+      segments: [
+        { marker: { edge: "line" }, text: "- > " },
+        { format: 0, text: "quote" },
+      ],
+    },
+  ]);
+});
