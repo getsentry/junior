@@ -123,9 +123,13 @@ describe("pull_request.checks.passed on check suite webhooks", () => {
         },
       },
       cache: {
+        async get() {
+          return undefined;
+        },
         async getOrLoad(_key, load) {
           return (await load()).value;
         },
+        async update() {},
       },
       codeChanges: fixture.codeIndex.codeChanges,
       db: fixture.db(),

@@ -83,4 +83,31 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toHaveAccessibleName("Inbox, 1 waiting");
     await expect(page).toHaveTitle("(1) Inbox - Junior");
   });
+
+  test("an ask with no assignees is up for grabs, and To do matches its badge", async ({
+    dashboard,
+    page,
+  }) => {
+    // The server sends an ask with no assignees as one for Everyone.
+    const unassigned = {
+      ...grab,
+      id: "item-unassigned",
+      title: "Pick the rollout window",
+    };
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [license, unassigned],
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const grabs = page.getByRole("region", { name: "Up for grabs" });
+    await expect(rowHead(grabs, unassigned.title)).toBeVisible();
+    const todo = page.getByRole("region", { name: "To do" });
+    await expect(todo.getByText(unassigned.title)).toHaveCount(0);
+    await expect(rowHead(todo, license.title)).toBeVisible();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("link", { name: /^Inbox/ }),
+    ).toHaveAccessibleName("Inbox, 1 waiting");
+  });
 });

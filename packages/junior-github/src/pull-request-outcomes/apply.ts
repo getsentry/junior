@@ -32,7 +32,6 @@ export function githubCodeChange(
 ): CodeChangeInput {
   return {
     closedAt: outcome.closedAt,
-    draft: outcome.draft,
     mergedAt: outcome.mergedAt,
     number: outcome.number,
     openedAt: outcome.openedAt,
@@ -41,7 +40,6 @@ export function githubCodeChange(
       name: outcome.repositoryFullName,
       providerId: outcome.repositoryId,
     },
-    size: outcome.size,
     state: outcome.state === "closed_unmerged" ? "closed" : outcome.state,
     title: outcome.title,
     updatedAt: outcome.updatedAt,

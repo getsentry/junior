@@ -3,6 +3,7 @@ import {
   objectLinkFilterSpecificity,
   type ObjectAnnotation,
   type ObjectLinkFilter,
+  type ObjectLinkPrefetchOutcome,
   type ObjectType,
   type User,
 } from "@sentry/junior-plugin-api";
@@ -14,16 +15,35 @@ export interface ObjectLinkType {
    * change shows at once instead of after the card cache expires.
    */
   cacheCards?: false;
-  /** Whether the viewer may see the object. Called before `resolve`. */
-  canView(viewer: User, url: URL): Promise<boolean>;
+  /**
+   * Whether the viewer may see the object. Called before `resolve`, with
+   * the URL's prefetch outcome in a page read.
+   */
+  canView(
+    viewer: User,
+    url: URL,
+    prefetched?: ObjectLinkPrefetchOutcome,
+  ): Promise<boolean>;
   filters: readonly ObjectLinkFilter[];
   /** The object types that `resolve` can return. */
   objectTypes: readonly ObjectType[];
   /** `junior` for core, or the plugin name. */
   owner: string;
+  /**
+   * Load the objects of many URLs in one call, before each is resolved.
+   * Returns the outcome of each URL whose read must know it, by `href`.
+   */
+  prefetch?(
+    viewer: User,
+    urls: URL[],
+  ): Promise<ReadonlyMap<string, ObjectLinkPrefetchOutcome> | void>;
   /** The tool that reads the object live, for a Turn after an attach. */
   readTool?(object: ObjectAnnotation): string | undefined;
-  resolve(viewer: User, url: URL): Promise<ObjectAnnotation | undefined>;
+  resolve(
+    viewer: User,
+    url: URL,
+    prefetched?: ObjectLinkPrefetchOutcome,
+  ): Promise<ObjectAnnotation | undefined>;
   /** Show the web page card when `canView` returns false. */
   webPageFallback?: true;
 }

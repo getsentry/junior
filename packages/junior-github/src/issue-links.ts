@@ -11,25 +11,31 @@
 import type {
   ObjectAnnotation,
   ObjectLinkContext,
+  ObjectLinkPrefetchOutcome,
   PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { githubObjectAnnotation } from "./annotations.js";
 import {
-  GITHUB_OBJECT_CACHE,
+  GITHUB_ISSUE_CACHE,
+  githubObjectCacheOptions,
   githubIssueFieldsSchema,
   githubObjectCacheKey,
+  githubPullRequestEntry,
   githubPullRequestFieldsSchema,
   type GitHubIssueFields,
   type GitHubPullRequestFields,
 } from "./object-cache.js";
 import { githubObjectFacts } from "./object-facts.js";
+import { prefetchGitHubPullRequests } from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
 const OWNER_PATTERN = /^[A-Za-z0-9][A-Za-z0-9_-]{0,38}$/;
 const REPO_PATTERN = /^[\w.-]{1,100}$/;
 const NUMBER_PATTERN = /^[1-9]\d{0,9}$/;
+// The load of a card that the page read ran out of time for.
+const OUT_OF_TIME = new Error("The page read ran out of time for this card");
 
 interface GitHubObjectLink {
   kind: "issue" | "pull_request";
@@ -111,6 +117,7 @@ async function readFields<T>(
   ctx: ObjectLinkContext,
   link: GitHubObjectLink,
   schema: z.ZodType<T>,
+  entry: (value: T) => { staleIfError: true; ttlMs: number; value: T },
 ): Promise<T | null> {
   const collection = link.kind === "issue" ? "issues" : "pulls";
   const key = githubObjectCacheKey(
@@ -118,6 +125,7 @@ async function readFields<T>(
     `${link.owner}/${link.name}`,
     link.number,
   );
+  const options = githubObjectCacheOptions(collection);
   const load = async () => {
     const response = await githubApi(ctx.egress, {
       followRedirects: true,
@@ -126,15 +134,26 @@ async function readFields<T>(
     });
     // GitHub answers 404 for a missing object, and 410 for a deleted issue.
     if (response.status === 404 || response.status === 410) {
-      return { ...GITHUB_OBJECT_CACHE, value: null };
+      return { ...options, value: null };
     }
     if (!response.ok) {
       throw new Error(
         `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
       );
     }
-    return { ...GITHUB_OBJECT_CACHE, value: schema.parse(response.body) };
+    return entry(schema.parse(response.body));
   };
+  // The page read ran out of time for this card, so it shows its stale
+  // entry, or no card yet, and does not wait for one more read.
+  if (collection === "pulls" && ctx.prefetchOutcome === "out_of_time") {
+    const stale = await ctx.cache
+      .getOrLoad(key, () => Promise.reject(OUT_OF_TIME))
+      .catch((error: unknown) => {
+        if (error === OUT_OF_TIME) return undefined;
+        throw error;
+      });
+    return schema.nullable().safeParse(stale).data ?? null;
+  }
   const cached = schema
     .nullable()
     .safeParse(await ctx.cache.getOrLoad(key, load));
@@ -149,10 +168,20 @@ async function readObject(
   link: GitHubObjectLink,
 ): Promise<ObjectAnnotation | null> {
   if (link.kind === "pull_request") {
-    const pull = await readFields(ctx, link, githubPullRequestFieldsSchema);
+    const pull = await readFields(
+      ctx,
+      link,
+      githubPullRequestFieldsSchema,
+      githubPullRequestEntry,
+    );
     return pull && pullRequestCard(link, pull);
   }
-  const issue = await readFields(ctx, link, githubIssueFieldsSchema);
+  const issue = await readFields(
+    ctx,
+    link,
+    githubIssueFieldsSchema,
+    (value) => ({ ...GITHUB_ISSUE_CACHE, value }),
+  );
   if (!issue) return null;
   // GitHub opens a pull request at its issue URL too, such as a linked
   // `owner/repo#12`. Only the pulls API has its draft and merge state.
@@ -198,12 +227,36 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
   webPageFallback: true,
 };
 
+async function prefetchLinks(
+  ctx: ObjectLinkContext,
+  urls: URL[],
+): Promise<Map<string, ObjectLinkPrefetchOutcome>> {
+  const hrefs = new Map<string, string>();
+  const refs = urls.flatMap((url) => {
+    const link = parseLink(url);
+    if (link?.kind !== "pull_request") return [];
+    hrefs.set(`${link.owner}/${link.name}#${link.number}`, url.href);
+    return [
+      { name: link.name, number: Number(link.number), owner: link.owner },
+    ];
+  });
+  const outOfTime = await prefetchGitHubPullRequests(ctx, refs);
+  return new Map(
+    outOfTime.flatMap((ref) => {
+      const href = hrefs.get(`${ref.owner}/${ref.name}#${ref.number}`);
+      return href ? [[href, "out_of_time" as const]] : [];
+    }),
+  );
+}
+
 /** GitHub pull request links, such as `https://github.com/owner/repo/pull/12`. */
 export const githubPullRequestLinks: PluginObjectLinkDefinition = {
   cacheCards: false,
   canView: canViewLink,
   filters: [{ host: "github.com", pathPattern: "/*/*/pull/*" }],
   objectTypes: ["code_change"],
+  // A page of pull request cards reads GitHub in one query.
+  prefetch: prefetchLinks,
   readTool: () => "github_getPullRequest",
   resolve: resolveLink,
   webPageFallback: true,

@@ -23,28 +23,35 @@ export function conversationSubtree(conversationIds: readonly string[]): SQL {
   );
   // A root finds its tree with `junior_conversations_root_idx`, in one
   // lookup. Only a child walks down by parent, since its tree is part of a
-  // larger one. The walk starts from the selected children only. Postgres
-  // guesses a recursive step from the rows that start it, so a start that
-  // holds a root's whole tree makes it guess thousands of rows for each
-  // step. That cost estimate then turns on JIT, which costs more than the
-  // read. UNION, not UNION ALL, so that bad parent links cannot loop
-  // forever, and so a root shows once in its own tree.
-  // `|| ''` keeps the root check out of the index condition, so Postgres
-  // finds the children of each Conversation by parent. With a plain `=` it
-  // can look them up by root instead, which reads the whole tree for each
-  // Conversation in it. `|| ''` keeps null as null, so the check is the same.
+  // larger one. The walk starts from the selected children only, and reads
+  // only the members of their roots' trees, which the root index finds.
+  // Postgres guesses each recursive step at hundreds of rows, so a step that
+  // reads `junior_conversations` itself hashes the whole table on every
+  // poll. A materialized set of tree members keeps the step that small.
+  // UNION, not UNION ALL, so that bad parent links cannot loop forever, and
+  // so a root shows once in its own tree.
   return sql`(
-    with recursive walk(scope_conversation_id, conversation_id, root_conversation_id) as (
+    with recursive tree_member as materialized (
+      select member.conversation_id, member.parent_conversation_id, member.root_conversation_id
+      from junior_conversations member
+      where member.root_conversation_id in (
+        select selected.root_conversation_id
+        from junior_conversations selected
+        where selected.conversation_id in (${selectedIds})
+          and selected.root_conversation_id is distinct from selected.conversation_id
+      )
+    ),
+    walk(scope_conversation_id, conversation_id, root_conversation_id) as (
       select selected.conversation_id, selected.conversation_id, selected.root_conversation_id
       from junior_conversations selected
       where selected.conversation_id in (${selectedIds})
         and selected.root_conversation_id is distinct from selected.conversation_id
       union
       select walk.scope_conversation_id, child.conversation_id, child.root_conversation_id
-      from junior_conversations child
+      from tree_member child
       join walk
         on child.parent_conversation_id = walk.conversation_id
-        and (child.root_conversation_id || '') = walk.root_conversation_id
+        and child.root_conversation_id = walk.root_conversation_id
     )
     select selected.conversation_id as scope_conversation_id, selected.conversation_id
     from junior_conversations selected

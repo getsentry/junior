@@ -4,7 +4,11 @@ import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import { recordStartedConversationParticipants } from "@/chat/conversations/sql/participants";
-import { clearCachedUser } from "./user-cache";
+import {
+  clearCachedIdentityUser,
+  clearCachedLinkedHandles,
+  clearCachedUser,
+} from "./user-cache";
 import {
   GOOGLE_IDENTITY_PROVIDER,
   normalizeIdentityEmail,
@@ -177,6 +181,8 @@ async function upsertIdentityRecord(
         : undefined),
     })
     .returning({
+      emailNormalized: juniorIdentities.emailNormalized,
+      handle: juniorIdentities.handle,
       id: juniorIdentities.id,
       userId: juniorIdentities.userId,
     });
@@ -188,20 +194,31 @@ async function upsertIdentityRecord(
     throw new Error("Identity upsert returned no row");
   }
   const previousUserId = existing?.userId;
+  // Person lookups match these columns. Most writes, such as the actor of
+  // each message, change none of them, so they keep the linked handles.
+  const lookupChanged =
+    !existing ||
+    existing.userId !== row.userId ||
+    existing.handle !== row.handle ||
+    existing.emailNormalized !== row.emailNormalized;
   await Promise.all([
     row.userId ? clearCachedUser(row.userId) : undefined,
     previousUserId && previousUserId !== row.userId
       ? clearCachedUser(previousUserId)
       : undefined,
+    lookupChanged ? clearCachedLinkedHandles() : undefined,
   ]);
   // Check every write that may have set the User, not only a known existing
   // row: a concurrent first write can create the Identity and its roots
   // between the read above and this upsert.
   if (!existing?.userId && row.userId && identity.kind === "user") {
-    await recordStartedConversationParticipants(executor, {
-      identityId: row.id,
-      userId: row.userId,
-    });
+    await Promise.all([
+      clearCachedIdentityUser(row.id),
+      recordStartedConversationParticipants(executor, {
+        identityId: row.id,
+        userId: row.userId,
+      }),
+    ]);
   }
   return {
     id: row.id,
@@ -467,7 +484,7 @@ export async function deleteProviderIdentityForUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
-  await clearCachedUser(userId);
+  await Promise.all([clearCachedUser(userId), clearCachedLinkedHandles()]);
 }
 
 /**

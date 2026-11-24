@@ -78,6 +78,9 @@ const memoryState: PluginState = {
 };
 
 const memoryCache: PluginCache = {
+  async get() {
+    return undefined;
+  },
   async getOrLoad(_key, load) {
     return (await load()).value;
   },

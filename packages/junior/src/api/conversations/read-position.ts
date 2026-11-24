@@ -2,7 +2,10 @@ import type { User } from "@sentry/junior-plugin-api";
 import { and, eq, max, sql } from "drizzle-orm";
 import { getDb } from "@/chat/db";
 import { touchConversationDetail } from "@/chat/conversations/sql/detail-version";
-import { conversationStatusSql } from "@/chat/conversations/sql/status";
+import {
+  conversationStatusSql,
+  conversationWaitsOnUserSql,
+} from "@/chat/conversations/sql/status";
 import { closeReadReplyNotice } from "@/chat/inbox-items/reply-notice";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -95,7 +98,7 @@ export async function markConversationRead(
   if (!conversation) throwApiError(404, "Conversation not found.");
 
   await db.transaction(async (tx) => {
-    const before = await readStatus(tx, conversationId);
+    const before = await readViewerStatus(tx, conversationId, viewer.id);
     await tx
       .insert(juniorConversationReadPositions)
       .values({
@@ -120,8 +123,9 @@ export async function markConversationRead(
       userId: viewer.id,
     });
     // The detail version does not cover read positions, but a starter's
-    // read can end a `needs_input` wait. Then polls must reload the status.
-    if ((await readStatus(tx, conversationId)) !== before) {
+    // read can end a wait on them, also while another person's item keeps
+    // the status at `needs_input`. Then polls must reload the status.
+    if ((await readViewerStatus(tx, conversationId, viewer.id)) !== before) {
       await touchConversationDetail(tx, [conversationId]);
     }
   });
@@ -129,9 +133,15 @@ export async function markConversationRead(
   return (await readConversationReadPosition(viewer, conversationId))!;
 }
 
-function readStatus(db: JuniorDatabase, conversationId: string) {
+function readViewerStatus(
+  db: JuniorDatabase,
+  conversationId: string,
+  userId: string,
+) {
   return db
-    .select({ status: conversationStatusSql(juniorConversations) })
+    .select({
+      status: sql<string>`concat_ws(':', ${conversationStatusSql(juniorConversations)}, ${conversationWaitsOnUserSql(juniorConversations, userId)})`,
+    })
     .from(juniorConversations)
     .where(eq(juniorConversations.conversationId, conversationId))
     .then(([row]) => row?.status);

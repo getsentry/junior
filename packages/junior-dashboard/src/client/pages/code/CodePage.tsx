@@ -20,7 +20,7 @@ import {
   TableRow,
 } from "../../components/ui/table";
 import { CodeActivityChart } from "./CodeActivityChart";
-import { CodeChangeRow } from "./CodeChangeRow";
+import { CodeChangeRows } from "./CodeChangeRow";
 import {
   CodeSummaryCards,
   formatCodeCost,
@@ -157,9 +157,7 @@ export function CodeRecentChanges(props: {
         Recent changes
       </div>
       <div>
-        {props.changes.map((change) => (
-          <CodeChangeRow change={change} key={change.id} />
-        ))}
+        <CodeChangeRows changes={props.changes} />
       </div>
     </Card>
   );

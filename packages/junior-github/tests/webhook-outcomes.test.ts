@@ -84,6 +84,9 @@ import { mswServer } from "./msw";
 
 // These tests read no cached object.
 const objectCache: PluginCache = {
+  async get() {
+    return undefined;
+  },
   async getOrLoad(_key, load) {
     return (await load()).value;
   },
@@ -3258,165 +3261,6 @@ describe("GitHub-owned pull request outcomes", () => {
     }
   });
 
-  it("writes the draft state from opens and draft changes", async () => {
-    const fixture = await createGitHubFixture();
-    const codeChanges = fixture.codeIndex.recorded;
-    try {
-      const route = webhookRoute(fixture);
-      const opened = pullRequestPayload();
-      const deliver = async (action: string, updatedAt: string, draft = {}) =>
-        await route.handler(
-          signedRequest(
-            pullRequestPayload({
-              action,
-              pull_request: {
-                ...(opened.pull_request as Record<string, unknown>),
-                ...draft,
-                updated_at: updatedAt,
-              },
-            }),
-          ),
-        );
-      await deliver("opened", "2026-07-01T12:00:00.000Z", { draft: true });
-      await deliver("ready_for_review", "2026-07-02T12:00:00.000Z", {
-        draft: false,
-      });
-      // A late delivery cannot move the draft state back.
-      await deliver("converted_to_draft", "2026-07-01T18:00:00.000Z", {
-        draft: true,
-      });
-      await deliver("converted_to_draft", "2026-07-03T12:00:00.000Z", {
-        draft: true,
-      });
-      // A close keeps the draft state.
-      await deliver("closed", "2026-07-04T12:00:00.000Z", { draft: false });
-
-      expect(codeChanges.map((change) => [change.state, change.draft])).toEqual(
-        [
-          ["open", true],
-          ["open", false],
-          ["open", true],
-          ["closed", undefined],
-        ],
-      );
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("writes the size that a pull request payload counts", async () => {
-    const fixture = await createGitHubFixture();
-    const codeChanges = fixture.codeIndex.recorded;
-    try {
-      const route = webhookRoute(fixture);
-      const opened = pullRequestPayload();
-      await route.handler(
-        signedRequest(
-          pullRequestPayload({
-            pull_request: {
-              ...(opened.pull_request as Record<string, unknown>),
-              additions: 1204,
-              changed_files: 12,
-              deletions: 340,
-            },
-          }),
-        ),
-      );
-      // A push sends the new counts.
-      await route.handler(
-        signedRequest(
-          pullRequestPayload({
-            action: "synchronize",
-            pull_request: {
-              ...(opened.pull_request as Record<string, unknown>),
-              additions: 1310,
-              changed_files: 13,
-              deletions: 342,
-              updated_at: "2026-07-01T18:00:00.000Z",
-            },
-          }),
-        ),
-      );
-      // A payload without counts leaves the stored size alone.
-      await route.handler(
-        signedRequest(
-          pullRequestPayload({
-            action: "closed",
-            pull_request: {
-              ...(opened.pull_request as Record<string, unknown>),
-              closed_at: "2026-07-02T12:00:00.000Z",
-              updated_at: "2026-07-02T12:00:00.000Z",
-            },
-          }),
-        ),
-      );
-      // A push after the close keeps the pull request closed.
-      await route.handler(
-        signedRequest(
-          pullRequestPayload({
-            action: "synchronize",
-            pull_request: {
-              ...(opened.pull_request as Record<string, unknown>),
-              additions: 1400,
-              closed_at: "2026-07-02T12:00:00.000Z",
-              updated_at: "2026-07-03T12:00:00.000Z",
-            },
-          }),
-        ),
-      );
-
-      expect(codeChanges.map((change) => [change.state, change.size])).toEqual([
-        ["open", { additions: 1204, changedFiles: 12, deletions: 340 }],
-        ["open", { additions: 1310, changedFiles: 13, deletions: 342 }],
-        ["closed", undefined],
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  it("keeps the size of a push that arrives before opened", async () => {
-    const fixture = await createGitHubFixture();
-    const codeChanges = fixture.codeIndex.recorded;
-    try {
-      const route = webhookRoute(fixture);
-      const opened = pullRequestPayload();
-      await route.handler(
-        signedRequest(
-          pullRequestPayload({
-            action: "synchronize",
-            pull_request: {
-              ...(opened.pull_request as Record<string, unknown>),
-              additions: 1310,
-              changed_files: 13,
-              deletions: 342,
-              updated_at: "2026-07-01T18:00:00.000Z",
-            },
-          }),
-        ),
-      );
-      // The late `opened` has older counts, so it does not replace them.
-      await route.handler(
-        signedRequest(
-          pullRequestPayload({
-            pull_request: {
-              ...(opened.pull_request as Record<string, unknown>),
-              additions: 1204,
-              changed_files: 12,
-              deletions: 340,
-            },
-          }),
-        ),
-      );
-
-      expect(codeChanges.map((change) => [change.state, change.size])).toEqual([
-        ["open", { additions: 1310, changedFiles: 13, deletions: 342 }],
-      ]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("updates each chip when one stored chip has facts for another object type", async () => {
     const fixture = await createGitHubFixture();
     const key = "getsentry/junior#946";
@@ -3790,7 +3634,16 @@ describe("GitHub-owned pull request outcomes", () => {
     const key = "getsentry/junior#946";
     const conversationId = "slack:C123:1712345.0001";
     let chip: ConversationAnnotationInput = {
-      facts: { sourceBranch: "feat/preview", type: "code_change" },
+      // A size, merge state and reviewers from before someone else's push.
+      facts: {
+        additions: 12,
+        changedFiles: 2,
+        deletions: 3,
+        mergeable: true,
+        reviewers: ["octocat"],
+        sourceBranch: "feat/preview",
+        type: "code_change",
+      },
       key,
       kind: "object",
       label: key,
@@ -3865,6 +3718,8 @@ describe("GitHub-owned pull request outcomes", () => {
           ),
         ),
       );
+      // Cards read the size, merge state and reviewers live, so the saved
+      // card does not keep the old ones.
       expect(chip.kind === "object" && chip.facts).toEqual({
         previewImageUrls: [artifact],
         sourceBranch: "feat/preview",
