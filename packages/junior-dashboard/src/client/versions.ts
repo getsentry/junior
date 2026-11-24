@@ -147,7 +147,7 @@ export function onScreenConversationIds(
 /**
  * Read again each detail on screen whose last read failed. No timer polls
  * an idle detail, and a detail with no good read has no token to compare, so
- * this check is its retry.
+ * the poll and each stream event retry it here.
  */
 function retryFailedDetails(client: QueryClient) {
   for (const query of client.getQueryCache().findAll({
@@ -290,9 +290,12 @@ function useVersionsStream(args: {
       );
       source = opened;
       let failures = 0;
+      // The slow poll would wait up to a minute to read a failed detail
+      // again, so each stream event, at least one per keepalive, retries it.
       const heard = () => {
         lastEventAtMs.current = Date.now();
         failures = 0;
+        retryFailedDetails(client);
       };
       opened.addEventListener("open", heard);
       opened.addEventListener(VERSIONS_STREAM_KEEPALIVE_EVENT, heard);
