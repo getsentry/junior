@@ -30,6 +30,7 @@ import { ConversationSectionHeading } from "./ConversationSectionHeading";
 import {
   ConversationSidebarThreadRow,
   ConversationSidebarThreadToggle,
+  ConversationSidebarThreadsOmitted,
 } from "./ConversationSidebarThreadRow";
 import { sidebarThreads } from "./sidebarThreads";
 import {
@@ -49,7 +50,7 @@ import {
   TooltipTrigger,
 } from "../components/ui/tooltip";
 import { Spinner } from "../components/ui/spinner";
-import type { WaitingConversation } from "../review-desk/queries";
+import type { WaitingConversation } from "../inbox/queries";
 import { formatCompactAge } from "../time";
 import { conversationTurnIsActive } from "./turnActivity";
 
@@ -71,7 +72,8 @@ type ConversationSidebarEntry =
       key: string;
       kind: "thread-toggle";
       rootId: string;
-    };
+    }
+  | { count: number; key: string; kind: "thread-omitted" };
 
 const conversationEntryKey = (entry: ConversationSidebarEntry) => entry.key;
 
@@ -166,6 +168,8 @@ export function ConversationSidebar(props: {
                       label={entry.label}
                       onToggle={() => toggleSection(entry.sectionKey)}
                     />
+                  ) : entry.kind === "thread-omitted" ? (
+                    <ConversationSidebarThreadsOmitted count={entry.count} />
                   ) : entry.kind === "thread-toggle" ? (
                     <ConversationSidebarThreadToggle
                       expanded={entry.expanded}
@@ -314,21 +318,31 @@ function conversationSidebarEntries(
   });
 }
 
-/** List the sidebar Threads under one root, then its show more or fewer row. */
+/**
+ * List the sidebar Threads under one root, then how many the feed left out,
+ * then its show more or fewer row.
+ */
 function threadEntries(
   root: Conversation,
   expanded: boolean,
   selectedId: string | undefined,
 ): ConversationSidebarEntry[] {
-  const { collapsible, hiddenCount, threads } = sidebarThreads(root.threads, {
-    expanded,
-    selectedId,
-  });
+  const { collapsible, hiddenCount, omittedCount, threads } = sidebarThreads(
+    root,
+    { expanded, selectedId },
+  );
   const entries: ConversationSidebarEntry[] = threads.map((thread) => ({
     ...thread,
     key: `thread-${thread.conversation.id}`,
     kind: "thread" as const,
   }));
+  if (omittedCount > 0) {
+    entries.push({
+      count: omittedCount,
+      key: `thread-omitted-${root.id}`,
+      kind: "thread-omitted",
+    });
+  }
   if (collapsible && (expanded || hiddenCount > 0)) {
     entries.push({
       expanded,

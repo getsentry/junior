@@ -16,7 +16,11 @@ export interface PluginOAuthConfig {
 
 export interface PluginOAuthBearerCredentials {
   apiHeaders?: Record<string, string>;
-  authTokenEnv: string;
+  /**
+   * Env var of a host token, and the name of the Sandbox placeholder.
+   * Optional with `oauth`: without it there is no env token fallback.
+   */
+  authTokenEnv?: string;
   authTokenPlaceholder?: string;
   domains: string[];
   type: "oauth-bearer";
@@ -152,8 +156,8 @@ export interface PluginMcpConfig {
  * the Actor to connect their own account.
  *
  * With `userOAuth: false`, Junior uses only the service account. It never
- * asks an Actor to connect, ignores their own connections, and hides tools
- * that the service account does not list. Until an Admin connects the
+ * asks an Actor to connect, ignores their own connections, and hides MCP
+ * tools that the service account does not list. Until an Admin connects the
  * account, the plugin is not available.
  */
 export interface PluginAccountsConfig {
@@ -163,11 +167,23 @@ export interface PluginAccountsConfig {
   serviceAccount?: PluginServiceAccountConfig;
 }
 
-/** What one plugin's service account may use. */
-export interface PluginServiceAccountConfig {
-  /** MCP tools that the account may call. Each must be loaded by `mcp`. */
-  tools: string[];
-}
+/**
+ * What one plugin's service account may use. An `mcp` plugin lists MCP
+ * tools. A plugin with a top-level `oauth` block lists the `operation`
+ * names that its host code passes to `egress.fetch`. Sandbox commands never
+ * name an operation, so they never get the service account.
+ */
+export type PluginServiceAccountConfig =
+  | {
+      /** MCP tools that the account may call. Each must be loaded by `mcp`. */
+      tools: string[];
+      operations?: never;
+    }
+  | {
+      /** `egress.fetch` operations that the account may serve. */
+      operations: string[];
+      tools?: never;
+    };
 
 export interface PluginEnvVarDeclaration {
   default?: string;

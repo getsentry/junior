@@ -12,11 +12,13 @@
 import type {
   EventInput,
   EventPublisher,
-  PluginConversationReviewItems,
+  PluginCodeChanges,
+  PluginConversationInboxItems,
   PluginLogger,
 } from "@sentry/junior-plugin-api";
 import pLimit from "p-limit";
 import * as z from "zod";
+import type { LoadGitHubTitleParts } from "./title-parts.js";
 import type { GitHubDb } from "../db/database.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepoDataSchema } from "../events/scope.js";
@@ -136,6 +138,7 @@ function deliveredPullRequest(
  * `merge-conflict-checks/policy.ts` decides if a conflict publishes.
  */
 export async function loadGitHubMergeConflictEvents(args: {
+  codeChanges: Pick<PluginCodeChanges, "list">;
   db: GitHubDb;
   deliveryId: string;
   events: EventInput[];
@@ -146,10 +149,11 @@ export async function loadGitHubMergeConflictEvents(args: {
   loadConflictHistory?:
     | ((ref: GitHubPullRequestRef) => Promise<unknown>)
     | undefined;
+  loadTitleParts?: LoadGitHubTitleParts | undefined;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   /** The body of a `pull_request` webhook. */
   pullRequestPayload?: unknown;
-  reviewItems: PluginConversationReviewItems;
+  inboxItems: PluginConversationInboxItems;
 }): Promise<EventInput[]> {
   const { hasMatch, loadConflictHistory, loadPullRequest } = args;
   if (!hasMatch || !loadPullRequest || !loadConflictHistory) return [];
@@ -174,15 +178,17 @@ export async function loadGitHubMergeConflictEvents(args: {
         ...(loaded.html_url ? { url: loaded.html_url } : undefined),
       };
       return await applyGitHubConflictPolicy({
+        codeChanges: args.codeChanges,
         conflict,
         db: args.db,
         draft: loaded.draft === true,
         events: gitHubMergeConflictEvents({ ...ref, conflict }),
         loadHistory: loadConflictHistory,
+        loadTitleParts: args.loadTitleParts,
         log: args.log,
         now: new Date(),
         ref,
-        reviewItems: args.reviewItems,
+        inboxItems: args.inboxItems,
         ...(loaded.title ? { title: loaded.title } : undefined),
       });
     } catch (error) {

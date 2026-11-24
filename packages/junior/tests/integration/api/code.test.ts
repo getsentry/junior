@@ -1,7 +1,12 @@
-import { describe, expect, test, vi } from "vitest";
+import { beforeEach, describe, expect, test, vi } from "vitest";
+import { githubPlugin } from "@sentry/junior-github";
+import { createApp, defineJuniorPlugins } from "@/app";
 import { eq } from "drizzle-orm";
 import * as z from "zod";
-import type { CodeChangeInput } from "@sentry/junior-plugin-api";
+import type {
+  CodeChangeFilter,
+  CodeChangeInput,
+} from "@sentry/junior-plugin-api";
 import { createJuniorApi } from "@/api";
 import {
   apiErrorSchema,
@@ -10,6 +15,7 @@ import {
   codeRepositoryReportSchema,
   conversationFeedSchema,
 } from "@/api/schema";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { recordCodeChange, recordCodeChangeActivity } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
@@ -26,6 +32,11 @@ import {
 } from "../../fixtures/sql";
 
 describe("code API", () => {
+  // The GitHub plugin builds the code links.
+  beforeEach(async () => {
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+  });
+
   test("reports code changes across hosting services", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     vi.setSystemTime(new Date("2026-08-24T12:00:00.000Z"));
@@ -40,20 +51,12 @@ describe("code API", () => {
         repository: {
           name: "getsentry/junior",
           providerId: "repository-1",
-          url: "https://github.com/getsentry/junior",
         },
-        size: { additions: 1204, changedFiles: 12, deletions: 340 },
         state: "merged",
         title: "Make code native",
         updatedAt: new Date("2026-08-22T12:00:00.000Z"),
-        url: "https://github.com/getsentry/junior/pull/42",
       } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", codeChange);
-      // A write without a size keeps the stored one.
-      await recordCodeChange(fixture.sql.db(), "github", {
-        ...codeChange,
-        size: undefined,
-      });
       // A change costs its whole linked tree, child Conversations included.
       await fixture.sql
         .db()
@@ -121,12 +124,15 @@ describe("code API", () => {
       expect(
         report.activityHours?.find((hour) => hour.date === "2026-08-22T12"),
       ).toEqual({ closed: 0, created: 0, date: "2026-08-22T12", merged: 1 });
+      // No stored link: the GitHub plugin builds each link from the
+      // repository name and the change number.
       expect(report.repositories).toEqual([
         expect.objectContaining({
           created: 1,
           mergeRate: 1,
           name: "getsentry/junior",
           provider: "github",
+          url: "https://github.com/getsentry/junior",
         }),
       ]);
       expect(report.repositories[0]?.medianCostUsd).toBe(0.75);
@@ -134,9 +140,9 @@ describe("code API", () => {
         expect.objectContaining({
           number: 42,
           repository: "getsentry/junior",
-          size: { additions: 1204, changedFiles: 12, deletions: 340 },
           state: "merged",
           title: "Make code native",
+          url: "https://github.com/getsentry/junior/pull/42",
         }),
       ]);
     } finally {
@@ -178,7 +184,6 @@ describe("code API", () => {
           state: "open",
           title: `Change ${number}`,
           updatedAt: new Date(at),
-          url: `https://github.com/getsentry/junior/pull/${number}`,
         }) satisfies CodeChangeInput;
       // More open changes than a page lists, all older than the closed ones.
       // Change 1 is the oldest, so it falls past the limit, and it is the
@@ -346,12 +351,10 @@ describe("code API", () => {
         repository: {
           name: "getsentry/junior",
           providerId: "repository-1",
-          url: "https://github.com/getsentry/junior",
         },
         state: "open",
         title: "Fix the dashboard route",
         updatedAt: new Date("2026-08-21T12:00:00.000Z"),
-        url: "https://github.com/getsentry/junior/pull/7",
       } satisfies CodeChangeInput;
       await recordCodeChange(db, "github", change);
       await recordCodeChange(db, "github", {
@@ -425,6 +428,88 @@ describe("code API", () => {
       );
     } finally {
       vi.useRealTimers();
+      await fixture.close();
+    }
+  });
+
+  test("lets a plugin read its code changes by repository, state, and age, and rename the repository", async () => {
+    const fixture = createConfiguredJuniorSqlFixture();
+    try {
+      await migrateSchema(fixture.sql);
+      const github = createPluginCodeChanges("github");
+      const change = (
+        number: number,
+        state: "closed" | "merged" | "open",
+        updatedAt: string,
+      ) =>
+        github.record({
+          closedAt: state === "closed" ? new Date(updatedAt) : undefined,
+          conversationIds: [`conversation-${number}`],
+          mergedAt: state === "merged" ? new Date(updatedAt) : undefined,
+          number,
+          openedAt: new Date("2026-08-01T12:00:00.000Z"),
+          providerId: `change-${number}`,
+          repository: { name: "getsentry/Junior", providerId: "repository-1" },
+          state,
+          updatedAt: new Date(updatedAt),
+        });
+      await change(1, "open", "2026-08-03T12:00:00.000Z");
+      await change(2, "open", "2026-08-02T12:00:00.000Z");
+      await change(3, "merged", "2026-08-04T12:00:00.000Z");
+      await createPluginCodeChanges("gitlab").record({
+        conversationIds: [],
+        number: 1,
+        openedAt: new Date("2026-08-01T12:00:00.000Z"),
+        providerId: "gitlab-change-1",
+        repository: { name: "getsentry/junior", providerId: "gitlab-1" },
+        state: "open",
+        updatedAt: new Date("2026-08-01T12:00:00.000Z"),
+      });
+      const numbers = async (filter: CodeChangeFilter) =>
+        (await github.list(filter)).map((found) => found.number);
+
+      // A webhook knows the repository name in any case, and the number.
+      await expect(
+        github.list({ repository: { name: "GETSENTRY/junior", numbers: [3] } }),
+      ).resolves.toEqual([
+        {
+          closedAt: undefined,
+          conversationIds: ["conversation-3"],
+          mergedAt: new Date("2026-08-04T12:00:00.000Z"),
+          number: 3,
+          providerId: "change-3",
+          repository: { name: "getsentry/Junior", providerId: "repository-1" },
+          state: "merged",
+        },
+      ]);
+      // Oldest update first, and only this plugin's code changes.
+      await expect(numbers({})).resolves.toEqual([2, 1, 3]);
+      await expect(
+        numbers({
+          state: "open",
+          updatedBefore: new Date("2026-08-03T00:00:00.000Z"),
+        }),
+      ).resolves.toEqual([2]);
+      await expect(
+        numbers({ conversationIds: ["conversation-1", "conversation-3"] }),
+      ).resolves.toEqual([1, 3]);
+
+      // A newer name renames the repository of every code change in it. An
+      // older name does not move it back.
+      await github.recordRepository({
+        name: "getsentry/junior-next",
+        providerId: "repository-1",
+        updatedAt: new Date("2026-08-06T12:00:00.000Z"),
+      });
+      await github.recordRepository({
+        name: "getsentry/Junior",
+        providerId: "repository-1",
+        updatedAt: new Date("2026-08-05T12:00:00.000Z"),
+      });
+      await expect(
+        numbers({ repository: { name: "getsentry/junior-next" } }),
+      ).resolves.toEqual([2, 1, 3]);
+    } finally {
       await fixture.close();
     }
   });

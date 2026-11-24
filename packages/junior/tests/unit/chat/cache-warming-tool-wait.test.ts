@@ -203,7 +203,8 @@ describe("tool wait cache warming", () => {
     const { totals } = cacheWarmingSavingsReportSchema.parse(
       await response.json(),
     );
-    // Prices are per million tokens. The 7-minute wait needs one warmup.
+    // Prices are per million tokens. The 7-minute wait needs one warmup,
+    // which the oracle prices at 1.1 reads.
     const read = (60_000 * model.cost.cacheRead) / 1_000_000;
     const write = (60_000 * model.cost.cacheWrite) / 1_000_000;
     const close = (usd: number) => expect.closeTo(usd, 3);
@@ -212,7 +213,7 @@ describe("tool wait cache warming", () => {
       hits: 1,
       savedUsd: close(write - read),
       warmupCostUsd: close(0.05),
-      oracleSavingsUsd: close(write - 2 * read),
+      oracleSavingsUsd: close(write - 2.1 * read),
       unwarmedIdlePeriods: 0,
     });
   });

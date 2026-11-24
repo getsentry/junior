@@ -55,7 +55,11 @@ function LocationDetail(props: { detail: LocationDetailReport }) {
   return (
     <>
       <PageHeader
-        description={`${detail.provider} public ${detail.kind} / ${detail.providerDestinationId} / last active ${formatRelativeTime(detail.lastSeenAt)}`}
+        description={
+          detail.provider === "local"
+            ? `Public dashboard conversations / last active ${formatRelativeTime(detail.lastSeenAt)}`
+            : `${detail.provider} public ${detail.kind} / ${detail.providerDestinationId} / last active ${formatRelativeTime(detail.lastSeenAt)}`
+        }
         title={detail.label}
       />
 

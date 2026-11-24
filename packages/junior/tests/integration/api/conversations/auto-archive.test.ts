@@ -20,16 +20,23 @@ import {
   getDb,
   getSqlExecutor,
 } from "@/chat/db";
-import { changePlan } from "@/chat/plan/store";
+import {
+  saveHeldInput,
+  stopConversationTree,
+} from "@/chat/conversations/session-stop";
+import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
+import { disconnectStateAdapter } from "@/chat/state/adapter";
+import { getLeadConversation } from "@/chat/lead/conversation";
+import { changeTodos } from "@/chat/todos/store";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { closeReviewItem, insertReviewItem } from "@/chat/review-items/store";
+import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
 import {
   juniorConversationParticipants,
   juniorConversations,
 } from "@/db/schema";
 import { JUNIOR_AUTO_ARCHIVE_ROUTE } from "@/deployment";
 import { defineJuniorPlugins } from "@/plugins";
-import { isNotNull } from "drizzle-orm";
+import { eq, isNotNull } from "drizzle-orm";
 import {
   REQUEST,
   SLACK_VIEWER,
@@ -67,6 +74,7 @@ async function addParticipant(args: {
 describe("conversation auto-archive API", () => {
   afterEach(async () => {
     delete process.env["JUNIOR_SCHEDULER_SECRET"];
+    await disconnectStateAdapter();
     await closeDb();
   });
 
@@ -359,8 +367,8 @@ describe("conversation auto-archive API", () => {
         });
     }
     // An open action item for the viewer keeps the conversation in the feed.
-    await insertReviewItem(getDb(), {
-      addedByConversationId: waitingId,
+    await insertInboxItem(getDb(), {
+      owner: { id: waitingId, kind: "conversation" },
       assignedToEveryone: false,
       assigneeUserIds: [viewer.id],
       body: "Merge or close the follow-up?",
@@ -382,6 +390,27 @@ describe("conversation auto-archive API", () => {
       title: "Follow-up",
       visibility: "private",
     });
+    // The Lead is the viewer's dashboard home, not a feed row, so it stays
+    // however long it has been quiet.
+    const lead = await getLeadConversation(viewer);
+    await getDb()
+      .update(juniorConversations)
+      .set({ lastActivityAt: new Date(staleMs) })
+      .where(eq(juniorConversations.conversationId, lead.conversationId));
+    await getDb()
+      .insert(juniorConversationParticipants)
+      .values({
+        lastMessageAt: new Date(staleMs),
+        rootConversationId: lead.conversationId,
+        userId: viewer.id,
+      })
+      .onConflictDoUpdate({
+        set: { lastMessageAt: new Date(staleMs) },
+        target: [
+          juniorConversationParticipants.userId,
+          juniorConversationParticipants.rootConversationId,
+        ],
+      });
     // The manual run waits the same time as the scheduled sweep. The recent
     // conversation has no work but had activity a minute ago, so it stays.
     const finishedAt = new Date(staleMs).toISOString();
@@ -435,6 +464,11 @@ describe("conversation auto-archive API", () => {
         await readConversationDetail(doneId, { viewer }),
       ).archivedAt,
     ).toEqual(expect.any(String));
+    const [leadRow] = await getDb()
+      .select({ archivedAt: juniorConversations.archivedAt })
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, lead.conversationId));
+    expect(leadRow?.archivedAt).toBeNull();
   });
 
   it("keeps a conversation that waits on a person to finish an authorization", async () => {
@@ -567,21 +601,31 @@ describe("conversation auto-archive API", () => {
     // does not.
     const childItemId = "local:test:archive-needs-child-item";
     const childItemClosedId = "local:test:archive-needs-child-item-closed";
-    const planId = "local:test:archive-needs-plan";
-    const planDoneId = "local:test:archive-needs-plan-done";
-    const childPlanId = "local:test:archive-needs-child-plan";
-    const childAgentPlanId = "local:test:archive-needs-child-agent-plan";
+    const todoId = "local:test:archive-needs-todo";
+    const todoDoneId = "local:test:archive-needs-todo-done";
+    const childTodoId = "local:test:archive-needs-child-todo";
+    const childAgentTodoId = "local:test:archive-needs-child-agent-todo";
     const unreadId = "local:test:archive-needs-unread";
     const readId = "local:test:archive-needs-read";
+    // Only an action item that the tree added needs a person. An item that
+    // another Conversation added and linked here does not keep the tree.
+    const linkedItemId = "local:test:archive-needs-linked-item";
+    // A stopped tree counts from its stop, even while held input keeps
+    // adding Messages. Its twin stopped inside the grace period.
+    const stoppedId = "local:test:archive-stopped";
+    const stoppedRecentlyId = "local:test:archive-stopped-recently";
     const ids = [
       childItemId,
       childItemClosedId,
-      planId,
-      planDoneId,
-      childPlanId,
-      childAgentPlanId,
+      todoId,
+      todoDoneId,
+      childTodoId,
+      childAgentTodoId,
       unreadId,
       readId,
+      linkedItemId,
+      stoppedId,
+      stoppedRecentlyId,
     ];
     for (const conversationId of ids) {
       await getConversationStore().recordActivity({
@@ -596,8 +640,8 @@ describe("conversation auto-archive API", () => {
     for (const parentConversationId of [
       childItemId,
       childItemClosedId,
-      childPlanId,
-      childAgentPlanId,
+      childTodoId,
+      childAgentTodoId,
     ]) {
       await getConversationStore().createChild({
         childConversationId: `${parentConversationId}:child`,
@@ -616,8 +660,8 @@ describe("conversation auto-archive API", () => {
 
     // An action item for Everyone waits on a person too, until it closes.
     for (const conversationId of [childItemId, childItemClosedId]) {
-      const item = await insertReviewItem(getDb(), {
-        addedByConversationId: `${conversationId}:child`,
+      const item = await insertInboxItem(getDb(), {
+        owner: { id: `${conversationId}:child`, kind: "conversation" },
         assignedToEveryone: true,
         assigneeUserIds: [],
         body: "Ship the release now?",
@@ -630,19 +674,62 @@ describe("conversation auto-archive API", () => {
         visibility: "public",
       });
       if (conversationId === childItemClosedId) {
-        await closeReviewItem(getDb(), {
+        await closeInboxItem(getDb(), {
           id: item!.id,
           nowMs: quietMs,
           status: "dismissed",
         });
       }
     }
-    const addPlanItem = async (
+    await insertInboxItem(getDb(), {
+      owner: { id: `${childItemId}:child`, kind: "conversation" },
+      assignedToEveryone: true,
+      assigneeUserIds: [],
+      body: "Ship the linked release now?",
+      conversationIds: [`${childItemId}:child`, linkedItemId],
+      dedupeKey: "archive-needs:linked",
+      kind: "action",
+      nowMs: quietMs,
+      request: REQUEST,
+      title: "Linked release",
+      visibility: "public",
+    });
+    await stopConversationTree([stoppedId], { stoppedAtMs: quietMs });
+    await stopConversationTree([stoppedRecentlyId], { stoppedAtMs: nowMs });
+    for (const conversationId of [stoppedId, stoppedRecentlyId]) {
+      const inboundMessageId = `${conversationId}:watch-event`;
+      await saveHeldInput(conversationId, [
+        {
+          conversationId,
+          createdAtMs: nowMs,
+          delivery: "defer",
+          inboundMessageId,
+          input: {
+            authorId: "github",
+            authorIdentityId: SYSTEM_IDENTITY_ID,
+            metadata: {
+              event: {
+                eventKey: inboundMessageId,
+                eventType: "pull_request.merged",
+                identifier: "getsentry/junior#1",
+                namespace: "github",
+                trustedSummary: "The pull request was merged.",
+              },
+              kind: "event",
+            },
+            text: "The pull request was merged.",
+          },
+          receivedAtMs: nowMs,
+          source: "event",
+        },
+      ]);
+    }
+    const addTodo = async (
       conversationId: string,
       assignee: { conversationId: string } | { userId: string },
-      status: "blocked" | "done",
+      status: "open" | "in_progress" | "done",
     ) =>
-      await changePlan(getSqlExecutor(), {
+      await changeTodos(getSqlExecutor(), {
         change: {
           add: [{ assignee, status, title: "Approve the rollout" }],
           remove: [],
@@ -651,13 +738,13 @@ describe("conversation auto-archive API", () => {
         conversationId,
         nowMs: quietMs,
       });
-    await addPlanItem(planId, { userId: viewer.id }, "blocked");
-    await addPlanItem(planDoneId, { userId: viewer.id }, "done");
-    await addPlanItem(`${childPlanId}:child`, { userId: viewer.id }, "blocked");
-    await addPlanItem(
-      `${childAgentPlanId}:child`,
-      { conversationId: `${childAgentPlanId}:child` },
-      "blocked",
+    await addTodo(todoId, { userId: viewer.id }, "open");
+    await addTodo(todoDoneId, { userId: viewer.id }, "done");
+    await addTodo(`${childTodoId}:child`, { userId: viewer.id }, "in_progress");
+    await addTodo(
+      `${childAgentTodoId}:child`,
+      { conversationId: `${childAgentTodoId}:child` },
+      "open",
     );
     for (const conversationId of [unreadId, readId]) {
       await recordAnswer(conversationId, 1, quietMs);
@@ -683,15 +770,22 @@ describe("conversation auto-archive API", () => {
     expect(response.status).toBe(200);
     // A tree that needs a person is not a candidate.
     await expect(response.json()).resolves.toEqual({
-      archived: 4,
-      scanned: 4,
+      archived: 6,
+      scanned: 6,
     });
     const archived = await getDb()
       .select({ conversationId: juniorConversations.conversationId })
       .from(juniorConversations)
       .where(isNotNull(juniorConversations.archivedAt));
     expect(archived.map((row) => row.conversationId).sort()).toEqual(
-      [childItemClosedId, planDoneId, childAgentPlanId, readId].sort(),
+      [
+        childItemClosedId,
+        todoDoneId,
+        childAgentTodoId,
+        readId,
+        linkedItemId,
+        stoppedId,
+      ].sort(),
     );
   });
 });

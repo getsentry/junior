@@ -120,6 +120,64 @@ describe("public artifact route", () => {
     expect(Buffer.from(await restored.arrayBuffer())).toEqual(PNG_BYTES);
   });
 
+  it("gives each expiring publish its own URL, which stops serving at its expiry", async () => {
+    const sql = await setup();
+    const imageStorage = createMemoryAttachmentStorage();
+    const publish = (expiresAt?: Date) =>
+      publishImage({
+        body: PNG_BYTES,
+        conversationId: OWNER_CONVERSATION_ID,
+        db: sql.sql,
+        ...(expiresAt ? { expiresAt } : undefined),
+        publicBaseUrl: "https://junior.example.com",
+        storage: imageStorage,
+      });
+    const get = (url: string) =>
+      publicArtifactGET({
+        db: sql.sql,
+        filename: filenameFromUrl(url),
+        storage: imageStorage,
+      });
+
+    const permanent = await publish();
+    const expiresAt = new Date(Date.now() + 2 * 60_000);
+    const brief = await publish(expiresAt);
+    const other = await publish(expiresAt);
+    expect(brief.expiresAt).toEqual(expiresAt);
+    expect(permanent.expiresAt).toBeNull();
+    // The same bytes never share a row with a URL that serves longer.
+    expect(new Set([permanent.url, brief.url, other.url]).size).toBe(3);
+    expect((await publish()).url).toBe(permanent.url);
+
+    const live = await get(brief.url);
+    expect(live.status).toBe(200);
+    // No cache may serve the artifact past its expiry.
+    const maxAge = Number(
+      live.headers.get("cache-control")?.match(/max-age=(\d+)/)?.[1],
+    );
+    expect(maxAge).toBeGreaterThan(100);
+    expect(maxAge).toBeLessThanOrEqual(120);
+
+    await sql.sql
+      .db()
+      .update(juniorArtifacts)
+      .set({ expiresAt: new Date(Date.now() - 1000) })
+      .where(eq(juniorArtifacts.id, filenameFromUrl(brief.url).split(".")[0]!));
+    const expired = await get(brief.url);
+    expect(expired.status).toBe(404);
+    expect(expired.headers.get("cache-control")).toBe("private, no-store");
+    expect((await get(other.url)).status).toBe(200);
+
+    // Unpublishing an expiring URL leaves the URL that does not expire.
+    await unpublishArtifact({
+      conversationId: OWNER_CONVERSATION_ID,
+      db: sql.sql,
+      ref: other.url,
+    });
+    expect((await get(other.url)).status).toBe(404);
+    expect((await get(permanent.url)).status).toBe(200);
+  });
+
   it("rejects unpublish from a different conversation", async () => {
     const sql = await setup();
     const imageStorage = createMemoryAttachmentStorage();

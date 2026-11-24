@@ -9,13 +9,15 @@
  * came after its first search.
  */
 import * as z from "zod";
-import { searchConversationEventText } from "@/chat/conversations/event-search";
+import {
+  DEFAULT_EVENT_SEARCH_LIMIT,
+  searchConversationEventText,
+} from "@/chat/conversations/event-search";
 import {
   KNOWN_CONVERSATION_EVENT_TYPES,
   type ConversationEvent,
 } from "@/chat/conversations/history";
 import { getConversationEventStore, getDb } from "@/chat/db";
-import { DEFAULT_EVENT_SEARCH_LIMIT } from "@/chat/tools/search-conversation-events";
 
 // The fields of the tool input that change what the search returns.
 const searchInputSchema = z.object({

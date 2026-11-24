@@ -7,6 +7,7 @@ import {
   it,
   vi,
 } from "vitest";
+import { committedHistory } from "../../fixtures/agent-runner";
 import { createLocalSource, type Destination } from "@sentry/junior-plugin-api";
 
 const originalStateAdapter = process.env["JUNIOR_STATE_ADAPTER"];
@@ -139,6 +140,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { upsertTurnRecord } from "@/chat/task-execution/turn-cursor";
 import { getConversationEventStore } from "@/chat/db";
 import { TurnInputCommitLostError } from "@/chat/runtime/turn";
+import { recordTurnStart } from "../../fixtures/turn-start";
 
 const LOCAL_DESTINATION = {
   platform: "local",
@@ -158,7 +160,7 @@ describe("plugin prompt hook composition", () => {
     previousPlugins = setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -237,7 +239,7 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -272,12 +274,12 @@ describe("plugin prompt hook composition", () => {
     const eventStore = getConversationEventStore();
     const stored = await eventStore.loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toEqual({
       type: "turn_context",
       turnId,
-      pluginName: "memory",
+      pluginName: "notes",
       kind: "recall",
       version: 1,
       content: {
@@ -286,12 +288,12 @@ describe("plugin prompt hook composition", () => {
     });
     const storedMethod = await eventStore.loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:1`,
+      `turn:${turnId}:context:notes:1`,
     );
     expect(storedMethod?.data).toEqual({
       type: "turn_context",
       turnId,
-      pluginName: "memory",
+      pluginName: "notes",
       kind: "note",
       version: 1,
       content: { note: "Run the tests." },
@@ -311,7 +313,7 @@ describe("plugin prompt hook composition", () => {
     setPlugins([
       defineJuniorPlugin({
         manifest: {
-          name: "memory",
+          name: "notes",
           displayName: "Memory",
           description: "Memory test plugin",
         },
@@ -341,6 +343,7 @@ describe("plugin prompt hook composition", () => {
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
     };
+    await recordTurnStart(request.conversationId, turnId);
     await expect(
       executeAgentRun({
         ...request,
@@ -363,7 +366,7 @@ describe("plugin prompt hook composition", () => {
     );
     const stored = await getConversationEventStore().loadByIdempotencyKey(
       LOCAL_DESTINATION.conversationId,
-      `turn:${turnId}:context:memory:0`,
+      `turn:${turnId}:context:notes:0`,
     );
     expect(stored?.data).toMatchObject({
       type: "turn_context",
@@ -393,14 +396,14 @@ describe("plugin prompt hook composition", () => {
       instruction: {
         text: "again",
       },
-      history: [
+      history: committedHistory([
         firstPromptMessage,
         {
           role: "assistant",
           content: [{ type: "text", text: "Done." }],
           stopReason: "stop",
         },
-      ] as never,
+      ] as never),
       destination: LOCAL_DESTINATION,
       source: LOCAL_SOURCE,
     });
@@ -467,6 +470,10 @@ describe("plugin prompt hook composition", () => {
   });
 
   it("does not run user prompt hooks when a resumed record has a prompt checkpoint", async () => {
+    await recordTurnStart(
+      LOCAL_DESTINATION.conversationId,
+      "turn-plugin-prompt-resume-after-prompt",
+    );
     await upsertTurnRecord({
       conversationId: LOCAL_DESTINATION.conversationId,
       turnId: "turn-plugin-prompt-resume-after-prompt",
@@ -479,7 +486,7 @@ describe("plugin prompt hook composition", () => {
           timestamp: Date.now(),
         },
       ] as never,
-      turnStartMessageIndex: 0,
+      promptSaved: true,
       resumeReason: "timeout",
       errorMessage: "timed out",
     });

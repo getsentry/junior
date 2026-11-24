@@ -1,6 +1,9 @@
-/** Review items and an API mock shared by the Inbox e2e specs. */
+/** Inbox items and an API mock shared by the Inbox e2e specs. */
 import type { Locator, Page } from "@playwright/test";
+import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
+import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
+import { mockSearchRows } from "../search-fixture";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -9,7 +12,7 @@ export const viewer = {
 };
 
 const base = {
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   assignedToEveryone: false,
   assignees: [viewer],
@@ -29,7 +32,7 @@ export const conversationId = "slack:CQA123:1770003600.000200";
 // messages before it and a new one after it.
 export const rollout = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "Canary error rate is flat.",
   createdAt: "2026-08-07T11:54:30.000Z",
@@ -46,6 +49,20 @@ export const rollout = {
     ],
   },
   title: "Approve the payments-v42 rollout",
+};
+
+// A To-do that the checkout Conversation's agent gave the viewer. Its item
+// links no Conversation, as the server sends it.
+export const todoForYou = {
+  ...base,
+  owner: { id: conversationId, kind: "conversation" },
+  rootConversationId: conversationId,
+  body: "Check the deploy calendar before the next release.",
+  createdAt: "2026-08-07T11:56:00.000Z",
+  id: "item-todo-rollback-window",
+  title: "Confirm the rollback window",
+  todoId: 13,
+  visibility: "private" as const,
 };
 
 export const license = {
@@ -118,7 +135,7 @@ const dismissedNotice = {
 // The agent added this item in the Conversation, so a message there closes it.
 export const migration = {
   ...license,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "The billing migration is ready.",
   conversationIds: [conversationId],
@@ -127,11 +144,14 @@ export const migration = {
   title: "Pick the billing migration window",
 };
 
+// The Events of a GitHub pull request subject, as the API lists them.
+export const pullRequestResource = PULL_REQUEST_RESOURCE;
+
 // The GitHub plugin's ask for a Junior pull request: an action item with no
 // question. The mock Conversation has the object annotation for the same URL.
 export const prMerge = {
   ...base,
-  addedByConversationId: conversationId,
+  owner: { id: conversationId, kind: "conversation" },
   rootConversationId: conversationId,
   body: "**Retry checkout writes after lock timeouts** is approved, and GitHub says that it can merge.",
   conversationIds: [conversationId],
@@ -141,6 +161,7 @@ export const prMerge = {
   subject: {
     id: "https://github.com/getsentry/payments/pull/42",
     objectType: "code_change" as const,
+    resource: pullRequestResource,
     title: "Retry checkout writes after lock timeouts",
     url: "https://github.com/getsentry/payments/pull/42",
   },
@@ -150,7 +171,7 @@ export const prMerge = {
 // A second GitHub ask, so pull requests group by state.
 export const prReview = {
   ...prMerge,
-  addedByConversationId: "slack:CREVIEW:1770003600.000200",
+  owner: { id: "slack:CREVIEW:1770003600.000200", kind: "conversation" },
   rootConversationId: "slack:CREVIEW:1770003600.000200",
   body: "GitHub asks you to review **Pin the release train**.",
   conversationIds: [],
@@ -159,6 +180,7 @@ export const prReview = {
   subject: {
     id: "https://github.com/getsentry/payments/pull/91",
     objectType: "code_change" as const,
+    resource: pullRequestResource,
     title: "Pin the release train",
     url: "https://github.com/getsentry/payments/pull/91",
   },
@@ -178,7 +200,7 @@ const pinPullRequest = {
 // The GitHub plugin's review ask, as it writes it: the URL alone on a line.
 export const pinReview = {
   ...base,
-  addedByConversationId: releaseConversationId,
+  owner: { id: releaseConversationId, kind: "conversation" },
   rootConversationId: releaseConversationId,
   body: "GitHub asks you to review #91.\n\nhttps://github.com/getsentry/payments/pull/91",
   conversationIds: [releaseConversationId],
@@ -201,7 +223,7 @@ export const pinChecks = {
 // A notice in the same Conversation about nothing that an ask names.
 export const releaseNotes = {
   ...base,
-  addedByConversationId: releaseConversationId,
+  owner: { id: releaseConversationId, kind: "conversation" },
   rootConversationId: releaseConversationId,
   body: "Release notes for 0.288.0 are drafted in the release PR.",
   conversationIds: [releaseConversationId],
@@ -214,7 +236,7 @@ export const releaseNotes = {
 // A notice for Everyone in another Conversation: FYI, so a sweep clears it.
 export const digest = {
   ...base,
-  addedByConversationId: "scheduler:daily-ops-digest",
+  owner: { id: "scheduler:daily-ops-digest", kind: "conversation" },
   rootConversationId: "scheduler:daily-ops-digest",
   assignedToEveryone: true,
   assignees: [],
@@ -229,7 +251,7 @@ export const digest = {
 // takes it.
 export const grab = {
   ...base,
-  addedByConversationId: "slack:CGRAB:1770003600.000300",
+  owner: { id: "slack:CGRAB:1770003600.000300", kind: "conversation" },
   rootConversationId: "slack:CGRAB:1770003600.000300",
   assignedToEveryone: true,
   assignees: [],
@@ -251,6 +273,46 @@ export const grab = {
   title: "Cover the Friday deploy",
 };
 
+/**
+ * The alert of an Automation that needs its creator: an Inbox item that the
+ * Automation owns, with no Conversation.
+ */
+export function automationAlert(automationId: string, title: string) {
+  return {
+    ...base,
+    body: "Blocked: GitHub access expired. Fix the problem, then resume it.",
+    createdAt: "2026-08-07T11:00:00.000Z",
+    id: `alert-${automationId}`,
+    owner: { id: automationId, kind: "automation" },
+    // An Automation's item has no root Conversation. JSON drops the key.
+    rootConversationId: undefined,
+    title,
+  };
+}
+
+/**
+ * The alert of a scheduled Automation whose last run failed, with the steps
+ * that core takes: Run again and Pause.
+ */
+export function failedRunAlert(automationId: string, title: string) {
+  return {
+    ...automationAlert(automationId, title),
+    body: "Last run failed.",
+    id: `alert-run-${automationId}`,
+    request: {
+      question: "Last run failed.",
+      fields: [
+        {
+          id: "step",
+          kind: "choice",
+          label: "Next step",
+          options: [{ label: "Run again" }, { label: "Pause" }],
+        },
+      ],
+    },
+  };
+}
+
 /** The fields of an item that the mock reads or changes. */
 type MockItem = Omit<typeof license, "status"> & {
   status: string;
@@ -260,9 +322,12 @@ type MockItem = Omit<typeof license, "status"> & {
 /**
  * Serve the given open items and the archived one. An answer or dismiss
  * closes the item, as on the server, so the inbox can move on. `keepOpen`
- * keeps an answered item open, so a test can answer it twice.
+ * keeps an answered item open, so a test can answer it twice. Snoozes live
+ * here too: a snoozed row leaves the viewer's lists until its time passes
+ * `now`, which is the test's clock. The versions token moves with them, as
+ * on the server.
  */
-export async function mockReviewItems(
+export async function mockInboxItems(
   page: Page,
   options: {
     /**
@@ -272,8 +337,18 @@ export async function mockReviewItems(
     automations?: () => number;
     failActions?: string[];
     keepOpen?: boolean;
+    /**
+     * The time a snooze's wake time is checked against: the page's pinned clock
+     * by default. A test that moves the clock passes the page's time.
+     */
+    now?: () => number | Promise<number>;
     open?: unknown[];
     pageSize?: number;
+    /** Snoozes that exist before the page loads. */
+    snoozes?: ({ untilMs: number } & (
+      | { conversationId: string; inboxItemId?: string }
+      | { inboxItemId: string }
+    ))[];
   } = {},
 ) {
   const actions: { body: unknown; id: string }[] = [];
@@ -284,18 +359,114 @@ export async function mockReviewItems(
     prReady,
     migration,
   ]) as MockItem[];
+  // As on the server, a root Conversation's row also holds the items that
+  // link it.
+  const inRow = (
+    conversationId: string,
+    item: {
+      conversationIds: readonly string[];
+      owner: { id: string };
+      rootConversationId?: string;
+    },
+  ) =>
+    item.rootConversationId === conversationId ||
+    item.owner.id === conversationId ||
+    item.conversationIds.includes(conversationId);
+  /** The open items of a snooze subject: one item, or a row's items. */
+  const itemsOf = (subject: {
+    conversationId?: string;
+    inboxItemId?: string;
+  }) =>
+    open
+      .filter((i) =>
+        subject.inboxItemId
+          ? i.id === subject.inboxItemId
+          : inRow(subject.conversationId!, i),
+      )
+      .map((i) => i.id);
+  /**
+   * When each snoozed item wakes, by item id: as on the server, a snooze
+   * holds the open items of its subject, and a later item is not snoozed.
+   */
+  const snoozes = new Map(
+    (options.snoozes ?? []).flatMap((snooze) =>
+      itemsOf(snooze).map((id) => [id, snooze.untilMs] as const),
+    ),
+  );
+  /** Snoozes made or undone, which move the versions token as on the server. */
+  let snoozeChanges = 0;
+  /** The items that a snooze hides now. */
+  const snoozedRows = async () => {
+    const nowMs = await (options.now ?? (() => NOW_MS))();
+    return new Set(
+      [...snoozes].flatMap(([id, untilMs]) => (untilMs > nowMs ? [id] : [])),
+    );
+  };
+  const asleep = (sleeping: Set<string>, item: { id: string }) =>
+    sleeping.has(item.id);
+  await page.route("**/api/inbox/snoozes", async (route) => {
+    const request = route.request();
+    const body = request.postDataJSON();
+    if (request.method() === "POST") {
+      // One snooze per open item that it hides; it replaces the last one.
+      const inboxItemIds = itemsOf(body);
+      // A snooze with no time waits for its Event.
+      const untilMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
+      for (const id of inboxItemIds) snoozes.set(id, untilMs);
+      snoozeChanges++;
+      return route.fulfill({ json: { inboxItemIds }, status: 201 });
+    }
+    if (request.method() === "DELETE") {
+      // Without an item, every snooze in the row wakes.
+      for (const id of itemsOf(body)) snoozes.delete(id);
+      snoozeChanges++;
+      return route.fulfill({ status: 204 });
+    }
+    return route.fallback();
+  });
+  await page.route("**/api/versions**", async (route) => {
+    const response = await route.fetch();
+    const versions = await response.json();
+    const sleeping = [...(await snoozedRows())].sort().join(",");
+    return route.fulfill({
+      json: {
+        ...versions,
+        inboxItems: `${versions.inboxItems}:${snoozeChanges}:${sleeping}`,
+      },
+      response,
+    });
+  });
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
   const closedNow: MockItem[] = [];
-  await page.route("**/api/review-items**", async (route) => {
+  // A search finds snoozed and closed items too, as on the server.
+  await mockSearchRows(page, {
+    inboxItems: () =>
+      [...open, ...closedNow, ...archived].map((i) => ({
+        body: i.body,
+        id: i.id,
+        status:
+          i.status === "open"
+            ? "open"
+            : i.status === "dismissed"
+              ? "dismissed"
+              : "done",
+        title: i.title,
+      })),
+  });
+  await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/api\/review-items/, "");
+    const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
+      const sleeping = await snoozedRows();
       const needsViewer = open.filter(
-        (i) => i.kind === "action" && i.canAct && !i.assignedToEveryone,
+        (i) =>
+          i.kind === "action" &&
+          i.canAct &&
+          !i.assignedToEveryone &&
+          !asleep(sleeping, i),
       );
-      const snoozed = url.searchParams.get("snoozed")?.split(",") ?? [];
       return route.fulfill({
         json: {
           automations: (options.automations ?? attentionCount)(),
@@ -305,16 +476,26 @@ export async function mockReviewItems(
           codeChanges: needsViewer.filter(
             (i) => i.subject?.objectType === "code_change",
           ).length,
-          snoozed: open.filter((i) => snoozed.includes(i.id)).length,
+          // One per Conversation row, as Snoozed lists them.
+          snoozed: new Set(
+            open.filter((i) => asleep(sleeping, i)).map((i) => i.owner.id),
+          ).size,
+          todos: needsViewer.filter((i) => "todoId" in i).length,
         },
       });
     }
     if (path === "" || path === "/") {
       const linked = url.searchParams.get("conversationId");
+      const owner = url.searchParams.get("owner");
       const q = url.searchParams.get("q")?.toLowerCase() ?? "";
       // A status list has only closed items, newest closed first. A search
       // matches title or body, and also finds closed items after the open.
       const closed = (url.searchParams.get("status") ?? "open") !== "open";
+      // The viewer's Inbox leaves out snoozed rows, and Snoozed lists only
+      // them. A search and a Conversation's own list still show them.
+      const sleeping = await snoozedRows();
+      const forViewer = url.searchParams.get("for") === "viewer";
+      const snoozedOnly = url.searchParams.get("snoozed") === "true";
       const list = (
         closed
           ? [...archived].sort((x, y) => y.closedAt.localeCompare(x.closedAt))
@@ -324,7 +505,11 @@ export async function mockReviewItems(
       ).filter(
         (i) =>
           (!linked || i.conversationIds.includes(linked)) &&
-          `${i.title}\n${i.body}`.toLowerCase().includes(q),
+          (!owner || i.owner.kind === owner) &&
+          `${i.title}\n${i.body}`.toLowerCase().includes(q) &&
+          (snoozedOnly
+            ? asleep(sleeping, i)
+            : !forViewer || Boolean(q || linked) || !asleep(sleeping, i)),
       );
       // The waiting sort lists what waits on the viewer first, then the
       // rest, newest first, as the server does. Otherwise items keep their
@@ -384,9 +569,10 @@ export async function mockReviewItems(
 }
 
 /**
- * Serve the viewer's code changes from their person Code overview, for the
- * Pull requests view. Each change is in getsentry/payments and opened 30
- * days before the report.
+ * Serve the viewer's code changes from their person Code overview, for
+ * Code · Mine, and their live cards, with the draft state and the size.
+ * Each change is in getsentry/payments and opened 30 days before the
+ * report.
  */
 export async function mockViewerCodeChanges(
   page: Page,
@@ -395,6 +581,11 @@ export async function mockViewerCodeChanges(
     idleDays: number;
     number: number;
     size?: { additions?: number; changedFiles?: number; deletions?: number };
+    stack?: {
+      id: string;
+      kind: "automation" | "conversation";
+      title?: string;
+    };
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
@@ -417,18 +608,56 @@ export async function mockViewerCodeChanges(
         nextCursor:
           offset + 100 < changes.length ? String(offset + 100) : undefined,
         changes: changes.slice(offset, offset + 100).map((change) => ({
-          draft: change.draft ?? false,
           id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,
           lastActivityAt: daysAgo(change.idleDays),
           number: change.number,
           openedAt: daysAgo(30),
           provider: "github",
           repository: "getsentry/payments",
-          ...(change.size ? { size: change.size } : undefined),
+          ...(change.stack ? { stack: change.stack } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,
         })),
+      },
+    });
+  });
+  const cards = new Map(
+    changes.map((change) => {
+      const label = `getsentry/payments#${change.number}`;
+      const status = change.draft ? "draft" : (change.state ?? "open");
+      return [
+        `https://github.com/getsentry/payments/pull/${change.number}`,
+        {
+          displayType: "Pull request",
+          facts: { type: "code_change", ...change.size },
+          key: label,
+          kind: "object",
+          label,
+          objectType: "code_change",
+          plugin: "github",
+          status,
+          title: change.title,
+        },
+      ];
+    }),
+  );
+  await page.route(/\/api\/objects\?/, async (route) => {
+    const urls = new URL(route.request().url()).searchParams.getAll("url");
+    if (!urls.some((url) => cards.has(url))) return route.fallback();
+    const response = await route.fetch();
+    const report: { objects: { object?: unknown; url: string }[] } =
+      await response.json();
+    // The API leaves out a link it has no card for.
+    await route.fulfill({
+      response,
+      json: {
+        ...report,
+        objects: urls.flatMap((url) => {
+          const card = cards.get(url);
+          if (card) return [{ object: { ...card, url }, url }];
+          return report.objects.filter((entry) => entry.url === url);
+        }),
       },
     });
   });
@@ -448,15 +677,20 @@ export function rowHead(scope: Page | Locator, title: string) {
 
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
- * row's Open action.
+ * row's Open action: on hover on a Conversation row, or on the open card
+ * of an item row. A phone hides a closed row's actions, so there a row
+ * with nothing to expand opens from its head.
  */
 export async function openRow(head: Locator) {
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  const open = row.getByRole("link", { name: "Open conversation" }).first();
   await head.hover();
-  await head
-    .locator("xpath=ancestor::*[@data-inbox-row][1]")
-    .getByRole("link", { name: "Open conversation" })
-    .first()
-    .click();
+  if (!(await open.isVisible())) {
+    const expand = row.locator('[aria-controls^="inbox-row-"]').first();
+    if ((await expand.count()) === 0) return head.click();
+    await expand.click();
+  }
+  await open.click();
 }
 
 /**

@@ -204,7 +204,7 @@ export function guardianPluginFacts(
     }
     // Only token credentials put a placeholder env var in the Sandbox.
     const credentials = manifest.credentials;
-    if (credentials?.type === "oauth-bearer") {
+    if (credentials?.type === "oauth-bearer" && credentials.authTokenEnv) {
       const domains = credentials.domains
         .map((domain) => `\`${domain}\``)
         .join(", ");

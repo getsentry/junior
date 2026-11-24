@@ -12,7 +12,7 @@ import {
   readPluginUserPageLinks,
 } from "@/chat/plugins/user-pages";
 import type { JuniorApiEnv } from "../route";
-import { apiErrorSchema } from "../schema/common";
+import { apiErrorSchema } from "../schema/response";
 import { jsonResponse } from "../http";
 import { validateRequest } from "../validation";
 import { requireViewer } from "../viewer";

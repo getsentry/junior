@@ -2,10 +2,10 @@ import * as z from "zod";
 import { getSqlExecutor } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 /** Deferred tool catalog source for operator tools. */
-export const OPERATOR_TOOL_SOURCE = {
+const OPERATOR_TOOL_SOURCE = {
   id: "operator",
   description:
     "Run SQL directly against this deployment's database. Enabled only on deployments that opt in, such as Previews.",
@@ -73,7 +73,7 @@ export const runOperatorSqlToolDefinition = zodToolDefinition({
  *
  * It bypasses every Conversation privacy gate, so `createTools` leaves it out
  * of public Conversations. Its results never reach a public transcript or a
- * public Brief.
+ * public summary.
  */
 export function createRunOperatorSqlTool() {
   return zodTool({

@@ -10,6 +10,7 @@ import type { TimeRangeDays } from "../../components/controls/TimeRangeSelector"
 import { Card } from "../../components/layout/Card";
 import { PageHeader } from "../../components/layout/PageHeader";
 import type { DashboardCoreData, SystemPluginsData } from "../../types";
+import { CacheHealth } from "./CacheHealth";
 import { CacheWarmingSavings } from "./CacheWarmingSavings";
 import { PluginDetails } from "./PluginDetails";
 import { PluginPanels } from "./PluginPanels";
@@ -137,6 +138,7 @@ function OverviewSystemPage(props: {
         stats={stats.data}
       />
       <CacheWarmingSavings admin={props.admin} range={props.range} />
+      <CacheHealth range={props.range} />
     </>
   );
 }

@@ -12,7 +12,10 @@ export function ticketScreenshotPng(): Buffer {
   return readFileSync(new URL("./images/ticket-4729.png", import.meta.url));
 }
 
-/** The same PNG, with the ticket number changed to "1234". */
+/**
+ * The same PNG, with only the ticket number changed to "1234". An agent that
+ * views the edit compares it with the source, so the rest must match.
+ */
 export function editedTicketScreenshotPng(): Buffer {
   return readFileSync(new URL("./images/ticket-1234.png", import.meta.url));
 }

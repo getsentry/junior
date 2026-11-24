@@ -26,13 +26,12 @@ import { completeAuthorization, forgetAuthorizations } from "./auth";
 import { installBlobMock } from "./blob";
 import { installGatewayObserver } from "./gateway";
 import {
-  expectAccepted,
   jsonRequest,
-  steerQueuedWebMessage,
-  uploadWebFiles,
+  postWebMessage,
+  readLeadConversationId,
 } from "./dashboard-requests";
 import { fixtureId } from "./ids";
-import { actOnWebReviewItem } from "./review-desk";
+import { actOnWebInboxItem } from "./inbox";
 import { automationRequest, isAutomationInput } from "./automation-request";
 import { installWebReplay } from "./web";
 import type { CallOptions, Conversation, RunAgent, TurnProgress } from "./call";
@@ -42,7 +41,7 @@ import type {
   Input,
   MentionInput,
   MessageInput,
-  ReviewItemActionInput,
+  InboxItemActionInput,
   ThreadMessageInput,
 } from "./inputs";
 import {
@@ -358,49 +357,26 @@ export async function createFixtureAgent(
       });
       return;
     }
-    if (input.kind === "review_item_action") {
+    if (input.kind === "inbox_item_action") {
       if (record.surface !== "web" || !record.started) {
-        throw new Error("A review item action continues a web Conversation");
+        throw new Error("An inbox item action continues a web Conversation");
       }
-      await actOnWebReviewItem(api, input, record);
+      await actOnWebInboxItem(api, input, record);
       return;
     }
     const started = record.started;
     record.started = true;
     if (input.kind === "web_message") {
-      const path = started
-        ? `/api/conversations/${encodeURIComponent(record.conversationId)}/messages`
-        : "/api/conversations";
-      const idempotencyKey = started
-        ? fixtureId("web-message", 32)
-        : record.idempotencyKey;
-      const uploadIds = input.files?.length
-        ? await uploadWebFiles(api, {
-            ...(started
-              ? { conversationId: record.conversationId }
-              : undefined),
-            files: input.files,
-            idempotencyKey,
-            viewerEmail: record.viewerEmail,
-          })
-        : undefined;
-      const accepted = await expectAccepted(
-        await api.request(
-          path,
-          jsonRequest(record.viewerEmail, {
-            idempotencyKey,
-            message: input.text,
-            ...(uploadIds ? { uploadIds } : undefined),
-          }),
-        ),
-      );
-      if (input.steer) {
-        await steerQueuedWebMessage(api, {
-          conversationId: record.conversationId,
-          inboundMessageId: accepted.messageId,
-          viewerEmail: record.viewerEmail,
-        });
-      }
+      await postWebMessage(api, {
+        // The Lead exists before its first message.
+        conversationId:
+          started || input.lead ? record.conversationId : undefined,
+        idempotencyKey: started
+          ? fixtureId("web-message", 32)
+          : record.idempotencyKey,
+        input,
+        viewerEmail: record.viewerEmail,
+      });
       return;
     }
     if (record.surface !== "slack") {
@@ -459,12 +435,19 @@ export async function createFixtureAgent(
   };
 
   /** Create the record for a new Conversation. It starts with its first input. */
-  const newConversation = (
-    first: MessageInput | ReviewItemActionInput,
+  const newConversation = async (
+    first: MessageInput | InboxItemActionInput,
     history: CallOptions["history"],
-  ): ConversationRecord => {
-    // A review desk action comes from the dashboard.
-    if (first.kind === "web_message" || first.kind === "review_item_action") {
+  ): Promise<ConversationRecord> => {
+    if (first.kind === "web_message" && first.lead) {
+      return newRecord({
+        conversationId: await readLeadConversationId(api, WEB_VIEWER_EMAIL),
+        idempotencyKey: fixtureId("web-conversation", 32),
+        surface: "web",
+      });
+    }
+    // An Inbox action comes from the dashboard.
+    if (first.kind === "web_message" || first.kind === "inbox_item_action") {
       // The Conversation id comes from this key, and attachment ids come
       // from the Conversation id.
       const idempotencyKey = fixtureId("web-conversation", 32);
@@ -555,6 +538,19 @@ export async function createFixtureAgent(
         sentInputs += 1;
       },
     };
+    // MSW logs an error that a request handler throws and answers with a
+    // failed response, which the product retries. Keep the first error of a
+    // hook that runs in a handler, and fail the call with it.
+    let handlerError: { error: unknown } | undefined;
+    const failCallOnError =
+      <A extends unknown[]>(hook: (...args: A) => Promise<void>) =>
+      async (...args: A) => {
+        try {
+          await hook(...args);
+        } catch (error) {
+          handlerError ??= { error };
+        }
+      };
     if (options.onProgress) {
       const onProgress = options.onProgress;
       const report = async (progress: TurnProgress) => {
@@ -564,7 +560,7 @@ export async function createFixtureAgent(
           await new Promise((resolve) => setTimeout(resolve, INPUT_SETTLE_MS));
         }
       };
-      gateway.setProgressHook(report);
+      gateway.setProgressHook(failCallOnError(report));
       queue.setRequeueHook(async (conversationId) => {
         if (
           typeof target === "function" ||
@@ -588,13 +584,16 @@ export async function createFixtureAgent(
           await report({ type: "paused" });
         }
       });
-      slack.setReplyHook(async (post) => {
-        await onProgress({ type: "reply", text: post.text }, progressActions);
-      });
+      slack.setReplyHook(
+        failCallOnError(async (post) => {
+          await onProgress({ type: "reply", text: post.text }, progressActions);
+        }),
+      );
     }
     try {
       await send();
       await waitForIdle();
+      if (handlerError) throw handlerError.error;
     } catch (error) {
       // Keep the partial transcript before cleanup removes the test identities.
       // A timeout must show the work that was still running, not an empty run.
@@ -902,7 +901,7 @@ export async function createFixtureAgent(
       throw new Error("appHomeUnlink() continues a Slack Conversation");
     }
     return await converse(
-      newConversation(first, options.history),
+      await newConversation(first, options.history),
       input,
       options,
     );

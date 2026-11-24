@@ -124,6 +124,12 @@ export function objectLinkFilterSpecificity(
   return [hostRank, host.length, 0, 0];
 }
 
+/**
+ * What `prefetch` did for one URL. `out_of_time`: the page's time ran out
+ * before the object loaded, so its card shows only what the cache holds.
+ */
+export type ObjectLinkPrefetchOutcome = "out_of_time";
+
 /** Trusted host context for one link resolution. */
 export interface ObjectLinkContext extends PluginContext {
   /**
@@ -168,6 +174,12 @@ export interface ObjectLinkContext extends PluginContext {
    * MCP.
    */
   viewerMcp: PluginViewerMcp;
+  /**
+   * What `prefetch` returned for this URL, in `canView` and `resolve` of
+   * the same page read. Absent in every other read, such as an Attach, so
+   * that read asks the provider as usual.
+   */
+  prefetchOutcome?: ObjectLinkPrefetchOutcome;
 }
 
 /**
@@ -175,6 +187,12 @@ export interface ObjectLinkContext extends PluginContext {
  * `resolve` only when it returns true. Junior does not save the result.
  */
 export interface PluginObjectLinkDefinition {
+  /**
+   * Set false when `resolve` reads one cache entry per object that your
+   * webhooks keep current. Junior then keeps no card copy per viewer, so a
+   * change shows on the next read. `canView` still runs on each read.
+   */
+  cacheCards?: false;
   /**
    * Return whether `ctx.viewer` may see the object. Junior calls it before
    * each card read and again on each Attach. Return true for a public
@@ -188,6 +206,19 @@ export interface PluginObjectLinkDefinition {
    * one type, such as a GitHub issue URL that opens a pull request.
    */
   objectTypes: ObjectType[];
+  /**
+   * Load many objects into your cache in one provider call, such as one
+   * query for a page of links. Junior calls it once with every URL of one
+   * resolve that this link type claims, before `canView` and `resolve` run
+   * for each URL as usual. Write only to the cache, and never return data:
+   * the viewer may not see every object. Return the outcome of each URL
+   * that its card read must know about, keyed by `url.href`. Junior passes
+   * it to that URL's `canView` and `resolve` as `ctx.prefetchOutcome`.
+   */
+  prefetch?(
+    ctx: ObjectLinkContext,
+    urls: URL[],
+  ): Promise<ReadonlyMap<string, ObjectLinkPrefetchOutcome> | void>;
   /**
    * Read the card. Junior calls it only after `canView` returns true.
    * Return nothing for a missing object.

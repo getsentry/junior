@@ -1,7 +1,10 @@
 import { conversationTurnIsActive } from "./turnActivity";
 import { ObjectIcon } from "../components/ObjectIcon";
 import { Badge } from "../components/ui/badge";
-import { objectPresentation } from "@sentry/junior-plugin-api";
+import {
+  objectPresentation,
+  type CodeChangeState,
+} from "@sentry/junior-plugin-api";
 import {
   CircleDashed,
   CircleDot,
@@ -56,6 +59,7 @@ import {
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 import { formatRelativeTime, formatTime } from "../time";
+import { useLiveAnnotations } from "./liveAnnotations";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -106,7 +110,7 @@ export function ConversationPrivacyChip(props: {
 export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
-  const annotations = props.annotations;
+  const annotations = useLiveAnnotations(props.annotations);
   const isMobile = useIsMobileViewport();
   const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;
@@ -257,25 +261,50 @@ export function FittingIcons(props: {
   useLayoutEffect(() => {
     const row = rowRef.current;
     if (!row) return;
+    const items = () => Array.from(row.children);
     const countFirstLine = () => {
-      const items = Array.from(row.children);
-      const bottom = items[0]?.getBoundingClientRect().bottom ?? 0;
-      return items.filter((item) => item.getBoundingClientRect().top < bottom)
+      const all = items();
+      const bottom = all[0]?.getBoundingClientRect().bottom ?? 0;
+      return all.filter((item) => item.getBoundingClientRect().top < bottom)
         .length;
     };
     const measure = () => {
+      // Measure at the width the container gives the row, not at its fit.
+      row.style.maxWidth = "";
       // Measure without the +N first. Otherwise its own width keeps the
       // last icons hidden after the row grows wide enough for all of them.
       const overflow = overflowRef.current;
       if (overflow) overflow.style.display = "none";
       const fitting = countFirstLine();
       if (overflow) overflow.style.display = "";
-      setShown(fitting === total || !overflow ? fitting : countFirstLine());
+      const next = fitting === total || !overflow ? fitting : countFirstLine();
+      setShown(next);
+      // The clipped icons leave the row's end empty, which would push the
+      // +N and what follows away from the last icon that shows. Fit the
+      // row to the icons that show.
+      const last = items()[next - 1];
+      if (next === total || !last) return;
+      const end =
+        last.getBoundingClientRect().right +
+        parseFloat(getComputedStyle(row).paddingRight);
+      row.style.maxWidth = `${Math.ceil(end - row.getBoundingClientRect().left)}px`;
     };
     measure();
-    const observer = new ResizeObserver(measure);
+    // A fitted row no longer grows with its container, so watch the
+    // container too. Measure a frame later: the fit resizes the row, and a
+    // resize inside the observer's pass would loop.
+    let frame = 0;
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
     observer.observe(row);
-    return () => observer.disconnect();
+    const container = row.parentElement?.parentElement;
+    if (container) observer.observe(container);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
     // Run again when `shown` changes: the +N that mounts takes width, and
     // this pass counts it before paint. The observer would run after paint.
   }, [shown, total]);
@@ -483,6 +512,22 @@ const SIDEBAR_ICON_PRESENTATION = {
   SidebarAnnotationIconName,
   { className: string; Icon: typeof CircleDot; label: string }
 >;
+
+/** The GitHub color and name of a code change state. */
+export function codeChangeTone(
+  state: CodeChangeState,
+  draft: boolean,
+): { className: string; label: string } {
+  return SIDEBAR_ICON_PRESENTATION[
+    state === "merged"
+      ? "git-merge"
+      : state === "closed"
+        ? "circle-x"
+        : draft
+          ? "circle-dashed"
+          : "circle-dot"
+  ];
+}
 
 /** Show a GitHub-style status icon for linked work, such as an open pull request. */
 export function SidebarAnnotationIcon(props: {

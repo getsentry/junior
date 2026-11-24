@@ -31,6 +31,8 @@ type DashboardChromeContextValue = {
   mobileHeaderActionsSlotRef: RefCallback<HTMLDivElement>;
   mobileHeaderTagsSlot: HTMLElement | null;
   mobileHeaderTagsSlotRef: RefCallback<HTMLDivElement>;
+  mobileHeaderTitleSlot: HTMLElement | null;
+  mobileHeaderTitleSlotRef: RefCallback<HTMLDivElement>;
   mobileSecondarySlot: HTMLElement | null;
   mobileSecondarySlotRef: RefCallback<HTMLDivElement>;
   openMobileNavigation(): void;
@@ -52,30 +54,11 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
     useState<HTMLElement | null>(null);
   const [mobileHeaderTagsSlot, setMobileHeaderTagsSlot] =
     useState<HTMLElement | null>(null);
+  const [mobileHeaderTitleSlot, setMobileHeaderTitleSlot] =
+    useState<HTMLElement | null>(null);
   const [mobileHeaderBack, setMobileHeaderBack] =
     useState<MobileHeaderBack | null>(null);
   const openMobileNavigationRef = useRef<(() => void) | null>(null);
-  const secondarySlotRef = useCallback<RefCallback<HTMLDivElement>>((node) => {
-    setSecondarySlot(node);
-  }, []);
-  const mobileSecondarySlotRef = useCallback<RefCallback<HTMLDivElement>>(
-    (node) => {
-      setMobileSecondarySlot(node);
-    },
-    [],
-  );
-  const mobileHeaderActionsSlotRef = useCallback<RefCallback<HTMLDivElement>>(
-    (node) => {
-      setMobileHeaderActionsSlot(node);
-    },
-    [],
-  );
-  const mobileHeaderTagsSlotRef = useCallback<RefCallback<HTMLDivElement>>(
-    (node) => {
-      setMobileHeaderTagsSlot(node);
-    },
-    [],
-  );
   const registerOpenMobileNavigation = useCallback(
     (open: (() => void) | null) => {
       openMobileNavigationRef.current = open;
@@ -85,34 +68,33 @@ export function DashboardChromeProvider(props: { children: ReactNode }) {
   const openMobileNavigation = useCallback(() => {
     openMobileNavigationRef.current?.();
   }, []);
+  // A state setter is a stable ref callback, so each slot ref is its setter.
   const value = useMemo(
     () => ({
       mobileHeaderBack,
       mobileHeaderActionsSlot,
-      mobileHeaderActionsSlotRef,
+      mobileHeaderActionsSlotRef: setMobileHeaderActionsSlot,
       mobileHeaderTagsSlot,
-      mobileHeaderTagsSlotRef,
+      mobileHeaderTagsSlotRef: setMobileHeaderTagsSlot,
+      mobileHeaderTitleSlot,
+      mobileHeaderTitleSlotRef: setMobileHeaderTitleSlot,
       mobileSecondarySlot,
-      mobileSecondarySlotRef,
+      mobileSecondarySlotRef: setMobileSecondarySlot,
       openMobileNavigation,
       registerOpenMobileNavigation,
       secondarySlot,
-      secondarySlotRef,
+      secondarySlotRef: setSecondarySlot,
       setMobileHeaderBack,
     }),
     [
       mobileHeaderBack,
       mobileHeaderActionsSlot,
-      mobileHeaderActionsSlotRef,
       mobileHeaderTagsSlot,
-      mobileHeaderTagsSlotRef,
+      mobileHeaderTitleSlot,
       mobileSecondarySlot,
-      mobileSecondarySlotRef,
       openMobileNavigation,
       registerOpenMobileNavigation,
       secondarySlot,
-      secondarySlotRef,
-      setMobileHeaderBack,
     ],
   );
 
@@ -249,6 +231,31 @@ export function MobileHeaderTagsSlot() {
       ref={chrome.mobileHeaderTagsSlotRef}
     />
   );
+}
+
+/**
+ * Slot for a mobile conversation title that the page owns, such as one that
+ * it renames in place. It goes before the shell's own title, which shows
+ * only while the slot is empty (`peer-empty/title:block`).
+ */
+export function MobileHeaderTitleSlot() {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome) {
+    throw new Error("MobileHeaderTitleSlot requires DashboardChromeProvider");
+  }
+  return (
+    <div
+      className="peer/title contents"
+      ref={chrome.mobileHeaderTitleSlotRef}
+    />
+  );
+}
+
+/** Mount the page's conversation title into the mobile shell header. */
+export function MobileHeaderTitlePortal(props: { children: ReactNode }) {
+  const chrome = useContext(DashboardChromeContext);
+  if (!chrome?.mobileHeaderTitleSlot) return null;
+  return createPortal(props.children, chrome.mobileHeaderTitleSlot);
 }
 
 /** Mount conversation tools into the mobile shell header trailing slot. */

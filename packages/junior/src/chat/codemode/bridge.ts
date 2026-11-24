@@ -25,7 +25,7 @@ import {
 import type { ScriptCallStatus } from "@/chat/guardian/proposal";
 import * as Sentry from "@/chat/sentry";
 import { TURN_LIMIT_WRAP_UP_MESSAGE } from "@/chat/services/turn-limit";
-import type { AnyToolDefinition } from "@/chat/tools/definition";
+import type { AnyToolDefinition } from "@/chat/tool-support/definition";
 import type {
   ScriptToolCallOutcome,
   ToolPipeline,
@@ -83,6 +83,16 @@ export interface CodeModeScriptRun {
   countToolCall(): number;
   /** The Run's abort signal. It stops the VM and every pending nested call. */
   signal?: AbortSignal | undefined;
+}
+
+/** Services of one Run that the `codemode` tool needs. */
+export interface CodeModeToolOptions {
+  /** Tools a script may call: `scriptTools` from `planToolExposure`. */
+  scriptTools: Record<string, AnyToolDefinition>;
+  modelOnlyTools: CodeModeScriptRun["modelOnlyTools"];
+  pipeline: CodeModeScriptRun["pipeline"];
+  /** Charge one nested call to the Turn's durable tool-call total. */
+  countToolCall(): number;
 }
 
 function deferred<T>() {

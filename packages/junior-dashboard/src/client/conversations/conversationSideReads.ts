@@ -1,14 +1,14 @@
 import type { QueryClient } from "@tanstack/react-query";
 
 import {
-  invalidateReviewItemListsOfConversation,
-  reviewItemListQueryKey,
-} from "../review-desk/queries";
+  invalidateInboxItemListsOfConversation,
+  inboxItemListQueryKey,
+} from "../inbox/queries";
 
 const CONVERSATION_SIDE_READS = [
   "agents",
   "memories",
-  "plan",
+  "todos",
   "watches",
 ] as const;
 
@@ -24,7 +24,7 @@ export function conversationSideReadQueryKey(
 }
 
 /**
- * Refresh the side reads and this Conversation's Review item list when a
+ * Refresh the side reads and this Conversation's Inbox item list when a
  * fetch brings a new ETag. Side reads do not poll. A new ETag means the
  * Conversation changed, so the details panel may be stale too. Only mounted
  * reads refetch.
@@ -33,7 +33,7 @@ export function conversationSideReadQueryKey(
  * the Inbox, also refresh when they show an item of this Conversation: the
  * item's subject card reads this detail, which polls on its own, so the
  * card must not show a change, such as a merge, before the list shows that
- * the item closed. The `reviewItems` token in `/api/versions` refreshes the
+ * the item closed. The `inboxItems` token in `/api/versions` refreshes the
  * count and the waiting Conversations: both read only the open items that
  * need the viewer, which that token covers.
  */
@@ -56,7 +56,7 @@ export function refreshSideReadsOnChange(
     });
   }
   void client.invalidateQueries({
-    queryKey: reviewItemListQueryKey({ conversationId }),
+    queryKey: inboxItemListQueryKey({ conversationId }),
   });
-  void invalidateReviewItemListsOfConversation(client, conversationId);
+  void invalidateInboxItemListsOfConversation(client, conversationId);
 }

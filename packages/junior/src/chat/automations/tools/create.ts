@@ -14,7 +14,6 @@ import {
   type AutomationTask,
 } from "@/chat/automations/task";
 import type { SkillMetadata } from "@/chat/skills";
-import { requireAutomationTaskText } from "@/chat/automations/instruction-references";
 import {
   requireToolCaller,
   requireToolCreator,
@@ -71,7 +70,7 @@ import {
 } from "@/chat/services/short-title";
 import { resolveTaskOutcomes } from "@/chat/task-outcomes";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { AUTOMATIONS_TOOL_SOURCE } from "@/chat/automations/tool-source";
 
 type NewAutomation = {
@@ -218,7 +217,7 @@ export function createAutomationTool(
     },
     executionMode: "sequential",
     description:
-      "Create a durable automation. It delivers to a Slack channel or DM, never a thread or a web conversation. When an installed skill does the work, have the automation run that skill; do not write an instruction that names the skill. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
+      "Create a durable automation. It delivers to a Slack channel or DM, never a thread or a web conversation. A skill that automations run leaves schedules, destinations, and run endings to the automation. Ordinary watch, notify, or tell-me-when requests use watchEvents instead. Store the requested future work; do not perform it or check its service access now unless the user also asks for that. When the trigger is known, create it without redundant confirmation.",
     inputSchema: z
       .object({
         instruction: automationInstructionToolSchema.nullable().optional(),
@@ -308,15 +307,15 @@ export function createAutomationTool(
       const creator = requireToolCreator(caller, destination, kind);
       const { createdBy } = creator;
       // prepareArguments removed the nulls.
-      const task = newAutomationTask({
-        instruction: input.instruction ?? undefined,
-        skill: input.skill ?? undefined,
-        context: input.context ?? undefined,
-      });
+      const task = newAutomationTask(
+        {
+          instruction: input.instruction ?? undefined,
+          skill: input.skill ?? undefined,
+          context: input.context ?? undefined,
+        },
+        { creator: createdBy },
+      );
       await requireAutomationSkill(task, undefined);
-      requireAutomationTaskText(task, {
-        creator: createdBy,
-      });
       const eventTrigger =
         input.trigger.type === "event"
           ? requireEventAutomationTrigger(
@@ -347,7 +346,9 @@ export function createAutomationTool(
           !sameDestination(candidate.task.destination, destination) ||
           candidate.task.createdBy.slackUserId !== createdBy.slackUserId
         ) {
-          throw new ToolInputError("Automation operation identity is invalid.");
+          throw new ToolInputError(
+            "Automation operation identity is invalid. No change to the call can fix this in this Turn.",
+          );
         }
         return automationToolResult(context.conversationId, candidate, catalog);
       };

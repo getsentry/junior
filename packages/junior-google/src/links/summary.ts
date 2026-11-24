@@ -4,8 +4,8 @@ import {
 } from "@sentry/junior-plugin-api";
 import { type DefaultTreeAdapterMap, parseFragment } from "parse5";
 import * as z from "zod";
-import { type FileReference, resourceKeyHeaders } from "../tools/files";
-import { googleApiRequest } from "../tools/shared";
+import { type FileReference, resourceKeyHeaders } from "../drive/files";
+import { googleApiRequest } from "../google-api";
 
 type Node = DefaultTreeAdapterMap["node"];
 

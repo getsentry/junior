@@ -28,11 +28,12 @@ platform :ios do
 
     # TestFlight owns the build number, so a beta commits no version bump.
     build = latest_testflight_build_number(api_key: key, initial_build_number: 0) + 1
+    # ios-beta.yml reports the build number on the pull request.
+    File.open(ENV["GITHUB_OUTPUT"], "a") { |file| file.puts("build=#{build}") } if ENV["GITHUB_OUTPUT"]
 
     # `sh` runs in fastlane/; the project is generated and not committed.
     sh("make -C .. xcodegen")
-    # Local device builds sign automatically with their own team (Signing.xcconfig).
-    # Only this lane signs with the App Store profile.
+    # Signing.xcconfig signs with the development profile. Release uses this one.
     update_code_signing_settings(
       path: "Junior.xcodeproj",
       targets: ["Junior"],
@@ -60,8 +61,12 @@ platform :ios do
     )
   end
 
-  desc "Create the App Store certificate and profile in the match repo. Run once, by hand."
+  desc "Create the certificates and profiles in the match repo. Run once, by hand."
   lane :create_signing do
-    match(type: "appstore", readonly: false, api_key: api_key)
+    key = api_key
+    match(type: "appstore", readonly: false, api_key: key)
+    # The development profile holds the devices registered to the team when it
+    # is made. After you register a device, run this lane again.
+    match(type: "development", readonly: false, force_for_new_devices: true, api_key: key)
   end
 end

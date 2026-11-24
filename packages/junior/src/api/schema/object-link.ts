@@ -1,8 +1,11 @@
 import { ownedObjectAnnotationSchema } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 
-/** The most links that one object request may resolve. */
-export const MAX_OBJECT_LINKS = 20;
+/**
+ * The most links that one object request may resolve: a page of a list,
+ * which a plugin can read in one batch.
+ */
+export const MAX_OBJECT_LINKS = 100;
 
 const objectLinkUrlSchema = z.string().trim().min(1).max(2048);
 

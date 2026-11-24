@@ -1,12 +1,14 @@
 import { objectTypeSchema } from "@sentry/junior-plugin-api";
 import { isInheritedForkHistory } from "@/chat/agent-invocations/fork-history";
+import { isParentMessageAuthor } from "@/chat/agent-invocations/parent-message";
 import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
+import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
-import { reviewItemChangeRecordSchema } from "@/chat/review-items/change-record";
+import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
 import { buildSentryEventUrl } from "@/chat/sentry-links";
 import * as z from "zod";
 import {
@@ -155,6 +157,25 @@ function reportMessageActorIdentity(
   return Object.keys(actorIdentity).length > 0 ? actorIdentity : undefined;
 }
 
+/**
+ * Mark a child's input that its parent agent wrote, so the dashboard does not
+ * show the person who started the root as its author. Rows from before
+ * parent messages store the id of the work that wrote them. A parent message
+ * is named by its own id.
+ */
+export function reportParentAgentInput(message: {
+  agentInvocationId: unknown;
+  authorUserId: unknown;
+  messageId: string;
+}): { agentInvocationId: string } | undefined {
+  if (typeof message.agentInvocationId === "string") {
+    return { agentInvocationId: message.agentInvocationId };
+  }
+  return isParentMessageAuthor({ userId: message.authorUserId })
+    ? { agentInvocationId: message.messageId }
+    : undefined;
+}
+
 /** Project native assistant tool calls through the existing reporting shape. */
 function reportToolCalls(args: {
   canExposePayload: boolean;
@@ -269,6 +290,15 @@ function reportToolResult(args: {
   const output = modelVisibleToolOutput(message.data.content);
   const name = message.data.toolName ?? message.data.name ?? args.start?.name;
   if (!name) return undefined;
+  // The dashboard links a started Conversation from the typed result.
+  const started =
+    args.canExposePayload &&
+    name === "startConversation" &&
+    outcome === "completed"
+      ? startConversationToolDefinition.outputSchema.safeParse(
+          message.data.details,
+        )
+      : undefined;
   return {
     type: "tool_calls",
     calls: [
@@ -284,6 +314,9 @@ function reportToolResult(args: {
           : undefined),
         ...(args.canExposePayload && output !== undefined
           ? { output }
+          : undefined),
+        ...(started?.success
+          ? { startedConversationId: started.data.conversation_id }
           : undefined),
       },
     ],
@@ -314,17 +347,17 @@ function reportMessageEvents(
   return parsed.success ? { events: parsed.data } : undefined;
 }
 
-const storedReviewItemChangesSchema = z
-  .array(reviewItemChangeRecordSchema)
+const storedInboxItemChangesSchema = z
+  .array(inboxItemChangeRecordSchema)
   .min(1);
 
-/** Read the Review item changes that a message records. */
-function reportReviewItemChanges(
+/** Read the Inbox item changes that a message records. */
+function reportInboxItemChanges(
   meta: Record<string, unknown> | undefined,
 ):
-  | { reviewItemChanges: z.output<typeof storedReviewItemChangesSchema> }
+  | { reviewItemChanges: z.output<typeof storedInboxItemChangesSchema> }
   | undefined {
-  const parsed = storedReviewItemChangesSchema.safeParse(
+  const parsed = storedInboxItemChangesSchema.safeParse(
     meta?.["reviewItemChanges"],
   );
   return parsed.success ? { reviewItemChanges: parsed.data } : undefined;
@@ -381,11 +414,15 @@ function reportEventData(args: {
         data.authorIdentityId !== SYSTEM_IDENTITY_ID
           ? { actorIdentityId: data.authorIdentityId }
           : undefined),
-        ...(typeof data.meta?.["agentInvocationId"] === "string"
-          ? { agentInvocationId: data.meta["agentInvocationId"] }
-          : undefined),
+        ...reportParentAgentInput({
+          agentInvocationId: data.meta?.["agentInvocationId"],
+          authorUserId: reportingMessageAuthorSchema.safeParse(
+            data.meta?.["author"],
+          ).data?.userId,
+          messageId: data.messageId,
+        }),
         ...(args.canExposePayload
-          ? reportReviewItemChanges(data.meta)
+          ? reportInboxItemChanges(data.meta)
           : undefined),
         eventObjectType: objectTypeSchema.safeParse(
           data.meta?.["eventObjectType"],
@@ -395,6 +432,16 @@ function reportEventData(args: {
           : undefined),
         ...(typeof data.meta?.["eventNamespace"] === "string"
           ? { eventNamespace: data.meta["eventNamespace"] }
+          : undefined),
+        ...(typeof data.meta?.["eventStatus"] === "string"
+          ? { eventStatus: data.meta["eventStatus"] }
+          : undefined),
+        ...(typeof data.meta?.["eventWatchId"] === "string"
+          ? { eventWatchId: data.meta["eventWatchId"] }
+          : undefined),
+        ...(args.canExposePayload &&
+        typeof data.meta?.["eventIdentifier"] === "string"
+          ? { eventIdentifier: data.meta["eventIdentifier"] }
           : undefined),
         ...(typeof data.meta?.["explicitMention"] === "boolean"
           ? { explicitMention: data.meta["explicitMention"] }
@@ -551,8 +598,8 @@ export function projectConversationReportEventPage(args: {
   /** Child Conversations that subagent events name and that are Threads. */
   threadIds?: ReadonlySet<string>;
   events: ConversationEvent[];
-  /** `turn_started` of the Conversation's first Turn. */
-  firstTurnStart?: ConversationEvent;
+  /** The Conversation's first event. */
+  firstEvent?: ConversationEvent;
   subagentStartEvents?: ConversationEvent[];
   toolStartEvents?: ConversationEvent[];
   modelContextEvents?: ConversationEvent[];
@@ -590,7 +637,7 @@ export function projectConversationReportEventPage(args: {
   const projected: ConversationReportEvent[] = [];
   let model: ConversationReportEvent["model"];
   for (const event of args.modelContextEvents ?? []) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     if (
       event.data.type === "turn_completed" ||
@@ -600,7 +647,7 @@ export function projectConversationReportEventPage(args: {
   }
 
   for (const event of args.events) {
-    if (isInheritedForkHistory(event, args.firstTurnStart)) continue;
+    if (isInheritedForkHistory(event, args.firstEvent)) continue;
     model = conversationEventModel(event.data, model);
     const eventModel = model;
     const modelCall = conversationEventModelCall(event.data);

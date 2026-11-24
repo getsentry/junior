@@ -25,7 +25,7 @@ import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
 import {
   staticToolDefinitions,
   type ToolDefinitionsKey,
-} from "@/chat/tools/registry";
+} from "@/chat/tool-support/registry";
 import { getDeploymentId } from "@/deployment";
 import { MINUTE_MS } from "./model";
 import { KEY_PREFIX, type ConnectedState } from "./request";

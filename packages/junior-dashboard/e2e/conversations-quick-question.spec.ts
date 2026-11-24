@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 import { expect, test } from "./test";
 import { screenshot } from "./screenshot";
+import { waitForOutlineRead, waitForReadPosition } from "./harness";
 
 const conversationId = "slack:CQA123:1770003600.000200";
 
@@ -199,7 +200,26 @@ test("asks a quick question about selected reply text", async ({
     "aria-placeholder",
     "Ask a follow-up…",
   );
+  // A reference in a quick question links no work to the parent.
+  const linked: string[] = [];
+  await page.route("**/api/conversations/*/annotations", async (route) => {
+    if (route.request().method() === "POST") {
+      linked.push(route.request().postDataJSON().url);
+    }
+    await route.fallback();
+  });
   await composer.fill("And then?");
+  await composer.pressSequentially(" #3842");
+  const pulls = page
+    .getByRole("listbox", { name: "References" })
+    .getByRole("group", { name: "Pull requests" });
+  await expect(pulls.getByRole("option")).toHaveText([
+    /getsentry\/junior#3842/,
+  ]);
+  await composer.press("Enter");
+  await expect(composer.locator("[data-reference='code_change']")).toHaveText(
+    "junior#3842",
+  );
   await composer.press("Enter");
   await expect(panel.getByText("Answer 2.")).toBeVisible();
   // The retry finds the same fork. Follow-ups go to that fork.
@@ -213,8 +233,12 @@ test("asks a quick question about selected reply text", async ({
   ]);
   expect(messages.filter((message) => message.role === "user")).toEqual([
     { role: "user", text: "Why?" },
-    { role: "user", text: "And then?" },
+    {
+      role: "user",
+      text: "And then? <https://github.com/getsentry/junior/pull/3842|getsentry/junior#3842>",
+    },
   ]);
+  expect(linked).toEqual([]);
   await screenshot(page, "conversation-quick-question-answered");
 
   let kept = 0;
@@ -225,11 +249,14 @@ test("asks a quick question about selected reply text", async ({
       await route.fulfill({ json: { conversationId: forkId } });
     },
   );
+  // The fork's page reads its outline.
+  const outlineRead = waitForOutlineRead(page, forkId);
   await panel
     .getByRole("button", { name: "Keep as fork", exact: true })
     .click();
   await expect(page).toHaveURL(/qq-fork/);
   expect(kept).toBe(1);
+  await outlineRead;
 });
 
 test("closes a quick question and shows details again", async ({
@@ -287,7 +314,11 @@ test("finds people of this Conversation's workspace in a quick question", async 
     .getByRole("textbox", { name: "Quick question" });
   await composer.pressSequentially(" @c");
   await expect(
-    page.getByRole("listbox", { name: "People" }).getByRole("option").first(),
+    page
+      .getByRole("listbox", { name: "Mentions" })
+      .getByRole("group", { name: "People" })
+      .getByRole("option")
+      .first(),
   ).toBeVisible();
   expect(searches.length).toBeGreaterThan(0);
   expect(new Set(searches)).toEqual(new Set([conversationId]));
@@ -378,6 +409,9 @@ test.describe("on a touch screen", () => {
     );
     const reply = page.locator("[data-quick-question-message-id]").last();
     await expect(reply).toBeVisible();
+    // A tap in the transcript counts as reading, so the page saves the read
+    // position.
+    const readSaved = waitForReadPosition(page, 0);
     // The last pointer is a finger. Touch selection sends no mouseup.
     await reply.locator("p").first().tap();
     const quote = await selectReplyText(page, { touch: true });
@@ -399,5 +433,6 @@ test.describe("on a touch screen", () => {
     await expect(
       page.getByRole("textbox", { name: "Continue this conversation" }),
     ).toHaveText(`> ${quote}\n\n`, { useInnerText: true });
+    await readSaved;
   });
 });

@@ -2,8 +2,8 @@ import * as z from "zod";
 import { updateConversationSubscription } from "@/api/conversations/subscription";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const CONVERSATION_SUBSCRIPTION_TOOL_SOURCE = {
   id: "conversation-subscription",
@@ -41,7 +41,7 @@ export const setConversationSubscriptionToolDefinition = zodToolDefinition({
  * Build the tool that changes the subscription of the person who started
  * the Turn, in the current Conversation. The actor comes from the runtime,
  * not from model arguments, so it cannot change another person's
- * subscription. The registry never offers it to an Agent invocation,
+ * subscription. The registry never offers it to a Turn on a parent message,
  * because an agent wrote its input. Contract:
  * `api/conversations/subscription.ts`.
  */
@@ -54,7 +54,7 @@ export function createSetConversationSubscriptionTool(
       const user = (await context.resolveActorIdentity?.())?.user;
       if (!user) {
         throw new ToolInputError(
-          "This person has no linked User, so their subscription cannot change.",
+          "This person has no linked User, so their subscription cannot change. No change to the call can fix this.",
         );
       }
       const result = await updateConversationSubscription(
@@ -64,7 +64,7 @@ export function createSetConversationSubscriptionTool(
       );
       if (!result) {
         throw new ToolInputError(
-          "This person is not a participant of this conversation.",
+          "This person is not a participant of this conversation, so they have no subscription to change. No change to the call can fix this.",
         );
       }
       return {

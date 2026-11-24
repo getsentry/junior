@@ -5,7 +5,7 @@ import {
   keepQuickQuestion,
 } from "@/chat/conversations/fork";
 import { getDb } from "@/chat/db";
-import type { ForkConversationBody } from "../schema/conversation";
+import type { ForkConversationBody } from "../schema/conversation-fork";
 import {
   readConversationAccessFromSql,
   type ConversationAccessReader,

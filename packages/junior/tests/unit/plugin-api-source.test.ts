@@ -99,14 +99,20 @@ describe("plugin source helpers", () => {
     ).toBe(false);
   });
 
-  it("accepts Scheduled automation, event automation, Plugin dispatch, and Agent invocation Sources", () => {
+  it("accepts Scheduled automation, event automation, Plugin dispatch, and parent message Sources", () => {
     for (const kind of [
       "scheduled_automation",
       "event_automation",
       "plugin_dispatch",
-      "agent_invocation",
+      "parent_message",
     ] as const) {
       expect(sourceSchema.parse({ kind })).toEqual({ kind });
     }
+  });
+
+  it("reads a stored agent_invocation Source as a parent message Source", () => {
+    expect(sourceSchema.parse({ kind: "agent_invocation" })).toEqual({
+      kind: "parent_message",
+    });
   });
 });

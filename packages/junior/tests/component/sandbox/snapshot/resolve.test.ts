@@ -86,6 +86,7 @@ function makeSandbox(snapshotId: string) {
     name: `sbx_${snapshotId}`,
     currentSession: vi.fn(() => ({
       sessionId: `sbx_${snapshotId}_session`,
+      createdAt: new Date(),
       runCommand,
       snapshot,
       stop,

@@ -17,10 +17,6 @@ function setDefined(
   }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
-
 function unqualifyManifestToken(name: unknown, value: unknown): unknown {
   if (
     typeof name === "string" &&
@@ -129,7 +125,7 @@ export function accountsSource(
 }
 
 function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
-  if (mcp === undefined || !isRecord(mcp)) {
+  if (typeof mcp !== "object" || mcp === null || Array.isArray(mcp)) {
     return mcp;
   }
 
@@ -149,7 +145,7 @@ function inlineMcpSource(mcp: PluginManifest["mcp"]): unknown {
 }
 
 function inlineOauthSource(oauth: PluginManifest["oauth"]): unknown {
-  if (oauth === undefined || !isRecord(oauth)) {
+  if (typeof oauth !== "object" || oauth === null || Array.isArray(oauth)) {
     return oauth;
   }
 
@@ -174,7 +170,7 @@ function inlineTargetSource(
   name: unknown,
   target: PluginManifest["target"],
 ): unknown {
-  if (target === undefined || !isRecord(target)) {
+  if (typeof target !== "object" || target === null || Array.isArray(target)) {
     return target;
   }
 

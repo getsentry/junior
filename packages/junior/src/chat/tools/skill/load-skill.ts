@@ -1,7 +1,7 @@
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import {
   sandboxSkillDir,
   sandboxSkillFile,
@@ -13,7 +13,7 @@ import {
   type SkillMetadata,
 } from "@/chat/skills";
 
-export type LoadSkillResult = {
+type LoadSkillResult = {
   skill_name?: string;
   description?: string;
   skill_dir?: string;

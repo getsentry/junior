@@ -239,14 +239,14 @@ test("reports ellipsis truncation in the new UI only", () => {
   ].join("\n");
   assert.deepEqual(
     findNewUiEllipsis([
-      { path: "src/client/inbox/Row.tsx", contents },
+      { path: "src/client/shell/Row.tsx", contents },
       { path: "src/client/classic/Row.tsx", contents },
-      { path: "src/client/review-desk/ReviewItemCard.tsx", contents },
-      { path: "src/client/inbox/review-desk/ReviewItemCard.tsx", contents },
+      { path: "src/client/inbox/InboxItemCard.tsx", contents },
+      { path: "src/client/shell/inbox/InboxItemCard.tsx", contents },
     ]),
     [
-      "src/client/inbox/Row.tsx",
-      "src/client/inbox/review-desk/ReviewItemCard.tsx",
+      "src/client/shell/Row.tsx",
+      "src/client/shell/inbox/InboxItemCard.tsx",
     ].flatMap((path) => [
       `${path}:1: <span className="min-w-0 truncate">`,
       `${path}:2: <span className="md:truncate">`,

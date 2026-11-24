@@ -1,7 +1,9 @@
 import type { Page } from "@playwright/test";
 
 import { expect, test } from "./test";
+import { waitForReadPosition } from "./harness";
 import { desktop, mobile, screenshot } from "./screenshot";
+import { clickSkillReference, styledSkillReferences } from "./skill-references";
 
 async function routeSkills(page: Page) {
   await page.route("**/api/skills", (route) =>
@@ -45,7 +47,7 @@ test("shows skill details and opens SKILL.md from the composer @classic", async 
   await page.setViewportSize(desktop);
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.fill("Run $");
@@ -98,12 +100,14 @@ test("describes the skill reference at the caret @classic", async ({
   await page.setViewportSize(desktop);
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
   const skills = page.getByRole("grid", { name: "Skills" });
   const card = page.getByRole("group", { name: "$release-check" });
   await composer.fill("Run $rel");
+  // Enter before the menu opens sends the message.
+  await expect(skills).toBeVisible();
   await composer.press("Enter");
   await expect(composer).toHaveText("Run $release-check ", {
     useInnerText: true,
@@ -149,6 +153,64 @@ test("describes the skill reference at the caret @classic", async ({
   await expect(card).toHaveCount(0);
 });
 
+test("a skill reference in the draft is styled and stays plain text @classic", async ({
+  page,
+  dashboard,
+}) => {
+  await page.setViewportSize(desktop);
+  await routeSkills(page);
+  await page.goto(dashboard.baseURL);
+  const composer = page.getByLabel("Continue this conversation");
+  await expect(composer).toHaveAttribute("contenteditable", "true");
+  const text = "Run $release-check now, not `$diff-quality` or $missing";
+  await composer.fill(text);
+  // Only the installed name outside code looks like a link.
+  await expect
+    .poll(() => styledSkillReferences(page))
+    .toEqual(["$release-check"]);
+
+  // A click only moves the caret into the reference, so its card shows.
+  // The card and the menu open the SKILL.md, not the text.
+  await clickSkillReference(page, "release-check");
+  const card = page.getByRole("group", { name: "$release-check" });
+  await expect(card).toBeVisible();
+  await expect(composer).toBeFocused();
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await composer.press("Home");
+  for (let step = 0; step < "Run $release-check".length; step++) {
+    await composer.press("ArrowRight");
+  }
+  await screenshot(page, "composer-skill-reference", { view: "desktop" });
+
+  // Backspace deletes one character, and undo puts it back.
+  await composer.press("Backspace");
+  await expect(composer).toHaveText(text.replace("check", "chec"), {
+    useInnerText: true,
+  });
+  await expect.poll(() => styledSkillReferences(page)).toEqual([]);
+  await composer.press("ControlOrMeta+z");
+  await expect(composer).toHaveText(text, { useInnerText: true });
+  await expect
+    .poll(() => styledSkillReferences(page))
+    .toEqual(["$release-check"]);
+
+  // The message is the plain text.
+  await composer.press("Escape");
+  const sent = page.waitForResponse(
+    (response) =>
+      response.request().method() === "POST" &&
+      /\/api\/conversations\/[^/]+\/messages$/.test(response.url()),
+  );
+  // The Conversation ends at seq 28 when it opens. The sent message comes
+  // after it.
+  const readSaved = waitForReadPosition(page, 28);
+  await composer.press("Enter");
+  expect((await sent).request().postDataJSON()).toMatchObject({
+    message: text,
+  });
+  await readSaved;
+});
+
 test("a caret move before the skill list loads shows the card @classic", async ({
   page,
   dashboard,
@@ -164,7 +226,7 @@ test("a caret move before the skill list loads shows the card @classic", async (
     await route.fallback();
   });
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   // The editor loads after the page. A textarea stands in until then.
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.fill("Run $release-check now");
@@ -190,7 +252,7 @@ test.describe("on a touch screen", () => {
     await page.setViewportSize(mobile);
     await routeSkills(page);
     await page.goto(dashboard.baseURL);
-    const composer = page.getByLabel("Start a conversation");
+    const composer = page.getByLabel("Continue this conversation");
     await expect(composer).toHaveAttribute("contenteditable", "true");
     await composer.fill("$");
     const skills = page.getByRole("grid", { name: "Skills" });
@@ -243,7 +305,7 @@ test.describe("on a touch screen", () => {
   });
 });
 
-test("Esc closes the menu, not the question docked above it @classic", async ({
+test("Esc closes the menu, not the question in the transcript @classic", async ({
   page,
   dashboard,
 }) => {
@@ -252,9 +314,9 @@ test("Esc closes the menu, not the question docked above it @classic", async ({
   await page.goto(
     `${dashboard.baseURL}/conversations/${encodeURIComponent("internal:question-qa")}`,
   );
-  const question = page.getByRole("region", {
-    name: "Question: Approve the payments-v42 rollout",
-  });
+  const question = page
+    .getByRole("region", { name: "Asked Approve the payments-v42 rollout" })
+    .getByRole("region", { name: "Question" });
   await expect(question).toBeVisible();
   const composer = page.getByRole("textbox", {
     name: "Continue this conversation",
@@ -286,7 +348,7 @@ test("the pane follows the pointer only after it rests on a row @classic", async
   await page.setViewportSize(desktop);
   await routeSkills(page);
   await page.goto(dashboard.baseURL);
-  const composer = page.getByLabel("Start a conversation");
+  const composer = page.getByLabel("Continue this conversation");
   await expect(composer).toHaveAttribute("contenteditable", "true");
   await composer.pressSequentially("Run $");
   const skills = page.getByRole("grid", { name: "Skills" });
@@ -329,6 +391,9 @@ test("the reply composer with Details open stays split @classic", async ({
     name: "Continue this conversation",
   });
   await expect(composer).toHaveAttribute("contenteditable", "true");
+  // Typing in the composer counts as reading, so the page saves the read
+  // position.
+  const readSaved = waitForReadPosition(page, 0);
   await composer.pressSequentially("$");
   const skills = page.getByRole("grid", { name: "Skills" });
   await expect(skills).toBeVisible();
@@ -341,4 +406,5 @@ test("the reply composer with Details open stays split @classic", async ({
     0,
   );
   await screenshot(page, "composer-skill-split-reply", { view: "desktop" });
+  await readSaved;
 });

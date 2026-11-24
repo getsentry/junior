@@ -20,10 +20,10 @@ import { useRenameConversation } from "./useRenameConversation";
 /**
  * The row actions of one Conversation in a list: pin, archive, rename,
  * subscription, Slack updates, and the event log. `menu` is the context
- * menu content with its dialogs; the row renders it inside its
- * `ContextMenu` and calls `onMenuOpenChange` from it. Failures show as
- * toasts. `onRowAction` runs before an action that can move rows, so a
- * held list shows the result at once.
+ * menu content and `rows` its rows, for a `⋯` menu. The row renders them
+ * inside each menu it has, calls `onMenuOpenChange` from each, and renders
+ * `dialogs` once. Failures show as toasts. `onRowAction` runs before an
+ * action that can move rows, so a held list shows the result at once.
  */
 export function useInboxRowActions(
   conversation: Conversation,
@@ -79,39 +79,39 @@ export function useInboxRowActions(
       lastSeenAt: conversation.lastSeenAt,
     });
   };
+  const rows = (
+    <ConversationRowMenu
+      actions={{
+        archive: toggleArchive,
+        continueInSlack: () => setContinueInSlackOpen(true),
+        delivery: (paused) => delivery.mutate(paused),
+        // The page keeps its view in state, not in history. An open
+        // page replaces its entry, so Back does not land on the same
+        // page in the event log.
+        eventLog: () => {
+          void navigate(conversationPath(conversation.id), {
+            replace: options.selected,
+            state: OPEN_EVENT_LOG_STATE,
+          });
+        },
+        pin: setPinned,
+        rename: () => setRenaming(true),
+        subscription: (subscribed) => subscription.mutate(subscribed),
+      }}
+      conversation={conversation}
+      conversationId={conversation.id}
+      pending={{
+        archive: archive.isPending,
+        delivery: delivery.isPending,
+        pin: pin.isPending,
+        subscription: subscription.isPending,
+      }}
+    />
+  );
   return {
     archived,
-    menu: (
+    dialogs: (
       <>
-        <ContextMenuContent>
-          <ConversationRowMenu
-            actions={{
-              archive: toggleArchive,
-              continueInSlack: () => setContinueInSlackOpen(true),
-              delivery: (paused) => delivery.mutate(paused),
-              // The page keeps its view in state, not in history. An open
-              // page replaces its entry, so Back does not land on the same
-              // page in the event log.
-              eventLog: () => {
-                void navigate(conversationPath(conversation.id), {
-                  replace: options.selected,
-                  state: OPEN_EVENT_LOG_STATE,
-                });
-              },
-              pin: setPinned,
-              rename: () => setRenaming(true),
-              subscription: (subscribed) => subscription.mutate(subscribed),
-            }}
-            conversation={conversation}
-            conversationId={conversation.id}
-            pending={{
-              archive: archive.isPending,
-              delivery: delivery.isPending,
-              pin: pin.isPending,
-              subscription: subscription.isPending,
-            }}
-          />
-        </ContextMenuContent>
         {renaming ? (
           <RenameConversationDialog
             onClose={() => setRenaming(false)}
@@ -127,6 +127,7 @@ export function useInboxRowActions(
         ) : null}
       </>
     ),
+    menu: <ContextMenuContent>{rows}</ContextMenuContent>,
     // The menu shows rows from the detail, so read it as a hover does.
     onMenuOpenChange: (open: boolean) => {
       if (open) void prefetchConversationDetail(queryClient, conversation.id);
@@ -136,6 +137,7 @@ export function useInboxRowActions(
       pin: pin.isPending,
     },
     pinned,
+    rows,
     setPinned,
     title,
     toggleArchive,

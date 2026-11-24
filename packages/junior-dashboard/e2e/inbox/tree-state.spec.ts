@@ -1,4 +1,4 @@
-import { mockReviewItems } from "./inbox-fixture";
+import { mockInboxItems } from "./inbox-fixture";
 import { screenshot } from "../screenshot";
 import { expect, test } from "../test";
 
@@ -42,8 +42,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         });
       },
     );
-    await mockReviewItems(page);
-    await page.goto(`${dashboard.baseURL}/`);
+    await mockInboxItems(page);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     const flightRow = (title: RegExp) =>
       inFlight
@@ -67,7 +67,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(watching).toBeVisible();
     // A pin shows its pin only while its tree waits on nothing.
     // The Inbox lists only what needs the viewer, so pin from Conversations.
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const list = page.getByRole("region", {
       exact: true,
       name: "Conversations",
@@ -76,6 +76,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await list
       .getByRole("button", { name: "Pin Roll out payments-v42" })
       .click();
+    // The focused button shows the row actions in some runs, and a re-render
+    // drops the focus in others. The shot is of the tree icons, so blur it.
+    await list
+      .getByRole("button", { name: "Unpin Roll out payments-v42" })
+      .blur();
     await expect(
       flightRow(/Roll out payments-v42/).getByRole("img", { name: "Pinned" }),
     ).toBeVisible();

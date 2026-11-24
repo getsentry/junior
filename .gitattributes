@@ -1,3 +1,7 @@
 # CI records these eval fixtures. Collapse them in pull request diffs and
 # keep them out of AI review.
 packages/junior-evals/recordings/** linguist-generated=true
+
+# drizzle-kit writes these migration snapshots and journals. Collapse them in
+# pull request diffs and keep them out of AI review.
+packages/*/migrations/meta/** linguist-generated=true

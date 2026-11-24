@@ -2,7 +2,7 @@ import { getDashboardAgentName } from "./agentName";
 import { peoplePath } from "./format";
 import { systemPluginsPath } from "./pages/system/SystemPlugins";
 import { pluginUserPagePath } from "./pages/user/pluginUserPageRoutes";
-import { INBOX_VIEW_LABELS, inboxViewPath } from "./review-desk/inboxModel";
+import { INBOX_VIEW_LABELS, inboxViewPath } from "./inbox/inboxModel";
 
 /**
  * One dashboard page that navigation links to. The command palette lists
@@ -34,7 +34,9 @@ function section(root: string, anchor: string, label: string): NavPage {
 
 /** Every dashboard page that a link names, in nav order within each area. */
 export const NAV_PAGES = {
-  inbox: { label: INBOX_VIEW_LABELS.inbox, to: "/" },
+  // Home is the viewer's Lead.
+  lead: { access: "account", label: "Lead", to: "/" },
+  inbox: { label: INBOX_VIEW_LABELS.inbox, to: inboxViewPath("inbox") },
   snoozed: {
     access: "account",
     label: INBOX_VIEW_LABELS.snoozed,
@@ -48,11 +50,6 @@ export const NAV_PAGES = {
   conversations: {
     label: INBOX_VIEW_LABELS.conversations,
     to: inboxViewPath("conversations"),
-  },
-  prs: {
-    access: "account",
-    label: INBOX_VIEW_LABELS.prs,
-    to: inboxViewPath("prs"),
   },
   decisions: {
     access: "account",

@@ -140,7 +140,7 @@ export function createPeopleRoutes(options: {
       const { cursor } = context.req.valid("query");
       return jsonResponse(
         codePersonReportSchema,
-        await readPeopleCode(email, cursor),
+        await readPeopleCode(email, cursor, context.get("viewer")),
       );
     },
   );

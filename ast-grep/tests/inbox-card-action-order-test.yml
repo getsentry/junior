@@ -1,0 +1,9 @@
+id: inbox-card-action-order
+valid:
+  - "const a = (<>{dismiss ? <RowDismissButton onClick={dismiss} /> : null}<RowSnoozeButton open={open} /><SendButton disabled={false} /></>);"
+  - "const a = (<div><RowDismissButton onClick={dismiss} /><CardSnoozeButton item={item} /></div>);"
+  - "const a = (<div>{secondary}<SendButton disabled={false} /></div>);"
+invalid:
+  - "const a = (<><RowSnoozeButton open={open} /><RowDismissButton onClick={dismiss} /></>);"
+  - "const a = (<>{snooze ? <CardSnoozeButton item={item} /> : null}{dismiss ? <RowDismissButton onClick={dismiss} /> : null}</>);"
+  - "const a = (<div><SendButton disabled={false} /><RowDismissButton onClick={dismiss} /></div>);"

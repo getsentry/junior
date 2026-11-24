@@ -1,7 +1,7 @@
 import type { FileUpload } from "chat";
 import { describe, expect, it } from "vitest";
-import { writeSandboxGeneratedFiles } from "@/chat/tools/sandbox/generated-files";
-import { SANDBOX_GENERATED_DIR } from "@/chat/tools/sandbox/file-uploads";
+import { writeSandboxGeneratedFiles } from "@/chat/sandbox/generated-files";
+import { SANDBOX_GENERATED_DIR } from "@/chat/sandbox/file-uploads";
 
 function createGeneratedFileSandbox() {
   const files = new Map<string, string | Uint8Array>();

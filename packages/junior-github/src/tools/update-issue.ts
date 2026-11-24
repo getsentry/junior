@@ -23,7 +23,7 @@ import {
   requesterPerson,
   resolveGitHubRequester,
 } from "../tool-support/attribution.js";
-import { appendGitHubFooter } from "./footer.js";
+import { appendGitHubFooter } from "../conversation-footer.js";
 import {
   githubApi,
   githubErrorMessage,
@@ -101,7 +101,10 @@ const providerIssueSchema = z.object({
 });
 
 function nonEmptyString(value: string | undefined, name: string): string {
-  if (!value?.trim()) throw new PluginToolInputError(`${name} is required`);
+  if (!value?.trim())
+    throw new PluginToolInputError(
+      `${name} is missing in this Turn, so the GitHub footer cannot be added. No change to the call can fix this.`,
+    );
   return value.trim();
 }
 
@@ -133,9 +136,12 @@ export const gitHubUpdateIssueTool = definePluginTool({
   ): Promise<Result> {
     const parsedInput = inputSchema.safeParse(input);
     if (!parsedInput.success) {
-      throw new PluginToolInputError("Invalid GitHub updateIssue input.", {
-        cause: parsedInput.error,
-      });
+      throw new PluginToolInputError(
+        "Invalid GitHub updateIssue input. Check the arguments against the tool schema and call it again.",
+        {
+          cause: parsedInput.error,
+        },
+      );
     }
     const update = parsedInput.data;
     const repo = parseRepo(update.repo);
@@ -149,7 +155,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       : undefined;
     if (update.assign_requester && !assignee) {
       throw new PluginToolInputError(
-        "The requester has no linked GitHub account, so the issue cannot be assigned to them.",
+        "The requester has no linked GitHub account, so the issue cannot be assigned to them. Leave out assign_requester.",
       );
     }
     const currentBody =
@@ -171,6 +177,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
               ),
               nonEmptyString(ctx.conversationId, "conversationId"),
               ctx.conversationLink?.url,
+              currentBody,
             ),
           }
         : undefined),
@@ -204,7 +211,9 @@ export const gitHubUpdateIssueTool = definePluginTool({
         const message = `GitHub issue assignment failed with HTTP ${response.status}: ${githubErrorMessage(parsed)}`;
         // A missing issue or an invalid assignee is a wrong target.
         if (response.status === 404 || response.status === 422) {
-          throw new PluginToolInputError(message);
+          throw new PluginToolInputError(
+            `${message}. Check repo and issue, and fix any field that GitHub names.`,
+          );
         }
         throw new Error(message);
       }
@@ -219,7 +228,7 @@ export const gitHubUpdateIssueTool = definePluginTool({
       )
     ) {
       throw new PluginToolInputError(
-        `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}.`,
+        `GitHub did not assign @${assignee} to the issue. They may not have access to ${repo.ref}. Continue without the assignment.`,
       );
     }
     const watch = await watchGitHubIssue(ctx, {

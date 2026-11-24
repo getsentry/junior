@@ -31,7 +31,7 @@ export async function publicArtifactGET(args: {
     }
 
     return new Response(artifact.body, {
-      headers: publicArtifactHeaders(artifact.contentType),
+      headers: publicArtifactHeaders(artifact.contentType, artifact.expiresAt),
     });
   } catch (error) {
     logException(error, "public_artifact.get.failed");

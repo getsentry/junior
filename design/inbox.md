@@ -1,119 +1,179 @@
 # Inbox
 
-The Inbox shows the open Review items for the viewer, one item row each.
-The rows of one root Conversation sit together in a stack: a lightly
-tinted tray under the root's title. The viewer answers, dismisses, or
-snoozes each row on its own. `./review-desk.md` owns who sees an item and who can act on it.
+The Inbox is where work waits for a person. Junior or a plugin adds an
+Inbox item: an action that asks a question, or a notice that names a step
+for a person. A To-do that an agent assigns to a person shows as a "To do
+for you" item.
+Its assignees see it in the Inbox and in its linked Slack threads, and the
+first answer lets the work continue. [Inbox stacks](./inbox-stacks.md) owns
+how the dashboard groups and acts on its rows.
 
 ## Intent
 
-- One stack for each root Conversation. People start and follow root
-  Conversations. They usually do not know which Threads and Tasks run under
-  a root, or their names. An item from a child agent shows in the stack of
-  its root, not on its own.
-- Each Review item is its own row, with its own actions. An item row is
-  always one actionable item, such as a question or a pull request. A
-  Conversation row is a different row, for the Conversations view. A row
-  action never applies to a group of items. A pull request review and a question are
-  different decisions, and one click must not make both.
-- The reader finishes one Conversation before the next. Next goes to the
-  next row in the same stack first, so the context that the reader just
-  read stays useful.
-- A stack is a light grouping, not a new kind of row. It sits inside the
-  To do, Up for grabs, and other sections, around the normal Inbox rows.
-  It uses the classic Inbox look and adds no color.
+- Work that needs a person is shared, lasting state: who must act, whether
+  it is open, and the answer on record. A Slack message alone has none of
+  these.
+- There is one way to ask a person, and only for a decision that is theirs
+  and blocks the work. Progress, status, offers, scope choices, and work
+  that Junior owns are not items.
+  Whether Junior starts new work for the requester, such as a Thread that
+  implements an issue it filed, is the requester's decision, not an offer.
+- A notice tells a person about something that they must read or fix, such
+  as a reply or a blocked Automation, and says what to do. It never asks.
+- A task for a person is a To-do assigned to them. They see it with their
+  other asks, close it themselves, and the agent learns that it is done.
+- Only an assignee answers, and the answer carries their authority. Junior,
+  an Event, or a trigger never answers or approves for a person.
+- "Needs you" means one thing on every surface: an ask or a Conversation
+  tree that waits on you.
 
 ## Entry points
 
-- Dashboard: Inbox, with To do, Up for grabs, and FYI. Snoozed. The
-  Conversations view.
-- The stack title, which opens the root Conversation. A click on empty
-  space in the stack's header does the same.
-- A right-click anywhere on a stack, which opens the root Conversation's
-  menu, as on its Conversation row.
-- A row click, which opens the row and its answer form.
-- On each row, on hover: Open, Snooze, and Dismiss, as icons with their
-  names as tooltips. A touch screen has no hover, so there a row shows its
-  actions only once it is open. Rows do not repeat them.
-- On a stack: Snooze and Dismiss, as quiet buttons, and the stack's item
-  count once, right-most. The buttons do not repeat the count. Their names
-  say what they cover, such as "Snooze 3 items in this stack". Snooze
-  covers every row. Dismiss covers the open asks that the viewer can act
-  on. Dismiss is the main action, so it comes last.
-- A link to one item, such as `/?view=inbox&item=<id>`, opens its row.
+- Slack: the item card in each linked thread, and a thread reply.
+- Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
+  the question card in the Conversation transcript, the questions pill, and
+  a push.
+  Done and Dismiss on a "To do for you" row.
+- Dashboard filters: Other, PRs, Decisions, To-dos, Pinned, and All in the
+  Inbox; Done, Watching, Working, Needs you, Pinned, and All in
+  Conversations and a repository's Conversations tab. All, the default, is
+  at the right edge, and the tab order follows the order on screen.
+- Settings: "Show the Inbox count in the tab".
+- MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
 ## Rules
 
-Grouping:
-
-- A child Conversation, at any depth, rolls up to its root. Every item has
-  the same root field, read from the root that each Conversation stores, so
-  depth costs nothing. The row shows a quiet label that names the child,
-  such as its Thread title, so the reader knows which sub-thread asked.
-- An item rolls up only when the viewer can see its root, as
-  `../policies/conversation-access.md` says. Otherwise it groups under the
-  Conversation that added it. The viewer never sees a title, a name, or a
-  root that they cannot see.
-- A Conversation with one item shows that item's row, with no tray. A
-  click on it opens the row, as in a stack.
-- A stack of more than four rows shows the first four and "+N more in this
-  Conversation". That control shows the rest in place. A stack also shows
-  the rest when its open row is past the first four.
-- An open row says each fact once. The row's head names the kind, the
-  number, the title, and the sub-thread. The open card and the subject's
-  preview do not say them again.
-- The Conversations view keeps one Conversation row each, with Pin and
-  Archive. Stacks are for To do, Up for grabs, FYI, and Snoozed.
-
-Actions:
-
-- Each row carries its own answer, Dismiss, and Snooze. An answer closes
-  the item as done. None of them act on the other rows of the stack.
-- A row that closes leaves with one motion, whatever closed it: its own
-  action, another person, an agent, or Slack. The other rows stay.
-- A row's own action applies before the server answers. When it fails, only
-  that row comes back, and a toast offers Retry.
-- A toast shows only with an action, such as Undo or Retry, for an error,
-  or for a result that the screen does not show. An answer gets no toast.
-  On a phone, toasts sit at the top, away from the composer and the
-  keyboard, and swipe up to dismiss.
-- When an open row leaves, the next row of its stack opens, also past the
-  fold. After the last row of the stack, the row before it opens. When the
-  stack has no other row, the next row of the list opens.
-- When a stack shrinks to one row, the tray goes and the row stays. An
-  open row stays open.
-- A stack's Snooze and Dismiss put the whole stack away with the same leave
-  motion as a row. When a row of the stack was open, the next row after the
-  stack opens.
-- In To do, a stack leaves with its last row that waits on the viewer, and
-  the next row of the list opens.
-- A notice about the subject of an ask folds into the ask's row. Other
-  notices show in FYI, stacked by root as asks are, one row each.
-
-Order and counts:
-
-- In a stack, actions come first, then notices. Each group is oldest first.
-- In To do, pinned stacks come first. Then stacks that wait on the viewer
-  come, the one that waited longest at the top. Other stacks follow, oldest
-  first. FYI shows the newest notice first. The order does not move while
-  the reader works.
-- A stack waits on the viewer when any of its rows does, including a row
-  from a child.
-- Counts count Review items, not stacks. The To do count and the tab count
-  stay the same when items roll up.
-
-Snooze:
-
-- Snooze on a row puts away only that item. It wakes at its time.
-- Snooze on a stack snoozes each of its items until the same time. An
-  item that arrives later is not snoozed: it shows in the Inbox by itself,
-  and the rest stay in Snoozed.
-- Snoozed shows each snoozed row in the stack of its root. Wake on a row
-  wakes only that item.
+- The Inbox filters its asks by type: PRs (asks about a code
+  change), Decisions (other asks with a form), To-dos (the viewer's
+  To-dos), and Other (the rest, such as Resume). Each count holds the asks
+  that wait on the viewer, one per ask. The type counts add up to All, and
+  All is the Inbox count. A type with nothing waiting hides, but All always
+  shows.
+- The Conversation filters use the state that the row shows: Needs you
+  when an ask or the tree waits on the viewer, then Working, then
+  Watching. Done is the rest.
+- Pinned, a tab of the same control, shows only the rows of the viewer's pinned Conversations.
+  Pins have no section of their own: a pin stays in its place, with a pin
+  marker.
+- The filters stay in the URL, so a reload or a link keeps them. They fit
+  one row, also on a phone.
+- A question never blocks its Conversation. It shows as a card in the
+  transcript where Junior asked it. Nothing docks over the message box, and
+  nothing takes the focus. A typed message still answers it.
+- While a waiting card is not in full view, a "N questions waiting" pill
+  shows above the message box and goes to the oldest such card.
+- A question card has one layout in the Inbox and the transcript: the
+  question under its "Question" label, then the last message of the Turn
+  that asked it (about 12 lines, then Show more), then the form. The card
+  has no subject preview: the row head and Related link the subject. In
+  the transcript, a waiting card spans the transcript width.
+- A click on a choice picks it. Send answers, with the note line. An
+  action that takes no words, such as a plugin's Resume, is one click.
+- The first answer or dismiss closes the item for everyone. A dismiss is
+  not a decision, so it does not continue the work.
+- A person who wants someone else to answer snoozes it until it closes.
+  It then waits in their Snoozed view, where they can still answer it,
+  dismiss it, or wake it.
+- A card's actions read Dismiss, Snooze, then the main action, such as
+  Send, last. Every card that shows an item uses this order.
+- Every item has at least one assignee: a User, or Everyone. When no
+  assignee is left, the item dismisses itself.
+- With no assignees named, the item goes to the person in the Turn, else
+  the Automation creator, else the Conversation's active Participants.
+- An item from a private Conversation stays private and cannot go to
+  Everyone.
+- Making a Conversation public does not show its private items.
+- A Slack thread that its Conversation detached from gets no new item card.
+- Only the Conversation or the plugin that added an item can change it,
+  and only within the assignee rules.
+- The answer to an item that a plugin added goes to that plugin, which does
+  the work, such as Resume on a merge conflict fix that did not land. It
+  starts no Turn.
+- An item from a public Conversation is visible to the whole workspace.
+- An Automation alert follows its Automation's Destination: a public
+  channel makes it visible to the workspace. Only core changes or closes
+  it, and a person can dismiss it.
+- A failed-run Automation alert offers the steps that fit its Automation,
+  and core takes the step.
+- A dismissed Automation alert hides every alert of that Automation until
+  the Automation recovers: it is active, its last run succeeded, and its
+  trigger is available. A pause is no recovery.
+- A To-do for a person is an open action for that person alone, in the
+  stack of its Conversation. Its title and notes follow the To-do. Only the
+  assignee sees it, and only while they can see the Conversation's private
+  content. No other person and no agent sees or changes it. The
+  Conversation waits on the assignee alone; its shared status does not
+  change.
+- Done or Dismiss closes a "To do for you" item: Done marks the To-do
+  done, and Dismiss drops it. Neither starts a Turn: the agent sees the
+  change in its next Turn. Snooze works as on any row, and a snooze that
+  resolves on an Event marks the To-do done.
+- When the agent closes, drops, or removes the To-do, or gives it to
+  itself or a child agent, its item closes. A To-do that goes to another
+  person takes its item along. A To-do that opens again gets a new item.
+- When a time or an Event wakes a snooze, the item's Inbox row and card
+  say why in a muted line, such as "Woke: getsentry/junior#12 is merged".
+  Only the person whose snooze woke sees it. It goes when they open the
+  item from the Inbox, act on it, or snooze it again. A Wake that they
+  pick, and a trigger that resolves the item, show nothing.
+- A reply in a dashboard Conversation is a notice for its starter. One
+  notice per Conversation holds the latest reply, and it closes when the
+  starter reads it. A Slack thread already tells people, so a Slack reply
+  adds no notice.
+- Slack and the dashboard ask for the same things. The dashboard can show
+  more detail, but not more asks.
+- A push goes to each User assigned to an open action, once per item. A
+  reply notice pushes to its starter at each new reply, and replaces the
+  push before it. When a time or an Event wakes their snooze of that item,
+  it pushes to them once more. Everyone items and other notices do not
+  push. When the item closes, its push goes away on every device.
+- When Slack shows the item in a card, Slack asks first. The push goes only
+  to a User who is still away in Slack after a short wait, and an answer,
+  a dismiss, or a reply in that time stops it.
+- Auto-archive never hides work that waits for a person. It skips a
+  Conversation while it or a child has an open action, an open To-do
+  for a person, or an answer that its starter has not read.
 
 ## Gaps
 
-- A stack shows only the root's title. The Conversation row's kind pills,
-  Brief, and activity do not show for a root with more than one item.
-- A snooze lives in one browser. Another browser of the same viewer shows
-  the item. Server snoozes (getsentry/junior#3567, #3392) close this gap.
+- An item can have no assignees, and then anyone who can see it can answer
+  it. It does not dismiss itself. This breaks "every item has at least one
+  assignee" and "only an assignee answers".
+- An agent in any public Conversation can change, reassign, or close a
+  public item that an agent added, and a new item with the same key
+  overwrites it. This breaks "only the Conversation or the plugin that added
+  an item can change it" and lets a person reassign an item to themselves
+  and answer it.
+- An alert for a blocked Automation, or for a trigger that is not
+  available, is an action that asks no question, not a notice. It counts
+  as needing the creator. This breaks "a notice tells a person about
+  something that they must fix" and "there is one way to ask a person".
+- The "Needs you" list of Conversations also shows actions for Everyone
+  and actions with no assignees. This breaks "'Needs you' means one thing".
+- A "To do for you" item has no Slack card. In Slack, the person learns of
+  the To-do only from the reply. This breaks "its assignees see it in the
+  Inbox and in its linked Slack threads".
+- Core adds a "To do for you" item only when its To-do changes. A person
+  who can see the Conversation only after that gets no item until the
+  To-do changes again. This breaks "a task for a person is a To-do
+  assigned to them. They see it with their other asks".
+- The "Needs you" group of the classic Inbox also shows open actions for
+  Everyone and actions with no assignees. To do in the new Inbox shows
+  actions with no assignees, and the Inbox count leaves them out. This
+  breaks "'Needs you' means one thing".
+- An agent or a plugin can add a notice that names no next step, and the
+  Inbox shows it in FYI. This breaks "a notice … says what to do".
+- An Automation alert shows only in the dashboard Inbox. Slack shows no
+  card for it. For a blocked Automation, Slack gets a DM with no card. For a
+  failed run or a trigger that is not available, Slack gets nothing. This
+  breaks "Slack and the dashboard ask for the same things".
+- When automatic updates stop at the limit of automated Turns in a row, the
+  notice that asks the person to send a message is a plain Slack reply,
+  with no Inbox item. A dashboard Conversation gets nothing. This breaks
+  "there is one way to ask a person" and "Slack and the dashboard ask for
+  the same things".
+- An Automation alert is an action for its creator, but it sends no push.
+  This breaks "a push goes to each User assigned to an open action".
+- When an item closes, its push stays on a device until the next push to
+  that User. This breaks "when the item closes, its push goes away on every
+  device".

@@ -1,13 +1,9 @@
 import { describe, expect, test } from "vitest";
 import { createJuniorApi } from "@/api";
-import {
-  CONVERSATION_FEED_PAGE_VERSION_HEADER,
-  conversationFeedSchema,
-} from "@/api/schema";
-import { appendConversationBrief } from "@/chat/briefs/store";
+import { CONTENT_VERSION_HEADER, conversationFeedSchema } from "@/api/schema";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("conversation list API page versions", () => {
@@ -25,13 +21,11 @@ describe("conversation list API page versions", () => {
       const app = createJuniorApi();
       const read = (search: string, version?: string) =>
         app.request(`http://localhost/api/conversations${search}`, {
-          headers: version
-            ? { [CONVERSATION_FEED_PAGE_VERSION_HEADER]: version }
-            : {},
+          headers: version ? { [CONTENT_VERSION_HEADER]: version } : {},
         });
 
       const first = await read("");
-      const version = first.headers.get(CONVERSATION_FEED_PAGE_VERSION_HEADER)!;
+      const version = first.headers.get(CONTENT_VERSION_HEADER)!;
       expect(first.status).toBe(200);
       expect(first.headers.get("cache-control")).toBe("private, no-store");
       expect(
@@ -41,9 +35,7 @@ describe("conversation list API page versions", () => {
       const unchanged = await read("", version);
       expect(unchanged.status).toBe(304);
       expect(await unchanged.text()).toBe("");
-      expect(unchanged.headers.get(CONVERSATION_FEED_PAGE_VERSION_HEADER)).toBe(
-        version,
-      );
+      expect(unchanged.headers.get(CONTENT_VERSION_HEADER)).toBe(version);
       expect(unchanged.headers.get("cache-control")).toBe("private, no-store");
 
       // Another query is another page, with its own version.
@@ -53,25 +45,19 @@ describe("conversation list API page versions", () => {
         conversationFeedSchema.parse(await archived.json()).conversations,
       ).toEqual([]);
 
-      await appendConversationBrief(fixture.sql.db(), {
+      await storeConversationMetadataFixture(fixture.sql.db(), {
         conversationId,
-        turnId: "turn-1",
-        throughSeq: 0,
-        content: conversationBriefFixture({ summary: "The plan changed." }),
-        searchText: "The plan changed.",
-        modelId: "test-model",
+        summary: "The plan changed.",
       });
       const changed = await read("", version);
       expect(changed.status).toBe(200);
-      expect(
-        changed.headers.get(CONVERSATION_FEED_PAGE_VERSION_HEADER),
-      ).not.toBe(version);
+      expect(changed.headers.get(CONTENT_VERSION_HEADER)).not.toBe(version);
       expect(
         conversationFeedSchema.parse(await changed.json()).conversations,
       ).toEqual([
         expect.objectContaining({
-          brief: expect.objectContaining({ summary: "The plan changed." }),
           conversationId,
+          summary: "The plan changed.",
         }),
       ]);
     } finally {

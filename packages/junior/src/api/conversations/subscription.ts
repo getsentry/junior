@@ -1,7 +1,7 @@
 import type { User } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, sql } from "drizzle-orm";
 import { getDb, getSqlExecutor } from "@/chat/db";
-import { nextDetailVersion } from "@/chat/conversations/sql/detail-version";
+import { setArchivedAt } from "@/chat/conversations/sql/conversation-tree";
 import { resolveRootConversationId } from "@/chat/conversations/sql/participants";
 import type { JuniorDatabase } from "@/db/db";
 import {
@@ -169,12 +169,28 @@ export async function updateConversationSubscription(
       return { archivedAt: null, subscribed: false };
     }
     const archivedAt = new Date();
-    await archiveTree(db, rootConversationId, archivedAt);
+    // Archive the root and each descendant that is not archived, so an
+    // archived descendant keeps its own time. The guard runs on the latest
+    // row, so a descendant that a Turn restores while this waits is archived
+    // too. A child that a Turn adds while this runs stays unarchived, and its
+    // next Message restores the root.
+    await setArchivedAt(
+      db,
+      inConversationTree(rootConversationId),
+      archivedAt,
+      isNull(juniorConversations.archivedAt),
+    );
     // The archive waited for each Turn in a child that held its row. Such a
     // Turn can subscribe someone, so check again and undo the archive if it
     // did. A Turn that starts later sees the archive and restores it.
     if (await hasSubscriber(db, rootConversationId)) {
-      await restoreTree(db, rootConversationId, archivedAt);
+      // Restore only what this archive wrote.
+      await setArchivedAt(
+        db,
+        inConversationTree(rootConversationId),
+        null,
+        eq(juniorConversations.archivedAt, archivedAt),
+      );
       return { archivedAt: null, subscribed: false };
     }
     return { archivedAt: archivedAt.toISOString(), subscribed: false };
@@ -273,47 +289,6 @@ async function hasSubscriber(
   return Boolean(subscriber);
 }
 
-/**
- * Archive the root and each descendant that is not archived. Descendants
- * that are already archived keep their own time. The test runs on the
- * latest row, so a descendant that a Turn restores while this waits is
- * archived too. A child that a Turn adds while this runs stays unarchived,
- * and its next Message restores the root.
- */
-async function archiveTree(
-  db: JuniorDatabase,
-  rootConversationId: string,
-  archivedAt: Date,
-): Promise<void> {
-  await db
-    .update(juniorConversations)
-    .set({
-      archivedAt: sql`coalesce(${juniorConversations.archivedAt}, ${archivedAt.toISOString()}::timestamptz)`,
-      detailVersion: nextDetailVersion,
-    })
-    .where(inConversationTree(rootConversationId));
-}
-
-/** Undo `archiveTree`: restore only what it archived at `archivedAt`. */
-async function restoreTree(
-  db: JuniorDatabase,
-  rootConversationId: string,
-  archivedAt: Date,
-): Promise<void> {
-  await db
-    .update(juniorConversations)
-    .set({ archivedAt: null, detailVersion: nextDetailVersion })
-    .where(
-      and(
-        inConversationTree(rootConversationId),
-        eq(juniorConversations.archivedAt, archivedAt),
-      ),
-    );
-}
-
 function inConversationTree(rootConversationId: string) {
-  return or(
-    eq(juniorConversations.conversationId, rootConversationId),
-    eq(juniorConversations.rootConversationId, rootConversationId),
-  );
+  return sql`(${eq(juniorConversations.conversationId, rootConversationId)} or ${eq(juniorConversations.rootConversationId, rootConversationId)})`;
 }
