@@ -10,7 +10,12 @@ pnpm add @sentry/junior @sentry/junior-vimeo
 import { defineJuniorPlugins } from "@sentry/junior";
 import { vimeoPlugin } from "@sentry/junior-vimeo";
 
-export const plugins = defineJuniorPlugins([vimeoPlugin()]);
+export const plugins = defineJuniorPlugins([
+  vimeoPlugin({
+    folderUri: "/users/<owner id>/projects/<folder id>",
+    embedDomains: ["www.example.com"],
+  }),
+]);
 ```
 
 Setup and configuration: https://junior.sentry.dev/extend/vimeo-plugin/

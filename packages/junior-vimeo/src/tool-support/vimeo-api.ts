@@ -13,8 +13,6 @@ import {
 import * as z from "zod";
 
 const API = "https://api.vimeo.com";
-const FOLDER_ENV = "VIMEO_FOLDER_URI";
-const EMBED_DOMAINS_ENV = "VIMEO_EMBED_DOMAINS";
 /** Videos per page of a folder listing. */
 export const PAGE_SIZE = 100;
 /** Most embed domains one video may have. */
@@ -123,64 +121,48 @@ export const embedDomainSchema = z
 export const sandboxPathSchema = (what: string) =>
   z.string().trim().min(1).describe(`Sandbox path of the ${what}.`);
 
-function parseFolder(value: string): { owner: string; uri: string } {
+/** Owner and canonical URI of a Vimeo folder URI, or undefined. */
+export function parseFolder(
+  value: string,
+): { owner: string; uri: string } | undefined {
   const match = FOLDER_URI_RE.exec(value);
-  if (!match) {
-    throw new PluginToolInputError(
-      `${value} is not a Vimeo folder URI. Use /users/<owner id>/projects/<folder id>.`,
-    );
-  }
+  if (!match) return undefined;
   return { owner: match[1]!, uri: `/users/${match[1]}/projects/${match[2]}` };
 }
 
+/** Validated install settings that every Vimeo tool reads. */
+export interface VimeoSettings {
+  folder: { owner: string; uri: string };
+  embedDomains: string[];
+}
+
 /**
- * The one folder whose videos the tools may create or change. The Vimeo
- * account is shared by every requester, so writes stay in the folder that
- * the install names and never reach other videos that the account can edit.
+ * Fail unless the video is in the install's folder. The Vimeo account is
+ * shared by every requester, so the tools never reach other videos that the
+ * account can read or edit.
  */
-export function installFolder(): { owner: string; uri: string } {
-  const value = process.env[FOLDER_ENV]?.trim();
-  if (!value) {
-    throw new PluginToolInputError(
-      `No Vimeo folder is set (${FOLDER_ENV}). An admin must set it; no change to the call can work in this Turn.`,
-    );
-  }
-  return parseFolder(value);
-}
-
-/** Fail unless the video is in the folder that the tools may use. */
-export function assertInFolder(video: Video): void {
-  const folder = installFolder();
+export function assertInFolder(video: Video, settings: VimeoSettings): void {
+  const { uri } = settings.folder;
   const parent = video.parent_folder?.uri;
-  const inFolder = parent
-    ? FOLDER_URI_RE.test(parent) && parseFolder(parent).uri === folder.uri
-    : false;
-  if (!inFolder) {
+  if (!parent || parseFolder(parent)?.uri !== uri) {
     throw new PluginToolInputError(
-      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${folder.uri}. The Vimeo tools use only videos in that folder; use vimeo_listFolder to find them.`,
+      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${uri}. The Vimeo tools use only videos in that folder; use vimeo_listFolder to find them.`,
     );
   }
 }
 
-/** Embed domains from input, else the host default in `VIMEO_EMBED_DOMAINS`. */
-export function resolveEmbedDomains(input: string[] | undefined): string[] {
+/** Embed domains from input, else the install's default domains. */
+export function resolveEmbedDomains(
+  input: string[] | undefined,
+  settings: VimeoSettings,
+): string[] {
   if (input) return input;
-  const fallback = defaultEmbedDomains();
-  if (fallback.length === 0) {
+  if (settings.embedDomains.length === 0) {
     throw new PluginToolInputError(
-      `No default embed domains are set (${EMBED_DOMAINS_ENV}). Pass the hostnames where the video may be embedded.`,
+      "The install sets no default embed domains. Pass the hostnames where the video may be embedded.",
     );
   }
-  return fallback;
-}
-
-/** Comma-separated hostnames in `VIMEO_EMBED_DOMAINS` that are valid. */
-export function defaultEmbedDomains(): string[] {
-  return (process.env[EMBED_DOMAINS_ENV] ?? "")
-    .split(",")
-    .map((value) => embedDomainSchema.safeParse(value))
-    .flatMap((result) => (result.success ? [result.data] : []))
-    .slice(0, MAX_EMBED_DOMAINS);
+  return settings.embedDomains;
 }
 
 /** Vimeo API calls for one tool call. */

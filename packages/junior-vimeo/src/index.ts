@@ -16,6 +16,7 @@ import {
   defineJuniorPlugin,
   type PluginRegistration,
 } from "@sentry/junior-plugin-api";
+import { vimeoSettings, type VimeoPluginOptions } from "./settings.js";
 import { VIMEO_OPERATIONS } from "./tool-support/vimeo-api.js";
 import { vimeoListFolderTool } from "./tools/list-folder.js";
 import { vimeoReplaceFileTool } from "./tools/replace-file.js";
@@ -23,8 +24,11 @@ import { vimeoSetThumbnailTool } from "./tools/set-thumbnail.js";
 import { vimeoStatusTool } from "./tools/status.js";
 import { vimeoUploadTool } from "./tools/upload.js";
 
+export type { VimeoPluginOptions };
+
 /** Register the Vimeo upload, file, thumbnail, status, and folder tools. */
-export function vimeoPlugin(): PluginRegistration {
+export function vimeoPlugin(options: VimeoPluginOptions): PluginRegistration {
+  const settings = vimeoSettings(options);
   return defineJuniorPlugin({
     packageName: "@sentry/junior-vimeo",
     manifest: {
@@ -51,18 +55,16 @@ export function vimeoPlugin(): PluginRegistration {
       envVars: {
         VIMEO_CLIENT_ID: {},
         VIMEO_CLIENT_SECRET: {},
-        VIMEO_EMBED_DOMAINS: {},
-        VIMEO_FOLDER_URI: {},
       },
     },
     hooks: {
       tools() {
         return {
-          upload: vimeoUploadTool,
-          replaceFile: vimeoReplaceFileTool,
-          setThumbnail: vimeoSetThumbnailTool,
-          status: vimeoStatusTool,
-          listFolder: vimeoListFolderTool,
+          upload: vimeoUploadTool(settings),
+          replaceFile: vimeoReplaceFileTool(settings),
+          setThumbnail: vimeoSetThumbnailTool(settings),
+          status: vimeoStatusTool(settings),
+          listFolder: vimeoListFolderTool(settings),
         };
       },
     },

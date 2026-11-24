@@ -26,12 +26,18 @@ pnpm add @sentry/junior @sentry/junior-vimeo
 import { defineJuniorPlugins } from "@sentry/junior";
 import { vimeoPlugin } from "@sentry/junior-vimeo";
 
-export const plugins = defineJuniorPlugins([vimeoPlugin()]);
+export const plugins = defineJuniorPlugins([
+  vimeoPlugin({
+    folderUri: "/users/<owner id>/projects/<folder id>",
+    embedDomains: ["www.example.com"],
+  }),
+]);
 ```
 
 ## Config
 
-Set these variables in the Junior environment, then redeploy.
+Pass the folder and embed domains to `vimeoPlugin()`. Set the client ID and
+secret in the Junior environment, then redeploy.
 
 <details class="plugin-config">
 <summary><code>VIMEO_CLIENT_ID</code>, <code>VIMEO_CLIENT_SECRET</code></summary>
@@ -49,30 +55,30 @@ callback URLs.
 </details>
 
 <details class="plugin-config">
-<summary><code>VIMEO_FOLDER_URI</code></summary>
+<summary><code>folderUri</code></summary>
 
 The folder where Junior uploads, as `/users/<owner id>/projects/<folder id>`.
 Junior uploads, changes, lists, and reads only videos in this folder.
 
-- **Define:** Set `VIMEO_FOLDER_URI` in the deployment environment
-- **Required:** Yes, for every Vimeo tool
+- **Define:** Pass `folderUri` to `vimeoPlugin()`
+- **Required:** Yes. A value that is not a folder URI stops the app at start.
 
 </details>
 
 <details class="plugin-config">
-<summary><code>VIMEO_EMBED_DOMAINS</code></summary>
+<summary><code>embedDomains</code></summary>
 
-Default hostnames where uploaded videos may be embedded, separated by commas,
-such as `www.example.com,docs.example.com`. A call can name other hostnames.
+Default hostnames where uploaded videos may be embedded, such as
+`["www.example.com", "docs.example.com"]`. A call can name other hostnames.
 
-- **Define:** Set `VIMEO_EMBED_DOMAINS` in the deployment environment
+- **Define:** Pass `embedDomains` to `vimeoPlugin()`
 - **Required:** No. Without it, each upload must name its hostnames.
 
 </details>
 
 ## Connect the account
 
-1. Deploy with the variables above.
+1. Deploy with the config above.
 2. In the dashboard, open **Admin**, find **Vimeo** under **Service
    accounts**, and click **Connect**.
 3. Sign in to Vimeo as the account that Junior uses, not as yourself, and
@@ -94,7 +100,7 @@ into the team owner's account, as Vimeo requires for team members.
 ## Privacy
 
 Every requester shares one Vimeo account, so Junior uploads only into
-`VIMEO_FOLDER_URI` and lists, reads, and changes only videos in that
+`folderUri` and lists, reads, and changes only videos in that
 folder. It refuses any other folder or video that the account can reach.
 
 Vimeo applies these settings when it creates the video, before any bytes

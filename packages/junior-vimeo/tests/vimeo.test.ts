@@ -1,5 +1,5 @@
 import { bindPluginTools } from "@sentry/junior-testing/plugin-tool";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { vimeoPlugin } from "../src";
 
 const OWNER = "111";
@@ -40,7 +40,11 @@ const storedVideo = {
 
 type ApiCall = { operation: string; method: string; url: URL; body: unknown };
 
-const plugin = vimeoPlugin();
+const DEFAULT_DOMAINS = ["www.example.com", "docs.example.com"];
+const plugin = vimeoPlugin({
+  folderUri: FOLDER,
+  embedDomains: DEFAULT_DOMAINS,
+});
 const listedOperations =
   plugin.manifest?.accounts?.serviceAccount?.operations ?? [];
 
@@ -49,7 +53,7 @@ const listedOperations =
  * adding the service account's token, and tus and picture uploads through
  * global fetch.
  */
-function fakeVimeo() {
+function fakeVimeo(registration = plugin) {
   const state = {
     apiCalls: [] as ApiCall[],
     uploads: [] as Array<{ method: string; url: string; headers: Headers }>,
@@ -195,7 +199,7 @@ function fakeVimeo() {
   );
   vi.stubGlobal("fetch", uploadFetch);
 
-  const tools = bindPluginTools(plugin.hooks!.tools!(), {
+  const tools = bindPluginTools(registration.hooks!.tools!(), {
     egress: { fetch: egressFetch },
     sandbox: {
       root: "/vercel/sandbox",
@@ -213,12 +217,7 @@ function fakeVimeo() {
 }
 
 describe("Vimeo tools", () => {
-  beforeEach(() => {
-    vi.stubEnv("VIMEO_FOLDER_URI", FOLDER);
-    vi.stubEnv("VIMEO_EMBED_DOMAINS", "www.example.com, docs.example.com");
-  });
   afterEach(() => {
-    vi.unstubAllEnvs();
     vi.unstubAllGlobals();
   });
 
@@ -302,19 +301,21 @@ describe("Vimeo tools", () => {
     await expect(
       run("upload", { path: "nope.mp4", title: "t" }),
     ).rejects.toThrow(/does not exist/);
-    vi.stubEnv("VIMEO_EMBED_DOMAINS", "");
+    const noDefaults = fakeVimeo(vimeoPlugin({ folderUri: FOLDER }));
     await expect(
-      run("upload", { path: "out/clip.mp4", title: "t" }),
-    ).rejects.toThrow(/No default embed domains/);
-    vi.stubEnv("VIMEO_FOLDER_URI", "");
-    await expect(
-      run("upload", {
-        path: "out/clip.mp4",
-        title: "t",
-        embed_domains: ["www.example.com"],
-      }),
-    ).rejects.toThrow(/No Vimeo folder is set/);
+      noDefaults.run("upload", { path: "out/clip.mp4", title: "t" }),
+    ).rejects.toThrow(/no default embed domains/);
     expect(state.apiCalls).toHaveLength(0);
+    expect(noDefaults.state.apiCalls).toHaveLength(0);
+  });
+
+  it("rejects a bad folder or embed domain when the app registers the plugin", () => {
+    expect(() => vimeoPlugin({ folderUri: "/me/videos" })).toThrow(
+      /not a Vimeo folder URI/,
+    );
+    expect(() =>
+      vimeoPlugin({ folderUri: FOLDER, embedDomains: ["https://evil.com/x"] }),
+    ).toThrow(/bare hostnames/);
   });
 
   it("replaces a file with a new version and keeps the video", async () => {
