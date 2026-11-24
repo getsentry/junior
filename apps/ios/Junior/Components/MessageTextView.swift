@@ -49,6 +49,16 @@ struct MessageTextView: UIViewRepresentable {
     view.onSubmit = onSubmit
     view.tintColor = UIColor(Tokens.accent)
     view.typingAttributes = Self.attributes
+    // The text carries its own font, so `adjustsFontForContentSizeCategory`
+    // does not resize it, and `updateUIView` restyles it only when the text
+    // changes.
+    view.registerForTraitChanges([UITraitPreferredContentSizeCategory.self]) {
+      (view: ComposerTextView, _: UITraitCollection) in
+      let attributes = MessageTextView.attributes
+      // Attributes only: the text, the selection, and IME marked text stay.
+      view.textStorage.setAttributes(attributes, range: NSRange(location: 0, length: view.textStorage.length))
+      view.typingAttributes = attributes
+    }
     view.accessibilityLabel = placeholder
     view.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
     return view
