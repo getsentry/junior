@@ -33,6 +33,16 @@ it("continues a bullet list with the same bullet", () => {
   expect(listEnter("  * b")).toEqual({ kind: "continue", marker: "  * " });
 });
 
+it("continues a list in a block quote", () => {
+  expect(listEnter("> - a")).toEqual({ kind: "continue", marker: "> - " });
+  expect(listEnter("> > 1. a", 1)).toEqual({
+    kind: "continue",
+    marker: "> > 2. ",
+  });
+  expect(listEnter("> - ")).toEqual({ kind: "end" });
+  expect(listEnter("> text")).toBeUndefined();
+});
+
 it("ends a list on an item with only its marker", () => {
   expect(listEnter("2. ")).toEqual({ kind: "end" });
   expect(listEnter("- ")).toEqual({ kind: "end" });
