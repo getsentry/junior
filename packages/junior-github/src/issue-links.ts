@@ -11,6 +11,7 @@
 import type {
   ObjectAnnotation,
   ObjectLinkContext,
+  ObjectLinkPrefetchOutcome,
   PluginObjectLinkDefinition,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
@@ -26,10 +27,7 @@ import {
   type GitHubPullRequestFields,
 } from "./object-cache.js";
 import { githubObjectFacts } from "./object-facts.js";
-import {
-  outOfTimeCacheKey,
-  prefetchGitHubPullRequests,
-} from "./pull-request-prefetch.js";
+import { prefetchGitHubPullRequests } from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
@@ -147,7 +145,7 @@ async function readFields<T>(
   };
   // The page read ran out of time for this card, so it shows its stale
   // entry, or no card yet, and does not wait for one more read.
-  if (collection === "pulls" && (await ctx.cache.get(outOfTimeCacheKey(key)))) {
+  if (collection === "pulls" && ctx.prefetchOutcome === "out_of_time") {
     const stale = await ctx.cache
       .getOrLoad(key, () => Promise.reject(OUT_OF_TIME))
       .catch((error: unknown) => {
@@ -232,14 +230,21 @@ export const githubIssueLinks: PluginObjectLinkDefinition = {
 async function prefetchLinks(
   ctx: ObjectLinkContext,
   urls: URL[],
-): Promise<void> {
-  await prefetchGitHubPullRequests(
-    ctx,
-    urls.flatMap((url) => {
-      const link = parseLink(url);
-      return link?.kind === "pull_request"
-        ? [{ name: link.name, number: Number(link.number), owner: link.owner }]
-        : [];
+): Promise<Map<string, ObjectLinkPrefetchOutcome>> {
+  const hrefs = new Map<string, string>();
+  const refs = urls.flatMap((url) => {
+    const link = parseLink(url);
+    if (link?.kind !== "pull_request") return [];
+    hrefs.set(`${link.owner}/${link.name}#${link.number}`, url.href);
+    return [
+      { name: link.name, number: Number(link.number), owner: link.owner },
+    ];
+  });
+  const outOfTime = await prefetchGitHubPullRequests(ctx, refs);
+  return new Map(
+    outOfTime.flatMap((ref) => {
+      const href = hrefs.get(`${ref.owner}/${ref.name}#${ref.number}`);
+      return href ? [[href, "out_of_time" as const]] : [];
     }),
   );
 }

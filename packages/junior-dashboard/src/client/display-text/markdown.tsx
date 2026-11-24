@@ -460,7 +460,11 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const known = useKnownObject(objectUrl);
   if (objectUrl && resolvableUrl(objectUrl)) {
     return (
-      <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
+      <ResolvedParagraph
+        linkOnly={known.linkOnly}
+        objectUrl={objectUrl}
+        saved={known.card}
+      >
         {props.children}
       </ResolvedParagraph>
     );
@@ -472,14 +476,23 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
 // A saved link has no facts, so it shows only until the live card resolves.
 function ResolvedParagraph(props: {
   children: ReactNode;
+  linkOnly: boolean;
   objectUrl: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
   const resolved = useResolvedObject(props.objectUrl);
   useRequestWhenSaved(props.saved, resolved.request);
   const card = sameTypeCard(resolved.card, props.saved?.objectType);
+  // A saved object is already part of the Conversation, so its row has no
+  // Attach slot. A link that an Attach saved still says it is attached.
   if (card) {
-    return <StandaloneObject card={card} href={props.objectUrl} live />;
+    return (
+      <StandaloneObject
+        card={card}
+        href={props.objectUrl}
+        live={!props.saved || props.linkOnly}
+      />
+    );
   }
   if (props.saved) {
     return <StandaloneObject card={props.saved} href={props.objectUrl} />;

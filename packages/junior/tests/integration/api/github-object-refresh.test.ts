@@ -523,7 +523,23 @@ describe("GitHub pull request cache refresh", () => {
     expect(reads).toEqual(["pulls/34", "pulls/34"]);
   });
 
-  it("reads a pull request again soon after its patch finds no node", async () => {
+  it.each([
+    // The patch query answers with no node for #34.
+    ["finds no node", []],
+    // A push that GitHub has and no webhook brought yet.
+    [
+      "reads another head commit",
+      [
+        {
+          commits: checkRuns({ SUCCESS: 1 }),
+          headRefOid: "ccc333",
+          mergeable: "MERGEABLE",
+          number: 34,
+          updatedAt: "2026-01-02T03:00:11Z",
+        },
+      ],
+    ],
+  ])("reads a pull request again soon after its patch %s", async (_, patch) => {
     stubGitHubApp();
     const reads: string[] = [];
     mswServer.use(
@@ -537,8 +553,7 @@ describe("GitHub pull request cache refresh", () => {
         );
       }),
     );
-    // The patch query answers with no node for #34.
-    const queries = stubGraphql({ patches: [[]] });
+    const queries = stubGraphql({ patches: [patch] });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -596,16 +611,18 @@ describe("GitHub pull request cache refresh", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
-    await sendGitHubWebhook(app, "pull_request", {
-      action: "opened",
-      pull_request: pullRequest(34, {
-        body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
-        user: { login: "junior-test[bot]" },
-      }),
-    });
+    for (const number of [34, 35]) {
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "opened",
+        pull_request: pullRequest(number, {
+          body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
+          user: { login: "junior-test[bot]" },
+        }),
+      });
+    }
 
-    // A day later, the open pull request is due for its reconcile, and a
-    // finished check suite adds a patch.
+    // A day later, the open pull requests are due for their reconcile, and
+    // a finished check suite adds a patch for each.
     vi.setSystemTime(start + 24.5 * 60 * 60_000);
     await sendGitHubWebhook(app, "check_suite", {
       action: "completed",
@@ -614,12 +631,13 @@ describe("GitHub pull request cache refresh", () => {
         head_branch: "feat/object-cache",
         head_sha: "aaa111",
         id: 7002,
-        pull_requests: [{ number: 34 }],
+        pull_requests: [{ number: 34 }, { number: 35 }],
         status: "completed",
       },
     });
     vi.setSystemTime(Date.now() + 60_000);
     await runTestHeartbeat(queue, Date.now());
+    // The failed patch query does not split. Its patches wait.
     expect(operations).toEqual([
       "PullRequestHeadFacts",
       "PullRequestLifecycles",
@@ -854,6 +872,59 @@ describe("GitHub pull request cache refresh", () => {
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 0, passed: 2, pending: 0 },
       mergeable: true,
+    });
+  });
+  it("keeps known checks and patches the merge state after a base retarget", async () => {
+    stubGitHubApp();
+    const queries = stubGraphql({
+      cards: [cardNode(34)],
+      patches: [
+        [
+          {
+            commits: checkRuns({ SUCCESS: 2 }),
+            headRefOid: "ddd444",
+            mergeable: "CONFLICTING",
+            number: 34,
+            updatedAt: "2026-01-02T06:00:10Z",
+          },
+        ],
+      ],
+    });
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-02T06:00:00Z");
+    vi.setSystemTime(start);
+    await read(url);
+
+    // A new base changes the merge state of the same head, not its checks.
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "edited",
+      pull_request: pullRequest(34, {
+        base: { ref: "release" },
+        head: { ref: "feat/34", sha: "ddd444" },
+        mergeable: null,
+        updated_at: new Date(start + 10_000).toISOString(),
+      }),
+    });
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: "pending",
+    });
+    vi.setSystemTime(start + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestCards",
+      "PullRequestHeadFacts",
+    ]);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: false,
     });
   });
   it("asks GitHub again soon after the last patch attempt finds the merge state still computing", async () => {

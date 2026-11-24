@@ -373,8 +373,9 @@ function WatchPicker(props: {
         {search.changes.length > 0 ? (
           <CommandGroup heading="Pull requests">
             {search.changes.map((change) => {
+              const listed = listedOf(change.url);
               const reference: ComposerReference = {
-                draft: listedDraft(listedOf(change.url)),
+                draft: listedDraft(listed),
                 kind: "code_change",
                 number: change.number,
                 repository: change.repository,
@@ -383,6 +384,9 @@ function WatchPicker(props: {
               };
               return (
                 <CommandItem
+                  // An open change is saved with its draft state, so it
+                  // waits for its card.
+                  disabled={change.state === "open" && !listed.settled}
                   key={change.url}
                   onSelect={() =>
                     props.onPick({ kind: "page", reference, url: change.url })
