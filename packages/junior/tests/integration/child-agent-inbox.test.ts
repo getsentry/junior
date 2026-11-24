@@ -53,7 +53,10 @@ async function askInTask(
   harness: Harness,
   childId: string,
   person: User,
-  afterAsk?: (itemId: string) => Promise<void>,
+  options: {
+    afterAsk?: (itemId: string) => Promise<void>;
+    notice?: boolean;
+  } = {},
 ): Promise<string> {
   let itemId: string | undefined;
   harness.onRun(async (run: AgentRun) => {
@@ -69,28 +72,35 @@ async function askInTask(
       },
       createSlackInboxItemToolServices(() => harness.queue),
     );
+    const item = {
+      title: "Delete preview-42",
+      body: "The Task needs approval to delete preview-42.",
+      conversation_ids: [slackParentConversationId],
+    };
     const added = await add.execute!(
-      add.prepareArguments!({
-        kind: "action",
-        title: "Delete preview-42",
-        body: "The Task needs approval to delete preview-42.",
-        conversation_ids: [slackParentConversationId],
-        request: {
-          question: QUESTION,
-          fields: [
-            {
-              id: "decision",
-              kind: "choice",
-              label: "Decision",
-              options: [{ label: "Delete" }, { label: "Keep" }],
+      add.prepareArguments!(
+        options.notice
+          ? { ...item, kind: "notice" }
+          : {
+              ...item,
+              kind: "action",
+              request: {
+                question: QUESTION,
+                fields: [
+                  {
+                    id: "decision",
+                    kind: "choice",
+                    label: "Decision",
+                    options: [{ label: "Delete" }, { label: "Keep" }],
+                  },
+                ],
+              },
             },
-          ],
-        },
-      }) as never,
+      ) as never,
       { toolCallId: "ask-1" } as never,
     );
     itemId = (added as { item: { id: string } }).item.id;
-    await afterAsk?.(itemId);
+    await options.afterAsk?.(itemId);
     return await finishRun(run, { noReply: {} });
   });
   await harness.drain(childId);
@@ -279,13 +289,15 @@ describe("a child agent asks a person", () => {
       const childId = await startThread(harness, "task-dismiss-early", {
         kind: "task",
       });
-      await askInTask(harness, childId, person, async (itemId) => {
-        await actOnInboxItem({
-          action: "dismiss",
-          delivery: { queue: harness.queue, show: async () => {} },
-          id: itemId,
-          user: person,
-        });
+      await askInTask(harness, childId, person, {
+        afterAsk: async (itemId) => {
+          await actOnInboxItem({
+            action: "dismiss",
+            delivery: { queue: harness.queue, show: async () => {} },
+            id: itemId,
+            user: person,
+          });
+        },
       });
 
       const texts = (await parentMessages()).map(
@@ -294,6 +306,36 @@ describe("a child agent asks a person", () => {
       expect(
         texts.filter((text) => text.includes('status="completed"')),
       ).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("sends no second result when a person dismisses a child's notice after it reported", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-dismiss-notice", {
+        kind: "task",
+      });
+      const itemId = await askInTask(harness, childId, person, {
+        notice: true,
+      });
+      const completed = async () =>
+        (await parentMessages()).filter((message) =>
+          message.input.text.includes('status="completed"'),
+        );
+      expect(await completed()).toHaveLength(1);
+
+      await actOnInboxItem({
+        action: "dismiss",
+        delivery: { queue: harness.queue, show: async () => {} },
+        id: itemId,
+        user: person,
+      });
+
+      expect(await completed()).toHaveLength(1);
     } finally {
       await harness.close();
     }

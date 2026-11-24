@@ -33,6 +33,7 @@ import type {
   ConversationWorkerContext,
   ConversationWorkerResult,
 } from "@/chat/task-execution/worker";
+import { listTurnSummaries } from "@/chat/task-execution/checkpoint";
 import { readChildConversationSender } from "./child-input";
 import {
   resultAuthorId,
@@ -348,8 +349,7 @@ export async function enqueueChildWaitingToParent(args: {
  * Inbox item. A dismiss starts no Turn, like for a root owner, so the child's
  * quiet end that waited on the answer reports now, the way a Turn that ends
  * with `noReply` does: only when the child has no other work, as the Event
- * system Actor. The item keys it, so a repeat call is safe. A Conversation
- * with no parent sends nothing.
+ * system Actor. A Conversation with no parent sends nothing.
  */
 export async function enqueueChildDismissToParent(args: {
   conversationId: string;
@@ -366,8 +366,11 @@ export async function enqueueChildDismissToParent(args: {
   if ((work?.runningInboundMessageIds.length ?? 0) > 0 || turns.length > 0) {
     return;
   }
-  const turnId = `dismissed:${args.inboxItemId}`;
-  if (!(await childWorkEnded(args.conversationId, turnId))) return;
+  // The child's last Turn ended quietly only while it waited. A Turn that
+  // reported, such as one with a notice still open, ended the wait already.
+  // Its id also keys the result, so a repeat dismiss sends nothing new.
+  const turnId = (await listTurnSummaries(args.conversationId))[0]?.turnId;
+  if (!turnId || !(await childWorkEnded(args.conversationId, turnId))) return;
   await createDeliverToParent({ queue: args.queue })({
     actor: EVENT_SYSTEM_ACTOR,
     conversationId: args.conversationId,
