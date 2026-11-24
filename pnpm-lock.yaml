@@ -485,8 +485,8 @@ importers:
         specifier: ^3.6.0
         version: 3.6.0
       '@vercel/oidc':
-        specifier: ^3.4.1
-        version: 3.4.1
+        specifier: ^3.8.5
+        version: 3.8.5
       '@vercel/queue':
         specifier: ^0.2.0
         version: 0.2.0
@@ -16149,7 +16149,7 @@ snapshots:
 
   '@vercel/queue@0.2.0':
     dependencies:
-      '@vercel/oidc': 3.4.1
+      '@vercel/oidc': 3.8.5
       minimatch: 10.2.5
       mixpart: 0.0.6
       picocolors: 1.1.1
