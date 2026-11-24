@@ -127,7 +127,9 @@ final class NavigationUITests: XCTestCase {
     let app = launch()
     let field = openComposer(app)
     field.typeText("Check the EU region too")
-    app.buttons["composer-send"].tap()
+    // The Conversation's Send, not the home one under it.
+    let sends = app.buttons.matching(identifier: "composer-send")
+    sends.element(boundBy: sends.count - 1).tap()
     XCTAssertTrue(message(app, containing: "Check the EU region too").waitForExistence(timeout: 10))
   }
 
