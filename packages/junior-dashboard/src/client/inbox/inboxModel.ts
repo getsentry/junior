@@ -72,13 +72,14 @@ export function inboxViewPath(
 }
 
 /**
- * An ask or notice about a code change, such as a GitHub pull request. A
- * question that cites one is a decision.
+ * A plugin's own ask or notice about a code change, such as a GitHub pull
+ * request. A plugin subject kind has the plugin's name and a colon. An
+ * agent's question or notice that cites one is not one.
  */
 export function isCodeChangeItem(item: InboxItemPayload): boolean {
   return (
     item.subject?.objectType === "code_change" &&
-    !(item.subject.kind === "question" && item.kind === "action")
+    item.subject.kind.includes(":")
   );
 }
 

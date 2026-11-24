@@ -5,6 +5,7 @@ import {
   migration,
   mockInboxItems,
   prMerge,
+  prReady,
   prReview,
   pullRequestSubject,
   rollout,
@@ -163,6 +164,28 @@ test.describe("new UI", { tag: "@new" }, () => {
       /^Pinned$/,
       /^All\s*2$/,
     ]);
+  });
+
+  test("an agent notice that cites a pull request is not under PRs", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [prReview, prReady],
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    await expect(page.getByText(prReady.title)).toBeVisible();
+
+    await typeFilter(page, "PRs").click();
+    await expect(page).toHaveURL(/[?&]type=prs/);
+    await expect(
+      page
+        .getByRole("region", { name: "To do" })
+        .getByRole("listitem")
+        .filter({ hasText: prReview.subject.object.title }),
+    ).not.toHaveCount(0);
+    await expect(page.getByText(prReady.title)).toHaveCount(0);
   });
 
   test("on a phone every tab fits one row of the header, also with a two-digit count on each type", async ({

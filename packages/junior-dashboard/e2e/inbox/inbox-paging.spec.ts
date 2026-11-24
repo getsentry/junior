@@ -9,9 +9,22 @@ import {
   prMerge,
   prReady,
   prReview,
+  pullRequestSubject,
   rowHead,
 } from "./inbox-fixture";
 import { expect, test } from "../test";
+
+// A GitHub notice about a pull request that waits on no one, so Code has a
+// Waiting on others pile. An agent's notice that cites one is not on Code.
+const prNotice = {
+  ...prReady,
+  subject: pullRequestSubject({
+    id: "acme/payments#42",
+    kind: "github:pull_request",
+    title: "fix(payments): Retry declined webhooks",
+    url: "https://github.com/acme/payments/pull/42",
+  }),
+};
 
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
@@ -20,7 +33,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, {
-      open: [prReview, prMerge, prReady],
+      open: [prReview, prMerge, prNotice],
       pageSize: 1,
     });
     // No code changes, so the asks are the whole list and its end shows.
@@ -133,7 +146,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     page,
   }) => {
     await mockInboxItems(page, {
-      open: [prReview, prMerge, prReady],
+      open: [prReview, prMerge, prNotice],
       pageSize: 1,
     });
     // No code changes, so the asks are the whole list and its end shows.
