@@ -18,6 +18,7 @@ import type {
 import * as z from "zod";
 import {
   GITHUB_PULL_REQUEST_CACHE,
+  GITHUB_PULL_REQUEST_PENDING_CACHE,
   type GitHubPullRequestFields,
   isOlderGitHubObject,
 } from "./object-cache.js";
@@ -135,12 +136,23 @@ async function writeHeadFacts(
   return readAgain;
 }
 
+// A dropped patch leaves its pending fields fresh only briefly, so the
+// next read loads the entry from GitHub. The stale copy stays for errors.
+async function expirePending(cache: PluginCache, key: string): Promise<void> {
+  await cache.update<GitHubPullRequestFields | null>(key, (current) =>
+    current?.checks === "pending" || current?.mergeable === "pending"
+      ? { ...GITHUB_PULL_REQUEST_PENDING_CACHE, value: current }
+      : undefined,
+  );
+}
+
 /**
  * Run the due patches: one query reads the merge state and checks of up
  * to 100 pull requests. A patch whose merge state GitHub still computes,
  * whose read is older than its entry, or whose query fails, waits for the
- * next heartbeat. A failed query is logged, not thrown, so the rest of the
- * heartbeat still runs.
+ * next heartbeat. A patch with no node in the answer, or out of attempts,
+ * is dropped, and its entry is read again soon. A failed query is logged,
+ * not thrown, so the rest of the heartbeat still runs.
  */
 export async function runGitHubPullRequestPatches(args: {
   cache: PluginCache;
@@ -158,6 +170,7 @@ export async function runGitHubPullRequestPatches(args: {
   });
   if (due.length === 0) return;
   const again: typeof due = [];
+  const dropped: string[] = [];
   try {
     const nodes = new Map(
       githubPullRequestNodes(
@@ -167,9 +180,13 @@ export async function runGitHubPullRequestPatches(args: {
     );
     for (const [key, patch] of due) {
       const node = nodes.get(patch.nodeId);
+      if (!node) {
+        dropped.push(key);
+        continue;
+      }
       const last = patch.attempts + 1 >= PATCH_MAX_ATTEMPTS;
       // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
-      if (node && (await writeHeadFacts(args.cache, key, node, last))) {
+      if (await writeHeadFacts(args.cache, key, node, last)) {
         again.push([key, patch]);
       }
     }
@@ -184,6 +201,14 @@ export async function runGitHubPullRequestPatches(args: {
     const retries = again.filter(
       ([, patch]) => patch.attempts + 1 < PATCH_MAX_ATTEMPTS,
     );
+    const retried = new Set(retries.map(([key]) => key));
+    const expired = [...dropped, ...again.map(([key]) => key)].filter(
+      (key) => !retried.has(key),
+    );
+    for (const key of new Set(expired)) {
+      // oxlint-disable-next-line no-await-in-loop -- Each write takes its own entry lock; patches are few.
+      await expirePending(args.cache, key);
+    }
     if (retries.length > 0) {
       await changePatches(args.state, (patches) => {
         for (const [key, patch] of retries) {

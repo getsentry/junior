@@ -471,6 +471,57 @@ describe("GitHub pull request cache refresh", () => {
     expect(reads).toEqual(["pulls/34", "pulls/34"]);
   });
 
+  it("reads a pull request again soon after its patch finds no node", async () => {
+    stubGitHubApp();
+    const reads: string[] = [];
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/34`, () => {
+        reads.push("pulls/34");
+        return HttpResponse.json(
+          pullRequest(34, {
+            head: { ref: "feat/object-cache", sha: "bbb222" },
+            updated_at: "2026-01-02T03:00:10Z",
+          }),
+        );
+      }),
+    );
+    // The patch query answers with no node for #34.
+    const queries = stubGraphql({ patches: [[]] });
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "synchronize",
+      pull_request: pullRequest(34, {
+        head: { ref: "feat/object-cache", sha: "bbb222" },
+        mergeable: null,
+        updated_at: "2026-01-02T03:00:10Z",
+      }),
+    });
+    vi.setSystemTime(start + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestHeadFacts",
+    ]);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: "pending",
+      mergeable: "pending",
+    });
+    expect(reads).toEqual([]);
+
+    vi.setSystemTime(start + 76_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: true,
+    });
+    expect(reads).toEqual(["pulls/34"]);
+  });
+
   it("reconciles pull requests in a heartbeat whose patch query fails", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
