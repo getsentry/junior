@@ -434,8 +434,7 @@ describe("GitHub pull request cache refresh", () => {
   it("reconciles pull requests in a heartbeat whose patch query fails", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
-    // A page read finds that GitHub still computes the merge state. Every
-    // other query fails.
+    // Every query fails.
     const operations: string[] = [];
     mswServer.use(
       http.get("https://api.github.com/repositories/2001", () =>
@@ -446,19 +445,10 @@ describe("GitHub pull request cache refresh", () => {
           operationName: string;
         };
         operations.push(operationName);
-        return operationName === "PullRequestCards"
-          ? HttpResponse.json({
-              data: {
-                p0: { pullRequest: { ...cardNode(34), mergeable: "UNKNOWN" } },
-              },
-            })
-          : HttpResponse.json({ message: "Server Error" }, { status: 502 });
+        return HttpResponse.json({ message: "Server Error" }, { status: 502 });
       }),
     );
     const app = await createGitHubApp();
-    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
-    await linkGitHubMember();
-    const read = await viewerApi("alice@example.com");
     const queue = createConversationWorkQueueTestAdapter();
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
@@ -472,58 +462,54 @@ describe("GitHub pull request cache refresh", () => {
     });
 
     // A day later, the open pull request is due for its reconcile, and a
-    // page read adds a patch.
-    vi.setSystemTime(start + 25 * 60 * 60_000);
-    await read(`${GITHUB_REPO}/pull/34`);
+    // finished check suite adds a patch.
+    vi.setSystemTime(start + 24.5 * 60 * 60_000);
+    await sendGitHubWebhook(app, "check_suite", {
+      action: "completed",
+      check_suite: {
+        conclusion: "success",
+        head_branch: "feat/object-cache",
+        head_sha: "aaa111",
+        id: 7002,
+        pull_requests: [{ number: 34 }],
+        status: "completed",
+      },
+    });
     vi.setSystemTime(Date.now() + 60_000);
     await runTestHeartbeat(queue, Date.now());
     expect(operations).toEqual([
-      "PullRequestCards",
       "PullRequestHeadFacts",
       "PullRequestLifecycles",
     ]);
   });
 
-  it("shows an unknown merge state from a page read as pending, then a patch reads it", async () => {
+  it("shows an unknown merge state from a page read as pending, then reads it again after 15 s", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
-    const queries = stubGraphql({
-      cards: [
-        {
-          additions: 34,
-          author: { login: "junior-test[bot]" },
-          baseRefName: "main",
-          body: "Cache GitHub objects.",
-          changedFiles: 2,
-          commits: checkRuns({ SUCCESS: 2 }),
-          deletions: 1,
-          headRefName: "feat/object-cache",
-          headRefOid: "ddd444",
-          id: "PR_34",
-          isDraft: false,
-          // GitHub still computes it.
-          mergeable: "UNKNOWN",
-          merged: false,
-          number: 34,
-          reviewRequests: { nodes: [] },
-          state: "OPEN",
-          title: "Cache GitHub objects",
-          updatedAt: "2026-01-02T03:30:00Z",
-          url: `${GITHUB_REPO}/pull/34`,
-        },
-      ],
-      patches: [
-        [
-          {
-            commits: checkRuns({ SUCCESS: 2 }),
-            headRefOid: "ddd444",
-            id: "PR_34",
-            mergeable: "MERGEABLE",
-            updatedAt: "2026-01-02T03:30:00Z",
-          },
-        ],
-      ],
+    const card = (mergeable: string) => ({
+      additions: 34,
+      author: { login: "junior-test[bot]" },
+      baseRefName: "main",
+      body: "Cache GitHub objects.",
+      changedFiles: 2,
+      commits: checkRuns({ SUCCESS: 2 }),
+      deletions: 1,
+      headRefName: "feat/object-cache",
+      headRefOid: "ddd444",
+      id: "PR_34",
+      isDraft: false,
+      mergeable,
+      merged: false,
+      number: 34,
+      reviewRequests: { nodes: [] },
+      state: "OPEN",
+      title: "Cache GitHub objects",
+      updatedAt: "2026-01-02T03:30:00Z",
+      url: `${GITHUB_REPO}/pull/34`,
     });
+    // GitHub still computes the merge state on the first read.
+    const answers = [card("UNKNOWN"), card("MERGEABLE")];
+    const queries = stubGraphql({ cards: () => [answers.shift()!] });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -541,19 +527,29 @@ describe("GitHub pull request cache refresh", () => {
       }),
     });
 
-    vi.setSystemTime(start + 61 * 60_000);
+    const readAt = start + 61 * 60_000;
+    vi.setSystemTime(readAt);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: "pending",
     });
-    vi.setSystemTime(start + 62 * 60_000);
+    // The card read adds no patch, and the pending state holds for 15 s.
+    vi.setSystemTime(readAt + 10_000);
     await runTestHeartbeat(queue, Date.now());
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+    });
     expect(queries.map((query) => query.operationName)).toEqual([
       "PullRequestCards",
-      "PullRequestHeadFacts",
     ]);
+
+    vi.setSystemTime(readAt + 16_000);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: true,
     });
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestCards",
+      "PullRequestCards",
+    ]);
   });
 
   it("gives a push during merge state retries a full set of attempts", async () => {

@@ -9,7 +9,6 @@ import * as z from "zod";
 import type { PluginContext, User } from "./context";
 import type { ObjectAnnotation } from "./object-annotations";
 import type { ObjectType } from "./object-presentation";
-import type { PluginState } from "./state";
 import type { PluginEgress, PluginViewerMcp } from "./tools";
 
 const hostSchema = z
@@ -127,8 +126,6 @@ export function objectLinkFilterSpecificity(
 
 /** Trusted host context for one link resolution. */
 export interface ObjectLinkContext extends PluginContext {
-  /** Plugin state, such as work that a card read queues for later. */
-  state: PluginState;
   /**
    * Provider egress as a system Actor. It gets only credentials that the
    * plugin owns, such as an app or Junior's own account, and never the

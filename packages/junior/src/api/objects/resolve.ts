@@ -20,7 +20,6 @@ import { createViewerMcp } from "@/chat/mcp/viewer";
 import { getPlugins } from "@/chat/plugins/agent-hooks";
 import { createPluginCache } from "@/chat/plugins/cache";
 import { createPluginLogger } from "@/chat/plugins/logging";
-import { createPluginState } from "@/chat/plugins/state";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { createCache } from "@/chat/state/cache";
 import {
@@ -105,7 +104,6 @@ function objectLinkContext(name: string, viewer: User): ObjectLinkContext {
     findPerson: resolvePersonByAccount,
     log: createPluginLogger(name),
     plugin: { name },
-    state: createPluginState(name),
     viewer,
     // The viewer's User id is the subject of their dashboard connections.
     // Only that subject's own OAuth token is used.
