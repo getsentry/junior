@@ -3,13 +3,65 @@ import { and, arrayOverlaps, eq, inArray, lt, lte, sql } from "drizzle-orm";
 import {
   codeChangeFilterSchema,
   codeChangeInputSchema,
+  codeRepositoryInputSchema,
   type CodeChange,
   type CodeChangeFilter,
   type CodeChangeInput,
+  type CodeRepositoryInput,
 } from "@sentry/junior-plugin-api";
 import { setSpanAttributes } from "@/chat/logging";
 import type { JuniorDatabase } from "@/db/db";
 import { juniorCodeChanges, juniorCodeRepositories } from "@/db/schema";
+
+/**
+ * Record the name of one code repository as the provider has it at
+ * `updatedAt`, and return its id. An older update keeps the stored name.
+ */
+export async function recordCodeRepository(
+  db: JuniorDatabase,
+  provider: string,
+  input: CodeRepositoryInput,
+): Promise<string> {
+  const repository = codeRepositoryInputSchema.parse(input);
+  const repositories = await db
+    .insert(juniorCodeRepositories)
+    .values({
+      id: randomUUID(),
+      name: repository.name,
+      provider,
+      providerId: repository.providerId,
+      updatedAt: repository.updatedAt,
+    })
+    .onConflictDoUpdate({
+      target: [
+        juniorCodeRepositories.provider,
+        juniorCodeRepositories.providerId,
+      ],
+      set: {
+        name: repository.name,
+        updatedAt: repository.updatedAt,
+      },
+      where: lte(juniorCodeRepositories.updatedAt, repository.updatedAt),
+    })
+    .returning({ id: juniorCodeRepositories.id });
+  const existingRepositories = repositories[0]
+    ? []
+    : await db
+        .select({ id: juniorCodeRepositories.id })
+        .from(juniorCodeRepositories)
+        .where(
+          and(
+            eq(juniorCodeRepositories.provider, provider),
+            eq(juniorCodeRepositories.providerId, repository.providerId),
+          ),
+        )
+        .limit(1);
+  const repositoryId = repositories[0]?.id ?? existingRepositories[0]?.id;
+  if (!repositoryId) {
+    throw new Error("Code repository upsert returned no row");
+  }
+  return repositoryId;
+}
 
 /** Record the latest details for one code change created by Junior. */
 export async function recordCodeChange(
@@ -26,43 +78,10 @@ export async function recordCodeChange(
     "vcs.provider.name": provider,
     "vcs.repository.name": change.repository.name,
   });
-  const repositories = await db
-    .insert(juniorCodeRepositories)
-    .values({
-      id: randomUUID(),
-      name: change.repository.name,
-      provider,
-      providerId: change.repository.providerId,
-      updatedAt: change.updatedAt,
-    })
-    .onConflictDoUpdate({
-      target: [
-        juniorCodeRepositories.provider,
-        juniorCodeRepositories.providerId,
-      ],
-      set: {
-        name: change.repository.name,
-        updatedAt: change.updatedAt,
-      },
-      where: lte(juniorCodeRepositories.updatedAt, change.updatedAt),
-    })
-    .returning({ id: juniorCodeRepositories.id });
-  const existingRepositories = repositories[0]
-    ? []
-    : await db
-        .select({ id: juniorCodeRepositories.id })
-        .from(juniorCodeRepositories)
-        .where(
-          and(
-            eq(juniorCodeRepositories.provider, provider),
-            eq(juniorCodeRepositories.providerId, change.repository.providerId),
-          ),
-        )
-        .limit(1);
-  const repositoryId = repositories[0]?.id ?? existingRepositories[0]?.id;
-  if (!repositoryId) {
-    throw new Error("Code repository upsert returned no row");
-  }
+  const repositoryId = await recordCodeRepository(db, provider, {
+    ...change.repository,
+    updatedAt: change.updatedAt,
+  });
 
   const conversationIds = sql.join(
     change.conversationIds.map((conversationId) => sql`${conversationId}`),

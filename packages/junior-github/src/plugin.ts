@@ -35,6 +35,7 @@ import {
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
+  loadRepositoryFullNames,
   loadPullRequestCommitPages,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
@@ -78,6 +79,11 @@ import {
   GITHUB_PULL_REQUEST_OUTCOME_TASK,
   githubPullRequestOutcomeTask,
 } from "./pull-request-outcomes/apply-task.js";
+import {
+  GITHUB_REPOSITORY_NAME_REPAIR_TASK,
+  githubRepositoryNameRepairTask,
+  startGitHubRepositoryNameRepair,
+} from "./repository-name-repair.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
@@ -199,7 +205,17 @@ export function githubPlugin(
     },
     images: githubImageSource,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
-    tasks: { [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask },
+    tasks: {
+      [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
+      [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(
+        async () =>
+          await loadRepositoryFullNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
+    },
     events: {
       resourceTypes: [
         {
@@ -430,6 +446,10 @@ export function githubPlugin(
           nowMs: ctx.nowMs,
           inboxItems: ctx.inboxItems,
           state: ctx.state,
+        });
+        await startGitHubRepositoryNameRepair({
+          state: ctx.state,
+          tasks: ctx.tasks,
         });
       },
       async unfinishedWork(ctx) {

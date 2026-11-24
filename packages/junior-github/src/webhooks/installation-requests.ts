@@ -92,6 +92,38 @@ export async function loadPullRequest(
   );
 }
 
+/**
+ * Return a reader of repository full names by repository id, with one
+ * metadata-only token for every repository of the installation. The reader
+ * returns undefined when GitHub does not find the repository.
+ */
+export async function loadRepositoryFullNames(
+  env: GitHubInstallationEnv,
+): Promise<(repositoryId: string) => Promise<string | undefined>> {
+  const token = await issueInstallationToken({
+    ...env,
+    permissions: { metadata: "read" },
+  });
+  return async (repositoryId) => {
+    try {
+      return z
+        .object({ full_name: z.string().min(1) })
+        .parse(
+          await githubRequest(
+            "https://api.github.com",
+            `/repositories/${encodeURIComponent(repositoryId)}`,
+            { token: token.token },
+          ),
+        ).full_name;
+    } catch (error) {
+      if (error instanceof GitHubRequestError && error.status === 404) {
+        return undefined;
+      }
+      throw error;
+    }
+  };
+}
+
 /** GitHub cannot reach a repository: it is gone, or the installation lost it. */
 export class GitHubRepositoryUnreachableError extends Error {
   constructor(repositoryId: number) {

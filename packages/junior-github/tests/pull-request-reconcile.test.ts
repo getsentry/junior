@@ -380,6 +380,50 @@ describe("daily reconcile of open pull requests", () => {
     ]);
   });
 
+  it("repairs stored repository names from GitHub once", async () => {
+    // A backfill kept the name from before the rename. GitHub no longer
+    // finds repository 3.
+    moveRepository({ name: "getsentry/junior-old", providerId: "1" });
+    fixture.codeIndex.seed({
+      conversationIds: [],
+      number: 12,
+      openedAt: new Date(now - 60_000),
+      providerId: "120",
+      repository: { name: "getsentry/gone", providerId: "3" },
+      state: "open",
+      updatedAt: new Date(now - 60_000),
+    });
+    mswServer.use(
+      http.get("https://api.github.com/repositories/3", () =>
+        HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+      ),
+    );
+    const names = async () =>
+      Object.fromEntries(
+        (await fixture.codeIndex.changes()).map((change) => [
+          change.number,
+          change.repository.name,
+        ]),
+      );
+
+    await h.heartbeat(now);
+    // The reconcile leaves pull request 950, whose webhook can still arrive.
+    expect((await names())[950]).toBe("getsentry/junior-old");
+    await h.runStartedTasks();
+
+    expect(h.heartbeatLogs).toEqual([]);
+    expect(await names()).toEqual({
+      12: "getsentry/gone",
+      946: "getsentry/junior",
+      947: "getsentry/junior",
+      949: "getsentry/junior",
+      950: "getsentry/junior",
+      951: "getsentry/junior",
+    });
+    await h.heartbeat(now + day);
+    expect(h.startedTasks).toEqual([]);
+  });
+
   it("warns and keeps the code changes open when GitHub cannot reach the repository", async () => {
     moveRepository({ name: "getsentry/junior", providerId: "2" });
     await h.heartbeat(now);
