@@ -40,6 +40,17 @@ const checkRunEventSchema = z.object({
   repository: repositorySchema,
 });
 
+// GitHub can redeliver a webhook for 3 days, so a deleted issue stays gone
+// that long.
+const GONE_TTL_MS = 3 * 24 * 60 * 60_000;
+
+// Marks a deleted issue in plugin state. Its write takes no lock, so it
+// stays when the entry write cannot wait for a card read and drops the
+// entry instead.
+function goneKey(key: string): string {
+  return `gone:${key}`;
+}
+
 interface RefreshArgs {
   body: unknown;
   cache: PluginCache;
@@ -154,9 +165,15 @@ export async function refreshGitHubObjectCache(
       await args.cache.delete(key);
       return;
     }
+    // A deleted issue is gone, as a read would find. A late delivery from
+    // before the delete must not bring it back.
+    if (action === "deleted") {
+      await args.state.set(goneKey(key), true, GONE_TTL_MS);
+      await args.cache.update(key, () => ({ ttlMs: GONE_TTL_MS, value: null }));
+      return;
+    }
+    if (await args.state.get(goneKey(key))) return;
     await args.cache.update<typeof issue | null>(key, (current) => {
-      // A deleted issue is gone, as a read would find.
-      if (action === "deleted") return { ...GITHUB_ISSUE_CACHE, value: null };
       const value = mergeGitHubObject(current, issue);
       return value && { ...GITHUB_ISSUE_CACHE, value };
     });
