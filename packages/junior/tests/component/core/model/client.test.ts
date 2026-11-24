@@ -4,7 +4,7 @@ import { resolveGatewayModel } from "@/chat/pi/client";
 import { modelClient } from "@/core/model/client";
 
 describe("model client", () => {
-  it("returns an aborted reply instead of throwing when its signal aborts", async () => {
+  it("returns an aborted reply with no failure instead of throwing when its signal aborts", async () => {
     const client = modelClient({
       apiKey: async () => "test-key",
       resolveModel: resolveGatewayModel,
@@ -13,7 +13,7 @@ describe("model client", () => {
     const controller = new AbortController();
     controller.abort();
 
-    const { message } = await client.complete(
+    const { message, failure } = await client.complete(
       {
         model: {
           id: "anthropic/claude-opus-5.5",
@@ -27,5 +27,6 @@ describe("model client", () => {
     );
 
     expect(message.stopReason).toBe("aborted");
+    expect(failure).toBeUndefined();
   });
 });
