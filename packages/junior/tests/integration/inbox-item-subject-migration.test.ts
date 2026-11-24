@@ -78,6 +78,10 @@ describe("inbox item subject migration", () => {
       // Two questions about one release had their own keys.
       await fixture.sql.execute(legacyQuestion("rollout", "rollout:v42"));
       await fixture.sql.execute(legacyQuestion("hold", "hold:v42"));
+      // A question about a pull request had that link as its subject.
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_url, subject_title, owner_id, created_at, updated_at, request) VALUES ('ship', 'action', 'open', 'public', 'Ship it?', 'Checks are green.', 'ship:946', 'https://github.com/${PULL_REQUEST.replace("#", "/pull/")}', 'PR #946', 'slack:C123:1.000003', now(), now(), '{"question":"Ship it?","fields":[],"evidence":[{"label":"CI run","url":"https://ci.example.com/1"}]}')`,
+      );
 
       for (const statement of migration.sql.slice(start, end + 1)) {
         await fixture.sql.execute(statement);
@@ -92,6 +96,7 @@ describe("inbox item subject migration", () => {
         { id: "merge", status: "open" },
         { id: "review", status: "dismissed" },
         { id: "rollout", status: "open" },
+        { id: "ship", status: "open" },
       ]);
       // A question's key names it, so both questions stay open.
       expect(
@@ -101,6 +106,24 @@ describe("inbox item subject migration", () => {
       ).toEqual([
         { id: "hold", subject_id: "hold:v42", subject_kind: "question" },
         { id: "rollout", subject_id: "rollout:v42", subject_kind: "question" },
+        { id: "ship", subject_id: "ship:946", subject_kind: "question" },
+      ]);
+      // Its old subject link is now its first evidence link, so its card and
+      // related work still read the pull request.
+      expect(
+        await fixture.sql.query(
+          `SELECT request->'evidence' AS evidence FROM junior_inbox_items WHERE id = 'ship'`,
+        ),
+      ).toEqual([
+        {
+          evidence: [
+            {
+              label: "PR #946",
+              url: "https://github.com/getsentry/junior/pull/946",
+            },
+            { label: "CI run", url: "https://ci.example.com/1" },
+          ],
+        },
       ]);
       // Ana joins the item that stays open, so she keeps her ask.
       expect(

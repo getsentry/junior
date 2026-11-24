@@ -9,7 +9,8 @@ ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> sta
 -- GitHub's id of the pull request, read from the code change records by the
 -- repository and number in the old key. A plugin item uses its subject
 -- link as the id when it had one. An agent's item is a question, and its
--- old key is its id, so two questions about one object stay two items.
+-- old key is its id, so two questions about one object stay two items. Its
+-- old subject link becomes its first evidence link.
 -- `automation_id` needs no copy:
 -- the run of the owner Conversation names the same Automation.
 --
@@ -53,6 +54,14 @@ BEGIN
       WHEN NEW."dedupe_key" LIKE 'plugin:%' THEN coalesce(NEW."subject_url", NEW."subject_id", substr(NEW."dedupe_key", length('plugin:' || split_part(NEW."dedupe_key", ':', 2) || ':') + 1))
       ELSE coalesce(NEW."dedupe_key", 'ask:' || NEW."id"::text)
     END;
+  -- A question reads what it is about from its evidence links, so its old
+  -- subject link becomes its first evidence link. A notice has no request.
+  IF NEW."subject_kind" = 'question' AND NEW."request" IS NOT NULL
+    AND NEW."subject_url" ~ '^https?://'
+    AND NOT coalesce(NEW."request"->'evidence', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('url', NEW."subject_url"))
+  THEN
+    NEW."request" := jsonb_set(NEW."request", '{evidence}', jsonb_build_array(jsonb_build_object('label', left(coalesce(nullif(NEW."subject_title", ''), NEW."subject_url"), 120), 'url', NEW."subject_url")) || coalesce(NEW."request"->'evidence', '[]'::jsonb));
+  END IF;
   RETURN NEW;
 END;
 $function$;--> statement-breakpoint
