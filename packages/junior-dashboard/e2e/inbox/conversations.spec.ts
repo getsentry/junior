@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { readClipboard } from "../clipboard";
 import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
@@ -684,11 +685,11 @@ test.describe("new UI", { tag: "@new" }, () => {
       0,
     );
     await input.getByRole("button", { name: "Copy message" }).click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    expect(await readClipboard(page)).toBe(
       "Review the dashboard plan before editing.",
     );
     await input.getByRole("button", { name: "Copy link to message" }).click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+    expect(await readClipboard(page)).toBe(
       `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
     );
 

@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { readClipboard } from "./clipboard";
 import { withRequestedMailbox } from "./harness";
 import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
@@ -743,11 +744,11 @@ test("inspects and copies a child agent transcript", async ({
     0,
   );
   await input.getByRole("button", { name: "Copy message" }).click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+  expect(await readClipboard(page)).toBe(
     "Review the dashboard plan before editing.",
   );
   await input.getByRole("button", { name: "Copy link to message" }).click();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+  expect(await readClipboard(page)).toBe(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
   );
 
