@@ -564,7 +564,8 @@ describe("Slack webhook: Inbox item cards", () => {
     await addItem(ana, {
       kind: "action",
       title: "Choose the release checks".padEnd(200, "."),
-      body: "The release has many checks. ".repeat(130).trim(),
+      // Under the body cap, so only the markdown limit shortens it.
+      body: "The release has many checks. ".repeat(100).trim(),
       assignees: ["everyone"],
       subject: {
         id: "release:1.2.3",

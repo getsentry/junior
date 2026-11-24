@@ -88,9 +88,10 @@ function itemText(item: InboxItem): string {
         ...(item.request ? [slackUserInputText(item.request)] : []),
       ].join("\n\n"),
     );
-  const text = render(MAX_BODY_CHARS);
+  const bodyChars = Math.min(item.body.length, MAX_BODY_CHARS);
+  const text = render(bodyChars);
   const overflow = text.length - SLACK_MAX_MARKDOWN_CHARS;
-  return overflow > 0 ? render(MAX_BODY_CHARS - overflow) : text;
+  return overflow > 0 ? render(bodyChars - overflow) : text;
 }
 
 /**
