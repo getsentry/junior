@@ -68,9 +68,9 @@ function versionKey(userId: string): string {
   return `${cacheKeyPrefix(USER_CACHE_NAMESPACE)}version:${userId}`;
 }
 
-function linkedHandleVersionKey(provider: string): string {
-  return `${cacheKeyPrefix(USER_CACHE_NAMESPACE)}linked-handle-version:${provider}`;
-}
+// A lookup for one provider matches the Identities of every provider, so
+// one version covers every linked handle.
+const LINKED_HANDLE_VERSION_KEY = `${cacheKeyPrefix(USER_CACHE_NAMESPACE)}linked-handle-version`;
 
 function cache() {
   return createCache(getStateAdapter(), USER_CACHE_NAMESPACE);
@@ -263,7 +263,7 @@ export async function readCachedLinkedHandle(
   },
   load: () => Promise<PluginLinkedHandleLookup>,
 ): Promise<PluginLinkedHandleLookup> {
-  const version = await readVersion(linkedHandleVersionKey(lookup.provider));
+  const version = await readVersion(LINKED_HANDLE_VERSION_KEY);
   const settled = isSettled(version);
   // The query can be long, so the key holds its hash.
   const lookupHash = createHash("sha256")
@@ -292,11 +292,9 @@ export async function clearCachedUser(userId: string): Promise<void> {
 }
 
 /**
- * Clear every cached linked handle of one provider after a write that
- * links, changes, or unlinks one of its Identities.
+ * Clear every cached linked handle after a write that links, changes, or
+ * unlinks an Identity of any provider.
  */
-export async function clearCachedLinkedHandles(
-  provider: string,
-): Promise<void> {
-  await writeVersion(linkedHandleVersionKey(provider));
+export async function clearCachedLinkedHandles(): Promise<void> {
+  await writeVersion(LINKED_HANDLE_VERSION_KEY);
 }

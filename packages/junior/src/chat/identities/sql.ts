@@ -206,7 +206,7 @@ async function upsertIdentityRecord(
     previousUserId && previousUserId !== row.userId
       ? clearCachedUser(previousUserId)
       : undefined,
-    lookupChanged ? clearCachedLinkedHandles(identity.provider) : undefined,
+    lookupChanged ? clearCachedLinkedHandles() : undefined,
   ]);
   // Check every write that may have set the User, not only a known existing
   // row: a concurrent first write can create the Identity and its roots
@@ -484,10 +484,7 @@ export async function deleteProviderIdentityForUser(
         eq(juniorIdentities.providerSubjectId, providerSubjectId),
       ),
     );
-  await Promise.all([
-    clearCachedUser(userId),
-    clearCachedLinkedHandles(provider),
-  ]);
+  await Promise.all([clearCachedUser(userId), clearCachedLinkedHandles()]);
 }
 
 /**
