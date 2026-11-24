@@ -46,8 +46,10 @@ export const UNREAD_MARKER_KEY = "unread-marker";
  * do not match, and the "New" marker becomes its own row before the first
  * unread row. The Tasks of a Turn move to its end, so they do not split its
  * activity: under its reply, or in a Tasks row when it has no reply yet. A
- * question that Junior asked moves after them. Memory capture events do not
- * show: the turn context and the details panel hold a Turn's memories.
+ * question that Junior asked moves after them, and shows once: at its last
+ * ask, since a later ask with the same dedupe key updates the same item.
+ * Memory capture events do not show: the turn context and the details panel
+ * hold a Turn's memories.
  *
  * `knownActivityKeys` maps entry keys to group keys across calls, so a
  * group keeps its key while events extend either edge.
@@ -133,11 +135,15 @@ export function transcriptListRows(input: {
     tasks = [];
     pushAsks();
   };
+  const lastAskKeys = lastAskEntryKeys(entries);
   // Asks and Tasks move out of their place in the Turn. Memory captures
-  // drop out.
+  // and earlier asks of the same item drop out.
   const moveOut = (entry: RenderedTranscriptEntry): boolean => {
-    if (isAskEntry(entry)) asks.push(entry);
-    else if (isTaskEntry(entry)) tasks.push(entry);
+    if (isAskEntry(entry)) {
+      if (lastAskKeys.has(entry.key)) asks.push(entry);
+      return true;
+    }
+    if (isTaskEntry(entry)) tasks.push(entry);
     else if (!isCaptureEntry(entry)) return false;
     return true;
   };
@@ -222,6 +228,18 @@ function askedItemId(entry: RenderedTranscriptEntry): string | undefined {
 
 function isAskEntry(entry: RenderedTranscriptEntry): boolean {
   return askedItemId(entry) !== undefined;
+}
+
+/** Return the key of the last ask entry of each Inbox item. */
+function lastAskEntryKeys(
+  entries: readonly RenderedTranscriptEntry[],
+): Set<string> {
+  const keys = new Map<string, string>();
+  for (const entry of entries) {
+    const itemId = askedItemId(entry);
+    if (itemId !== undefined) keys.set(itemId, entry.key);
+  }
+  return new Set(keys.values());
 }
 
 /** Find the row that records the question Junior asked with an Inbox item. */

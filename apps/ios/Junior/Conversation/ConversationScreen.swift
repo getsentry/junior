@@ -5,6 +5,7 @@ import SwiftUI
 /// transcript pinned to the latest message, queued messages, and the composer.
 struct ConversationScreen: View {
   @Environment(AppModel.self) private var app
+  @Environment(WindowModel.self) private var window
   @State private var model: ConversationModel
   @State private var showDetails = false
   @State private var shareURL: URL?
@@ -42,12 +43,12 @@ struct ConversationScreen: View {
       }
     }
     .onChange(of: model.state != nil) { _, loaded in
-      if loaded, app.openDetails {
-        app.openDetails = false
+      if loaded, window.openDetails {
+        window.openDetails = false
         showDetails = true
       }
-      if loaded, app.openRename {
-        app.openRename = false
+      if loaded, window.openRename {
+        window.openRename = false
         renaming = model.conversation
       }
     }
@@ -92,7 +93,7 @@ struct ConversationScreen: View {
       Button("Conversation details", systemImage: "info.circle") { showDetails = true }
       if let url = model.conversation?.url.flatMap(URL.init(string:)) {
         Button("Share", systemImage: "square.and.arrow.up") { shareURL = url }
-        Button("Open on the web", systemImage: "safari") { app.openLink(url.absoluteString) }
+        Button("Open on the web", systemImage: "safari") { window.openLink(url.absoluteString) }
       }
       Button("Copy as Markdown", systemImage: "doc.on.doc") {
         UIPasteboard.general.string = model.markdown(agentName: app.agentName)
@@ -114,7 +115,7 @@ struct ConversationScreen: View {
             if await model.write(
               "setConversationSubscription", ["subscribed": false], as: SubscriptionResult.self, app: app)
             {
-              app.path.removeLast()
+              window.path.removeLast()
             }
           }
         }
@@ -132,7 +133,7 @@ struct ConversationScreen: View {
         }
       }
       Button("App menu", systemImage: "line.3.horizontal") {
-        withAnimation(.snappy(duration: 0.25)) { app.drawerOpen = true }
+        withAnimation(.snappy(duration: 0.25)) { window.drawerOpen = true }
       }
     } label: {
       Icon("ellipsis", size: 18)

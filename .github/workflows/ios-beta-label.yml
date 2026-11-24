@@ -1,0 +1,35 @@
+name: iOS Beta Label
+
+# The `trigger-ios-beta` label on a pull request starts an iOS beta of its
+# branch: it dispatches ios-beta.yml, which has the signing secrets. This
+# workflow has none. See apps/ios/scripts/ios-beta.mjs.
+on:
+  # The write token must not reach pull request code, so this runs the
+  # default branch's workflow and script, never the pull request's.
+  pull_request_target: # zizmor: ignore[dangerous-triggers]
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  dispatch:
+    name: dispatch / ios beta
+    # Only branches in this repo: their authors can already run the beta.
+    if: github.event.label.name == 'trigger-ios-beta' && github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: blacksmith-4vcpu-ubuntu-2404
+    permissions:
+      actions: write
+      contents: read
+      pull-requests: write
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.repository.default_branch }}
+          persist-credentials: false
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const { dispatchBeta } = await import(`${process.env.GITHUB_WORKSPACE}/apps/ios/scripts/ios-beta.mjs`);
+            await dispatchBeta({ github, context, core });

@@ -203,7 +203,7 @@ test(
   async ({ dashboard, page }) => {
     await page.setViewportSize(desktop);
     await page.goto(
-      `${dashboard.baseURL}/?view=inbox&item=qa-migration-negative`,
+      `${dashboard.baseURL}/inbox?view=inbox&item=qa-migration-negative`,
     );
     const inboxCard = page.locator('[data-inbox-card="qa-migration-negative"]');
     await expect(inboxCard).toContainText(

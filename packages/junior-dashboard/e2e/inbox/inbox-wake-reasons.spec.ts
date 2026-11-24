@@ -41,7 +41,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page, { open: [merged, timed] });
     // A phone shows the list on its own page.
-    await page.goto(`${dashboard.baseURL}/?view=inbox`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=inbox`);
     const mergedReason = "Woke: getsentry/junior#3842 is merged";
     await expect(rowOf(page, merged.title)).toContainText(mergedReason);
     await expect(rowOf(page, timed.title)).toContainText(
@@ -79,7 +79,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     const row = rowOf(page, "Sandbox validation").first();
     const reason = "Woke: getsentry/junior#3037 is merged";
     // A closed row says why one of its items woke.
@@ -111,7 +111,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       title: "Check the payments-v42 canary",
     };
     await mockInboxItems(page, { open: [timed, sibling] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const stack = page.locator(
       `li[data-inbox-stack][data-dock-key$=":${conversationId}"]`,
     );
