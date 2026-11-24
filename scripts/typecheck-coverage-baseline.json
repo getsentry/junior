@@ -9,7 +9,6 @@
   "packages/junior-dashboard/e2e/conversation-queue.spec.ts",
   "packages/junior-dashboard/e2e/conversation-share.spec.ts",
   "packages/junior-dashboard/e2e/conversationMenu.ts",
-  "packages/junior-dashboard/e2e/conversations-attention.spec.ts",
   "packages/junior-dashboard/e2e/conversations-long-transcript.spec.ts",
   "packages/junior-dashboard/e2e/conversations-quick-question.spec.ts",
   "packages/junior-dashboard/e2e/conversations-read-position-links.spec.ts",

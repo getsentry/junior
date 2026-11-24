@@ -218,7 +218,6 @@
     "packages/junior-dashboard/e2e/conversation-attachments.spec.ts": 1,
     "packages/junior-dashboard/e2e/conversation-queue.spec.ts": 1,
     "packages/junior-dashboard/e2e/conversation-share.spec.ts": 9,
-    "packages/junior-dashboard/e2e/conversations-attention.spec.ts": 1,
     "packages/junior-dashboard/e2e/conversations-long-transcript.spec.ts": 4,
     "packages/junior-dashboard/e2e/conversations-outline.spec.ts": 5,
     "packages/junior-dashboard/e2e/conversations-quick-question.spec.ts": 3,
@@ -277,7 +276,6 @@
     "packages/junior-dashboard/e2e/composer-references.spec.ts": 9,
     "packages/junior-dashboard/e2e/composer-typeahead.spec.ts": 9,
     "packages/junior-dashboard/e2e/conversation-attachments.spec.ts": 2,
-    "packages/junior-dashboard/e2e/conversations-attention.spec.ts": 5,
     "packages/junior-dashboard/e2e/conversations-long-transcript.spec.ts": 2,
     "packages/junior-dashboard/e2e/conversations-outline.spec.ts": 18,
     "packages/junior-dashboard/e2e/conversations-quick-question.spec.ts": 8,
@@ -323,7 +321,6 @@
   },
   "dashboard-spec-timing": {
     "packages/junior-dashboard/e2e/conversation-queue.spec.ts": 1,
-    "packages/junior-dashboard/e2e/conversations-attention.spec.ts": 6,
     "packages/junior-dashboard/e2e/conversations-outline.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/conversation-send.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/conversations-event-log.spec.ts": 3,
