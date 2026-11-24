@@ -1,0 +1,54 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "53cebd3e-2849-4abe-9840-450ae0fe2b07",
+  "prevIds": ["1bf59037-95bb-4ae3-91a2-2b9886bfef5d"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_code_changes",
+        "junior_code_changes_conversation_ids_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_code_changes_conversation_ids_idx",
+        "n|idx|public.junior_code_changes_conversation_ids_idx",
+        "e|idx|public.junior_code_changes_conversation_ids_idx",
+        "n|rel|public.junior_code_changes_conversation_ids_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_code_changes",
+        "n|sch|public",
+        "n|col|public.junior_code_changes.conversation_ids"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_code_changes",
+        "name": "junior_code_changes_conversation_ids_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_ids",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

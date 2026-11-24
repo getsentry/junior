@@ -581,7 +581,7 @@ describe("versions API", () => {
               reason:
                 "The Inbox token reads every open action item to find the ones assigned to the viewer. It needs a fix of its own.",
               statement:
-                'from "junior_inbox_items" where (("junior_inbox_items"."status" =',
+                'from "junior_inbox_items" where (((("junior_inbox_items"."status" =',
               table: "junior_inbox_items",
             },
           },

@@ -1,0 +1,70 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "496d0c67-2a83-4e91-b5bd-e848b6fc81d1",
+  "prevIds": ["b313cf66-bbe6-4f1f-9a7a-2071b1bdd195"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_review_items",
+        "junior_review_items_answered_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_review_items_answered_idx",
+        "n|idx|public.junior_review_items_answered_idx",
+        "e|idx|public.junior_review_items_answered_idx",
+        "n|rel|public.junior_review_items_answered_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_review_items",
+        "n|sch|public",
+        "n|col|public.junior_review_items.added_by_conversation_id",
+        "n|col|public.junior_review_items.closed_by_user_id",
+        "n|col|public.junior_review_items.closed_at"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_review_items",
+        "name": "junior_review_items_answered_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "added_by_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "closed_by_user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "closed_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_review_items\".\"answer\" is not null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

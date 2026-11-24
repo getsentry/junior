@@ -1,0 +1,55 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "d8bcb4fe-56ea-4a1d-ab3e-f89cdc4c43d4",
+  "prevIds": ["8808510f-0ce7-4135-96b5-e0457dddabb1"],
+  "footprints": [
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.kind",
+        "e|col|public.junior_conversations.kind"
+      ],
+      "sqlHash": "deabf636f06b2a1c"
+    },
+    {
+      "statementType": "alter_check",
+      "statementTarget": ["table", "public", "junior_conversations"],
+      "writes": [
+        "s|ck|public.junior_conversations.junior_conversations_kind_parent_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_conversations.kind",
+        "n|col|public.junior_conversations.parent_conversation_id",
+        "e|col|public.junior_conversations.kind",
+        "e|col|public.junior_conversations.parent_conversation_id"
+      ],
+      "sqlHash": "c64f999c61742d1a"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_conversations\",\"junior_conversations_kind_check\"]",
+      "set": {
+        "value": "\"junior_conversations\".\"kind\" in ('root', 'automation', 'thread', 'task')"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "checks\u0000[\"public\",\"junior_conversations\",\"junior_conversations_kind_parent_check\"]",
+      "set": {
+        "value": "\"junior_conversations\".\"kind\" is null or ((\"junior_conversations\".\"kind\" in ('root', 'automation')) = (\"junior_conversations\".\"parent_conversation_id\" is null))"
+      }
+    }
+  ]
+}

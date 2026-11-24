@@ -1,0 +1,50 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "34948016-a9a1-442a-b126-dbc8ada7eda7",
+  "prevIds": ["de0b7922-760f-4aea-b229-3baf89a3f410"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_identities",
+        "junior_identities_slack_person_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_identities_slack_person_search_idx",
+        "n|idx|public.junior_identities_slack_person_search_idx",
+        "e|idx|public.junior_identities_slack_person_search_idx",
+        "n|rel|public.junior_identities_slack_person_search_idx"
+      ],
+      "reads": ["n|tbl|public.junior_identities", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_identities",
+        "name": "junior_identities_slack_person_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "to_tsvector('simple', coalesce(\"display_name\", '') || ' ' || coalesce(\"handle\", ''))",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_identities\".\"provider\" = 'slack' AND \"junior_identities\".\"kind\" = 'user'",
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

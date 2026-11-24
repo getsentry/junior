@@ -1,0 +1,474 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "be595415-8b43-4cb3-b103-41e0440f8a2a",
+  "prevIds": ["4b7d91df-2a2e-4e0d-89b4-fd28f23c3ad4"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_automation_runs"],
+      "writes": [
+        "s|tbl|public.junior_automation_runs",
+        "n|tbl|public.junior_automation_runs",
+        "e|tbl|public.junior_automation_runs",
+        "n|rel|public.junior_automation_runs",
+        "n|type|public.junior_automation_runs",
+        "n|rel|public.junior_automation_runs_pkey",
+        "n|rel|public.junior_automation_runs_conversation_id_unique"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automation_runs",
+        "junior_automation_runs_automation_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automation_runs_automation_idx",
+        "n|idx|public.junior_automation_runs_automation_idx",
+        "e|idx|public.junior_automation_runs_automation_idx",
+        "n|rel|public.junior_automation_runs_automation_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.automation_id",
+        "n|col|public.junior_automation_runs.completed_at_ms"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automation_runs",
+        "junior_automation_runs_completed_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automation_runs_completed_idx",
+        "n|idx|public.junior_automation_runs_completed_idx",
+        "e|idx|public.junior_automation_runs_completed_idx",
+        "n|rel|public.junior_automation_runs_completed_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.completed_at_ms"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_automation_runs",
+        "junior_automation_runs_incomplete_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_automation_runs_incomplete_idx",
+        "n|idx|public.junior_automation_runs_incomplete_idx",
+        "e|idx|public.junior_automation_runs_incomplete_idx",
+        "n|rel|public.junior_automation_runs_incomplete_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.automation_id",
+        "n|col|public.junior_automation_runs.scheduled_for_ms"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_automation_runs"],
+      "writes": [
+        "s|fk|public.junior_automation_runs.junior_automation_runs_automation_id_junior_automations_id_fk",
+        "n|fk|public.junior_automation_runs.junior_automation_runs_automation_id_junior_automations_id_fk",
+        "e|fk|public.junior_automation_runs.junior_automation_runs_automation_id_junior_automations_id_fk",
+        "n|con|public.junior_automation_runs.junior_automation_runs_automation_id_junior_automations_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.automation_id",
+        "n|col|public.junior_automations.id",
+        "e|uniqueness|public.junior_automations.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_automation_runs"],
+      "writes": [
+        "s|fk|public.junior_automation_runs.junior_automation_runs_conversation_id_junior_conversations_con",
+        "n|fk|public.junior_automation_runs.junior_automation_runs_conversation_id_junior_conversations_con",
+        "e|fk|public.junior_automation_runs.junior_automation_runs_conversation_id_junior_conversations_con",
+        "n|con|public.junior_automation_runs.junior_automation_runs_conversation_id_junior_conversations_con"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|tbl|public.junior_conversations",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.conversation_id",
+        "n|col|public.junior_conversations.conversation_id",
+        "e|uniqueness|public.junior_conversations.conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_automation_runs",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "automation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "scheduled_for_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "attempt",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "claimed_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "dispatch_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "started_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "completed_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "error_message",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "result_message_ts",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_automation_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "automation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "completed_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_completed_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "completed_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_incomplete_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "automation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scheduled_for_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_automation_runs\".\"status\" in ('pending', 'running')",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_automation_id_junior_automations_id_fk",
+        "nameExplicit": false,
+        "columns": ["automation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_automations",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_conversation_id_junior_conversations_con",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_conversations",
+        "columnsTo": ["conversation_id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_conversation_id_unique",
+        "nameExplicit": false,
+        "columns": ["conversation_id"],
+        "nullsNotDistinct": false,
+        "entityType": "uniques"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_status_check",
+        "value": "\"junior_automation_runs\".\"status\" in ('pending', 'running', 'completed', 'failed', 'blocked', 'skipped')",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

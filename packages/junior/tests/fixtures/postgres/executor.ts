@@ -4,7 +4,6 @@ import { migrate } from "drizzle-orm/node-postgres/migrator";
 import type { MigrationConfig } from "drizzle-orm/migrator";
 import type { JuniorDatabase, JuniorSqlExecutor } from "@/db/db";
 import { createPostgresJuniorSqlExecutor } from "@/db/postgres";
-import { juniorSqlSchema } from "@/db/schema";
 
 class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   private savepointId = 0;
@@ -19,10 +18,7 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   }
 
   db(): JuniorDatabase {
-    return drizzle({
-      client: this.client,
-      schema: juniorSqlSchema,
-    }) as JuniorDatabase;
+    return drizzle({ client: this.client }) as JuniorDatabase;
   }
 
   async execute(
@@ -59,10 +55,7 @@ class ClientJuniorSqlExecutor implements JuniorSqlExecutor {
   }
 
   async migrate(config: MigrationConfig): Promise<void> {
-    await migrate(
-      drizzle({ client: this.client, schema: juniorSqlSchema }),
-      config,
-    );
+    await migrate(drizzle({ client: this.client }), config);
   }
 
   async transaction<T>(callback: () => Promise<T>): Promise<T> {

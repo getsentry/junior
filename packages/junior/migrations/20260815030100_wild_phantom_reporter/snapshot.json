@@ -1,0 +1,135 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "6fe6b9af-5375-4f04-bc6e-3db5c77d5193",
+  "prevIds": ["cebfdc3d-f6b6-46e5-b6ec-d4498c7b2519"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_workspaces",
+        "snapshot_id"
+      ],
+      "writes": [
+        "s|col|public.junior_workspaces.snapshot_id",
+        "n|col|public.junior_workspaces.snapshot_id",
+        "e|col|public.junior_workspaces.snapshot_id"
+      ],
+      "reads": ["n|tbl|public.junior_workspaces", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_workspaces",
+        "snapshot_generated_at"
+      ],
+      "writes": [
+        "s|col|public.junior_workspaces.snapshot_generated_at",
+        "n|col|public.junior_workspaces.snapshot_generated_at",
+        "e|col|public.junior_workspaces.snapshot_generated_at"
+      ],
+      "reads": ["n|tbl|public.junior_workspaces", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_workspaces",
+        "snapshot_build_duration_ms"
+      ],
+      "writes": [
+        "s|col|public.junior_workspaces.snapshot_build_duration_ms",
+        "n|col|public.junior_workspaces.snapshot_build_duration_ms",
+        "e|col|public.junior_workspaces.snapshot_build_duration_ms"
+      ],
+      "reads": ["n|tbl|public.junior_workspaces", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_workspaces",
+        "snapshot_profile_hash"
+      ],
+      "writes": [
+        "s|col|public.junior_workspaces.snapshot_profile_hash",
+        "n|col|public.junior_workspaces.snapshot_profile_hash",
+        "e|col|public.junior_workspaces.snapshot_profile_hash"
+      ],
+      "reads": ["n|tbl|public.junior_workspaces", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "snapshot_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "snapshot_generated_at",
+        "type": "timestamp with time zone",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "snapshot_build_duration_ms",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_workspaces",
+        "name": "snapshot_profile_hash",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}
