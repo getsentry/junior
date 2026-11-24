@@ -175,6 +175,19 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(publishes).toHaveLength(1);
   });
 
+  it("refuses to add an input from another Source to a Turn", async () => {
+    const first = await schedule("event-1");
+
+    await expect(
+      scheduleInput(engineCtx, { ...input("event-2"), source: "web" }),
+    ).rejects.toMatchObject({
+      cause: { constraint: "junior_turn_inbox_one_source" },
+    });
+    await expect(readInputs()).resolves.toEqual([
+      { turnId: first.turnId, idempotencyKey: "event-1" },
+    ]);
+  });
+
   it("writes nothing for a duplicate input, and publishes its Turn again only while it is queued", async () => {
     const first = await schedule("event-1");
     const duplicate = { turnId: first.turnId, created: false };
