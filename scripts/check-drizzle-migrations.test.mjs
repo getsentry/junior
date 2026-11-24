@@ -11,7 +11,7 @@ function migrationFixture() {
   fs.writeFileSync(path.join(directory, "0000_initial.sql"), "SELECT 1;\n");
   fs.writeFileSync(
     path.join(directory, "meta", "_journal.json"),
-    JSON.stringify({ entries: [{ idx: 0, tag: "0000_initial" }] }),
+    JSON.stringify({ entries: [{ idx: 0, when: 1000, tag: "0000_initial" }] }),
   );
   fs.writeFileSync(
     path.join(directory, "meta", "0000_snapshot.json"),
@@ -54,8 +54,8 @@ test("reports a broken snapshot chain", () => {
       path.join(directory, "meta", "_journal.json"),
       JSON.stringify({
         entries: [
-          { idx: 0, tag: "0000_initial" },
-          { idx: 1, tag: "0001_next" },
+          { idx: 0, when: 1000, tag: "0000_initial" },
+          { idx: 1, when: 2000, tag: "0001_next" },
         ],
       }),
     );
@@ -65,6 +65,31 @@ test("reports a broken snapshot chain", () => {
     );
     assert.deepEqual(checkDrizzleMigrationDirectory(directory), [
       `${path.join(directory, "meta", "0001_snapshot.json")}: prevId must match the previous snapshot id snapshot-0`,
+    ]);
+  } finally {
+    fs.rmSync(directory, { force: true, recursive: true });
+  }
+});
+
+test("reports a journal entry that is not newer than the one before it", () => {
+  const directory = migrationFixture();
+  try {
+    fs.writeFileSync(path.join(directory, "0001_next.sql"), "SELECT 2;\n");
+    fs.writeFileSync(
+      path.join(directory, "meta", "_journal.json"),
+      JSON.stringify({
+        entries: [
+          { idx: 0, when: 1000, tag: "0000_initial" },
+          { idx: 1, when: 1000, tag: "0001_next" },
+        ],
+      }),
+    );
+    fs.writeFileSync(
+      path.join(directory, "meta", "0001_snapshot.json"),
+      JSON.stringify({ id: "snapshot-1", prevId: "snapshot-0" }),
+    );
+    assert.deepEqual(checkDrizzleMigrationDirectory(directory), [
+      `${path.join(directory, "meta", "_journal.json")}: entry 1 must have a "when" greater than the previous entry's, or the migrator skips it. Run \`pnpm db:rebase\` to regenerate the branch migrations.`,
     ]);
   } finally {
     fs.rmSync(directory, { force: true, recursive: true });

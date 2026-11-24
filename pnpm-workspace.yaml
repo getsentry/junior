@@ -30,6 +30,7 @@ catalog:
 overrides:
   "@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
   "@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime": 1.2.0
+  "@slack/types": 3.3.0
   ai: 7.0.153
   "astro>vite": 8.0.14
   "@swc/core": 1.15.33

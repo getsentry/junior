@@ -10,6 +10,7 @@ import { MobileHeaderActionsPortal } from "../components/layout/DashboardChrome"
 import { HeaderBar } from "../components/layout/HeaderBar";
 import { PaneCollapsedControls } from "../components/layout/PaneNav";
 import { Skeleton } from "../components/ui/skeleton";
+import { MessageObjectsProvider } from "../display-text/DisplayText";
 import { cn } from "../styles";
 import type { Conversation } from "../types";
 import {
@@ -43,7 +44,6 @@ import {
   itemRowSubtitle,
   linkedRowOf,
   singleRow,
-  subjectSize,
   sweepOf,
   timeGroups,
   viewRows,
@@ -436,11 +436,6 @@ export function InboxList(props: {
         foldedNotices={data.foldedNotices}
         itemHead={head}
         itemTitle={options.itemRow ? row.newest.title : undefined}
-        itemSize={
-          options.itemRow
-            ? subjectSize(row.newest, conversationOf(row.conversationId))
-            : undefined
-        }
         itemSubtitle={
           options.itemRow
             ? itemRowSubtitle(
@@ -876,62 +871,65 @@ export function InboxList(props: {
   // of a list with a heading. The Inbox on a desktop has no heading, so its
   // filters sit above the rows.
   const filterBar = props.phone || headerBar ? null : filters;
+  // One request resolves the code changes of every item row.
   return (
-    <section
-      aria-label={INBOX_VIEW_LABELS[view]}
-      className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg"
-    >
-      {props.phone && filters ? (
-        <MobileHeaderActionsPortal>
-          <div className="flex items-center gap-1">{filters}</div>
-        </MobileHeaderActionsPortal>
-      ) : null}
-      {headerBar ? (
-        <HeaderBar actions={filters} title={heading} />
-      ) : (
-        <div className="absolute top-2 left-3 z-10 max-md:hidden">
-          <PaneCollapsedControls />
-        </div>
-      )}
-      <div
-        className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
-        data-inbox-scroll=""
-        onScroll={state.onScroll}
-        ref={state.scroller}
-        onPointerEnter={(event) => {
-          if (event.pointerType === "mouse") setHeld(rowPlaces(streamRows));
-        }}
-        onPointerLeave={() => {
-          setHeld(undefined);
-          focus.handlers.onPointerLeave();
-        }}
-        onPointerMove={focus.handlers.onPointerMove}
+    <MessageObjectsProvider>
+      <section
+        aria-label={INBOX_VIEW_LABELS[view]}
+        className="relative grid h-full min-h-0 grid-rows-[auto_minmax(0,1fr)] bg-dashboard-bg"
       >
+        {props.phone && filters ? (
+          <MobileHeaderActionsPortal>
+            <div className="flex items-center gap-1">{filters}</div>
+          </MobileHeaderActionsPortal>
+        ) : null}
+        {headerBar ? (
+          <HeaderBar actions={filters} title={heading} />
+        ) : (
+          <div className="absolute top-2 left-3 z-10 max-md:hidden">
+            <PaneCollapsedControls />
+          </div>
+        )}
         <div
-          className={cn(
-            "mx-auto w-full max-w-6xl pb-16",
-            props.phone ? "px-2 pt-1" : "pt-3",
-          )}
-          // The dock grows cards near the pointer; this inset keeps them off
-          // the scroll area's edge.
-          style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
+          className="thin-scrollbar min-h-0 overflow-y-auto overscroll-contain"
+          data-inbox-scroll=""
+          onScroll={state.onScroll}
+          ref={state.scroller}
+          onPointerEnter={(event) => {
+            if (event.pointerType === "mouse") setHeld(rowPlaces(streamRows));
+          }}
+          onPointerLeave={() => {
+            setHeld(undefined);
+            focus.handlers.onPointerLeave();
+          }}
+          onPointerMove={focus.handlers.onPointerMove}
         >
-          {filterBar ? (
-            // One right-aligned row, clear of the pane controls that float
-            // at the top left while the pane is collapsed.
-            <div className="flex items-center justify-end gap-2 pb-2">
-              {filterBar}
-            </div>
-          ) : null}
-          <InboxFocusProvider focus={focus.focus}>
-            <InboxPreviewGate>{body}</InboxPreviewGate>
-          </InboxFocusProvider>
-          {data.itemsError ? null : listEnd}
-          {props.error ? (
-            <InlineError className="py-2">{props.error}</InlineError>
-          ) : null}
+          <div
+            className={cn(
+              "mx-auto w-full max-w-6xl pb-16",
+              props.phone ? "px-2 pt-1" : "pt-3",
+            )}
+            // The dock grows cards near the pointer; this inset keeps them off
+            // the scroll area's edge.
+            style={props.phone ? undefined : { paddingInline: DOCK_GUTTER }}
+          >
+            {filterBar ? (
+              // One right-aligned row, clear of the pane controls that float
+              // at the top left while the pane is collapsed.
+              <div className="flex items-center justify-end gap-2 pb-2">
+                {filterBar}
+              </div>
+            ) : null}
+            <InboxFocusProvider focus={focus.focus}>
+              <InboxPreviewGate>{body}</InboxPreviewGate>
+            </InboxFocusProvider>
+            {data.itemsError ? null : listEnd}
+            {props.error ? (
+              <InlineError className="py-2">{props.error}</InlineError>
+            ) : null}
+          </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </MessageObjectsProvider>
   );
 }

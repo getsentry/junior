@@ -59,6 +59,7 @@ import {
 import { OutboundLink } from "../components/OutboundLink";
 import { MOBILE_LAYOUT_QUERY } from "../layoutMedia";
 import { formatRelativeTime, formatTime } from "../time";
+import { useLiveAnnotations } from "./liveAnnotations";
 
 /** Show a pending OAuth authorization call-to-action above the composer. */
 export function PendingAuthorization(props: {
@@ -109,7 +110,7 @@ export function ConversationPrivacyChip(props: {
 export function ConversationSidebarAnnotations(props: {
   annotations: ConversationDetailReport["sidebarAnnotations"] | undefined;
 }) {
-  const annotations = props.annotations;
+  const annotations = useLiveAnnotations(props.annotations);
   const isMobile = useIsMobileViewport();
   const [side, setSide] = useState<"top" | "bottom">("top");
   if (!annotations?.length) return null;

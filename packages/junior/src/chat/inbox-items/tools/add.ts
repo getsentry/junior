@@ -121,7 +121,7 @@ const evidenceSchema = z
  * a system Actor, such as an event Turn, or an app Actor falls back to the
  * active Participants of the Conversation, except the app. A Slack Actor
  * without a Junior User gets an item with no assignees, so that the agent can
- * still ask; any person in the thread can then answer it.
+ * still ask; any person in the thread can then answer it on its card.
  */
 async function defaultAssignees(
   scope: InboxItemAgentScope,

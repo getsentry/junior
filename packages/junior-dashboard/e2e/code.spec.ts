@@ -92,7 +92,6 @@ test("counts every change in the state tabs and loads each state", async ({
     const response = await route.fetch();
     const report = await response.json();
     const idleChange = {
-      draft: false,
       id: "00000000-0000-4000-8000-000000000099",
       lastActivityAt: new Date(NOW_MS - 10 * day).toISOString(),
       number: 990,

@@ -6,7 +6,7 @@
  */
 import * as z from "zod";
 import type { PluginConversationAnnotations } from "./annotations";
-import type { CodeChangePublisher } from "./code";
+import type { PluginCodeChanges } from "./code";
 import type { PluginConversationChanges } from "./conversation-changes";
 import type {
   PluginConversationEvents,
@@ -120,7 +120,7 @@ export interface PluginStartedTaskContext<
   Payload = unknown,
 > extends PluginContext {
   annotations: PluginConversationAnnotations;
-  codeChanges: CodeChangePublisher;
+  codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
   name: string;
   /** The payload from `tasks.start`, parsed with the task's `payload` schema. */

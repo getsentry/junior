@@ -587,15 +587,23 @@ export async function requireInboxItemAssignees(args: {
 }
 
 /**
- * Return whether a User can act on an open Inbox item: an assigned User,
- * anyone for an item assigned to Everyone, and anyone for an item with no
- * assignees. The caller checks that the User can see the item.
- * `inboxItemForUser` is the SQL form of the assignee rule.
+ * Return whether an Inbox item is for Everyone. An item with no assignees
+ * is for Everyone too: anyone who can see it can act on it, and it waits on
+ * no one, so the Inbox shows it in Up for grabs and its count leaves it out.
+ */
+export function isInboxItemForEveryone(item: InboxItem): boolean {
+  return item.assignedToEveryone || item.assignees.length === 0;
+}
+
+/**
+ * Return whether a User can act on an open Inbox item: an assigned User, or
+ * anyone for an item for Everyone (`isInboxItemForEveryone`). The caller
+ * checks that the User can see the item. `inboxItemForUser` is the SQL form
+ * of the assignee rule.
  */
 export function canActOnInboxItem(item: InboxItem, userId: string): boolean {
   if (item.status !== "open") return false;
-  if (item.assignedToEveryone) return true;
-  if (item.assignees.length === 0) return true;
+  if (isInboxItemForEveryone(item)) return true;
   return item.assignees.some((assignee) => assignee.userId === userId);
 }
 

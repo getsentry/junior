@@ -44,8 +44,13 @@ import {
 } from "../conversations/ComposerReference";
 import type { ComposerReference } from "../conversations/composerReferences";
 import { useDebouncedValue } from "../debouncedValue";
+import {
+  MessageObjectsProvider,
+  useListedObjects,
+} from "../display-text/DisplayText";
 import { eventLabel } from "../eventLabel";
 import { fetchDashboardJson } from "../http";
+import { listedDraft } from "../listedCodeChange";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
@@ -329,6 +334,12 @@ function WatchPicker(props: {
   const search = useCodeChangeSearch(
     link ? "" : text.slice(0, SEARCH_MAX_LENGTH),
   );
+  // Only an open change can be a draft, so only it needs its live card.
+  const listedOf = useListedObjects(
+    search.changes.flatMap((change) =>
+      change.state === "open" ? change.url : [],
+    ),
+  );
   return (
     <Command label="Pull request or issue" shouldFilter={false}>
       <CommandInput
@@ -362,8 +373,9 @@ function WatchPicker(props: {
         {search.changes.length > 0 ? (
           <CommandGroup heading="Pull requests">
             {search.changes.map((change) => {
+              const listed = listedOf(change.url);
               const reference: ComposerReference = {
-                draft: change.draft,
+                draft: listedDraft(listed),
                 kind: "code_change",
                 number: change.number,
                 repository: change.repository,
@@ -372,6 +384,9 @@ function WatchPicker(props: {
               };
               return (
                 <CommandItem
+                  // An open change is saved with its draft state, so it
+                  // waits for its card.
+                  disabled={change.state === "open" && !listed.settled}
                   key={change.url}
                   onSelect={() =>
                     props.onPick({ kind: "page", reference, url: change.url })
@@ -475,13 +490,17 @@ function ConditionRow(props: {
             align="start"
             className="w-(--anchor-width) max-w-[calc(100vw-2rem)] min-w-80 overflow-hidden p-0"
           >
-            <WatchPicker
-              onPick={(next) => {
-                props.onChange({ id: condition.id, watched: next });
-                setOpen(false);
-              }}
-              subject={subject}
-            />
+            {/* The found pull requests read their live cards in one
+                request. */}
+            <MessageObjectsProvider>
+              <WatchPicker
+                onPick={(next) => {
+                  props.onChange({ id: condition.id, watched: next });
+                  setOpen(false);
+                }}
+                subject={subject}
+              />
+            </MessageObjectsProvider>
           </PopoverContent>
         </Popover>
         <Select<string>

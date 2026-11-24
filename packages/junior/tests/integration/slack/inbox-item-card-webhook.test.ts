@@ -872,9 +872,8 @@ describe("Slack webhook: Inbox item cards", () => {
     await reply("U456", "1712345.0003");
     expect((await getInboxItem(getDb(), item.id))?.status).toBe("open");
 
-    // A question with no assignees takes an answer from anyone, but not
-    // from a Slack author outside the allowed domains. A Slack Actor without
-    // a Junior User asks one.
+    // A Slack Actor without a Junior User asks a question with no
+    // assignees. It is for Everyone, so a reply never answers it.
     const unassigned = await (
       createAddInboxItemTool(
         {
@@ -902,11 +901,29 @@ describe("Slack webhook: Inbox item cards", () => {
     // Junior follows the thread, so a reply needs no mention to start a Turn.
     await state.subscribe(THREAD);
     await reply("UOUT", "1712345.0006", { mention: false });
+    // Even when the decision model would match it, Ben's reply leaves it
+    // open, as it leaves an Everyone question open.
+    mswServer.use(
+      http.post("*/decision-model", async ({ request }) => {
+        const { questions } = (await request.json()) as {
+          questions: Record<string, unknown>;
+        };
+        return HttpResponse.json({
+          answers: Object.fromEntries(
+            Object.keys(questions).map((key) => [
+              key,
+              { type: "choice", choice: "answers" },
+            ]),
+          ),
+        });
+      }),
+    );
+    await reply("U456", "1712345.0007", { mention: false });
     expect((await getInboxItem(getDb(), unassigned.item.id))?.status).toBe(
       "open",
     );
 
-    // Both replies still reach the agent.
+    // Every reply still reaches the agent.
     const work = await getConversationWorkState({
       conversationId: THREAD,
       state,
@@ -914,6 +931,7 @@ describe("Slack webhook: Inbox item cards", () => {
     expect(work?.messages.map((message) => message.input.authorId)).toEqual([
       "U456",
       "UOUT",
+      "U456",
     ]);
     expect(slackApiOutbox.calls("chat.update")).toHaveLength(0);
   });

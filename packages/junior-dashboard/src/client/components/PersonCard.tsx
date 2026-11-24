@@ -11,7 +11,12 @@ import { conversationPath } from "../conversations/conversationRoutes";
 import { ObjectCard } from "../conversations/ObjectCard";
 import { peoplePath } from "../format";
 import { fetchDashboardJson } from "../http";
-import { ChangeSize } from "./ChangeSize";
+import { ListedChangeSize } from "./ChangeSize";
+import {
+  MessageObjectsProvider,
+  useListedObjects,
+} from "../display-text/DisplayText";
+import { listedChangeSize } from "../listedCodeChange";
 import { InlineError } from "./InlineError";
 import type { Person } from "../person";
 import { formatRelativeTime, formatTime } from "../time";
@@ -47,46 +52,57 @@ function MergedChanges(props: { changes: PersonCardReport["mergedChanges"] }) {
   return (
     <section aria-label="Recently shipped" className={SECTION_CLASS}>
       <p className={SECTION_TITLE_CLASS}>Recently shipped</p>
-      <ul className="m-0 grid list-none gap-2 p-0">
-        {props.changes.map((change) => {
-          const at = change.mergedAt ?? change.openedAt;
-          const title = change.title ?? `#${change.number}`;
-          return (
-            // The title gets the whole first line. The pull request and
-            // when it merged go below it.
-            <li key={change.id} className="grid min-w-0">
-              {change.url ? (
-                <a
-                  className={ROW_LINK_CLASS}
-                  href={change.url}
-                  rel="noreferrer"
-                  target="_blank"
-                >
-                  {title}
-                </a>
-              ) : (
-                <span className="min-w-0 truncate text-sm">{title}</span>
-              )}
-              {/* The size is outside the truncated text, so it stays whole. */}
-              <span className="flex min-w-0 items-baseline gap-1 text-dashboard-text-muted">
-                <span className="min-w-0 truncate">
-                  {change.repository}#{change.number} ·{" "}
-                  <time dateTime={at} title={formatTime(at)}>
-                    merged {formatRelativeTime(at)}
-                  </time>
+      {/* The rows read their live sizes in one request. */}
+      <MessageObjectsProvider>
+        <ul className="m-0 grid list-none gap-2 p-0">
+          {props.changes.map((change) => {
+            const at = change.mergedAt ?? change.openedAt;
+            const title = change.title ?? `#${change.number}`;
+            return (
+              // The title gets the whole first line. The pull request and
+              // when it merged go below it.
+              <li key={change.id} className="grid min-w-0">
+                {change.url ? (
+                  <a
+                    className={ROW_LINK_CLASS}
+                    href={change.url}
+                    rel="noreferrer"
+                    target="_blank"
+                  >
+                    {title}
+                  </a>
+                ) : (
+                  <span className="min-w-0 truncate text-sm">{title}</span>
+                )}
+                {/* The size is outside the truncated text, so it stays whole. */}
+                <span className="flex min-w-0 items-baseline gap-1 text-dashboard-text-muted">
+                  <span className="min-w-0 truncate">
+                    {change.repository}#{change.number} ·{" "}
+                    <time dateTime={at} title={formatTime(at)}>
+                      merged {formatRelativeTime(at)}
+                    </time>
+                  </span>
+                  <MergedChangeSize url={change.url} />
                 </span>
-                {change.size ? (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <ChangeSize className="text-xs" size={change.size} />
-                  </>
-                ) : null}
-              </span>
-            </li>
-          );
-        })}
-      </ul>
+              </li>
+            );
+          })}
+        </ul>
+      </MessageObjectsProvider>
     </section>
+  );
+}
+
+// The live size of a merged change, after a dot. A placeholder until its
+// card comes, and nothing when it has no size.
+function MergedChangeSize(props: { url: string | undefined }) {
+  const listed = useListedObjects([props.url])(props.url);
+  if (listed.settled && !listedChangeSize(listed)) return null;
+  return (
+    <>
+      <span aria-hidden="true">·</span>
+      <ListedChangeSize className="text-xs" listed={listed} />
+    </>
   );
 }
 

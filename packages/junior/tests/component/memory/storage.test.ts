@@ -78,9 +78,14 @@ const memoryState: PluginState = {
 };
 
 const memoryCache: PluginCache = {
+  async get() {
+    return undefined;
+  },
   async getOrLoad(_key, load) {
     return (await load()).value;
   },
+  async update() {},
+  async delete() {},
 };
 
 function memoryHeartbeatContext(args: {
@@ -98,8 +103,10 @@ function memoryHeartbeatContext(args: {
     cache: memoryCache,
     codeChanges: {
       associateConversations: vi.fn(),
+      list: vi.fn(),
       record: vi.fn(),
       recordActivity: vi.fn(),
+      recordRepository: vi.fn(),
     },
     conversationChanges: { apply: vi.fn() },
     db: memoryDb(args.fixture),
