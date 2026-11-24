@@ -283,7 +283,7 @@ function useBuildInboxData(input: {
   const awake = shown.filter(
     (item) => !snoozedIds.has(item.id) && !snoozes.hides(item),
   );
-  // One pin: the Conversation's own. A sweep leaves a pinned Conversation.
+  // One pin: the Conversation's own.
   const isPinned = (conversationId: string | undefined) =>
     Boolean(conversationId && conversationById.get(conversationId)?.pinnedAt);
 
