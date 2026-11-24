@@ -36,12 +36,19 @@ export const inboxItemSchema = z
     /** Turn that added the item. Unset for a plugin item. */
     addedByTurnId: z.string().min(1).optional(),
     answer: answerSchema.optional(),
+    /** True for an item for Everyone, also one with no assignees. */
     assignedToEveryone: z.boolean(),
     assignees: z.array(personSchema),
     automationId: z.string().min(1).optional(),
     body: z.string(),
     /** True when the viewer can take, submit, dismiss, or mark it done. */
     canAct: z.boolean(),
+    /**
+     * True when the viewer can answer the open question. A public question
+     * takes an answer from anyone who can see it, also when `canAct` is
+     * false.
+     */
+    canAnswer: z.boolean(),
     /** True when the viewer can act and is not already the only assignee. */
     canTake: z.boolean(),
     closeReason: z.string().min(1).optional(),

@@ -5,7 +5,6 @@ import {
   createConversationFixture,
   type ConversationFixture,
 } from "../fixtures/conversation";
-import { runTestHeartbeat } from "../fixtures/conversation-work";
 import {
   createGitHubApp,
   linkGitHubMember,
@@ -13,6 +12,7 @@ import {
   stubGitHubApp,
   viewerApi,
 } from "../fixtures/github-objects";
+import { createPluginTaskQueueTestAdapter } from "../fixtures/plugin-task-queue";
 import {
   addPullRequestItem,
   api,
@@ -28,6 +28,7 @@ const T0 = Date.parse("2026-01-02T03:00:00Z");
 
 let app: Awaited<ReturnType<typeof createGitHubApp>>;
 let fixture: ConversationFixture;
+let tasks: ReturnType<typeof createPluginTaskQueueTestAdapter>;
 
 /** The open pull request of `PULL_REQUEST` in a `pull_request` webhook. */
 function pullRequest(overrides: Record<string, unknown> = {}) {
@@ -136,7 +137,7 @@ async function comment(mergeable: boolean) {
   });
 }
 
-/** Push `head` to the pull request, then run the patch that reads it. */
+/** Push `head` to the pull request, then run the patch task that reads it. */
 async function push(head: string, mergeable: string) {
   stubMergeState(mergeable, head);
   await sendGitHubWebhook(app, "pull_request", {
@@ -144,7 +145,7 @@ async function push(head: string, mergeable: string) {
     pull_request: pullRequest({ head: { ref: "feat/acme", sha: head } }),
   });
   vi.setSystemTime(Date.now() + 60_000);
-  await runTestHeartbeat(fixture.queue, Date.now());
+  await tasks.deliver();
 }
 
 describe("GitHub pull request snoozes", () => {
@@ -161,7 +162,8 @@ describe("GitHub pull request snoozes", () => {
         () => HttpResponse.json([]),
       ),
     );
-    app = await createGitHubApp();
+    tasks = createPluginTaskQueueTestAdapter();
+    app = await createGitHubApp({ pluginTaskQueue: tasks.pluginTaskQueue });
   });
 
   afterEach(async () => {
@@ -288,7 +290,7 @@ describe("GitHub pull request snoozes", () => {
     }
     stubMergeState("MERGEABLE", "bbb222");
     vi.setSystemTime(Date.now() + 60_000);
-    await runTestHeartbeat(fixture.queue, Date.now());
+    await tasks.deliver();
     expect((await asAna.inbox()).inbox).toEqual([]);
 
     await push("ddd444", "MERGEABLE");

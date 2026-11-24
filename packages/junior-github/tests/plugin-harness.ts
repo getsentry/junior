@@ -291,6 +291,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
         codeChanges,
         conversationChanges: { apply: unused },
         db: fixture.db(),
+        events,
+        lastDelivery: false,
         log: {
           error: (message) => recorded.heartbeatLogs.push(["error", message]),
           info() {},

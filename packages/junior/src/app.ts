@@ -99,6 +99,7 @@ import {
   createVercelPluginTaskCallback,
   sendVercelPluginTask,
   type PluginTaskQueueMessage,
+  type PluginTaskSendOptions,
 } from "@/chat/plugins/task-queue";
 import {
   processPluginTask,
@@ -241,8 +242,16 @@ export interface JuniorAppOptions extends BotModelConfig {
    * and do not use this queue.
    */
   pluginTaskQueue?: (
-    consume: (message: PluginTaskQueueMessage) => Promise<void>,
-  ) => { send(message: PluginTaskQueueMessage): Promise<void> };
+    consume: (
+      message: PluginTaskQueueMessage,
+      delivery?: { deliveryCount: number },
+    ) => Promise<void>,
+  ) => {
+    send(
+      message: PluginTaskQueueMessage,
+      options?: PluginTaskSendOptions,
+    ): Promise<void>;
+  };
   /**
    * Replace the Vercel Queue transport for background compaction jobs, for
    * example with an in-process queue. `consume` runs one job.
@@ -572,13 +581,15 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
       }),
     ) ??
     getVercelConversationWorkQueue();
-  const pluginTaskQueue = options?.pluginTaskQueue?.((message) =>
+  const pluginTaskQueue = options?.pluginTaskQueue?.((message, delivery) =>
     processPluginTask(message, {
+      deliveryCount: delivery?.deliveryCount,
+      events,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     }),
   );
   const sendPluginTask: SendPluginTask = pluginTaskQueue
-    ? (message) => pluginTaskQueue.send(message)
+    ? (message, sendOptions) => pluginTaskQueue.send(message, sendOptions)
     : sendVercelPluginTask;
   const backgroundCompactionQueue =
     options?.backgroundCompactionQueue?.((message) =>
@@ -802,6 +813,7 @@ export async function createApp(options?: JuniorAppOptions): Promise<Hono> {
   });
   app.post(JUNIOR_PLUGIN_TASK_CALLBACK_ROUTE, (c) => {
     pluginTaskPOST ??= createVercelPluginTaskCallback({
+      events,
       showInboxItem: createInboxItemShow(getProductionSlackAdapter),
     });
     return pluginTaskPOST(c.req.raw);

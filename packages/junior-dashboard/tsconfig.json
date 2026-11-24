@@ -50,6 +50,7 @@
     "e2e/dashboard-switch.spec.ts",
     "e2e/highlighted-code.ts",
     "e2e/inbox/**/*.ts",
+    "e2e/clipboard.ts",
     "e2e/paste-text.ts",
     "e2e/person-cards.spec.ts",
     "e2e/lead-home.spec.ts",

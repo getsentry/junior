@@ -7,6 +7,7 @@
 import { createHash } from "node:crypto";
 import * as z from "zod";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
+import type { AppEventPublisher } from "@/chat/plugins/agent-hooks";
 import { logWarn } from "@/chat/logging";
 import { queueCallback } from "@/chat/queue/callback";
 import {
@@ -22,6 +23,8 @@ import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 /** Options for one plugin task send. */
 export interface PluginTaskSendOptions {
+  /** Seconds before the first delivery of a started task. */
+  delaySeconds?: number | undefined;
   /** Queue dedupe key of a started task. A session task derives its own. */
   idempotencyKey?: string;
 }
@@ -162,7 +165,12 @@ function logPluginTaskQueueMessageRejected(
   });
 }
 
-function pluginTaskCallback(options: { showInboxItem?: ShowInboxItem }) {
+interface PluginTaskCallbackOptions {
+  events?: AppEventPublisher;
+  showInboxItem?: ShowInboxItem;
+}
+
+function pluginTaskCallback(options: PluginTaskCallbackOptions) {
   return queueCallback<PluginTaskQueueMessage>({
     maxDeliveries: PLUGIN_TASK_MAX_DELIVERIES,
     onRejected: logPluginTaskQueueMessageRejected,
@@ -188,6 +196,7 @@ export async function sendVercelPluginTask(
     PLUGIN_TASK_QUEUE_TOPIC,
     signPluginTaskQueueMessage(message),
     {
+      delaySeconds: options.delaySeconds,
       idempotencyKey:
         "params" in message ? pluginTaskId(message) : options.idempotencyKey,
       retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,
@@ -197,7 +206,7 @@ export async function sendVercelPluginTask(
 
 /** Create the HTTP callback for plugin tasks. */
 export function createVercelPluginTaskCallback(
-  options: { showInboxItem?: ShowInboxItem } = {},
+  options: PluginTaskCallbackOptions = {},
 ): (request: Request) => Promise<Response> {
   return pluginTaskCallback(options).create();
 }

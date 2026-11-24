@@ -1,6 +1,6 @@
 ---
 title: Vimeo Plugin
-description: Upload private videos to a Vimeo folder with one shared Vimeo account.
+description: Upload private videos to Vimeo folders with one shared Vimeo account.
 type: tutorial
 summary: Let Junior upload videos it renders to Vimeo as private, embed-only videos, and update their files and thumbnails.
 prerequisites:
@@ -10,8 +10,10 @@ related:
   - /concepts/credentials-and-oauth/
 ---
 
-Use the Vimeo plugin to put videos that Junior renders in its sandbox into a
-Vimeo folder. A page then embeds the video instead of storing the file.
+Use the Vimeo plugin to put videos that Junior renders in its sandbox into
+Vimeo folders. A page then embeds the video instead of storing the file. Each
+upload names its folder, so each channel or use case can use a different
+folder.
 
 The plugin uses only a service account: an admin connects one Vimeo account
 for the whole install. People never connect their own Vimeo accounts.
@@ -27,16 +29,13 @@ import { defineJuniorPlugins } from "@sentry/junior";
 import { vimeoPlugin } from "@sentry/junior-vimeo";
 
 export const plugins = defineJuniorPlugins([
-  vimeoPlugin({
-    folderUri: "/users/<owner id>/projects/<folder id>",
-    embedDomains: ["www.example.com"],
-  }),
+  vimeoPlugin({ embedDomains: ["www.example.com"] }),
 ]);
 ```
 
 ## Config
 
-Pass the folder and embed domains to `vimeoPlugin()`. Set the client ID and
+Pass the default embed domains to `vimeoPlugin()`. Set the client ID and
 secret in the Junior environment, then redeploy.
 
 <details class="plugin-config">
@@ -55,21 +54,12 @@ callback URLs.
 </details>
 
 <details class="plugin-config">
-<summary><code>folderUri</code></summary>
-
-The folder where Junior uploads, as `/users/<owner id>/projects/<folder id>`.
-Junior uploads, changes, lists, and reads only videos in this folder.
-
-- **Define:** Pass `folderUri` to `vimeoPlugin()`
-- **Required:** Yes. A value that is not a folder URI stops the app at start.
-
-</details>
-
-<details class="plugin-config">
 <summary><code>embedDomains</code></summary>
 
 Default hostnames where uploaded videos may be embedded, such as
 `["www.example.com", "docs.example.com"]`. A call can name other hostnames.
+Vimeo does not extend `example.com` to its subdomains, so list each hostname
+that embeds the video.
 
 - **Define:** Pass `embedDomains` to `vimeoPlugin()`
 - **Required:** No. Without it, each upload must name its hostnames.
@@ -90,6 +80,14 @@ Vimeo tokens from this sign-in do not expire. To change the account, click
 The `junior service-account connect` CLI does not work for Vimeo, because
 Vimeo accepts only the callback URLs that the app lists.
 
+## Folders
+
+Each upload and folder listing names its folder, as the API URI
+`/users/<owner id>/projects/<folder id>` or the vimeo.com link
+`https://vimeo.com/user/<owner id>/folder/<folder id>`. `vimeo_listFolders`
+lists the folders that the account owns. Give it a team owner's user ID to
+list the team folders that the account can reach.
+
 ### Team folders
 
 To upload into a folder of a Vimeo team, add the Junior account to the team.
@@ -99,9 +97,10 @@ into the team owner's account, as Vimeo requires for team members.
 
 ## Privacy
 
-Every requester shares one Vimeo account, so Junior uploads only into
-`folderUri` and lists, reads, and changes only videos in that
-folder. It refuses any other folder or video that the account can reach.
+Every requester shares one Vimeo account. Junior can read and change any
+video that the account can reach, and it can upload into any folder that the
+account can reach. Give the account access only to the folders that Junior
+may use.
 
 Vimeo applies these settings when it creates the video, before any bytes
 arrive:
@@ -121,7 +120,8 @@ Replacing a file keeps the video's ID, hash, privacy, and embed domains.
 | `vimeo_replaceFile`  | Replaces the file of an existing video                           |
 | `vimeo_setThumbnail` | Sets the active thumbnail from a JPEG or PNG                     |
 | `vimeo_status`       | Returns upload and processing state, privacy, and embed URL      |
-| `vimeo_listFolder`   | Lists the videos in the folder, newest first                     |
+| `vimeo_listFolder`   | Lists the videos in a folder, newest first                       |
+| `vimeo_listFolders`  | Lists the folders that the account can reach                     |
 
 The tools read files from the sandbox on the host and accept only MP4, MOV,
 and WebM videos up to 200 MB, and JPEG and PNG images up to 10 MB.

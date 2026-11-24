@@ -773,7 +773,7 @@ export interface PluginConversationMatch {
    * working. idle: waits for a message. A failed Turn shows as idle.
    */
   status: "pending" | "running" | "paused" | "idle";
-  /** Summary of the latest Brief, when it has one. */
+  /** Conversation summary, when it has one. */
   summary?: string;
   title?: string;
   /** ISO time of the latest activity. */

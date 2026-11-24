@@ -42,15 +42,6 @@ not for a new write of the full history.
   saves. One 1-hour write of the prefix when a Conversation goes idle costs
   $8/MTok, and an hour of 5-minute warmups costs about $2.6/MTok.
 
-## Entry points
-
-- Automatic: each idle Conversation with a large enough cached prefix. No
-  person asks for it.
-- Dashboard: System, Cache warming, for net savings, effectiveness, and
-  warmup cost.
-- Dashboard: Admin, Cache warming, to turn warming of a provider back on.
-- `JUNIOR_CACHE_WARMING_ENABLED=false`, to turn warming off.
-
 ## Rules
 
 - A warmup never changes a Conversation. It posts nothing and starts no

@@ -503,6 +503,7 @@ describe("dashboard canonical-event components", () => {
     expect(completedHtml).not.toContain("Assistant is thinking…");
 
     // Once the Turn has activity, its latest step replaces the thinking row.
+    // The person message links to itself, so these renders need a router.
     const working = conversation(
       [
         event(0, {
@@ -532,9 +533,11 @@ describe("dashboard canonical-event components", () => {
       { status: "working" },
     );
     const workingHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live transcript={working} />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Transcript live transcript={working} />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     // The reasoning shows above the announced step line.
     const step = workingHtml.match(
@@ -562,16 +565,20 @@ describe("dashboard canonical-event components", () => {
       { status: "working" },
     );
     const waitingHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live transcript={waiting} />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Transcript live transcript={waiting} />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     expect(waitingHtml).toContain("Review the spans");
     expect(waitingHtml).not.toContain("Assistant is thinking…");
     const pausedHtml = renderToStaticMarkup(
-      <QueryClientProvider client={client}>
-        <Transcript live responding={false} transcript={working} />
-      </QueryClientProvider>,
+      <MemoryRouter>
+        <QueryClientProvider client={client}>
+          <Transcript live responding={false} transcript={working} />
+        </QueryClientProvider>
+      </MemoryRouter>,
     );
     expect(pausedHtml).not.toContain('aria-live="polite"');
   });

@@ -1,4 +1,8 @@
-import type { PluginCache, PluginState } from "@sentry/junior-plugin-api";
+import type {
+  PluginCache,
+  PluginState,
+  PluginTaskStarter,
+} from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
   GITHUB_ISSUE_CACHE,
@@ -11,7 +15,7 @@ import {
   mergeGitHubPullRequest,
 } from "../object-cache.js";
 import { markGitHubConflict } from "../merge-conflict-checks/resolved.js";
-import { scheduleGitHubPullRequestPatch } from "../pull-request-patches.js";
+import { startGitHubPullRequestPatch } from "../pull-request-patches.js";
 
 const repositorySchema = z.object({ full_name: z.string().min(1) });
 const issueEventSchema = z.object({
@@ -57,6 +61,7 @@ interface RefreshArgs {
   cache: PluginCache;
   nowMs: number;
   state: PluginState;
+  tasks: PluginTaskStarter;
 }
 
 async function refreshPullRequest(
@@ -87,11 +92,14 @@ async function refreshPullRequest(
       repositoryFullName: repository.full_name,
     });
   }
-  if (patch) {
-    await scheduleGitHubPullRequestPatch({
+  // GitHub names the head commit in each pull request webhook.
+  const sha = payload.head?.sha;
+  if (patch && sha) {
+    await startGitHubPullRequestPatch({
       key,
       nowMs: args.nowMs,
-      state: args.state,
+      sha,
+      tasks: args.tasks,
     });
   }
 }
@@ -117,10 +125,11 @@ async function refreshChecks(
     });
     if (patch) {
       // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
-      await scheduleGitHubPullRequestPatch({
+      await startGitHubPullRequestPatch({
         key,
         nowMs: args.nowMs,
-        state: args.state,
+        sha,
+        tasks: args.tasks,
       });
     }
   }

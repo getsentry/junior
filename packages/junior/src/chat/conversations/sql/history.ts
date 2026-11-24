@@ -596,6 +596,25 @@ class SqlConversationEventStore implements ConversationEventStore {
     return rows.map(eventFromRow);
   }
 
+  async loadLatestEventOfTypes(
+    conversationId: string,
+    types: readonly KnownConversationEventType[],
+  ): Promise<ConversationEvent | undefined> {
+    const [row] = await this.executor
+      .db()
+      .select()
+      .from(juniorConversationEvents)
+      .where(
+        and(
+          eq(juniorConversationEvents.conversationId, conversationId),
+          inArray(juniorConversationEvents.type, [...types]),
+        ),
+      )
+      .orderBy(desc(juniorConversationEvents.seq))
+      .limit(1);
+    return row ? eventFromRow(row) : undefined;
+  }
+
   async loadCurrentEventsOfType(
     conversationId: string,
     type: KnownConversationEventType,

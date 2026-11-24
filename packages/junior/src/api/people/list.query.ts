@@ -187,8 +187,10 @@ function rangeWindow(
 
 /**
  * Count active people and root Conversations in each bucket of each series,
- * from one read of the Turns since `since`. The time bound applies to the
- * metric rows before any join. Six-hour buckets roll up hour buckets.
+ * from one read of the Turns since `since`. The Turns are grouped by bucket,
+ * Identity, and Conversation before any join, so the joins and the counts
+ * read a few rows for each Conversation, not one for each Turn. Six-hour
+ * buckets roll up hour buckets.
  *
  * Each count is a hashed `DISTINCT` of (bucket, person) or (bucket, root)
  * pairs, which costs less than sorting for `COUNT(DISTINCT)`.
@@ -196,35 +198,48 @@ function rangeWindow(
 function activityRows(since: Date, read: "day" | "hour") {
   const utc = sql`(${metrics.occurredAt} AT TIME ZONE 'UTC')`;
   const readBucket = sql<Date>`date_trunc(${sql.raw(`'${read}'`)}, ${utc})`;
+  const bucketTurns = getDb()
+    .select({
+      bucket: readBucket.as("turn_bucket"),
+      identityId: sql<string>`${metrics.actorIdentityId}`.as(
+        "turn_identity_id",
+      ),
+      conversationId: sql<string>`${metrics.conversationId}`.as(
+        "turn_conversation_id",
+      ),
+    })
+    .from(metrics)
+    .where(
+      and(
+        // Every Run writes one `duration_ms` row.
+        eq(metrics.metric, "duration_ms"),
+        gte(metrics.occurredAt, since),
+      ),
+    )
+    .groupBy(readBucket, metrics.actorIdentityId, metrics.conversationId)
+    .as("activity_bucket_turns");
   // One row per bucket, person, and root, so the counts read few rows.
   const turns = getDb()
     .$with("activity_turns")
     .as(
       getDb()
         .select({
-          bucket: readBucket.as("activity_bucket"),
+          bucket: sql<Date>`${bucketTurns.bucket}`.as("activity_bucket"),
           userId: sql<string>`${juniorUsers.id}`.as("activity_user_id"),
           rootConversationId: conversationRootId.as("activity_root_id"),
         })
-        .from(metrics)
+        .from(bucketTurns)
         .innerJoin(
           juniorIdentities,
-          eq(juniorIdentities.id, metrics.actorIdentityId),
+          eq(juniorIdentities.id, bucketTurns.identityId),
         )
         .innerJoin(juniorUsers, eq(juniorUsers.id, juniorIdentities.userId))
         .innerJoin(
           juniorConversations,
-          eq(juniorConversations.conversationId, metrics.conversationId),
+          eq(juniorConversations.conversationId, bucketTurns.conversationId),
         )
-        .where(
-          and(
-            verifiedActorWhere(),
-            // Every Run writes one `duration_ms` row.
-            eq(metrics.metric, "duration_ms"),
-            gte(metrics.occurredAt, since),
-          ),
-        )
-        .groupBy(readBucket, juniorUsers.id, conversationRootId),
+        .where(verifiedActorWhere())
+        .groupBy(bucketTurns.bucket, juniorUsers.id, conversationRootId),
     );
   const unitCounts = (unit: ActivityUnit) => {
     const bucket =

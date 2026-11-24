@@ -655,7 +655,33 @@ defineJuniorPlugin({
 ```
 
 The task context has `ctx.payload`, `ctx.state`, `ctx.annotations`,
-`ctx.codeChanges`, and `ctx.conversationChanges`, as in a plugin route.
+`ctx.codeChanges`, `ctx.conversationChanges`, and `ctx.events`, as in a
+plugin route. Use `ctx.events.publish(...)` to publish an Event that the task
+finds.
+
+### Wait for a provider with a task
+
+Some providers compute a value a short time after their webhook. To read it
+later, start the task with `delaySeconds`. The queue holds the first run for
+that many seconds. While the value is not ready, throw, and the queue runs the
+task again with the backoff above.
+
+`ctx.lastDelivery` is true on the last run. When that run throws, the queue
+does not run the task again. On that run, write a fallback instead of
+throwing, such as a short cache entry that makes the next read ask the
+provider.
+
+```ts title="index.ts"
+async run(ctx: PluginStartedTaskContext<z.output<typeof statusPayload>>) {
+  const status = await readComputedStatus(ctx.payload.id);
+  if (status) return await saveStatus(ctx.db, status);
+  if (!ctx.lastDelivery) throw new StatusNotReadyError(ctx.payload.id);
+  await markStatusUnknown(ctx.db, ctx.payload.id);
+}
+```
+
+A key that names the event's time window makes events in one window share a
+run, while later events start their own run, with their own retries.
 
 ## Add a link type
 
