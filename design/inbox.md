@@ -80,8 +80,9 @@ how the dashboard groups and acts on its rows.
   assignee is left, the item dismisses itself.
 - With no assignees named, the item goes to the person in the Turn, else
   the Automation creator, else the Conversation's active Participants.
-- An item from a private Conversation stays private and cannot go to
-  Everyone.
+- An item from a private Conversation stays private. Everyone means the
+  people who can see the Conversation: its members when it is private, and
+  anyone when it is public.
 - Making a Conversation public does not show its private items.
 - A Slack thread that its Conversation detached from gets no new item card.
 - Only the Conversation or the plugin that added an item can change it,
@@ -137,11 +138,9 @@ how the dashboard groups and acts on its rows.
 ## Gaps
 
 - An item can have no assignees. Junior then handles it as an item for
-  Everyone, also in a private Conversation, and its Slack card says "For
-  Everyone". Anyone who can see it can answer it, and it does not dismiss
-  itself. This breaks "every item has at least one assignee", "only an
-  assignee answers", and "an item from a private Conversation … cannot go
-  to Everyone".
+  Everyone, and its Slack card says "For Everyone". Anyone who can see it
+  can answer it, and it does not dismiss itself. This breaks "every item
+  has at least one assignee" and "only an assignee answers".
 - An agent in any public Conversation can change, reassign, or close a
   public item that an agent added, and a new item with the same key
   overwrites it. This breaks "only the Conversation or the plugin that added
@@ -160,9 +159,6 @@ how the dashboard groups and acts on its rows.
   who can see the Conversation only after that gets no item until the
   To-do changes again. This breaks "a task for a person is a To-do
   assigned to them. They see it with their other asks".
-- With the New dashboard setting off, the "Needs you" group of the Inbox
-  also shows open actions for Everyone and actions with no assignees. This
-  breaks "'Needs you' means one thing".
 - An agent or a plugin can add a notice that names no next step, and the
   Inbox shows it in FYI. This breaks "a notice … says what to do".
 - An Automation alert shows only in the dashboard Inbox. Slack shows no
