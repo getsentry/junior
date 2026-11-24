@@ -27,7 +27,9 @@ import {
   findOpenTurns,
   findTurn,
   type OpenTurn,
+  supersedeTurn,
   type Turn,
+  TURN_PRIORITY,
   type TurnRecord,
 } from "@/core/turn/state";
 import { juniorTurnInbox } from "@/db/schema";
@@ -59,29 +61,32 @@ export type MailboxDelivery = "interrupt" | "defer";
  * Junior's rule for which Turn takes an input that is not a duplicate. Core
  * owns it, so every Source schedules the same way. An input joins a Turn only
  * from that Turn's Actor and Source. An interrupt joins the Turn that has
- * started. Any input joins the last Turn in line while no step of it has
- * started. Otherwise the input waits in a new Turn at the end of the line, so
- * A1 B1 A2 makes A2 wait for B1. It runs under the Conversation lock, so
- * `openTurns` cannot change before the write.
+ * started, and an interrupt from anyone else supersedes that Turn. Any input
+ * joins the last Turn in line while no step of it has started. Otherwise the
+ * input waits in a new Turn at the end of the line, so A1 B1 A2 makes A2 wait
+ * for B1. It runs under the Conversation lock, so `openTurns` cannot change
+ * before the write.
  */
 function assignTurn(
   input: Pick<TurnInput, "actorIdentityId" | "source"> & {
     delivery: MailboxDelivery;
   },
   openTurns: OpenTurn[],
-): { join: Turn } | { create: { priority: number } } {
+): { join: Turn } | { create: { priority: number }; supersede?: Turn } {
   const sameSender = (turn: OpenTurn) =>
     turn.actorIdentityId === input.actorIdentityId &&
     turn.source === input.source;
   const started = openTurns.find((turn) => turn.started);
-  if (input.delivery === "interrupt" && started && sameSender(started)) {
-    return { join: started };
+  if (input.delivery === "interrupt" && started) {
+    return sameSender(started)
+      ? { join: started }
+      : { create: { priority: TURN_PRIORITY.supersede }, supersede: started };
   }
   const last = openTurns.at(-1);
   if (last && !last.started && sameSender(last)) {
     return { join: last };
   }
-  return { create: { priority: 0 } };
+  return { create: { priority: TURN_PRIORITY.normal } };
 }
 
 async function placeInput(
@@ -106,6 +111,9 @@ async function placeInput(
     await addInput({ executor }, { ...input, turnId });
     return { turnId, created: false, publish: false };
   }
+  if (choice.supersede) {
+    await supersedeTurn({ executor }, choice.supersede.turnId);
+  }
   const turn = await createTurn(
     { executor },
     {
@@ -116,20 +124,21 @@ async function placeInput(
   );
   await addInput({ executor }, { ...input, turnId: turn.turnId });
   // A Turn behind another one gets its message from `reconcileTurn` when the
-  // Turn before it ends.
+  // Turn before it ends. A Turn that supersedes one is next as soon as the
+  // superseded Turn ends, which may be now.
   return {
     turnId: turn.turnId,
     created: true,
-    publish: openTurns.length === 0,
+    publish: openTurns.length === 0 || choice.supersede !== undefined,
   };
 }
 
 /**
  * Puts an input into the Turn that `assignTurn` picks, and publishes a Turn
- * that the input created when no other Turn is open. An input with a known
- * idempotency key writes nothing. Call it outside a transaction: it publishes
- * after its own commit, and a publish error reaches the caller with the input
- * already stored.
+ * that the input created when no other Turn is open or when it supersedes
+ * one. An input with a known idempotency key writes nothing. Call it outside
+ * a transaction: it publishes after its own commit, and a publish error
+ * reaches the caller with the input already stored.
  */
 export async function scheduleInput(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,

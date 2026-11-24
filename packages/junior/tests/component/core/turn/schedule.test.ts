@@ -7,7 +7,7 @@ import type { EngineContext } from "@/core/engine-context";
 import { markInputsAttempted } from "@/core/turn/inbox";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
 import { reconcileTurn, scheduleInput } from "@/core/turn/schedule";
-import { cancelTurn, claimTurn, failTurn } from "@/core/turn/state";
+import { cancelTurn, claimTurn, commitStep, failTurn } from "@/core/turn/state";
 import {
   juniorConversations,
   juniorIdentities,
@@ -22,6 +22,7 @@ import {
 } from "../../../fixtures/sql";
 
 const CONVERSATION_ID = "local:conversation-1";
+const CONTINUE = { outcome: "continue" as const, messages: [] };
 const LEASE_MS = 60_000;
 
 const stepMessageSchema = z.looseObject({ turnId: z.string() });
@@ -132,6 +133,26 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       .from(juniorTurns);
   }
 
+  async function readEnd(turnId: string) {
+    const [turn] = await fixture.sql
+      .db()
+      .select({
+        state: juniorTurns.state,
+        endReason: juniorTurns.endReason,
+        priority: juniorTurns.priority,
+      })
+      .from(juniorTurns)
+      .where(eq(juniorTurns.id, turnId));
+    return turn;
+  }
+
+  function interruptFrom(actorIdentityId: string, idempotencyKey: string) {
+    return scheduleInput(engineCtx, {
+      ...input(idempotencyKey),
+      actorIdentityId,
+    });
+  }
+
   async function readInputs() {
     return fixture.sql
       .db()
@@ -151,7 +172,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       {
         id: scheduled.turnId,
         state: "queued",
-        priority: 0,
+        priority: 1,
         actorIdentityId: "identity:actor",
       },
     ]);
@@ -250,6 +271,71 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     });
   });
 
+  it("supersedes a running Turn for an interrupt from another Actor, and ends it when its step commits", async () => {
+    const alice = await schedule("event-1");
+    const running = await claim(alice.turnId);
+    publishes = [];
+
+    const deferred = await scheduleInput(engineCtx, {
+      ...input("event-2"),
+      actorIdentityId: "identity:other",
+      delivery: "defer",
+    });
+    const bob = await interruptFrom("identity:other", "event-3");
+
+    expect(publishes).toEqual([{ turnId: bob.turnId, committed: true }]);
+    await expect(readEnd(bob.turnId)).resolves.toMatchObject({ priority: 0 });
+    await expect(claimTurn(engineCtx, bob.turnId)).resolves.toBeUndefined();
+    await expect(commitStep(engineCtx, running, CONTINUE, [])).resolves.toBe(
+      "superseded",
+    );
+    await expect(readEnd(alice.turnId)).resolves.toMatchObject({
+      state: "cancelled",
+      endReason: "superseded",
+    });
+    await expect(readEnd(deferred.turnId)).resolves.toMatchObject({
+      state: "queued",
+    });
+    await expect(claimTurn(engineCtx, bob.turnId)).resolves.toMatchObject({
+      turnId: bob.turnId,
+    });
+  });
+
+  it("ends a superseded Turn at once when it waits between steps", async () => {
+    const alice = await schedule("event-1");
+    await commitStep(engineCtx, await claim(alice.turnId), CONTINUE, []);
+    publishes = [];
+
+    const bob = await interruptFrom("identity:other", "event-2");
+
+    await expect(readEnd(alice.turnId)).resolves.toMatchObject({
+      state: "cancelled",
+      endReason: "superseded",
+    });
+    expect(publishes).toEqual([{ turnId: bob.turnId, committed: true }]);
+    await expect(claimTurn(engineCtx, bob.turnId)).resolves.toMatchObject({
+      turnId: bob.turnId,
+    });
+  });
+
+  it("lets a superseding Turn be superseded in turn", async () => {
+    const alice = await schedule("event-1");
+    const runningAlice = await claim(alice.turnId);
+    const bob = await interruptFrom("identity:other", "event-2");
+    await commitStep(engineCtx, runningAlice, CONTINUE, []);
+    const runningBob = await claim(bob.turnId);
+
+    const aliceAgain = await interruptFrom("identity:actor", "event-3");
+
+    await expect(readEnd(bob.turnId)).resolves.toMatchObject({ priority: 1 });
+    await expect(commitStep(engineCtx, runningBob, CONTINUE, [])).resolves.toBe(
+      "superseded",
+    );
+    await expect(
+      claimTurn(engineCtx, aliceAgain.turnId),
+    ).resolves.toMatchObject({ turnId: aliceAgain.turnId });
+  });
+
   it("waits for the Conversation lock before it claims a Turn", async () => {
     const turn = await schedule("event-1");
     let claimed: Awaited<ReturnType<typeof claimTurn>> | "pending" = "pending";
@@ -342,7 +428,7 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
     expect(next).toEqual({
       id: expect.any(String),
       state: "queued",
-      priority: 0,
+      priority: 1,
       actorIdentityId: "identity:actor",
     });
     const moved = [
