@@ -112,15 +112,6 @@ export const videoIdSchema = z
   .regex(VIDEO_ID_RE, "Use the numeric Vimeo video ID")
   .describe("Numeric Vimeo video ID, such as the one vimeo_upload returned.");
 
-/** Vimeo folder URI. */
-export const folderUriSchema = z
-  .string()
-  .trim()
-  .regex(FOLDER_URI_RE, "Use /users/<owner id>/projects/<folder id>")
-  .describe(
-    "Vimeo folder URI, /users/<owner id>/projects/<folder id>. Omit to use the default folder.",
-  );
-
 /** Bare hostname where a video may be embedded. */
 export const embedDomainSchema = z
   .string()
@@ -131,20 +122,6 @@ export const embedDomainSchema = z
 /** Sandbox path of a file that a tool reads. */
 export const sandboxPathSchema = (what: string) =>
   z.string().trim().min(1).describe(`Sandbox path of the ${what}.`);
-
-/** Owner ID and canonical URI of a folder, from input or the host default. */
-export function resolveFolder(input: string | undefined): {
-  owner: string;
-  uri: string;
-} {
-  const value = input ?? process.env[FOLDER_ENV]?.trim();
-  if (!value) {
-    throw new PluginToolInputError(
-      `No default Vimeo folder is set (${FOLDER_ENV}). Pass the folder URI.`,
-    );
-  }
-  return parseFolder(value);
-}
 
 function parseFolder(value: string): { owner: string; uri: string } {
   const match = FOLDER_URI_RE.exec(value);
@@ -161,26 +138,26 @@ function parseFolder(value: string): { owner: string; uri: string } {
  * account is shared by every requester, so writes stay in the folder that
  * the install names and never reach other videos that the account can edit.
  */
-export function writableFolder(): { owner: string; uri: string } {
+export function installFolder(): { owner: string; uri: string } {
   const value = process.env[FOLDER_ENV]?.trim();
   if (!value) {
     throw new PluginToolInputError(
-      `No Vimeo folder is set for uploads (${FOLDER_ENV}). An admin must set it; no change to the call can work in this Turn.`,
+      `No Vimeo folder is set (${FOLDER_ENV}). An admin must set it; no change to the call can work in this Turn.`,
     );
   }
   return parseFolder(value);
 }
 
-/** Fail unless the video is in the folder that the tools may change. */
-export function assertWritable(video: Video): void {
-  const folder = writableFolder();
+/** Fail unless the video is in the folder that the tools may use. */
+export function assertInFolder(video: Video): void {
+  const folder = installFolder();
   const parent = video.parent_folder?.uri;
   const inFolder = parent
     ? FOLDER_URI_RE.test(parent) && parseFolder(parent).uri === folder.uri
     : false;
   if (!inFolder) {
     throw new PluginToolInputError(
-      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${folder.uri}. The Vimeo tools change only videos in that folder; use vimeo_listFolder to find them.`,
+      `Vimeo video ${videoIdFromUri(video.uri)} is not in ${folder.uri}. The Vimeo tools use only videos in that folder; use vimeo_listFolder to find them.`,
     );
   }
 }

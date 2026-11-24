@@ -56,6 +56,8 @@ function fakeVimeo() {
     received: new Uint8Array(SIZE),
     serverOffset: 0,
     dropSecondChunk: false,
+    dropsPerChunk: 0,
+    drops: new Map<number, number>(),
     connected: true,
     failLookup: false,
   };
@@ -120,6 +122,16 @@ function fakeVimeo() {
         duration: 72,
       });
     }
+    if (route === "GET /videos/777") {
+      return Response.json({
+        uri: "/videos/777",
+        parent_folder: { uri: FOLDER },
+        privacy: { view: "disable", embed: "whitelist" },
+        status: "available",
+        transcode: { status: "complete" },
+        duration: 72,
+      });
+    }
     if (route === `GET ${FOLDER}/videos`) {
       return Response.json({
         data: [storedVideo],
@@ -145,6 +157,11 @@ function fakeVimeo() {
     const body = init.body as Uint8Array;
     expect(body.byteLength).toBeLessThanOrEqual(8 * 1024 * 1024);
     expect(offset).toBe(state.serverOffset);
+    const drops = state.drops.get(offset) ?? 0;
+    if (drops < state.dropsPerChunk) {
+      state.drops.set(offset, drops + 1);
+      throw new TypeError("fetch failed");
+    }
     if (state.dropSecondChunk && offset > 0) {
       // Vimeo keeps half the chunk, then the connection drops.
       const half = Math.floor(body.byteLength / 2);
@@ -243,6 +260,14 @@ describe("Vimeo tools", () => {
     });
   });
 
+  it("gives each chunk its own retries", async () => {
+    const { state, run } = fakeVimeo();
+    // Two drops on each of the three chunks: six in all, two per chunk.
+    state.dropsPerChunk = 2;
+    await run("upload", { path: "out/clip.mp4", title: "t" });
+    expect(Buffer.compare(state.received, video)).toBe(0);
+  });
+
   it("succeeds with a status error when only the lookup after the bytes fails", async () => {
     const { state, run } = fakeVimeo();
     state.failLookup = true;
@@ -288,7 +313,7 @@ describe("Vimeo tools", () => {
         title: "t",
         embed_domains: ["www.example.com"],
       }),
-    ).rejects.toThrow(/No Vimeo folder is set for uploads/);
+    ).rejects.toThrow(/No Vimeo folder is set/);
     expect(state.apiCalls).toHaveLength(0);
   });
 
@@ -334,7 +359,7 @@ describe("Vimeo tools", () => {
     ).rejects.toThrow(/not a JPEG or PNG/);
   });
 
-  it("changes no video outside the install's folder", async () => {
+  it("uses no video or folder outside the install's folder", async () => {
     const { state, tools, run } = fakeVimeo();
     expect(() =>
       tools["upload"]!.prepareArguments!({
@@ -343,6 +368,14 @@ describe("Vimeo tools", () => {
         folder_uri: `/users/${OWNER}/projects/999`,
       }),
     ).toThrow(/folder_uri/);
+    expect(() =>
+      tools["listFolder"]!.prepareArguments!({
+        folder_uri: `/users/${OWNER}/projects/999`,
+      }),
+    ).toThrow(/folder_uri/);
+    await expect(run("status", { video_id: "555" })).rejects.toThrow(
+      /not in \/users\/111\/projects\/222/,
+    );
     await expect(
       run("replaceFile", { video_id: "555", path: "out/clip.mp4" }),
     ).rejects.toThrow(/not in \/users\/111\/projects\/222/);
@@ -353,7 +386,7 @@ describe("Vimeo tools", () => {
     expect(state.uploads).toHaveLength(0);
   });
 
-  it("lists the default folder newest first and reports the next page", async () => {
+  it("lists the install's folder newest first and reports the next page", async () => {
     const { state, run } = fakeVimeo();
     const out = await run("listFolder", {});
     const list = state.apiCalls[0]!;
@@ -370,10 +403,10 @@ describe("Vimeo tools", () => {
 
   it("reports readiness and needs the service account", async () => {
     const { state, tools, run } = fakeVimeo();
-    const out = await run("status", { video_id: "555" });
+    const out = await run("status", { video_id: "777" });
     expect(out).toMatchObject({
       ready: true,
-      embed_url: "https://player.vimeo.com/video/555",
+      embed_url: "https://player.vimeo.com/video/777",
     });
     expect(out["hash"]).toBeUndefined();
     expect(state.apiCalls[0]!.operation).toBe("vimeo.status");
@@ -384,7 +417,7 @@ describe("Vimeo tools", () => {
       tools["status"]!.prepareArguments!({ video_id: "../me" }),
     ).toThrow(/numeric Vimeo video ID/);
     state.connected = false;
-    await expect(run("status", { video_id: "555" })).rejects.toThrow(
+    await expect(run("status", { video_id: "777" })).rejects.toThrow(
       /service account is not connected/,
     );
   });

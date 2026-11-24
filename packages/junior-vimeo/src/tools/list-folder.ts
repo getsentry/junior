@@ -5,17 +5,16 @@ import {
 import * as z from "zod";
 import {
   describeVideo,
+  installFolder,
   folderPageSchema,
-  folderUriSchema,
   PAGE_SIZE,
-  resolveFolder,
   VIDEO_FIELDS,
   videoFields,
   VIMEO_OPERATIONS,
   vimeoClient,
 } from "../tool-support/vimeo-api.js";
 
-/** List the videos in a Vimeo folder. */
+/** List the videos in the install's Vimeo folder. */
 export const vimeoListFolderTool = definePluginTool({
   annotations: {
     destructiveHint: false,
@@ -24,10 +23,9 @@ export const vimeoListFolderTool = definePluginTool({
     readOnlyHint: true,
   },
   description:
-    "List the videos in a Vimeo folder, newest first, 100 per page, with each video's title, ID, embed URL, and processing state. Use it to find an existing video by title.",
+    "List the videos in the install's Vimeo folder, newest first, 100 per page, with each video's title, ID, embed URL, and processing state. Use it to find an existing video by title.",
   inputSchema: z
     .object({
-      folder_uri: folderUriSchema.optional(),
       page: z
         .number()
         .int()
@@ -43,7 +41,7 @@ export const vimeoListFolderTool = definePluginTool({
     next_page: z.number().optional(),
   }),
   async execute(input, options, ctx) {
-    const folder = resolveFolder(input.folder_uri);
+    const folder = installFolder();
     const client = vimeoClient(
       ctx.egress,
       VIMEO_OPERATIONS.listFolder,

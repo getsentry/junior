@@ -5,7 +5,7 @@ import {
 import * as z from "zod";
 import { imageType, readImage } from "../tool-support/media.js";
 import {
-  assertWritable,
+  assertInFolder,
   sandboxPathSchema,
   videoIdSchema,
   VIMEO_OPERATIONS,
@@ -49,7 +49,7 @@ export const vimeoSetThumbnailTool = definePluginTool({
       VIMEO_OPERATIONS.setThumbnail,
       signal,
     );
-    assertWritable(await client.getVideo(input.video_id));
+    assertInFolder(await client.getVideo(input.video_id));
     const picture = pictureSchema.parse(
       await client.api("POST", `/videos/${input.video_id}/pictures`),
     );

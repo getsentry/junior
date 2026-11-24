@@ -52,11 +52,10 @@ callback URLs.
 <summary><code>VIMEO_FOLDER_URI</code></summary>
 
 The folder where Junior uploads, as `/users/<owner id>/projects/<folder id>`.
-Junior changes only videos in this folder. A listing can name another
-folder.
+Junior uploads, changes, lists, and reads only videos in this folder.
 
 - **Define:** Set `VIMEO_FOLDER_URI` in the deployment environment
-- **Required:** Yes, to upload, replace a file, or set a thumbnail
+- **Required:** Yes, for every Vimeo tool
 
 </details>
 
@@ -95,8 +94,8 @@ into the team owner's account, as Vimeo requires for team members.
 ## Privacy
 
 Every requester shares one Vimeo account, so Junior uploads only into
-`VIMEO_FOLDER_URI` and changes only videos in that folder. It refuses to
-change any other video that the account can edit.
+`VIMEO_FOLDER_URI` and lists, reads, and changes only videos in that
+folder. It refuses any other folder or video that the account can reach.
 
 Vimeo applies these settings when it creates the video, before any bytes
 arrive:
@@ -116,7 +115,7 @@ Replacing a file keeps the video's ID, hash, privacy, and embed domains.
 | `vimeo_replaceFile`  | Replaces the file of an existing video                           |
 | `vimeo_setThumbnail` | Sets the active thumbnail from a JPEG or PNG                     |
 | `vimeo_status`       | Returns upload and processing state, privacy, and embed URL      |
-| `vimeo_listFolder`   | Lists the videos in a folder, newest first                       |
+| `vimeo_listFolder`   | Lists the videos in the folder, newest first                     |
 
 The tools read files from the sandbox on the host and accept only MP4, MOV,
 and WebM videos up to 200 MB, and JPEG and PNG images up to 10 MB.

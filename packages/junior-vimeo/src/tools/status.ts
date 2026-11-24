@@ -1,6 +1,7 @@
 import { definePluginTool } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
+  assertInFolder,
   describeVideo,
   videoIdSchema,
   videoOutputSchema,
@@ -17,7 +18,7 @@ export const vimeoStatusTool = definePluginTool({
     readOnlyHint: true,
   },
   description:
-    "Get the processing state, privacy, and embed URL of a Vimeo video. `ready` is true when Vimeo finished transcoding and the embed plays.",
+    "Get the processing state, privacy, and embed URL of a Vimeo video in the install's folder. `ready` is true when Vimeo finished transcoding and the embed plays.",
   inputSchema: z.object({ video_id: videoIdSchema }).strict(),
   outputSchema: videoOutputSchema,
   async execute(input, options, ctx) {
@@ -26,6 +27,9 @@ export const vimeoStatusTool = definePluginTool({
       VIMEO_OPERATIONS.status,
       options.signal,
     );
-    return describeVideo(await client.getVideo(input.video_id));
+    const video = await client.getVideo(input.video_id);
+    // One shared account can read other folders, unlisted hashes included.
+    assertInFolder(video);
+    return describeVideo(video);
   },
 });

@@ -13,7 +13,7 @@ import {
   videoOutputSchema,
   VIMEO_OPERATIONS,
   vimeoClient,
-  writableFolder,
+  installFolder,
 } from "../tool-support/vimeo-api.js";
 
 /** Upload a sandbox video into a Vimeo folder as a private video. */
@@ -61,7 +61,7 @@ export const vimeoUploadTool = definePluginTool({
     status_error: z.string().optional(),
   }),
   async execute(input, options, ctx) {
-    const folder = writableFolder();
+    const folder = installFolder();
     const embedDomains = resolveEmbedDomains(input.embed_domains);
     const bytes = await readVideo(input.path, ctx.sandbox);
     const signal = options.signal;

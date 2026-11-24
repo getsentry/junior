@@ -3,7 +3,7 @@ import { definePluginTool } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { readVideo, tusUpload } from "../tool-support/media.js";
 import {
-  assertWritable,
+  assertInFolder,
   describeVideo,
   sandboxPathSchema,
   uploadAttemptSchema,
@@ -40,7 +40,7 @@ export const vimeoReplaceFileTool = definePluginTool({
       VIMEO_OPERATIONS.replaceFile,
       signal,
     );
-    assertWritable(await client.getVideo(input.video_id));
+    assertInFolder(await client.getVideo(input.video_id));
     const attempt = uploadAttemptSchema.parse(
       await client.api(
         "POST",

@@ -15,6 +15,7 @@ const MAX_VIDEO_BYTES = 200 * 1024 * 1024;
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 /** Bytes per tus PATCH request. */
 export const CHUNK_BYTES = 8 * 1024 * 1024;
+/** Failed tries per chunk before the upload stops. */
 const MAX_CHUNK_RETRIES = 3;
 
 const ascii = (bytes: Uint8Array, start: number, end: number) =>
@@ -153,6 +154,7 @@ export async function tusUpload(
         throw new Error(`Vimeo tus PATCH failed with HTTP ${response.status}`);
       }
       offset = next;
+      retries = 0;
     } catch (error) {
       if (signal?.aborted || retries >= MAX_CHUNK_RETRIES) throw error;
       retries += 1;
