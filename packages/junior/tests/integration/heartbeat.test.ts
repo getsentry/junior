@@ -1,3 +1,4 @@
+import { sendVercelPluginTask } from "@/chat/plugins/task-queue";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   defineJuniorPlugin,
@@ -39,12 +40,16 @@ let conversationWorkQueue = createConversationWorkQueueTestAdapter();
 function createTestHeartbeatContext(
   args: Omit<
     Parameters<typeof createHeartbeatContext>[0],
-    "conversationWorkQueue" | "dispatchForIdentity" | "events"
+    | "conversationWorkQueue"
+    | "dispatchForIdentity"
+    | "events"
+    | "sendPluginTask"
   >,
 ) {
   return createHeartbeatContext({
     ...args,
     conversationWorkQueue,
+    sendPluginTask: sendVercelPluginTask,
     dispatchForIdentity: createIdentityDispatcher({
       conversationWorkQueue: () => conversationWorkQueue,
     }),
@@ -65,6 +70,7 @@ function testHeartbeat(
   return heartbeat(request, waitUntil, {
     ...options,
     conversationWorkQueue: queue,
+    sendPluginTask: options.sendPluginTask ?? sendVercelPluginTask,
     dispatchForIdentity:
       options.dispatchForIdentity ??
       createIdentityDispatcher({

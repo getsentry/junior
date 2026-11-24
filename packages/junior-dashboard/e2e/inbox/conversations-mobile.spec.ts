@@ -137,7 +137,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize({ height: 844, width: 390 });
     // A phone opens on the Inbox entries; "+" opens the composer.
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await page.getByRole("button", { name: "New conversation" }).click();
     await expect(page).toHaveURL(`${dashboard.baseURL}/conversations/new`);
 
@@ -230,7 +230,7 @@ test.describe("new UI", { tag: "@new" }, () => {
 
       // A browser back and forward is not a request to type. A direct link
       // has no origin, so Back goes to Conversations.
-      const conversationsUrl = `${dashboard.baseURL}/?view=conversations`;
+      const conversationsUrl = `${dashboard.baseURL}/inbox?view=conversations`;
       await page.getByRole("link", { name: "Back to Conversations" }).click();
       await expect(page).toHaveURL(conversationsUrl);
       await page.goBack();
@@ -263,12 +263,15 @@ test.describe("new UI", { tag: "@new" }, () => {
       });
     });
     await page.goto(`${dashboard.baseURL}/conversations`);
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     // A phone opens on the Inbox entries: the list of lists.
     const entries = page.getByRole("navigation", { name: "Primary" });
     await expect(entries.getByRole("link", { name: /^Inbox/ })).toBeVisible();
     await expect(
       entries.getByRole("link", { name: "Conversations", exact: true }),
+    ).toBeVisible();
+    await expect(
+      entries.getByRole("link", { name: "Code", exact: true }),
     ).toBeVisible();
     const navigationTrigger = page.getByRole("button", {
       name: "Open navigation",
@@ -308,9 +311,10 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(page.getByRole("link", { name: "My profile" })).toBeVisible();
     await expect(page.getByRole("link", { name: "Settings" })).toBeVisible();
     const accountMenu = page.getByLabel("Account menu for Dashboard User");
+    // Code is an Inbox entry, under Conversations, not an account page.
     await expect(
       accountMenu.getByRole("link", { name: "Code", exact: true }),
-    ).toBeVisible();
+    ).toHaveCount(0);
     await expect(
       accountMenu.getByRole("link", { name: "System", exact: true }),
     ).toBeVisible();
@@ -375,7 +379,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("Escape");
     await expect(details).toBeHidden();
     await expect(menu).toBeFocused();
-    await page.emulateMedia({ reducedMotion: "reduce" });
     await menu.click();
     await page
       .getByRole("menuitem", { name: "Conversation details", exact: true })
@@ -392,7 +395,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.mouse.click(8, 8);
     await expect(details).toBeHidden();
     await expect(menu).toBeFocused();
-    await page.emulateMedia({ reducedMotion: "no-preference" });
     const transcript = page.getByLabel("Conversation transcript");
     await expect(transcript.getByText("1.9k tokens")).toBeHidden();
     await expect(page.getByRole("note")).toBeHidden();
@@ -720,7 +722,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(eventLog).toBeHidden();
     await expect(page).toHaveURL(/\/conversations\//);
     await page.getByRole("link", { name: "Back to Inbox" }).click();
-    await expect(page).toHaveURL(`${dashboard.baseURL}/`);
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox`);
     await expect(entries).toBeVisible();
 
     // Log out must POST and dismiss the sheet before the response completes.
@@ -744,7 +746,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await openNavigationSheet.getByRole("button", { name: "Log out" }).click();
     await signOutRequest;
     await expect(openNavigationSheet).toBeHidden();
+    // Sign-out reloads the page. Wait for the reload, so the test does not
+    // end while the document request is in flight.
+    const reloaded = page.waitForEvent("load");
     finishSignOut?.();
+    await reloaded;
   });
 
   test("keeps the message in view while earlier history and late content load", async ({

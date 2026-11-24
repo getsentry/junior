@@ -175,7 +175,9 @@ export async function extractWebFetchResponse(
     const message = `fetch failed: ${response.status}`;
     // Client-side misses are model-repairable. Upstream 5xx stays a system error.
     if (response.status >= 400 && response.status < 500) {
-      throw new ToolInputError(message);
+      throw new ToolInputError(
+        `${message}. Check the URL, or use another source.`,
+      );
     }
     throw new Error(message);
   }
@@ -190,7 +192,7 @@ export async function extractWebFetchResponse(
   ) {
     await response.body?.cancel();
     throw new ToolInputError(
-      `unsupported content type: ${contentType || "unknown"}`,
+      `unsupported content type: ${contentType || "unknown"}. Use a URL that returns text, JSON, XML, or an image.`,
     );
   }
 

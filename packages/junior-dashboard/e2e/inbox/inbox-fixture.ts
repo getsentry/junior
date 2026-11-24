@@ -1,8 +1,9 @@
-/** Review items and an API mock shared by the Inbox e2e specs. */
+/** Inbox items and an API mock shared by the Inbox e2e specs. */
 import type { Locator, Page } from "@playwright/test";
 import { NOW_MS } from "../../src/mock-reporting/fixtures";
 import { attentionCount } from "./automation-fixture";
 import { PULL_REQUEST_RESOURCE } from "../../src/mock-reporting/snooze-resources";
+import { mockSearchRows } from "../search-fixture";
 
 export const viewer = {
   displayName: "Dashboard User",
@@ -48,6 +49,20 @@ export const rollout = {
     ],
   },
   title: "Approve the payments-v42 rollout",
+};
+
+// A To-do that the checkout Conversation's agent gave the viewer. Its item
+// links no Conversation, as the server sends it.
+export const todoForYou = {
+  ...base,
+  owner: { id: conversationId, kind: "conversation" },
+  rootConversationId: conversationId,
+  body: "Check the deploy calendar before the next release.",
+  createdAt: "2026-08-07T11:56:00.000Z",
+  id: "item-todo-rollback-window",
+  title: "Confirm the rollback window",
+  todoId: 13,
+  visibility: "private" as const,
 };
 
 export const license = {
@@ -259,7 +274,7 @@ export const grab = {
 };
 
 /**
- * The alert of an Automation that needs its creator: a Review item that the
+ * The alert of an Automation that needs its creator: an Inbox item that the
  * Automation owns, with no Conversation.
  */
 export function automationAlert(automationId: string, title: string) {
@@ -312,7 +327,7 @@ type MockItem = Omit<typeof license, "status"> & {
  * `now`, which is the test's clock. The versions token moves with them, as
  * on the server.
  */
-export async function mockReviewItems(
+export async function mockInboxItems(
   page: Page,
   options: {
     /**
@@ -331,8 +346,8 @@ export async function mockReviewItems(
     pageSize?: number;
     /** Snoozes that exist before the page loads. */
     snoozes?: ({ untilMs: number } & (
-      | { conversationId: string; reviewItemId?: string }
-      | { reviewItemId: string }
+      | { conversationId: string; inboxItemId?: string }
+      | { inboxItemId: string }
     ))[];
   } = {},
 ) {
@@ -360,12 +375,12 @@ export async function mockReviewItems(
   /** The open items of a snooze subject: one item, or a row's items. */
   const itemsOf = (subject: {
     conversationId?: string;
-    reviewItemId?: string;
+    inboxItemId?: string;
   }) =>
     open
       .filter((i) =>
-        subject.reviewItemId
-          ? i.id === subject.reviewItemId
+        subject.inboxItemId
+          ? i.id === subject.inboxItemId
           : inRow(subject.conversationId!, i),
       )
       .map((i) => i.id);
@@ -394,12 +409,12 @@ export async function mockReviewItems(
     const body = request.postDataJSON();
     if (request.method() === "POST") {
       // One snooze per open item that it hides; it replaces the last one.
-      const reviewItemIds = itemsOf(body);
+      const inboxItemIds = itemsOf(body);
       // A snooze with no time waits for its Event.
       const untilMs = body.wakeAt ? Date.parse(body.wakeAt) : Infinity;
-      for (const id of reviewItemIds) snoozes.set(id, untilMs);
+      for (const id of inboxItemIds) snoozes.set(id, untilMs);
       snoozeChanges++;
-      return route.fulfill({ json: { reviewItemIds }, status: 201 });
+      return route.fulfill({ json: { inboxItemIds }, status: 201 });
     }
     if (request.method() === "DELETE") {
       // Without an item, every snooze in the row wakes.
@@ -416,7 +431,7 @@ export async function mockReviewItems(
     return route.fulfill({
       json: {
         ...versions,
-        reviewItems: `${versions.reviewItems}:${snoozeChanges}:${sleeping}`,
+        inboxItems: `${versions.inboxItems}:${snoozeChanges}:${sleeping}`,
       },
       response,
     });
@@ -424,9 +439,24 @@ export async function mockReviewItems(
   const archived = [answered, dismissedNotice];
   // Items closed in this test. Their detail reads closed, as on the server.
   const closedNow: MockItem[] = [];
-  await page.route("**/api/review-items**", async (route) => {
+  // A search finds snoozed and closed items too, as on the server.
+  await mockSearchRows(page, {
+    inboxItems: () =>
+      [...open, ...closedNow, ...archived].map((i) => ({
+        body: i.body,
+        id: i.id,
+        status:
+          i.status === "open"
+            ? "open"
+            : i.status === "dismissed"
+              ? "dismissed"
+              : "done",
+        title: i.title,
+      })),
+  });
+  await page.route("**/api/inbox-items**", async (route) => {
     const url = new URL(route.request().url());
-    const path = url.pathname.replace(/^.*\/api\/review-items/, "");
+    const path = url.pathname.replace(/^.*\/api\/inbox-items/, "");
     // The tab badge counts what waits on the viewer, as the server does.
     if (path === "/count") {
       const sleeping = await snoozedRows();
@@ -450,6 +480,7 @@ export async function mockReviewItems(
           snoozed: new Set(
             open.filter((i) => asleep(sleeping, i)).map((i) => i.owner.id),
           ).size,
+          todos: needsViewer.filter((i) => "todoId" in i).length,
         },
       });
     }
@@ -538,9 +569,10 @@ export async function mockReviewItems(
 }
 
 /**
- * Serve the viewer's code changes from their person Code overview, for the
- * Pull requests view. Each change is in getsentry/payments and opened 30
- * days before the report.
+ * Serve the viewer's code changes from their person Code overview, for
+ * Code · Mine, and their live cards, with the draft state and the size.
+ * Each change is in getsentry/payments and opened 30 days before the
+ * report.
  */
 export async function mockViewerCodeChanges(
   page: Page,
@@ -549,6 +581,11 @@ export async function mockViewerCodeChanges(
     idleDays: number;
     number: number;
     size?: { additions?: number; changedFiles?: number; deletions?: number };
+    stack?: {
+      id: string;
+      kind: "automation" | "conversation";
+      title?: string;
+    };
     state?: "closed" | "merged" | "open";
     title: string;
   }[],
@@ -571,18 +608,56 @@ export async function mockViewerCodeChanges(
         nextCursor:
           offset + 100 < changes.length ? String(offset + 100) : undefined,
         changes: changes.slice(offset, offset + 100).map((change) => ({
-          draft: change.draft ?? false,
           id: `00000000-0000-4000-9000-${String(change.number).padStart(12, "0")}`,
           lastActivityAt: daysAgo(change.idleDays),
           number: change.number,
           openedAt: daysAgo(30),
           provider: "github",
           repository: "getsentry/payments",
-          ...(change.size ? { size: change.size } : undefined),
+          ...(change.stack ? { stack: change.stack } : undefined),
           state: change.state ?? "open",
           title: change.title,
           url: `https://github.com/getsentry/payments/pull/${change.number}`,
         })),
+      },
+    });
+  });
+  const cards = new Map(
+    changes.map((change) => {
+      const label = `getsentry/payments#${change.number}`;
+      const status = change.draft ? "draft" : (change.state ?? "open");
+      return [
+        `https://github.com/getsentry/payments/pull/${change.number}`,
+        {
+          displayType: "Pull request",
+          facts: { type: "code_change", ...change.size },
+          key: label,
+          kind: "object",
+          label,
+          objectType: "code_change",
+          plugin: "github",
+          status,
+          title: change.title,
+        },
+      ];
+    }),
+  );
+  await page.route(/\/api\/objects\?/, async (route) => {
+    const urls = new URL(route.request().url()).searchParams.getAll("url");
+    if (!urls.some((url) => cards.has(url))) return route.fallback();
+    const response = await route.fetch();
+    const report: { objects: { object?: unknown; url: string }[] } =
+      await response.json();
+    // The API leaves out a link it has no card for.
+    await route.fulfill({
+      response,
+      json: {
+        ...report,
+        objects: urls.flatMap((url) => {
+          const card = cards.get(url);
+          if (card) return [{ object: { ...card, url }, url }];
+          return report.objects.filter((entry) => entry.url === url);
+        }),
       },
     });
   });
@@ -602,15 +677,20 @@ export function rowHead(scope: Page | Locator, title: string) {
 
 /**
  * Open the Conversation of the Inbox row whose head is `head`, with the
- * row's Open action.
+ * row's Open action: on hover on a Conversation row, or on the open card
+ * of an item row. A phone hides a closed row's actions, so there a row
+ * with nothing to expand opens from its head.
  */
 export async function openRow(head: Locator) {
+  const row = head.locator("xpath=ancestor::*[@data-inbox-row][1]");
+  const open = row.getByRole("link", { name: "Open conversation" }).first();
   await head.hover();
-  await head
-    .locator("xpath=ancestor::*[@data-inbox-row][1]")
-    .getByRole("link", { name: "Open conversation" })
-    .first()
-    .click();
+  if (!(await open.isVisible())) {
+    const expand = row.locator('[aria-controls^="inbox-row-"]').first();
+    if ((await expand.count()) === 0) return head.click();
+    await expand.click();
+  }
+  await open.click();
 }
 
 /**

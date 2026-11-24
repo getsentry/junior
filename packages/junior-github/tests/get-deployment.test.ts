@@ -154,7 +154,8 @@ describe("getDeployment", () => {
         { toolCallId: "missing-deployment" },
       ),
     ).rejects.toMatchObject({
-      message: "GitHub deployment lookup failed with HTTP 404",
+      message:
+        "GitHub deployment lookup failed with HTTP 404. Check repo and commit_sha, and that environment is a deployment environment of the repo.",
       name: "PluginToolInputError",
     });
   });

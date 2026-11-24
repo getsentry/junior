@@ -1,0 +1,1 @@
+ALTER TABLE "junior_todos" ADD COLUMN "changed_by_conversation_id" text;

@@ -37,7 +37,7 @@ final class NavigationUITests: XCTestCase {
   }
 
   /// The whole OAuth flow: the browser sheet, the mock's consent, the
-  /// loopback redirect, the token exchange, and a Keychain that survives a
+  /// `junior-ios` redirect, the token exchange, and a Keychain that survives a
   /// relaunch. Sign out returns to Sign in.
   func testSignInAndOut() {
     var app = launch(auth: .signedOut)
@@ -52,6 +52,21 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(signOut.waitForExistence(timeout: 10))
     signOut.tap()
     XCTAssertTrue(app.buttons["sign-in"].waitForExistence(timeout: 10))
+  }
+
+  /// Sign in suggests Sentry's Junior until the app has signed in to another
+  /// server. `-serverURL` stands in for the server that the app remembers.
+  func testSignInSuggestsProduction() {
+    let production = "https://junior-prod.sentry.dev"
+    for (saved, shown) in [("", production), ("https://demo.junior.invalid", production), (server, server)] {
+      let app = XCUIApplication()
+      app.launchArguments = ["-serverURL", saved, "-JuniorSignOut", "YES", "-JuniorTheme", "dark"]
+      app.launch()
+      let field = app.textFields["Dashboard URL"]
+      XCTAssertTrue(field.waitForExistence(timeout: 10))
+      XCTAssertEqual(field.value as? String, shown, "remembered: \(saved)")
+      app.terminate()
+    }
   }
 
   /// The built-in demo answers without the mock server: a reply to a sent
@@ -87,8 +102,8 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(app.staticTexts["Junior is working…"].waitForExistence(timeout: 10))
   }
 
-  func testSendMessage() {
-    let app = launch()
+  /// Open a Conversation and return its composer field, focused.
+  private func openComposer(_ app: XCUIApplication) -> XCUIElement {
     let row = card(app, "Investigate checkout latency")
     XCTAssertTrue(row.waitForExistence(timeout: 10))
     row.tap()
@@ -101,10 +116,53 @@ final class NavigationUITests: XCTestCase {
     XCTAssertTrue(fields.firstMatch.waitForExistence(timeout: 10))
     let field = fields.element(boundBy: fields.count - 1)
     field.tap()
+    return field
+  }
+
+  private func message(_ app: XCUIApplication, containing text: String) -> XCUIElement {
+    app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", text)).firstMatch
+  }
+
+  func testSendMessage() {
+    let app = launch()
+    let field = openComposer(app)
     field.typeText("Check the EU region too")
-    app.buttons["Send"].tap()
-    let sent = app.staticTexts.matching(NSPredicate(format: "label CONTAINS 'Check the EU region too'")).firstMatch
-    XCTAssertTrue(sent.waitForExistence(timeout: 10))
+    // The Conversation's Send, not the home one under it.
+    let sends = app.buttons.matching(identifier: "composer-send")
+    sends.element(boundBy: sends.count - 1).tap()
+    XCTAssertTrue(message(app, containing: "Check the EU region too").waitForExistence(timeout: 10))
+  }
+
+  /// The software keyboard's Return key reads "send" and sends.
+  func testKeyboardReturnSends() {
+    let app = launch()
+    let field = openComposer(app)
+    field.typeText("Check the EU region too")
+    let send = app.keyboards.buttons.matching(NSPredicate(format: "label ==[c] 'send'")).firstMatch
+    XCTAssertTrue(send.waitForExistence(timeout: 10))
+    send.tap()
+    XCTAssertTrue(message(app, containing: "Check the EU region too").waitForExistence(timeout: 10))
+  }
+
+  /// Rename from the Conversation menu; the header shows the saved title.
+  func testRenameConversation() {
+    let app = launch()
+    let row = card(app, "Investigate checkout latency")
+    XCTAssertTrue(row.waitForExistence(timeout: 10))
+    row.tap()
+    let menu = app.buttons["Conversation menu"]
+    XCTAssertTrue(menu.waitForExistence(timeout: 10))
+    menu.tap()
+    app.buttons["Rename"].tap()
+    let alert = app.alerts["Rename conversation"]
+    let field = alert.textFields.firstMatch
+    XCTAssertTrue(field.waitForExistence(timeout: 10))
+    // The field opens focused, with the current title and the cursor at its end.
+    let current = (field.value as? String) ?? ""
+    field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: current.count))
+    field.typeText("Checkout latency fix")
+    alert.buttons["Save"].tap()
+    XCTAssertTrue(app.staticTexts["Checkout latency fix"].waitForExistence(timeout: 10))
   }
 
   func testDrawerNavigatesToInbox() {

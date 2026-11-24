@@ -10,6 +10,13 @@ async function openConversation(page: Page, baseURL: string) {
   await page.goto(
     `${baseURL}/conversations/${encodeURIComponent(CONVERSATION_ID)}`,
   );
+  // The transcript shows its messages before the rows of its Inbox items,
+  // and each row that shows moves the messages. A card trigger that moves
+  // away from a still pointer does not open. The answered question's row
+  // shows last, so hover only after it shows.
+  await expect(
+    page.getByRole("region", { name: "Asked Pick the canary region" }),
+  ).toContainText("Answered by");
 }
 
 function personCard(page: Page, name: string) {
@@ -85,6 +92,41 @@ test("a message header name opens the person card", async ({
   await page.keyboard.press("Escape");
   await expect(card).toBeHidden();
   await expect(name).toHaveAttribute("aria-expanded", "false");
+});
+
+test("a merged change with no size shows no size separator", async ({
+  dashboard,
+  page,
+}) => {
+  await page.setViewportSize(desktop);
+  // The live cards of the merged changes have no size.
+  await page.route("**/api/objects?*", async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    for (const item of body.objects ?? []) {
+      const facts = item.object?.facts;
+      if (facts?.type === "code_change") {
+        delete facts.additions;
+        delete facts.deletions;
+        delete facts.changedFiles;
+      }
+    }
+    await route.fulfill({ json: body, response });
+  });
+  await openConversation(page, dashboard.baseURL);
+  await page
+    .getByRole("article")
+    .getByRole("link", { name: "Dashboard User", exact: true })
+    .first()
+    .hover();
+  const item = personCard(page, "Dashboard User")
+    .getByRole("region", { name: "Recently shipped" })
+    .getByRole("listitem")
+    .filter({ hasText: "Pin Node 22 in CI" });
+  await expect(item).toContainText(" · merged ");
+  await expect
+    .poll(async () => (await item.textContent())?.trim().endsWith("·"))
+    .toBe(false);
 });
 
 test("a Slack mention shows the photo and name, and opens the person card", async ({
@@ -172,7 +214,7 @@ test("a person card says when its activity fails to load", async ({
   ).toHaveCount(0);
 });
 
-test("a raw Slack id in a Review item question shows the person", async ({
+test("a raw Slack id in an Inbox item question shows the person", async ({
   dashboard,
   page,
 }) => {
@@ -206,28 +248,26 @@ test("the answer line names the person who answered", async ({
   const answeredBy = ask.getByRole("link", { name: "Dashboard User" });
   await expect(ask).toContainText("Answered by");
   await answeredBy.hover();
-  await expect(personCard(page, "Dashboard User")).toBeVisible();
+  // The card's activity comes from its read.
+  await expect(personCard(page, "Dashboard User")).toContainText("Last active");
 });
 
-test("a tap on a touch screen opens the person card", async ({
-  browser,
-  dashboard,
-}) => {
-  const context = await browser.newContext({
-    colorScheme: "dark",
+test.describe("on a touch screen", () => {
+  test.use({
     hasTouch: true,
     isMobile: true,
     viewport: { height: mobile.height, width: mobile.width },
   });
-  const page = await context.newPage();
-  await openConversation(page, dashboard.baseURL);
-  const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
-  await mention.tap();
-  const card = personCard(page, "Avery Chen");
-  await expect(card).toBeVisible();
-  // The first tap shows the card and stays on the page.
-  await expect(page).toHaveURL(/\/conversations\//);
-  await context.close();
+
+  test("a tap opens the person card", async ({ dashboard, page }) => {
+    await openConversation(page, dashboard.baseURL);
+    const mention = page.getByRole("link", { name: "@Avery Chen" }).first();
+    await mention.tap();
+    const card = personCard(page, "Avery Chen");
+    await expect(card).toBeVisible();
+    // The first tap shows the card and stays on the page.
+    await expect(page).toHaveURL(/\/conversations\//);
+  });
 });
 
 // The screenshots show the new UI, where the request came from.

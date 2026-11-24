@@ -173,6 +173,14 @@ describe("display text tokens", () => {
       "Done 😄 @Junior see the PR 👋🏼 :custom_parrot:",
     );
   });
+
+  it("reads Markdown syntax as a parser does for plain text", () => {
+    expect(
+      displayPlainText(
+        "## Fix ~~old~~ **new** [docs](https://example.com)\n\n- pass `**kwargs` and \\*stars\\*",
+      ),
+    ).toBe("Fix old new docs pass **kwargs and *stars*");
+  });
 });
 
 describe("display text object links", () => {

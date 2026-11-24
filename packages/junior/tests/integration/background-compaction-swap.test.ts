@@ -777,7 +777,7 @@ describe("background compaction swap", () => {
 describe("compaction on idle", () => {
   afterEach(closeConversationFixture);
 
-  it("swaps the summary in only while no Run holds the Conversation", async () => {
+  it("swaps the summary in only while no Run holds or waits for the Conversation", async () => {
     const conversationId = "local:web:swap-idle";
     const committed = await prepareSummary(conversationId, firstTurn);
     const idle = {
@@ -790,11 +790,13 @@ describe("compaction on idle", () => {
         costs: { compact: 0, stop: 0, warm: 0 },
       }),
     };
-    // The person returns: a Run takes the lease before it reads history.
+    // The person returns: their work waits, then a Run takes the lease
+    // before it reads history.
     await requestConversationWork({
       conversationId,
       destination: { platform: "local", conversationId },
     });
+    expect((await compactOnIdle(idle))?.outcome).toBe("busy");
     const lease = await startConversationWork({ conversationId });
     if (lease.status !== "acquired") throw new Error("Expected work lease");
 

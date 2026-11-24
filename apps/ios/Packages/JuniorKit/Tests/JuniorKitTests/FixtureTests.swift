@@ -15,6 +15,7 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     let list = try fixture("searchConversations", as: ConversationList.self)
     #expect(!list.conversations.isEmpty)
     let state = try fixture("getConversation", as: ConversationState.self)
+    #expect(state.conversation.summary?.isEmpty == false)
     #expect(state.lastReply?.isAssistant == true)
     #expect(state.messages == nil)
     let after = try fixture("getConversation-after", as: ConversationState.self)
@@ -25,9 +26,19 @@ func fixture<T: Decodable>(_ name: String, as type: T.Type = T.self) throws -> T
     #expect(page.messages.map(\.seq) == page.messages.map(\.seq).sorted())
     _ = try fixture("sendMessage", as: AcceptedMessage.self)
     _ = try fixture("createConversation", as: AcceptedMessage.self)
-    let items = try fixture("searchReviewItems", as: ReviewItemList.self)
+    let items = try fixture("searchInboxItems", as: InboxItemList.self)
     #expect(items.items.allSatisfy { $0.status == "open" })
-    _ = try fixture("getReviewItem", as: ReviewItemResult.self)
+    // A reply notice lists for its starter, but the badge counts neither it
+    // nor an item for Everyone.
+    let notice = try #require(items.items.first { $0.kind == "notice" })
+    #expect(notice.canAct && !notice.needsViewer)
+    // A To-do is an action with no question and no Conversation.
+    let todo = try #require(items.items.first { $0.id == "qa-todo-preview-deploy" })
+    #expect(todo.question == nil && todo.conversationIds.isEmpty && todo.needsViewer)
+    var forEveryone = try #require(items.items.first { $0.needsViewer })
+    forEveryone.assignees = []
+    #expect(!forEveryone.needsViewer)
+    _ = try fixture("getInboxItem", as: InboxItemResult.self)
     let automations = try fixture("searchAutomations", as: AutomationList.self)
     #expect(automations.total >= automations.automations.count)
     let automation = try fixture("getAutomation", as: AutomationDetail.self)

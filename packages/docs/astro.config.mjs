@@ -153,6 +153,7 @@ export default defineConfig({
             { label: "Restream Plugin", link: "/extend/restream-plugin/" },
             { label: "Sentry Plugin", link: "/extend/sentry-plugin/" },
             { label: "Vercel Plugin", link: "/extend/vercel-plugin/" },
+            { label: "Vimeo Plugin", link: "/extend/vimeo-plugin/" },
             { label: "X Plugin", link: "/extend/xdotcom-plugin/" },
           ],
         },
@@ -183,7 +184,6 @@ export default defineConfig({
             { label: "junior init", link: "/cli/init/" },
             { label: "junior admin", link: "/cli/admin/" },
             { label: "junior chat", link: "/cli/chat/" },
-            { label: "junior briefs", link: "/cli/briefs/" },
             { label: "junior check", link: "/cli/check/" },
             {
               label: "junior snapshot create",

@@ -1,0 +1,17 @@
+id: conversation-archive-one-writer
+language: TypeScript
+severity: error
+message: "Only setArchivedAt in packages/junior/src/chat/conversations/sql/conversation-tree.ts may write a Conversation's archived_at. Call setArchivedAt, with a guard when the write must still hold for the latest row."
+files:
+  - packages/junior/src/**/*.ts
+ignores:
+  - packages/junior/src/chat/conversations/sql/conversation-tree.ts
+rule:
+  pattern: $DB.set($VALUES)
+  has:
+    stopBy: end
+    any:
+      - kind: pair
+        regex: '^archivedAt\s*:'
+      - kind: shorthand_property_identifier
+        regex: ^archivedAt$

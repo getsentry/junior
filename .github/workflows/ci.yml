@@ -51,6 +51,7 @@ jobs:
               - .github/actions/**
               - "!.github/workflows/ios.yml"
               - "!.github/workflows/ios-beta.yml"
+              - "!.github/workflows/ios-beta-label.yml"
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
@@ -74,6 +75,7 @@ jobs:
               - apps/ios/**
               - .github/workflows/ios.yml
               - .github/workflows/ios-beta.yml
+              - .github/workflows/ios-beta-label.yml
             # Only lint reads these. Listing them keeps a change to them from
             # counting as unknown, which runs every job.
             lint_config:
@@ -97,6 +99,7 @@ jobs:
               - packages/junior-restream/**
               - packages/junior-sentry/**
               - packages/junior-vercel/**
+              - packages/junior-vimeo/**
               - packages/junior-xdotcom/**
             repo:
               - package.json
@@ -117,6 +120,8 @@ jobs:
               - README.md
               - scripts/bump-release-versions.mjs
               - scripts/check-release-config.mjs
+              - scripts/check.mjs
+              - scripts/lib/repo-files.mjs
               - scripts/release-artifacts*.mjs
               - scripts/publish-github-release*.mjs
               - packages/*/package.json
@@ -156,6 +161,8 @@ jobs:
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
+          # baseline-growth:check compares baselines to the merge base with origin/main.
+          fetch-depth: 0
           persist-credentials: false
       - uses: ./.github/actions/setup-node-pnpm
       # Type-aware lint reads the declarations that workspace packages build.
@@ -489,13 +496,15 @@ jobs:
           path: .playwright/junior-dashboard/screenshots
           if-no-files-found: error
           retention-days: 7
-      # Playwright keeps a trace only for a failed test.
+      # Playwright keeps a trace only for a failed attempt. Upload it also
+      # when the retry passed, so a flaky test leaves a trace.
       - name: Upload failed test traces
-        if: failure()
+        if: ${{ !cancelled() }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: dashboard-e2e-traces-${{ matrix.project }}-${{ matrix.shard }}
           path: .playwright/junior-dashboard/*/trace.zip
+          if-no-files-found: ignore
           retention-days: 7
 
   # Frameshift saves or compares one screenshot set per run, so it runs once,

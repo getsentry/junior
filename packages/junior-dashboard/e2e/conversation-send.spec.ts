@@ -10,11 +10,17 @@ import type {
 import type { Route } from "@playwright/test";
 import { chooseTranscriptView } from "./conversationMenu";
 import { expect, test } from "./test";
-import { routeConversationVersion, withRequestedMailbox } from "./harness";
+import {
+  routeConversationVersion,
+  withRequestedMailbox,
+  waitForOutlineRead,
+} from "./harness";
 import { screenshot } from "./screenshot";
 import { mockChartPng } from "../src/mock-reporting/chart-png";
+import { pickOption } from "./pick-option";
 
-test("starts and continues conversations from the dashboard", async ({
+// Classic home sends to the Lead. lead-home.spec.ts covers it.
+test("starts and continues conversations from the dashboard @new", async ({
   page,
   dashboard,
 }) => {
@@ -111,7 +117,7 @@ test("starts and continues conversations from the dashboard", async ({
     page.getByRole("heading", { name: "What do you need?" }),
   ).toBeVisible();
   await page.getByRole("combobox", { name: "Conversation visibility" }).click();
-  await page.getByRole("option", { name: "Private" }).click();
+  await pickOption(page.getByRole("option", { name: "Private" }));
   const startComposer = page.getByLabel("Start a conversation");
   const imageBase64 = mockChartPng.toString("base64");
   // Any file type goes. A file over the per-file cap does not. Build large
@@ -610,13 +616,14 @@ test("hands web and external messages from queue to history without gaps", async
   await page.getByRole("button", { name: "Send", exact: true }).click();
   // Junior is idle and the queue is empty, so the send goes straight to the
   // transcript and stays in place until history has it. Its local image shows
-  // before the server stores it.
+  // before the server stores it. Thinking shows from the send, before the
+  // Turn starts.
   await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(
     transcript.getByRole("img", { name: "handoff.png" }),
   ).toBeVisible();
   await expect(pending).toBeHidden();
-  await expect(thinking).toBeHidden();
+  await expect(thinking).toBeVisible();
 
   // History does not have the first send yet, so its Turn can start first.
   // A send now waits in the queue instead of the transcript tail.
@@ -670,8 +677,8 @@ test("hands web and external messages from queue to history without gaps", async
     check();
   }, web.text);
 
-  // Accept arrives before any read sees the input. Keep the row, without claiming
-  // that a Turn has started just because the Conversation is now active.
+  // Accept arrives before any read sees the input. Keep the row and the
+  // thinking row.
   active = true;
   historyHeld = new Promise<void>((resolve) => {
     releaseHistory = resolve;
@@ -681,7 +688,7 @@ test("hands web and external messages from queue to history without gaps", async
   await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeAccept);
   await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(pending).toBeHidden();
-  await expect(thinking).toBeHidden();
+  await expect(thinking).toBeVisible();
   releaseHistory();
   historyHeld = undefined;
   // The mailbox copy does not pull the message back into the queue.
@@ -690,7 +697,7 @@ test("hands web and external messages from queue to history without gaps", async
   await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeQueued + 1);
   await expect(transcript.getByText(web.text)).toBeVisible();
   await expect(pending).toBeHidden();
-  await expect(thinking).toBeHidden();
+  await expect(thinking).toBeVisible();
 
   // The mailbox can empty before the slower history read returns. Publish both
   // together, and do not hide the web message in the meantime. A read that is
@@ -705,7 +712,7 @@ test("hands web and external messages from queue to history without gaps", async
   });
   await expect.poll(() => detailReads).toBeGreaterThan(readsBeforeCommit);
   await expect(transcript.getByText(web.text)).toBeVisible();
-  await expect(thinking).toBeHidden();
+  await expect(thinking).toBeVisible();
   releaseHistory();
   historyHeld = undefined;
   await expect(thinking).toBeVisible();
@@ -798,7 +805,7 @@ test("hands web and external messages from queue to history without gaps", async
   await expect(pending).toBeHidden();
 });
 
-test("keeps details closed on a home send after the reader closed them", async ({
+test("keeps details closed on a home send after the reader closed them @new", async ({
   page,
   dashboard,
 }) => {
@@ -873,10 +880,13 @@ test("keeps details closed on a home send after the reader closed them", async (
   await expect(page).toHaveURL(`${dashboard.baseURL}/`);
   // The pending view follows the saved choice, as the page does.
   await expect(details).toBeHidden();
+  // The new Conversation's page reads its outline.
+  const outlineRead = waitForOutlineRead(page, createdConversationId);
   releaseCreate?.();
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/conversations/${encodeURIComponent(createdConversationId)}`,
   );
   await expect(transcript.getByText("Check the deploy")).toBeVisible();
   await expect(details).toBeHidden();
+  await outlineRead;
 });

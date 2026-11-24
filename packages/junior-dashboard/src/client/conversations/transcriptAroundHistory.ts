@@ -3,27 +3,31 @@
  * position, or at a linked event, Turn, or memory.
  *
  * The detail holds the latest page of events. When the read position is
- * older than that page, the transcript starts with the page around the read
- * position instead: the last read events and the unread events after them.
- * The first detail fetch of a visit brings that page, so it needs no second
- * request. A link to a row that the transcript does not hold starts it with
- * the page around that row, which the server finds in one request.
- * Like earlier pages, newer pages load when the reader scrolls near them, so
- * the server reads only the pages that the reader reaches.
+ * older than that page, the transcript starts with the events around the
+ * read position instead: the last read events and the unread events after
+ * them. The first detail fetch of a visit brings that page, so it needs no
+ * second request. A link to a row that the transcript does not hold starts
+ * it with the events around that row, which the server finds in one
+ * request. Like earlier pages, newer pages load when the reader scrolls near
+ * them, so the server reads only the pages that the reader reaches.
  *
- * The latest page joins the transcript only after the newer pages reach it,
- * so the transcript never has a gap. Until then the transcript ends with a
- * row that loads the next newer page. A reader who jumps to the latest skips
- * the newer pages: the transcript shows the latest page from the detail at
- * once, and earlier pages load above it as the reader scrolls up. When a
- * poll skips past the newer pages after they join the latest page, or past a
- * newer page that has nothing after it, the transcript shows the latest page
- * in the same way, so it never drops the skipped events.
+ * Every read joins the runs of the Conversation (`transcriptEventRuns`), and
+ * the transcript shows the run that holds the start. A start that a run
+ * holds shows at once, and a read brings only the events that no run holds.
+ *
+ * The latest page joins the transcript only after the run reaches it, so the
+ * transcript never has a gap. Until then the transcript ends with a row that
+ * loads the next newer page. A reader who jumps to the latest skips the
+ * newer pages: the transcript shows the latest page from the detail at once,
+ * and earlier pages load above it as the reader scrolls up. When a poll
+ * skips past the run after it joins the latest page, the transcript shows
+ * the latest page in the same way, so it never drops the skipped events.
  */
 import { useEffect, useMemo, useRef } from "react";
 import {
   queryOptions,
-  useInfiniteQuery,
+  useMutation,
+  useQuery,
   useQueryClient,
   type QueryClient,
 } from "@tanstack/react-query";
@@ -35,7 +39,6 @@ import {
 } from "@sentry/junior/api/schema";
 
 import { fetchDashboardJson } from "../http";
-import { readConversationEvents } from "./queries";
 import {
   buildUnreadConversationTranscript,
   conversationHistoryVersion,
@@ -46,8 +49,24 @@ import {
   CONVERSATION_TURN_PARAM,
   messageEventSeq,
   parseConversationEventSeq,
+  parseTranscriptRowHash,
   turnStartedEventSeq,
 } from "./conversationRoutes";
+import {
+  AROUND_EVENTS,
+  aroundReads,
+  earlierRead,
+  endRead,
+  eventRunsKey,
+  holdEventPage,
+  joinEventPage,
+  nearestHeldSeq,
+  laterRead,
+  readEventRuns,
+  runAt,
+  type EventRead,
+  type EventRuns,
+} from "./transcriptEventRuns";
 
 /** The transcript to show and how to load more of it. */
 export type TranscriptHistory = {
@@ -79,9 +98,9 @@ export type HistoryStart =
   | { turn: string };
 
 /**
- * Load the transcript from the page around `start`. Returns `undefined` when
- * there is no start, or when the first page fails, so the caller shows the
- * latest page instead.
+ * Load the transcript from the events around `start`. Returns `undefined`
+ * when there is no start, or when the first read fails, so the caller shows
+ * the latest page instead.
  */
 export function useHistoryAround(input: {
   conversationId: string;
@@ -90,18 +109,38 @@ export function useHistoryAround(input: {
   start?: HistoryStart;
   /** Skip the newer pages. The caller then passes no `start`. */
   onShowLatest: () => void;
-  /** The page around `start` failed. */
+  /** The read around `start` failed. */
   onStartFailed?: () => void;
   /** The page around `start`, when the detail brought it. */
   startPage?: ConversationEventPage;
-}): (TranscriptHistory & { isPending: boolean }) | undefined {
+}):
+  | (TranscriptHistory & {
+      isPending: boolean;
+      /** The event seq the start shows: the nearest held one for a seq past every event. */
+      shownSeq: number | undefined;
+    })
+  | undefined {
   const { conversationId, detail, onShowLatest, onStartFailed, start } = input;
   const startKey = start ? historyStartKey(start) : undefined;
   const queryClient = useQueryClient();
-  // A prefetched page opens the transcript at once, with no pending render.
-  const startPage =
-    input.startPage ??
-    (start ? cachedStartPage(queryClient, conversationId, start) : undefined);
+  // The runs live as long as the Conversation's queries: while a page shows
+  // it, and for the cache time after.
+  const heldRuns = useQuery({
+    initialData: NO_RUNS,
+    queryFn: ({ client }) => readEventRuns(client, conversationId),
+    queryKey: eventRunsKey(conversationId),
+    staleTime: Infinity,
+  }).data;
+  // The page that came with the detail joins the runs before the first
+  // render, so the transcript opens at once.
+  const startPage = input.startPage;
+  const runs = useMemo(
+    () => (startPage ? joinEventPage(heldRuns, startPage) : heldRuns),
+    [heldRuns, startPage],
+  );
+  useEffect(() => {
+    if (startPage) holdEventPage(queryClient, conversationId, startPage);
+  }, [conversationId, queryClient, startPage]);
   const latestEventsRef = useRef<ConversationReportEvent[]>([]);
   const latestEvents = useMemo(() => {
     const kept = keepLatestEvents(latestEventsRef.current, detail?.events);
@@ -109,118 +148,115 @@ export function useHistoryAround(input: {
     return kept;
   }, [detail?.events]);
   const latestFirstSeq = latestEvents[0]?.seq;
-  // The start whose newer pages joined the latest page.
-  const joinedRef = useRef<string>(undefined);
-  const newer = useInfiniteQuery({
-    // Only the page around the start loads by itself. The data never goes
-    // stale, so a refetch cannot reload every newer page at once.
+  // A start that the runs hold shows at once. Its query then reads only the
+  // events around it that the runs do not hold. The page from the detail
+  // needs no read.
+  const startPageSeq = startPage?.events[0]?.seq;
+  const heldSeq = start === undefined ? undefined : heldStartSeq(runs, start);
+  const around = useQuery({
+    ...aroundQuery(conversationId, start ?? { around: "" }),
     enabled: Boolean(start),
-    staleTime: Infinity,
-    // Each visit starts again from the page around the start. Pages from an
-    // earlier visit can end at an old latest event, which would leave a gap
-    // before the latest page.
-    gcTime: 0,
-    queryKey: ["conversation", conversationId, "around", startKey, "newer"],
-    // The page around the start joins a prefetch of it that is in flight.
-    queryFn: ({ pageParam, signal }) =>
-      "after" in pageParam
-        ? readConversationEventsFrom(conversationId, pageParam, signal)
-        : queryClient.fetchQuery(startPageQuery(conversationId, pageParam)),
-    // Without the cast, TanStack Query infers the page param from this value.
-    // oxlint-disable-next-line typescript/no-unnecessary-type-assertion
-    initialPageParam: (start ?? { around: "" }) as NewerPageParam,
-    // The page that came with the detail. Without it, the query reads it.
-    ...(startPage && start
-      ? { initialData: { pageParams: [start], pages: [startPage] } }
-      : undefined),
-    getNextPageParam: (page): NewerPageParam | undefined =>
-      reachesLatest(page, latestFirstSeq) || !page.nextCursor
-        ? undefined
-        : { after: page.nextCursor },
-    retry: false,
+    ...(startPageSeq !== undefined
+      ? { initialData: { seq: startPageSeq } }
+      : heldSeq !== undefined
+        ? { initialData: { seq: heldSeq }, initialDataUpdatedAt: 0 }
+        : undefined),
   });
-  const firstNewerPage = newer.data?.pages[0];
-  const earlier = useInfiniteQuery({
-    enabled: false,
-    queryKey: ["conversation", conversationId, "around", startKey, "earlier"],
-    queryFn: ({ pageParam, signal }) =>
-      readConversationEvents(conversationId, pageParam, signal),
-    initialPageParam: firstNewerPage?.previousCursor ?? "",
-    getNextPageParam: (page) => page.previousCursor,
-    retry: false,
-  });
+  const aroundData = around.data;
+  const shownSeq =
+    aroundData && "seq" in aroundData ? aroundData.seq : undefined;
+  // A run can leave the cache while it shows, when far reads pass the cap.
+  const shownRunRef = useRef<{ key?: string; run?: ConversationEventPage }>({});
+  const run =
+    (shownSeq === undefined ? undefined : runAt(runs, shownSeq)) ??
+    (aroundData && "page" in aroundData ? aroundData.page : undefined) ??
+    (shownRunRef.current.key === startKey
+      ? shownRunRef.current.run
+      : undefined);
+  shownRunRef.current = { key: startKey, run };
+  // A cached row whose run left the cache reads its events again.
+  const lost = Boolean(start && aroundData && !run && !around.isFetching);
+  const refetchAround = around.refetch;
+  useEffect(() => {
+    if (lost) void refetchAround();
+  }, [lost, refetchAround]);
 
-  const newerPages = newer.data?.pages;
-  const earlierPages = earlier.data?.pages;
-  const lastNewerPage = newerPages?.at(-1);
-  const reached = lastNewerPage
-    ? reachesLatest(lastNewerPage, latestFirstSeq)
-    : false;
+  const readInto = (read: EventRead) =>
+    readHeldPage(queryClient, conversationId, read);
+  const earlier = useMutation({ mutationFn: readInto, retry: false });
+  const newer = useMutation({ mutationFn: readInto, retry: false });
+
+  // The start whose run joined the latest page.
+  const joinedRef = useRef<string>(undefined);
+  const reached = run ? reachesLatest(run, latestFirstSeq) : false;
   if (reached) joinedRef.current = startKey;
-  // No newer page can fill the gap before the latest page, or the latest
-  // events already on screen would leave until one does.
+  // A poll skipped past the run after it joined the latest page, so the
+  // latest events on screen would leave until one more page loads.
   const skipped =
-    lastNewerPage !== undefined &&
-    !reached &&
-    (joinedRef.current === startKey || !lastNewerPage.nextCursor);
+    run !== undefined && !reached && joinedRef.current === startKey;
   useEffect(() => {
     if (skipped) onShowLatest();
   }, [onShowLatest, skipped]);
-  const startFailed = Boolean(start && newer.error && !newerPages);
+  const startFailed = Boolean(start && around.error && !run);
   useEffect(() => {
     if (startFailed) onStartFailed?.();
   }, [onStartFailed, startFailed]);
-  const pages = useMemo(
-    () => [...(earlierPages ?? []), ...(newerPages ?? [])],
-    [earlierPages, newerPages],
-  );
   const data = useMemo(
     () =>
-      detail && newerPages
+      detail && run
         ? buildUnreadConversationTranscript(
             detail,
-            pages,
+            [run],
             reached ? latestEvents : [],
           )
         : undefined,
-    [detail, latestEvents, newerPages, pages, reached],
+    [detail, latestEvents, reached, run],
   );
 
   if (!start || skipped || startFailed) {
     return undefined;
   }
 
-  const hasPreviousPage = earlier.data
-    ? earlier.hasNextPage
-    : Boolean(firstNewerPage?.previousCursor);
-  // `cancelRefetch: false` lets a second call join the page read in flight.
-  // By default it cancels that read and starts the same read again.
+  const runIndex = run ? runs.indexOf(run) : -1;
+  const loadNewer = () => {
+    if (!run || newer.isPending) return;
+    const next = runs[runIndex + 1]?.events[0]?.seq;
+    const nextFirstSeq =
+      next === undefined || latestFirstSeq === undefined
+        ? (next ?? latestFirstSeq)
+        : Math.min(next, latestFirstSeq);
+    const [read] = run.nextCursor
+      ? laterRead(run, nextFirstSeq)
+      : [endRead(run)];
+    if (read) newer.mutate(read);
+  };
   return {
     data,
-    hasPreviousPage,
+    hasPreviousPage: Boolean(run?.previousCursor),
     historyError: earlier.error,
-    historyVersion: conversationHistoryVersion(pages),
-    isLoadingPreviousPage: earlier.isFetchingNextPage,
-    isPending: !newerPages,
+    historyVersion: conversationHistoryVersion(run ? [run] : []),
+    isLoadingPreviousPage: earlier.isPending,
+    isPending: !run,
+    shownSeq,
     loadPreviousPage: () => {
-      if (hasPreviousPage) void earlier.fetchNextPage({ cancelRefetch: false });
+      if (!run || earlier.isPending) return;
+      const [read] = earlierRead(run, runs[runIndex - 1]);
+      if (read) earlier.mutate(read);
     },
     ...(reached
       ? undefined
       : {
           newer: {
             error: newer.error,
-            load: () => {
-              if (newer.hasNextPage) {
-                void newer.fetchNextPage({ cancelRefetch: false });
-              }
-            },
-            loading: newer.isFetchingNextPage,
+            load: loadNewer,
+            loading: newer.isPending,
             showLatest: onShowLatest,
           },
         }),
   };
 }
+
+const NO_RUNS: EventRuns = [];
 
 /**
  * Keep the events that new events push out of the latest page. Without them,
@@ -255,70 +291,116 @@ function reachesLatest(
   return lastSeq + 1 >= latestFirstSeq;
 }
 
-/** How long a read page around a start opens the transcript at once. */
-const START_PAGE_STALE_MS = 30_000;
+/** How long the events around a start count as read. */
+const AROUND_STALE_MS = 30_000;
 
 /**
- * Read the page around a start before the reader picks it, for example when
- * an outline preview opens, so the jump to it needs no request.
+ * Read the events around a start before the reader picks it, for example
+ * when an outline preview opens, so the jump to it needs no request.
  */
 export function prefetchHistoryAround(
   queryClient: QueryClient,
   conversationId: string,
   start: HistoryStart,
 ): Promise<void> {
-  return queryClient.prefetchQuery(startPageQuery(conversationId, start));
+  return queryClient.prefetchQuery(aroundQuery(conversationId, start));
 }
 
-/**
- * The read page around a start. For an event, a page read around another
- * start also serves when it holds the event, so a jump to a message near a
- * prefetched one needs no request either.
- */
-export function cachedStartPage(
+/** True when the runs of the Conversation hold the row of a start. */
+export function holdsHistoryStart(
   queryClient: QueryClient,
   conversationId: string,
   start: HistoryStart,
-): ConversationEventPage | undefined {
-  const exact = queryClient.getQueryData(
-    startPageQuery(conversationId, start).queryKey,
+): boolean {
+  return (
+    heldStartSeq(readEventRuns(queryClient, conversationId), start) !==
+    undefined
   );
-  if (exact || !("event" in start)) return exact;
-  const seq = Number(start.event);
-  const pages = queryClient.getQueriesData<ConversationEventPage>({
-    predicate: (query) => query.queryKey[4] === "start",
-    queryKey: ["conversation", conversationId, "around"],
-  });
-  return pages
-    .map(([, page]) => page)
-    .find((page) => {
-      const first = page?.events[0]?.seq;
-      const last = page?.events.at(-1)?.seq;
-      return (
-        first !== undefined && last !== undefined && first <= seq && seq <= last
-      );
-    });
+}
+
+/** The seq of the row of a start, when the runs hold it. */
+function heldStartSeq(
+  runs: EventRuns,
+  start: HistoryStart,
+): number | undefined {
+  const events = runs.flatMap((run) => run.events);
+  const seq =
+    "event" in start
+      ? Number(start.event)
+      : "message" in start
+        ? messageEventSeq(events, start.message)
+        : "turn" in start
+          ? turnStartedEventSeq(events, start.turn)
+          : undefined;
+  return seq !== undefined && runAt(runs, seq) ? seq : undefined;
 }
 
 /**
- * The page around a start, kept for a short time. Only this page is kept:
- * pages after it can end at an old latest event, which would leave a gap
- * before the latest page.
+ * The row that the transcript shows for a start, once the runs hold the
+ * events around it. A Conversation with no events to show gives its page.
  */
-function startPageQuery(conversationId: string, start: HistoryStart) {
+type AroundRow = { seq: number } | { page: ConversationEventPage };
+
+/**
+ * Read the events around a start into the runs. A start that the runs hold
+ * reads only what they miss around it.
+ */
+function aroundQuery(conversationId: string, start: HistoryStart) {
   return queryOptions({
-    gcTime: START_PAGE_STALE_MS,
-    queryFn: ({ signal }) =>
-      readConversationEventsFrom(conversationId, start, signal),
+    gcTime: AROUND_STALE_MS,
+    queryFn: async ({ client }): Promise<AroundRow> => {
+      const runs = readEventRuns(client, conversationId);
+      // An event start reads only the events it lacks, even when the
+      // runs do not hold it yet.
+      const seq =
+        heldStartSeq(runs, start) ??
+        ("event" in start ? Number(start.event) : undefined);
+      if (seq === undefined) {
+        const page = await readHeldPage(client, conversationId, {
+          query: { ...start, limit: String(AROUND_EVENTS) },
+        });
+        const found =
+          "message" in start
+            ? messageEventSeq(page.events, start.message)
+            : "turn" in start
+              ? turnStartedEventSeq(page.events, start.turn)
+              : undefined;
+        const shown = found ?? page.events[0]?.seq;
+        return shown === undefined ? { page } : { seq: shown };
+      }
+      // At most two reads: one on each side of the row.
+      const readSides = ([first, second]: EventRead[]) =>
+        Promise.all([
+          first && readHeldPage(client, conversationId, first),
+          second && readHeldPage(client, conversationId, second),
+        ]);
+      const firstReads = aroundReads(runs, seq);
+      await readSides(firstReads);
+      // A read that joined another read of its cursor can stop short of
+      // the row. Then the row reads on from there. The same reads again
+      // would get the same events.
+      const held = readEventRuns(client, conversationId);
+      const nextReads = runAt(held, seq) ? [] : aroundReads(held, seq);
+      if (JSON.stringify(nextReads) !== JSON.stringify(firstReads)) {
+        await readSides(nextReads);
+      }
+      // A seq that no reporting event has, such as one past the last event,
+      // shows the nearest held event. Otherwise the row would read forever.
+      const read = readEventRuns(client, conversationId);
+      if (runAt(read, seq)) return { seq };
+      const near = nearestHeldSeq(read, seq);
+      if (near === undefined) throw new Error("No events around the start");
+      return { seq: near };
+    },
     queryKey: [
       "conversation",
       conversationId,
       "around",
       historyStartKey(start),
-      "start",
+      "row",
     ],
     retry: false,
-    staleTime: START_PAGE_STALE_MS,
+    staleTime: AROUND_STALE_MS,
   });
 }
 
@@ -326,22 +408,55 @@ function historyStartKey(start: HistoryStart): string | undefined {
   return Object.entries(start)[0]?.join(":");
 }
 
-/** The first page is around the start. The rest follow it. */
-type NewerPageParam = HistoryStart | { after: string };
-
-/** Read one bounded page of events around a start or after a cursor. */
-function readConversationEventsFrom(
+/**
+ * Read a page into the runs. A read from the cursor of a read in flight
+ * joins it, so two reads that start at the same run end read no event twice.
+ */
+function readHeldPage(
+  queryClient: QueryClient,
   conversationId: string,
-  param: NewerPageParam,
+  read: EventRead,
+): Promise<ConversationEventPage> {
+  const { after, before } = read.query;
+  // The cursor keys the read, so reads from one cursor join.
+  // oxlint-disable-next-line @tanstack/query/exhaustive-deps
+  return queryClient.fetchQuery({
+    gcTime: 0,
+    queryFn: ({ signal }) =>
+      readEventPage(conversationId, read.query, signal).then((page) => {
+        holdEventPage(queryClient, conversationId, page, read);
+        return page;
+      }),
+    queryKey: [
+      "conversation",
+      conversationId,
+      "event-read",
+      after
+        ? `after:${after}`
+        : before
+          ? `before:${before}`
+          : new URLSearchParams(read.query).toString(),
+    ],
+    staleTime: 0,
+  });
+}
+
+/** Read one bounded page of events before, after, or around a boundary. */
+function readEventPage(
+  conversationId: string,
+  query: Record<string, string>,
   signal?: AbortSignal,
 ): Promise<ConversationEventPage> {
-  const query = new URLSearchParams(param);
   return fetchDashboardJson(
     conversationEventPageSchema,
-    `/api/conversations/${encodeURIComponent(conversationId)}/events?${query}`,
+    `/api/conversations/${encodeURIComponent(conversationId)}/events?${new URLSearchParams(query)}`,
     signal,
   ).then((page) => {
-    if ("after" in param && page.nextCursor === param.after) {
+    const { after, before } = query;
+    if (
+      (after && page.nextCursor === after) ||
+      (before && page.previousCursor === before)
+    ) {
       throw new Error("Conversation history cursor did not advance");
     }
     return page;
@@ -354,16 +469,22 @@ export type ConversationLink =
   | { message: string }
   | { turn: string };
 
-/** Read the link of a page URL. A Turn wins over an event, then a Message. */
+/**
+ * Read the link of a page URL. A Turn wins over an event, then a Message,
+ * then a `#event-<seq>` row.
+ */
 export function readConversationLink(
   params: URLSearchParams,
+  hash: string,
 ): ConversationLink | undefined {
   const turn = params.get(CONVERSATION_TURN_PARAM);
   if (turn) return { turn };
   const event = parseConversationEventSeq(params.get(CONVERSATION_EVENT_PARAM));
   if (event !== undefined) return { event };
   const message = params.get(CONVERSATION_MESSAGE_PARAM);
-  return message ? { message } : undefined;
+  if (message) return { message };
+  const row = parseTranscriptRowHash(hash);
+  return row === undefined ? undefined : { event: row };
 }
 
 /** The page to open for a link, or nothing when `events` hold its row. */

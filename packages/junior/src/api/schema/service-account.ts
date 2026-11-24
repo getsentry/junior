@@ -6,6 +6,7 @@ export const serviceAccountSchema = z
     displayName: z.string(),
     userOAuth: z.boolean(),
     tools: z.array(z.string()),
+    operations: z.array(z.string()),
     connected: z.boolean(),
     connectedAt: z.string().optional(),
     connectedBy: z.string().optional(),

@@ -57,10 +57,8 @@ import {
   type ToolActionRejectionMarker,
 } from "@/chat/guardian/history";
 import { CODEMODE_TOOL_NAME } from "@/chat/codemode/result";
-import {
-  createCodeModeTool,
-  type CodeModeToolOptions,
-} from "@/chat/codemode/tool";
+import type { CodeModeToolOptions } from "@/chat/codemode/bridge";
+import { createCodeModeTool } from "@/chat/tools/codemode";
 import { makeStructuredToolOutput } from "@/chat/tool-support/structured-result";
 import { capToolResult } from "@/chat/tool-support/result-cap";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
@@ -334,20 +332,24 @@ export function createToolPipeline(options: ToolPipelineOptions) {
           ...(error.riskLevel
             ? { "app.guardian.risk_level": error.riskLevel }
             : undefined),
+          ...(error.rule ? { "app.guardian.rule": error.rule } : undefined),
           ...(error.userAuthorization
-            ? {
-                "app.guardian.user_authorization": error.userAuthorization,
-              }
+            ? { "app.guardian.user_consent": error.userAuthorization }
             : undefined),
         });
       }
       throw error;
     }
     if (review.decision) {
+      // `user_consent`, not `user_authorization`: Sentry's data scrubber
+      // hides a key that contains `auth`.
       setSpanAttributes({
         "app.guardian.decision": review.decision.decision,
         "app.guardian.risk_level": review.decision.riskLevel,
-        "app.guardian.user_authorization": review.decision.userAuthorization,
+        ...(review.decision.rule
+          ? { "app.guardian.rule": review.decision.rule }
+          : undefined),
+        "app.guardian.user_consent": review.decision.userAuthorization,
       });
     }
     const sandboxInput = buildSandboxInput(toolName, executionInput);

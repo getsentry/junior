@@ -4,7 +4,7 @@ import Foundation
 /// amount so that the data's `now` becomes the time the demo starts.
 struct DemoData {
   var conversations: [DemoConversation]
-  var reviewItems: [JSONObject]
+  var inboxItems: [JSONObject]
   var automations: [JSONObject]
 
   static func load(movedTo now: Date) -> DemoData {
@@ -17,12 +17,12 @@ struct DemoData {
     return DemoData(
       conversations: (moved["conversations"]?.array ?? []).compactMap(\.object).map { entry in
         DemoConversation(
-          summary: entry["conversation"]?.object ?? [:], brief: entry["brief"],
+          summary: entry["conversation"]?.object ?? [:],
           messages: (entry["messages"]?.array ?? []).compactMap(\.object),
           pending: entry["pendingMessages"]?.array ?? [], authorization: entry["authorization"],
           listed: entry["listed"]?.bool ?? true)
       },
-      reviewItems: (moved["reviewItems"]?.array ?? []).compactMap(\.object),
+      inboxItems: (moved["inboxItems"]?.array ?? []).compactMap(\.object),
       automations: (moved["automations"]?.array ?? []).compactMap(\.object))
   }
 

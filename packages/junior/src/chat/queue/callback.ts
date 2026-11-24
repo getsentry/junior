@@ -12,7 +12,6 @@ import {
 import type { QueueRejectReason, QueueVerifyResult } from "./sign";
 
 export interface QueueCallbackOptions<Message> {
-  consumerGroup: string;
   /** Use `null` when durable state already owns the attempt limit. */
   maxDeliveries: number | null;
   onRejected(
@@ -21,18 +20,19 @@ export interface QueueCallbackOptions<Message> {
     error?: unknown,
   ): void;
   permanentError?: (error: unknown) => string | undefined;
+  /** Seconds to wait before the next delivery of a failed message. */
+  retryDelaySeconds?: (deliveryCount: number) => number;
   run(message: Message, metadata: QueueMessageMetadata): Promise<void>;
   /**
    * Acknowledge without checking or running the message.
    * Use for kill switches that must not depend on signing secrets.
    */
   skip?: (metadata: QueueMessageMetadata) => boolean;
-  topic: string;
   verify(value: unknown): QueueVerifyResult<Message>;
   visibilityTimeoutSeconds?: number;
 }
 
-/** Build the HTTP callback and local-dev consumer for one signed queue. */
+/** Build the HTTP callback and the in-process consume path for one signed queue. */
 export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
   const consume = async (
     message: Message,
@@ -69,9 +69,9 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
         `Queue message verification unavailable: ${checked.reason}`,
       );
     }
-    // Each provider call is its own host request. The Vercel local-dev
-    // consumer runs inside the sender's async context, so without a new
-    // deadline every call inherits the sender's spent deadline.
+    // Each delivery is its own host request. A new deadline keeps a delivery
+    // that runs inside another request's async context from inheriting that
+    // request's spent deadline.
     await runWithNewTurnRequestDeadline(() =>
       consume(checked.message, metadata),
     );
@@ -92,27 +92,20 @@ export function queueCallback<Message>(options: QueueCallbackOptions<Message>) {
     ) {
       return { acknowledge: true };
     }
-    return undefined;
+    return options.retryDelaySeconds
+      ? { afterSeconds: options.retryDelaySeconds(metadata.deliveryCount) }
+      : undefined;
   };
 
   const consumer: QueueConsumer = {
-    consumerGroup: options.consumerGroup,
     handler,
     retry,
-    topic: options.topic,
     visibilityTimeoutSeconds: options.visibilityTimeoutSeconds,
   };
 
   return {
     /** Run a message that an in-process queue already trusts. */
     consume,
-    consumer,
     create: () => getQueueProvider().createCallback(consumer),
-    registerDev: () => {
-      if (process.env["NODE_ENV"] !== "development") {
-        return undefined;
-      }
-      return getQueueProvider().registerDevConsumer?.(consumer);
-    },
   };
 }

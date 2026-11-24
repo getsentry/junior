@@ -148,11 +148,13 @@ export function createTranscribeAudioTool(args: {
         db: args.db,
       });
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
-        throw new ToolInputError("Attachment not found in this conversation.");
+        throw new ToolInputError(
+          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+        );
       }
       if (!mayHaveAudio(attachment.contentType)) {
         throw new ToolInputError(
-          `This attachment is ${attachment.contentType}, not audio or video.`,
+          `This attachment is ${attachment.contentType}, not audio or video. Use loadAttachment to read other files.`,
         );
       }
       const { storageKey } = await storeAttachmentOnFirstUse({

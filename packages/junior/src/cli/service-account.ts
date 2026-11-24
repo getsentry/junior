@@ -123,13 +123,16 @@ async function runConnect(plugin: PluginDefinition): Promise<number> {
   } finally {
     loopback.close();
   }
-  const tools = (plugin.manifest.accounts?.serviceAccount?.tools ?? []).join(
-    ", ",
-  );
+  const serviceAccount = plugin.manifest.accounts?.serviceAccount;
+  const allowed = (
+    serviceAccount?.tools ??
+    serviceAccount?.operations ??
+    []
+  ).join(", ");
   console.log(
     plugin.manifest.accounts?.userOAuth === false
-      ? `Connected the ${provider} service account. Everyone now uses it for: ${tools}.`
-      : `Connected the ${provider} service account. Actors who have not connected ${provider} now use it for: ${tools}.`,
+      ? `Connected the ${provider} service account. Everyone now uses it for: ${allowed}.`
+      : `Connected the ${provider} service account. Actors who have not connected ${provider} now use it for: ${allowed}.`,
   );
   return 0;
 }

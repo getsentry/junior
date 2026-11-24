@@ -3,6 +3,7 @@ import {
   AgentDepthLimitError,
   AgentInvocationLimitError,
   AgentNameInUseError,
+  AgentStoppedError,
 } from "@/chat/agent-invocations/errors";
 import {
   agentNameSchema,
@@ -32,13 +33,11 @@ const spawnAgentOutputSchema = juniorToolOutputSchema.extend({
     .describe(
       "Child conversation ID. Pass it to searchConversationEvents to read the child's history.",
     ),
-  dashboard_url: z
+  url: z
     .string()
     .url()
     .optional()
-    .describe(
-      "Dashboard link of the child. People can message a Thread there.",
-    ),
+    .describe("Link to the child. People can message a Thread there."),
 });
 
 export const spawnAgentToolDefinition = zodToolDefinition({
@@ -47,7 +46,7 @@ export const spawnAgentToolDefinition = zodToolDefinition({
     "Delegate a Task when: the request splits into independent tracks that each need real investigation, such as several repos, services, sources, or items (start every track in the same message); an answer needs reading across many files, logs, or sources and you need the conclusion, not the raw output; a side task does not block your main answer; or you want a second opinion that is not anchored on your analysis (give it the evidence, not your conclusion).",
     "Do it yourself instead of a Task when: the work fits in a handful of tool calls; you already know the file, symbol, or value to look up; or the job is one modest task that you would only split into pieces. Each child rebuilds its context and its result arrives in a later turn, so when in doubt, do not spawn a Task.",
     `Child agent types:\n${formatAgentTypes()}`,
-    "After you delegate, do not do the same work yourself. Post to people only what they can act on, such as a result or a blocker. Do not post progress. Share a Thread's dashboard_url so people can find it.",
+    "After you delegate, do not do the same work yourself. Post to people only what they can act on, such as a result or a blocker. Do not post progress. Share a Thread's url so people can find it.",
     "You know nothing about a child's findings until its result arrives: do not predict them, do not wait or poll, and if the user asks before then, give status.",
     "Give a child a name when you may send it more work later. To give more work to a child agent that already exists, use messageAgent instead.",
     "A child keeps its type and kind when it receives more work through messageAgent.",
@@ -130,7 +129,9 @@ export function createSpawnAgentTool(
     ...spawnAgentToolDefinition,
     execute: async (input, options) => {
       if (!options.toolCallId) {
-        throw new ToolInputError("spawnAgent requires an active tool call ID");
+        throw new ToolInputError(
+          "spawnAgent requires an active tool call ID. No change to the call can fix this.",
+        );
       }
       const title = await resolveTaskTitle({
         completeText,
@@ -171,6 +172,12 @@ export function createSpawnAgentTool(
             { cause: error },
           );
         }
+        if (error instanceof AgentStoppedError) {
+          throw new ToolInputError(
+            `${error.message}. Do not start more work. End this turn.`,
+            { cause: error },
+          );
+        }
         if (error instanceof AgentDepthLimitError) {
           throw new ToolInputError(
             `${error.message}. Do the work in this agent instead.`,
@@ -179,12 +186,10 @@ export function createSpawnAgentTool(
         }
         throw error;
       }
-      const dashboardUrl = getDashboardConversationLink(
-        result.childConversationId,
-      );
+      const url = getDashboardConversationLink(result.childConversationId);
       return {
         conversation_id: result.childConversationId,
-        ...(dashboardUrl ? { dashboard_url: dashboardUrl } : undefined),
+        ...(url ? { url } : undefined),
       };
     },
   });

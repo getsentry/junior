@@ -22,10 +22,7 @@ import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
 import { juniorConversationReadPositions } from "./schema/conversation-read-positions";
 import { juniorConversations } from "./schema/conversations";
-import {
-  juniorAgentBindings,
-  juniorAgentInvocations,
-} from "./schema/agent-invocations";
+import { juniorAgentBindings } from "./schema/agent-bindings";
 import { juniorLocationConfigurations } from "./schema/location-configurations";
 import { juniorDestinations } from "./schema/destinations";
 import { juniorIdentities } from "./schema/identities";
@@ -38,12 +35,13 @@ import { juniorAutomationRuns } from "./schema/automation-runs";
 import { juniorAutomationVersions } from "./schema/automation-versions";
 import { juniorAutomations } from "./schema/automations";
 import {
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-} from "./schema/review-items";
-import { juniorPlanItems, juniorPlanItemVersionSeq } from "./schema/plan-items";
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+} from "./schema/inbox-items";
+import { juniorTodos, juniorTodoVersionSeq } from "./schema/todos";
 import { juniorPushSubscriptions } from "./schema/push-subscriptions";
 import { juniorSnapshots } from "./schema/snapshots";
 import { juniorUsers } from "./schema/users";
@@ -59,7 +57,6 @@ export {
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
@@ -78,12 +75,13 @@ export {
   juniorIdentities,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-  juniorPlanItems,
-  juniorPlanItemVersionSeq,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+  juniorTodos,
+  juniorTodoVersionSeq,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,
@@ -105,7 +103,6 @@ export const juniorSqlSchema = {
   juniorConversationAnnotations,
   juniorApiTokens,
   juniorAgentBindings,
-  juniorAgentInvocations,
   juniorConversationEvents,
   juniorConversationMetrics,
   juniorConversationEmbeddings,
@@ -124,11 +121,12 @@ export const juniorSqlSchema = {
   juniorIdentities,
   juniorInboxSnoozes,
   juniorInboxSnoozeTriggers,
-  juniorReviewItemAssignees,
-  juniorReviewItemConversations,
-  juniorReviewItemSlackCards,
-  juniorReviewItems,
-  juniorPlanItems,
+  juniorInboxItemAssignees,
+  juniorInboxItemConversations,
+  juniorInboxItemDeliveries,
+  juniorInboxItemSlackCards,
+  juniorInboxItems,
+  juniorTodos,
   juniorPushSubscriptions,
   juniorSnapshots,
   juniorStats,

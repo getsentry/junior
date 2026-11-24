@@ -15,11 +15,15 @@ import {
 } from "@/chat/conversations/web-input";
 import { webMessageId } from "@/chat/conversations/web-message-id";
 import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
-import { getConversationWorkState } from "@/chat/task-execution/store";
+import {
+  getConversationWorkState,
+  type InboundMessageDelivery,
+} from "@/chat/task-execution/store";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 import { getProductionSlackAdapter } from "@/chat/app/production";
-import { closeReviewItemsAnsweredByReply } from "@/chat/review-items/actions";
-import { createSlackReviewItemShow } from "@/chat/slack/review-item-card-sync";
+import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
+import { markConversationRead } from "./read-position";
+import { createInboxItemShow } from "@/chat/notifications/inbox-item-show";
 import { getStateAdapter } from "@/chat/state/adapter";
 import { throwApiError } from "../http";
 import type {
@@ -144,12 +148,13 @@ export async function createConversationForViewer(
   }
 }
 
-/** Append one dashboard message to an existing conversation. */
+/** Append one viewer message to an existing conversation. */
 export async function appendConversationMessageForViewer(
   viewer: User,
   conversationId: string,
   body: CreateConversationMessageBody,
   services: WebInputServices,
+  delivery: InboundMessageDelivery,
 ): Promise<AcceptedConversationMessage> {
   await requireWebMessageConversation(
     viewer,
@@ -167,6 +172,7 @@ export async function appendConversationMessageForViewer(
       {
         actor,
         conversationId,
+        delivery,
         idempotencyKey: body.idempotencyKey,
         message: body.message,
         uploads,
@@ -178,17 +184,24 @@ export async function appendConversationMessageForViewer(
       },
     );
   // A dashboard message answers the open questions that the agent asked in
-  // this Conversation, like a typed Slack reply.
-  const closeAnswered = () =>
-    closeReviewItemsAnsweredByReply({
+  // this Conversation, like a typed Slack reply. The viewer also saw the
+  // transcript so far. The message can wait as pending with no event, so
+  // move the read position here: it closes the reply notice, and a reply
+  // task that runs later sees the read and adds no notice.
+  const closeAnsweredAndRead = async () => {
+    await closeInboxItemsAnsweredByReply({
       conversationId,
       delivery: {
         queue: services.queue,
-        show: createSlackReviewItemShow(getProductionSlackAdapter),
+        show: createInboxItemShow(getProductionSlackAdapter),
       },
       resolveUser: async () => viewer,
       text: body.message,
     });
+    await markConversationRead(viewer, conversationId, {
+      lastReadSeq: Number.MAX_SAFE_INTEGER,
+    });
+  };
   try {
     let accepted: AcceptedConversationMessage;
     try {
@@ -203,11 +216,11 @@ export async function appendConversationMessageForViewer(
         getConversationWorkState({ conversationId, state }),
       ]);
       if (work?.execution.inboundMessageIds.includes(messageId)) {
-        await closeAnswered();
+        await closeAnsweredAndRead();
       }
       throw error;
     }
-    await closeAnswered();
+    await closeAnsweredAndRead();
     return accepted;
   } catch (error) {
     throwApiError(500, "Unable to append message.", error);

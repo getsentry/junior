@@ -1,0 +1,52 @@
+id: inbox-card-action-order
+language: Tsx
+severity: error
+message: "Inbox actions read Dismiss, Snooze, then the main action, such as Send, last. Put this button in that order (design/inbox.md)."
+files:
+  - packages/junior-dashboard/src/client/**/*.tsx
+rule:
+  any:
+    # Dismiss after a Snooze.
+    - all:
+        - matches: jsx-child
+        - any:
+            - matches: dismiss-button
+            - has: { stopBy: end, matches: dismiss-button }
+        - follows:
+            stopBy: end
+            all:
+              - matches: jsx-child
+              - any:
+                  - matches: snooze-button
+                  - has: { stopBy: end, matches: snooze-button }
+    # Dismiss or Snooze after Send.
+    - all:
+        - matches: jsx-child
+        - any:
+            - matches: quiet-button
+            - has: { stopBy: end, matches: quiet-button }
+        - follows:
+            stopBy: end
+            all:
+              - matches: jsx-child
+              - any:
+                  - matches: send-button
+                  - has: { stopBy: end, matches: send-button }
+utils:
+  jsx-child:
+    any:
+      - kind: jsx_self_closing_element
+      - kind: jsx_element
+      - kind: jsx_expression
+  dismiss-button:
+    pattern: <RowDismissButton $$$ />
+  snooze-button:
+    any:
+      - pattern: <RowSnoozeButton $$$ />
+      - pattern: <CardSnoozeButton $$$ />
+  quiet-button:
+    any:
+      - matches: dismiss-button
+      - matches: snooze-button
+  send-button:
+    pattern: <SendButton $$$ />

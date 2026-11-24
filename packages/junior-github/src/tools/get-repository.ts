@@ -61,9 +61,14 @@ export const gitHubGetRepositoryTool = definePluginTool({
       path: repoPath(repo),
     });
     if (!response.ok) {
-      throw new PluginToolInputError(
-        `GitHub repository lookup failed with HTTP ${response.status}`,
-      );
+      const message = `GitHub repository lookup failed with HTTP ${response.status}`;
+      // Missing repo is model-repairable. Auth, rate limit, and 5xx stay system errors.
+      if (response.status === 404) {
+        throw new PluginToolInputError(
+          `${message}. Check repo. If it is correct, the GitHub App cannot see the repository.`,
+        );
+      }
+      throw new Error(message);
     }
     const providerResult = z
       .object({

@@ -62,7 +62,6 @@ async function conversation(conversationId, listed) {
   if (!state) return undefined;
   return {
     conversation: state.conversation,
-    brief: state.brief,
     messages: await allMessages(conversationId),
     pendingMessages: state.pendingMessages,
     authorization: state.authorization,
@@ -79,7 +78,7 @@ const feed = [
     ({ conversationId }) => !conversationId.startsWith("internal:history-"),
   );
 
-const { items: reviewItems } = await call("searchReviewItems", { limit: 50 });
+const { items: inboxItems } = await call("searchInboxItems", { limit: 50 });
 const automations = [];
 for (let page = 1; ; page++) {
   const list = await call("searchAutomations", { page });
@@ -88,10 +87,10 @@ for (let page = 1; ; page++) {
   if (list.automations.length === 0 || automations.length >= list.total) break;
 }
 
-// Review items and runs can open Conversations that the feed does not list.
+// Inbox items and runs can open Conversations that the feed does not list.
 const listed = new Set(feed.map(({ conversationId }) => conversationId));
 const linked = new Set([
-  ...reviewItems.flatMap(({ conversationIds }) => conversationIds),
+  ...inboxItems.flatMap(({ conversationIds }) => conversationIds),
   ...automations.flatMap(({ automation, runs }) => [
     automation.lastConversationId,
     ...runs.map(({ conversationId }) => conversationId),
@@ -105,9 +104,9 @@ for (const id of linked) {
   if (found) conversations.push(found);
 }
 
-const data = { now: FIXTURE_NOW, conversations, reviewItems, automations };
+const data = { now: FIXTURE_NOW, conversations, inboxItems, automations };
 const json = JSON.stringify(data, null, 2).replaceAll(server, DEMO_ORIGIN);
 await writeFile(output, `${json}\n`);
 console.log(
-  `Wrote ${conversations.length} conversations, ${reviewItems.length} review items, and ${automations.length} automations to ${output}`,
+  `Wrote ${conversations.length} conversations, ${inboxItems.length} inbox items, and ${automations.length} automations to ${output}`,
 );

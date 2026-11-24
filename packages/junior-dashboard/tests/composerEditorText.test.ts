@@ -61,3 +61,10 @@ it("reads mentions and references back as chips with the same text", () => {
     ],
   });
 });
+
+it("keeps skill references as the exact plain text", () => {
+  const text =
+    "Run $release-check now, then $Diff-Quality, $not-installed, `$diff-quality`, US$5 and $";
+  expect(roundTrip(text)).toEqual({ text, chips: [] });
+  expect(roundTrip(roundTrip(text).text)).toEqual(roundTrip(text));
+});

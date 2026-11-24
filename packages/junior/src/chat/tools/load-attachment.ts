@@ -154,10 +154,14 @@ export function createLoadAttachmentTool(args: {
         db: args.db,
       });
       if (!attachment || attachment.storageProvider !== args.storage.provider) {
-        throw new ToolInputError("Attachment not found in this conversation.");
+        throw new ToolInputError(
+          "Attachment not found in this conversation. Use an attachment_id from the attachment context or a Slack read result.",
+        );
       }
       if (attachment.bytes > MAX_ATTACHMENT_BYTES) {
-        throw new ToolInputError(ATTACHMENT_TOO_LARGE_MESSAGE);
+        throw new ToolInputError(
+          `${ATTACHMENT_TOO_LARGE_MESSAGE} No change to the call can fix this.`,
+        );
       }
       let content;
       try {

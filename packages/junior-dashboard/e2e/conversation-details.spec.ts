@@ -8,10 +8,11 @@ test("opens conversation details beside the chat", async ({
 }) => {
   await page.setViewportSize({ height: 900, width: 1600 });
 
-  await page.goto(dashboard.baseURL);
+  await page.goto(`${dashboard.baseURL}/conversations`);
 
   await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
-  await expect(page).toHaveTitle(/^\(\d+\) Junior$/);
+  // The wide list opens the viewer's Lead beside it.
+  await expect(page).toHaveTitle(/^\(\d+\) Lead - Junior$/);
   const sidebar = page.getByRole("navigation", {
     name: "Your conversations",
   });
@@ -182,10 +183,9 @@ test("opens conversation details beside the chat", async ({
   await page.getByRole("button", { name: "Close conversation menu" }).click();
   await page.setViewportSize({ width: 1600, height: 900 });
 
-  // The full durable Brief stays available after the transcript expires.
-  await page.getByText("Facts, links & keywords", { exact: true }).click();
+  // The summary stays available after the transcript expires.
   await expect(
-    page.getByText("PAYMENTS-42 contained 418 events."),
+    page.getByText(/PAYMENTS-42 contained 418 events\./),
   ).toBeVisible();
 
   await expect(

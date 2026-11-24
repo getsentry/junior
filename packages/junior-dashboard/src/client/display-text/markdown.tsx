@@ -32,6 +32,7 @@ import {
 } from "./ObjectLinks";
 import {
   resolvableUrl,
+  sameTypeCard,
   useResolvedObject,
   useWhenVisible,
 } from "./resolvedObjects";
@@ -457,9 +458,6 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const objectUrl =
     typeof props.objectUrl === "string" ? props.objectUrl : undefined;
   const known = useKnownObject(objectUrl);
-  if (objectUrl && known.card && !known.linkOnly) {
-    return <StandaloneObject card={known.card} href={objectUrl} />;
-  }
   if (objectUrl && resolvableUrl(objectUrl)) {
     return (
       <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
@@ -477,8 +475,9 @@ function ResolvedParagraph(props: {
   objectUrl: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request } = useResolvedObject(props.objectUrl);
-  useRequestWhenSaved(props.saved, request);
+  const resolved = useResolvedObject(props.objectUrl);
+  useRequestWhenSaved(props.saved, resolved.request);
+  const card = sameTypeCard(resolved.card, props.saved?.objectType);
   if (card) {
     return <StandaloneObject card={card} href={props.objectUrl} live />;
   }
@@ -534,13 +533,6 @@ function TranscriptAnchor(props: {
     ) : (
       props.children
     );
-  if (known.card && !known.linkOnly) {
-    return (
-      <ObjectAnchor bare={props.bare} card={known.card} href={props.href}>
-        {label}
-      </ObjectAnchor>
-    );
-  }
   if (resolvableUrl(props.href)) {
     return (
       <ResolvedAnchor bare={props.bare} href={props.href} saved={known.card}>
@@ -551,16 +543,19 @@ function TranscriptAnchor(props: {
   return <PlainAnchor href={props.href}>{label}</PlainAnchor>;
 }
 
-// A link without a saved object asks the API for a card when it scrolls
-// into view or the reader hovers it. A saved link shows until then. Its hover
-// card keeps one height while the live card can still replace it.
+// A link asks the API for a card when it scrolls into view or the reader
+// hovers it, or at once when a saved card shows meanwhile. The live card
+// replaces the saved one, whose state can be old. Its hover card keeps one
+// height while the live card can still replace it.
 function ResolvedAnchor(props: {
   bare?: boolean | undefined;
   children: ReactNode;
   href: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request, settled } = useResolvedObject(props.href);
+  const resolved = useResolvedObject(props.href);
+  const { request, settled } = resolved;
+  const card = sameTypeCard(resolved.card, props.saved?.objectType);
   const observe = useWhenVisible(request);
   useRequestWhenSaved(props.saved, request);
   const reserveHeight =

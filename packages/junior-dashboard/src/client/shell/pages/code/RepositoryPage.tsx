@@ -1,173 +1,163 @@
 import { useState } from "react";
 import type { CodeRepositoryReport } from "@sentry/junior/api/schema";
-import { ArrowLeft } from "lucide-react";
-import { Link, useParams } from "react-router";
+import { GitPullRequest, LayoutDashboard, MessagesSquare } from "lucide-react";
+import { Link, useLocation, useParams } from "react-router";
 
 import {
   useCodeRepositoryConversationsData,
   useCodeRepositoryData,
 } from "../../../api";
-import { buttonVariants } from "../../../components/ui/button";
 import { EmptyTelemetry } from "../../../components/EmptyTelemetry";
-import { PageRouteLoading } from "../../../components/PageRouteLoading";
+import { PageContentSkeleton } from "../../../components/PageContentSkeleton";
+import { ScopeTabs } from "../../../components/filters/ScopeTabs";
 import {
   timeRangeBucketUnit,
   TimeRangeSelector,
   type TimeRangeDays,
 } from "../../../components/controls/TimeRangeSelector";
-import { PageHeader } from "../../../components/layout/PageHeader";
-import { PageLayout } from "../../../components/layout/PageLayout";
-import { SecondaryNavigation } from "../../../components/layout/SecondaryNavigation";
 import { buildConversations, workspacePath } from "../../../format";
 import { CodeActivityChart } from "../../../pages/code/CodeActivityChart";
-import { CodeChangeRow } from "../../../pages/code/CodeChangeRow";
+import { MessageObjectsProvider } from "../../../display-text/DisplayText";
+import { CodeChangeRows } from "../../../pages/code/CodeChangeRow";
 import { CodeSummaryCards } from "../../../pages/code/CodeSummaryCards";
 import {
+  CODE_ALL_PATH,
   codeRepositoryPath,
   type CodeRepositoryTab,
 } from "../../../pages/code/codeRepositoryRoutes";
 import {
+  codeActivity,
   RecentConversationRow,
   RepositorySection,
-  repositoryActivity,
 } from "../../../pages/code/RepositorySections";
 import {
   RepositoryChangesTab,
   RepositoryConversationsTab,
+  RepositoryRowsLoading,
 } from "./RepositoryTabs";
 import { cn, dashboardInlineLinkClass } from "../../../styles";
 import { OutboundLink } from "../../../components/OutboundLink";
 import { getDashboardAgentName } from "../../../agentName";
-import { NAV_PAGES } from "../../../navPages";
+import { CodePageFrame } from "./CodePageFrame";
 
 const RECENT_ROWS = 5;
-const DESCRIPTION = "Conversations and code changes in this repository.";
+
+/** Code · All, which lists every repository, so Back from one returns there. */
+const BACK_TO_CODE = {
+  label: "Code",
+  to: CODE_ALL_PATH,
+};
+
+const TABS = [
+  { icon: LayoutDashboard, key: "overview", label: "Overview" },
+  { icon: MessagesSquare, key: "conversations", label: "Conversations" },
+  { icon: GitPullRequest, key: "changes", label: "Changes" },
+] as const;
 
 /** Inline link style used by `ConversationSummary` location links. */
 const inlineLinkClass = cn("font-semibold", dashboardInlineLinkClass);
 
-/** Render one repository tab under the shared header and tab bar. */
+/** Render one repository tab under the shared header and its tabs. */
 export function RepositoryPage(props: { tab: CodeRepositoryTab }) {
+  const location = useLocation();
   const params = useParams();
   const repositoryId = params["repositoryId"];
-  const [range, setRange] = useState<TimeRangeDays>(30);
   const query = useCodeRepositoryData(repositoryId);
-  if (!query.data && !query.error) {
-    return (
-      <PageRouteLoading
-        description={DESCRIPTION}
-        label="Loading repository"
-        title="Repository"
-        variant="stats"
-      />
-    );
-  }
   const data = query.data;
-  if (!data) {
-    return (
-      <PageLayout>
-        <BackToCode />
+  const name = data?.repository.name ?? "Repository";
+  const tabLabel = TABS.find((tab) => tab.key === props.tab)?.label;
+  return (
+    <CodePageFrame
+      back={BACK_TO_CODE}
+      documentTitle={props.tab === "overview" ? name : `${name} · ${tabLabel}`}
+      phoneTitle={name}
+      returnPath={`${location.pathname}${location.search}`}
+      tabs={
+        data ? (
+          <RepositoryTabsNav
+            repositoryId={data.repository.id}
+            tab={props.tab}
+          />
+        ) : undefined
+      }
+      title={name}
+    >
+      {data ? (
+        <>
+          {props.tab === "overview" ? <RepositoryOverview data={data} /> : null}
+          {props.tab === "conversations" ? (
+            <RepositoryConversationsTab repositoryId={data.repository.id} />
+          ) : null}
+          {props.tab === "changes" ? (
+            <RepositoryChangesTab data={data} />
+          ) : null}
+        </>
+      ) : query.error ? (
         <EmptyTelemetry>
-          This repository is unavailable. It may not have any code changes from
+          This repository is unavailable. It may not have any code changes from{" "}
           {getDashboardAgentName()}.
         </EmptyTelemetry>
-      </PageLayout>
-    );
-  }
-  const repository = data.repository;
-  return (
-    <SecondaryNavigation
-      ariaLabel="Repository navigation"
-      items={[
-        {
-          end: true,
-          label: "Overview",
-          to: codeRepositoryPath(repository.id),
-        },
-        {
-          label: "Conversations",
-          to: codeRepositoryPath(repository.id, "conversations"),
-        },
-        {
-          label: "Changes",
-          to: codeRepositoryPath(repository.id, "changes"),
-        },
-      ]}
-    >
-      <PageLayout>
-        <BackToCode />
-        <PageHeader
-          actions={
-            <div className="flex flex-wrap items-center gap-2">
-              <TimeRangeSelector onChange={setRange} value={range} />
-              {repository.url ? (
-                <OutboundLink
-                  className={buttonVariants({ variant: "outline" })}
-                  href={repository.url}
-                >
-                  Open repository
-                </OutboundLink>
-              ) : null}
-            </div>
-          }
-          description={<RepositoryDescription data={data} />}
-          documentTitle={
-            props.tab === "overview"
-              ? repository.name
-              : `${repository.name} · ${props.tab === "changes" ? "Changes" : "Conversations"}`
-          }
-          title={repository.name}
-        />
-        {props.tab === "overview" ? (
-          <RepositoryOverview data={data} range={range} />
-        ) : null}
-        {props.tab === "conversations" ? (
-          <RepositoryConversationsTab repositoryId={repository.id} />
-        ) : null}
-        {props.tab === "changes" ? (
-          <RepositoryChangesTab data={data} range={range} />
-        ) : null}
-      </PageLayout>
-    </SecondaryNavigation>
+      ) : (
+        <PageContentSkeleton label="Loading repository" variant="stats" />
+      )}
+    </CodePageFrame>
   );
 }
 
-function BackToCode() {
-  return (
-    <Link
-      className="flex w-fit items-center gap-2 font-display text-sm font-medium text-dashboard-text-muted no-underline transition-colors hover:text-dashboard-text"
-      to={NAV_PAGES.code.to}
-    >
-      <ArrowLeft aria-hidden="true" size={15} strokeWidth={1.8} />
-      Back to code
-    </Link>
-  );
-}
-
-/** Page description, then each Workspace that includes the repository. */
-function RepositoryDescription(props: { data: CodeRepositoryReport }) {
-  const workspaces = props.data.workspaces;
-  if (workspaces.length === 0) return DESCRIPTION;
-  return (
-    <>
-      {DESCRIPTION} / Workspaces{" "}
-      {workspaces.map((workspace, index) => (
-        <span key={workspace.id}>
-          {index > 0 ? ", " : null}
-          <Link className={inlineLinkClass} to={workspacePath(workspace.id)}>
-            {workspace.name}
-          </Link>
-        </span>
-      ))}
-    </>
-  );
-}
-
-function RepositoryOverview(props: {
-  data: CodeRepositoryReport;
-  range: TimeRangeDays;
+/** Overview, Conversations, and Changes of one repository. */
+function RepositoryTabsNav(props: {
+  repositoryId: string;
+  tab: CodeRepositoryTab;
 }) {
+  return (
+    <ScopeTabs
+      label="Repository navigation"
+      tabs={TABS.map((tab) => ({
+        icon: tab.icon,
+        iconOnlyOnPhone: true,
+        label: tab.label,
+        on: tab.key === props.tab,
+        path: codeRepositoryPath(props.repositoryId, tab.key),
+        search: "",
+      }))}
+    />
+  );
+}
+
+/** The repository on its code host, then each Workspace that includes it. */
+function RepositoryLinks(props: { data: CodeRepositoryReport }) {
+  const { repository, workspaces } = props.data;
+  if (!repository.url && workspaces.length === 0) return null;
+  return (
+    <p className="m-0 flex flex-wrap items-center gap-x-3 gap-y-1 font-sans text-sm text-dashboard-text-muted">
+      {repository.url ? (
+        <OutboundLink className={inlineLinkClass} href={repository.url}>
+          Open repository
+        </OutboundLink>
+      ) : null}
+      {workspaces.length > 0 ? (
+        <span>
+          Workspaces{" "}
+          {workspaces.map((workspace, index) => (
+            <span key={workspace.id}>
+              {index > 0 ? ", " : null}
+              <Link
+                className={inlineLinkClass}
+                to={workspacePath(workspace.id)}
+              >
+                {workspace.name}
+              </Link>
+            </span>
+          ))}
+        </span>
+      ) : null}
+    </p>
+  );
+}
+
+function RepositoryOverview(props: { data: CodeRepositoryReport }) {
   const data = props.data;
+  const [range, setRange] = useState<TimeRangeDays>(30);
   const conversationsQuery = useCodeRepositoryConversationsData(
     data.repository.id,
   );
@@ -177,6 +167,7 @@ function RepositoryOverview(props: {
   const changes = data.changes.slice(0, RECENT_ROWS);
   return (
     <>
+      <RepositoryLinks data={data} />
       <CodeSummaryCards summary={data.summary} />
       <div className="grid gap-3 lg:grid-cols-2">
         <RepositorySection
@@ -184,22 +175,26 @@ function RepositoryOverview(props: {
           viewAllTo={codeRepositoryPath(data.repository.id, "conversations")}
         >
           {conversations.length > 0 ? (
-            conversations.map((conversation) => (
-              <RecentConversationRow
-                conversation={conversation}
-                key={conversation.id}
-              />
-            ))
-          ) : (
+            // The rows read the live status of their linked work in one
+            // request.
+            <MessageObjectsProvider>
+              {conversations.map((conversation) => (
+                <RecentConversationRow
+                  conversation={conversation}
+                  key={conversation.id}
+                />
+              ))}
+            </MessageObjectsProvider>
+          ) : conversationsQuery.data || conversationsQuery.error ? (
             <div className="p-4">
               <EmptyTelemetry>
                 {conversationsQuery.error
                   ? "Conversations are unavailable. Try refreshing the dashboard."
-                  : conversationsQuery.data
-                    ? "No conversations are linked to this repository yet."
-                    : "Loading conversations…"}
+                  : "No conversations are linked to this repository yet."}
               </EmptyTelemetry>
             </div>
+          ) : (
+            <RepositoryRowsLoading label="Loading conversations" />
           )}
         </RepositorySection>
         <RepositorySection
@@ -207,9 +202,7 @@ function RepositoryOverview(props: {
           viewAllTo={codeRepositoryPath(data.repository.id, "changes")}
         >
           {changes.length > 0 ? (
-            changes.map((change) => (
-              <CodeChangeRow change={change} key={change.id} />
-            ))
+            <CodeChangeRows changes={changes} />
           ) : (
             <div className="p-4">
               <EmptyTelemetry>No code changes are recorded yet.</EmptyTelemetry>
@@ -218,9 +211,10 @@ function RepositoryOverview(props: {
         </RepositorySection>
       </div>
       <CodeActivityChart
-        bucketUnit={timeRangeBucketUnit(props.range)}
-        days={repositoryActivity(data, props.range)}
-        range={props.range}
+        actions={<TimeRangeSelector onChange={setRange} value={range} />}
+        bucketUnit={timeRangeBucketUnit(range)}
+        days={codeActivity(data, range)}
+        range={range}
       />
     </>
   );

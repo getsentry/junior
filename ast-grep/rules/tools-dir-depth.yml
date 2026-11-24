@@ -1,6 +1,6 @@
 # A `tools` directory has at most one collection level:
 # `tools/<tool>.ts` or `tools/<collection>/<tool>.ts`.
-# `policies/tool-design.md` owns the layout.
+# The `build-tools` repo skill explains the layout.
 id: tools-dir-depth
 language: TypeScript
 severity: error

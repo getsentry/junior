@@ -1,7 +1,7 @@
 import type { FileUpload } from "chat";
 import type { TurnBehavior } from "@/chat/conversations/kind-behavior";
 import type {
-  AgentInvocationSource,
+  ParentMessageSource,
   EventAutomationSource,
   WebSource,
   EventSource,
@@ -75,7 +75,7 @@ export interface ToolHooks {
 
 interface BaseToolRuntimeContext {
   attachmentStorage?: AttachmentStorage | undefined;
-  /** Queue of the app. Without it, Review item tools use the Vercel queue. */
+  /** Queue of the app. Without it, Inbox item tools use the Vercel queue. */
   conversationWorkQueue?: ConversationWorkQueue | undefined;
   messageAgent?: MessageAgent;
   spawnAgent?: SpawnAgent;
@@ -160,7 +160,7 @@ export type ToolRuntimeContext =
       destination: Destination;
       actor?: Actor | undefined;
       source:
-        | AgentInvocationSource
+        | ParentMessageSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource

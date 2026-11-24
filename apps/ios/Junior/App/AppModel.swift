@@ -24,21 +24,20 @@ enum Place: Hashable {
 /// A pushed screen. Paths mirror the dashboard routes they render.
 enum Route: Hashable {
   case conversation(String)
-  case reviewItem(String)
+  case inboxItem(String)
   case automation(String)
   case settings
 }
 
-/// App-wide state: the server and its sign-in, the Inbox count, navigation,
-/// and the refresh tick that tells screens to reload. The app uses only
+/// App-wide state, shared by every window: the server and its sign-in, the
+/// Inbox count, and the refresh tick that tells screens to reload. The app uses only
 /// Junior's public API, the MCP server at `/api/mcp`.
 @MainActor
 @Observable
 final class AppModel {
-  /// The app's OAuth client: the URL of its Client ID Metadata Document,
-  /// which names the app and lists its loopback redirect URI.
-  static let oauthClientID =
-    "https://raw.githubusercontent.com/getsentry/junior/refs/heads/gricha/ios-app/apps/ios/oauth-client.json"
+  /// The app's OAuth client ID. Junior knows this client (`JUNIOR_IOS_CLIENT`
+  /// in `packages/junior/src/api/mcp/oauth/client-metadata.ts`).
+  static let oauthClientID = "https://junior.sentry.dev/clients/ios"
 
   private(set) var server: JuniorServer
   private(set) var client: MCPClient
@@ -51,22 +50,16 @@ final class AppModel {
   var inboxCount = 0
   var shellError: JuniorAPIError?
 
-  var place: Place = .conversations
-  var path: [Route] = []
-  var drawerOpen = false
-  var webPage: URL?
-  /// A demo link to a dashboard page was opened.
-  var demoWebNotice = false
-  /// Focus the home search field ("Go to conversation").
-  var focusSearch = false
-  /// Open the Conversation's details on arrival (`?details=1`).
-  var openDetails = false
   /// The app is in front; refreshes stop otherwise.
   var isActive = true
 
   /// Bumps when lists should reload: on the refresh tick and after a write.
   private(set) var conversationsVersion = 0
-  private(set) var reviewItemsVersion = 0
+  private(set) var inboxItemsVersion = 0
+  /// The latest title that a rename from a list saved. `savedTitleVersion`
+  /// bumps with each one, so the open Conversation shows it at once.
+  private(set) var savedTitle: SavedTitle?
+  private(set) var savedTitleVersion = 0
 
   /// A pinned "now" for deterministic screenshots (`-JuniorFixedNow`).
   let fixedNow: Date?
@@ -79,7 +72,7 @@ final class AppModel {
   init(launch: LaunchOptions = .current) {
     let defaults = UserDefaults.standard
     let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
-    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!)
+    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? JuniorServer.production.baseURL)
     #if DEBUG
       // Screenshots and UI tests start signed in to the mock server, or
       // signed out to run the sign-in flow.
@@ -96,7 +89,6 @@ final class AppModel {
     self.signedIn = store.load()?.server == server
     self.theme = launch.theme ?? ThemeChoice(rawValue: defaults.string(forKey: "theme") ?? "") ?? .system
     self.fixedNow = launch.fixedNow
-    if let open = launch.open { self.open(dashboardPath: open) }
   }
 
   var clock: DisplayClock {
@@ -157,67 +149,6 @@ final class AppModel {
     signedIn = false
     inboxCount = 0
     serverVersion = nil
-    path = []
-    drawerOpen = false
-  }
-
-  /// Open a dashboard path (`/`, `/inbox?item=…`, `/conversations/…`,
-  /// `/automations/…`, `/settings`) the way the web router does.
-  func open(dashboardPath: String) {
-    guard let components = URLComponents(string: dashboardPath) else { return }
-    let parts = components.path.split(separator: "/").map { String($0).removingPercentEncoding ?? String($0) }
-    let item = components.queryItems?.first { $0.name == "item" }?.value
-    drawerOpen = false
-    switch parts.first {
-    case "conversations" where parts.count > 1:
-      place = .conversations
-      path = [.conversation(parts[1])]
-    case "inbox":
-      place = .inbox
-      path = item.map { [.reviewItem($0)] } ?? []
-    case "automations" where parts.count > 1 && parts[1] != "runs":
-      place = .automations
-      path = [.automation(parts[1])]
-    case "automations":
-      place = .automations
-      path = []
-    case "settings":
-      path = [.settings]
-    default:
-      place = .conversations
-      path = []
-    }
-    // `?drawer=1` opens the navigation drawer over the page (screenshots).
-    drawerOpen = components.queryItems?.contains { $0.name == "drawer" } == true
-    openDetails = components.queryItems?.contains { $0.name == "details" } == true
-  }
-
-  func go(_ place: Place) {
-    self.place = place
-    path = []
-    drawerOpen = false
-  }
-
-  /// Open a dashboard page in the in-app browser, for what the public API
-  /// cannot do (answer a Review item, change an Automation).
-  func openOnWeb(_ dashboardPath: String) {
-    show(server.page(dashboardPath))
-  }
-
-  /// Open a link from a tool result, such as a dashboard or Slack URL.
-  func openLink(_ link: String?) {
-    guard let link, let url = URL(string: link) else { return }
-    show(url)
-  }
-
-  /// The demo has no dashboard, so its pages show a notice instead.
-  private func show(_ url: URL?) {
-    drawerOpen = false
-    if server.isDemo, url?.host() == server.baseURL.host() {
-      demoWebNotice = true
-    } else {
-      webPage = url
-    }
   }
 
   func refreshShell() async {
@@ -233,10 +164,10 @@ final class AppModel {
     await refreshInboxCount()
   }
 
-  /// Open Review items that wait on the viewer.
+  /// Open Inbox items that wait on the viewer, as the dashboard badge counts.
   func refreshInboxCount() async {
-    if let list = try? await call("searchReviewItems", ["limit": 50], as: ReviewItemList.self) {
-      inboxCount = list.items.filter(\.canAct).count
+    if let list = try? await call("searchInboxItems", ["limit": 50], as: InboxItemList.self) {
+      inboxCount = list.items.filter(\.needsViewer).count
     }
   }
 
@@ -250,7 +181,7 @@ final class AppModel {
         try? await Task.sleep(for: .seconds(idle ? 60 : 15))
         guard let self, !Task.isCancelled, self.signedIn else { continue }
         self.conversationsVersion += 1
-        self.reviewItemsVersion += 1
+        self.inboxItemsVersion += 1
         await self.refreshInboxCount()
       }
     }
@@ -265,10 +196,16 @@ final class AppModel {
     lastInput = Date()
   }
 
+  /// Tell the open Conversation about a title that a list saved.
+  func didRename(_ saved: SavedTitle) {
+    savedTitle = saved
+    savedTitleVersion += 1
+  }
+
   /// Tell screens that data changed after a local write.
   func didWrite() {
     conversationsVersion += 1
-    reviewItemsVersion += 1
+    inboxItemsVersion += 1
   }
 }
 

@@ -6,6 +6,7 @@ import type {
   EventInput,
   EventPublisher,
   PluginLogger,
+  PluginState,
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
@@ -13,6 +14,7 @@ import {
   issueInstallationToken,
 } from "../credential-support.js";
 import type { GitHubStatusIncident } from "../github-status.js";
+import type { InstallationTokens } from "../installation-tokens.js";
 import { gitHubPullRequestResource } from "../events/pull-request.js";
 import { gitHubRepositoryResource } from "../events/repository.js";
 import {
@@ -816,6 +818,10 @@ export async function loadCheckSuiteFacts(args: {
   loadPullRequestFacts?: boolean;
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   privateKeyEnv: string;
+  /** Saved GET responses, as in `sendConditionalRequest`. */
+  responses?: PluginState | undefined;
+  /** Tokens to reuse, as in `reuseInstallationToken`. */
+  tokens?: InstallationTokens | undefined;
 }): Promise<GitHubCheckSuiteFacts | undefined> {
   const target = parseCheckSuiteFactsTarget(args.body, {
     loadCheckSuites: args.loadCheckSuites,
@@ -833,6 +839,7 @@ export async function loadCheckSuiteFacts(args: {
         permissions: { checks: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
+        tokens: args.tokens,
       });
       // Load runs for this suite only. Commit-wide latest runs mix other apps.
       const response = await githubRequest(
@@ -860,6 +867,7 @@ export async function loadCheckSuiteFacts(args: {
         permissions: { checks: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
+        tokens: args.tokens,
       });
       if (
         await loadAllCheckSuitesPassed({
@@ -905,6 +913,7 @@ export async function loadCheckSuiteFacts(args: {
         permissions: { pull_requests: "read" },
         privateKeyEnv: args.privateKeyEnv,
         repositories: [target.repoName],
+        tokens: args.tokens,
       });
       const loaded = await pLimit(PULL_REQUEST_LOAD_CONCURRENCY).map(
         target.pullRequestNumbers,
@@ -913,7 +922,7 @@ export async function loadCheckSuiteFacts(args: {
             const response = await githubRequest(
               "https://api.github.com",
               `/repos/${encodeURIComponent(target.owner)}/${encodeURIComponent(target.repoName)}/pulls/${number}`,
-              { token: token.token },
+              { responses: args.responses, token: token.token },
             );
             const loadedFacts = pullRequestFactsFromResponse(response);
             return loadedFacts ? ([number, loadedFacts] as const) : undefined;

@@ -7,7 +7,7 @@ import Foundation
 /// server, so the demo and the UI tests show the same Conversations.
 public actor DemoServer {
   private var conversations: [DemoConversation]
-  private var reviewItems: [JSONObject]
+  private var inboxItems: [JSONObject]
   /// `getAutomation` results: `{ automation, runs }`.
   private var automations: [JSONObject]
   /// Idempotency keys of sent messages, so a retry sends nothing.
@@ -22,7 +22,7 @@ public actor DemoServer {
   public init(now: @escaping @Sendable () -> Date = { Date() }) {
     let data = DemoData.load(movedTo: now())
     conversations = data.conversations
-    reviewItems = data.reviewItems
+    inboxItems = data.inboxItems
     automations = data.automations
     self.now = now
   }
@@ -79,6 +79,7 @@ public actor DemoServer {
     case "archiveConversation": return try archive(arguments)
     case "archiveDoneConversations": return archiveDone()
     case "pinConversation": return try pin(arguments)
+    case "renameConversation": return try rename(arguments)
     case "setConversationAutoArchive":
       _ = try conversationIndex(arguments)
       return .object(["autoArchive": .bool(arguments.flag("autoArchive") ?? true)])
@@ -90,13 +91,16 @@ public actor DemoServer {
     case "stopConversation": return try stop(arguments)
     case "cancelQueuedMessages":
       let index = try conversationIndex(arguments)
-      let count = conversations[index].pending.count
+      let ids = conversations[index].pending.compactMap { $0["messageId"] }
       conversations[index].pending = []
-      return .object(["cancelledMessages": .number(Double(count))])
-    case "searchReviewItems": return searchReviewItems(arguments)
-    case "getReviewItem":
-      guard let item = reviewItems.first(where: { $0["id"]?.string == arguments.text("id") }) else {
-        throw DemoToolError("Review item not found.")
+      return .object([
+        "cancelledCount": .number(Double(ids.count)), "cancelledInboundMessageIds": .array(ids),
+        "conversationId": .string(conversations[index].id),
+      ])
+    case "searchInboxItems": return searchInboxItems(arguments)
+    case "getInboxItem":
+      guard let item = inboxItems.first(where: { $0["id"]?.string == arguments.text("id") }) else {
+        throw DemoToolError("Inbox item not found.")
       }
       return .object(["item": .object(item)])
     case "searchAutomations": return searchAutomations(arguments)
@@ -170,7 +174,7 @@ public actor DemoServer {
         "conversationId": .string(id), "title": .string(arguments.text("title") ?? title(for: message)),
         "status": "working", "turnActive": true, "surface": "api", "startedAt": stamp, "lastSeenAt": stamp,
         "url": .string(JuniorServer.demo.page("/conversations/\(id)")!.absoluteString),
-      ], brief: nil, messages: [], pending: [], authorization: nil, listed: true)
+      ], messages: [], pending: [], authorization: nil, listed: true)
     let messageId = append(message, to: &conversation)
     conversations.insert(conversation, at: 0)
     remember(arguments, id, messageId)
@@ -280,6 +284,15 @@ public actor DemoServer {
     return .object(["pinnedAt": conversations[index].summary["pinnedAt"] ?? .null])
   }
 
+  private func rename(_ arguments: JSONObject) throws -> JSONValue {
+    let index = try conversationIndex(arguments)
+    guard let title = arguments.text("title"), title.utf16.count <= conversationTitleMaxLength else {
+      throw DemoToolError("The title must have 1 to \(conversationTitleMaxLength) characters.")
+    }
+    conversations[index].summary["title"] = .string(title)
+    return .object(["title": .string(title)])
+  }
+
   /// Unsubscribe removes the Conversation from the viewer's feed.
   private func subscribe(_ arguments: JSONObject) throws -> JSONValue {
     let index = try conversationIndex(arguments)
@@ -293,15 +306,22 @@ public actor DemoServer {
 
   private func stop(_ arguments: JSONObject) throws -> JSONValue {
     let index = try conversationIndex(arguments)
+    let id = JSONValue.string(conversations[index].id)
     guard conversations[index].summary["turnActive"]?.bool == true else {
-      return .object(["status": "no_work", "droppedMessages": 0])
+      return .object([
+        "conversationId": id, "status": "no_work", "stoppedInboundMessageIds": .array([]),
+        "stoppedMessages": .array([]),
+      ])
     }
-    let dropped = conversations[index].pending.count
+    let dropped = conversations[index].pending.compactMap { $0["messageId"] }
     conversations[index].pending = []
     conversations[index].replyAt = nil
     conversations[index].summary["turnActive"] = false
     conversations[index].summary["status"] = "done"
-    return .object(["status": "requested", "droppedMessages": .number(Double(dropped))])
+    return .object([
+      "conversationId": id, "status": "requested", "stoppedInboundMessageIds": .array(dropped),
+      "stoppedMessages": .array([]),
+    ])
   }
 
   private func conversationIndex(_ arguments: JSONObject) throws -> Int {
@@ -322,13 +342,13 @@ public actor DemoServer {
     return line.count > 60 ? "\(line.prefix(59))…" : line
   }
 
-  // MARK: Review items and Automations
+  // MARK: Inbox items and Automations
 
-  private func searchReviewItems(_ arguments: JSONObject) -> JSONValue {
+  private func searchInboxItems(_ arguments: JSONObject) -> JSONValue {
     let words = arguments.text("q")?.lowercased()
     let conversationId = arguments.text("conversationId")
     let limit = min(max(arguments.integer("limit") ?? 20, 1), 50)
-    let items = reviewItems.filter { item in
+    let items = inboxItems.filter { item in
       guard item["status"]?.string == "open" else { return false }
       if let words {
         let text = "\(item["title"]?.string ?? "")\n\(item["body"]?.string ?? "")"
@@ -398,7 +418,6 @@ typealias JSONObject = [String: JSONValue]
 /// whether the viewer's feed lists it, and when its canned reply comes.
 struct DemoConversation {
   var summary: JSONObject
-  var brief: JSONValue?
   var messages: [JSONObject]
   var pending: [JSONValue]
   var authorization: JSONValue?
@@ -409,15 +428,14 @@ struct DemoConversation {
   var lastSeq: Int { messages.last.map(messageSeq) ?? -1 }
   var lastSeenAt: Date { parsedDate(summary["lastSeenAt"]) }
 
-  /// Titles and Briefs, as the real search reads them.
+  /// Titles and summaries, as the real search reads them.
   var searchText: String {
-    [summary["title"]?.string, brief?["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
+    [summary["title"]?.string, summary["summary"]?.string].compactMap { $0 }.joined(separator: "\n").lowercased()
   }
 
   /// The `getConversation` fields without the cursor and messages.
   var state: JSONObject {
     var state: JSONObject = ["conversation": .object(summary), "pendingMessages": .array(pending)]
-    state["brief"] = brief
     state["authorization"] = authorization
     return state
   }

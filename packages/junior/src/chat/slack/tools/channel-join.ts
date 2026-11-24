@@ -67,7 +67,7 @@ export function createSlackChannelJoinTool(context: SlackToolContext) {
         if (error instanceof SlackActionError) {
           if (error.code === "missing_scope") {
             throw new ToolInputError(
-              "Cannot join this public Slack channel because this installation is missing the `channels:join` scope.",
+              "Cannot join this public Slack channel because this installation is missing the `channels:join` scope. No change to the call can fix this; ask someone to add the bot to the channel.",
               { cause: error },
             );
           }

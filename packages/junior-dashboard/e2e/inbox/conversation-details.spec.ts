@@ -11,7 +11,7 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
 
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
     await expect(page.getByRole("link", { name: "Junior home" })).toBeVisible();
     await expect(page).toHaveTitle(/^\(\d+\) Conversations - Junior$/);
@@ -197,18 +197,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.getByRole("button", { name: "Close conversation menu" }).click();
     await page.setViewportSize({ width: 1600, height: 900 });
 
-    // The full durable Brief stays available after the transcript expires.
-    await page.getByText("Facts, links & keywords", { exact: true }).click();
+    // The summary stays available after the transcript expires.
     await expect(
-      page.getByText("PAYMENTS-42 contained 418 events."),
+      page.getByText(/PAYMENTS-42 contained 418 events\./).first(),
     ).toBeVisible();
 
-    // The view that opened the Conversation stays marked in the pane.
+    // The view that opened the Conversation stays marked in the pane, as
+    // the list the page is in.
     await expect(
       page
         .getByRole("navigation", { name: "Primary" })
         .getByRole("link", { name: "Conversations", exact: true }),
-    ).toHaveAttribute("aria-current", "page");
+    ).toHaveAttribute("aria-current", "true");
     await expect(page.getByRole("link", { name: "Plugins" })).toHaveCount(0);
 
     await detailsButton.click();

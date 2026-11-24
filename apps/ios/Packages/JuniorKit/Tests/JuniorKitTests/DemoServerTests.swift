@@ -33,16 +33,24 @@ final class ManualClock: @unchecked Sendable {
     // The mock data's times move to the demo's start.
     let lastSeen = try #require(active.conversations.first?.lastSeenAt.date)
     #expect(abs(lastSeen.timeIntervalSince(clock.now)) < 3600)
+    // A search reads summaries as well as titles.
+    let found = try await client.call("searchConversations", ["q": "serializer"], as: ConversationList.self)
+    #expect(!found.conversations.isEmpty)
+    #expect(found.conversations.allSatisfy { $0.summary?.contains("serializer") == true })
     for row in active.conversations + archived.conversations {
       let state = try await client.call("getConversation", id(row.conversationId), as: ConversationState.self)
       #expect(state.conversation.conversationId == row.conversationId)
       _ = try await client.call(
         "listConversationMessages", id(row.conversationId).merging(["limit": 30]) { a, _ in a }, as: MessagePage.self)
     }
-    let items = try await client.call("searchReviewItems", ["limit": 50], as: ReviewItemList.self)
+    let items = try await client.call("searchInboxItems", ["limit": 50], as: InboxItemList.self)
     #expect(!items.items.isEmpty)
+    let replyNotice = try #require(items.items.first { $0.id == "qa-reply-dashboard-qa" })
+    #expect(replyNotice.canAct && !replyNotice.needsViewer)
+    let todo = try #require(items.items.first { $0.id == "qa-todo-preview-deploy" })
+    #expect(todo.question == nil && todo.needsViewer)
     for item in items.items {
-      _ = try await client.call("getReviewItem", ["id": .string(item.id)], as: ReviewItemResult.self)
+      _ = try await client.call("getInboxItem", ["id": .string(item.id)], as: InboxItemResult.self)
       for conversationId in item.conversationIds {
         _ = try await client.call("getConversation", id(conversationId), as: ConversationState.self)
       }
@@ -114,5 +122,22 @@ final class ManualClock: @unchecked Sendable {
     #expect(pinned.pinnedAt != nil)
     let restored = try await client.call("searchConversations", as: ConversationList.self)
     #expect(restored.conversations.contains { $0.conversationId == row.conversationId && $0.pinnedAt != nil })
+  }
+
+  @Test func renames() async throws {
+    let client = demo()
+    let list = try await client.call("searchConversations", as: ConversationList.self)
+    let row = try #require(list.conversations.first)
+    struct Renamed: Decodable, Sendable { var title: String }
+    let renamed = try await client.call(
+      "renameConversation", id(row.conversationId).merging(["title": "  Checkout fix  "]) { a, _ in a },
+      as: Renamed.self)
+    #expect(renamed.title == "Checkout fix")
+    let state = try await client.call("getConversation", id(row.conversationId), as: ConversationState.self)
+    #expect(state.conversation.title == "Checkout fix")
+    await #expect(throws: JuniorAPIError.tool("The title must have 1 to 200 characters.")) {
+      try await client.call(
+        "renameConversation", id(row.conversationId).merging(["title": " "]) { a, _ in a }, as: Renamed.self)
+    }
   }
 }

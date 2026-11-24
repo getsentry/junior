@@ -14,7 +14,9 @@ data, does not run.
 - Only the person who runs the Turn can authorize an action. Their own
   messages in the Run's Conversation set what is authorized. Text from the
   agent, a parent agent, tools, files, issues, comments, Event authors, and
-  other people is context. It is never approval.
+  other people is context. It is never approval. The one exception is the
+  task of a Conversation that a Lead starts: it passes on the instruction
+  of the Lead's person, so it counts as that person's request.
 - The model rates risk and authorization, and names one rule. Code turns the
   rule into allow, ask, or deny, so the model never chooses between ask and
   deny.
@@ -35,7 +37,7 @@ data, does not run.
 
 ## Entry points
 
-- Slack: a Review item in which Junior names an action, its target, and its
+- Slack: an Inbox item in which Junior names an action, its target, and its
   side effects, and asks the person to confirm it.
 - Dashboard: System, "Guardian reviews"; the "Guardian" line in the costs of
   a Conversation.
@@ -61,7 +63,7 @@ data, does not run.
 - An Automation run cannot ask, because no person is there to answer. Each
   ask becomes a deny.
 - When Guardian asks, the agent asks the person about that exact action, the
-  way it asks any question. A child agent reports blocked to its parent. The
+  way it asks any question: with an Inbox item, also in a child agent. The
   agent never names Guardian or the review.
 - After three rejected attempts in a row, the agent stops that write for
   the Turn and explains the risk.

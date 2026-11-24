@@ -1,11 +1,11 @@
 import JuniorKit
 import SwiftUI
 
-/// Shared Inbox data (`searchReviewItems`): open Review items, 50 at most.
+/// Shared Inbox data (`searchInboxItems`): open Inbox items, 50 at most.
 @MainActor
 @Observable
 final class InboxModel {
-  var items: [ReviewItem] = []
+  var items: [InboxItem] = []
   /// More items match than the list holds.
   var truncated = false
   var loading = false
@@ -27,7 +27,7 @@ final class InboxModel {
     let trimmed = String(query.trimmingCharacters(in: .whitespaces).prefix(200))
     if !trimmed.isEmpty { arguments["q"] = .string(trimmed) }
     do {
-      let list = try await app.call("searchReviewItems", arguments, as: ReviewItemList.self)
+      let list = try await app.call("searchInboxItems", arguments, as: InboxItemList.self)
       guard ticket > appliedLoad else { return }
       appliedLoad = ticket
       items = list.items
@@ -38,23 +38,23 @@ final class InboxModel {
     } catch {}
   }
 
-  /// "Needs you" (questions the viewer can answer) and "FYI", newest first.
-  var groups: [(id: String, title: String, items: [ReviewItem])] {
+  /// "Needs you" (the items that the badge counts) and "FYI", newest first.
+  var groups: [(id: String, title: String, items: [InboxItem])] {
     let newest = items.sorted { ($0.createdAt.date ?? .distantPast) > ($1.createdAt.date ?? .distantPast) }
-    let needsYou = newest.filter { $0.canAct && $0.kind == "action" }
-    let fyi = newest.filter { !($0.canAct && $0.kind == "action") }
+    let needsYou = newest.filter(\.needsViewer)
+    let fyi = newest.filter { !$0.needsViewer }
     return [("needs-you", "Needs you", needsYou), ("fyi", "FYI", fyi)].filter { !$0.items.isEmpty }
   }
 
   /// The next item after this one, in Inbox order.
-  func next(after id: String) -> ReviewItem? {
+  func next(after id: String) -> InboxItem? {
     let ordered = groups.flatMap(\.items)
     guard let index = ordered.firstIndex(where: { $0.id == id }) else { return ordered.first }
     return ordered.dropFirst(index + 1).first
   }
 }
 
-/// Route `/inbox`: open Review items grouped as Needs you and FYI.
+/// Route `/inbox`: open Inbox items grouped as Needs you and FYI.
 struct InboxScreen: View {
   @Environment(AppModel.self) private var app
   @Environment(InboxModel.self) private var model
@@ -83,7 +83,7 @@ struct InboxScreen: View {
     }
     .background(Tokens.surfacePanel)
     .toolbar(.hidden, for: .navigationBar)
-    .task(id: app.reviewItemsVersion) { await model.load(app) }
+    .task(id: app.inboxItemsVersion) { await model.load(app) }
     .task(id: model.query) {
       try? await Task.sleep(for: .milliseconds(250))
       if !Task.isCancelled { await model.load(app) }
@@ -141,11 +141,12 @@ struct InboxScreen: View {
 
 private struct InboxRow: View {
   @Environment(AppModel.self) private var app
-  let item: ReviewItem
+  @Environment(WindowModel.self) private var window
+  let item: InboxItem
 
   var body: some View {
     Button {
-      app.path = [.reviewItem(item.id)]
+      window.path = [.inboxItem(item.id)]
     } label: {
       HStack(alignment: .top, spacing: 8) {
         Dot(color: item.kind == "notice" ? Tokens.textFaint : Tokens.accent, size: 8)
@@ -175,10 +176,12 @@ private struct InboxRow: View {
   }
 
   /// Open beside the list.
-  private var selected: Bool { app.path.first == .reviewItem(item.id) }
+  private var selected: Bool { window.path.first == .inboxItem(item.id) }
 
   private var subtitle: String {
-    var parts = [item.kind == "notice" ? "Notice" : "Question"]
+    // The dashboard names an action without a question by its source, such
+    // as "To do for you". MCP does not send the source, so the row names none.
+    var parts: [String] = item.kind == "notice" ? ["Notice"] : item.question == nil ? [] : ["Question"]
     if let subject = item.subject?.title { parts.append(subject) }
     if let date = item.createdAt.date { parts.append(app.clock.relative(date)) }
     return parts.joined(separator: " · ")

@@ -1,10 +1,8 @@
 import { generateKeyPairSync } from "node:crypto";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
@@ -169,6 +167,33 @@ describe("merge conflict check on webhook events", () => {
     ]);
   });
 
+  it("reads an unchanged pull request again with its ETag", async () => {
+    const etag = 'W/"pull-946"';
+    const answers: number[] = [];
+    mswServer.use(
+      http.get(
+        "https://api.github.com/repos/getsentry/junior/pulls/946",
+        ({ request }) => {
+          if (request.headers.get("if-none-match") === etag) {
+            answers.push(304);
+            return new HttpResponse(null, { status: 304 });
+          }
+          answers.push(200);
+          return HttpResponse.json(pullRequest, { headers: { etag } });
+        },
+      ),
+    );
+    await deliver("delivery-1");
+    await deliver("delivery-2");
+    expect(answers).toEqual([200, 304]);
+    // The saved pull request still shows the conflict.
+    expect(conflicts().map((event) => event.eventKey)).toEqual(
+      Array.from({ length: 4 }, () =>
+        expect.stringContaining(":1111111111111111111111111111111111111111"),
+      ),
+    );
+  });
+
   it("publishes no conflict while GitHub calculates mergeability", async () => {
     pullRequest = pullRequestResponse({
       headSha: "1111111111111111111111111111111111111111",
@@ -276,6 +301,10 @@ describe("merge conflict check on webhook events", () => {
         "1234+sentry-junior[bot]@users.noreply.github.com",
       );
       mswServer.use(
+        http.get(
+          "https://api.github.com/repos/getsentry/junior/contents/.github/release.yml",
+          () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+        ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
           const { variables } = (await request.json()) as {
             variables: { number?: number; query?: string };
@@ -311,7 +340,7 @@ describe("merge conflict check on webhook events", () => {
                   mergeable: mergeability[number],
                   number,
                   state: "OPEN",
-                  title: `Pull request ${number}`,
+                  title: `fix(conflicts): Pull request ${number}`,
                   url: `https://github.com/getsentry/junior/pull/${number}`,
                 })),
                 pageInfo: { endCursor: null, hasNextPage: false },
@@ -320,19 +349,21 @@ describe("merge conflict check on webhook events", () => {
           });
         }),
       );
-      const row = (number: number, state: "merged" | "open") => ({
-        number,
-        openedAt: new Date(pushedAt - 60 * minute),
-        pullRequestId: `${number}0`,
-        repositoryFullName: "getsentry/junior",
-        repositoryId: "1",
-        state,
-        updatedAt: new Date(pushedAt - 60 * minute),
+      const updatedAt = new Date(pushedAt - 60 * minute);
+      await recordJuniorPullRequest(fixture, {
+        number: 946,
+        updatedAt,
       });
-      await fixture
-        .db()
-        .insert(juniorGitHubPullRequests)
-        .values([row(946, "open"), row(947, "open"), row(948, "merged")]);
+      await recordJuniorPullRequest(fixture, {
+        number: 947,
+        updatedAt,
+      });
+      await recordJuniorPullRequest(fixture, {
+        finishedAt: updatedAt,
+        number: 948,
+        state: "merged",
+        updatedAt,
+      });
     });
 
     afterEach(() => {
@@ -400,6 +431,17 @@ describe("merge conflict check on webhook events", () => {
 
       await heartbeat(pushedAt + 4 * minute);
       expect(searches).toHaveLength(2);
+    });
+
+    it("checks after a push that names the repository in another case", async () => {
+      await deliver(
+        "push-1",
+        pushRequest("refs/heads/main", "GetSentry/Junior"),
+      );
+      await heartbeat(pushedAt + 2 * minute);
+      expect(searches).toEqual([
+        "repo:getsentry/junior is:pr is:open author:app/sentry-junior",
+      ]);
     });
 
     it("does not check after a push to another branch", async () => {
@@ -631,7 +673,12 @@ describe("merge conflict check on webhook events", () => {
             dedupeKey: "merge-conflict:getsentry/junior#946",
             subject: {
               id: "https://github.com/getsentry/junior/pull/946",
-              title: "Pull request 946 (#946)",
+              title: "fix(conflicts): Pull request 946 (#946)",
+              titleParts: {
+                scope: "conflicts",
+                text: "Pull request 946",
+                type: "Fix",
+              },
               url: "https://github.com/getsentry/junior/pull/946",
             },
             title: "Merge conflict · #946",

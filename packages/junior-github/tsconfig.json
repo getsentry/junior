@@ -15,6 +15,10 @@
   },
   "include": [
     "src/**/*.ts",
+    "tests/code-change-titles.test.ts",
+    "tests/code-index.ts",
+    "tests/conditional-requests.test.ts",
+    "tests/conversation-changes.ts",
     "tests/pull-request-action-harness.ts",
     "tests/pull-request-action.test.ts",
     "tests/pull-request-review-again.test.ts"

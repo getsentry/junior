@@ -6,7 +6,7 @@ import {
 } from "./tool-schema-ast.mjs";
 
 // Model-facing tool inputs and results use snake_case keys, so each value
-// has one name in both directions. See policies/tool-design.md.
+// has one name in both directions. See design/tools.md.
 const SCHEMA_PROPERTIES = ["inputSchema", "outputSchema"];
 const SNAKE_CASE_KEY = /^[a-z0-9_]+$/;
 // Card fields that tool results carry for the dashboard and Slack cards.

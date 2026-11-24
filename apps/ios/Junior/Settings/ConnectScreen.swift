@@ -42,7 +42,7 @@ struct ConnectScreen: View {
         .padding(20)
         .panelCard(radius: 10)
         Text(
-          "The app reads your Conversations, Review items, and Automations, and sends messages as you. Answer Review items and change Automations on the web."
+          "The app reads your Conversations, Inbox items, and Automations, and sends messages as you. Answer Inbox items and change Automations on the web."
         )
         .type(.xs, lineHeight: 1.625)
         .foregroundStyle(Tokens.textMuted)
@@ -51,7 +51,7 @@ struct ConnectScreen: View {
       .padding(16)
     }
     .background(Tokens.bg)
-    .onAppear { serverText = app.server.isDemo ? "" : app.server.baseURL.absoluteString }
+    .onAppear { serverText = (app.server.isDemo ? JuniorServer.production : app.server).baseURL.absoluteString }
   }
 
   private var serverURL: URL? {
