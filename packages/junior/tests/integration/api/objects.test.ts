@@ -575,8 +575,8 @@ describe("object links API", () => {
       ),
       http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
         reads.push(`pulls/${params["number"]}`);
-        return params["number"] === "34"
-          ? HttpResponse.json(pullRequest(34))
+        return ["34", "56"].includes(String(params["number"]))
+          ? HttpResponse.json(pullRequest(Number(params["number"])))
           : HttpResponse.json({ message: "Server Error" }, { status: 502 });
       }),
     );
@@ -600,6 +600,7 @@ describe("object links API", () => {
         `${GITHUB_REPO}/issues/12`,
         `${GITHUB_REPO}/issues/13`,
         `${GITHUB_REPO}/pull/34`,
+        `${GITHUB_REPO}/pull/56`,
       );
       expect(first.objects.get(`${GITHUB_REPO}/issues/13`)).toMatchObject({
         status: "open",
@@ -641,6 +642,16 @@ describe("object links API", () => {
         changes: { title: { from: "Add link cards" } },
         pull_request: { ...pullRequest(34), title: "Older title" },
       });
+      // A label on the same head commit. GitHub computes the merge state
+      // again, so the payload has it as null.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "labeled",
+        pull_request: {
+          ...pullRequest(56),
+          mergeable: null,
+          updated_at: after,
+        },
+      });
       // No card has read #78 yet.
       await sendGitHubWebhook(app, "pull_request", {
         action: "opened",
@@ -654,6 +665,7 @@ describe("object links API", () => {
         `${GITHUB_REPO}/issues/12`,
         `${GITHUB_REPO}/issues/13`,
         `${GITHUB_REPO}/pull/34`,
+        `${GITHUB_REPO}/pull/56`,
         `${GITHUB_REPO}/pull/78`,
       );
       expect(reads.slice(readsBefore)).toEqual([]);
@@ -671,6 +683,10 @@ describe("object links API", () => {
       });
       // The merge state was about the old head commit.
       expect(pull?.facts).not.toHaveProperty("mergeable");
+      // A null merge state on the same head commit keeps the known one.
+      expect(next.objects.get(`${GITHUB_REPO}/pull/56`)).toMatchObject({
+        facts: { mergeable: false },
+      });
       expect(next.objects.get(`${GITHUB_REPO}/pull/78`)).toMatchObject({
         status: "draft",
         title: "Cache GitHub objects",

@@ -88,7 +88,13 @@ export function mergeGitHubObject<
   ) {
     return undefined;
   }
-  const merged = { ...current, ...payload };
+  // GitHub sends `mergeable: null` while it computes it, so it is a
+  // missing field, not a new value.
+  const fields =
+    "mergeable" in payload && payload.mergeable === null
+      ? withoutMergeable(payload)
+      : payload;
+  const merged = { ...current, ...fields };
   // GitHub computes mergeability for one head commit. After a push, the
   // cached value is about the old commit, so it is unknown until GitHub
   // sends or answers it again.
@@ -97,9 +103,14 @@ export function mergeGitHubObject<
     current &&
     "head" in current &&
     current.head?.sha !== merged.head?.sha &&
-    !("mergeable" in payload)
+    !("mergeable" in fields)
   ) {
     delete merged.mergeable;
   }
   return merged;
+}
+
+function withoutMergeable<T extends object>(payload: T): T {
+  const { mergeable: _, ...rest } = payload as T & { mergeable?: unknown };
+  return rest as T;
 }
