@@ -517,7 +517,7 @@ jobs:
       actions: read
       contents: read
     outputs:
-      frameshift-mode: ${{ steps.frameshift.outputs.mode }}
+      frameshift-mode: ${{ steps.frameshift-report.outcome == 'success' && 'report' || steps.frameshift.outputs.mode }}
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -542,21 +542,52 @@ jobs:
           pattern: dashboard-screenshots-classic-*
           merge-multiple: true
           path: .playwright/junior-dashboard/screenshots
+      - name: Save dashboard screenshots
+        if: github.event_name != 'pull_request'
+        id: frameshift
+        uses: dcramer/frameshift/ci@d4a91aec378eb01520f0f6f0b2ad6866f67600ff # v0.2.1
+        with:
+          screenshots: .playwright/junior-dashboard/screenshots
+      # Forks cannot read saved screenshots.
       - name: Find Frameshift baseline
-        if: github.event_name == 'pull_request'
+        if: >-
+          github.event_name == 'pull_request' &&
+          github.event.pull_request.head.repo.full_name == github.repository
         id: frameshift-baseline
         env:
           BASE_SHA: ${{ github.event.pull_request.base.sha }}
           GH_TOKEN: ${{ github.token }}
         run: scripts/find-frameshift-baseline.sh
-      - name: Record dashboard screenshots
-        if: >-
-          github.event_name != 'pull_request' ||
-          steps.frameshift-baseline.outputs.found == 'true'
-        id: frameshift
-        uses: dcramer/frameshift/ci@d4a91aec378eb01520f0f6f0b2ad6866f67600ff # v0.2.1
+      # The ci action compares with the newest default-branch commit, and it
+      # cannot take another one. That commit often has no saved screenshots
+      # yet, so every shot shows as added. Compare with the base that has them.
+      - name: Download baseline screenshots
+        if: steps.frameshift-baseline.outputs.found == 'true'
+        uses: dcramer/frameshift/baseline@d4a91aec378eb01520f0f6f0b2ad6866f67600ff # v0.2.1
         with:
-          screenshots: .playwright/junior-dashboard/screenshots
+          sha: ${{ github.event.pull_request.base.sha }}
+          path: ${{ runner.temp }}/frameshift-before
+          wait-seconds: "0"
+      - name: Compare dashboard screenshots
+        if: steps.frameshift-baseline.outputs.found == 'true'
+        uses: dcramer/frameshift@d4a91aec378eb01520f0f6f0b2ad6866f67600ff # v0.2.1
+        with:
+          baseline: ${{ runner.temp }}/frameshift-before
+          candidate: .playwright/junior-dashboard/screenshots
+          output: ${{ runner.temp }}/frameshift/report
+          pull-request-number: ${{ github.event.pull_request.number }}
+          pull-request-title: ${{ github.event.pull_request.title }}
+      # The frameshift job publishes the report from this artifact.
+      - name: Save screenshot report
+        if: steps.frameshift-baseline.outputs.found == 'true'
+        id: frameshift-report
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: frameshift-report
+          path: ${{ runner.temp }}/frameshift/report
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
 
   frameshift:
     name: visual / dashboard

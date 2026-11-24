@@ -242,8 +242,15 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     expect(page.url()).toBe(inbox);
     const outlineRead = waitForOutlineRead(page, "internal:dashboard-qa");
+    // The link names the row's ask. The Conversation drops that param once
+    // it shows the ask, sometimes before a poll of the URL sees it, so
+    // watch for the navigation from the start.
+    const link = new URL(path, dashboard.baseURL);
+    const opened = page.waitForURL(link.href);
     await strip.click({ position: empty });
-    await expect(page).toHaveURL(new URL(path, dashboard.baseURL).href);
+    await opened;
+    link.searchParams.delete("ask");
+    await expect(page).toHaveURL(link.href);
     await expect(page.getByRole("dialog")).toHaveCount(0);
     await outlineRead;
   });
