@@ -171,5 +171,3 @@ how the dashboard groups and acts on its rows.
 - When an item closes, its push stays on a device until the next push to
   that User. This breaks "when the item closes, its push goes away on every
   device".
-- A "To do for you" item sends no push. This breaks "a push goes to each
-  User assigned to an open action".
