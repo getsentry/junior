@@ -16,7 +16,11 @@ import {
   spawnChildAgent,
   startRunningChildAgent,
 } from "../../../fixtures/agent-invocations";
-import { expectSqlBudget, explainNodes } from "../../../fixtures/sql-budget";
+import {
+  expectPlanCost,
+  expectSqlBudget,
+  explainNodes,
+} from "../../../fixtures/sql-budget";
 import { closeConversationFixture } from "../../../fixtures/conversation";
 import {
   SLACK_VIEWER,
@@ -30,7 +34,6 @@ import {
   recordAnswer,
   addItem,
   watchDeployment,
-  recordBrief,
   DONE,
 } from "../../../fixtures/conversation-status";
 
@@ -347,20 +350,18 @@ describe("conversation tree state", () => {
       [conversationId],
     );
     await getSqlExecutor().execute("analyze junior_conversations");
-    const [nodes] = await explainNodes(() =>
+    const read = () =>
       getDb().execute(
         sql`select * from ${conversationSubtree([conversationId])}`,
-      ),
+      );
+    const [nodes] = await explainNodes(read);
+    expect(nodes!.some((node) => node["Node Type"] === "Recursive Union")).toBe(
+      true,
     );
-    // Postgres guesses each recursive step from the rows that start the
-    // walk. A guess that holds the root's tree prices the read high enough
-    // to turn on JIT.
-    const walks = nodes!.filter(
-      (node) => node["Node Type"] === "Recursive Union",
-    );
-    expect(walks.length).toBeGreaterThan(0);
-    // A tenth of the 2,000 children: the guess covers the walk, not the tree.
-    for (const walk of walks) expect(walk["Plan Rows"]).toBeLessThan(200);
+    // Postgres guesses each recursive step at hundreds of rows. A step that
+    // reads the table or the root's whole tree for each guessed row prices
+    // the read high enough to turn on JIT. Today's plan costs about 950.
+    await expectPlanCost(read, 1_500);
   });
 
   it("skips archived children and their descendants", async () => {
@@ -432,7 +433,7 @@ describe("conversation tree state", () => {
     const before = await feedToken(fixture);
 
     // The status still reads `needs_input`; only the viewer's wait moves.
-    await recordBrief(conversationId, 1, "partial");
+    await recordAnswer(conversationId, 1);
     await expect(fixture.status(conversationId)).resolves.toBe("needs_input");
     await expect(fixture.feedTree(conversationId)).resolves.toMatchObject({
       treeState: "needs_you",

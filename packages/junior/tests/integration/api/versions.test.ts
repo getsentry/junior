@@ -141,7 +141,9 @@ describe("versions API", () => {
           statements: 1,
           serialRounds: 1,
         }),
-      2_500,
+      // About 720. A feed token that works out each row's status again
+      // costs about 1,330.
+      1_000,
     );
     expect(await read()).toEqual(first);
     expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
@@ -156,21 +158,30 @@ describe("versions API", () => {
     await appendVisibleHistory(OTHER);
     expect(await read()).toEqual(first);
 
-    // Starting a child agent writes Events to the root. The feed row shows
-    // none of them, so only the open Conversation's tree token moves.
+    // Starting a child agent adds a tree member and writes Events to the
+    // root. The feed token holds the stored version of each idle member, so
+    // it moves with the tree token.
     await createChild({
       childConversationId: `${OWN}:child`,
       parentConversationId: OWN,
     });
     const withChild = await read();
-    expect(changed(first, withChild)).toEqual(["conversation"]);
+    expect(changed(first, withChild)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+    expect(feedMoved(first, withChild)).toEqual(["status", "threads"]);
     expect(await detailVersion()).toBe(withChild.conversation);
 
-    // A child agent's Turn writes only its own row. The feed row shows none
-    // of it, so only the open Conversation's tree token moves.
+    // A child agent's Turn writes only its own row, so the feed token moves
+    // only its tree input.
     await childAgentTurn(`${OWN}:child`, 20);
     const withChildTurn = await read();
-    expect(changed(withChild, withChildTurn)).toEqual(["conversation"]);
+    expect(changed(withChild, withChildTurn)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+    expect(feedMoved(withChild, withChildTurn)).toEqual(["threads"]);
     expect(await detailVersion()).toBe(withChildTurn.conversation);
 
     // Input that waits in the mailbox of an idle Conversation is part of its
@@ -281,7 +292,8 @@ describe("versions API", () => {
     ]);
 
     // A Task Turn runs as the person whose Turn started it, so the cost of
-    // the viewer's own Task moves spend without moving the feed row.
+    // the viewer's own Task moves spend. It writes the Task's row, so the
+    // feed moves only its tree input.
     await getConversationStore().recordExecution({
       actorIdentityId,
       conversationId: `${OWN}:child`,
@@ -293,7 +305,12 @@ describe("versions API", () => {
       updatedAtMs: nowMs,
     });
     const withTaskCost = await read();
-    expect(changed(withTurn, withTaskCost)).toEqual(["conversation", "spend"]);
+    expect(changed(withTurn, withTaskCost)).toEqual([
+      "conversation",
+      "conversations",
+      "spend",
+    ]);
+    expect(feedMoved(withTurn, withTaskCost)).toEqual(["threads"]);
 
     // A checkpoint rewrites every metric row of its Turn. One that adds
     // time and tokens but no cost does not move spend.
@@ -311,11 +328,14 @@ describe("versions API", () => {
       updatedAtMs: nowMs + 1,
     });
     const withTaskCheckpoint = await read();
-    expect(changed(withTaskCost, withTaskCheckpoint)).toEqual(["conversation"]);
+    expect(changed(withTaskCost, withTaskCheckpoint)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
 
-    // Each Event moves the root's last activity. An idle row shows that as
-    // an age in whole minutes, so the feed moves only when the minute
-    // changes.
+    // Each Event writes the root's row. An idle row's token holds its
+    // stored version, so each one moves the status input. Its age shows in
+    // whole minutes, so the activity input moves when the minute changes.
     const rootToolEvent = async (atMs: number) => {
       await getConversationEventStore().append(OWN, [
         {
@@ -330,13 +350,17 @@ describe("versions API", () => {
       return await read();
     };
     const withRootTool = await rootToolEvent(nowMs + 30_000);
-    expect(changed(withTaskCheckpoint, withRootTool)).toEqual(["conversation"]);
+    expect(changed(withTaskCheckpoint, withRootTool)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+    expect(feedMoved(withTaskCheckpoint, withRootTool)).toEqual(["status"]);
     const nextMinute = await rootToolEvent(nowMs + 60_000);
     expect(changed(withRootTool, nextMinute)).toEqual([
       "conversation",
       "conversations",
     ]);
-    expect(feedMoved(withRootTool, nextMinute)).toEqual(["activity"]);
+    expect(feedMoved(withRootTool, nextMinute)).toEqual(["activity", "status"]);
 
     // A running row shows that it runs in place of its age, so the Events
     // of a live Turn do not move the feed. Its end moves the status.
