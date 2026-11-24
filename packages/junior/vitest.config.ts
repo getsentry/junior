@@ -23,6 +23,10 @@ export default defineConfig({
         __dirname,
         "tests/fixtures/virtual-config.ts",
       ),
+      "#junior/system-prompts": path.resolve(
+        __dirname,
+        "tests/fixtures/virtual-system-prompts.ts",
+      ),
       "@sentry/junior-plugin-api": path.resolve(
         __dirname,
         "../junior-plugin-api/src/index.ts",
