@@ -10,7 +10,6 @@ import * as z from "zod";
 const MAX_SUMMARY_CHARS = 1_500;
 
 const relatedConversationSchema = z.object({
-  channelName: z.string().optional(),
   conversationId: z.string(),
   url: z.string().optional(),
   /** The root of a child agent, such as the Conversation a Thread is in. */
@@ -49,9 +48,6 @@ function renderConversation(conversation: RelatedConversation): string {
     `- conversation_id: ${conversation.conversationId}`,
     ...(conversation.title ? [`  title: ${conversation.title}`] : []),
     `  status: ${conversation.status}`,
-    ...(conversation.channelName
-      ? [`  channel_name: ${conversation.channelName}`]
-      : []),
     ...(conversation.url ? [`  url: ${conversation.url}`] : []),
     ...(conversation.root
       ? [

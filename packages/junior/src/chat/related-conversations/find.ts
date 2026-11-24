@@ -87,7 +87,6 @@ async function toRelatedConversation(
         });
   const rootUrl = root && getDashboardConversationLink(root.conversationId);
   return {
-    ...(result.channelName ? { channelName: result.channelName } : undefined),
     conversationId: result.conversationId,
     ...(url ? { url } : undefined),
     ...(root

@@ -7,11 +7,11 @@ import type { JuniorDatabase } from "@/db/db";
 import { juniorConversationParticipants, juniorUsers } from "@/db/schema";
 
 // Names per Conversation. The rest only count, to keep the prompt short.
-const MAX_NAMES = 3;
+const MAX_NAMES = 10;
 
 /** Who takes part in one root, newest message first. */
 export interface RelatedParticipants {
-  /** Up to three names. The requester is `you`, first. */
+  /** Up to ten names. The requester is `you`, first. */
   names: string[];
   /** Participants past the names, and those with no display name. */
   others: number;
