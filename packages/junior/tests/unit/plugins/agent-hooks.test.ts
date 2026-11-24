@@ -288,8 +288,17 @@ describe("agent plugin hooks", () => {
         },
         hooks: {
           systemPrompt(ctx) {
-            expect(ctx.platform).toBe("local");
-            expect(ctx.db).toEqual(expect.any(Object));
+            expect(Object.keys(ctx).sort()).toEqual([
+              "log",
+              "mode",
+              "platform",
+              "plugin",
+            ]);
+            expect(ctx).toMatchObject({
+              plugin: { name: "z-demo" },
+              platform: "local",
+              mode: "thread",
+            });
             return [{ text: "Z contribution" }];
           },
         },
@@ -309,7 +318,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions("local"),
+        getPluginSystemPromptContributions("local", "thread"),
       ).resolves.toEqual([
         { id: "systemPrompt:0", pluginName: "a-demo", text: "A contribution" },
         { id: "systemPrompt:0", pluginName: "z-demo", text: "Z contribution" },
@@ -336,7 +345,7 @@ describe("agent plugin hooks", () => {
     ]);
     try {
       await expect(
-        getPluginSystemPromptContributions("local"),
+        getPluginSystemPromptContributions("local", "conversation"),
       ).resolves.toEqual([]);
     } finally {
       setPlugins(previous);

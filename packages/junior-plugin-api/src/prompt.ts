@@ -71,12 +71,29 @@ export function definePromptContext<
 /** One request-scoped plugin contribution to the model-visible user prompt. */
 export type UserPromptContribution = PromptMessage | PromptContextContribution;
 
-/** Stable platform context for plugin system prompt guidance. */
-export type SystemPromptContext = Pick<
-  PluginContext,
-  "db" | "log" | "plugin"
-> & {
+/**
+ * Prompt mode for one Run. `child_agent` is for Task Turns: it replaces the
+ * interactive conversation rules. `thread` and `automation` are for every
+ * Turn of a Thread and of an Automation Conversation. Each holds the
+ * `conversation` rules for a person's input and the rules for its other
+ * sender, so the Conversation keeps one system prompt. `lead` is for every
+ * Turn of a Lead.
+ */
+export type PromptMode =
+  | "automation"
+  | "child_agent"
+  | "conversation"
+  | "lead"
+  | "thread";
+
+/**
+ * What a plugin `systemPrompt` hook gets: the platform and Prompt mode of the
+ * system prompt that it adds to. It has no database or cache. A plugin that
+ * needs data does its own I/O.
+ */
+export type SystemPromptBuildContext = Pick<PluginContext, "log" | "plugin"> & {
   platform: Platform;
+  mode: PromptMode;
 };
 
 /** One prompt context that this plugin gave an earlier Turn. */

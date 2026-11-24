@@ -21,6 +21,7 @@ import type {
   PluginOperationalTone,
   PluginRouteApp,
   Platform,
+  PromptMode,
   Event,
   EventData,
   EventPublisher,
@@ -199,12 +200,6 @@ function pluginToolNamespace(pluginName: string): string {
   return `${first}${rest
     .map((part) => `${part[0]?.toUpperCase() ?? ""}${part.slice(1)}`)
     .join("")}`;
-}
-
-function systemPromptPluginContext(plugin: PluginRegistration) {
-  return {
-    ...basePluginContext(plugin),
-  };
 }
 
 /** Bind Source, Destination, and Actor for one plugin invocation. */
@@ -632,16 +627,28 @@ async function runPluginHooksAtOnce<T>(
   );
 }
 
-/** Collect stable plugin prompt contributions for the static system prompt. */
+/**
+ * Collect stable plugin prompt contributions for the static system prompt of
+ * one platform and Prompt mode. A hook gets no database or cache.
+ */
 export async function getPluginSystemPromptContributions(
   platform: Platform,
+  mode: PromptMode,
 ): Promise<PluginPromptContributionContext[]> {
   const contributions: PluginPromptContributionContext[] = [];
   let totalChars = 0;
   const outcomes = await runPluginHooksAtOnce(getRegistrations(), (plugin) => {
     const hook = plugin.hooks?.systemPrompt;
+    const name = plugin.manifest.name;
     return (
-      hook && (() => hook({ ...systemPromptPluginContext(plugin), platform }))
+      hook &&
+      (() =>
+        hook({
+          plugin: { name },
+          log: createPluginLogger(name),
+          platform,
+          mode,
+        }))
     );
   });
   for (const outcome of outcomes) {

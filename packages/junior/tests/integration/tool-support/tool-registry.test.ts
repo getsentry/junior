@@ -3,6 +3,7 @@ import {
   createLocalSource,
   createSlackSource,
   createWebSource,
+  type PromptMode,
 } from "@sentry/junior-plugin-api";
 import { githubPlugin } from "@sentry/junior-github";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -21,7 +22,6 @@ import { buildTurnContextPrompt } from "@/chat/prompt";
 import { SkillSandbox } from "@/chat/sandbox/skill-sandbox";
 import { readSlackActionToken } from "@/chat/slack/action-token";
 import { buildDeploymentSystemPrompt } from "@/chat/system-prompt";
-import type { PromptMode } from "@/chat/system-prompt-rules";
 import { createPiAgentTools } from "@/chat/tool-support/pi-tool-adapter";
 import { createTools } from "@/chat/tool-support/create-tools";
 import type { ToolRegistry } from "@/chat/tool-support/definition";
