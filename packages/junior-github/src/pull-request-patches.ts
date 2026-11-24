@@ -92,9 +92,10 @@ export async function scheduleGitHubPullRequestPatch(args: {
 type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 
 // Write the read fields, only over an entry of the same head commit that
-// is not newer than the read. Return whether GitHub still computes the
-// merge state. After the last attempt, the merge state is unknown, not
-// pending.
+// is not newer than the read. Return whether to read again: GitHub still
+// computes the merge state, or a webhook came after the read and its
+// fields still wait. After the last attempt, the merge state is unknown,
+// not pending.
 async function writeHeadFacts(
   cache: PluginCache,
   key: string,
@@ -102,16 +103,17 @@ async function writeHeadFacts(
   last: boolean,
 ): Promise<boolean> {
   const mergeable = githubMergeable(node.mergeable);
-  let computing = false;
+  let readAgain = false;
   await cache.update<GitHubPullRequestFields | null>(key, (current) => {
-    if (
-      !current ||
-      current.head?.sha !== node.headRefOid ||
-      isOlderGitHubObject(current, { updated_at: node.updatedAt })
-    ) {
+    if (!current || current.head?.sha !== node.headRefOid) return undefined;
+    if (isOlderGitHubObject(current, { updated_at: node.updatedAt })) {
+      readAgain =
+        current.checks === "pending" || current.mergeable === "pending";
       return undefined;
     }
-    computing = mergeable === null && current.mergeable === "pending" && !last;
+    const computing =
+      mergeable === null && current.mergeable === "pending" && !last;
+    readAgain = computing;
     return {
       ...GITHUB_PULL_REQUEST_CACHE,
       value: {
@@ -126,13 +128,14 @@ async function writeHeadFacts(
       },
     };
   });
-  return computing;
+  return readAgain;
 }
 
 /**
  * Run the due patches: one query reads the merge state and checks of up
  * to 100 pull requests. A patch whose merge state GitHub still computes,
- * or whose query fails, waits for the next heartbeat.
+ * whose read is older than its entry, or whose query fails, waits for the
+ * next heartbeat.
  */
 export async function runGitHubPullRequestPatches(args: {
   cache: PluginCache;

@@ -436,4 +436,63 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: true,
     });
   });
+
+  it("reads pending checks again when a webhook lands between a push and its patch", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/34`, () =>
+        HttpResponse.json(pullRequest(34)),
+      ),
+    );
+    const headFacts = (updatedAt: string) => [
+      {
+        commits: checkRuns({ SUCCESS: 4 }),
+        headRefOid: "bbb222",
+        id: "PR_34",
+        mergeable: "MERGEABLE",
+        updatedAt,
+      },
+    ];
+    // The first read is from before the label.
+    const queries = stubGraphql([
+      headFacts("2026-01-02T03:00:10Z"),
+      headFacts("2026-01-02T03:00:30Z"),
+    ]);
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start);
+    await read(url);
+    for (const [offset, action, mergeable] of [
+      [10, "synchronize", null],
+      [30, "labeled", true],
+    ] as const) {
+      vi.setSystemTime(start + offset * 1000);
+      await sendGitHubWebhook(app, "pull_request", {
+        action,
+        pull_request: pullRequest(34, {
+          head: { ref: "feat/object-cache", sha: "bbb222" },
+          mergeable,
+          updated_at: new Date(start + offset * 1000).toISOString(),
+        }),
+      });
+    }
+    vi.setSystemTime(start + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: "pending",
+    });
+    vi.setSystemTime(start + 120_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries).toHaveLength(2);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 4, pending: 0 },
+      mergeable: true,
+    });
+  });
 });
