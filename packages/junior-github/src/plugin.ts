@@ -8,11 +8,7 @@ import {
   GITHUB_INBOX_SUBJECTS,
   githubInboxSubjectKinds,
 } from "./inbox-subjects.js";
-import {
-  githubIssueLinks,
-  githubPullRequestLinks,
-  parsePullRequestUrl,
-} from "./issue-links.js";
+import { githubIssueLinks, githubPullRequestLinks } from "./issue-links.js";
 import { linkedGitHubLogin } from "./tool-support/attribution.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 import {
@@ -215,7 +211,6 @@ export function githubPlugin(
     codeLinks: {
       change: ({ number, repository }) =>
         `https://github.com/${repository}/pull/${number}`,
-      parseChange: parsePullRequestUrl,
       repository: (name) => `https://github.com/${name}`,
     },
     images: githubImageSource,

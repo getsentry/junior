@@ -49,8 +49,8 @@ export function subjectKindPlugin(kind: string): string | undefined {
 }
 
 /**
- * An item as its link and related work read it: its subject, and the
- * request whose evidence says what a question is about.
+ * An item as its link reads it: its subject, and the request whose
+ * evidence holds a question's links.
  */
 export interface InboxItemLinkSource {
   request?: { evidence?: ReadonlyArray<{ url?: string }> } | null | undefined;
