@@ -157,8 +157,9 @@ export function syncComposerMarkers(editor: LexicalEditor): void {
 }
 
 /**
- * Move a caret that lands beside hidden markers, which take no space, to
- * the outer side of them: before an opening marker, after a closing one.
+ * Move a caret that a key puts beside hidden markers, which take no
+ * space, to the outer side of them: before an opening marker, after a
+ * closing one.
  * Then the caret is at the edge of the span, from either side, and each
  * arrow press after that moves over one character.
  */

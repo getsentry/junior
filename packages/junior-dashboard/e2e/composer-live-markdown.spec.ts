@@ -93,6 +93,20 @@ test("arrow keys reach a span's edge from either side, then move one character",
   await expect(composer).toHaveText("a **b**X c");
 });
 
+test("a click at a span's start keeps the caret inside its markers", async ({
+  page,
+  dashboard,
+}) => {
+  const composer = await openComposer(page, dashboard.baseURL);
+  await composer.pressSequentially("go **abc** now");
+  await page.keyboard.press("Home");
+  const bold = composer.getByRole("strong").filter({ hasText: /^abc$/ });
+
+  await bold.click({ position: { x: 1, y: 5 } });
+  await page.keyboard.type("x");
+  await expect(composer).toHaveText("go **xabc** now");
+});
+
 test("Enter continues a numbered list, and Enter on an empty item ends it", async ({
   page,
   dashboard,

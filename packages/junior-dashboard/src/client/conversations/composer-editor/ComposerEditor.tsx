@@ -16,6 +16,7 @@ import {
   BLUR_COMMAND,
   COMMAND_PRIORITY_LOW,
   FOCUS_COMMAND,
+  KEY_DOWN_COMMAND,
   KEY_ENTER_COMMAND,
   mergeRegister,
   PASTE_COMMAND,
@@ -250,105 +251,121 @@ function ComposerBehavior(
     [editor, props.liveMarkdown],
   );
 
-  useEffect(
-    () =>
-      mergeRegister(
-        editor.registerUpdateListener(
-          ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
-            if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
-            const text = editorState.read($readComposerText);
-            // A textarea refuses text past its limit. Refuse the change.
-            if (text.length > callbacks.current.maxLength) {
-              editor.setEditorState(prevEditorState, { tag: HISTORIC_TAG });
-              return;
-            }
-            callbacks.current.onChange(text);
-          },
-        ),
-        // Last in each update: style the Markdown of the draft, and turn
-        // pasted or restored `<@U…>` and reference tokens into chips. Not
-        // while an input method composes, which a new node would break.
-        editor.registerNodeTransform(RootNode, () => {
-          if (!editor.isComposing()) {
-            const { liveMarkdown, lookup } = callbacks.current;
-            $styleComposerDraft(lookup, liveMarkdown);
+  useEffect(() => {
+    // A click keeps the caret where it lands, in or out of a span. Keys
+    // skip over hidden markers.
+    let pointerPlaced = false;
+    const onPointerDown = () => {
+      pointerPlaced = true;
+    };
+    return mergeRegister(
+      editor.registerUpdateListener(
+        ({ dirtyElements, dirtyLeaves, editorState, prevEditorState }) => {
+          if (dirtyElements.size === 0 && dirtyLeaves.size === 0) return;
+          const text = editorState.read($readComposerText);
+          // A textarea refuses text past its limit. Refuse the change.
+          if (text.length > callbacks.current.maxLength) {
+            editor.setEditorState(prevEditorState, { tag: HISTORIC_TAG });
+            return;
           }
-        }),
-        // Reveal the markers at the caret, after the caret leaves any
-        // that are hidden.
-        editor.registerUpdateListener(() => {
-          if (!callbacks.current.liveMarkdown) return;
-          placeCaretOutsideHiddenMarkers(editor);
-          syncComposerMarkers(editor);
-        }),
-        editor.registerCommand(
-          FOCUS_COMMAND,
-          () => {
-            if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
-            return false;
-          },
-          COMMAND_PRIORITY_LOW,
-        ),
-        editor.registerCommand(
-          BLUR_COMMAND,
-          () => {
-            // Focus moves after the blur event.
-            requestAnimationFrame(() => {
-              if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
-            });
-            return false;
-          },
-          COMMAND_PRIORITY_LOW,
-        ),
-        // Below the menus, which take Enter while they are open.
-        editor.registerCommand(
-          KEY_ENTER_COMMAND,
-          (event) => {
-            if (event?.isComposing) return false;
-            // Enter and Shift+Enter continue a list. Other modifiers keep
-            // their own meaning.
-            if (
-              callbacks.current.liveMarkdown &&
-              !(event?.altKey || event?.ctrlKey || event?.metaKey) &&
-              $enterInMarkdownList()
-            ) {
-              event?.preventDefault();
-              return true;
-            }
-            if (!callbacks.current.enterSends || !event || event.shiftKey) {
-              return false;
-            }
-            event.preventDefault();
-            callbacks.current.onEnter();
-            return true;
-          },
-          COMMAND_PRIORITY_NORMAL,
-        ),
-        editor.registerCommand(
-          PASTE_COMMAND,
-          (event) => {
-            const onPasteFiles = callbacks.current.onPasteFiles;
-            const files =
-              event instanceof ClipboardEvent
-                ? Array.from(event.clipboardData?.files ?? [])
-                : [];
-            if (!onPasteFiles || !files.length) return false;
-            event.preventDefault();
-            onPasteFiles(files);
-            return true;
-          },
-          COMMAND_PRIORITY_HIGH,
-        ),
-        // The composer form takes dropped files. Keep the editor from
-        // inserting their names.
-        editor.registerCommand(
-          DROP_COMMAND,
-          (event) => Boolean(event.dataTransfer?.types.includes("Files")),
-          COMMAND_PRIORITY_HIGH,
-        ),
+          callbacks.current.onChange(text);
+        },
       ),
-    [editor],
-  );
+      // Last in each update: style the Markdown of the draft, and turn
+      // pasted or restored `<@U…>` and reference tokens into chips. Not
+      // while an input method composes, which a new node would break.
+      editor.registerNodeTransform(RootNode, () => {
+        if (!editor.isComposing()) {
+          const { liveMarkdown, lookup } = callbacks.current;
+          $styleComposerDraft(lookup, liveMarkdown);
+        }
+      }),
+      // Reveal the markers at the caret, after the caret leaves any
+      // that are hidden.
+      editor.registerUpdateListener(() => {
+        if (!callbacks.current.liveMarkdown) return;
+        if (!pointerPlaced) placeCaretOutsideHiddenMarkers(editor);
+        syncComposerMarkers(editor);
+      }),
+      editor.registerRootListener((root) => {
+        root?.addEventListener("pointerdown", onPointerDown);
+        return () => root?.removeEventListener("pointerdown", onPointerDown);
+      }),
+      editor.registerCommand(
+        KEY_DOWN_COMMAND,
+        () => {
+          pointerPlaced = false;
+          return false;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      editor.registerCommand(
+        FOCUS_COMMAND,
+        () => {
+          if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
+          return false;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      editor.registerCommand(
+        BLUR_COMMAND,
+        () => {
+          // Focus moves after the blur event.
+          requestAnimationFrame(() => {
+            if (callbacks.current.liveMarkdown) syncComposerMarkers(editor);
+          });
+          return false;
+        },
+        COMMAND_PRIORITY_LOW,
+      ),
+      // Below the menus, which take Enter while they are open.
+      editor.registerCommand(
+        KEY_ENTER_COMMAND,
+        (event) => {
+          if (event?.isComposing) return false;
+          // Enter and Shift+Enter continue a list. Other modifiers keep
+          // their own meaning.
+          if (
+            callbacks.current.liveMarkdown &&
+            !(event?.altKey || event?.ctrlKey || event?.metaKey) &&
+            $enterInMarkdownList()
+          ) {
+            event?.preventDefault();
+            return true;
+          }
+          if (!callbacks.current.enterSends || !event || event.shiftKey) {
+            return false;
+          }
+          event.preventDefault();
+          callbacks.current.onEnter();
+          return true;
+        },
+        COMMAND_PRIORITY_NORMAL,
+      ),
+      editor.registerCommand(
+        PASTE_COMMAND,
+        (event) => {
+          const onPasteFiles = callbacks.current.onPasteFiles;
+          const files =
+            event instanceof ClipboardEvent
+              ? Array.from(event.clipboardData?.files ?? [])
+              : [];
+          if (!onPasteFiles || !files.length) return false;
+          event.preventDefault();
+          onPasteFiles(files);
+          return true;
+        },
+        COMMAND_PRIORITY_HIGH,
+      ),
+      // The composer form takes dropped files. Keep the editor from
+      // inserting their names.
+      editor.registerCommand(
+        DROP_COMMAND,
+        (event) => Boolean(event.dataTransfer?.types.includes("Files")),
+        COMMAND_PRIORITY_HIGH,
+      ),
+    );
+  }, [editor]);
 
   return (
     <>
