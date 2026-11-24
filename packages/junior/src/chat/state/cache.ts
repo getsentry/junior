@@ -117,8 +117,9 @@ export function createCache(
               });
               // A write that could not wait for this load came meanwhile.
               // This value is older than it, so the next read loads again.
+              // A mark that is gone only expired, as each write sets a new one.
               const markNow = await state.get<string>(writeMarkKey(cacheKey));
-              if ((markNow ?? null) !== (mark ?? null)) {
+              if (markNow && markNow !== mark) {
                 await state.delete(cacheKey);
               }
             }
