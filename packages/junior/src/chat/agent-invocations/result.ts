@@ -357,6 +357,15 @@ export async function enqueueChildDismissToParent(args: {
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
+  // A Turn that still runs, such as the one that asked, reports when it
+  // ends. It then sees the item closed.
+  const [work, turns] = await Promise.all([
+    getConversationWorkState({ conversationId: args.conversationId }),
+    listActiveMailboxTurns(args.conversationId),
+  ]);
+  if ((work?.runningInboundMessageIds.length ?? 0) > 0 || turns.length > 0) {
+    return;
+  }
   const turnId = `dismissed:${args.inboxItemId}`;
   if (!(await childWorkEnded(args.conversationId, turnId))) return;
   await createDeliverToParent({ queue: args.queue })({

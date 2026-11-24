@@ -53,6 +53,7 @@ async function askInTask(
   harness: Harness,
   childId: string,
   person: User,
+  afterAsk?: (itemId: string) => Promise<void>,
 ): Promise<string> {
   let itemId: string | undefined;
   harness.onRun(async (run: AgentRun) => {
@@ -89,6 +90,7 @@ async function askInTask(
       { toolCallId: "ask-1" } as never,
     );
     itemId = (added as { item: { id: string } }).item.id;
+    await afterAsk?.(itemId);
     return await finishRun(run, { noReply: {} });
   });
   await harness.drain(childId);
@@ -264,6 +266,34 @@ describe("a child agent asks a person", () => {
             message.input.authorId === resultAuthorId(EVENT_SYSTEM_ACTOR),
         ),
       ).toBe(true);
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("reports a dismiss during the asking Turn once, when that Turn ends", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-dismiss-early", {
+        kind: "task",
+      });
+      await askInTask(harness, childId, person, async (itemId) => {
+        await actOnInboxItem({
+          action: "dismiss",
+          delivery: { queue: harness.queue, show: async () => {} },
+          id: itemId,
+          user: person,
+        });
+      });
+
+      const texts = (await parentMessages()).map(
+        (message) => message.input.text,
+      );
+      expect(
+        texts.filter((text) => text.includes('status="completed"')),
+      ).toHaveLength(1);
     } finally {
       await harness.close();
     }
