@@ -56,13 +56,15 @@ Check the rows in this order. The first match decides.
   example, `messageAgent` from a private Conversation to a public one is
   denied. Together with row 4, a private Conversation writes only into
   Conversations at its own Destination.
-- One exception: a Lead may write into a public root where its person is a
-  Participant. The Lead writes there for that person, as the person could.
-  It never writes into another person's public root.
-- `startConversation` makes a public root from a Lead. It runs as the
-  person, and the Lead's task is its first message. The start is not
-  reviewed. Action review judges the new root's own tool calls, the same
-  way it judges a child agent's.
+- One exception: the Lead of a public Space may write into any public root
+  in its Space, for the member who asked it. Outside its Space, it may write
+  only into a public root where that member is a Participant, as the member
+  could. The Lead of a private Space gets no exception, so it writes only
+  inside its Space.
+- `startConversation` makes a root in the Space from its Lead, with the
+  Space's visibility. It runs as the person who asked, and the Lead's task
+  is its first message. The start is not reviewed. Action review judges the
+  new root's own tool calls, the same way it judges a child agent's.
 
 ## Rules for every surface
 
