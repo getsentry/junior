@@ -10,13 +10,13 @@ import {
   uniqueIndex,
   uuid,
 } from "drizzle-orm/pg-core";
-import type { Location } from "@/chat/conversations/location";
+import type { Destination } from "@sentry/junior-plugin-api";
 import { juniorConversationEvents } from "./conversation-events";
 import { timestamptz } from "./timestamps";
 import { juniorTurns } from "./turns";
 
 /**
- * One row per message to deliver to the Location. The content stays in the
+ * One row per message to deliver to a Destination. The content stays in the
  * message event; the row only tracks delivery.
  */
 export const juniorTurnOutbox = pgTable(
@@ -28,9 +28,8 @@ export const juniorTurnOutbox = pgTable(
       .notNull()
       .references(() => juniorTurns.id),
     eventSeq: integer("event_seq").notNull(),
-    // Copied when the row is made, so a later Location change does not move
-    // a pending delivery.
-    location: jsonb("location").$type<Location>().notNull(),
+    // Where this message goes. A reply copies its Turn's Destination.
+    destination: jsonb("destination").$type<Destination>().notNull(),
     state: text("state").$type<"pending" | "sent" | "failed">().notNull(),
     attempts: integer("attempts").default(0).notNull(),
     providerMessageId: text("provider_message_id"),
@@ -59,8 +58,8 @@ export const juniorTurnOutbox = pgTable(
     ),
     check("junior_turn_outbox_attempts_check", sql`${table.attempts} >= 0`),
     check(
-      "junior_turn_outbox_location_check",
-      sql`jsonb_typeof(${table.location}) = 'object'`,
+      "junior_turn_outbox_destination_check",
+      sql`jsonb_typeof(${table.destination}) = 'object'`,
     ),
     uniqueIndex("junior_turn_outbox_event_idx").on(
       table.conversationId,

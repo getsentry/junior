@@ -159,7 +159,13 @@ export async function runCoreEnginePrompt(args: {
       payload,
       idempotencyKey: `local-cli:${randomUUID()}`,
       sentAt: new Date(),
-      source: "local",
+      source: {
+        kind: "local",
+        visibility: "private",
+        conversationId: args.conversationId,
+      },
+      // The CLI reads the Conversation history, so that is the answer.
+      destination: null,
       delivery: "defer",
     });
     const turn = await waitForTurnEnd(engineCtx, turnId);

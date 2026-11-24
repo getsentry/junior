@@ -1,25 +1,16 @@
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { DELIVERY_TOPIC } from "@/core/delivery/topic";
 import type { EngineContext } from "@/core/engine-context";
 import { TURN_STEP_TOPIC } from "@/core/turn/topic";
-import {
-  juniorConversations,
-  juniorTurnInbox,
-  juniorTurnOutbox,
-  juniorTurns,
-} from "@/db/schema";
+import { juniorConversations, juniorTurnOutbox } from "@/db/schema";
 import { deliveryConsumer } from "@/turn-steps/delivery";
 import { modelOverloaded, setModelReplies } from "../fixtures/ai-emulator";
 import type { InProcessQueue } from "../fixtures/in-process-queue";
 import { createAssistantMessage } from "../fixtures/model-stream";
 import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { FakeSlackAdapter } from "../fixtures/slack-harness";
-import {
-  buildJuniorSqlConversation,
-  type LocalJuniorSqlFixture,
-} from "../fixtures/sql";
+import type { LocalJuniorSqlFixture } from "../fixtures/sql";
 import {
   CONVERSATION_ID,
   messageTurnId,
@@ -205,11 +196,15 @@ describe("Turn delivery", () => {
     expect(harness.slackPosts()).toHaveLength(4);
   }, 20_000);
 
-  it("records nothing for a Conversation without a Location", async () => {
+  it("records nothing for an input whose answer is only the history", async () => {
     const { engineCtx, conversationId, queue } = harness;
-    await setConversation(engineCtx, conversationId, { location: null });
+    await setModelReplies([reply("Three.")]);
 
-    const { turnId } = await sendForReply("Three.");
+    const { turnId } = await harness.send({
+      text: "How many Turns?",
+      source: { kind: "web", visibility: "private", conversationId },
+      destination: null,
+    });
     await harness.runUntilIdle();
     await expect(harness.turn(turnId)).resolves.toMatchObject({
       state: "completed",
@@ -217,6 +212,54 @@ describe("Turn delivery", () => {
     expect(handledDeliveries(queue, turnId)).toBe(1);
 
     await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([]);
+    expect(harness.slackPosts()).toEqual([]);
+  });
+
+  it("posts to the input's Destination, not the Conversation's Location", async () => {
+    const { conversationId, location } = harness;
+    const threadTs = "1718123999.000000";
+    await setModelReplies([reply("Three.")]);
+
+    await harness.send({
+      text: "How many Turns?",
+      destination: {
+        platform: "slack",
+        teamId: location.teamId,
+        channelId: location.channelId,
+        threadTs,
+      },
+    });
+    await harness.runUntilIdle();
+
+    expect(
+      slackApiOutbox.messages().map((call) => call.params["thread_ts"]),
+    ).toEqual([threadTs]);
+    await expect(
+      readOutbox(harness.engineCtx, conversationId),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        state: "sent",
+        destination: expect.objectContaining({ threadTs }),
+      }),
+    ]);
+  });
+
+  it("fails a reply whose Destination has no sender", async () => {
+    const { engineCtx, conversationId } = harness;
+    await setModelReplies([reply("Three.")]);
+
+    await harness.send({
+      text: "How many Turns?",
+      destination: { platform: "local", conversationId: "local:cli:other" },
+    });
+    await harness.runUntilIdle();
+
+    await expect(readOutbox(engineCtx, conversationId)).resolves.toEqual([
+      expect.objectContaining({
+        state: "failed",
+        error: "No sender for local Destinations",
+      }),
+    ]);
     expect(harness.slackPosts()).toEqual([]);
   });
 
@@ -288,13 +331,11 @@ describe("Turn delivery", () => {
 });
 
 // These cases need a fault or a timing that no edge can give: an input that
-// arrives while the model request runs, which makes a Turn with two replies,
-// or a child Conversation.
+// arrives while the model request runs, which makes a Turn with two replies.
 describe("Turn delivery with a test step", () => {
   const THREAD_TS = "1718123456.000000";
-  const LOCATION = {
-    id: "location:slack:T123:C123",
-    provider: "slack",
+  const DESTINATION = {
+    platform: "slack",
     teamId: "T123",
     channelId: "C123",
     threadTs: THREAD_TS,
@@ -307,11 +348,6 @@ describe("Turn delivery with a test step", () => {
   beforeEach(async () => {
     engine = await startTurnEngine();
     ({ fixture, turnId } = engine);
-    await fixture.sql
-      .db()
-      .update(juniorConversations)
-      .set({ location: LOCATION, kind: "root" })
-      .where(eq(juniorConversations.conversationId, CONVERSATION_ID));
     engine.queue.mount(
       DELIVERY_TOPIC,
       deliveryConsumer(engine.engineCtx, {
@@ -350,7 +386,7 @@ describe("Turn delivery with a test step", () => {
       ...step,
       client: {
         complete: async (request, signal) => {
-          await engine.addTestInput("And how many failed?");
+          await engine.addTestInput("And how many failed?", DESTINATION);
           return step.client.complete(request, signal);
         },
       },
@@ -359,7 +395,7 @@ describe("Turn delivery with a test step", () => {
 
   /** Runs a Turn whose two steps reply `first`, then `second`. */
   async function advanceTwoReplies(first: string, second: string) {
-    await engine.addTestInput("How many Turns?");
+    await engine.addTestInput("How many Turns?", DESTINATION);
     await advanceContinuingStep(first);
     await engine.advance(stepWith([reply(second)]));
   }
@@ -384,7 +420,7 @@ describe("Turn delivery with a test step", () => {
     ).resolves.toEqual([
       expect.objectContaining({
         turnId,
-        location: LOCATION,
+        destination: DESTINATION,
         state: "sent",
         attempts: 0,
         providerMessageId: expect.any(String),
@@ -427,57 +463,12 @@ describe("Turn delivery with a test step", () => {
     ]);
   });
 
-  it("records nothing for a child Conversation", async () => {
-    const childId = `${CONVERSATION_ID}:child`;
-    await fixture.sql
-      .db()
-      .insert(juniorConversations)
-      .values(
-        buildJuniorSqlConversation({
-          conversationId: childId,
-          parentConversationId: CONVERSATION_ID,
-          rootConversationId: CONVERSATION_ID,
-          kind: "task",
-          location: LOCATION,
-        }),
-      );
-    const childTurnId = randomUUID();
-    await fixture.sql.db().insert(juniorTurns).values({
-      id: childTurnId,
-      conversationId: childId,
-      actorIdentityId: "identity:actor",
-      state: "queued",
-      priority: 0,
-    });
-    const childInputId = randomUUID();
-    await fixture.sql
-      .db()
-      .insert(juniorTurnInbox)
-      .values({
-        id: childInputId,
-        conversationId: childId,
-        turnId: childTurnId,
-        actorIdentityId: "identity:actor",
-        source: "slack",
-        payload: { text: "How many Turns?" },
-        idempotencyKey: `slack-event:${childInputId}`,
-        sentAt: new Date(),
-      });
-
-    await engine.advance(stepWith([reply("Three.")]), undefined, childTurnId);
-    await deliver();
-    expect(handledDeliveries(engine.queue, childTurnId)).toBe(1);
-
-    await expect(readOutbox(engine.engineCtx, childId)).resolves.toEqual([]);
-    expect(postedTexts()).toEqual([]);
-  });
-
   it("posts a Turn's earlier reply when its delivery message was lost and a later step fails", async () => {
     const failure = new Error("The queue is unreachable");
     // Stands in for the process dying after a "continue" commit, before the
     // delivery message is sent.
     vi.spyOn(engine.queue, "send").mockRejectedValueOnce(failure);
-    await engine.addTestInput("How many Turns?");
+    await engine.addTestInput("How many Turns?", DESTINATION);
     await expect(advanceContinuingStep("Three.")).rejects.toBe(failure);
 
     // The queue delivers the same step message again. It claims the queued

@@ -9,6 +9,7 @@
 import { randomInt, randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { getChatConfig } from "@/chat/config";
+import type { Destination, Source } from "@sentry/junior-plugin-api";
 import type { Location } from "@/chat/conversations/location";
 import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
 import { projectConversationEvents } from "@/chat/pi/conversation-events";
@@ -63,9 +64,15 @@ export type TurnHarness = {
   /** Holds the messages that core sends until the test delivers them. */
   queue: InProcessQueue;
   /** Schedules an input from the Actor, as a Source does. */
+  /**
+   * Sends an input from the Slack thread. `source` and `destination` replace
+   * the thread's, and a null `destination` answers only in the history.
+   */
   send: (input: {
     text: string;
     actor?: TurnInputPayload["actor"];
+    source?: Source;
+    destination?: Destination | null;
   }) => Promise<SentInput>;
   /** Delivers the next due step message. Throws when none is due. */
   runStep: () => Promise<void>;
@@ -141,9 +148,25 @@ export async function createTurnHarness({
     }),
   );
 
+  const slackSource: Source = {
+    kind: "slack",
+    teamId: location.teamId,
+    channelId: location.channelId,
+    visibility: "public",
+    threadTs,
+  };
+  const slackDestination: Destination = {
+    platform: "slack",
+    teamId: location.teamId,
+    channelId: location.channelId,
+    threadTs,
+  };
+
   async function send(input: {
     text: string;
     actor?: TurnInputPayload["actor"];
+    source?: Source;
+    destination?: Destination | null;
   }): Promise<SentInput> {
     const payload: TurnInputPayload = {
       text: input.text,
@@ -156,7 +179,9 @@ export async function createTurnHarness({
       payload,
       idempotencyKey,
       sentAt: new Date(),
-      source: "slack",
+      source: input.source ?? slackSource,
+      destination:
+        input.destination === undefined ? slackDestination : input.destination,
       delivery: "interrupt",
     });
     const [row] = await db

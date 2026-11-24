@@ -1,41 +1,34 @@
-// Delivery of a Turn's replies to the Conversation's Location. Each change
+// Delivery of a Turn's replies to the Destination of its inputs. Each change
 // of a Turn publishes a delivery message (see `reconcileTurn`). Its consumer
 // records every reply of the Turn as an outbox row, then sends the
-// Conversation's pending rows in event order under a lock on the Conversation. Each send commits its own
-// row, so a crash sends at most that one reply again.
+// Conversation's pending rows in event order under a lock on the
+// Conversation. Each send commits its own row, so a crash sends at most that
+// one reply again.
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, sql } from "drizzle-orm";
 import * as z from "zod";
-import {
-  canPauseConversationDelivery,
-  isConversationDeliveryPaused,
-} from "@/chat/conversations/delivery-pause";
-import { locationSchema, type Location } from "@/chat/conversations/location";
-import { conversationKindFromRow } from "@/chat/conversations/sql/conversation-row";
+import { destinationSchema, type Destination } from "@sentry/junior-plugin-api";
 import { logException } from "@/chat/logging";
 import { publishDelivery, type DeliveryMessage } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
+import { findTurnDestination } from "@/core/turn/inbox";
 import { findTurnReplies, replyText } from "@/core/turn/replies";
-import {
-  juniorConversationEvents,
-  juniorConversations,
-  juniorTurnOutbox,
-} from "@/db/schema";
+import { juniorConversationEvents, juniorTurnOutbox } from "@/db/schema";
 
-/**
- * Sends one reply to a Location. It throws `DeliveryRetryableError` when a
- * later try can work, and any other error when it cannot.
- */
-export type DeliverySender = (input: {
-  conversationId: string;
-  location: Location;
-  text: string;
-}) => Promise<{ providerMessageId?: string }>;
-
-/** The sender of each Location provider that this app delivers to. */
-export type DeliverySenders = Partial<
-  Record<Location["provider"], DeliverySender>
->;
+/** What the host gives core to deliver a Turn's replies. */
+export type Delivery = {
+  /**
+   * Sends one reply to its Destination. It throws `DeliveryRetryableError`
+   * when a later try can work, and any other error when it cannot.
+   */
+  send: (reply: {
+    conversationId: string;
+    destination: Destination;
+    text: string;
+  }) => Promise<{ providerMessageId?: string }>;
+  /** True while a person has detached the Conversation from its Destination. */
+  isPaused: (conversationId: string) => Promise<boolean>;
+};
 
 /**
  * A send that failed but can work on a later try. The sender sets
@@ -71,19 +64,19 @@ const tryLockResultSchema = z.object({
 
 /**
  * Delivers the replies of a Turn: it records them in the outbox, then sends
- * the Conversation's pending rows in order. A root Conversation with a
- * Location delivers, unless its Delivery is paused.
+ * the Conversation's pending rows in order. A Turn whose inputs have a
+ * Destination delivers there, unless the Conversation's Delivery is paused.
  */
 export async function deliverTurn(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
   message: DeliveryMessage,
-  senders: DeliverySenders,
+  delivery: Delivery,
 ): Promise<void> {
-  await recordReplies({ executor }, message);
+  await recordReplies({ executor }, message, delivery);
   while (true) {
     // oxlint-disable-next-line no-await-in-loop -- Rows go out one at a time, in event order.
     const next = await executor.transaction(() =>
-      sendNextRow({ executor }, message.conversationId, senders),
+      sendNextRow({ executor }, message.conversationId, delivery),
     );
     if (next.kind === "idle") {
       return;
@@ -98,37 +91,18 @@ export async function deliverTurn(
 
 /**
  * Adds an outbox row for each reply of the Turn that has none, but only while
- * the Conversation delivers. Rows that already exist still send.
+ * the Turn has a Destination and the Conversation delivers. Rows that already
+ * exist still send.
  */
 function recordReplies(
   { executor }: Pick<EngineContext, "executor">,
   message: DeliveryMessage,
+  delivery: Pick<Delivery, "isPaused">,
 ): Promise<void> {
   return executor.transaction(async () => {
     const db = executor.db();
-    const [conversation] = await db
-      .select({
-        kind: juniorConversations.kind,
-        location: juniorConversations.location,
-        parentConversationId: juniorConversations.parentConversationId,
-      })
-      .from(juniorConversations)
-      .where(eq(juniorConversations.conversationId, message.conversationId))
-      .limit(1);
-    if (!conversation) {
-      return;
-    }
-    const location = conversation.location
-      ? locationSchema.parse(conversation.location)
-      : undefined;
-    if (
-      !location ||
-      !canPauseConversationDelivery({
-        kind: conversationKindFromRow(conversation),
-        location,
-      }) ||
-      (await isConversationDeliveryPaused(message.conversationId))
-    ) {
+    const destination = await findTurnDestination({ executor }, message.turnId);
+    if (!destination || (await delivery.isPaused(message.conversationId))) {
       return;
     }
     const replies = await findTurnReplies(
@@ -145,7 +119,7 @@ function recordReplies(
             conversationId: message.conversationId,
             turnId: message.turnId,
             eventSeq: row.seq,
-            location,
+            destination,
             state: "pending" as const,
           })),
         )
@@ -169,7 +143,7 @@ type NextRow =
 async function sendNextRow(
   { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
-  senders: DeliverySenders,
+  delivery: Pick<Delivery, "send">,
 ): Promise<NextRow> {
   const db = executor.db();
   const lock = tryLockResultSchema.parse(
@@ -184,7 +158,7 @@ async function sendNextRow(
     .select({
       id: juniorTurnOutbox.id,
       eventSeq: juniorTurnOutbox.eventSeq,
-      location: juniorTurnOutbox.location,
+      destination: juniorTurnOutbox.destination,
       attempts: juniorTurnOutbox.attempts,
     })
     .from(juniorTurnOutbox)
@@ -206,11 +180,7 @@ async function sendNextRow(
       .where(eq(juniorTurnOutbox.id, row.id));
     return { kind: "settled" } as const;
   };
-  const location = locationSchema.parse(row.location);
-  const send = senders[location.provider];
-  if (!send) {
-    return markFailed(`No sender for ${location.provider} Locations`);
-  }
+  const destination = destinationSchema.parse(row.destination);
   const [event] = await db
     .select()
     .from(juniorConversationEvents)
@@ -225,7 +195,7 @@ async function sendNextRow(
     return markFailed("The event is not a reply");
   }
   try {
-    const result = await send({ conversationId, location, text });
+    const result = await delivery.send({ conversationId, destination, text });
     const now = new Date();
     await db
       .update(juniorTurnOutbox)

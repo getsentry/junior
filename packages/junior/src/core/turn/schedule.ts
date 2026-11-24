@@ -68,14 +68,15 @@ export type MailboxDelivery = "interrupt" | "defer";
  * before the write.
  */
 function assignTurn(
-  input: Pick<TurnInput, "actorIdentityId" | "source"> & {
+  input: Pick<TurnInput, "actorIdentityId"> & {
+    sourceKind: string;
     delivery: MailboxDelivery;
   },
   openTurns: OpenTurn[],
 ): { join: Turn } | { create: { priority: number }; supersede?: Turn } {
   const sameSender = (turn: OpenTurn) =>
     turn.actorIdentityId === input.actorIdentityId &&
-    turn.source === input.source;
+    turn.sourceKind === input.sourceKind;
   const started = openTurns.find((turn) => turn.started);
   if (input.delivery === "interrupt" && started) {
     return sameSender(started)
@@ -105,7 +106,10 @@ async function placeInput(
     };
   }
   const openTurns = await findOpenTurns({ executor }, input.conversationId);
-  const choice = assignTurn({ ...input, delivery }, openTurns);
+  const choice = assignTurn(
+    { ...input, sourceKind: input.source.kind, delivery },
+    openTurns,
+  );
   if ("join" in choice) {
     const { turnId } = choice.join;
     await addInput({ executor }, { ...input, turnId });

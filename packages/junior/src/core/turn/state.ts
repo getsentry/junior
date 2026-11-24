@@ -53,7 +53,6 @@
 // `scheduleInput` decides where an input goes. A writer that needs both takes them in this
 // order, so writers cannot deadlock.
 import { randomUUID } from "node:crypto";
-import type { Source } from "@sentry/junior-plugin-api";
 import {
   and,
   asc,
@@ -77,7 +76,11 @@ import { createSqlConversationEventStore } from "@/chat/conversations/sql/histor
 import { historyItemFromPiMessage } from "@/chat/pi/conversation-events";
 import type { EngineContext } from "@/core/engine-context";
 import type { PromptMessage } from "@/core/prompt/assemble";
-import { findUnreadInputs, inputEventKey } from "@/core/turn/inbox";
+import {
+  findUnreadInputs,
+  inputEventKey,
+  inputSourceKind,
+} from "@/core/turn/inbox";
 import { publishTurnStep } from "@/core/turn/queue";
 import { turnEventKeyPrefix } from "@/core/turn/replies";
 import type { StepResult } from "@/core/turn/step";
@@ -217,7 +220,7 @@ export async function findOpenTurn(
 /** A Turn that has not ended, with the Actor and Source of its inputs. */
 export type OpenTurn = Turn & {
   actorIdentityId: string;
-  source: Source["kind"];
+  sourceKind: string;
   /** True once any step of the Turn has been claimed. */
   started: boolean;
 };
@@ -231,15 +234,15 @@ export async function findOpenTurns(
   { executor }: Pick<EngineContext, "executor">,
   conversationId: string,
 ): Promise<OpenTurn[]> {
-  // Grouping by Source gives one row per Turn, because migration 0171 keeps
-  // the inputs of a Turn on one Source.
+  // Grouping by Source kind gives one row per Turn, because migration 0171
+  // keeps the inputs of a Turn on one Source kind.
   const rows = await executor
     .db()
     .select({
       turnId: juniorTurns.id,
       state: juniorTurns.state,
       actorIdentityId: juniorTurns.actorIdentityId,
-      source: juniorTurnInbox.source,
+      sourceKind: inputSourceKind,
       stepSeq: juniorTurns.stepSeq,
       attempts: juniorTurns.attempts,
     })
@@ -257,7 +260,7 @@ export async function findOpenTurns(
         ),
       ),
     )
-    .groupBy(juniorTurns.id, juniorTurnInbox.source)
+    .groupBy(juniorTurns.id, inputSourceKind)
     .orderBy(...runOrder);
   return rows.map(({ stepSeq, attempts, ...turn }) => ({
     ...turn,

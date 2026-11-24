@@ -120,7 +120,13 @@ async function seedTurn(
       id: randomUUID(),
       conversationId,
       actorIdentityId: "identity:turn-actor",
-      source: "slack",
+      source: {
+        kind: "slack",
+        teamId: "T123",
+        channelId: "C123",
+        visibility: "public",
+      },
+      destination: null,
       payload: { text: "private input" },
       idempotencyKey: `slack-event:${conversationId}`,
       turnId,
@@ -427,9 +433,8 @@ describe("retention purge job", () => {
         conversationId: "child",
         turnId: childTurnId,
         eventSeq: 0,
-        location: {
-          id: "location:C123",
-          provider: "slack",
+        destination: {
+          platform: "slack",
           teamId: "T123",
           channelId: "C123",
         },

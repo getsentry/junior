@@ -1,6 +1,6 @@
 {
-  "id": "da38a5b0-6518-445c-a4be-4e4933e870d5",
-  "prevId": "e688e635-4077-4da6-bf98-7d4003423308",
+  "id": "04754823-5cb1-427e-951f-5ebc684651dc",
+  "prevId": "6b806964-5160-46be-b001-27297cd1b7bc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -6280,9 +6280,15 @@
         },
         "source": {
           "name": "source",
-          "type": "text",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": true
+        },
+        "destination": {
+          "name": "destination",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
         },
         "payload": {
           "name": "payload",
@@ -6452,8 +6458,8 @@
           "primaryKey": false,
           "notNull": true
         },
-        "location": {
-          "name": "location",
+        "destination": {
+          "name": "destination",
           "type": "jsonb",
           "primaryKey": false,
           "notNull": true
@@ -6589,9 +6595,9 @@
           "name": "junior_turn_outbox_attempts_check",
           "value": "\"junior_turn_outbox\".\"attempts\" >= 0"
         },
-        "junior_turn_outbox_location_check": {
-          "name": "junior_turn_outbox_location_check",
-          "value": "jsonb_typeof(\"junior_turn_outbox\".\"location\") = 'object'"
+        "junior_turn_outbox_destination_check": {
+          "name": "junior_turn_outbox_destination_check",
+          "value": "jsonb_typeof(\"junior_turn_outbox\".\"destination\") = 'object'"
         }
       },
       "isRLSEnabled": false
