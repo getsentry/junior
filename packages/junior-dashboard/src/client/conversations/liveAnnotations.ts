@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 
-import { useListedObjects } from "../display-text/DisplayText";
+import { sameTypeCard, useListedObjects } from "../display-text/DisplayText";
 import type { SidebarAnnotation } from "./sidebarAnnotationBadges";
 
 // Linked work whose status changes after Junior links it, such as a pull
@@ -27,7 +27,7 @@ export function useLiveAnnotations<T extends SidebarAnnotation>(
       annotations?.map((annotation) => {
         const card =
           annotation.objectType && LIVE_TYPES.has(annotation.objectType)
-            ? listedOf(annotation.url).card
+            ? sameTypeCard(listedOf(annotation.url).card, annotation.objectType)
             : undefined;
         if (!card) return annotation;
         return {

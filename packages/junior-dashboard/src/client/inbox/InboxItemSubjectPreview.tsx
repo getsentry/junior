@@ -20,6 +20,7 @@ import {
   DisplayText,
   MessageObjectsProvider,
   objectUrlKey,
+  sameTypeCard,
   useResolvedObject,
 } from "../display-text/DisplayText";
 import { cn } from "../styles";
@@ -64,7 +65,9 @@ function SubjectCard(props: {
   useEffect(() => {
     if (href) request();
   }, [href, request]);
-  const card = live.card ?? savedCard(detail.data?.annotations, subject, href);
+  const saved = savedCard(detail.data?.annotations, subject, href);
+  const card =
+    sameTypeCard(live.card, subject.objectType ?? saved?.objectType) ?? saved;
   const title = card?.title ?? subject.title ?? href ?? subject.id;
   const type = card
     ? (card.displayType ?? objectPresentation(card).label)

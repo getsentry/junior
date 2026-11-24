@@ -32,6 +32,7 @@ import {
 } from "./ObjectLinks";
 import {
   resolvableUrl,
+  sameTypeCard,
   useResolvedObject,
   useWhenVisible,
 } from "./resolvedObjects";
@@ -474,8 +475,9 @@ function ResolvedParagraph(props: {
   objectUrl: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request } = useResolvedObject(props.objectUrl);
-  useRequestWhenSaved(props.saved, request);
+  const resolved = useResolvedObject(props.objectUrl);
+  useRequestWhenSaved(props.saved, resolved.request);
+  const card = sameTypeCard(resolved.card, props.saved?.objectType);
   if (card) {
     return <StandaloneObject card={card} href={props.objectUrl} live />;
   }
@@ -551,7 +553,9 @@ function ResolvedAnchor(props: {
   href: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request, settled } = useResolvedObject(props.href);
+  const resolved = useResolvedObject(props.href);
+  const { request, settled } = resolved;
+  const card = sameTypeCard(resolved.card, props.saved?.objectType);
   const observe = useWhenVisible(request);
   useRequestWhenSaved(props.saved, request);
   const reserveHeight =

@@ -17,6 +17,7 @@ export { MentionText } from "./mentions";
 export {
   type ListedObject,
   MessageObjectsProvider,
+  sameTypeCard,
   useListedObjects,
   useResolvedObject,
 } from "./resolvedObjects";

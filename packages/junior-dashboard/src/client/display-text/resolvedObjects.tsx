@@ -107,6 +107,20 @@ export function resolvableUrl(href: string | undefined): string | undefined {
 }
 
 /**
+ * Return the live card of a link when it is the same type of object as the
+ * saved one. A viewer who cannot see the object gets a generic page card,
+ * which must not replace the saved card.
+ */
+export function sameTypeCard(
+  live: OwnedObjectAnnotation | undefined,
+  objectType: string | undefined,
+): OwnedObjectAnnotation | undefined {
+  return live && (!objectType || live.objectType === objectType)
+    ? live
+    : undefined;
+}
+
+/**
  * Return the object card that the API resolves for a link, for this viewer.
  * The request starts only after `request()`, such as when the link scrolls
  * into view or the reader hovers it. Until then, and on failure, there is
