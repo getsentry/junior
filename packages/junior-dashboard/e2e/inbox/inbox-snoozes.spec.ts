@@ -477,6 +477,55 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
   });
 
+  test("the Event list of a pull request groups its Events by name and filters as the viewer types", async ({
+    dashboard,
+    page,
+  }) => {
+    await mockInboxItems(page, { open: [license, prReview] });
+    await page.goto(`${dashboard.baseURL}/inbox?type=prs&item=${prReview.id}`);
+    await openRowOf(page).getByRole("button", { name: "Snooze" }).click();
+    await page.getByRole("button", { name: "Custom…" }).click();
+    const dialog = customOf(page);
+    await dialog.getByRole("button", { name: "Add condition" }).click();
+    const events = await openEvents(page, 0);
+    await expect(
+      events.getByRole("group", { name: "Review" }).getByRole("option"),
+    ).toHaveText([
+      "is approved",
+      "gets changes requested",
+      "gets a review comment",
+    ]);
+    await expect(
+      events.getByRole("group", { name: "Checks" }).getByRole("option"),
+    ).toHaveText([
+      "fails its checks",
+      "passes its checks",
+      "passes its checks again",
+    ]);
+
+    // The filter takes the keys at once and matches phrases and Event names.
+    const filter = page.getByPlaceholder("Filter events");
+    await expect(filter).toBeFocused();
+    await page.keyboard.type("merge conflict");
+    await expect(events.getByRole("option")).toHaveText([
+      "gets a merge conflict",
+      "no longer has a merge conflict",
+    ]);
+    await expect(
+      events.getByRole("group", { name: "Merge conflict" }),
+    ).toBeVisible();
+    await screenshot(page, "inbox-snooze-event-filter", { lightTheme: true });
+    await filter.fill("nothing like this");
+    await expect(events.getByText("No events match.")).toBeVisible();
+    await filter.fill("draft");
+    await page.keyboard.press("Enter");
+    await expect(
+      dialog.getByRole("group", {
+        name: "When this pull request is converted to a draft",
+      }),
+    ).toBeVisible();
+  });
+
   test("many conditions keep Snooze on a short screen", async ({
     dashboard,
     page,
