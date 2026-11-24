@@ -179,6 +179,21 @@ struct Spinner: View {
   }
 }
 
+/// A violet pill beside a label: the drawer's Inbox count, or "New".
+struct CountBadge: View {
+  let text: String
+
+  var body: some View {
+    Text(text)
+      .type(.xs)
+      .monospacedDigit()
+      .foregroundStyle(Color.palette(.violet, 200))
+      .padding(.horizontal, 6)
+      .padding(.vertical, 2)
+      .background(Color.palette(.violet, 300).opacity(0.2), in: Capsule())
+  }
+}
+
 /// A colored status dot.
 struct Dot: View {
   let color: Color

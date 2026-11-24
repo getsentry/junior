@@ -1,8 +1,8 @@
 import JuniorKit
 import SwiftUI
 
-/// The iOS releases of the bundled root `CHANGELOG.md` to show in a sheet:
-/// What's New after an update, or the full changelog from Settings.
+/// The iOS releases of the bundled root `CHANGELOG.md` to show in a sheet
+/// from Settings: What's New after an update, or the full changelog.
 struct ChangelogPage: Identifiable {
   let title: String
   let releases: [ChangelogRelease]
@@ -19,17 +19,23 @@ struct ChangelogPage: Identifiable {
     ChangelogPage(title: "Changelog", releases: releases)
   }
 
-  /// The releases since the version that last launched, once per update. It
-  /// records this version as the last one. A fresh install shows nothing, and
-  /// Debug builds always have one version (`project.yml`) and no Upcoming
-  /// section, so UI tests and screenshots never get this sheet.
+  /// The releases since the version that the person last saw, which Settings
+  /// badges until they open it. A fresh install records its version and
+  /// gets nothing, and Debug builds always have one version (`project.yml`)
+  /// and no Upcoming section, so UI tests and screenshots never get the badge.
   static func whatsNew(_ defaults: UserDefaults = .standard) -> ChangelogPage? {
     let version = AppBuild.current.changelogVersion
-    let last = defaults.string(forKey: "lastSeenVersion")
-    guard last != version else { return nil }
-    defaults.set(version, forKey: "lastSeenVersion")
+    guard let last = defaults.string(forKey: "lastSeenVersion") else {
+      defaults.set(version, forKey: "lastSeenVersion")
+      return nil
+    }
     let releases = ChangelogParser.whatsNew(in: releases, lastSeenVersion: last, currentVersion: version)
     return releases.isEmpty ? nil : ChangelogPage(title: "What's New", releases: releases)
+  }
+
+  /// Records that the person saw What's New for this version.
+  static func markSeen(_ defaults: UserDefaults = .standard) {
+    defaults.set(AppBuild.current.changelogVersion, forKey: "lastSeenVersion")
   }
 }
 
