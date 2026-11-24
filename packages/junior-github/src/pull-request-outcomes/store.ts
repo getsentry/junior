@@ -1,10 +1,6 @@
 import { and, eq, lte, sql } from "drizzle-orm";
 import * as z from "zod";
-import {
-  type CodeChange,
-  codeChangeSizeSchema,
-  type PluginCodeChanges,
-} from "@sentry/junior-plugin-api";
+import type { CodeChange, PluginCodeChanges } from "@sentry/junior-plugin-api";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubPullRequestAction,
@@ -20,19 +16,12 @@ export const githubPullRequestOutcomeInputSchema = z
     candidateOwned: z.boolean(),
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
-    /**
-     * Written to Junior's code index only. When omitted, the stored draft
-     * state does not change.
-     */
-    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
     pullRequestId: z.string().min(1),
     repositoryFullName: z.string().min(1),
     repositoryId: z.string().min(1),
-    /** Written to Junior's code index only, not to the GitHub row. */
-    size: codeChangeSizeSchema.optional(),
     state: githubPullRequestStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),

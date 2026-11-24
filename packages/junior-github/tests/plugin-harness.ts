@@ -7,6 +7,7 @@ import type {
   HeartbeatHookContext,
   PluginReviewNotice,
   PluginState,
+  PluginTaskStartInput,
 } from "@sentry/junior-plugin-api";
 import { expect } from "vitest";
 import { githubPlugin } from "../src/index";
@@ -83,6 +84,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
     batches: [] as ConversationChangeBatch[],
     closedNotices: [] as string[],
     heartbeatLogs: [] as Array<[level: string, message: string]>,
+    /** Tasks that the plugin started and that have not run yet. */
+    startedTasks: [] as PluginTaskStartInput[],
     /** Inbox items added. A change to an open item adds none. */
     notices: [] as Array<{
       conversationId: string;
@@ -147,6 +150,9 @@ export function createPluginHarness(fixture: GitHubFixture) {
     },
   };
   const cache: HeartbeatHookContext["cache"] = {
+    async get() {
+      return undefined;
+    },
     async getOrLoad(_key, load) {
       return (await load()).value;
     },
@@ -236,8 +242,39 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
-      tasks: { start: unused },
+      tasks: {
+        async start(input) {
+          recorded.startedTasks.push(input);
+        },
+      },
     });
+  }
+
+  /** Run the started tasks, as the plugin task queue does. */
+  async function runStartedTasks(): Promise<void> {
+    const unused = () => {
+      throw new Error("The started GitHub tasks here do not use this");
+    };
+    for (const started of recorded.startedTasks.splice(0)) {
+      const task = githubPlugin().tasks?.[started.name];
+      if (!task?.payload) throw new Error(`No started task ${started.name}`);
+      await task.run({
+        annotations: { forConversation: unused },
+        cache,
+        codeChanges,
+        conversationChanges: { apply: unused },
+        db: fixture.db(),
+        log: {
+          error: (message) => recorded.heartbeatLogs.push(["error", message]),
+          info() {},
+          warn: (message) => recorded.heartbeatLogs.push(["warn", message]),
+        },
+        name: started.name,
+        payload: task.payload.parse(started.payload),
+        plugin: { name: "github" },
+        state,
+      });
+    }
   }
 
   /**
@@ -303,6 +340,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     failures,
     heartbeat,
     inboxItems,
+    runStartedTasks,
     watches,
   };
 }

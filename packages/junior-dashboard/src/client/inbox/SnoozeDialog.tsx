@@ -44,8 +44,13 @@ import {
 } from "../conversations/ComposerReference";
 import type { ComposerReference } from "../conversations/composerReferences";
 import { useDebouncedValue } from "../debouncedValue";
+import {
+  MessageObjectsProvider,
+  useListedObjects,
+} from "../display-text/DisplayText";
 import { eventLabel } from "../eventLabel";
 import { fetchDashboardJson } from "../http";
+import { listedDraft } from "../listedCodeChange";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
@@ -329,6 +334,12 @@ function WatchPicker(props: {
   const search = useCodeChangeSearch(
     link ? "" : text.slice(0, SEARCH_MAX_LENGTH),
   );
+  // Only an open change can be a draft, so only it needs its live card.
+  const listedOf = useListedObjects(
+    search.changes.flatMap((change) =>
+      change.state === "open" ? change.url : [],
+    ),
+  );
   return (
     <Command label="Pull request or issue" shouldFilter={false}>
       <CommandInput
@@ -363,7 +374,7 @@ function WatchPicker(props: {
           <CommandGroup heading="Pull requests">
             {search.changes.map((change) => {
               const reference: ComposerReference = {
-                draft: change.draft,
+                draft: listedDraft(listedOf(change.url)),
                 kind: "code_change",
                 number: change.number,
                 repository: change.repository,
@@ -475,13 +486,17 @@ function ConditionRow(props: {
             align="start"
             className="w-(--anchor-width) max-w-[calc(100vw-2rem)] min-w-80 overflow-hidden p-0"
           >
-            <WatchPicker
-              onPick={(next) => {
-                props.onChange({ id: condition.id, watched: next });
-                setOpen(false);
-              }}
-              subject={subject}
-            />
+            {/* The found pull requests read their live cards in one
+                request. */}
+            <MessageObjectsProvider>
+              <WatchPicker
+                onPick={(next) => {
+                  props.onChange({ id: condition.id, watched: next });
+                  setOpen(false);
+                }}
+                subject={subject}
+              />
+            </MessageObjectsProvider>
           </PopoverContent>
         </Popover>
         <Select<string>

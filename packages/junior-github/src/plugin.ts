@@ -29,13 +29,16 @@ import {
 import { resumeGitHubConflictFixes } from "./merge-conflict-checks/resume.js";
 import { loadGitHubTitleParts } from "./webhooks/title-parts.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
+import { runGitHubPullRequestPatches } from "./pull-request-patches.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
 import {
   loadPullRequest,
   loadPullRequestConflictHistory,
   loadPullRequestLifecycles,
+  loadRepositoryFullNames,
   loadPullRequestCommitPages,
+  loadPullRequestHeadFacts,
   searchOpenPullRequestMergeability,
   loadRepositoryRole,
   markPullRequestFeedbackReviewing,
@@ -78,6 +81,11 @@ import {
   GITHUB_PULL_REQUEST_OUTCOME_TASK,
   githubPullRequestOutcomeTask,
 } from "./pull-request-outcomes/apply-task.js";
+import {
+  GITHUB_REPOSITORY_NAME_REPAIR_TASK,
+  githubRepositoryNameRepairTask,
+  startGitHubRepositoryNameRepair,
+} from "./repository-name-repair.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
 import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
@@ -199,7 +207,17 @@ export function githubPlugin(
     },
     images: githubImageSource,
     objectLinks: [githubAccountLinks, githubIssueLinks, githubPullRequestLinks],
-    tasks: { [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask },
+    tasks: {
+      [GITHUB_PULL_REQUEST_OUTCOME_TASK]: githubPullRequestOutcomeTask,
+      [GITHUB_REPOSITORY_NAME_REPAIR_TASK]: githubRepositoryNameRepairTask(
+        async () =>
+          await loadRepositoryFullNames({
+            appIdEnv,
+            installationIdEnv,
+            privateKeyEnv,
+          }),
+      ),
+    },
     events: {
       resourceTypes: [
         {
@@ -415,6 +433,14 @@ export function githubPlugin(
           },
           state: ctx.state,
         });
+        await runGitHubPullRequestPatches({
+          cache: ctx.cache,
+          loadHeadFacts: async (refs) =>
+            await loadPullRequestHeadFacts(installationEnv, refs),
+          log: ctx.log,
+          nowMs: ctx.nowMs,
+          state: ctx.state,
+        });
         await reconcileGitHubPullRequests({
           annotations: ctx.annotations,
           botEmail: readEnv(botEmailEnv),
@@ -430,6 +456,10 @@ export function githubPlugin(
           nowMs: ctx.nowMs,
           inboxItems: ctx.inboxItems,
           state: ctx.state,
+        });
+        await startGitHubRepositoryNameRepair({
+          state: ctx.state,
+          tasks: ctx.tasks,
         });
       },
       async unfinishedWork(ctx) {

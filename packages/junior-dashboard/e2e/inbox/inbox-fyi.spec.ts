@@ -4,7 +4,6 @@ import {
   mockInboxItems,
   pinChecks,
   pinReview,
-  prReview,
   releaseNotes,
   rowHead,
   viewer,
@@ -105,12 +104,13 @@ test.describe("new UI", () => {
     ).toBeVisible();
   });
 
-  test("a pull request card shows the size that its row head does not know", async ({
+  test("a pull request row and its card show the change as GitHub has it now", async ({
     dashboard,
     page,
   }) => {
-    await mockInboxItems(page, { open: [prReview] });
-    // Only a live read knows this change, so its size shows on the card.
+    // The release Conversation saved this change at 48 lines. Someone else
+    // pushed since, so GitHub has a bigger change that conflicts.
+    await mockInboxItems(page, { open: [pinReview] });
     await page.route("**/api/objects?**", (route) =>
       route.fulfill({
         json: {
@@ -123,6 +123,8 @@ test.describe("new UI", () => {
                   additions: 1204,
                   changedFiles: 12,
                   deletions: 340,
+                  mergeable: false,
+                  sourceBranch: "release/pin-payments-4.2",
                 },
                 key: "getsentry/payments#91",
                 kind: "object",
@@ -130,25 +132,28 @@ test.describe("new UI", () => {
                 objectType: "code_change",
                 plugin: "github",
                 status: "open",
-                title: "Pin the release train",
-                url: prReview.subject.url,
+                title: "Pin the release train to payments 4.2",
+                url: pinReview.subject.url,
               },
-              url: prReview.subject.url,
+              url: pinReview.subject.url,
             },
           ],
         },
       }),
     );
-    await page.goto(`${dashboard.baseURL}/inbox?item=${prReview.id}`);
-    const size = "1,204 lines added, 340 removed, 12 files changed";
-    const pull = page
-      .getByRole("region", { name: /: asks$/ })
-      .getByRole("region", { name: "Pull request: Pin the release train" });
-    await expect(pull.getByTitle(size)).toBeVisible();
-    await expect(pull.getByText(size)).toHaveCount(1);
+    await page.goto(`${dashboard.baseURL}/inbox?item=${pinReview.id}`);
+    await expect(rowHead(page, "Pin the release train")).toHaveAccessibleName(
+      /1,204 lines added, 340 removed, 12 files changed/,
+    );
     await expect(
       rowHead(page, "Pin the release train"),
-    ).not.toHaveAccessibleName(/lines added/);
+    ).not.toHaveAccessibleName(/48 lines added/);
+    const asks = page.getByRole("region", { name: /: asks$/ });
+    await expect(asks.getByText("Merge conflict")).toBeVisible();
+    // The head gives the size, so the card does not say it again.
+    await expect(
+      asks.getByRole("region", { name: card }).getByText(/lines added/),
+    ).toHaveCount(0);
   });
 
   test("a pull request ask shows one card, and a notice about it folds in", async ({
@@ -205,9 +210,7 @@ test.describe("new UI", () => {
 
     // The pull request's live card says that it conflicts: a quiet line on
     // the review, not an item.
-    await expect(asks.locator("[data-merge-conflict]")).toHaveText(
-      "Merge conflict",
-    );
+    await expect(asks.getByText("Merge conflict")).toBeVisible();
     // The notice is a quiet line on the review, not a row or a card.
     await expect(
       page.locator("[data-code-change-state]", { hasText: "Checks failed" }),

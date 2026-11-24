@@ -1,6 +1,6 @@
 import { viewAsParticipant } from "./conversationMenu";
 import type { Locator } from "@playwright/test";
-import { openRow } from "./inbox-fixture";
+import { mockInboxItems, openRow } from "./inbox-fixture";
 import { expect, test } from "../test";
 import { pickOption } from "../pick-option";
 
@@ -86,6 +86,9 @@ test.describe("new UI", () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 900, width: 1600 });
+    // A Conversation outside the feed comes back while it has open asks, so
+    // this one has none.
+    await mockInboxItems(page, { open: [] });
     let archived = false;
     await page.route(/\/api\/conversations(?:\?.*)?$/, async (route) => {
       const response = await route.fetch();

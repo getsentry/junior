@@ -17,7 +17,6 @@ describe("daily reconcile of open pull requests", () => {
   const now = Date.parse("2026-11-09T12:00:00.000Z");
   const day = 24 * 60 * 60_000;
   let queries: number[][];
-  let drafts: Set<number>;
 
   /** A pull request lifecycle as GitHub GraphQL returns it. */
   function lifecycle(number: number) {
@@ -30,7 +29,7 @@ describe("daily reconcile of open pull requests", () => {
       createdAt: new Date(now - 3 * day).toISOString(),
       databaseId: number * 10,
       headRefName: `feat/pr-${number}`,
-      isDraft: drafts.has(number),
+      isDraft: false,
       merged,
       mergedAt: merged ? new Date(now - day).toISOString() : null,
       number,
@@ -52,7 +51,6 @@ describe("daily reconcile of open pull requests", () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     vi.useFakeTimers({ now, toFake: ["Date"] });
     queries = [];
-    drafts = new Set();
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
       "1234+sentry-junior[bot]@users.noreply.github.com",
@@ -281,21 +279,6 @@ describe("daily reconcile of open pull requests", () => {
     expect(queries[1]?.sort()).toEqual([947, 950, 951]);
   });
 
-  it("writes the current draft state to the code index", async () => {
-    drafts = new Set([947]);
-    await h.heartbeat(now);
-
-    expect(
-      fixture.codeIndex.recorded
-        .map((change) => [change.number, change.state, change.draft])
-        .sort(([a], [b]) => Number(a) - Number(b)),
-    ).toEqual([
-      [946, "merged", undefined],
-      [947, "open", true],
-      [949, "closed", undefined],
-    ]);
-  });
-
   it("publishes a corrected close with the key of its webhook", async () => {
     const closes = () =>
       h.published.filter(
@@ -378,6 +361,50 @@ describe("daily reconcile of open pull requests", () => {
       [950, "open"],
       [951, "open"],
     ]);
+  });
+
+  it("repairs stored repository names from GitHub once", async () => {
+    // A backfill kept the name from before the rename. GitHub no longer
+    // finds repository 3.
+    moveRepository({ name: "getsentry/junior-old", providerId: "1" });
+    fixture.codeIndex.seed({
+      conversationIds: [],
+      number: 12,
+      openedAt: new Date(now - 60_000),
+      providerId: "120",
+      repository: { name: "getsentry/gone", providerId: "3" },
+      state: "open",
+      updatedAt: new Date(now - 60_000),
+    });
+    mswServer.use(
+      http.get("https://api.github.com/repositories/3", () =>
+        HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+      ),
+    );
+    const names = async () =>
+      Object.fromEntries(
+        (await fixture.codeIndex.changes()).map((change) => [
+          change.number,
+          change.repository.name,
+        ]),
+      );
+
+    await h.heartbeat(now);
+    // The reconcile leaves pull request 950, whose webhook can still arrive.
+    expect((await names())[950]).toBe("getsentry/junior-old");
+    await h.runStartedTasks();
+
+    expect(h.heartbeatLogs).toEqual([]);
+    expect(await names()).toEqual({
+      12: "getsentry/gone",
+      946: "getsentry/junior",
+      947: "getsentry/junior",
+      949: "getsentry/junior",
+      950: "getsentry/junior",
+      951: "getsentry/junior",
+    });
+    await h.heartbeat(now + day);
+    expect(h.startedTasks).toEqual([]);
   });
 
   it("warns and keeps the code changes open when GitHub cannot reach the repository", async () => {

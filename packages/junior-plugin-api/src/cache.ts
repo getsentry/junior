@@ -25,6 +25,12 @@ export interface PluginCache {
    * and it throws to the caller unless a `staleIfError` value is kept.
    * `refresh` ignores the cached value and replaces it.
    */
+  /**
+   * Return the fresh cached value of `key`, or `undefined` when there is
+   * none. It never loads, so a caller can find the misses of many keys and
+   * load them in one provider call.
+   */
+  get<T>(key: string): Promise<T | undefined>;
   getOrLoad<T>(
     key: string,
     load: () => Promise<CacheEntry<T>>,

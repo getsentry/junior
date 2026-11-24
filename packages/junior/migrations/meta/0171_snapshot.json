@@ -1,5 +1,5 @@
 {
-  "id": "82dc4d62-3004-4a5b-bcee-9fa3ecf4669e",
+  "id": "931371fa-b4c2-42c0-a61e-13e39c7cd162",
   "prevId": "53cebd3e-2849-4abe-9840-450ae0fe2b07",
   "version": "7",
   "dialect": "postgresql",
@@ -1368,18 +1368,6 @@
           "primaryKey": true,
           "notNull": true
         },
-        "additions": {
-          "name": "additions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "changed_files": {
-          "name": "changed_files",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
         "closed_at": {
           "name": "closed_at",
           "type": "timestamp with time zone",
@@ -1392,19 +1380,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": "ARRAY[]::text[]"
-        },
-        "deletions": {
-          "name": "deletions",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "draft": {
-          "name": "draft",
-          "type": "boolean",
-          "primaryKey": false,
-          "notNull": true,
-          "default": false
         },
         "last_activity_at": {
           "name": "last_activity_at",
@@ -6337,6 +6312,13 @@
           "primaryKey": false,
           "notNull": true,
           "default": 24
+        },
+        "preferences": {
+          "name": "preferences",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
         },
         "created_at": {
           "name": "created_at",

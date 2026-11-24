@@ -51,8 +51,6 @@ export function InboxRowCard(props: {
   primaryAction?: ReactNode;
   /** The row's own actions, such as Open, on the card's action line. */
   rowActions?: ReactNode;
-  /** The row's head shows the subject's size. */
-  sizeShown?: boolean;
   take?: string;
   /** Why the viewer's snooze of the item woke. */
   wake?: InboxSnoozeWake | undefined;
@@ -190,7 +188,6 @@ export function InboxRowCard(props: {
             subject={item.subject}
             // An item row's head, or the card above it, names the subject.
             titled={!props.headTitled || !item.subject.title}
-            sizeShown={props.sizeShown}
           />
         ) : null}
       </InboxItemObjects>

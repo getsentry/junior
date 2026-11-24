@@ -84,6 +84,12 @@ export function createCache(
     return `${cacheKeyPrefix(namespace)}${key}`;
   };
   return {
+    async get<T>(key: string): Promise<T | undefined> {
+      const cacheKey = stateKey(key);
+      await state.connect();
+      const hit = await state.get<StoredEntry<T>>(cacheKey);
+      return hit && isFresh(hit) ? hit.value : undefined;
+    },
     async getOrLoad<T>(
       key: string,
       load: () => Promise<CacheEntry<T>>,

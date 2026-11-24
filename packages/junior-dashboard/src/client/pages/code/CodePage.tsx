@@ -10,7 +10,7 @@ import {
   TableHeader,
   TableRow,
 } from "../../components/ui/table";
-import { CodeChangeRow } from "./CodeChangeRow";
+import { CodeChangeRows } from "./CodeChangeRow";
 import { formatCodeCost, formatMergeRate } from "./CodeSummaryCards";
 import { codeRepositoryPath } from "./codeRepositoryRoutes";
 
@@ -90,9 +90,7 @@ export function CodeRecentChanges(props: {
         Recent changes
       </div>
       <div>
-        {props.changes.map((change) => (
-          <CodeChangeRow change={change} key={change.id} />
-        ))}
+        <CodeChangeRows changes={props.changes} />
       </div>
     </Card>
   );

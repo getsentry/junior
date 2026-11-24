@@ -66,11 +66,21 @@ export async function refreshGitHubPullRequestPreview(args: {
           : undefined;
         // A late delivery must not undo a newer body.
         if (storedAt !== undefined && storedAt > updatedAt) return;
+        // The body has no size, merge state or reviewers. Cards read those
+        // live, so a saved copy would only show an old value.
         const {
           plugin: _plugin,
           createdAt: _createdAt,
           updatedAt: _updatedAt,
-          facts: { previewImageUrls: previous, ...facts },
+          facts: {
+            previewImageUrls: previous,
+            additions: _additions,
+            changedFiles: _changedFiles,
+            deletions: _deletions,
+            mergeable: _mergeable,
+            reviewers: _reviewers,
+            ...facts
+          },
           ...annotation
         } = current;
         const next = withGitHubPreviewImages(facts, previewImageUrls);

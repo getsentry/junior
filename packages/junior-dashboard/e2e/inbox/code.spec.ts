@@ -188,10 +188,18 @@ test.describe("new UI", () => {
     ).toBeVisible();
 
     // The ask stays with its pull request, and opens its row in the Inbox.
-    await waiting.getByRole("link", { name: /^Review requested/ }).click();
-    await expect(page).toHaveURL(
-      `${dashboard.baseURL}/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
+    // The Inbox drops `item` from the URL once the row shows, so the link
+    // and the open row prove it, not the URL in between.
+    const ask = waiting.getByRole("link", { name: /^Review requested/ });
+    await expect(ask).toHaveAttribute(
+      "href",
+      `/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
     );
+    await ask.click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox?view=inbox`);
+    await expect(
+      page.getByRole("region", { name: `${prReview.title}: asks` }),
+    ).toBeVisible();
   });
 
   test("Code · Mine stacks the changes of one Conversation or Automation in their group", async ({
@@ -390,7 +398,6 @@ test.describe("new UI", () => {
       const state = new URL(route.request().url()).searchParams.get("state");
       const changes = (count: number, changeState: string, title: string) =>
         Array.from({ length: count }, (_, index) => ({
-          draft: false,
           id: `00000000-0000-4000-9000-${String(index).padStart(12, "0")}`,
           number: index + 1,
           openedAt: report.generatedAt,
@@ -486,7 +493,6 @@ test.describe("new UI", () => {
       const response = await route.fetch();
       const report = await response.json();
       const idleChange = {
-        draft: false,
         id: "00000000-0000-4000-8000-000000000099",
         lastActivityAt: new Date(NOW_MS - 10 * day).toISOString(),
         number: 990,

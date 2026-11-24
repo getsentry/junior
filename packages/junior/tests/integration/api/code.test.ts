@@ -52,17 +52,11 @@ describe("code API", () => {
           name: "getsentry/junior",
           providerId: "repository-1",
         },
-        size: { additions: 1204, changedFiles: 12, deletions: 340 },
         state: "merged",
         title: "Make code native",
         updatedAt: new Date("2026-08-22T12:00:00.000Z"),
       } satisfies CodeChangeInput;
       await recordCodeChange(fixture.sql.db(), "github", codeChange);
-      // A write without a size keeps the stored one.
-      await recordCodeChange(fixture.sql.db(), "github", {
-        ...codeChange,
-        size: undefined,
-      });
       // A change costs its whole linked tree, child Conversations included.
       await fixture.sql
         .db()
@@ -146,7 +140,6 @@ describe("code API", () => {
         expect.objectContaining({
           number: 42,
           repository: "getsentry/junior",
-          size: { additions: 1204, changedFiles: 12, deletions: 340 },
           state: "merged",
           title: "Make code native",
           url: "https://github.com/getsentry/junior/pull/42",
@@ -439,7 +432,7 @@ describe("code API", () => {
     }
   });
 
-  test("lets a plugin read its code changes by repository, state, and age", async () => {
+  test("lets a plugin read its code changes by repository, state, and age, and rename the repository", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -500,6 +493,22 @@ describe("code API", () => {
       await expect(
         numbers({ conversationIds: ["conversation-1", "conversation-3"] }),
       ).resolves.toEqual([1, 3]);
+
+      // A newer name renames the repository of every code change in it. An
+      // older name does not move it back.
+      await github.recordRepository({
+        name: "getsentry/junior-next",
+        providerId: "repository-1",
+        updatedAt: new Date("2026-08-06T12:00:00.000Z"),
+      });
+      await github.recordRepository({
+        name: "getsentry/Junior",
+        providerId: "repository-1",
+        updatedAt: new Date("2026-08-05T12:00:00.000Z"),
+      });
+      await expect(
+        numbers({ repository: { name: "getsentry/junior-next" } }),
+      ).resolves.toEqual([2, 1, 3]);
     } finally {
       await fixture.close();
     }

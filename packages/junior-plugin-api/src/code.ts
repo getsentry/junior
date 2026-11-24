@@ -1,5 +1,4 @@
 import * as z from "zod";
-import { codeChangeSizeSchema } from "./object-facts";
 
 export const codeChangeStateSchema = z.enum(["closed", "merged", "open"]);
 export type CodeChangeState = z.output<typeof codeChangeStateSchema>;
@@ -8,11 +7,6 @@ export const codeChangeInputSchema = z
   .object({
     closedAt: z.date().optional(),
     conversationIds: z.array(z.string().min(1)).default([]),
-    /**
-     * Whether the code change is a draft. When omitted, Junior keeps the
-     * stored value; a new code change is not a draft.
-     */
-    draft: z.boolean().optional(),
     mergedAt: z.date().optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
@@ -23,11 +17,6 @@ export const codeChangeInputSchema = z
         providerId: z.string().min(1),
       })
       .strict(),
-    /**
-     * The size as the provider counts it now. Junior keeps the stored value
-     * of each part that is omitted.
-     */
-    size: codeChangeSizeSchema.optional(),
     state: codeChangeStateSchema,
     title: z.string().min(1).optional(),
     updatedAt: z.date(),
@@ -35,6 +24,17 @@ export const codeChangeInputSchema = z
   .strict();
 
 export type CodeChangeInput = z.input<typeof codeChangeInputSchema>;
+
+export const codeRepositoryInputSchema = z
+  .object({
+    name: z.string().min(1),
+    providerId: z.string().min(1),
+    /** When the provider had this name. */
+    updatedAt: z.date(),
+  })
+  .strict();
+
+export type CodeRepositoryInput = z.input<typeof codeRepositoryInputSchema>;
 
 export const codeChangeFilterSchema = z
   .object({
@@ -79,6 +79,11 @@ export interface PluginCodeChanges {
    */
   list(filter: CodeChangeFilter): Promise<CodeChange[]>;
   record(input: CodeChangeInput): Promise<void>;
+  /**
+   * Record the name of a repository that this plugin's code changes are in.
+   * An older update does not move the name back.
+   */
+  recordRepository(input: CodeRepositoryInput): Promise<void>;
   /**
    * Record a push, review, or comment by a person on a code change. Junior
    * ignores activity on code changes that it did not record.

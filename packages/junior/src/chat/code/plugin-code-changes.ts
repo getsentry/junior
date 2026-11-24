@@ -5,6 +5,7 @@ import {
   listCodeChanges,
   recordCodeChange,
   recordCodeChangeActivity,
+  recordCodeRepository,
 } from "./store";
 
 /** Connect a plugin to Junior's code records. */
@@ -21,6 +22,9 @@ export function createPluginCodeChanges(provider: string): PluginCodeChanges {
     },
     async recordActivity(input) {
       await recordCodeChangeActivity(getDb(), provider, input);
+    },
+    async recordRepository(input) {
+      await recordCodeRepository(getDb(), provider, input);
     },
   };
 }

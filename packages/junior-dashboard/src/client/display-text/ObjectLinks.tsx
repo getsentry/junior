@@ -29,20 +29,11 @@ import { PersonInline, PersonReference } from "../components/PersonReference";
 // scrolls in its body.
 const RESERVED_PREVIEW_HEIGHT_CLASS = "h-[min(22rem,var(--available-height))]";
 
-type KnownObjectsValue = {
-  objects: KnownObjects;
-  /** URL keys of Annotations that save only a link, with no facts. */
-  links: ReadonlySet<string>;
-};
-
-const KnownObjectsContext = createContext<KnownObjectsValue>({
-  links: new Set(),
-  objects: new Map(),
-});
+const KnownObjectsContext = createContext<KnownObjects>(new Map());
 
 /**
  * Let display text show the saved object of each link that points to an
- * Annotation of this Conversation. Only saved facts show; nothing is fetched.
+ * Annotation of this Conversation, until the link's live card resolves.
  */
 export function KnownObjectsProvider(props: {
   annotations: ConversationDetailReport["annotations"];
@@ -54,25 +45,12 @@ export function KnownObjectsProvider(props: {
   children: ReactNode;
 }) {
   const value = useMemo(() => {
-    // The first Annotation for a URL wins, as in `knownObjectsFromAnnotations`.
-    const kinds = new Map<string, string>();
-    for (const annotation of props.annotations ?? []) {
-      const key = annotation.url ? objectUrlKey(annotation.url) : undefined;
-      if (key && !kinds.has(key)) kinds.set(key, annotation.kind);
-    }
     const objects = new Map(knownObjectsFromAnnotations(props.annotations));
     for (const card of props.cards ?? []) {
       const key = card.url ? objectUrlKey(card.url) : undefined;
       if (key && !objects.has(key)) objects.set(key, card);
     }
-    return {
-      links: new Set(
-        [...kinds].flatMap(([key, kind]) =>
-          kind === "resource_link" ? [key] : [],
-        ),
-      ),
-      objects,
-    };
+    return objects;
   }, [props.annotations, props.cards]);
   const saved = useMemo(
     () => savedObjectsFromAnnotations(props.annotations),
@@ -87,21 +65,13 @@ export function KnownObjectsProvider(props: {
   );
 }
 
-/**
- * Return the saved object that a link points to, when one is known.
- * `linkOnly` is true when the Annotation saves only the link, so a live card
- * shows more.
- */
+/** Return the saved object that a link points to, when one is known. */
 export function useKnownObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;
-  linkOnly: boolean;
 } {
-  const { links, objects } = useContext(KnownObjectsContext);
+  const objects = useContext(KnownObjectsContext);
   const key = href ? objectUrlKey(href) : undefined;
-  return {
-    card: key ? objects.get(key) : undefined,
-    linkOnly: key ? links.has(key) : false,
-  };
+  return { card: key ? objects.get(key) : undefined };
 }
 
 // A long title would fill a sentence. The card shows all of it.
