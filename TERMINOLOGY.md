@@ -22,6 +22,8 @@ Canonical words for Junior code and docs. One concept, one word.
 - **Lead**: one person's private top-level Conversation that finds, starts,
   and steers their other Conversations. It has no child agents and does no
   work itself. `startConversation` starts a public root for the person.
+- **Space**: a named, shared home for a body of related work. A
+  **Member** of a Space is a User who joined it.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
