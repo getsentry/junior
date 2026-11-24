@@ -19,7 +19,7 @@ import {
   type MailboxTurnWork,
 } from "@/chat/task-execution/mailbox-turn";
 import {
-  childWorkEnded,
+  childHasNoWork,
   parentResultActor,
   type DeliverToParent,
   type ParentResult,
@@ -403,7 +403,9 @@ async function turnEndedByDismiss(args: {
     return undefined;
   }
   const turnId = summaries[0]?.turnId ?? args.addedByTurnId;
-  return turnId && (await childWorkEnded(args.conversationId, turnId))
+  // A reply that Turn sent while the question was open has its own key, so
+  // it does not stop the result. A result that it sent has this key.
+  return turnId && (await childHasNoWork(args.conversationId))
     ? turnId
     : undefined;
 }

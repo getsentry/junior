@@ -46,26 +46,34 @@ export function parentResultActor(
 }
 
 /**
+ * Return whether a child has no work left: none of its own child agents
+ * still works, it has no active Watch or Timer, it waits on no person's
+ * answer to its Inbox item, and no input waits to run a later Turn.
+ */
+export async function childHasNoWork(conversationId: string): Promise<boolean> {
+  const [stillWorks, watches, waiting] = await Promise.all([
+    childAgentStillWorks(conversationId),
+    listWatches({ conversationId }),
+    hasWaitingParentWork(conversationId),
+  ]);
+  return !stillWorks && watches.length === 0 && !waiting;
+}
+
+/**
  * Return whether a child's work ended with its Turn `turnId`, which ended
- * with no answer: none of its own child agents still works, it has no active
- * Watch or Timer, it waits on no person's answer to its Inbox item, no input
- * waits to run a later Turn that answers, and the Turn sent its parent
- * nothing. A Turn can send its `reply` and then lose
+ * with no answer: the child has no work left (`childHasNoWork`), and the
+ * Turn sent its parent nothing. A Turn can send its `reply` and then lose
  * its worker, so its retry already reported.
  */
 export async function childWorkEnded(
   conversationId: string,
   turnId: string,
 ): Promise<boolean> {
-  const [stillWorks, watches, waiting, sender] = await Promise.all([
-    childAgentStillWorks(conversationId),
-    listWatches({ conversationId }),
-    hasWaitingParentWork(conversationId),
+  const [noWork, sender] = await Promise.all([
+    childHasNoWork(conversationId),
     readChildConversationSender(conversationId),
   ]);
-  if (stillWorks || watches.length > 0 || waiting || !sender) {
-    return false;
-  }
+  if (!noWork || !sender) return false;
   const parent = await getConversationWorkState({
     conversationId: sender.parentConversationId,
   });

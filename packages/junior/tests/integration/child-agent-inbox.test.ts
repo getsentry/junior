@@ -391,7 +391,7 @@ describe("a child agent asks a person", () => {
     }
   });
 
-  it("sends a child's reply while its question is open as a message", async () => {
+  it("sends a child's reply while its question is open as a message, and its result after a dismiss", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();
     try {
@@ -399,22 +399,30 @@ describe("a child agent asks a person", () => {
       const childId = await startThread(harness, "task-reply-open", {
         kind: "task",
       });
-      await askInTask(harness, childId, person, {
+      const itemId = await askInTask(harness, childId, person, {
         reply: "Asked Maya about preview-42.",
       });
 
       // The answer continues the child, so its reply is not its result.
-      const texts = (await parentMessages()).map(
-        (message) => message.input.text,
-      );
-      expect(texts).toEqual(
+      const texts = async () =>
+        (await parentMessages()).map((message) => message.input.text);
+      expect(await texts()).toEqual(
         expect.arrayContaining([
           expect.stringMatching(/Asked Maya about preview-42/),
         ]),
       );
-      expect(texts.some((text) => text.includes('status="completed"'))).toBe(
-        false,
-      );
+      const completed = async () =>
+        (await texts()).filter((text) => text.includes('status="completed"'));
+      expect(await completed()).toHaveLength(0);
+
+      // A dismiss ends the child's work, so the parent gets its result.
+      await actOnInboxItem({
+        action: "dismiss",
+        delivery: { queue: harness.queue, show: async () => {} },
+        id: itemId,
+        user: person,
+      });
+      expect(await completed()).toHaveLength(1);
     } finally {
       await harness.close();
     }
