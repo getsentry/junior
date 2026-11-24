@@ -108,8 +108,8 @@ type HeadFactsNode = z.output<typeof pullRequestHeadFactsNodeSchema>;
 // Write the read fields, only over an entry of the same head commit that
 // is not newer than the read. Return whether to read again: GitHub still
 // computes the merge state, or a webhook came after the read and its
-// fields still wait. After the last attempt, the merge state is unknown,
-// not pending.
+// fields still wait. After the last attempt, a merge state that GitHub
+// still computes stays pending only briefly, so the next read asks GitHub.
 async function writeHeadFacts(
   cache: PluginCache,
   key: string,
@@ -125,20 +125,17 @@ async function writeHeadFacts(
         current.checks === "pending" || current.mergeable === "pending";
       return undefined;
     }
-    const computing =
-      mergeable === null && current.mergeable === "pending" && !last;
-    readAgain = computing;
+    const computing = mergeable === null && current.mergeable === "pending";
+    readAgain = computing && !last;
     return {
-      ...GITHUB_PULL_REQUEST_CACHE,
+      ...(computing && last
+        ? GITHUB_PULL_REQUEST_PENDING_CACHE
+        : GITHUB_PULL_REQUEST_CACHE),
       value: {
         ...current,
         checks: githubCheckCounts(node.commits),
         // A check event leaves a known merge state as it is.
-        mergeable:
-          mergeable ??
-          (computing || current.mergeable !== "pending"
-            ? current.mergeable
-            : null),
+        mergeable: mergeable ?? current.mergeable,
       },
     };
   });

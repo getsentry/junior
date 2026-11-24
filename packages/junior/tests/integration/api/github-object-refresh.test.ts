@@ -856,4 +856,63 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: true,
     });
   });
+  it("asks GitHub again soon after the last patch attempt finds the merge state still computing", async () => {
+    stubGitHubApp();
+    const unknown = {
+      commits: checkRuns({ SUCCESS: 1 }),
+      headRefOid: "bbb222",
+      mergeable: "UNKNOWN",
+      number: 34,
+      updatedAt: "2026-01-02T06:00:10Z",
+    };
+    const queries = stubGraphql({
+      // The first read is from before the push.
+      cards: () => [
+        queries.length > 1
+          ? {
+              ...cardNode(34),
+              headRefOid: "bbb222",
+              updatedAt: "2026-01-02T06:00:20Z",
+            }
+          : { ...cardNode(34), headRefOid: "aaa111" },
+      ],
+      patches: Array.from({ length: 5 }, () => [unknown]),
+    });
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-02T06:00:00Z");
+    vi.setSystemTime(start);
+    await read(url);
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "synchronize",
+      pull_request: pullRequest(34, {
+        head: { ref: "feat/34", sha: "bbb222" },
+        mergeable: null,
+        updated_at: "2026-01-02T06:00:10Z",
+      }),
+    });
+    for (let minute = 1; minute <= 5; minute++) {
+      vi.setSystemTime(start + minute * 60_000);
+      await runTestHeartbeat(queue, Date.now());
+    }
+    const named = (operationName: string) =>
+      queries.filter((query) => query.operationName === operationName);
+    expect(named("PullRequestHeadFacts")).toHaveLength(5);
+    const before = named("PullRequestCards").length;
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: "pending",
+    });
+
+    vi.setSystemTime(start + 5 * 60_000 + 16_000);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      mergeable: true,
+    });
+    expect(named("PullRequestCards")).toHaveLength(before + 1);
+  });
 });
