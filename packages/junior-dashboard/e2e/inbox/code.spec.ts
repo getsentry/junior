@@ -188,10 +188,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
 
     // The ask stays with its pull request, and opens its row in the Inbox.
-    await waiting.getByRole("link", { name: /^Review requested/ }).click();
-    await expect(page).toHaveURL(
-      `${dashboard.baseURL}/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
+    // The Inbox drops `item` from the URL once the row shows, so the link
+    // and the open row prove it, not the URL in between.
+    const ask = waiting.getByRole("link", { name: /^Review requested/ });
+    await expect(ask).toHaveAttribute(
+      "href",
+      `/inbox?view=inbox&item=${encodeURIComponent(prReview.id)}`,
     );
+    await ask.click();
+    await expect(page).toHaveURL(`${dashboard.baseURL}/inbox?view=inbox`);
+    await expect(
+      page.getByRole("region", { name: `${prReview.title}: asks` }),
+    ).toBeVisible();
   });
 
   test("Code · Mine waits for your asks before it groups your changes, and says when they fail", async ({
