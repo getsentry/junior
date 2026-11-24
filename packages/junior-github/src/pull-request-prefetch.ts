@@ -5,7 +5,7 @@
  * that this skips reads its entry as usual.
  */
 import type { ObjectLinkContext } from "@sentry/junior-plugin-api";
-import { and, eq, isNotNull, or, sql } from "drizzle-orm";
+import { and, eq, isNotNull, isNull, or, sql } from "drizzle-orm";
 import pLimit from "p-limit";
 import { gitHubDbSchema } from "./db/database.js";
 import { juniorGitHubPullRequests } from "./db/schema.js";
@@ -66,22 +66,7 @@ async function storedNodeIds(
       repositoryFullName: t.repositoryFullName,
     })
     .from(t)
-    .where(
-      and(
-        isNotNull(t.nodeId),
-        or(
-          ...refs.map((ref) =>
-            and(
-              eq(
-                sql`lower(${t.repositoryFullName})`,
-                `${ref.owner}/${ref.name}`.toLowerCase(),
-              ),
-              eq(t.number, ref.number),
-            ),
-          ),
-        ),
-      ),
-    );
+    .where(and(isNotNull(t.nodeId), or(...refs.map(sameRepository))));
   // Key each id by the link's cache key, which the card reads.
   return new Map(
     rows.flatMap((row) =>
@@ -127,6 +112,35 @@ async function loadChunk(
         : { ...GITHUB_PULL_REQUEST_CACHE, value: { ...current, ...fields } },
     );
   });
+}
+
+function sameRepository(ref: PullRequestRef) {
+  const t = juniorGitHubPullRequests;
+  return and(
+    eq(
+      sql`lower(${t.repositoryFullName})`,
+      `${ref.owner}/${ref.name}`.toLowerCase(),
+    ),
+    eq(t.number, ref.number),
+  );
+}
+
+/**
+ * Store the GraphQL id of a Junior pull request that has none yet, from a
+ * card read of it. Rows from before Junior stored the id get it from this
+ * read or the next webhook, and the batch skips them until then.
+ */
+export async function rememberGitHubPullRequestNodeId(
+  ctx: ObjectLinkContext,
+  ref: PullRequestRef,
+  nodeId: string,
+): Promise<void> {
+  const t = juniorGitHubPullRequests;
+  await gitHubDbSchema
+    .parse(ctx.db)
+    .update(t)
+    .set({ nodeId })
+    .where(and(isNull(t.nodeId), sameRepository(ref)));
 }
 
 /** Load the missing cards of the pull requests that `refs` name. */

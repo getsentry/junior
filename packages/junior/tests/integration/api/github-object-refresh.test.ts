@@ -20,6 +20,7 @@ import { mswServer } from "../../msw/server";
 const DASHBOARD = "https://junior.example.com";
 const BOT_EMAIL = "41898282+junior-test[bot]@users.noreply.github.com";
 const T0 = "2026-01-02T03:00:00Z";
+const T1 = "2026-01-02T04:00:00Z";
 
 function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -209,53 +210,57 @@ describe("GitHub pull request cache refresh", () => {
     expect(reads).toEqual(["pulls/34"]);
   });
 
-  it("reads a page of stale pull request cards in one query", async () => {
+  it("reads a page of stale pull request cards in one query, and adds an older pull request after one read", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
     const reads: string[] = [];
     mswServer.use(
       http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
-        reads.push(`pulls/${String(params["number"])}`);
-        return HttpResponse.json({ message: "Server Error" }, { status: 502 });
+        const number = Number(params["number"]);
+        reads.push(`pulls/${number}`);
+        return number === 36
+          ? HttpResponse.json(pullRequest(36, { updated_at: T1 }))
+          : HttpResponse.json({ message: "Server Error" }, { status: 502 });
       }),
     );
-    const queries = stubGraphql([
-      [34, 35].map((number) => ({
-        additions: number,
-        author: { login: "junior-test[bot]" },
-        baseRefName: "main",
-        body: "Cache GitHub objects.",
-        changedFiles: 2,
-        commits: checkRuns({ SUCCESS: 2 }),
-        deletions: 1,
-        headRefName: `feat/${number}`,
-        headRefOid: "ddd444",
-        id: `PR_${number}`,
-        isDraft: number === 35,
-        mergeable: "MERGEABLE",
-        merged: false,
-        number,
-        reviewRequests: { nodes: [] },
-        state: "OPEN",
-        title: `Renamed ${number}`,
-        updatedAt: "2026-01-02T04:00:00Z",
-        url: `${GITHUB_REPO}/pull/${number}`,
-      })),
-    ]);
+    const node = (number: number) => ({
+      additions: number,
+      author: { login: "junior-test[bot]" },
+      baseRefName: "main",
+      body: "Cache GitHub objects.",
+      changedFiles: 2,
+      commits: checkRuns({ SUCCESS: 2 }),
+      deletions: 1,
+      headRefName: `feat/${number}`,
+      headRefOid: "ddd444",
+      id: `PR_${number}`,
+      isDraft: number === 35,
+      mergeable: "MERGEABLE",
+      merged: false,
+      number,
+      reviewRequests: { nodes: [] },
+      state: "OPEN",
+      title: `Renamed ${number}`,
+      updatedAt: "2026-01-02T06:00:00Z",
+      url: `${GITHUB_REPO}/pull/${number}`,
+    });
+    const queries = stubGraphql([[34, 35].map(node), [34, 35, 36].map(node)]);
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
     const read = await viewerApi("alice@example.com");
-    const urls = [`${GITHUB_REPO}/pull/34`, `${GITHUB_REPO}/pull/35`];
+    const urls = [34, 35, 36].map((number) => `${GITHUB_REPO}/pull/${number}`);
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
-    // Junior's own pull requests: the webhook stores their GraphQL ids.
-    for (const number of [34, 35]) {
+    // Junior's own pull requests: the webhook stores their GraphQL ids. The
+    // row of #36 is from before Junior stored them.
+    for (const number of [34, 35, 36]) {
       await sendGitHubWebhook(app, "pull_request", {
         action: "opened",
         pull_request: pullRequest(number, {
           body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
+          node_id: number === 36 ? undefined : `PR_${number}`,
           user: { login: "junior-test[bot]" },
         }),
       });
@@ -271,7 +276,8 @@ describe("GitHub pull request cache refresh", () => {
     expect(queries).toEqual([
       { ids: ["PR_34", "PR_35"], operationName: "PullRequestCards" },
     ]);
-    expect(reads).toEqual([]);
+    // Only the pull request with no stored id reads on its own.
+    expect(reads).toEqual(["pulls/36"]);
     expect(cards.get(urls[0]!)).toMatchObject({
       facts: { additions: 34, checks: { failed: 0, passed: 2, pending: 0 } },
       status: "open",
@@ -281,5 +287,16 @@ describe("GitHub pull request cache refresh", () => {
       status: "draft",
       title: "Renamed 35",
     });
+
+    // That read stored its id, so the next page reads all three at once.
+    vi.setSystemTime(start + 122 * 60_000);
+    expect((await read(...urls)).objects.get(urls[2]!)).toMatchObject({
+      title: "Renamed 36",
+    });
+    expect(queries.at(-1)).toEqual({
+      ids: ["PR_34", "PR_35", "PR_36"],
+      operationName: "PullRequestCards",
+    });
+    expect(reads).toEqual(["pulls/36"]);
   });
 });

@@ -24,7 +24,10 @@ import {
   type GitHubPullRequestFields,
 } from "./object-cache.js";
 import { githubObjectFacts } from "./object-facts.js";
-import { prefetchGitHubPullRequests } from "./pull-request-prefetch.js";
+import {
+  prefetchGitHubPullRequests,
+  rememberGitHubPullRequestNodeId,
+} from "./pull-request-prefetch.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
@@ -135,7 +138,18 @@ async function readFields<T>(
         `GitHub ${link.kind} lookup failed with HTTP ${response.status}`,
       );
     }
-    return { ...options, value: schema.parse(response.body) };
+    const value = schema.parse(response.body);
+    const nodeId = z
+      .object({ node_id: z.string().min(1) })
+      .safeParse(response.body);
+    if (link.kind === "pull_request" && nodeId.success) {
+      await rememberGitHubPullRequestNodeId(
+        ctx,
+        { name: link.name, number: Number(link.number), owner: link.owner },
+        nodeId.data.node_id,
+      );
+    }
+    return { ...options, value };
   };
   const cached = schema
     .nullable()
