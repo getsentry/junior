@@ -72,7 +72,7 @@ final class AppModel {
   init(launch: LaunchOptions = .current) {
     let defaults = UserDefaults.standard
     let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
-    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!)
+    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? JuniorServer.production.baseURL)
     #if DEBUG
       // Screenshots and UI tests start signed in to the mock server, or
       // signed out to run the sign-in flow.

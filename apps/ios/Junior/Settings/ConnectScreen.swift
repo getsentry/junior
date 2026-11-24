@@ -51,7 +51,7 @@ struct ConnectScreen: View {
       .padding(16)
     }
     .background(Tokens.bg)
-    .onAppear { serverText = app.server.isDemo ? "" : app.server.baseURL.absoluteString }
+    .onAppear { serverText = (app.server.isDemo ? JuniorServer.production : app.server).baseURL.absoluteString }
   }
 
   private var serverURL: URL? {
