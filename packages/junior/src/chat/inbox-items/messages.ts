@@ -215,6 +215,7 @@ async function sendOne(args: {
     // that wait, so the parent hears whether the child's work ended.
     if (
       args.change.kind === "dismissed" &&
+      args.item.kind === "action" &&
       ownerConversationId(args.item) === args.conversationId
     ) {
       await enqueueChildDismissToParent({

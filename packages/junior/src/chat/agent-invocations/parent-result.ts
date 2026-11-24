@@ -1,8 +1,6 @@
 import type { Actor } from "@sentry/junior-plugin-api";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
-import { getDb } from "@/chat/db";
 import { listWatches } from "@/chat/events/store";
-import { waitsOnInboxAnswer } from "@/chat/inbox-items/waiting";
 import { getConversationWorkState } from "@/chat/task-execution/store";
 import type { Reply } from "@/chat/turn-answer";
 import { readChildConversationSender } from "./child-input";
@@ -59,14 +57,13 @@ export async function childWorkEnded(
   conversationId: string,
   turnId: string,
 ): Promise<boolean> {
-  const [stillWorks, watches, waiting, asked, sender] = await Promise.all([
+  const [stillWorks, watches, waiting, sender] = await Promise.all([
     childAgentStillWorks(conversationId),
     listWatches({ conversationId }),
     hasWaitingParentWork(conversationId),
-    waitsOnInboxAnswer(getDb(), conversationId),
     readChildConversationSender(conversationId),
   ]);
-  if (stillWorks || watches.length > 0 || waiting || asked || !sender) {
+  if (stillWorks || watches.length > 0 || waiting || !sender) {
     return false;
   }
   const parent = await getConversationWorkState({

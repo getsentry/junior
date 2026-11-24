@@ -56,6 +56,7 @@ async function askInTask(
   options: {
     afterAsk?: (itemId: string) => Promise<void>;
     notice?: boolean;
+    reply?: string;
   } = {},
 ): Promise<string> {
   let itemId: string | undefined;
@@ -101,7 +102,12 @@ async function askInTask(
     );
     itemId = (added as { item: { id: string } }).item.id;
     await options.afterAsk?.(itemId);
-    return await finishRun(run, { noReply: {} });
+    return await finishRun(
+      run,
+      options.reply
+        ? { reply: { text: options.reply, toolCallId: "reply-1" } }
+        : { noReply: {} },
+    );
   });
   await harness.drain(childId);
   harness.onRun(undefined);
@@ -340,6 +346,74 @@ describe("a child agent asks a person", () => {
         expect.arrayContaining([
           expect.stringMatching(/dismissed inbox item "Delete preview-42"/),
         ]),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("tells the parent of a dismiss while the child still works", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-dismiss-busy", {
+        kind: "task",
+      });
+      await startThread(harness, "task-dismiss-busy-grandchild", {
+        kind: "task",
+        parentConversationId: childId,
+      });
+      const itemId = await askInTask(harness, childId, person);
+
+      await actOnInboxItem({
+        action: "dismiss",
+        delivery: { queue: harness.queue, show: async () => {} },
+        id: itemId,
+        user: person,
+      });
+
+      // The open grandchild keeps the child's work going, so the child has
+      // no result yet. The parent still hears that the question closed.
+      const texts = (await parentMessages()).map(
+        (message) => message.input.text,
+      );
+      expect(texts.some((text) => text.includes('status="completed"'))).toBe(
+        false,
+      );
+      expect(texts).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/dismissed inbox item "Delete preview-42"/),
+        ]),
+      );
+    } finally {
+      await harness.close();
+    }
+  });
+
+  it("sends a child's reply while its question is open as a message", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-reply-open", {
+        kind: "task",
+      });
+      await askInTask(harness, childId, person, {
+        reply: "Asked Maya about preview-42.",
+      });
+
+      // The answer continues the child, so its reply is not its result.
+      const texts = (await parentMessages()).map(
+        (message) => message.input.text,
+      );
+      expect(texts).toEqual(
+        expect.arrayContaining([
+          expect.stringMatching(/Asked Maya about preview-42/),
+        ]),
+      );
+      expect(texts.some((text) => text.includes('status="completed"'))).toBe(
+        false,
       );
     } finally {
       await harness.close();

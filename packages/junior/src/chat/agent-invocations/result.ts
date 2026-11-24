@@ -346,10 +346,11 @@ export async function enqueueChildWaitingToParent(args: {
 
 /**
  * Report to the parent of a child agent that a person dismissed the child's
- * Inbox item. A dismiss starts no Turn, like for a root owner, so the child's
- * quiet end that waited on the answer reports now, the way a Turn that ends
- * with `noReply` does: only when the child has no other work, as the Event
- * system Actor. A Conversation with no parent sends nothing.
+ * Inbox question. A dismiss starts no Turn, like for a root owner. When that
+ * ends the child's work, its quiet end that waited on the answer reports
+ * now, the way a Turn that ends with `noReply` does, as the Event system
+ * Actor. Otherwise the parent gets the dismiss as a message, so it does not
+ * keep waiting on that answer. A Conversation with no parent sends nothing.
  */
 export async function enqueueChildDismissToParent(args: {
   conversationId: string;
@@ -359,43 +360,52 @@ export async function enqueueChildDismissToParent(args: {
   text: string;
 }): Promise<void> {
   const closed = `${args.text}\nIt closed with no answer`;
-  // A Turn that still runs, such as the one that asked, reports its own end,
-  // and it then sees the item closed. The parent gets the dismiss now as a
-  // message, so that end is not a bare completion.
-  const [work, turns] = await Promise.all([
-    getConversationWorkState({ conversationId: args.conversationId }),
-    listActiveMailboxTurns(args.conversationId),
-  ]);
-  if ((work?.runningInboundMessageIds.length ?? 0) > 0 || turns.length > 0) {
-    const sender = await readChildConversationSender(args.conversationId);
-    if (!sender) return;
-    await enqueueAgentMessageToParent({
+  const turnId = await turnEndedByDismiss(args);
+  if (turnId) {
+    await createDeliverToParent({ queue: args.queue })({
       actor: EVENT_SYSTEM_ACTOR,
-      messageKey: `dismissed:${args.inboxItemId}`,
-      queue: args.queue,
-      sender,
-      text: `${closed}.`,
+      conversationId: args.conversationId,
+      result: {
+        kind: "completed",
+        text: `${closed}, so this child agent did not continue.`,
+      },
+      turnId,
     });
     return;
   }
-  // The child's last Turn ended quietly only while it waited. A Turn that
-  // reported, such as one with a notice still open, ended the wait already.
-  // Its id also keys the result, so a repeat dismiss sends nothing new.
-  // The Turn index expires, so a late dismiss falls back to the Turn that
-  // added the item.
-  const turnId =
-    (await listTurnSummaries(args.conversationId))[0]?.turnId ??
-    args.addedByTurnId;
-  if (!turnId || !(await childWorkEnded(args.conversationId, turnId))) return;
-  await createDeliverToParent({ queue: args.queue })({
+  // A Turn that still runs, such as the one that asked, reports its own end,
+  // and other work reports when it ends.
+  const sender = await readChildConversationSender(args.conversationId);
+  if (!sender) return;
+  await enqueueAgentMessageToParent({
     actor: EVENT_SYSTEM_ACTOR,
-    conversationId: args.conversationId,
-    result: {
-      kind: "completed",
-      text: `${closed}, so this child agent did not continue.`,
-    },
-    turnId,
+    messageKey: `dismissed:${args.inboxItemId}`,
+    queue: args.queue,
+    sender,
+    text: `${closed}.`,
   });
+}
+
+// Return the child's last Turn when the dismiss ends the child's work: that
+// Turn ended quietly while it waited. Its id also keys the result, so a
+// repeat dismiss sends nothing new. The Turn index expires, so a late dismiss
+// falls back to the Turn that added the item.
+async function turnEndedByDismiss(args: {
+  conversationId: string;
+  addedByTurnId: string | undefined;
+}): Promise<string | undefined> {
+  const [work, turns, summaries] = await Promise.all([
+    getConversationWorkState({ conversationId: args.conversationId }),
+    listActiveMailboxTurns(args.conversationId),
+    listTurnSummaries(args.conversationId),
+  ]);
+  if ((work?.runningInboundMessageIds.length ?? 0) > 0 || turns.length > 0) {
+    return undefined;
+  }
+  const turnId = summaries[0]?.turnId ?? args.addedByTurnId;
+  return turnId && (await childWorkEnded(args.conversationId, turnId))
+    ? turnId
+    : undefined;
 }
 
 /**
