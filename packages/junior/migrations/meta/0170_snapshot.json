@@ -1,5 +1,5 @@
 {
-  "id": "aa957a55-77e9-45a9-b41b-443597d41dae",
+  "id": "e688e635-4077-4da6-bf98-7d4003423308",
   "prevId": "1bf59037-95bb-4ae3-91a2-2b9886bfef5d",
   "version": "7",
   "dialect": "postgresql",
@@ -6278,6 +6278,12 @@
           "primaryKey": false,
           "notNull": true
         },
+        "source": {
+          "name": "source",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
         "payload": {
           "name": "payload",
           "type": "jsonb",
@@ -6621,12 +6627,6 @@
         "priority": {
           "name": "priority",
           "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "source": {
-          "name": "source",
-          "type": "text",
           "primaryKey": false,
           "notNull": true
         },

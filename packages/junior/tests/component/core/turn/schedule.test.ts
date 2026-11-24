@@ -120,7 +120,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         id: juniorTurns.id,
         state: juniorTurns.state,
         priority: juniorTurns.priority,
-        source: juniorTurns.source,
         actorIdentityId: juniorTurns.actorIdentityId,
       })
       .from(juniorTurns);
@@ -146,13 +145,18 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
         id: scheduled.turnId,
         state: "queued",
         priority: 0,
-        source: "local",
         actorIdentityId: "identity:actor",
       },
     ]);
     await expect(readInputs()).resolves.toEqual([
       { turnId: scheduled.turnId, idempotencyKey: "event-1" },
     ]);
+    await expect(
+      fixture.sql
+        .db()
+        .select({ source: juniorTurnInbox.source })
+        .from(juniorTurnInbox),
+    ).resolves.toEqual([{ source: "local" }]);
     expect(publishes).toEqual([{ turnId: scheduled.turnId, committed: true }]);
   });
 
@@ -228,7 +232,6 @@ describe.skipIf(!hasJuniorPostgresTestDatabase())("scheduleInput", () => {
       id: expect.any(String),
       state: "queued",
       priority: 0,
-      source: "local",
       actorIdentityId: "identity:actor",
     });
     const moved = [

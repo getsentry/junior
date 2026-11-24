@@ -12,7 +12,6 @@
 // path in `advanceTurn` runs it, and a redelivered message runs it again.
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
-import type { Source } from "@sentry/junior-plugin-api";
 import { withConversationEventLock } from "@/chat/conversations/sql/event-lock";
 import { publishDelivery } from "@/core/delivery/queue";
 import type { EngineContext } from "@/core/engine-context";
@@ -30,12 +29,6 @@ import {
   type TurnRecord,
 } from "@/core/turn/state";
 import { juniorTurnInbox } from "@/db/schema";
-
-/**
- * A `TurnInput` with the kind of the Source that sent it. A Turn that the
- * input creates keeps that Source.
- */
-type IncomingTurnInput = TurnInput & { source: Source["kind"] };
 
 /** The Turn that an input went to, and whether the input created it. */
 type ScheduleResult = { turnId: string; created: boolean };
@@ -69,9 +62,8 @@ function assignTurn(
 
 async function placeInput(
   { executor }: Pick<EngineContext, "executor">,
-  input: IncomingTurnInput,
+  input: TurnInput,
 ): Promise<Placement> {
-  const { source, ...inboxInput } = input;
   const existing = await findInputTurn({ executor }, input);
   if (existing) {
     // The source retries after a publish that failed after the commit. The
@@ -88,7 +80,7 @@ async function placeInput(
   );
   if ("join" in choice) {
     const { turnId } = choice.join;
-    await addInput({ executor }, { ...inboxInput, turnId });
+    await addInput({ executor }, { ...input, turnId });
     return { turnId, created: false, publish: false };
   }
   const turn = await createTurn(
@@ -96,11 +88,10 @@ async function placeInput(
     {
       conversationId: input.conversationId,
       actorIdentityId: input.actorIdentityId,
-      source,
       priority: choice.create.priority,
     },
   );
-  await addInput({ executor }, { ...inboxInput, turnId: turn.turnId });
+  await addInput({ executor }, { ...input, turnId: turn.turnId });
   return { turnId: turn.turnId, created: true, publish: true };
 }
 
@@ -112,7 +103,7 @@ async function placeInput(
  */
 export async function scheduleInput(
   { executor, queue }: Pick<EngineContext, "executor" | "queue">,
-  input: IncomingTurnInput,
+  input: TurnInput,
 ): Promise<ScheduleResult> {
   const placement = await withConversationEventLock(
     executor,
@@ -166,7 +157,6 @@ async function moveLeftovers(
           {
             conversationId: ended.conversationId,
             actorIdentityId: first.actorIdentityId,
-            source: ended.source,
             priority: choice.create.priority,
           },
         );

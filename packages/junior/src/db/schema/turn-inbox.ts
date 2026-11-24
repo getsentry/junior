@@ -1,3 +1,4 @@
+import type { Source } from "@sentry/junior-plugin-api";
 import { sql } from "drizzle-orm";
 import {
   check,
@@ -30,6 +31,9 @@ export const juniorTurnInbox = pgTable(
     actorIdentityId: text("actor_identity_id")
       .notNull()
       .references(() => juniorIdentities.id),
+    // The kind of the Source that sent this input. A Turn has no Source of
+    // its own: each of its inputs keeps the one that sent it.
+    source: text("source").$type<Source["kind"]>().notNull(),
     payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
     // The same key on every delivery of the input. The Source gives it, for
     // example the Slack message id or the `idempotencyKey` a web client sends.

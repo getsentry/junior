@@ -72,7 +72,6 @@ describe("Turn state", () => {
       actorIdentityId: "identity:actor",
       state: "queued",
       priority: 0,
-      source: "slack",
     });
     // The queue is the external edge: cancelTurn publishes the Turn.
     vi.spyOn(getQueueProvider(), "send").mockResolvedValue({});
@@ -116,6 +115,7 @@ describe("Turn state", () => {
         conversationId: CONVERSATION_ID,
         turnId,
         actorIdentityId: "identity:actor",
+        source: "slack",
         payload: { text },
         idempotencyKey: `slack-event:${inputId}`,
         sentAt: new Date(1_718_123_455_000),

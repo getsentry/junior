@@ -1,6 +1,7 @@
 // The inputs of a Turn. Each input row carries its Turn from the time it is
 // written, and its idempotency key is unique in the Conversation. An input is
 // read once the Conversation history has its event, keyed `inbox:<row id>`.
+import type { Source } from "@sentry/junior-plugin-api";
 import { and, asc, eq, inArray, notExists, sql } from "drizzle-orm";
 import type { EngineContext } from "@/core/engine-context";
 import type { Turn } from "@/core/turn/state";
@@ -19,6 +20,8 @@ import type { TurnInputTraceContext } from "@/db/schema/turn-inbox";
 export type TurnInput = {
   conversationId: string;
   actorIdentityId: string;
+  /** The kind of the Source that sent the input. */
+  source: Source["kind"];
   payload: Record<string, unknown>;
   /**
    * The same key on every delivery of this input, so a redelivery writes
