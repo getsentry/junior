@@ -42,10 +42,10 @@ not need a home stays a one-off Conversation.
   person.
 - A child Conversation is always in the Space of its root.
 - Each Space has exactly one Lead. A person has no Lead outside a Space.
-- A public Space is readable by anyone in the organization. Any person who
-  can read it can talk to its Lead. Its Conversations follow the usual
-  rules for public Conversations
-  ([Conversation access](../policies/conversation-access.md)).
+- A public Space is readable by anyone in the organization. Only its
+  members can talk to its Lead or start work in it, so a person joins the
+  Space first. Its Conversations follow the usual rules for public
+  Conversations ([Conversation access](../policies/conversation-access.md)).
 - A private Space is readable only by its members, like a private Slack
   channel. Its Conversations are private, and they share one audience: the
   members. A Conversation in a private Space can read the other
