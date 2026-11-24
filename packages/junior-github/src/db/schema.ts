@@ -50,11 +50,6 @@ export const juniorGitHubPullRequests = pgTable(
     repositoryId: text("repository_id").notNull(),
     repositoryFullName: text("repository_full_name").notNull(),
     number: integer("number").notNull(),
-    /**
-     * The GraphQL id, so one query can read the cards of many pull
-     * requests. Null until a webhook carries it.
-     */
-    nodeId: text("node_id"),
     state: text("state").$type<GitHubPullRequestState>().notNull(),
     commitComposition:
       text("commit_composition").$type<GitHubPullRequestCommitComposition>(),

@@ -141,13 +141,6 @@
       "when": 1795471772394,
       "tag": "0019_drop_github_issues",
       "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "7",
-      "when": 1795476477346,
-      "tag": "0020_pull_request_node_ids",
-      "breakpoints": true
     }
   ]
 }

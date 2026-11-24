@@ -15,8 +15,6 @@ const githubPullRequestOutcomeInputSchema = z
     closedAt: z.date().optional(),
     commitComposition: githubPullRequestCommitCompositionSchema.optional(),
     mergedAt: z.date().optional(),
-    /** The GraphQL id. When omitted, the stored id does not change. */
-    nodeId: z.string().min(1).optional(),
     number: z.number().int().positive(),
     openedAt: z.date(),
     pullRequestId: z.string().min(1),
@@ -50,7 +48,6 @@ function projectionValues(input: GitHubPullRequestOutcomeInput) {
       ? { commitComposition: input.commitComposition }
       : undefined),
     finishedAt: input.mergedAt ?? input.closedAt ?? null,
-    ...(input.nodeId ? { nodeId: input.nodeId } : undefined),
     number: input.number,
     openedAt: input.openedAt,
     repositoryFullName: input.repositoryFullName,

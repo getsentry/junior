@@ -20,7 +20,6 @@ import { mswServer } from "../../msw/server";
 const DASHBOARD = "https://junior.example.com";
 const BOT_EMAIL = "41898282+junior-test[bot]@users.noreply.github.com";
 const T0 = "2026-01-02T03:00:00Z";
-const T1 = "2026-01-02T04:00:00Z";
 
 function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
   return {
@@ -67,28 +66,90 @@ function checkRuns(counts: Record<string, number>) {
   };
 }
 
+/** A patch query names pull requests by id, a card query by number. */
 interface GraphqlQuery {
-  ids: string[];
+  ids?: string[];
+  numbers?: number[];
   operationName: string;
 }
 
-/** Answer each GraphQL query with the next nodes, and keep the queries. */
-function stubGraphql(answers: unknown[][]): GraphqlQuery[] {
+/**
+ * Answer GraphQL queries and keep them. A card query gets each pull request
+ * that it asks for and that `cards` has, or the HTTP status that `cards`
+ * returns for the numbers that it asks for. A patch query gets the next
+ * nodes of `patches`.
+ */
+function stubGraphql(answers: {
+  cards?: unknown[] | ((numbers: number[]) => unknown[] | number);
+  patches?: unknown[][];
+}): GraphqlQuery[] {
   const queries: GraphqlQuery[] = [];
   mswServer.use(
     http.post("https://api.github.com/graphql", async ({ request }) => {
-      const body = (await request.json()) as {
+      const { operationName, variables } = (await request.json()) as {
         operationName: string;
-        variables: { ids: string[] };
+        variables: Record<string, unknown>;
       };
-      queries.push({
-        ids: body.variables.ids,
-        operationName: body.operationName,
+      const ids = variables["ids"];
+      if (Array.isArray(ids)) {
+        queries.push({ ids: ids.map(String), operationName });
+        return HttpResponse.json({
+          data: { nodes: answers.patches?.shift() ?? [] },
+        });
+      }
+      const numbers = Object.entries(variables).flatMap(([name, value]) =>
+        name.startsWith("number") ? [Number(value)] : [],
+      );
+      queries.push({ numbers, operationName });
+      const cards =
+        typeof answers.cards === "function"
+          ? answers.cards(numbers)
+          : (answers.cards ?? []);
+      if (typeof cards === "number") {
+        return HttpResponse.json(
+          { message: "Server Error" },
+          { status: cards },
+        );
+      }
+      const byNumber = new Map(
+        cards.map((node) => [(node as { number: number }).number, node]),
+      );
+      return HttpResponse.json({
+        data: Object.fromEntries(
+          numbers.map((number, index) => [
+            `p${index}`,
+            byNumber.has(number) ? { pullRequest: byNumber.get(number) } : null,
+          ]),
+        ),
       });
-      return HttpResponse.json({ data: { nodes: answers.shift() ?? [] } });
     }),
   );
   return queries;
+}
+
+/** A card query result for one open pull request. */
+function cardNode(number: number) {
+  return {
+    additions: number,
+    author: { login: "junior-test[bot]" },
+    baseRefName: "main",
+    body: "Cache GitHub objects.",
+    changedFiles: 2,
+    commits: checkRuns({ SUCCESS: 2 }),
+    deletions: 1,
+    headRefName: `feat/${number}`,
+    headRefOid: "ddd444",
+    id: `PR_${number}`,
+    isDraft: number === 35,
+    mergeable: "MERGEABLE",
+    merged: false,
+    number,
+    reviewRequests: { nodes: [] },
+    state: "OPEN",
+    title: `Renamed ${number}`,
+    updatedAt: "2026-01-02T06:00:00Z",
+    url: `${GITHUB_REPO}/pull/${number}`,
+  };
 }
 
 describe("GitHub pull request cache refresh", () => {
@@ -116,26 +177,28 @@ describe("GitHub pull request cache refresh", () => {
         return HttpResponse.json(pullRequest(34));
       }),
     );
-    const queries = stubGraphql([
-      [
-        {
-          commits: checkRuns({ FAILURE: 1, IN_PROGRESS: 2, SUCCESS: 3 }),
-          headRefOid: "ccc333",
-          id: "PR_34",
-          mergeable: "CONFLICTING",
-          updatedAt: "2026-01-02T03:00:12Z",
-        },
+    const queries = stubGraphql({
+      patches: [
+        [
+          {
+            commits: checkRuns({ FAILURE: 1, IN_PROGRESS: 2, SUCCESS: 3 }),
+            headRefOid: "ccc333",
+            id: "PR_34",
+            mergeable: "CONFLICTING",
+            updatedAt: "2026-01-02T03:00:12Z",
+          },
+        ],
+        [
+          {
+            commits: checkRuns({ FAILURE: 1, SUCCESS: 5 }),
+            headRefOid: "ccc333",
+            id: "PR_34",
+            mergeable: "CONFLICTING",
+            updatedAt: "2026-01-02T03:00:12Z",
+          },
+        ],
       ],
-      [
-        {
-          commits: checkRuns({ FAILURE: 1, SUCCESS: 5 }),
-          headRefOid: "ccc333",
-          id: "PR_34",
-          mergeable: "CONFLICTING",
-          updatedAt: "2026-01-02T03:00:12Z",
-        },
-      ],
-    ]);
+    });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -173,8 +236,10 @@ describe("GitHub pull request cache refresh", () => {
 
     vi.setSystemTime(start + 60_000);
     await runTestHeartbeat(queue, Date.now());
-    // One query reads only the merge state and checks, not the whole entry.
+    // The page query has no card for #34, so it read on its own. Then one
+    // query reads only the merge state and checks, not the whole entry.
     expect(queries).toEqual([
+      { numbers: [34], operationName: "PullRequestCards" },
       { ids: ["PR_34"], operationName: "PullRequestHeadFacts" },
     ]);
     expect(reads).toEqual(["pulls/34"]);
@@ -202,7 +267,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     vi.setSystemTime(start + 120_000);
     await runTestHeartbeat(queue, Date.now());
-    expect(queries).toHaveLength(2);
+    expect(queries).toHaveLength(3);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 1, passed: 5, pending: 0 },
       mergeable: false,
@@ -210,41 +275,17 @@ describe("GitHub pull request cache refresh", () => {
     expect(reads).toEqual(["pulls/34"]);
   });
 
-  it("reads a page of stale pull request cards in one query, and adds an older pull request after one read", async () => {
+  it("reads a page of stale pull request cards in one query", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
     const reads: string[] = [];
     mswServer.use(
       http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
-        const number = Number(params["number"]);
-        reads.push(`pulls/${number}`);
-        return number === 36
-          ? HttpResponse.json(pullRequest(36, { updated_at: T1 }))
-          : HttpResponse.json({ message: "Server Error" }, { status: 502 });
+        reads.push(`pulls/${String(params["number"])}`);
+        return HttpResponse.json({ message: "Server Error" }, { status: 502 });
       }),
     );
-    const node = (number: number) => ({
-      additions: number,
-      author: { login: "junior-test[bot]" },
-      baseRefName: "main",
-      body: "Cache GitHub objects.",
-      changedFiles: 2,
-      commits: checkRuns({ SUCCESS: 2 }),
-      deletions: 1,
-      headRefName: `feat/${number}`,
-      headRefOid: "ddd444",
-      id: `PR_${number}`,
-      isDraft: number === 35,
-      mergeable: "MERGEABLE",
-      merged: false,
-      number,
-      reviewRequests: { nodes: [] },
-      state: "OPEN",
-      title: `Renamed ${number}`,
-      updatedAt: "2026-01-02T06:00:00Z",
-      url: `${GITHUB_REPO}/pull/${number}`,
-    });
-    const queries = stubGraphql([[34, 35].map(node), [34, 35, 36].map(node)]);
+    const queries = stubGraphql({ cards: [34, 35, 36].map(cardNode) });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -253,14 +294,11 @@ describe("GitHub pull request cache refresh", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
-    // Junior's own pull requests: the webhook stores their GraphQL ids. The
-    // row of #36 is from before Junior stored them.
     for (const number of [34, 35, 36]) {
       await sendGitHubWebhook(app, "pull_request", {
         action: "opened",
         pull_request: pullRequest(number, {
           body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
-          node_id: number === 36 ? undefined : `PR_${number}`,
           user: { login: "junior-test[bot]" },
         }),
       });
@@ -274,10 +312,9 @@ describe("GitHub pull request cache refresh", () => {
     vi.setSystemTime(start + 61 * 60_000);
     const cards = (await read(...urls)).objects;
     expect(queries).toEqual([
-      { ids: ["PR_34", "PR_35"], operationName: "PullRequestCards" },
+      { numbers: [34, 35, 36], operationName: "PullRequestCards" },
     ]);
-    // Only the pull request with no stored id reads on its own.
-    expect(reads).toEqual(["pulls/36"]);
+    expect(reads).toEqual([]);
     expect(cards.get(urls[0]!)).toMatchObject({
       facts: { additions: 34, checks: { failed: 0, passed: 2, pending: 0 } },
       status: "open",
@@ -287,24 +324,54 @@ describe("GitHub pull request cache refresh", () => {
       status: "draft",
       title: "Renamed 35",
     });
+    expect(cards.get(urls[2]!)).toMatchObject({ title: "Renamed 36" });
+  });
 
-    // That read stored its id, so the next page reads all three at once.
-    vi.setSystemTime(start + 122 * 60_000);
-    expect((await read(...urls)).objects.get(urls[2]!)).toMatchObject({
-      title: "Renamed 36",
+  it("splits a failed card query in halves, and each half reads its cards", async () => {
+    stubGitHubApp();
+    const reads: string[] = [];
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
+        reads.push(`pulls/${String(params["number"])}`);
+        return HttpResponse.json({ message: "Server Error" }, { status: 502 });
+      }),
+    );
+    const numbers = Array.from({ length: 27 }, (_, index) => 34 + index);
+    const nodes = numbers.map(cardNode);
+    // A query of more than 13 pull requests fails.
+    const queries = stubGraphql({
+      cards: (asked) => (asked.length > 13 ? 502 : nodes),
     });
-    expect(queries.at(-1)).toEqual({
-      ids: ["PR_34", "PR_35", "PR_36"],
-      operationName: "PullRequestCards",
-    });
-    expect(reads).toEqual(["pulls/36"]);
+    await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const urls = numbers.map((number) => `${GITHUB_REPO}/pull/${number}`);
+
+    const cards = (await read(...urls)).objects;
+    // A page reads at most 25 pull requests in one query. The failed query
+    // splits in halves.
+    const asked = queries.map((query) => query.numbers);
+    expect(asked).toHaveLength(4);
+    expect(asked).toEqual(
+      expect.arrayContaining([
+        numbers.slice(0, 25),
+        numbers.slice(25),
+        numbers.slice(0, 13),
+        numbers.slice(13, 25),
+      ]),
+    );
+    expect(reads).toEqual([]);
+    expect(urls.map((url) => cards.get(url)?.title)).toEqual(
+      numbers.map((number) => `Renamed ${number}`),
+    );
   });
 
   it("shows an unknown merge state from a page read as pending, then a patch reads it", async () => {
     stubGitHubApp();
     vi.stubEnv("GITHUB_APP_BOT_EMAIL", BOT_EMAIL);
-    const queries = stubGraphql([
-      [
+    const queries = stubGraphql({
+      cards: [
         {
           additions: 34,
           author: { login: "junior-test[bot]" },
@@ -328,16 +395,18 @@ describe("GitHub pull request cache refresh", () => {
           url: `${GITHUB_REPO}/pull/34`,
         },
       ],
-      [
-        {
-          commits: checkRuns({ SUCCESS: 2 }),
-          headRefOid: "ddd444",
-          id: "PR_34",
-          mergeable: "MERGEABLE",
-          updatedAt: "2026-01-02T03:30:00Z",
-        },
+      patches: [
+        [
+          {
+            commits: checkRuns({ SUCCESS: 2 }),
+            headRefOid: "ddd444",
+            id: "PR_34",
+            mergeable: "MERGEABLE",
+            updatedAt: "2026-01-02T03:30:00Z",
+          },
+        ],
       ],
-    ]);
+    });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -347,7 +416,6 @@ describe("GitHub pull request cache refresh", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
-    // Junior's own pull request: the webhook stores its GraphQL id.
     await sendGitHubWebhook(app, "pull_request", {
       action: "opened",
       pull_request: pullRequest(34, {
@@ -389,13 +457,15 @@ describe("GitHub pull request cache refresh", () => {
     ];
     // GitHub computes the merge state of the first push for four reads,
     // then of the second push for one more.
-    const queries = stubGraphql([
-      ...Array.from({ length: 4 }, () =>
-        headFacts("bbb222", "UNKNOWN", "2026-01-02T03:00:10Z"),
-      ),
-      headFacts("ccc333", "UNKNOWN", "2026-01-02T03:04:30Z"),
-      headFacts("ccc333", "MERGEABLE", "2026-01-02T03:04:30Z"),
-    ]);
+    const queries = stubGraphql({
+      patches: [
+        ...Array.from({ length: 4 }, () =>
+          headFacts("bbb222", "UNKNOWN", "2026-01-02T03:00:10Z"),
+        ),
+        headFacts("ccc333", "UNKNOWN", "2026-01-02T03:04:30Z"),
+        headFacts("ccc333", "MERGEABLE", "2026-01-02T03:04:30Z"),
+      ],
+    });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -431,7 +501,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     vi.setSystemTime(start + 6 * 60_000);
     await runTestHeartbeat(queue, Date.now());
-    expect(queries).toHaveLength(6);
+    expect(queries).toHaveLength(7);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       mergeable: true,
     });
@@ -454,10 +524,12 @@ describe("GitHub pull request cache refresh", () => {
       },
     ];
     // The first read is from before the label.
-    const queries = stubGraphql([
-      headFacts("2026-01-02T03:00:10Z"),
-      headFacts("2026-01-02T03:00:30Z"),
-    ]);
+    const queries = stubGraphql({
+      patches: [
+        headFacts("2026-01-02T03:00:10Z"),
+        headFacts("2026-01-02T03:00:30Z"),
+      ],
+    });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -489,7 +561,7 @@ describe("GitHub pull request cache refresh", () => {
     });
     vi.setSystemTime(start + 120_000);
     await runTestHeartbeat(queue, Date.now());
-    expect(queries).toHaveLength(2);
+    expect(queries).toHaveLength(3);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
       checks: { failed: 0, passed: 4, pending: 0 },
       mergeable: true,

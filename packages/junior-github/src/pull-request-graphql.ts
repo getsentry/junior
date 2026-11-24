@@ -39,7 +39,7 @@ export const pullRequestHeadFactsNodeSchema = z.object({
   updatedAt: z.string(),
 });
 
-/** One node of `PULL_REQUEST_CARDS`. */
+/** One pull request of `pullRequestCards`. */
 export const pullRequestCardNodeSchema = pullRequestHeadFactsNodeSchema.extend({
   additions: z.number().int().nonnegative(),
   author: z.object({ login: z.string() }).nullable(),
@@ -118,7 +118,7 @@ export function githubMergeable(
   return value === "UNKNOWN" ? null : value === "MERGEABLE";
 }
 
-/** Read one `PULL_REQUEST_CARDS` node into the cached REST fields. */
+/** Read one `pullRequestCards` pull request into the cached REST fields. */
 export function githubPullRequestFieldsFromNode(
   node: z.output<typeof pullRequestCardNodeSchema>,
 ): GitHubPullRequestFields {

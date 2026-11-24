@@ -420,48 +420,47 @@ export function pullRequestLifecycles(count: number): GitHubGraphqlOperation {
   );
 }
 
-/**
- * Read the card fields of many pull requests, at most 100 ids per query.
- * The check run counts are of each head commit. The App has no commit
- * status permission, so statuses do not count.
- */
-export const PULL_REQUEST_CARDS = githubGraphql(`
-  query PullRequestCards($ids: [ID!]!) {
-    nodes(ids: $ids) {
-      ... on PullRequest {
-        id
-        url
-        number
-        state
-        title
-        body
-        updatedAt
-        author { login }
-        isDraft
-        merged
-        headRefName
-        headRefOid
-        baseRefName
-        mergeable
-        additions
-        deletions
-        changedFiles
-        reviewRequests(first: 5) {
-          nodes {
-            requestedReviewer {
-              ... on User { login }
-              ... on Bot { login }
-            }
-          }
+// The card fields of one pull request. `pullRequestCards` repeats its
+// `repository` field and variables for each pull request.
+const PULL_REQUEST_CARD = githubGraphql(`
+  query PullRequestCards($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) { ...Card }
+    }
+  }
+
+  fragment Card on PullRequest {
+    id
+    url
+    number
+    state
+    title
+    body
+    updatedAt
+    author { login }
+    isDraft
+    merged
+    headRefName
+    headRefOid
+    baseRefName
+    mergeable
+    additions
+    deletions
+    changedFiles
+    reviewRequests(first: 5) {
+      nodes {
+        requestedReviewer {
+          ... on User { login }
+          ... on Bot { login }
         }
-        commits(last: 1) {
-          nodes {
-            commit {
-              statusCheckRollup {
-                contexts(first: 1) {
-                  checkRunCountsByState { state count }
-                }
-              }
+      }
+    }
+    commits(last: 1) {
+      nodes {
+        commit {
+          statusCheckRollup {
+            contexts(first: 1) {
+              checkRunCountsByState { state count }
             }
           }
         }
@@ -469,6 +468,54 @@ export const PULL_REQUEST_CARDS = githubGraphql(`
     }
   }
 `);
+
+/**
+ * Return the query that reads the cards of `count` pull requests by
+ * repository and number. Pull request `i` has the alias `p<i>` and the
+ * variables `$owner<i>`, `$name<i>`, and `$number<i>`. The check run counts
+ * are of each head commit. The App has no commit status permission, so
+ * statuses do not count.
+ */
+export function pullRequestCards(count: number): GitHubGraphqlOperation {
+  const document = parse(PULL_REQUEST_CARD.query);
+  const indexes = Array.from({ length: count }, (_, index) => index);
+  const indexed = (variable: VariableNode, index: number): VariableNode => ({
+    ...variable,
+    name: { kind: Kind.NAME, value: `${variable.name.value}${index}` },
+  });
+  return operation({
+    ...document,
+    definitions: document.definitions.map((definition) =>
+      definition.kind === Kind.OPERATION_DEFINITION
+        ? {
+            ...definition,
+            variableDefinitions: indexes.flatMap((index) =>
+              (definition.variableDefinitions ?? []).map((variable) => ({
+                ...variable,
+                variable: indexed(variable.variable, index),
+              })),
+            ),
+            selectionSet: {
+              ...definition.selectionSet,
+              selections: indexes.flatMap((index) =>
+                definition.selectionSet.selections.map((selection) => {
+                  const renamed = visit(selection, {
+                    Variable: (variable) => indexed(variable, index),
+                  });
+                  return renamed.kind === Kind.FIELD
+                    ? {
+                        ...renamed,
+                        alias: { kind: Kind.NAME, value: `p${index}` },
+                      }
+                    : renamed;
+                }),
+              ),
+            },
+          }
+        : definition,
+    ),
+  });
+}
 
 /**
  * Read only the merge state and check counts of many pull requests, for
