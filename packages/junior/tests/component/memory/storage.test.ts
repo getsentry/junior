@@ -101,6 +101,7 @@ function memoryHeartbeatContext(args: {
       list: vi.fn(),
       record: vi.fn(),
       recordActivity: vi.fn(),
+      recordRepository: vi.fn(),
     },
     conversationChanges: { apply: vi.fn() },
     db: memoryDb(args.fixture),

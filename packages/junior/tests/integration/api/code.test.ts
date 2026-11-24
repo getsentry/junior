@@ -439,7 +439,7 @@ describe("code API", () => {
     }
   });
 
-  test("lets a plugin read its code changes by repository, state, and age", async () => {
+  test("lets a plugin read its code changes by repository, state, and age, and rename the repository", async () => {
     const fixture = createConfiguredJuniorSqlFixture();
     try {
       await migrateSchema(fixture.sql);
@@ -500,6 +500,22 @@ describe("code API", () => {
       await expect(
         numbers({ conversationIds: ["conversation-1", "conversation-3"] }),
       ).resolves.toEqual([1, 3]);
+
+      // A newer name renames the repository of every code change in it. An
+      // older name does not move it back.
+      await github.recordRepository({
+        name: "getsentry/junior-next",
+        providerId: "repository-1",
+        updatedAt: new Date("2026-08-06T12:00:00.000Z"),
+      });
+      await github.recordRepository({
+        name: "getsentry/Junior",
+        providerId: "repository-1",
+        updatedAt: new Date("2026-08-05T12:00:00.000Z"),
+      });
+      await expect(
+        numbers({ repository: { name: "getsentry/junior-next" } }),
+      ).resolves.toEqual([2, 1, 3]);
     } finally {
       await fixture.close();
     }

@@ -36,6 +36,17 @@ export const codeChangeInputSchema = z
 
 export type CodeChangeInput = z.input<typeof codeChangeInputSchema>;
 
+export const codeRepositoryInputSchema = z
+  .object({
+    name: z.string().min(1),
+    providerId: z.string().min(1),
+    /** When the provider had this name. */
+    updatedAt: z.date(),
+  })
+  .strict();
+
+export type CodeRepositoryInput = z.input<typeof codeRepositoryInputSchema>;
+
 export const codeChangeFilterSchema = z
   .object({
     /** Code changes linked to any of these Conversations. */
@@ -79,6 +90,11 @@ export interface PluginCodeChanges {
    */
   list(filter: CodeChangeFilter): Promise<CodeChange[]>;
   record(input: CodeChangeInput): Promise<void>;
+  /**
+   * Record the name of a repository that this plugin's code changes are in.
+   * An older update does not move the name back.
+   */
+  recordRepository(input: CodeRepositoryInput): Promise<void>;
   /**
    * Record a push, review, or comment by a person on a code change. Junior
    * ignores activity on code changes that it did not record.

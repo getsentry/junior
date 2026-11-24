@@ -83,6 +83,13 @@ export function memoryCodeIndex() {
       store(input);
     },
     async recordActivity() {},
+    async recordRepository(input) {
+      for (const change of changes.values()) {
+        if (change.repository.providerId === input.providerId) {
+          change.repository.name = input.name;
+        }
+      }
+    },
   };
   return {
     codeChanges,
