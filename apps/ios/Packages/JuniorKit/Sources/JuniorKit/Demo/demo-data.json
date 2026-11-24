@@ -5,6 +5,7 @@
       "conversation": {
         "conversationId": "slack:CQA123:1770003600.000200",
         "title": "Investigate checkout latency",
+        "summary": "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
         "status": "working",
         "turnActive": true,
         "surface": "slack",
@@ -13,44 +14,6 @@
         "startedAt": "2026-08-07T11:54:00.000Z",
         "lastSeenAt": "2026-08-07T11:59:50.000Z",
         "url": "https://demo.junior.invalid/conversations/slack%3ACQA123%3A1770003600.000200"
-      },
-      "brief": {
-        "summary": "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
-        "intent": "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans.",
-        "outcome": {
-          "status": "in_progress",
-          "text": "The deployment correlation is confirmed. The span comparison is still running."
-        },
-        "decisions": [
-          {
-            "text": "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
-            "by": "Morgan Lee",
-            "kind": "stated"
-          },
-          {
-            "text": "Use checkout.complete p95 as the primary comparison signal.",
-            "kind": "assumed"
-          }
-        ],
-        "facts": [
-          "Checkout p95 increased from 210ms to 890ms.",
-          "Error volume stayed flat during the latency increase."
-        ],
-        "links": [
-          {
-            "kind": "code_change",
-            "label": "getsentry/payments#42",
-            "url": "https://github.com/getsentry/payments/pull/42",
-            "status": "open"
-          },
-          {
-            "kind": "resource",
-            "label": "Checkout latency dashboard",
-            "url": "https://sentry.example.com/organizations/acme/explore/traces/",
-            "status": "open"
-          }
-        ],
-        "updatedAt": "2026-08-07T11:59:00.000Z"
       },
       "messages": [
         {
@@ -259,6 +222,7 @@
       "conversation": {
         "conversationId": "slack:CQA123:1770000000.000100",
         "title": "Checkout latency triage",
+        "summary": "The checkout regression was traced to payments-v42. PAYMENTS-42 contained 418 events. The team chose to roll it back and merged the change that restored normal latency.",
         "status": "done",
         "turnActive": false,
         "surface": "slack",
@@ -266,40 +230,6 @@
         "startedAt": "2026-08-07T11:16:00.000Z",
         "lastSeenAt": "2026-08-07T11:19:00.000Z",
         "url": "https://demo.junior.invalid/conversations/slack%3ACQA123%3A1770000000.000100"
-      },
-      "brief": {
-        "summary": "The checkout regression was traced to payments-v42. The team chose to roll it back and merged the change that restored normal latency.",
-        "intent": "Draft the rollback note with the exact evidence for the checkout latency regression.",
-        "outcome": {
-          "status": "done",
-          "text": "The rollback note was completed and the rollback change was merged."
-        },
-        "decisions": [
-          {
-            "text": "Roll back payments-v42 instead of patching the serializer in place.",
-            "by": "Morgan Lee",
-            "kind": "confirmed"
-          }
-        ],
-        "facts": [
-          "PAYMENTS-42 contained 418 events.",
-          "The regression started with payments-v42."
-        ],
-        "links": [
-          {
-            "kind": "code_change",
-            "label": "getsentry/payments#77",
-            "url": "https://github.com/getsentry/payments/pull/77",
-            "status": "merged"
-          },
-          {
-            "kind": "resource",
-            "label": "Checkout latency dashboard",
-            "url": "https://sentry.example.com/organizations/acme/explore/traces/",
-            "status": "resolved"
-          }
-        ],
-        "updatedAt": "2026-08-07T11:19:00.000Z"
       },
       "messages": [],
       "pendingMessages": [],
@@ -509,6 +439,7 @@
       "conversation": {
         "conversationId": "slack:CQA456:1770028800.000900",
         "title": "Triage Sentaur GoCD deployment failures",
+        "summary": "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
         "status": "done",
         "turnActive": false,
         "surface": "slack",
@@ -516,44 +447,6 @@
         "startedAt": "2026-08-06T10:00:00.000Z",
         "lastSeenAt": "2026-08-06T11:00:00.000Z",
         "url": "https://demo.junior.invalid/conversations/slack%3ACQA456%3A1770028800.000900"
-      },
-      "brief": {
-        "summary": "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
-        "intent": "Find why the Sentaur GoCD deploys fail and land the fixes for each stage.",
-        "outcome": {
-          "status": "in_progress",
-          "text": "The canary retry and the soak gate are in review."
-        },
-        "decisions": [
-          {
-            "text": "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
-            "by": "Morgan Lee",
-            "kind": "stated"
-          },
-          {
-            "text": "Use checkout.complete p95 as the primary comparison signal.",
-            "kind": "assumed"
-          }
-        ],
-        "facts": [
-          "Checkout p95 increased from 210ms to 890ms.",
-          "Error volume stayed flat during the latency increase."
-        ],
-        "links": [
-          {
-            "kind": "code_change",
-            "label": "getsentry/payments#42",
-            "url": "https://github.com/getsentry/payments/pull/42",
-            "status": "open"
-          },
-          {
-            "kind": "resource",
-            "label": "Checkout latency dashboard",
-            "url": "https://sentry.example.com/organizations/acme/explore/traces/",
-            "status": "open"
-          }
-        ],
-        "updatedAt": "2026-08-07T11:59:00.000Z"
       },
       "messages": [
         {
@@ -1145,6 +1038,19 @@
   ],
   "inboxItems": [
     {
+      "id": "qa-todo-preview-deploy",
+      "kind": "action",
+      "status": "open",
+      "title": "Approve the preview deploy",
+      "body": "Check the preview before the deploy goes out.",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": [],
+      "createdAt": "2026-08-07T11:54:00.000Z",
+      "updatedAt": "2026-08-07T11:54:00.000Z",
+      "url": "https://demo.junior.invalid/inbox?item=qa-todo-preview-deploy"
+    },
+    {
       "id": "qa-ready-2201",
       "kind": "action",
       "status": "open",
@@ -1407,6 +1313,19 @@
       "createdAt": "2026-08-07T10:31:00.000Z",
       "updatedAt": "2026-08-07T10:31:00.000Z",
       "url": "https://demo.junior.invalid/review?item=qa-review-91"
+    },
+    {
+      "id": "qa-reply-dashboard-qa",
+      "kind": "notice",
+      "status": "open",
+      "title": "Dashboard QA edge cases",
+      "body": "I mean the empty, loading, and failed transcript states.",
+      "assignees": ["Dashboard User"],
+      "canAct": true,
+      "conversationIds": ["internal:dashboard-qa"],
+      "createdAt": "2026-08-07T07:00:58.000Z",
+      "updatedAt": "2026-08-07T07:01:09.000Z",
+      "url": "https://demo.junior.invalid/inbox?item=qa-reply-dashboard-qa"
     },
     {
       "id": "qa-digest-skipped",

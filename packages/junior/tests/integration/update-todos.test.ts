@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { spawnChildAgent } from "@/chat/agent-invocations/create";
 import { createDeliverToParent } from "@/chat/agent-invocations/result";
 import type { ParentResult } from "@/chat/agent-invocations/parent-result";
@@ -84,6 +84,7 @@ async function createHarness() {
 
 describe("updateTodos", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await disconnectStateAdapter();
   });
 
@@ -317,32 +318,49 @@ describe("updateTodos", () => {
     }
   });
 
-  it("drops a child's open To-dos when its stopped result arrives", async () => {
+  it("closes a child's open To-dos once its completed or stopped result reaches the parent after them", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const tick = () => vi.setSystemTime(Date.now() + 1_000);
     const harness = await createHarness();
     try {
       const children = {
-        stopped: harness.childConversationId,
+        completed: harness.childConversationId,
+        stopped: await harness.spawn("Foxtrot"),
         failed: await harness.spawn("Golf"),
         blocked: await harness.spawn("Hotel"),
       };
+      const reply: ParentResult = {
+        kind: "reply",
+        reply: { text: "Reviewed.", toolCallId: "call-reply" },
+      };
+      tick();
       await harness.updateTodos({
         add: [
           { title: "Echo open", assignee: "Echo" },
           { title: "Echo started", assignee: "Echo", status: "in_progress" },
           { title: "Echo dropped", assignee: "Echo", status: "dropped" },
+          { title: "Foxtrot open", assignee: "Foxtrot" },
           { title: "Golf open", assignee: "Golf" },
           { title: "Hotel open", assignee: "Hotel" },
           { title: "Parent open" },
         ],
       });
 
+      tick();
+      await harness.send(children.completed, reply);
       for (const kind of ["stopped", "failed", "blocked"] as const) {
         await harness.send(children[kind], { kind, text: `Child ${kind}.` });
       }
       // A retry of the same result leaves To-dos assigned after it open.
+      tick();
       await harness.updateTodos({
-        add: [{ title: "Echo next", assignee: "Echo" }],
+        add: [
+          { title: "Echo next", assignee: "Echo" },
+          { title: "Foxtrot next", assignee: "Foxtrot" },
+        ],
       });
+      tick();
+      await harness.send(children.completed, reply);
       await harness.send(children.stopped, {
         kind: "stopped",
         text: "Child stopped.",
@@ -359,13 +377,15 @@ describe("updateTodos", () => {
           todo.changedByAgent?.name,
         ]),
       ).toEqual([
-        ["Echo open", "dropped", "Echo"],
-        ["Echo started", "dropped", "Echo"],
+        ["Echo open", "done", "Echo"],
+        ["Echo started", "done", "Echo"],
         ["Echo dropped", "dropped", undefined],
+        ["Foxtrot open", "dropped", "Foxtrot"],
         ["Golf open", "open", undefined],
         ["Hotel open", "open", undefined],
         ["Parent open", "open", undefined],
         ["Echo next", "open", undefined],
+        ["Foxtrot next", "open", undefined],
       ]);
     } finally {
       await harness.close();

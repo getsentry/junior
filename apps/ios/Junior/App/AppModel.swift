@@ -74,7 +74,7 @@ final class AppModel {
   init(launch: LaunchOptions = .current) {
     let defaults = UserDefaults.standard
     let savedURL = defaults.string(forKey: "serverURL").flatMap(URL.init(string:))
-    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? URL(string: "http://127.0.0.1:4317")!)
+    let server = JuniorServer(baseURL: launch.server ?? savedURL ?? JuniorServer.production.baseURL)
     #if DEBUG
       // Screenshots and UI tests start signed in to the mock server, or
       // signed out to run the sign-in flow.
@@ -167,10 +167,10 @@ final class AppModel {
     await refreshInboxCount()
   }
 
-  /// Open Inbox items that wait on the viewer.
+  /// Open Inbox items that wait on the viewer, as the dashboard badge counts.
   func refreshInboxCount() async {
     if let list = try? await call("searchInboxItems", ["limit": 50], as: InboxItemList.self) {
-      inboxCount = list.items.filter(\.canAct).count
+      inboxCount = list.items.filter(\.needsViewer).count
     }
   }
 

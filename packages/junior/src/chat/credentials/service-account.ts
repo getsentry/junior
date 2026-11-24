@@ -17,11 +17,14 @@
  *
  * This module is the one place that decides which requests the service
  * account may serve. Each request surface asks it before it uses the shared
- * account. Today MCP tools are the only request kind.
+ * account. An MCP plugin lists the MCP tools it may call. A plugin with a
+ * top-level `oauth` block lists the operations that its host code passes to
+ * `egress.fetch`. Sandbox egress names no operation, so commands that the
+ * model writes never get the shared account.
  *
  * This module also owns the connect flow that the dashboard Admin page and
- * the `junior service-account` CLI share. Today MCP is the only surface that
- * stores a service account.
+ * the `junior service-account` CLI share. The MCP surface stores MCP OAuth
+ * state, and the OAuth surface stores provider tokens.
  */
 import {
   deleteMcpServiceAccountCredentials,
@@ -29,22 +32,30 @@ import {
   getMcpServiceAccountCredentials,
   startMcpServiceAccountSignIn,
 } from "@/chat/mcp/service-account";
+import {
+  deleteOAuthServiceAccountCredentials,
+  finishOAuthServiceAccountSignIn,
+  getOAuthServiceAccountCredentials,
+  startOAuthServiceAccountSignIn,
+} from "@/chat/plugins/auth/oauth-service-account";
 import type { PluginDefinition, PluginManifest } from "@/chat/plugins/types";
 
 /** One request that a plugin's service account could serve. */
-export interface ServiceAccountRequest {
+export type ServiceAccountRequest =
   /** Provider MCP tool that the request calls. */
-  tool: string;
-}
+  | { tool: string }
+  /** Operation that plugin host code passed to `egress.fetch`. */
+  | { operation: string };
 
 /** Return whether the plugin's service account may serve this request. */
 export function serviceAccountAllows(
   manifest: Pick<PluginManifest, "accounts">,
   request: ServiceAccountRequest,
 ): boolean {
-  return (
-    manifest.accounts?.serviceAccount?.tools.includes(request.tool) ?? false
-  );
+  const serviceAccount = manifest.accounts?.serviceAccount;
+  return "tool" in request
+    ? (serviceAccount?.tools?.includes(request.tool) ?? false)
+    : (serviceAccount?.operations?.includes(request.operation) ?? false);
 }
 
 /**
@@ -67,6 +78,8 @@ export interface ServiceAccountStatus {
   userOAuth: boolean;
   /** MCP tools that the account may call. */
   tools: string[];
+  /** `egress.fetch` operations that the account may serve. */
+  operations: string[];
   connected: boolean;
   connectedAt?: string;
   /** Email of the Admin who connected it. Missing for CLI connections. */
@@ -89,12 +102,15 @@ export async function getServiceAccountStatus(
   if (!serviceAccount) {
     throw new Error(`Plugin ${manifest.name} does not allow a service account`);
   }
-  const credentials = await getMcpServiceAccountCredentials(manifest.name);
+  const credentials = manifest.mcp
+    ? await getMcpServiceAccountCredentials(manifest.name)
+    : await getOAuthServiceAccountCredentials(manifest.name);
   return {
     provider: manifest.name,
     displayName: manifest.displayName,
     userOAuth: !serviceAccountOnly(manifest),
-    tools: serviceAccount.tools,
+    tools: serviceAccount.tools ?? [],
+    operations: serviceAccount.operations ?? [],
     connected: Boolean(credentials),
     ...(credentials
       ? { connectedAt: new Date(credentials.connectedAtMs).toISOString() }
@@ -116,7 +132,9 @@ export async function startServiceAccountSignIn(input: {
   redirectUrl: string;
   startedBy?: string;
 }): Promise<{ authorizationUrl: URL }> {
-  return await startMcpServiceAccountSignIn(input);
+  return input.plugin.manifest.mcp
+    ? await startMcpServiceAccountSignIn(input)
+    : await startOAuthServiceAccountSignIn(input);
 }
 
 /**
@@ -130,6 +148,9 @@ export async function finishServiceAccountSignIn(input: {
   connectedBy?: string;
   plugin: PluginDefinition;
 }): Promise<{ ok: true } | { ok: false; message: string }> {
+  if (!input.plugin.manifest.mcp) {
+    return await finishOAuthServiceAccountSignIn(input);
+  }
   const result = await finishMcpServiceAccountSignIn(input);
   return result.ok ? { ok: true } : result;
 }
@@ -142,5 +163,7 @@ export async function finishServiceAccountSignIn(input: {
 export async function disconnectServiceAccount(
   plugin: PluginDefinition,
 ): Promise<void> {
-  await deleteMcpServiceAccountCredentials(plugin.manifest.name);
+  await (plugin.manifest.mcp
+    ? deleteMcpServiceAccountCredentials(plugin.manifest.name)
+    : deleteOAuthServiceAccountCredentials(plugin.manifest.name));
 }

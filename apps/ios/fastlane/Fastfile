@@ -61,6 +61,8 @@ platform :ios do
     # TestFlight owns the build number, and the latest server release tag is
     # the version, so a beta commits nothing.
     build = latest_testflight_build_number(api_key: key, initial_build_number: 0) + 1
+    # ios-beta.yml reports the build number on the pull request.
+    File.open(ENV["GITHUB_OUTPUT"], "a") { |file| file.puts("build=#{build}") } if ENV["GITHUB_OUTPUT"]
     beta = prepare_beta
     UI.message("Junior #{beta["version"]} #{beta["channel"]} #{build} (#{beta["commit"]})")
 

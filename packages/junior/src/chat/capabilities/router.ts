@@ -7,6 +7,7 @@ import type { CredentialContext } from "@/chat/credentials/context";
 export interface CredentialRouter {
   issue(input: {
     context: CredentialContext;
+    operation?: string;
     provider: string;
     reason: string;
   }): Promise<CredentialLease>;
@@ -21,6 +22,7 @@ export class ProviderCredentialRouter implements CredentialRouter {
 
   async issue(input: {
     context: CredentialContext;
+    operation?: string;
     provider: string;
     reason: string;
   }): Promise<CredentialLease> {
@@ -33,6 +35,7 @@ export class ProviderCredentialRouter implements CredentialRouter {
 
     return await broker.issue({
       context: input.context,
+      ...(input.operation ? { operation: input.operation } : undefined),
       reason: input.reason,
     });
   }

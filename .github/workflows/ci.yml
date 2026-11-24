@@ -51,6 +51,7 @@ jobs:
               - .github/actions/**
               - "!.github/workflows/ios.yml"
               - "!.github/workflows/ios-beta.yml"
+              - "!.github/workflows/ios-beta-label.yml"
             core:
               - packages/junior/**
               - packages/junior-plugin-api/**
@@ -74,6 +75,7 @@ jobs:
               - apps/ios/**
               - .github/workflows/ios.yml
               - .github/workflows/ios-beta.yml
+              - .github/workflows/ios-beta-label.yml
             # Only lint reads these. Listing them keeps a change to them from
             # counting as unknown, which runs every job.
             lint_config:

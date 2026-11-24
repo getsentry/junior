@@ -38,11 +38,11 @@ final class InboxModel {
     } catch {}
   }
 
-  /// "Needs you" (questions the viewer can answer) and "FYI", newest first.
+  /// "Needs you" (the items that the badge counts) and "FYI", newest first.
   var groups: [(id: String, title: String, items: [InboxItem])] {
     let newest = items.sorted { ($0.createdAt.date ?? .distantPast) > ($1.createdAt.date ?? .distantPast) }
-    let needsYou = newest.filter { $0.canAct && $0.kind == "action" }
-    let fyi = newest.filter { !($0.canAct && $0.kind == "action") }
+    let needsYou = newest.filter(\.needsViewer)
+    let fyi = newest.filter { !$0.needsViewer }
     return [("needs-you", "Needs you", needsYou), ("fyi", "FYI", fyi)].filter { !$0.items.isEmpty }
   }
 
@@ -179,7 +179,9 @@ private struct InboxRow: View {
   private var selected: Bool { window.path.first == .inboxItem(item.id) }
 
   private var subtitle: String {
-    var parts = [item.kind == "notice" ? "Notice" : "Question"]
+    // The dashboard names an action without a question by its source, such
+    // as "To do for you". MCP does not send the source, so the row names none.
+    var parts: [String] = item.kind == "notice" ? ["Notice"] : item.question == nil ? [] : ["Question"]
     if let subject = item.subject?.title { parts.append(subject) }
     if let date = item.createdAt.date { parts.append(app.clock.relative(date)) }
     return parts.joined(separator: " · ")
