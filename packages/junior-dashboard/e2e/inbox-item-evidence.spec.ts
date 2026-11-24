@@ -44,6 +44,11 @@ for (const view of [desktop, mobile]) {
       name: "Asked Approve the payments-v42 rollout",
     });
     await expectEvidence(question);
+    // The pill shows until the card reports that it is in full view.
+    await question.scrollIntoViewIfNeeded();
+    await expect(
+      page.getByRole("button", { name: /questions? waiting$/ }),
+    ).toHaveCount(0);
     await screenshot(page, "inbox-item-evidence-card", {
       lightTheme: true,
       view: view.name,
