@@ -89,7 +89,11 @@ export function InboxStack(props: {
         {...headerClick}
       >
         <Link
-          className="mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus"
+          className={cn(
+            "mr-auto flex min-w-0 rounded-sm text-sm font-medium text-dashboard-text-muted no-underline hover:text-dashboard-text focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus",
+            // A long press opens the stack menu, not the iOS link callout.
+            "[-webkit-touch-callout:none]",
+          )}
           {...onLinkOpen(props.onOpen)}
           data-row-menu=""
           to={props.path}
