@@ -33,7 +33,6 @@ const gcpBase = {
   "service-account": text.regex(GCP_SERVICE_ACCOUNT_RE, {
     error: "must be a service account email",
   }),
-  "vercel-oidc-audience": text.optional(),
 };
 
 const gcpSourceSchema = z.discriminatedUnion(
@@ -232,9 +231,6 @@ export function workloadIdentityCredentials(
     const base = {
       serviceAccount: gcp["service-account"],
       workloadIdentityProvider: gcp["workload-identity-provider"],
-      ...(gcp["vercel-oidc-audience"]
-        ? { vercelOidcAudience: gcp["vercel-oidc-audience"] }
-        : undefined),
     };
     return {
       type: "workload-identity",

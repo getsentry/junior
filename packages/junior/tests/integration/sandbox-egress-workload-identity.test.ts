@@ -84,7 +84,6 @@ async function startApp() {
               ...provider,
               serviceAccount:
                 "bigquery@example-project.iam.gserviceaccount.com",
-              vercelOidcAudience: "https://vercel.com/acme",
               token: "access-token",
               scopes: ["https://www.googleapis.com/auth/bigquery.readonly"],
             },
@@ -204,9 +203,9 @@ describe("sandbox egress workload identity credentials", () => {
       scope: "https://www.googleapis.com/auth/cloud-platform",
       subject_token_type: "urn:ietf:params:oauth:token-type:jwt",
     });
-    expect(jwtClaims(String(sts?.body["subject_token"]))["aud"]).toBe(
-      `https://iam.googleapis.com/${WORKLOAD_IDENTITY_PROVIDER}`,
-    );
+    // Google gets the deployment's own OIDC token, not one exchanged for a
+    // custom audience.
+    expect(sts?.body["subject_token"]).toBe(VERCEL_DEPLOYMENT_OIDC_TOKEN);
     expect(signJwt?.url).toBe(
       "https://iamcredentials.googleapis.com/v1/projects/-/serviceAccounts/iap-app%40example-project.iam.gserviceaccount.com:signJwt",
     );
@@ -275,16 +274,6 @@ describe("sandbox egress workload identity credentials", () => {
     expect(azure?.get("authorization")).toBe(`Bearer ${AZURE_ACCESS_TOKEN}`);
 
     const requests = workloadIdentityRequests();
-    expect(
-      requests
-        .filter((request) => request.step === "gcp-sts")
-        .map(
-          (request) => jwtClaims(String(request.body["subject_token"]))["aud"],
-        ),
-    ).toEqual([
-      `https://iam.googleapis.com/${WORKLOAD_IDENTITY_PROVIDER}`,
-      "https://vercel.com/acme",
-    ]);
     expect(
       requests
         .filter((request) => request.step === "gcp-iam-credentials")

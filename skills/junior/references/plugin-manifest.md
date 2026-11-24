@@ -65,7 +65,6 @@ credentials:
     service-account: <name>@<project>.iam.gserviceaccount.com
     token: service-account-jwt # needs audience; id-token needs audience; access-token needs scopes
     audience: https://app.example.com/*
-    # vercel-oidc-audience: https://vercel.com/<team> # when the provider lists allowed audiences
   # azure: { tenant-id, client-id, scope: api://<app>/.default }
 ```
 

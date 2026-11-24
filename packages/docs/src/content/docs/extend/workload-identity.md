@@ -69,7 +69,6 @@ Values in `gcp` and `azure` are not secrets. They can use `${NAME}` refs to decl
 | `token`                      | `service-account-jwt`, `id-token`, or `access-token`.                                                          |
 | `audience`                   | For `service-account-jwt` and `id-token`. An `https` URL on the one host in `domains`. For IAP, use `https://<host>/*`. For Cloud Run, use the service URL. |
 | `scopes`                     | For `access-token`. A list of read-only Google API scopes, such as `https://www.googleapis.com/auth/bigquery.readonly`. |
-| `vercel-oidc-audience`       | Optional. Audience of the Vercel OIDC token. Set it when the provider lists allowed audiences.                 |
 
 Use `service-account-jwt` for IAP, `id-token` for Cloud Run with `X-Serverless-Authorization` or `Authorization`, and `access-token` for Google APIs such as BigQuery. Tokens last one hour. Junior mints a new token about five minutes before the old one expires.
 
@@ -102,7 +101,7 @@ credentials:
 
 ## Set up Google Cloud
 
-1. Create a workload identity pool and an OIDC provider. Set the issuer to `https://oidc.vercel.com/<team-slug>`, even when your Vercel issuer mode is Global. A token with a custom audience always comes from the team issuer. See [Vercel OIDC for Google Cloud](https://vercel.com/docs/oidc/gcp). Select **Default audience**. Junior asks Vercel for a token with that audience. If the provider lists allowed audiences instead, set `vercel-oidc-audience` to one of them.
+1. Create a workload identity pool and an OIDC provider. Set the issuer to match your Vercel issuer mode: `https://oidc.vercel.com/<team-slug>` for Team, or `https://oidc.vercel.com` for Global. Select **Allowed audiences** and enter `https://vercel.com/<team-slug>`. Junior sends the deployment's own OIDC token, and that is its audience. See [Vercel OIDC for Google Cloud](https://vercel.com/docs/oidc/gcp).
 2. Map `google.subject` to `assertion.sub`.
 3. Add an attribute condition that trusts only production:
 

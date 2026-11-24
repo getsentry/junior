@@ -49,11 +49,6 @@ export type PluginGcpWorkloadIdentityToken =
 export type PluginGcpWorkloadIdentityConfig = PluginGcpWorkloadIdentityToken & {
   /** Service account email that Junior impersonates. */
   serviceAccount: string;
-  /**
-   * Audience of the Vercel OIDC token. Set it when the provider lists allowed
-   * audiences. Defaults to the provider's default audience.
-   */
-  vercelOidcAudience?: string;
   /** `projects/<number>/locations/global/workloadIdentityPools/<pool>/providers/<provider>`. */
   workloadIdentityProvider: string;
 };
