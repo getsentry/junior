@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { resolveConversationWorkVisibilityTimeoutSeconds } from "@/chat/task-execution/vercel-callback";
-import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
+import { resolveConversationWorkQueueTopic } from "@/chat/queue/topics";
 import { juniorVercelConfig } from "@/vercel";
 
 const TEST_DIR = path.dirname(fileURLToPath(import.meta.url));

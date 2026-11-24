@@ -112,6 +112,7 @@ function memoryHeartbeatContext(args: {
     plugin: { name: "memory" },
     inboxItems: { forConversation: vi.fn() },
     state: memoryState,
+    tasks: { start: vi.fn() },
   };
 }
 

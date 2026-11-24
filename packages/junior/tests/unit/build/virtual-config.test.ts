@@ -4,6 +4,7 @@ import { renderVirtualConfig } from "@/build/virtual-config";
 describe("renderVirtualConfig", () => {
   it("exports runtime plugin modules for createApp", () => {
     const code = renderVirtualConfig({
+      botName: "junior",
       pluginModule: {
         exportName: "plugins",
         specifier: "/repo/apps/example/plugins.ts",
@@ -24,10 +25,12 @@ describe("renderVirtualConfig", () => {
     expect(code).toContain(
       'export const pluginRuntimeRegistrations = ["github"];',
     );
+    expect(code).toContain('export const botName = "junior";');
   });
 
   it("supports default runtime plugin exports", () => {
     const code = renderVirtualConfig({
+      botName: "junior",
       pluginModule: {
         exportName: "default",
         specifier: "@acme/junior-plugins",
@@ -41,6 +44,7 @@ describe("renderVirtualConfig", () => {
 
   it("imports the dashboard app factory when dashboard config is present", () => {
     const code = renderVirtualConfig({
+      botName: "junior",
       dashboard: {
         basePath: "/ops",
       },
@@ -54,6 +58,7 @@ describe("renderVirtualConfig", () => {
 
   it("does not import the dashboard route factory when dashboard config is disabled", () => {
     const code = renderVirtualConfig({
+      botName: "junior",
       dashboard: {
         disabled: true,
       },

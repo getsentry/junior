@@ -1,8 +1,10 @@
-import { CACHE_WARMUP_QUEUE_TOPIC } from "@/chat/cache-warming/queue";
-import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/plugins/task-queue";
-import { WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC } from "@/chat/sandbox/snapshot/job-queue";
-import { BACKGROUND_COMPACTION_QUEUE_TOPIC } from "@/chat/services/background-compaction-queue";
-import { resolveConversationWorkQueueTopic } from "@/chat/task-execution/vercel-queue";
+import {
+  BACKGROUND_COMPACTION_QUEUE_TOPIC,
+  CACHE_WARMUP_QUEUE_TOPIC,
+  PLUGIN_TASK_QUEUE_TOPIC,
+  resolveConversationWorkQueueTopic,
+  WORKSPACE_SNAPSHOT_JOB_QUEUE_TOPIC,
+} from "@/chat/queue/topics";
 import {
   JUNIOR_CACHE_WARMUP_CALLBACK_ROUTE,
   JUNIOR_CONTEXT_COMPACTION_CALLBACK_ROUTE,

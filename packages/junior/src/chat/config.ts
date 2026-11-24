@@ -6,6 +6,7 @@ import {
   readEncryptionKeyring,
   type EncryptionKeyring,
 } from "@/chat/encryption/keyring";
+import { resolveBotName } from "@/chat/bot-name";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -330,7 +331,7 @@ function readBotConfig(
     DEFAULT_GUARDIAN_MODEL_ID;
 
   return {
-    userName: toOptionalTrimmed(env["JUNIOR_BOT_NAME"]) ?? "junior",
+    userName: resolveBotName(undefined, env),
     modelId,
     contextWindowTokens:
       parseOptionalPositiveInteger(
@@ -775,14 +776,14 @@ export function setBotModelConfig(config: BotModelConfig): void {
   }
 }
 
-/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+/**
+ * Apply the bot name that a `juniorNitro()` build resolved, so the runtime
+ * and the built system prompt use the same name. Without a build, the name
+ * stays `JUNIOR_BOT_NAME`, then `junior`.
+ */
 export function setBotName(name: string | undefined): void {
   if (name === undefined) return;
-  const trimmed = toOptionalTrimmed(name);
-  if (!trimmed) {
-    throw new Error("botName must not be empty");
-  }
-  botConfig.userName = trimmed;
+  botConfig.userName = resolveBotName(name, process.env);
 }
 
 /** Return the current Slack reaction emoji config. */

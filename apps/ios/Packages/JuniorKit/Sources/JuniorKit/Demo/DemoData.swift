@@ -17,7 +17,7 @@ struct DemoData {
     return DemoData(
       conversations: (moved["conversations"]?.array ?? []).compactMap(\.object).map { entry in
         DemoConversation(
-          summary: entry["conversation"]?.object ?? [:], brief: entry["brief"],
+          summary: entry["conversation"]?.object ?? [:],
           messages: (entry["messages"]?.array ?? []).compactMap(\.object),
           pending: entry["pendingMessages"]?.array ?? [], authorization: entry["authorization"],
           listed: entry["listed"]?.bool ?? true)

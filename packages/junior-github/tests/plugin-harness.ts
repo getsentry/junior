@@ -190,6 +190,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      tasks: { start: unused },
       users: {
         async readIdentity() {
           return undefined;
@@ -246,6 +247,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      tasks: { start: unused },
     });
   }
 

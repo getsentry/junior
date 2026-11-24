@@ -76,6 +76,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     await list
       .getByRole("button", { name: "Pin Roll out payments-v42" })
       .click();
+    // The focused button shows the row actions in some runs, and a re-render
+    // drops the focus in others. The shot is of the tree icons, so blur it.
+    await list
+      .getByRole("button", { name: "Unpin Roll out payments-v42" })
+      .blur();
     await expect(
       flightRow(/Roll out payments-v42/).getByRole("img", { name: "Pinned" }),
     ).toBeVisible();

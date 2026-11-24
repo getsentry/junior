@@ -159,7 +159,7 @@ export function AutomationRow(props: {
             </p>
           ) : null}
         </div>
-        <div className={cn(INBOX_ROW_META_CLASS, "items-start gap-5")}>
+        <div className={cn(INBOX_ROW_META_CLASS, "items-start gap-5 pt-0.5")}>
           <span
             className="hidden min-w-0 items-center gap-2 text-dashboard-text-muted md:flex"
             title={automation.createdBy}
