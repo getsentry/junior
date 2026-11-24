@@ -333,7 +333,10 @@ export async function enqueueChildWaitingToParent(args: {
     actor: EVENT_SYSTEM_ACTOR,
     messageKey: `waiting:${args.inboxItemId}`,
     queue: args.queue,
-    result: { kind: "waiting", text: args.text },
+    result: {
+      kind: "waiting",
+      text: `Asked a person with Inbox item ${args.inboxItemId}. Their answer goes to this child agent.\nQuestion: ${args.text}`,
+    },
     sender,
     turnId: `waiting:${args.inboxItemId}`,
   });
