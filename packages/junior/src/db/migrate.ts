@@ -1,4 +1,8 @@
-import { readMigrationFiles, type MigrationConfig } from "drizzle-orm/migrator";
+import {
+  readMigrationFiles,
+  type MigrationConfig,
+  type MigrationMeta,
+} from "drizzle-orm/migrator";
 import type { JuniorSqlMigrationExecutor } from "./db";
 import { logWarn } from "@/chat/logging";
 import { isPostgresErrorCode } from "./postgres-error";
@@ -17,6 +21,82 @@ const CONCURRENT_STATEMENT =
   /^(?:CREATE (?:UNIQUE )?INDEX|DROP INDEX|REINDEX)\b[^;]*\bCONCURRENTLY\b/i;
 const CONCURRENT_INDEX =
   /^CREATE (?:UNIQUE )?INDEX CONCURRENTLY IF NOT EXISTS "([a-z0-9_]+)" /i;
+
+/** One row of a Drizzle migration table. */
+export interface MigrationRecord {
+  createdAt: number;
+  hash: string;
+}
+
+/** Rows of a Drizzle migration table, or undefined when it does not exist. */
+export async function readMigrationRecords(
+  executor: JuniorSqlMigrationExecutor,
+  table: string,
+): Promise<MigrationRecord[] | undefined> {
+  try {
+    const rows = await executor.query<{
+      createdAt: string | null;
+      hash: string;
+    }>(`SELECT hash, created_at::text AS "createdAt" FROM ${table}`);
+    return rows.map((row) => ({
+      createdAt: Number(row.createdAt),
+      hash: row.hash,
+    }));
+  } catch (error) {
+    if (isPostgresErrorCode(error, "42P01")) {
+      return undefined;
+    }
+    throw error;
+  }
+}
+
+const secondOf = (millis: number) => Math.floor(millis / 1000);
+
+// A row records the migration with its exact time, else the one with its SQL
+// hash (the time changed), else the one in the same second (the SQL changed,
+// or Drizzle v1 reads the time from a folder name with second precision).
+const RECORD_MATCHERS: ((
+  migration: MigrationMeta,
+  record: MigrationRecord,
+) => boolean)[] = [
+  (migration, record) => record.createdAt === migration.folderMillis,
+  (migration, record) => record.hash === migration.hash,
+  (migration, record) =>
+    secondOf(record.createdAt) === secondOf(migration.folderMillis),
+];
+
+/**
+ * Migrations, in order, that no row of their migration table records.
+ *
+ * A migration that merges after a newer one is still pending. The migrations
+ * before the first recorded one are not: adopting a legacy schema records
+ * only its newest migration. Rows that match no migration, such as those of a
+ * newer release, do not count.
+ */
+export function pendingMigrations<T extends MigrationMeta>(
+  migrations: readonly T[],
+  records: readonly MigrationRecord[],
+): T[] {
+  const recorded = new Set<T>();
+  let unmatched = [...records];
+  for (const matches of RECORD_MATCHERS) {
+    unmatched = unmatched.filter((record) => {
+      const migration = migrations.find(
+        (candidate) => !recorded.has(candidate) && matches(candidate, record),
+      );
+      if (migration) {
+        recorded.add(migration);
+      }
+      return !migration;
+    });
+  }
+  const first = migrations.findIndex((migration) => recorded.has(migration));
+  return first === -1
+    ? [...migrations]
+    : migrations.filter(
+        (migration, index) => index > first && !recorded.has(migration),
+      );
+}
 
 /** Statement text without its leading comment lines. */
 function sqlOf(statement: string): string {
@@ -98,9 +178,11 @@ async function retryOnLockTimeout(
  * Drizzle's `migrate()` runs every pending migration in one transaction
  * (drizzle-orm#3249), so locks from earlier migrations stay held while later
  * migrations wait for theirs. That can deadlock with live traffic. This keeps
- * Drizzle's journal table and skip rule, so existing databases are unaffected.
- * A migration that waits too long for a lock rolls back and runs again. A
- * migration that only builds indexes concurrently runs outside a transaction.
+ * Drizzle's migration table and applies each migration that it does not
+ * record (see `pendingMigrations`), so a migration that merges after a newer
+ * one still runs. A migration that waits too long for a lock rolls back and
+ * runs again. A migration that only builds indexes concurrently runs outside a
+ * transaction.
  */
 export async function applyMigrations(
   executor: JuniorSqlMigrationExecutor,
@@ -112,16 +194,13 @@ export async function applyMigrations(
   await executor.execute(
     `CREATE TABLE IF NOT EXISTS ${table} (id SERIAL PRIMARY KEY, hash text NOT NULL, created_at bigint)`,
   );
-  const [last] = await executor.query<{ createdAt: string | null }>(
-    `SELECT created_at::text AS "createdAt" FROM ${table} ORDER BY created_at DESC LIMIT 1`,
-  );
-  const appliedAt = Number(last?.createdAt ?? 0);
+  const records = (await readMigrationRecords(executor, table)) ?? [];
 
   /* oxlint-disable no-await-in-loop -- Migrations, and the statements of each, apply in order. */
-  for (const migration of readMigrationFiles(config)) {
-    if (migration.folderMillis <= appliedAt) {
-      continue;
-    }
+  for (const migration of pendingMigrations(
+    readMigrationFiles(config),
+    records,
+  )) {
     const tag = String(migration.folderMillis);
     const recordApplied = () =>
       executor.execute(

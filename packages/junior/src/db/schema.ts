@@ -17,7 +17,6 @@ import { juniorConversationMetrics } from "./schema/conversation-metrics";
 import { juniorConversationEmbeddings } from "./schema/conversation-embeddings";
 import { juniorConversationEventEmbeddings } from "./schema/conversation-event-embeddings";
 import { juniorConversationEventLexemes } from "./schema/conversation-event-lexemes";
-import { juniorConversationBriefs } from "./schema/conversation-briefs";
 import { juniorConversationBindings } from "./schema/conversation-bindings";
 import { juniorConversationParticipants } from "./schema/conversation-participants";
 import { juniorConversationReadPositions } from "./schema/conversation-read-positions";
@@ -62,7 +61,6 @@ export {
   juniorConversationEmbeddings,
   juniorConversationEventEmbeddings,
   juniorConversationEventLexemes,
-  juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
   juniorConversationReadPositions,
@@ -108,7 +106,6 @@ export const juniorSqlSchema = {
   juniorConversationEmbeddings,
   juniorConversationEventEmbeddings,
   juniorConversationEventLexemes,
-  juniorConversationBriefs,
   juniorConversationBindings,
   juniorConversationParticipants,
   juniorConversationReadPositions,

@@ -5,7 +5,6 @@ import {
   createLocalPgliteFixture,
   type LocalPgliteFixture,
 } from "@sentry/junior-testing/pglite";
-import { migrate } from "drizzle-orm/pglite/migrator";
 import type { PgliteDatabase } from "drizzle-orm/pglite";
 import {
   createEmptyJuniorSqlFixture as createEmptyPostgresJuniorSqlFixture,
@@ -15,6 +14,7 @@ import {
 } from "./postgres/fixture";
 import { closeDb, getSqlExecutor } from "@/chat/db";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
+import { applyMigrations } from "@/db/migrate";
 export type JuniorSqlConversationInsert =
   typeof juniorConversations.$inferInsert;
 
@@ -38,7 +38,7 @@ async function createPgliteJuniorSqlFixture(): Promise<LocalJuniorSqlFixture> {
     close: () => fixture.close(),
     db: () => fixture.db(),
     execute: (statement, params) => fixture.execute(statement, params),
-    migrate: (config) => migrate(fixture.db(), config),
+    migrate: (config) => applyMigrations(sql, config),
     query: <T = unknown>(statement: string, params?: readonly unknown[]) =>
       fixture.query<T>(statement, params),
     // PGlite has one session, so a transaction stands in for a discarded connection.
