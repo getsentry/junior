@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { parseDestination, sameDestination } from "@/chat/destination";
+import { sameDestination } from "@/chat/destination";
 import { recordConversationParticipant } from "./participants";
 import {
   readConversationRunMetrics,
@@ -31,8 +31,6 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
-import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
   claimProviderConversationOwner,
@@ -55,6 +53,11 @@ import {
   ensureConversationRow,
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
+import {
+  destinationFromRow,
+  destinationUpsertFromDestination,
+  type DestinationUpsert,
+} from "./destination-row";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
@@ -64,17 +67,6 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
-}
-
-interface DestinationUpsert {
-  displayName?: string;
-  kind: JuniorDestinationKind;
-  metadata?: Record<string, unknown>;
-  provider: string;
-  providerDestinationId: string;
-  providerTenantId?: string | undefined;
-  refreshVisibility: boolean;
-  visibility: JuniorDestinationVisibility;
 }
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
@@ -135,56 +127,6 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
   return undefined;
 }
 
-function localWorkspaceFromConversationId(
-  conversationId: string,
-): string | undefined {
-  const match = /^local:([^:]+):/.exec(conversationId);
-  return match?.[1];
-}
-
-function destinationUpsertFromDestination(args: {
-  channelName?: string | undefined;
-  conversationId?: string;
-  destination: Destination | undefined;
-  /** Confirmed destination visibility; omit when unavailable. */
-  visibility?: ConversationPrivacy;
-}): DestinationUpsert | undefined {
-  const { destination } = args;
-  if (!destination) {
-    return undefined;
-  }
-  if (destination.platform === "slack") {
-    const channelId = destination.channelId;
-    const channelKind = channelId.startsWith("D")
-      ? "dm"
-      : channelId.startsWith("G")
-        ? "group"
-        : "channel";
-    return {
-      kind: channelKind,
-      provider: "slack",
-      providerTenantId: destination.teamId,
-      providerDestinationId: channelId,
-      refreshVisibility: args.visibility !== undefined,
-      visibility: args.visibility ?? "unknown",
-      ...(args.channelName ? { displayName: args.channelName } : undefined),
-      metadata: { platform: "slack" },
-    };
-  }
-  return {
-    kind: "local_conversation",
-    provider: "local",
-    providerTenantId:
-      localWorkspaceFromConversationId(destination.conversationId) ??
-      localWorkspaceFromConversationId(args.conversationId ?? ""),
-    providerDestinationId: destination.conversationId,
-    // Match Slack: only refresh when a live visibility signal is present so
-    // execution-metadata writes cannot clobber public dashboard roots.
-    refreshVisibility: args.visibility !== undefined,
-    visibility: args.visibility ?? "direct",
-    metadata: { platform: "local" },
-  };
-}
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (
     value === "failed" ||
@@ -196,25 +138,6 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
-}
-
-function destinationFromRow(
-  destination: DestinationRow | null,
-): Destination | undefined {
-  const value =
-    destination?.provider === "slack"
-      ? {
-          platform: "slack",
-          teamId: destination.providerTenantId,
-          channelId: destination.providerDestinationId,
-        }
-      : destination?.provider === "local"
-        ? {
-            platform: "local",
-            conversationId: destination.providerDestinationId,
-          }
-        : undefined;
-  return parseDestination(value);
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */
@@ -286,6 +209,9 @@ function conversationFromRow(readRow: ConversationReadRow): Conversation {
     ...(row.parentConversationId
       ? { parentConversationId: row.parentConversationId }
       : undefined),
+    ...(row.leadConversationId
+      ? { leadConversationId: row.leadConversationId }
+      : undefined),
     ...(row.rootConversationId
       ? { rootConversationId: row.rootConversationId }
       : undefined),
@@ -317,6 +243,7 @@ function emptyConversation(args: {
   conversationId: string;
   destination?: Destination | undefined;
   kind?: TopLevelConversationKind | undefined;
+  leadConversationId?: string | undefined;
   nowMs: number;
   source?: ConversationSource | undefined;
   sessionSource?: SessionSource;
@@ -326,6 +253,9 @@ function emptyConversation(args: {
     conversationId: args.conversationId,
     createdAtMs: args.nowMs,
     kind: args.kind ?? "root",
+    ...(args.leadConversationId
+      ? { leadConversationId: args.leadConversationId }
+      : undefined),
     lastActivityAtMs: args.nowMs,
     updatedAtMs: args.nowMs,
     ...(args.destination ? { destination: args.destination } : undefined),
@@ -471,6 +401,7 @@ export class SqlStore implements ConversationStore {
     title?: string;
     visibility?: ConversationPrivacy;
     kind?: TopLevelConversationKind;
+    leadConversationId?: string | undefined;
   }): Promise<void> {
     const nowMs = args.nowMs ?? now();
     const activityAtMs = args.activityAtMs ?? nowMs;
@@ -492,6 +423,7 @@ export class SqlStore implements ConversationStore {
           conversationId: args.conversationId,
           destination: args.destination,
           kind: args.kind,
+          leadConversationId: args.leadConversationId,
           nowMs,
           source: args.source,
           ...(sessionSource ? { sessionSource } : undefined),
@@ -882,6 +814,7 @@ export class SqlStore implements ConversationStore {
             ? null
             : dateFromMs(conversation.execution.lastEnqueuedAtMs),
         parentConversationId: conversation.parentConversationId ?? null,
+        leadConversationId: conversation.leadConversationId ?? null,
         kind: conversation.kind,
         rootConversationId,
       })
@@ -910,6 +843,8 @@ export class SqlStore implements ConversationStore {
           rootConversationId: sql`coalesce(${juniorConversations.rootConversationId}, excluded.root_conversation_id)`,
           // Set once. This also fills a null kind left by an older deploy.
           kind: sql`coalesce(${juniorConversations.kind}, excluded.kind)`,
+          // Set once at create, like the parent.
+          leadConversationId: sql`coalesce(${juniorConversations.leadConversationId}, excluded.lead_conversation_id)`,
           detailVersion: nextDetailVersion,
         },
       })

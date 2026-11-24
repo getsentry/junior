@@ -63,7 +63,7 @@ function readingAgentRunner() {
   return { agentRunner, runs };
 }
 
-/** Spawn one child agent of a parent, as `spawnAgent` does. */
+/** Spawn one child agent of a parent, as `startAgent` does. */
 async function spawnChild(
   options: {
     conversationStore: ConversationStore;

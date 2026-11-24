@@ -5,7 +5,7 @@ import { readMessageAttachments } from "@/chat/attachments/input";
 import { readMessageCardRefs } from "@/chat/conversations/cards";
 import type { ConversationEvent } from "@/chat/conversations/history";
 import { renderJuniorNativeConversationEvent } from "@/chat/conversations/structured-events";
-import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
+import { leadStartedAgentSchema } from "@/chat/agent-invocations/started-agent";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { renderPluginConversationEvent } from "@/chat/plugins/conversation-events";
 import { inboxItemChangeRecordSchema } from "@/chat/inbox-items/change-record";
@@ -290,14 +290,14 @@ function reportToolResult(args: {
   const output = modelVisibleToolOutput(message.data.content);
   const name = message.data.toolName ?? message.data.name ?? args.start?.name;
   if (!name) return undefined;
-  // The dashboard links a started Conversation from the typed result.
+  // The dashboard links a root that a Lead started from the typed result.
+  // A child agent's start has no Watch to offer, so it does not parse.
+  // Stored Lead transcripts keep the old tool name.
   const started =
     args.canExposePayload &&
-    name === "startConversation" &&
+    (name === "startAgent" || name === "startConversation") &&
     outcome === "completed"
-      ? startConversationToolDefinition.outputSchema.safeParse(
-          message.data.details,
-        )
+      ? leadStartedAgentSchema.safeParse(message.data.details)
       : undefined;
   return {
     type: "tool_calls",

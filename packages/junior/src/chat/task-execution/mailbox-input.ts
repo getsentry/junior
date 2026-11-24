@@ -141,3 +141,16 @@ export async function mailboxTurnInputs(
     ),
   };
 }
+
+/**
+ * Return the author Identity id that every batched input shares.
+ * A batch with more than one author has no single author yet.
+ */
+export function sharedAuthorIdentityId(
+  messages: readonly InboundMessage[],
+): string | undefined {
+  const ids = new Set(
+    messages.map((message) => message.input.authorIdentityId),
+  );
+  return ids.size === 1 ? [...ids][0] : undefined;
+}

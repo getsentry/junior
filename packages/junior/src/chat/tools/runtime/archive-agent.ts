@@ -2,6 +2,7 @@ import * as z from "zod";
 import { setConversationArchive } from "@/api/conversations/archive";
 import { readLastUserMessageAtByConversation } from "@/api/conversations/user-message-activity";
 import { readLastParentMessageAtMs } from "@/chat/agent-invocations/parent-message";
+import { readLastLeadWorkAtMs } from "@/chat/agent-invocations/team";
 import { AGENTS_TOOL_SOURCE } from "@/chat/agent-invocations/tool-source";
 import { getConversationStore, getDb } from "@/chat/db";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
@@ -9,8 +10,8 @@ import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 
 const archiveAgentOutputSchema = juniorToolOutputSchema.extend({
-  conversation_id: z.string().min(1).describe("Archived Thread ID"),
-  archived_at: z.string().describe("When the Thread was archived"),
+  conversation_id: z.string().min(1).describe("Archived conversation ID"),
+  archived_at: z.string().describe("When the conversation was archived"),
 });
 
 /** Read when a person last sent a Message to one Conversation. */
@@ -27,7 +28,7 @@ export const archiveAgentToolDefinition = zodToolDefinition({
   exposure: "deferred",
   source: AGENTS_TOOL_SOURCE,
   description:
-    "Archive a Thread that this conversation started, for everyone. A person's new message restores it. A result from a Thread does not mean that people are done with it: people message Threads directly, and you do not see those messages. The archive fails when a person messaged the Thread since you last gave it work: that person decides, and can archive it from its url.",
+    "Archive an agent that you started, for everyone, when its work is done. A person's new message restores it. A result does not mean that people are done with it: people message a Thread or a root directly, and you do not see those messages. The archive fails when a person messaged it since you last gave it work: that person decides, and can archive it from its url.",
   annotations: {
     destructiveHint: false,
     idempotentHint: true,
@@ -41,96 +42,101 @@ export const archiveAgentToolDefinition = zodToolDefinition({
         .trim()
         .min(1)
         .describe(
-          "Thread conversation ID from spawnAgent or listAgents to archive",
+          "Conversation ID from startAgent or listAgents of the agent to archive",
         ),
       apply_to_children: z
         .boolean()
         .nullable()
         .optional()
         .describe(
-          "True also archives the child agents that the Thread started, at any depth. Without it, the archive fails while any of them is not archived.",
+          "True also archives the child agents that it started, at any depth. Without it, the archive fails while any of them is not archived.",
         ),
     })
     .strict(),
   outputSchema: archiveAgentOutputSchema,
 });
 
-/** Create the tool that archives one Thread that a conversation started. */
+/**
+ * Create the tool that archives one agent on the team of one conversation:
+ * a child agent of any kind, or a root that it started as a Lead.
+ */
 export function createArchiveAgentTool(conversationId: string) {
   return zodTool({
     ...archiveAgentToolDefinition,
     execute: async (input) => {
-      const childConversationId = input.conversation_id;
-      const child = await getConversationStore().get({
-        conversationId: childConversationId,
+      const agentConversationId = input.conversation_id;
+      const agent = await getConversationStore().get({
+        conversationId: agentConversationId,
       });
-      if (!child || child.parentConversationId !== conversationId) {
+      const isChild = agent?.parentConversationId === conversationId;
+      if (!agent || (!isChild && agent.leadConversationId !== conversationId)) {
         throw new ToolInputError(
-          `${childConversationId} is not a child agent of this conversation. Use listAgents to find its conversation_id.`,
+          `${agentConversationId} is not an agent that you started. Use listAgents to find its conversation_id.`,
         );
       }
-      if (child.kind !== "thread") {
-        throw new ToolInputError(
-          `${childConversationId} is a Task. Only a Thread can be archived. A Task needs no archive.`,
-        );
-      }
-      if (child.archivedAtMs !== undefined) {
+      if (agent.archivedAtMs !== undefined) {
         return {
-          conversation_id: childConversationId,
-          archived_at: new Date(child.archivedAtMs).toISOString(),
+          conversation_id: agentConversationId,
+          archived_at: new Date(agent.archivedAtMs).toISOString(),
         };
       }
       // An open Turn, from a person or from this conversation, means the
-      // Thread is in use.
+      // agent is in use.
       const working =
-        child.execution.status === "pending" ||
-        child.execution.status === "running" ||
-        child.execution.status === "paused";
+        agent.execution.status === "pending" ||
+        agent.execution.status === "running" ||
+        agent.execution.status === "paused";
       if (working) {
         throw new ToolInputError(
-          `${childConversationId} is working. Leave it, or wait until it is idle.`,
+          `${agentConversationId} is working. Leave it, or wait until it is idle.`,
         );
       }
-      // A person who messaged the Thread since this conversation last gave
-      // it work took it over, so only people archive it from then on.
+      // A person who messaged the agent since this conversation last gave
+      // it work took it over, so only people archive it from then on. A
+      // Lead's brief is not a person's message.
       const personMessageAt =
-        await readLastPersonMessageAtMs(childConversationId);
-      const lastWorkAt = await readLastParentMessageAtMs(childConversationId);
+        await readLastPersonMessageAtMs(agentConversationId);
+      const lastWorkAt = isChild
+        ? await readLastParentMessageAtMs(agentConversationId)
+        : await readLastLeadWorkAtMs({
+            leadConversationId: conversationId,
+            rootConversationId: agentConversationId,
+          });
       if (
         personMessageAt !== undefined &&
         personMessageAt > (lastWorkAt ?? 0)
       ) {
         throw new ToolInputError(
-          `A person messaged ${childConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its url.`,
+          `A person messaged ${agentConversationId} since you last gave it work, so a person still uses it. Leave it. That person can archive it from its url.`,
         );
       }
       const result = await setConversationArchive({
         applyToChildren: input.apply_to_children ?? false,
         archived: true,
-        conversationId: childConversationId,
+        conversationId: agentConversationId,
         // New activity after this read, such as a person's message, refuses
         // the archive.
-        lastSeenAt: new Date(child.lastActivityAtMs).toISOString(),
+        lastSeenAt: new Date(agent.lastActivityAtMs).toISOString(),
       });
       switch (result.status) {
         case "archived":
           return {
-            conversation_id: childConversationId,
+            conversation_id: agentConversationId,
             archived_at: result.archivedAt,
           };
         case "conflict":
           throw new ToolInputError(
-            `${childConversationId} received new activity. Check it again with listAgents before you archive it.`,
+            `${agentConversationId} received new activity. Check it again with listAgents before you archive it.`,
           );
         case "unarchived_children":
           throw new ToolInputError(
-            `${childConversationId} has ${result.unarchivedChildCount} child conversation(s) that are not archived. Pass apply_to_children to archive them too.`,
+            `${agentConversationId} has ${result.unarchivedChildCount} child conversation(s) that are not archived. Pass apply_to_children to archive them too.`,
           );
         case "missing":
         case "archived_ancestor":
         case "restored":
           throw new Error(
-            `Archive of Thread ${childConversationId} returned ${result.status}`,
+            `Archive of agent ${agentConversationId} returned ${result.status}`,
           );
       }
     },

@@ -40,7 +40,9 @@ function latestEventAtQuery(
 
 /**
  * Return queries for the latest user instruction and the latest true user
- * Message of the outer Conversation.
+ * Message of the outer Conversation. The brief of a root that a Lead started
+ * is its person's request, but the person did not write it, so neither
+ * counts it (`fromLead`).
  */
 export function userMessageQueries(db: JuniorDatabase) {
   const payload = juniorConversationEvents.payload;
@@ -55,15 +57,17 @@ export function userMessageQueries(db: JuniorDatabase) {
       eq(juniorIdentities.id, juniorConversationEvents.actorIdentityId),
     )})`;
   return {
+    // The index predicate holds `isUserInstruction`, so the walk still
+    // stops at the first entry. At most one brief per root is skipped.
     instruction: latestEventAtQuery(
       db,
       "user_message",
-      isUserInstruction(payload),
+      sql`${isUserInstruction(payload)} and (${payload}->'provenance'->>'fromLead') is null`,
     ),
     message: latestEventAtQuery(
       db,
       "message",
-      sql`${payload}->>'role' = 'user' and ${authorKind} = 'user'`,
+      sql`${payload}->>'role' = 'user' and (${payload}->'meta'->>'fromLead') is null and ${authorKind} = 'user'`,
     ),
   };
 }

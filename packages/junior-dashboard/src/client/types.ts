@@ -35,7 +35,7 @@ export type TranscriptViewToolCallPart = {
   output?: unknown;
   resultTimestamp?: number | undefined;
   startedTimestamp?: number | undefined;
-  /** The Conversation that this `startConversation` call started. */
+  /** The root that this `startAgent` call of a Lead started. */
   startedConversationId?: string;
   status: "completed" | "error" | "running";
   type: "tool_call";

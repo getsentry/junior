@@ -23,7 +23,6 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
-import type * as z from "zod";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   conversationSimilarity,
@@ -85,24 +84,6 @@ export interface ConversationSearchResult {
   updatedAtMs: number;
 }
 
-/** Provider-owned channel filter and match details for Conversation search. */
-export interface ConversationSearchChannelPort {
-  channelFilterSchema: z.ZodString;
-  /**
-   * Describe the provider channel of a match. `includeUrl` asks for the
-   * provider thread link, for when there is no dashboard link.
-   */
-  describeMatch(
-    match: ConversationSearchResult,
-    options: { includeUrl: boolean },
-  ): Promise<{
-    channel_id?: string;
-    channel_name?: string;
-    url?: string;
-  }>;
-  resolveChannel(input: string): Promise<string>;
-}
-
 /** Filters for one Conversation search. All are optional. */
 export interface ConversationSearch {
   /** Only Conversations with activity at or after this time. */
@@ -124,8 +105,17 @@ export interface ConversationSearch {
   limit: number;
   /** Words or meaning to match in the title or summary. */
   query?: string;
-  /** Return only root Conversations, not their child agents. */
+  /**
+   * Return only root Conversations, not their child agents. With `team`,
+   * the requester's own tree still returns its child agents.
+   */
   rootsOnly: boolean;
+  /**
+   * Also search the requester's own tree, except the requester, and rank
+   * its team first: its own tree and the roots that it started as a Lead.
+   * Then rank the Conversations of its person.
+   */
+  team?: { personUserId?: string | undefined };
   /** Only Conversations whose root has this User as a Participant. */
   participantUserId?: string;
   /** Only Conversations whose agent has one of these statuses. */
@@ -135,8 +125,8 @@ export interface ConversationSearch {
 }
 
 /**
- * Search the Conversations, outside the requester's own tree, that the
- * requester may find. Newest activity first, or best match for a query.
+ * Search the Conversations, outside the requester's own tree unless
+ * `team` is set, that the requester may find. Newest activity first, or best match for a query.
  * With an embedder, a query also matches by the meaning of the Conversation
  * metadata, and a match by meaning alone needs `MIN_VECTOR_SIMILARITY`.
  */
@@ -172,15 +162,37 @@ export async function searchConversations(
     .where(eq(conversations.conversationId, requesterConversationId))
     .limit(1);
   const requesterRootId = requester?.rootId ?? requesterConversationId;
+  const ownTree = eq(conversations.rootConversationId, requesterRootId);
+  const participates = (userId: string) =>
+    exists(
+      db
+        .select({ one: sql`1` })
+        .from(juniorConversationParticipants)
+        .where(
+          and(
+            eq(
+              juniorConversationParticipants.rootConversationId,
+              roots.conversationId,
+            ),
+            eq(juniorConversationParticipants.userId, userId),
+          ),
+        ),
+    );
+  const { team } = search;
   const conditions: (SQL | undefined)[] = [
     // The root decides visibility. Lists hide an unkept Quick question and
     // its children.
     isNull(roots.quickQuestionAt),
     isNull(conversations.quickQuestionAt),
     search.rootsOnly
-      ? eq(conversations.conversationId, conversations.rootConversationId)
+      ? or(
+          eq(conversations.conversationId, conversations.rootConversationId),
+          team ? ownTree : undefined,
+        )
       : undefined,
-    ne(conversations.rootConversationId, requesterRootId),
+    team
+      ? ne(conversations.conversationId, requesterConversationId)
+      : ne(conversations.rootConversationId, requesterRootId),
     or(
       eq(juniorDestinations.visibility, "public"),
       // Conversations share a Destination only when they share an audience.
@@ -208,23 +220,7 @@ export async function searchConversations(
       ? inArray(conversations.executionStatus, [...search.statuses])
       : undefined,
     search.participantUserId
-      ? exists(
-          db
-            .select({ one: sql`1` })
-            .from(juniorConversationParticipants)
-            .where(
-              and(
-                eq(
-                  juniorConversationParticipants.rootConversationId,
-                  roots.conversationId,
-                ),
-                eq(
-                  juniorConversationParticipants.userId,
-                  search.participantUserId,
-                ),
-              ),
-            ),
-        )
+      ? participates(search.participantUserId)
       : undefined,
     search.summarizedOnly ? isNotNull(conversations.summary) : undefined,
     search.conversationIds
@@ -258,14 +254,22 @@ export async function searchConversations(
   // Normalization 32 maps the word rank to [0, 1), next to the similarity,
   // so a Conversation that matches both ways ranks first.
   const wordRank = sql`coalesce(ts_rank_cd(${searchVector}, ${tsquery}, 32), 0)`;
+  const teamRank = team
+    ? [
+        desc(
+          sql`case when ${ownTree} or ${conversations.leadConversationId} = ${requesterConversationId} then 2 when ${team.personUserId ? participates(team.personUserId) : sql`false`} then 1 else 0 end`,
+        ),
+      ]
+    : [];
   const order = query
     ? [
+        ...teamRank,
         desc(
           similarity ? sql`${wordRank} + coalesce(${similarity}, 0)` : wordRank,
         ),
         newestFirst,
       ]
-    : [newestFirst];
+    : [...teamRank, newestFirst];
   const excerpt = query
     ? sql<
         string | null

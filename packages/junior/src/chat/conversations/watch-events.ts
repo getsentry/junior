@@ -57,7 +57,7 @@ export function conversationEvents(): EventRegistrationInput {
   };
 }
 
-/** Describe the Watch that `startConversation` offers for a new Conversation. */
+/** Describe the Watch that a Lead's `startAgent` offers for a new root. */
 export function conversationWatch(input: {
   conversationId: string;
   title: string;

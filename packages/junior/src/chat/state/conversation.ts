@@ -49,6 +49,11 @@ export interface ConversationMessageMeta {
    */
   events?: ConversationMessageEvent[];
   explicitMention?: boolean | undefined;
+  /**
+   * A Lead wrote this Message for its person: the brief of a root that it
+   * started. It is the person's request, not a Message that they wrote.
+   */
+  fromLead?: true;
   /** Short summary supplied by the Event publisher. */
   trustedSummary?: string;
   imageAttachmentCount?: number | undefined;

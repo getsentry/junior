@@ -15,6 +15,12 @@ export const conversationMessageProvenanceSchema = z
   .object({
     authority: conversationMessageAuthoritySchema,
     actor: actorSchema.optional(),
+    /**
+     * A Lead wrote this instruction for its person, as the brief of a root
+     * that it started. It is the person's request, not a message that the
+     * person wrote (`design/lead.md`).
+     */
+    fromLead: z.literal(true).optional(),
   })
   .strict();
 

@@ -5,11 +5,11 @@ import type { PromptMode, TurnInputSender } from "@/chat/system-prompt-rules";
 import type { StaticToolName } from "@/chat/tool-support/registry";
 
 /**
- * Which agent tools a Turn gets. `children`: spawnAgent, and messageAgent
- * when spawnAgent is available. `children_and_parent`: the same, but
- * messageAgent stays available to reach the parent when the Turn is too deep
- * to spawn. `lead`: only messageAgent, to other top-level agents.
- * `none`: neither.
+ * Which agents a Turn starts and manages. `children`: child agents, with
+ * messageAgent when startAgent is available. `children_and_parent`: the
+ * same, but messageAgent stays available to reach the parent when the Turn
+ * is too deep to start one. `lead`: public roots of the Lead's person, and
+ * messageAgent to other top-level agents. `none`: no agent tools work.
  */
 export type AgentTools = "none" | "children" | "children_and_parent" | "lead";
 
@@ -229,13 +229,15 @@ const PERSON_IN_AUTOMATION: TurnBehavior = {
 
 // A Lead finds, starts, and steers its person's other Conversations, and
 // never does their work. So it gets only the tools for that, and no sandbox,
-// skills, MCP, provider, or child-agent tools. Automation tools stay out
+// skills, MCP, or provider tools. Automation tools stay out
 // until a Lead can pick a Slack Destination for one. `updateInboxItem` stays
 // out: a Lead is private and adds no items, so it can change none.
 const LEAD_TOOLS = [
-  "startConversation",
+  "startAgent",
   "messageAgent",
-  "searchConversations",
+  "listAgents",
+  "stopAgent",
+  "archiveAgent",
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",
@@ -251,7 +253,7 @@ const LEAD_TOOLS = [
 
 // The tools a Lead uses on most Turns to find and follow its person's work.
 const LEAD_DIRECT_TOOLS = [
-  "searchConversations",
+  "listAgents",
   "searchConversationEvents",
   "readConversationEvent",
   "searchInboxItems",

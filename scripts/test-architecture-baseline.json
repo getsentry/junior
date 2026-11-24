@@ -209,7 +209,7 @@
     "packages/junior/src/chat/task-execution/turn-wake.ts": 1,
     "packages/junior/src/chat/task-execution/web-steering.ts": 1,
     "packages/junior/src/chat/task-execution/worker.ts": 1,
-    "packages/junior/src/chat/tools/runtime/archive-agent.ts": 2
+    "packages/junior/src/chat/tools/runtime/archive-agent.ts": 1
   },
   "dashboard-spec-page-script": {
     "packages/junior-dashboard/e2e/automations.spec.ts": 1,

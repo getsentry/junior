@@ -67,7 +67,7 @@ async function createDeployWatch(harness: Harness, conversationId: string) {
   );
 }
 
-/** Spawn one helper agent of a child, as the child's `spawnAgent` does. */
+/** Spawn one helper agent of a child, as the child's `startAgent` does. */
 async function createHelper(
   harness: Harness,
   childId: string,

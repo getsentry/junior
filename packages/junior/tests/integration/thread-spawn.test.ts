@@ -9,7 +9,7 @@ import { disconnectStateAdapter } from "@/chat/state/adapter";
 import { CONVERSATION_WORK_MAX_RETRIES } from "@/chat/task-execution/store";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import {
   slackInvocationInput,
   slackParentConversationId,
@@ -38,7 +38,7 @@ async function finishTask(harness: Harness, conversationId: string) {
   harness.onRun(undefined);
 }
 
-/** Spawn one child of a parent, as `spawnAgent` does. */
+/** Spawn one child of a parent, as `startAgent` does. */
 async function spawnChild(
   harness: Harness,
   idempotencyKey: string,
@@ -142,7 +142,7 @@ describe("Thread spawn and archive", () => {
       },
     });
     try {
-      const tool = createSpawnAgentTool(
+      const tool = createStartAgentTool(
         bindSpawnAgent(parentRun, {
           conversationStore: harness.conversationStore,
           queue: harness.queue,
@@ -259,16 +259,14 @@ describe("Thread spawn and archive", () => {
     }
   });
 
-  it("archives only an idle Thread of this conversation", async () => {
+  it("archives only an idle child agent of this conversation", async () => {
     const harness = await createHarness();
     try {
+      // A Task is archived the same way as a Thread.
       const task = await createIdleChild(harness, "task", "task");
       await expect(
         archiveAgent(slackParentConversationId, task),
-      ).rejects.toMatchObject({
-        name: "ToolInputError",
-        message: expect.stringContaining("is a Task"),
-      });
+      ).resolves.toMatchObject({ conversation_id: task });
 
       const thread = await startThread(harness, "thread-spawn");
       const nestedThread = await spawnChild(
@@ -282,7 +280,7 @@ describe("Thread spawn and archive", () => {
         archiveAgent(slackParentConversationId, nestedThread),
       ).rejects.toMatchObject({
         name: "ToolInputError",
-        message: expect.stringContaining("is not a child agent"),
+        message: expect.stringContaining("is not an agent that you started"),
       });
 
       // The parent's own open work is in use.

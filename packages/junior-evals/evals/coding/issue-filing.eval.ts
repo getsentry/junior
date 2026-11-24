@@ -25,7 +25,7 @@ function inboxItemKeys(result: { toolCalls: ToolCall[] }): unknown[] {
 }
 
 function threadsStarted(result: { toolCalls: ToolCall[] }): ToolCall[] {
-  return completedToolCalls("spawnAgent", result).filter(
+  return completedToolCalls("startAgent", result).filter(
     (call) => (call.input as { kind?: unknown }).kind === "thread",
   );
 }

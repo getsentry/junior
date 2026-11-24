@@ -5,23 +5,13 @@ import { runConversationEmbeddingBackfill } from "@/chat/conversations/embedding
 import { createPluginConversations } from "@/chat/conversations/plugin-search";
 import { closeDb, getConversationStore, getDb } from "@/chat/db";
 import { setDashboardConversationLinkOptions } from "@/chat/dashboard-link";
-import { parseSlackTeamId } from "@/chat/slack/ids";
-import { createSlackConversationSearchChannelPort } from "@/chat/slack/tool-support/conversation-search";
 import { createPluginAnnotations } from "@/chat/plugins/annotations";
-import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
+import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { juniorConversationEmbeddings, juniorConversations } from "@/db/schema";
+import { slackInvocationInput } from "../fixtures/agent-invocations";
+import { spawnChildWithoutAgentInvocation } from "../fixtures/child-without-agent-invocation";
 import { storeConversationMetadataFixture } from "../fixtures/conversation-metadata";
-import {
-  chatGetPermalinkOk,
-  slackError,
-} from "../fixtures/slack/factories/api";
-import { queueSlackApiResponse } from "../msw/handlers/slack-api";
-
-const teamId = parseSlackTeamId("T123");
-if (!teamId) {
-  throw new Error("test Slack team id did not parse");
-}
-const channels = createSlackConversationSearchChannelPort(teamId);
+import { createHarness } from "../fixtures/thread-input";
 
 async function executeTool<TInput>(tool: any, input: TInput) {
   if (typeof tool?.execute !== "function") {
@@ -30,160 +20,93 @@ async function executeTool<TInput>(tool: any, input: TInput) {
   return await tool.execute(input, {} as any);
 }
 
-describe("searchConversations", () => {
+describe("listAgents query", () => {
   afterEach(async () => {
     setDashboardConversationLinkOptions(undefined);
     await closeDb();
   });
 
-  it("returns bounded summary details with a dashboard link, else a best-effort Slack link", async () => {
-    const conversationId = "slack:CARCHIVE:1700000000.100000";
-    await getConversationStore().recordActivity({
-      conversationId,
-      channelName: "archive",
-      destination: {
-        platform: "slack",
-        teamId: "T123",
-        channelId: "CARCHIVE",
-      },
-      nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
-      source: "slack",
-      title: "Launch decision",
-      visibility: "public",
-    });
+  it("finds Conversations that it may read, its team first, and says how much of a summary it cut", async () => {
+    const recordPublic = async (channelId: string, title: string) => {
+      const conversationId = `slack:${channelId}:1700000000.100000`;
+      await getConversationStore().recordActivity({
+        conversationId,
+        destination: { platform: "slack", teamId: "T123", channelId },
+        nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
+        source: "slack",
+        title,
+        visibility: "public",
+      });
+      return conversationId;
+    };
+    const other = await recordPublic("CARCHIVE", "Launch decision");
+    const summary = `The launch decision uses a blue rollout. ${"More detail. ".repeat(100)}`;
     await storeConversationMetadataFixture(getDb(), {
-      conversationId,
-      summary: "The launch decision uses a blue rollout.",
+      conversationId: other,
+      summary,
       throughSeq: 1,
     });
-    await createPluginAnnotations({
-      conversationId,
-      db: getDb(),
-      plugin: "github",
-    }).upsert({
-      kind: "resource_link",
-      key: "getsentry/junior#1805",
-      label: "getsentry/junior#1805",
-      status: "open",
-      url: "https://github.com/getsentry/junior/pull/1805",
-    });
-    setDashboardConversationLinkOptions({
-      baseURL: "https://junior.example.com",
-    });
-
-    const tool = createSearchConversationsTool({
-      channels,
-      conversationId: "slack:CREQUEST:1700000000.900000",
-    });
-    expect(tool.inputSchema["properties"]).toHaveProperty("channel_id");
-    const result = await executeTool(tool, {
-      after: null,
-      annotation: null,
-      before: null,
-      channel_id: null,
-      limit: null,
-      query: "launch decision",
-    });
-
-    expect(result).toEqual({
-      conversations: [
-        {
-          channel_id: "CARCHIVE",
-          channel_name: "archive",
-          conversation_id: conversationId,
-          excerpt: expect.stringContaining("**launch**"),
-          kind: "root",
-          links: [
-            {
-              label: "getsentry/junior#1805",
-              status: "open",
-              url: "https://github.com/getsentry/junior/pull/1805",
-            },
-          ],
-          status: "idle",
-          summary: "The launch decision uses a blue rollout.",
-          title: "Launch decision",
-          updated_at: expect.any(String),
-          url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
-        },
-      ],
-    });
-
-    // Without the dashboard, the Slack thread is the link.
-    setDashboardConversationLinkOptions(undefined);
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink:
-          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-      }),
-    });
-    const resultWithThreadUrl = await executeTool(tool, {
-      query: "launch decision",
-    });
-    expect(resultWithThreadUrl.conversations[0]).toMatchObject({
-      url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-    });
-
-    queueSlackApiResponse("chat.getPermalink", {
-      body: slackError({ error: "missing_scope" }),
-    });
-    const resultWithoutUrl = await executeTool(tool, {
-      query: "launch decision",
-    });
-    expect(resultWithoutUrl.conversations[0]).not.toHaveProperty("url");
-
-    // A child agent gives the Slack channel and thread of its root.
-    const childId = "agent:launch-child";
-    await getConversationStore().createChild({
-      childConversationId: childId,
-      kind: "thread",
-      parentConversationId: conversationId,
-      nowMs: Date.parse("2026-07-01T12:01:00.000Z"),
+    await getConversationStore().recordActivity({
+      conversationId: "slack:CPRIVATE:1700000000.100000",
+      destination: { platform: "slack", teamId: "T123", channelId: "CPRIVATE" },
+      nowMs: Date.parse("2026-07-01T12:00:00.000Z"),
       source: "slack",
-      title: "Launch decision follow-up",
+      title: "Launch decision in private",
+      visibility: "private",
     });
-    queueSlackApiResponse("chat.getPermalink", {
-      body: chatGetPermalinkOk({
-        permalink:
-          "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-      }),
-    });
-    const childResult = await executeTool(tool, {
-      query: "follow-up",
-      roots_only: false,
-    });
-    expect(childResult.conversations).toEqual([
-      expect.objectContaining({
-        channel_id: "CARCHIVE",
-        channel_name: "archive",
-        conversation_id: childId,
+    const requester = await recordPublic("CREQUEST", "Planning");
+    // An older child agent of the requester still ranks first.
+    const harness = await createHarness();
+    let child: string;
+    try {
+      child = await spawnChildWithoutAgentInvocation({
+        actor: slackInvocationInput.actor,
+        conversationStore: harness.conversationStore,
+        idempotencyKey: "launch-child",
         kind: "thread",
-        url: "https://example.slack.com/archives/CARCHIVE/p1700000000100000",
-        root_conversation_id: conversationId,
-      }),
-    ]);
-
+        nowMs: Date.parse("2026-06-01T12:00:00.000Z"),
+        parentConversationId: requester,
+        queue: harness.queue,
+        state: harness.state,
+        title: "Launch decision follow-up",
+      });
+    } finally {
+      await harness.close();
+    }
     setDashboardConversationLinkOptions({
       baseURL: "https://junior.example.com",
     });
-    const publicTool = createSearchConversationsTool({
-      conversationId: "local:test:current",
-    });
-    expect(publicTool.inputSchema["properties"]).not.toHaveProperty(
-      "channel_id",
+
+    const result = await executeTool(
+      createListAgentsTool({ conversationId: requester }),
+      { query: "launch decision" },
     );
-    expect(() =>
-      publicTool.prepareArguments({ channel_id: "CARCHIVE" }),
-    ).toThrow("Invalid tool arguments");
-    const publicResult = await executeTool(publicTool, {
-      query: "launch decision",
-    });
-    expect(publicResult.conversations[0]).toMatchObject({
-      conversation_id: conversationId,
-      url: `https://junior.example.com/conversations/${encodeURIComponent(conversationId)}`,
-    });
-    expect(publicResult.conversations[0]).not.toHaveProperty("channel_id");
-    expect(publicResult.conversations[0]).not.toHaveProperty("channel_name");
+
+    expect(result.agents).toEqual([
+      expect.objectContaining({
+        relation: "child",
+        conversation_id: child,
+        kind: "thread",
+      }),
+      {
+        relation: "other",
+        conversation_id: other,
+        status: "idle",
+        summary: expect.stringMatching(
+          /… \[\d+ more characters cut\. Read the conversation with searchConversationEvents\.\]$/,
+        ),
+        title: "Launch decision",
+        updated_at: expect.any(String),
+        url: `https://junior.example.com/conversations/${encodeURIComponent(other)}`,
+      },
+    ]);
+    const cut = /\[(\d+) more characters cut/.exec(
+      result.agents[1].summary,
+    )?.[1];
+    expect(result.agents[1].summary.startsWith(summary.slice(0, 1_000))).toBe(
+      true,
+    );
+    expect(Number(cut)).toBe(summary.length - 1_000);
   });
 
   it("embeds summaries again after a model change, so search finds them by meaning", async () => {
@@ -267,13 +190,13 @@ describe("searchConversations", () => {
       },
     ]);
 
-    const tool = createSearchConversationsTool({
+    const tool = createListAgentsTool({
       conversationId: "local:test:embedding-requester",
       embedder,
     });
     // No summary has these words. Only the new vectors match.
     const result = await executeTool(tool, { query: "message queue backlog" });
-    expect(result.conversations).toEqual([
+    expect(result.agents).toEqual([
       expect.objectContaining({ conversation_id: kafka }),
     ]);
   });

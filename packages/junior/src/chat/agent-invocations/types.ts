@@ -34,7 +34,7 @@ export const agentBindingSchema = z
   })
   .strict();
 
-/** Input of one `spawnAgent` call. */
+/** Input of one `startAgent` call that starts a child agent. */
 export const spawnChildAgentInputSchema = z
   .object({
     actor: actorSchema,

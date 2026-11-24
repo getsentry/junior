@@ -28,6 +28,10 @@ import {
 } from "@/chat/agent-invocations/parent-result";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import {
+  isLeadBriefTurn,
+  leadBriefProvenance,
+} from "@/chat/lead/start-conversation";
+import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
@@ -110,6 +114,7 @@ import {
 import {
   mailboxTurnInputs,
   savedTurnInputMessages,
+  sharedAuthorIdentityId,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
 import {
@@ -125,7 +130,6 @@ import {
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
-import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import {
   sharedDelegatedSubject,
@@ -161,19 +165,6 @@ function captureConversationTurnFailure(args: {
 function hasLostTurnInputCommit(error: unknown): boolean {
   const cause = getConversationTurnBoundaryError(error)?.cause ?? error;
   return isTurnInputCommitLostError(error) || isTurnInputCommitLostError(cause);
-}
-
-/**
- * Return the author Identity id that every batched input shares.
- * A batch with more than one author has no single author yet.
- */
-function sharedAuthorIdentityId(
-  messages: readonly InboundMessage[],
-): string | undefined {
-  const ids = new Set(
-    messages.map((message) => message.input.authorIdentityId),
-  );
-  return ids.size === 1 ? [...ids][0] : undefined;
 }
 
 /**
@@ -327,6 +318,15 @@ export function createConversationTurnWorker(
       );
     }
     const { actor, author } = turnInputFacts;
+    // The brief of a root that a Lead started is the person's request, but
+    // not a Message that the person wrote.
+    const fromLead = storedConversation
+      ? await isLeadBriefTurn({
+          actor,
+          conversation: storedConversation,
+          inputMessageIds,
+        })
+      : false;
     const instructionInputs = instructionForInputs(inputs);
     const { text } = instructionInputs;
     const instructionActor = instructionActorFor(actor);
@@ -480,7 +480,14 @@ export function createConversationTurnWorker(
             upsertConversationMessage(
               conversation,
               index === 0
-                ? { ...message, meta: { ...message.meta, replied: false } }
+                ? {
+                    ...message,
+                    meta: {
+                      ...message.meta,
+                      ...(fromLead ? { fromLead: true as const } : undefined),
+                      replied: false,
+                    },
+                  }
                 : message,
             );
           }
@@ -637,6 +644,9 @@ export function createConversationTurnWorker(
                 ...instructionInputs,
                 ...(instructionActor ? { actor: instructionActor } : undefined),
                 ...childTurn.instruction,
+                ...(fromLead
+                  ? { provenance: leadBriefProvenance(actor) }
+                  : undefined),
                 storedAttachments: attachments,
                 context: await buildTurnThreadContext({
                   conversation,

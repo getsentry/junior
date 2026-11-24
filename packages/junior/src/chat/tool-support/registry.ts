@@ -33,7 +33,6 @@ import { slackCanvasReadToolDefinition } from "@/chat/slack/tools/canvas/read";
 import { slackCanvasWriteToolDefinition } from "@/chat/slack/tools/canvas/write";
 import { slackChannelJoinToolDefinition } from "@/chat/slack/tools/channel-join";
 import { slackChannelListMessagesToolDefinition } from "@/chat/slack/tools/channel-list-messages";
-import { slackConversationSearchChannelFilter } from "@/chat/slack/tool-support/conversation-search";
 import { searchConversationMessagesToolDefinition } from "@/chat/slack/tools/conversation-message-search";
 import { slackListAddItemsToolDefinition } from "@/chat/slack/tools/list/add-items";
 import { slackListCreateToolDefinition } from "@/chat/slack/tools/list/create";
@@ -61,15 +60,14 @@ import { replyToolDefinition } from "@/chat/tools/runtime/reply";
 import { reportBlockedToolDefinition } from "@/chat/tools/runtime/report-blocked";
 import { reportProgressToolDefinition } from "@/chat/tools/runtime/report-progress";
 import { listAgentsToolDefinition } from "@/chat/tools/runtime/list-agents";
-import { spawnAgentToolDefinition } from "@/chat/tools/runtime/spawn-agent";
+import { startAgentToolDefinition } from "@/chat/tools/runtime/start-agent";
+import { leadStartAgentToolDefinition } from "@/chat/tools/runtime/start-agent-lead";
 import { stopAgentToolDefinition } from "@/chat/tools/runtime/stop-agent";
 import { updateTodosToolDefinition } from "@/chat/tools/runtime/update-todos";
 import { bashToolDefinition } from "@/chat/tools/sandbox/bash";
 import { editFileToolDefinition } from "@/chat/tools/sandbox/edit-file";
 import { readFileToolDefinition } from "@/chat/tools/sandbox/read-file";
 import { writeFileToolDefinition } from "@/chat/tools/sandbox/write-file";
-import { searchConversationsToolDefinition } from "@/chat/tools/search-conversations";
-import { startConversationToolDefinition } from "@/chat/tools/start-conversation";
 import { searchConversationEventsToolDefinition } from "@/chat/tools/search-conversation-events";
 import { searchEventTypesToolDefinition } from "@/chat/tools/search-event-types";
 import { stopWatchingResourcesToolDefinition } from "@/chat/tools/stop-watches";
@@ -130,9 +128,6 @@ const slackOnly = ({ platform }: ToolRegistryScope) => platform === "slack";
 const hasEvents = () => hasEventCatalogEntries(getEventCatalog());
 const hasAgents = ({ listedTools }: ToolRegistryScope) =>
   listedTools.agents !== "none";
-const hasChildAgents = ({ listedTools }: ToolRegistryScope) =>
-  listedTools.agents === "children" ||
-  listedTools.agents === "children_and_parent";
 
 // Write tools exist when the deployment has a workspace provider, and their
 // text names those providers.
@@ -198,12 +193,6 @@ const CORE_TOOLS = {
   },
   searchConversationEvents: always(searchConversationEventsToolDefinition),
   readConversationEvent: always(readConversationEventToolDefinition),
-  searchConversations: {
-    definition: ({ platform }) =>
-      searchConversationsToolDefinition(
-        platform === "slack" ? slackConversationSearchChannelFilter : undefined,
-      ),
-  },
   createPreview: RUN_BUILT,
   viewImage: RUN_BUILT,
   imageGenerate: RUN_BUILT,
@@ -212,20 +201,25 @@ const CORE_TOOLS = {
   publishImage: RUN_BUILT,
   unpublishImage: RUN_BUILT,
   transcribeAudio: RUN_BUILT,
-  spawnAgent: {
-    when: hasChildAgents,
-    definition: () => spawnAgentToolDefinition,
+  // A Lead starts roots of its person. Every other Turn starts child
+  // agents, so only it shows their arguments.
+  startAgent: {
+    when: hasAgents,
+    definition: ({ listedTools }) =>
+      listedTools.agents === "lead"
+        ? leadStartAgentToolDefinition
+        : startAgentToolDefinition,
   },
   stopAgent: {
-    when: hasChildAgents,
+    when: hasAgents,
     definition: () => stopAgentToolDefinition,
   },
   archiveAgent: {
-    when: hasChildAgents,
+    when: hasAgents,
     definition: () => archiveAgentToolDefinition,
   },
   listAgents: {
-    when: hasChildAgents,
+    when: hasAgents,
     definition: () => listAgentsToolDefinition,
   },
   messageAgent: {
@@ -306,12 +300,6 @@ const CORE_TOOLS = {
   addInboxItem: always(addInboxItemToolDefinition),
   searchInboxItems: always(searchInboxItemsToolDefinition),
   updateInboxItem: always(updateInboxItemToolDefinition),
-  // Only a Turn whose `only` list names it lists it, such as a Lead's.
-  startConversation: {
-    when: ({ listedTools }) =>
-      listedTools.only?.includes("startConversation") === true,
-    definition: () => startConversationToolDefinition,
-  },
 } satisfies Record<string, StaticToolEntry | RunBuiltToolEntry>;
 
 type CoreToolSlotKey = keyof typeof CORE_TOOLS;

@@ -75,6 +75,8 @@ export interface AppendWebMessageInput {
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
+  /** Applied only when this call creates the conversation root. */
+  rootLeadConversationId?: string;
 }
 
 /** Accepted web Message, including an earlier matching request. */
@@ -247,6 +249,8 @@ export async function recordWebConversationActivity(args: {
   rootVisibility?: ConversationPrivacy;
   /** Applied only when this call creates the Conversation root. */
   rootKind?: TopLevelConversationKind;
+  /** Applied only when this call creates the Conversation root. */
+  rootLeadConversationId?: string;
 }): Promise<Destination | undefined> {
   const store = args.conversationStore ?? getConversationStore();
   const existing = await store.get({ conversationId: args.conversationId });
@@ -275,6 +279,9 @@ export async function recordWebConversationActivity(args: {
     ...(isNewRoot && args.rootTitle ? { title: args.rootTitle } : undefined),
     ...(isNewRoot ? { visibility } : undefined),
     ...(isNewRoot && args.rootKind ? { kind: args.rootKind } : undefined),
+    ...(isNewRoot && args.rootLeadConversationId
+      ? { leadConversationId: args.rootLeadConversationId }
+      : undefined),
   });
   return existing && !isTopLevelKind(existing.kind) ? undefined : destination;
 }
@@ -337,6 +344,9 @@ export async function appendAndEnqueueWebMessage(
     nowMs,
     ...(input.rootTitle && { rootTitle: input.rootTitle }),
     ...(input.rootVisibility && { rootVisibility: input.rootVisibility }),
+    ...(input.rootLeadConversationId && {
+      rootLeadConversationId: input.rootLeadConversationId,
+    }),
   });
   let attachments: MessageAttachment[] = [];
   if (input.uploads?.length) {

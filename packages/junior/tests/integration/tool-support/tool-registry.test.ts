@@ -268,16 +268,17 @@ describe("static tool registry", () => {
       expectSameCachedPrefix([person, agent]);
       expect(person.disabled).toEqual(
         expect.arrayContaining([
-          "spawnAgent",
+          "startAgent",
           "stopAgent",
           "archiveAgent",
-          "listAgents",
           "messageAgent",
           "reply",
           "reportBlocked",
         ]),
       );
       expect(person.disabled).not.toContain("addInboxItem");
+      // Finding agents and Conversations reports nothing to the parent.
+      expect(person.disabled).not.toContain("listAgents");
       expect(agent.disabled).toEqual(
         expect.arrayContaining([
           "setConversationSubscription",
@@ -286,10 +287,14 @@ describe("static tool registry", () => {
           "updateInboxItem",
         ]),
       );
-      expect(agent.disabled).not.toContain("spawnAgent");
+      expect(agent.disabled).not.toContain("startAgent");
+      // A child agent starts child agents, so it sees their arguments.
+      expect(
+        Object.keys(agent.tools["startAgent"]!.inputSchema["properties"]!),
+      ).toEqual(expect.arrayContaining(["kind", "name", "agent_type", "fork"]));
       expect(agent.disabled).not.toContain("reply");
 
-      for (const name of ["spawnAgent", "messageAgent", "reply"]) {
+      for (const name of ["startAgent", "messageAgent", "reply"]) {
         await expect(callTool(person, name)).rejects.toThrow(
           `${name} is disabled in this Turn.`,
         );
@@ -344,7 +349,7 @@ describe("static tool registry", () => {
     expect(person.disabled).toEqual(
       expect.arrayContaining(["reply", "reportBlocked"]),
     );
-    expect(person.disabled).not.toContain("spawnAgent");
+    expect(person.disabled).not.toContain("startAgent");
     expect(person.disabled).not.toContain("addInboxItem");
     expect(automation.disabled).not.toContain("reply");
     expect(automation.disabled).not.toContain("reportBlocked");
@@ -393,15 +398,17 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
+        "archiveAgent",
+        "listAgents",
         "listWatches",
         "messageAgent",
         "noReply",
         "readConversationEvent",
         "searchConversationEvents",
-        "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
-        "startConversation",
+        "startAgent",
+        "stopAgent",
         "stopWatchingResources",
         "systemTime",
         // `updateUserCustomization` is listed only with its experiment on.
@@ -410,14 +417,20 @@ describe("static tool registry", () => {
       ].sort(),
     );
     expect(person.disabled).toEqual([]);
+    // A Lead starts a root of its person, so only the brief and the title
+    // can work there.
+    expect(
+      Object.keys(person.tools["startAgent"]!.inputSchema["properties"]!),
+    ).toEqual(["task", "title"]);
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
+        "listAgents",
         "listWatches",
         "readConversationEvent",
         "searchConversationEvents",
-        "searchConversations",
+        "startAgent",
         "searchEventTypes",
         "searchInboxItems",
         "stopWatchingResources",
