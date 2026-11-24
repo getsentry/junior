@@ -21,8 +21,18 @@ const config = defineConfig({
   },
 });
 
-export default withSentryConfig(config, {
-  authToken: process.env.SENTRY_AUTH_TOKEN,
-  org: process.env.SENTRY_ORG,
-  project: process.env.SENTRY_PROJECT,
+// The spike Preview has no Junior secrets, so it builds a bare Nitro
+// function that serves only the spike routes.
+const spikeConfig = defineConfig({
+  preset: "vercel",
+  vercel: { functions: { maxDuration: 300 } },
+  serverEntry: "./spike-server.ts",
 });
+
+export default process.env["VERCEL_ENV"] === "preview"
+  ? spikeConfig
+  : withSentryConfig(config, {
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+    });
