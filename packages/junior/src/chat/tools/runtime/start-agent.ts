@@ -14,17 +14,31 @@ import {
   AGENT_TYPES,
   formatAgentTypes,
 } from "@/chat/agent-invocations/agent-types";
-import {
-  startedAgentSchema,
-  startedAgentTitleSchema,
-} from "@/chat/agent-invocations/started-agent";
 import { getDashboardConversationLink } from "@/chat/dashboard-link";
 import { completeText, type ConversationModelCost } from "@/chat/core-model";
 import { TURN_REASONING_LEVELS } from "@/chat/reasoning-level";
-import { resolveTaskTitle } from "@/chat/services/short-title";
+import {
+  resolveTaskTitle,
+  SHORT_TITLE_MAX_LENGTH,
+} from "@/chat/services/short-title";
+import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
+
+const startAgentOutputSchema = juniorToolOutputSchema.extend({
+  conversation_id: z
+    .string()
+    .min(1)
+    .describe(
+      "Conversation ID of the new agent. Pass it to messageAgent, stopAgent, or archiveAgent.",
+    ),
+  url: z
+    .string()
+    .url()
+    .optional()
+    .describe("Link to the conversation. People can message it there."),
+});
 
 const childInputSchema = z
   .object({
@@ -35,7 +49,11 @@ const childInputSchema = z
       .describe(
         "Self-contained brief: the goal, targets, verified facts, constraints and allowed side effects, what done means, and the result shape. Unless fork is true, it is the child's only context.",
       ),
-    title: startedAgentTitleSchema
+    title: z
+      .string()
+      .trim()
+      .min(1)
+      .max(SHORT_TITLE_MAX_LENGTH)
       .nullable()
       .optional()
       .describe("Short display title. Omit it to generate one from the task."),
@@ -77,7 +95,7 @@ const childInputSchema = z
   })
   .strict();
 
-/** Static definition of `startAgent` in a Turn that starts child agents. */
+/** Static definition of `startAgent`. */
 export const startAgentToolDefinition = zodToolDefinition({
   description:
     "Start an asynchronous child agent with its own conversation, sandbox, and tool budget. It runs at the same time as you, and its result arrives in a later turn. A Thread is one work item that people own and message. A Task is background work that only you message. To give more work to an agent that already exists, use messageAgent instead.",
@@ -91,7 +109,7 @@ export const startAgentToolDefinition = zodToolDefinition({
     readOnlyHint: false,
   },
   inputSchema: childInputSchema,
-  outputSchema: startedAgentSchema,
+  outputSchema: startAgentOutputSchema,
 });
 
 /** Create the `startAgent` tool that starts child agents of one Turn. */

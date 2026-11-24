@@ -28,10 +28,6 @@ import {
 } from "@/chat/agent-invocations/parent-result";
 import { readParentMessage } from "@/chat/agent-invocations/parent-message-input";
 import {
-  isLeadBrief,
-  leadBriefProvenance,
-} from "@/chat/lead/start-conversation";
-import {
   hydrateConversationMessages,
   persistConversationMessages,
 } from "@/chat/conversations/messages";
@@ -114,7 +110,6 @@ import {
 import {
   mailboxTurnInputs,
   savedTurnInputMessages,
-  sharedAuthorIdentityId,
   webTurnInputs,
 } from "@/chat/task-execution/mailbox-input";
 import {
@@ -130,6 +125,7 @@ import {
   timerWatchCredentialSubject,
 } from "@/chat/events/notification";
 import { isEventConversationMessage } from "@/chat/events/actor";
+import type { InboundMessage } from "@/chat/task-execution/store";
 import type { CredentialSubject } from "@/chat/credentials/context";
 import {
   sharedDelegatedSubject,
@@ -168,6 +164,19 @@ function hasLostTurnInputCommit(error: unknown): boolean {
 }
 
 /**
+ * Return the author Identity id that every batched input shares.
+ * A batch with more than one author has no single author yet.
+ */
+function sharedAuthorIdentityId(
+  messages: readonly InboundMessage[],
+): string | undefined {
+  const ids = new Set(
+    messages.map((message) => message.input.authorIdentityId),
+  );
+  return ids.size === 1 ? [...ids][0] : undefined;
+}
+
+/**
  * Create the shared mailbox worker for web and event Turns of every
  * Conversation kind. `deliverMessage` posts to a Location, and
  * `deliverToParent` sends a child agent's results to its parent.
@@ -201,9 +210,6 @@ export function createConversationTurnWorker(
     let startedAtMs = Date.now();
     let inputMessageIds: string[] = [];
     let eventMeta: ReturnType<typeof eventBatchMessageMeta> = {};
-    // The brief of a root that a Lead started is the person's request, but
-    // not a Message that the person wrote.
-    let fromLead = false;
     // A parent agent's task or message. On resume, its saved author says so.
     let fromParent =
       resolved.kind === "mailbox" &&
@@ -249,7 +255,6 @@ export function createConversationTurnWorker(
       );
       authorIdentityId = sharedAuthorIdentityId(messages);
       turnInputFacts = first;
-      fromLead = isLeadBrief(webInputMessages);
     } else {
       turnId = resolved.turnId;
     }
@@ -313,7 +318,6 @@ export function createConversationTurnWorker(
       attachments = turnInputs.flatMap(
         (message) => message.meta?.attachments ?? [],
       );
-      fromLead = isLeadBrief(turnInputs);
       startedAtMs = userMessage.createdAtMs;
       inputMessageIds = turnInputs.map((message) => message.id);
     }
@@ -476,10 +480,7 @@ export function createConversationTurnWorker(
             upsertConversationMessage(
               conversation,
               index === 0
-                ? {
-                    ...message,
-                    meta: { ...message.meta, replied: false },
-                  }
+                ? { ...message, meta: { ...message.meta, replied: false } }
                 : message,
             );
           }
@@ -636,9 +637,6 @@ export function createConversationTurnWorker(
                 ...instructionInputs,
                 ...(instructionActor ? { actor: instructionActor } : undefined),
                 ...childTurn.instruction,
-                ...(fromLead
-                  ? { provenance: leadBriefProvenance(actor) }
-                  : undefined),
                 storedAttachments: attachments,
                 context: await buildTurnThreadContext({
                   conversation,

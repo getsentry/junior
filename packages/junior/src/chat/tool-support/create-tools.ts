@@ -5,6 +5,7 @@ import { createConversationEmbedder } from "@/chat/conversations/embedding";
 import { botConfig } from "@/chat/config";
 import { listedToolExposure } from "@/chat/tool-exposure";
 import { getVercelConversationWorkQueue } from "@/chat/task-execution/vercel-queue";
+import { createStartConversationTool } from "@/chat/tools/start-conversation";
 import { readLeadUser } from "@/chat/lead/conversation";
 import { createBashTool } from "@/chat/tools/sandbox/bash";
 import { createCreatePreviewTool } from "@/chat/tools/sandbox/create-preview";
@@ -25,7 +26,6 @@ import { createUpdateTodosTool } from "@/chat/tools/runtime/update-todos";
 import { createListAgentsTool } from "@/chat/tools/runtime/list-agents";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
 import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
-import { createLeadStartAgentTool } from "@/chat/tools/runtime/start-agent-lead";
 import { createStopAgentTool } from "@/chat/tools/runtime/stop-agent";
 import { createArchiveAgentTool } from "@/chat/tools/runtime/archive-agent";
 import { createReplyTool } from "@/chat/tools/runtime/reply";
@@ -39,6 +39,8 @@ import { REPLY_TOOL_NAME } from "@/chat/turn-answer";
 import { getEventCatalog } from "@/chat/events/runtime-catalog";
 import { createSlackChannelJoinTool } from "@/chat/slack/tools/channel-join";
 import { createSlackChannelListMessagesTool } from "@/chat/slack/tools/channel-list-messages";
+import { createSlackConversationSearchChannelPort } from "@/chat/slack/tool-support/conversation-search";
+import { createSearchConversationsTool } from "@/chat/tools/search-conversations";
 import { createSlackConversationMessageSearchTool } from "@/chat/slack/tools/conversation-message-search";
 import { createSlackPublicSearchTool } from "@/chat/slack/tools/public-search";
 import {
@@ -283,24 +285,41 @@ const STATIC_TOOL_BINDERS = {
         : undefined,
     ),
   readConversationEvent: (run) => createReadConversationEventTool(run.context),
+  searchConversations: (run) =>
+    createSearchConversationsTool({
+      ...(run.slack
+        ? {
+            channels: createSlackConversationSearchChannelPort(
+              run.slack.teamId,
+            ),
+          }
+        : undefined),
+      conversationId: run.context.conversationId,
+      embedder: createConversationEmbedder({
+        cost: {
+          conversationId: run.context.conversationId,
+          ...(run.context.turnId ? { turnId: run.context.turnId } : undefined),
+        },
+        operation: "conversation_search_embedding",
+      }),
+      // A Lead Turn that no person started searches for the Lead's person.
+      resolveUserId: async () =>
+        (await run.context.resolveActorIdentity?.())?.user?.id ??
+        (await readLeadUser(run.context.conversationId))?.id,
+    }),
   startAgent: (run) =>
-    run.listedTools.agents === "lead"
-      ? createLeadStartAgentTool(run.context)
-      : run.context.spawnAgent
-        ? createStartAgentTool(run.context.spawnAgent, run.modelCost)
-        : undefined,
+    run.context.spawnAgent
+      ? createStartAgentTool(run.context.spawnAgent, run.modelCost)
+      : undefined,
   stopAgent: (run) =>
-    run.context.spawnAgent || run.listedTools.agents === "lead"
-      ? createStopAgentTool(run.context.conversationId, {
-          lead: run.listedTools.agents === "lead",
-          queue: run.context.conversationWorkQueue,
-        })
+    run.context.spawnAgent
+      ? createStopAgentTool(run.context.conversationId)
       : undefined,
   archiveAgent: (run) =>
-    run.context.spawnAgent || run.listedTools.agents === "lead"
+    run.context.spawnAgent
       ? createArchiveAgentTool(run.context.conversationId)
       : undefined,
-  // Every Turn can find its team and the Conversations it may read, also a
+  // Every Turn but a Lead's finds the Conversations it may read, also a
   // child agent that is too deep to start child agents.
   listAgents: (run) =>
     createListAgentsTool({
@@ -312,12 +331,9 @@ const STATIC_TOOL_BINDERS = {
         },
         operation: "conversation_search_embedding",
       }),
-      lead: run.listedTools.agents === "lead",
       parentConversationId: run.context.parentConversationId,
-      // A Lead Turn that no person started searches for the Lead's person.
       resolvePersonUserId: async () =>
-        (await run.context.resolveActorIdentity?.())?.user?.id ??
-        (await readLeadUser(run.context.conversationId))?.id,
+        (await run.context.resolveActorIdentity?.())?.user?.id,
     }),
   messageAgent: (run) =>
     run.context.messageAgent
@@ -374,6 +390,7 @@ const STATIC_TOOL_BINDERS = {
     createSearchInboxItemsTool(run.context, run.inboxItemServices()),
   updateInboxItem: (run) =>
     createUpdateInboxItemTool(run.context, run.inboxItemServices()),
+  startConversation: (run) => createStartConversationTool(run.context),
 } satisfies Record<StaticToolName, ToolBinder>;
 
 type TurnTools = TurnBehavior["tools"];

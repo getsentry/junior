@@ -398,17 +398,15 @@ describe("static tool registry", () => {
     expectSameCachedPrefix([person, watch]);
     expect(Object.keys(person.tools).sort()).toEqual(
       [
-        "archiveAgent",
-        "listAgents",
         "listWatches",
         "messageAgent",
         "noReply",
         "readConversationEvent",
         "searchConversationEvents",
+        "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
-        "startAgent",
-        "stopAgent",
+        "startConversation",
         "stopWatchingResources",
         "systemTime",
         // `updateUserCustomization` is listed only with its experiment on.
@@ -417,20 +415,14 @@ describe("static tool registry", () => {
       ].sort(),
     );
     expect(person.disabled).toEqual([]);
-    // A Lead starts a root of its person, so only the brief and the title
-    // can work there.
-    expect(
-      Object.keys(person.tools["startAgent"]!.inputSchema["properties"]!),
-    ).toEqual(["task", "title"]);
     // The Lead's main tools are in the model tool list, not behind
     // `searchTools`.
     expect(person.piTools.map((tool) => tool.name)).toEqual(
       expect.arrayContaining([
-        "listAgents",
         "listWatches",
         "readConversationEvent",
         "searchConversationEvents",
-        "startAgent",
+        "searchConversations",
         "searchEventTypes",
         "searchInboxItems",
         "stopWatchingResources",

@@ -80,7 +80,7 @@ export function mockLeadEvents(
         calls: [
           {
             toolCallId,
-            name: "startAgent",
+            name: "startConversation",
             status: "running",
             startedAt,
             startedSeq,
@@ -93,7 +93,7 @@ export function mockLeadEvents(
         calls: [
           {
             toolCallId,
-            name: "startAgent",
+            name: "startConversation",
             status: "completed",
             startedAt,
             startedSeq,

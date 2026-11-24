@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Destination, Source } from "@sentry/junior-plugin-api";
 import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import type { ConversationPrivacy } from "@/chat/conversation-privacy";
-import { sameDestination } from "@/chat/destination";
+import { parseDestination, sameDestination } from "@/chat/destination";
 import { recordConversationParticipant } from "./participants";
 import {
   readConversationRunMetrics,
@@ -31,6 +31,8 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
+import type { JuniorDestinationKind } from "@/db/schema/destination-kind";
+import type { JuniorDestinationVisibility } from "@/db/schema/destinations";
 import {
   bindProviderConversation,
   claimProviderConversationOwner,
@@ -53,11 +55,6 @@ import {
   ensureConversationRow,
 } from "./conversation-row";
 import { nextDetailVersion } from "./detail-version";
-import {
-  destinationFromRow,
-  destinationUpsertFromDestination,
-  type DestinationUpsert,
-} from "./destination-row";
 import { isTopLevelKind } from "@/chat/conversations/kind-behavior";
 type ConversationRow = typeof juniorConversations.$inferSelect;
 type DestinationRow = typeof juniorDestinations.$inferSelect;
@@ -67,6 +64,17 @@ interface ConversationReadRow {
   destination: DestinationRow | null;
   actorIdentity: IdentityRow | null;
   actorUserDisplayName: string | null;
+}
+
+interface DestinationUpsert {
+  displayName?: string;
+  kind: JuniorDestinationKind;
+  metadata?: Record<string, unknown>;
+  provider: string;
+  providerDestinationId: string;
+  providerTenantId?: string | undefined;
+  refreshVisibility: boolean;
+  visibility: JuniorDestinationVisibility;
 }
 
 const CONVERSATION_MUTATION_LOCK_PREFIX = "junior_conversation";
@@ -127,6 +135,56 @@ function sourceFromValue(value: unknown): ConversationSource | undefined {
   return undefined;
 }
 
+function localWorkspaceFromConversationId(
+  conversationId: string,
+): string | undefined {
+  const match = /^local:([^:]+):/.exec(conversationId);
+  return match?.[1];
+}
+
+function destinationUpsertFromDestination(args: {
+  channelName?: string | undefined;
+  conversationId?: string;
+  destination: Destination | undefined;
+  /** Confirmed destination visibility; omit when unavailable. */
+  visibility?: ConversationPrivacy;
+}): DestinationUpsert | undefined {
+  const { destination } = args;
+  if (!destination) {
+    return undefined;
+  }
+  if (destination.platform === "slack") {
+    const channelId = destination.channelId;
+    const channelKind = channelId.startsWith("D")
+      ? "dm"
+      : channelId.startsWith("G")
+        ? "group"
+        : "channel";
+    return {
+      kind: channelKind,
+      provider: "slack",
+      providerTenantId: destination.teamId,
+      providerDestinationId: channelId,
+      refreshVisibility: args.visibility !== undefined,
+      visibility: args.visibility ?? "unknown",
+      ...(args.channelName ? { displayName: args.channelName } : undefined),
+      metadata: { platform: "slack" },
+    };
+  }
+  return {
+    kind: "local_conversation",
+    provider: "local",
+    providerTenantId:
+      localWorkspaceFromConversationId(destination.conversationId) ??
+      localWorkspaceFromConversationId(args.conversationId ?? ""),
+    providerDestinationId: destination.conversationId,
+    // Match Slack: only refresh when a live visibility signal is present so
+    // execution-metadata writes cannot clobber public dashboard roots.
+    refreshVisibility: args.visibility !== undefined,
+    visibility: args.visibility ?? "direct",
+    metadata: { platform: "local" },
+  };
+}
 function executionStatusFromValue(value: unknown): ConversationStatus {
   if (
     value === "failed" ||
@@ -138,6 +196,25 @@ function executionStatusFromValue(value: unknown): ConversationStatus {
     return value;
   }
   throw new Error("Conversation record execution status is invalid");
+}
+
+function destinationFromRow(
+  destination: DestinationRow | null,
+): Destination | undefined {
+  const value =
+    destination?.provider === "slack"
+      ? {
+          platform: "slack",
+          teamId: destination.providerTenantId,
+          channelId: destination.providerDestinationId,
+        }
+      : destination?.provider === "local"
+        ? {
+            platform: "local",
+            conversationId: destination.providerDestinationId,
+          }
+        : undefined;
+  return parseDestination(value);
 }
 
 /** Decode one SQL row and reject invalid durable conversation records. */

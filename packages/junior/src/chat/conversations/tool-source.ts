@@ -2,5 +2,5 @@
 export const CONVERSATIONS_TOOL_SOURCE = {
   id: "conversations",
   description:
-    "Search and read the messages and events of retained conversations.",
+    "Search other conversations for past or current work, and read messages and events in retained conversations.",
 } as const;

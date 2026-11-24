@@ -23,6 +23,7 @@ import {
 } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import type { JuniorDatabase } from "@/db/db";
+import type * as z from "zod";
 import type { PluginEmbedder } from "@sentry/junior-plugin-api";
 import {
   conversationSimilarity,
@@ -84,6 +85,24 @@ export interface ConversationSearchResult {
   updatedAtMs: number;
 }
 
+/** Provider-owned channel filter and match details for Conversation search. */
+export interface ConversationSearchChannelPort {
+  channelFilterSchema: z.ZodString;
+  /**
+   * Describe the provider channel of a match. `includeUrl` asks for the
+   * provider thread link, for when there is no dashboard link.
+   */
+  describeMatch(
+    match: ConversationSearchResult,
+    options: { includeUrl: boolean },
+  ): Promise<{
+    channel_id?: string;
+    channel_name?: string;
+    url?: string;
+  }>;
+  resolveChannel(input: string): Promise<string>;
+}
+
 /** Filters for one Conversation search. All are optional. */
 export interface ConversationSearch {
   /** Only Conversations with activity at or after this time. */
@@ -112,8 +131,8 @@ export interface ConversationSearch {
   rootsOnly: boolean;
   /**
    * Also search the requester's own tree, except the requester, and rank
-   * it first. Then rank the Conversations of its person, which are the team
-   * of a Lead.
+   * it first. Then rank the Conversations where this person is a
+   * Participant.
    */
   team?: { personUserId?: string | undefined };
   /** Only Conversations whose root has this User as a Participant. */

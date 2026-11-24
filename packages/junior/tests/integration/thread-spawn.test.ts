@@ -280,7 +280,7 @@ describe("Thread spawn and archive", () => {
         archiveAgent(slackParentConversationId, nestedThread),
       ).rejects.toMatchObject({
         name: "ToolInputError",
-        message: expect.stringContaining("is not an agent on your team"),
+        message: expect.stringContaining("is not a child agent"),
       });
 
       // The parent's own open work is in use.

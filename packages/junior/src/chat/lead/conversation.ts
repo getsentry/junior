@@ -18,6 +18,7 @@ import { getConversationStore, getDb, getSqlExecutor } from "@/chat/db";
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { isPostgresErrorCode } from "@/db/postgres-error";
 import {
+  juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
   juniorUsers,
@@ -108,10 +109,11 @@ export async function readLeadUser(
 }
 
 /**
- * Return whether a Conversation is a Lead and the target is a root, which
- * the Lead may write into for its person. False for an Automation run.
+ * Return whether the person of a Lead is a Participant of one root
+ * Conversation. False when the sender is not a Lead, or when the target is
+ * not a root, such as an Automation run.
  */
-export async function isLeadToRoot(args: {
+export async function leadPersonParticipates(args: {
   leadConversationId: string;
   rootConversationId: string;
 }): Promise<boolean> {
@@ -119,6 +121,20 @@ export async function isLeadToRoot(args: {
   const [row] = await getDb()
     .select({ one: sql`1` })
     .from(juniorConversations)
+    .innerJoin(
+      juniorIdentities,
+      eq(juniorIdentities.id, juniorConversations.actorIdentityId),
+    )
+    .innerJoin(
+      juniorConversationParticipants,
+      and(
+        eq(juniorConversationParticipants.userId, juniorIdentities.userId),
+        eq(
+          juniorConversationParticipants.rootConversationId,
+          args.rootConversationId,
+        ),
+      ),
+    )
     .innerJoin(
       target,
       and(

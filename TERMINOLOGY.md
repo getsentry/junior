@@ -21,16 +21,14 @@ Canonical words for Junior code and docs. One concept, one word.
   say "web Conversation".
 - **Lead**: one person's private top-level Conversation that finds, starts,
   and steers their other Conversations. It has no child agents and does no
-  work itself. Its `startAgent` starts a public root for the person, on its
-  team.
+  work itself. `startConversation` starts a public root for the person.
 - **Thread**: a child Conversation that people can message like a root. Say
   "Slack thread" for the Location. A bare "Thread" is the Conversation.
 - **Task**: a child Conversation that only its parent messages. People can
   view it. Existing code names with `task` (`task-execution`, the Ticket
   `task` type, the `startAgent` `task` field) keep their meaning.
-- **Team**: an agent and the agents that it started. A Lead's team is the
-  public roots that its person takes part in. It sets who manages an agent,
-  not access.
+- **Team**: an agent and the agents that it started: its child agents, and
+  the roots that a Lead starts. It sets who manages an agent, not access.
 - **Agent update**: the one Event (`agent.update`) that every agent sends
   when a Turn ends, or when it waits, is blocked, fails, or stops.
 - **Subagent**: the mechanism behind Threads and Tasks (`startAgent`, Agent
@@ -179,8 +177,8 @@ Canonical words for Junior code and docs. One concept, one word.
   Turn.
   To a parent or a top-level agent it is an Event Inbound message, and it
   gives no user approval.
-- **Agent type**: a `startAgent` preset for a child agent: when to pick it, whether it forks
-  history, and per-task instructions. It does not limit tools.
+- **Agent type**: a `startAgent` preset for a child agent: when to pick it,
+  whether it forks history, and per-task instructions. It does not limit tools.
 - **Tool exposure**: who may call a tool: the model, the tool catalog
   (`searchTools` and `executeTool`), or a Code Mode script (a script that
   calls tools with `tools.x(args)`). `ToolExposure` owns the values.

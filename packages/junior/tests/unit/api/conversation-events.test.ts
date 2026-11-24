@@ -747,7 +747,7 @@ describe("conversation report event projection", () => {
     expect(JSON.stringify(projected)).not.toContain("AAAA");
   });
 
-  it("projects the root that a Lead's startAgent started only to authorized viewers", () => {
+  it("projects the Conversation that startConversation started only to authorized viewers", () => {
     const details = {
       conversation_id: "local:web:started",
       subscribable: {
@@ -762,7 +762,7 @@ describe("conversation report event projection", () => {
       event(1, {
         type: "tool_result",
         toolCallId: "call-1",
-        toolName: "startAgent",
+        toolName: "startConversation",
         content: [{ type: "text", text: JSON.stringify(details) }],
         details,
         isError: false,
@@ -782,33 +782,9 @@ describe("conversation report event projection", () => {
     expect(call(true)?.startedConversationId).toBe("local:web:started");
     expect(call(false)).toEqual({
       toolCallId: "call-1",
-      name: "startAgent",
+      name: "startConversation",
       status: "completed",
     });
-  });
-
-  it("does not project a child agent that startAgent started as a started root", () => {
-    const details = { conversation_id: "local:web:child" };
-    const [projected] = projectConversationReportEventPage({
-      canExposePayload: true,
-      events: [
-        event(1, {
-          type: "tool_result",
-          toolCallId: "call-1",
-          toolName: "startAgent",
-          content: [{ type: "text", text: JSON.stringify(details) }],
-          details,
-          isError: false,
-          timestamp: 1_000,
-        }),
-      ],
-    });
-
-    expect(
-      projected?.data.type === "tool_calls"
-        ? projected.data.calls[0]?.startedConversationId
-        : "not a tool call",
-    ).toBeUndefined();
   });
 
   it("projects dashboard source with visible message metadata", () => {

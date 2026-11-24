@@ -1,19 +1,15 @@
 /**
  * Start one Conversation from a Lead. The new Conversation is a public web
- * root of the Lead's person and runs as that person, like any root. It has
- * no parent. Its person is a Participant, so it is on the Lead's team. The
- * Lead's brief is its first Message. The start is not reviewed. Action
+ * root of the Lead's person and runs as that person, like any root. The
+ * Lead's task is its first Message. The start is not reviewed. Action
  * review judges the new root's own tool calls, as it does a child agent's.
  */
-import type { Actor } from "@/chat/actor";
 import {
   appendAndEnqueueWebMessage,
   createConversationId,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import type { ConversationMessageProvenance } from "@/chat/conversations/provenance";
 import { readLeadUser } from "@/chat/lead/conversation";
-import type { ConversationMessage } from "@/chat/state/conversation";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
 
 /**
@@ -39,7 +35,6 @@ export async function startLeadConversation(args: {
       actor: webActorFromUser(user),
       conversationId,
       idempotencyKey,
-      fromLead: true,
       message: args.task,
       rootTitle: args.title,
       rootVisibility: "public",
@@ -47,25 +42,4 @@ export async function startLeadConversation(args: {
     { nowMs: Date.now(), queue: args.queue },
   );
   return { conversationId };
-}
-
-/**
- * Return whether a Turn runs only the Lead's brief. A Turn that also takes
- * a Message from the person runs their words too.
- */
-export function isLeadBrief(
-  inputs: readonly Pick<ConversationMessage, "meta">[],
-): boolean {
-  return inputs.length === 1 && inputs[0]!.meta?.fromLead === true;
-}
-
-/**
- * Provenance of the brief: the person's instruction, so action review
- * counts it as their request, marked so that readers of the person's own
- * Messages skip it.
- */
-export function leadBriefProvenance(
-  actor: Actor,
-): ConversationMessageProvenance {
-  return { authority: "instruction", actor, fromLead: true };
 }

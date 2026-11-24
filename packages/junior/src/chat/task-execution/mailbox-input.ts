@@ -68,9 +68,6 @@ export function webConversationMessage(
     meta: {
       ...(attachments.length ? { attachments } : undefined),
       explicitMention: true,
-      ...(message.input.metadata?.["fromLead"] === true
-        ? { fromLead: true as const }
-        : undefined),
       ...(reviewItemChange
         ? { reviewItemChanges: [reviewItemChange] }
         : undefined),
@@ -143,17 +140,4 @@ export async function mailboxTurnInputs(
       webConversationMessage(entry.message, entry.author),
     ),
   };
-}
-
-/**
- * Return the author Identity id that every batched input shares.
- * A batch with more than one author has no single author yet.
- */
-export function sharedAuthorIdentityId(
-  messages: readonly InboundMessage[],
-): string | undefined {
-  const ids = new Set(
-    messages.map((message) => message.input.authorIdentityId),
-  );
-  return ids.size === 1 ? [...ids][0] : undefined;
 }

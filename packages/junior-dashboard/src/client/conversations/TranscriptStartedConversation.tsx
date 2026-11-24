@@ -15,7 +15,7 @@ import { usePrefetchConversation } from "./conversationPrefetch";
 import { conversationPath, conversationUrl } from "./conversationRoutes";
 import { transcriptColumnsClass } from "./TranscriptRows";
 
-const startAgentInputSchema = z.object({ title: z.string().min(1) });
+const startConversationInputSchema = z.object({ title: z.string().min(1) });
 
 /**
  * Show a Conversation that a Lead started as a card, not a tool call: its
@@ -24,7 +24,7 @@ const startAgentInputSchema = z.object({ title: z.string().min(1) });
  */
 export function TranscriptStartedConversation(props: {
   conversationId: string;
-  /** Input of the `startAgent` call. */
+  /** Input of the `startConversation` call. */
   input: unknown;
   timestamp?: number | undefined;
 }) {
@@ -45,7 +45,7 @@ export function TranscriptStartedConversation(props: {
       : waiting
         ? "needs_you"
         : undefined;
-  const input = startAgentInputSchema.safeParse(props.input);
+  const input = startConversationInputSchema.safeParse(props.input);
   const title =
     conversation?.displayTitle ??
     (input.success ? input.data.title : "Conversation");

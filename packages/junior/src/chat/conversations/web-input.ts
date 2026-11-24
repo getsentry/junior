@@ -75,8 +75,6 @@ export interface AppendWebMessageInput {
   rootTitle?: string;
   /** Applied only when this call creates the conversation root. */
   rootVisibility?: ConversationPrivacy;
-  /** A Lead wrote this Message for its person, as the brief of a root. */
-  fromLead?: true;
 }
 
 /** Accepted web Message, including an earlier matching request. */
@@ -178,8 +176,6 @@ export function buildWebInboundMessage(args: {
   delivery?: InboundMessageDelivery | undefined;
   /** Existing Conversation Destination. A child's work keeps none. */
   destination?: Destination | undefined;
-  /** A Lead wrote this Message for its person. */
-  fromLead?: true;
   message: string;
   attachments?: MessageAttachment[];
   messageId: string;
@@ -218,7 +214,6 @@ export function buildWebInboundMessage(args: {
         : undefined),
       metadata: {
         authorEmail: normalizeEmail(args.actor.email),
-        ...(args.fromLead && { fromLead: true }),
         ...(args.actor.fullName && { authorFullName: args.actor.fullName }),
         authorUserId: args.actor.userId,
         ...(args.actor.userName && { authorUserName: args.actor.userName }),
@@ -371,7 +366,6 @@ export async function appendAndEnqueueWebMessage(
         conversationId: input.conversationId,
         delivery: input.delivery,
         destination,
-        ...(input.fromLead && { fromLead: input.fromLead }),
         message: text,
         attachments,
         messageId,

@@ -9,8 +9,6 @@ export const legacyWebMailboxMetadataSchema = z
     authorFullName: z.string().min(1).optional(),
     authorUserId: z.string().min(1),
     authorUserName: z.string().min(1).optional(),
-    // A Lead wrote this Message for its person, as the brief of a root.
-    fromLead: z.literal(true).optional(),
     kind: z.literal("api_turn"),
     messageId: z.string().min(1),
   })
