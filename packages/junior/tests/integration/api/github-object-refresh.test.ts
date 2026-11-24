@@ -822,4 +822,38 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: true,
     });
   });
+  it("keeps known checks and merge state when a webhook on the same head says mergeable null", async () => {
+    stubGitHubApp();
+    const queries = stubGraphql({ cards: [cardNode(34)] });
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-02T06:00:00Z");
+    vi.setSystemTime(start);
+    await read(url);
+
+    // A label changes nothing that GitHub computes.
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "labeled",
+      pull_request: pullRequest(34, {
+        head: { ref: "feat/34", sha: "ddd444" },
+        mergeable: null,
+        updated_at: new Date(start + 10_000).toISOString(),
+      }),
+    });
+    vi.setSystemTime(start + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestCards",
+    ]);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: true,
+    });
+  });
 });
