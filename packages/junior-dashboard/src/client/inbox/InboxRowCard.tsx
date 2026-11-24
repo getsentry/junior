@@ -15,6 +15,7 @@ import { AutomationAlertDetails } from "./InboxAutomationRow";
 import { Pill } from "./inboxAsks";
 import { inboxItemKind, textRepeatsHead } from "./inboxModel";
 import { InboxItemActions } from "./InboxItemActions";
+import { InboxItemFactsDisclosure } from "./InboxItemFacts";
 import { InboxItemObjects } from "./InboxItemObjects";
 import {
   InboxItemSubjectPreview,
@@ -37,7 +38,7 @@ import {
 /**
  * The card of one ask in an open row: its question, the message of the
  * Turn that asked it, its form, subject, and notices, with its own Snooze
- * and Dismiss.
+ * and Dismiss, and its facts behind Details.
  */
 export function InboxRowCard(props: {
   actions?: InboxCardActions;
@@ -210,6 +211,7 @@ export function InboxRowCard(props: {
       {/* A question comes right under the row's head, so its notices
           follow its form. */}
       {item.request ? notices : null}
+      <InboxItemFactsDisclosure item={item} />
     </section>
   );
 }

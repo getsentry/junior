@@ -1,38 +1,26 @@
-import type { ReactNode } from "react";
-import { Link } from "react-router";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { DetailsPanel } from "../components/DetailsPanel";
 import { DetailsCard } from "../conversations/DetailsList";
-import { conversationPath } from "../conversations/conversationRoutes";
 import {
   DisplayText,
   useTextShowsObjectCard,
 } from "../display-text/DisplayText";
-import { automationPath } from "../format";
 import { dashboardInlineLinkClass } from "../styles";
-import { useLinkedConversationTitles } from "./queries";
+import {
+  Fact,
+  InboxItemAddedBy,
+  LinkedConversationList,
+} from "./InboxItemFacts";
 import { InboxItemObjects } from "./InboxItemObjects";
 import {
   itemConversationId,
-  itemOwnerPath,
   inboxItemStatusLabel,
   inboxItemSubjectHref,
 } from "./inboxItemFormat";
 import { OutboundLink } from "../components/OutboundLink";
 import { formatRelativeTime } from "../time";
 import { InboxItemAssignees } from "./InboxItemPeople";
-
-function Fact(props: { children: ReactNode; label: string }) {
-  return (
-    <>
-      <dt className="text-dashboard-text-muted">{props.label}</dt>
-      <dd className="m-0 min-w-0 break-words text-dashboard-text">
-        {props.children}
-      </dd>
-    </>
-  );
-}
 
 /**
  * Link the subject of an item. When the body already shows the subject's full
@@ -70,13 +58,6 @@ export function InboxItemDetails(props: {
 }) {
   const { item } = props;
   const subject = item.subject;
-  const ownerConversationId = itemConversationId(item);
-  const titles = useLinkedConversationTitles([
-    ...(ownerConversationId ? [ownerConversationId] : []),
-    ...item.conversationIds,
-  ]);
-  const addedByTitle = ownerConversationId ? titles[0] : "Automation";
-  const linkedTitles = ownerConversationId ? titles.slice(1) : titles;
   return (
     <DetailsPanel
       label="Inbox item details"
@@ -103,24 +84,7 @@ export function InboxItemDetails(props: {
             <Fact label="Status">{inboxItemStatusLabel(item)}</Fact>
             <Fact label="Added">{formatRelativeTime(item.createdAt)}</Fact>
             <Fact label="Added by">
-              <Link
-                className={dashboardInlineLinkClass}
-                title={item.owner.id}
-                to={itemOwnerPath(item, { turnId: item.addedByTurnId })}
-              >
-                {addedByTitle ?? "Conversation"}
-              </Link>
-              {item.automationId ? (
-                <>
-                  {" · "}
-                  <Link
-                    className={dashboardInlineLinkClass}
-                    to={automationPath(item.automationId)}
-                  >
-                    Automation
-                  </Link>
-                </>
-              ) : null}
+              <InboxItemAddedBy item={item} />
             </Fact>
             <Fact label="Visibility">
               {item.visibility === "private" ? "Private" : "Public"}
@@ -137,27 +101,9 @@ export function InboxItemDetails(props: {
             count={item.conversationIds.length}
             title="Linked conversations"
           >
-            <ul className="m-0 grid list-none gap-1 p-0 text-sm">
-              {item.conversationIds.map((conversationId, index) => {
-                const title = linkedTitles[index];
-                return (
-                  <li
-                    className={
-                      title ? "truncate" : "truncate font-mono text-xs"
-                    }
-                    key={conversationId}
-                  >
-                    <Link
-                      className={dashboardInlineLinkClass}
-                      title={conversationId}
-                      to={conversationPath(conversationId)}
-                    >
-                      {title ?? conversationId}
-                    </Link>
-                  </li>
-                );
-              })}
-            </ul>
+            <div className="text-sm">
+              <LinkedConversationList conversationIds={item.conversationIds} />
+            </div>
           </DetailsCard>
         ) : null}
       </div>

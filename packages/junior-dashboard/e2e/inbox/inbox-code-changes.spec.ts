@@ -133,7 +133,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     expect(order).toEqual([...order].sort((a, b) => a - b));
     expect(order[0]).toBeGreaterThanOrEqual(0);
-    expect(actions.at(-1)).toBe("Review on GitHub");
+    // The card's Details follow its action line.
+    expect(actions.slice(-2)).toEqual(["Review on GitHub", "Details"]);
     await screenshot(page, "inbox-code-change-open", { lightTheme: true });
   });
 });
