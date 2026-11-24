@@ -42,9 +42,10 @@
 // the same step changes nothing. Lease times use the database clock, so hosts
 // agree on expiry.
 //
-// commitStep and cancelTurn take the Conversation lock before they touch the
-// Turn row. A writer that needs both takes them in this order, so writers
-// cannot deadlock.
+// claimTurn, commitStep and cancelTurn take the Conversation lock before they
+// touch the Turn row, so a claim cannot start a Turn while `scheduleInput`
+// decides where an input goes. A writer that needs both takes them in this
+// order, so writers cannot deadlock.
 import { randomUUID } from "node:crypto";
 import type { Source } from "@sentry/junior-plugin-api";
 import { and, asc, eq, inArray, lte, notExists, or, sql } from "drizzle-orm";
@@ -229,7 +230,7 @@ export async function findOpenTurns(
  * Claims a Turn to run its next step: the Conversation's next queued Turn, or
  * a running Turn whose lease expired. Returns undefined for any other Turn, so
  * of two concurrent claims only one gets the Turn, and a Turn waits while
- * another Turn of its Conversation runs.
+ * another Turn of its Conversation runs. It holds the Conversation lock.
  */
 export async function claimTurn(
   {
@@ -239,9 +240,13 @@ export async function claimTurn(
   }: Pick<EngineContext, "executor" | "owner" | "leaseMs">,
   turnId: string,
 ): Promise<ClaimedTurn | undefined> {
-  const db = executor.db();
+  const turn = await findTurn({ executor }, turnId);
+  if (!turn) {
+    return undefined;
+  }
   const ahead = alias(juniorTurns, "ahead");
-  const turnAhead = db
+  const turnAhead = executor
+    .db()
     .select({ one: sql`1` })
     .from(ahead)
     .where(
@@ -256,35 +261,40 @@ export async function claimTurn(
         ),
       ),
     );
-  const [claimed] = await db
-    .update(juniorTurns)
-    .set({
-      state: "running",
-      leaseOwner: owner,
-      leaseExpiresAt: leaseExpiry(leaseMs),
-      leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
-      attempts: sql`${juniorTurns.attempts} + 1`,
-      updatedAt: sql`now()`,
-    })
-    .where(
-      and(
-        eq(juniorTurns.id, turnId),
-        or(
-          and(eq(juniorTurns.state, "queued"), notExists(turnAhead)),
-          and(
-            eq(juniorTurns.state, "running"),
-            lte(juniorTurns.leaseExpiresAt, sql`now()`),
+  const claim = () =>
+    executor
+      .db()
+      .update(juniorTurns)
+      .set({
+        state: "running",
+        leaseOwner: owner,
+        leaseExpiresAt: leaseExpiry(leaseMs),
+        leaseEpoch: sql`${juniorTurns.leaseEpoch} + 1`,
+        attempts: sql`${juniorTurns.attempts} + 1`,
+        updatedAt: sql`now()`,
+      })
+      .where(
+        and(
+          eq(juniorTurns.id, turnId),
+          or(
+            and(eq(juniorTurns.state, "queued"), notExists(turnAhead)),
+            and(
+              eq(juniorTurns.state, "running"),
+              lte(juniorTurns.leaseExpiresAt, sql`now()`),
+            ),
           ),
         ),
-      ),
-    )
-    .returning({
-      turnId: juniorTurns.id,
-      leaseEpoch: juniorTurns.leaseEpoch,
-      conversationId: juniorTurns.conversationId,
-      stepSeq: juniorTurns.stepSeq,
-      attempts: juniorTurns.attempts,
-    });
+      )
+      .returning({
+        turnId: juniorTurns.id,
+        leaseEpoch: juniorTurns.leaseEpoch,
+        conversationId: juniorTurns.conversationId,
+        stepSeq: juniorTurns.stepSeq,
+        attempts: juniorTurns.attempts,
+      });
+  const [claimed] = await executor.transaction(() =>
+    withConversationEventLock(executor, turn.conversationId, claim),
+  );
   return claimed;
 }
 
