@@ -352,7 +352,6 @@ private struct ConversationComposer: View {
       ComposerSurface(focused: focused) {
         HStack(alignment: .bottom, spacing: 0) {
           ComposerField(text: $text, placeholder: "Message \(app.agentName)…", focused: $focused) {
-            ComposerTextView.diagCanSend = canSend  // DIAG
             if canSend { send(interrupt: false) }
           }
           HStack(spacing: 12) {
