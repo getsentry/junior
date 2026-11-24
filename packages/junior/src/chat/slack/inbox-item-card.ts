@@ -9,7 +9,6 @@ import {
   type InboxItem,
   type InboxItemAssignee,
 } from "@/chat/inbox-items/store";
-import { subjectLink } from "@/chat/inbox-items/subjects";
 import {
   escapeSlackMrkdwnText,
   normalizeSlackReplyMarkdown,
@@ -62,18 +61,18 @@ function assigneeText(item: InboxItem): string {
  * it cannot guess another URL for a reference in the title, such as an
  * issue URL for a pull request.
  */
-function titleText(item: InboxItem): string {
-  const href = safeLinkUrl(subjectLink(item.subject));
+function titleText(item: InboxItem, subjectUrl: string | undefined): string {
+  const href = safeLinkUrl(subjectUrl);
   if (!href) return `**${item.title}**`;
   const label = item.title.replace(/[[\]\\]/g, "\\$&");
   return `**[${label}](${href.replaceAll("(", "%28").replaceAll(")", "%29")})**`;
 }
 
 /** The title, body, and question of an item, in Slack markdown. */
-function itemText(item: InboxItem): string {
+function itemText(item: InboxItem, subjectUrl: string | undefined): string {
   return normalizeSlackReplyMarkdown(
     [
-      titleText(item),
+      titleText(item, subjectUrl),
       // A plugin item asks its body as the question, so it shows once.
       ...(item.request?.question === item.body
         ? []
@@ -183,11 +182,14 @@ function closedNote(item: InboxItem): string {
  * notice. A
  * closed item shows a note instead, so nobody can act on it again.
  */
-export function buildSlackInboxItemCard(item: InboxItem): {
+export function buildSlackInboxItemCard(
+  item: InboxItem,
+  subjectUrl: string | undefined,
+): {
   blocks: KnownBlock[];
   text: string;
 } {
-  const text = itemText(item);
+  const text = itemText(item, subjectUrl);
   const link = getDashboardInboxItemLink(item.id);
   // Each part is its own element, so a long answer note cannot push the
   // element over the Slack limit and make the card update fail.

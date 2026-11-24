@@ -41,9 +41,13 @@ export async function recordEventAutomationRunStarted(
     .onConflictDoNothing({ target: juniorAutomationRuns.id });
 }
 
+// The ingest writes a run's row just before its dispatch record, so a
+// missing record means a lost dispatch only after this long.
+const MISSING_DISPATCH_GRACE_MS = 5 * 60_000;
+
 /**
  * Settle running event automation runs whose dispatch has ended. A run whose
- * dispatch record is gone fails.
+ * dispatch record is still missing after a short grace fails.
  */
 export async function settleEventAutomationRuns(
   db: JuniorDatabase,
@@ -53,6 +57,7 @@ export async function settleEventAutomationRuns(
     .select({
       automationId: juniorAutomationRuns.automationId,
       id: juniorAutomationRuns.id,
+      startedAtMs: juniorAutomationRuns.startedAtMs,
     })
     .from(juniorAutomationRuns)
     .innerJoin(
@@ -68,6 +73,12 @@ export async function settleEventAutomationRuns(
   const dispatches = await mapBounded(runs, (run) => getDispatchRecord(run.id));
   for (const [index, run] of runs.entries()) {
     const dispatch = dispatches[index];
+    if (
+      !dispatch &&
+      (run.startedAtMs ?? 0) > nowMs - MISSING_DISPATCH_GRACE_MS
+    ) {
+      continue;
+    }
     const status = dispatch?.status ?? "failed";
     if (status !== "blocked" && status !== "completed" && status !== "failed") {
       continue;

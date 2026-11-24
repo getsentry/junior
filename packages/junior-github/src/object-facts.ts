@@ -139,7 +139,8 @@ export function githubPreviewImageUrls(
   ];
 }
 
-type CodeChangeFacts = Extract<ObjectFacts, { type: "code_change" }>;
+/** The facts of a code change card. */
+export type CodeChangeFacts = Extract<ObjectFacts, { type: "code_change" }>;
 
 /**
  * Add preview images in body order while the facts stay in the 4 KiB limit.

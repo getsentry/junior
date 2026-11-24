@@ -444,7 +444,8 @@ describe("event automations", () => {
       ),
     );
     // A finished dispatch settles its run. The heartbeat fails a run whose
-    // dispatch record is gone.
+    // dispatch record is gone, but not while its ingest may still be about
+    // to store it.
     const [completedId, lostId, runningId] = runIds;
     await markDispatchCompleted(completedId!);
     const state = getStateAdapter();
@@ -458,6 +459,15 @@ describe("event automations", () => {
     await runScheduledAutomationHeartbeat({
       conversationWorkQueue: queue,
       nowMs: Date.now(),
+    });
+    expect(await readRuns()).toEqual([
+      expect.objectContaining({ id: completedId, status: "completed" }),
+      expect.objectContaining({ id: lostId, status: "running" }),
+      expect.objectContaining({ id: runningId, status: "running" }),
+    ]);
+    await runScheduledAutomationHeartbeat({
+      conversationWorkQueue: queue,
+      nowMs: Date.now() + 10 * 60_000,
     });
     expect(await readRuns()).toEqual([
       expect.objectContaining({ id: completedId, status: "completed" }),

@@ -89,7 +89,8 @@ export async function readSubjectLinks(
     }),
   );
   for (const { provider, subject } of changes) {
-    const url = urls.get(`${provider}\n${subject.id}`);
+    // A legacy item whose code change Junior could not find kept its URL.
+    const url = urls.get(`${provider}\n${subject.id}`) ?? subjectLink(subject);
     if (url) links.set(subjectKey(subject), url);
   }
   return links;

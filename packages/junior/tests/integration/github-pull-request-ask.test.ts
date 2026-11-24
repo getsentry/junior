@@ -25,6 +25,7 @@ import {
   slackParentConversationId,
 } from "../fixtures/agent-invocations";
 import { seedLinkedPerson } from "../fixtures/slack-user";
+import { slackApiOutbox } from "../fixtures/slack-api-outbox";
 import { signedInViewer } from "../fixtures/user";
 import { mswServer } from "../msw/server";
 
@@ -402,6 +403,14 @@ describe("the ask of a Junior pull request", () => {
         review: { state: "approved", user: { login: "pat" } },
       });
 
+      // The item stores no link, and its Slack card title still links to
+      // the pull request, from the code change records.
+      expect(
+        JSON.stringify([
+          ...slackApiOutbox.calls("chat.postMessage"),
+          ...slackApiOutbox.calls("chat.update"),
+        ]),
+      ).toContain(`](${PULL_URL})**`);
       // The subject names one item, so the merge ask is the same item.
       expect(
         await getDb()

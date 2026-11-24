@@ -27,7 +27,11 @@ import {
 } from "./code-change-titles/parse.js";
 import { parseReleaseCategories } from "./code-change-titles/release-config.js";
 import { githubObjectCards } from "./graphql-documents.js";
-import { githubObjectFacts } from "./object-facts.js";
+import {
+  githubObjectFacts,
+  withGitHubPreviewImages,
+  type CodeChangeFacts,
+} from "./object-facts.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
 import { githubApi, repoPath } from "./tool-support/github-api.js";
 
@@ -255,6 +259,18 @@ function issueCard(link: GitHubObjectLink, body: unknown): ObjectAnnotation {
   });
 }
 
+/**
+ * Add the title parts to code change facts. The preview images are packed
+ * again after them, so the facts stay in the 4 KiB limit.
+ */
+function withTitleParts(
+  facts: CodeChangeFacts,
+  titleParts: NonNullable<CodeChangeFacts["titleParts"]>,
+): CodeChangeFacts {
+  const { previewImageUrls = [], ...rest } = facts;
+  return withGitHubPreviewImages({ ...rest, titleParts }, previewImageUrls);
+}
+
 function pullRequestCard(
   link: GitHubObjectLink,
   body: unknown,
@@ -266,7 +282,7 @@ function pullRequestCard(
   return githubObjectAnnotation({
     ...card,
     ...(titleParts && card.facts?.type === "code_change"
-      ? { facts: { ...card.facts, titleParts } }
+      ? { facts: withTitleParts(card.facts, titleParts) }
       : undefined),
     repo: repoRef(pull.html_url, link),
     number: pull.number,

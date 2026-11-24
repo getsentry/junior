@@ -72,7 +72,7 @@ function SubjectCard(props: {
     if (liveUrl) request();
   }, [liveUrl, request]);
   const card = saved ?? live.card;
-  const title = card?.title ?? href ?? subject.id;
+  const title = card?.title ?? subject.object?.title ?? href ?? subject.id;
   const type = card
     ? (card.displayType ?? objectPresentation(card).label)
     : undefined;
