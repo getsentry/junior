@@ -502,7 +502,7 @@ describe("object links API", () => {
       ),
       http.get(`${GITHUB_API}/pulls/:number`, ({ params }) => {
         reads.push(`pulls/${params["number"]}`);
-        return ["34", "56"].includes(String(params["number"]))
+        return ["34", "56", "90"].includes(String(params["number"]))
           ? HttpResponse.json(pullRequest(Number(params["number"])))
           : HttpResponse.json({ message: "Server Error" }, { status: 502 });
       }),
@@ -520,6 +520,7 @@ describe("object links API", () => {
         `${GITHUB_REPO}/issues/14`,
         `${GITHUB_REPO}/pull/34`,
         `${GITHUB_REPO}/pull/56`,
+        `${GITHUB_REPO}/pull/90`,
       );
       expect(first.objects.get(`${GITHUB_REPO}/issues/13`)).toMatchObject({
         status: "open",
@@ -541,6 +542,12 @@ describe("object links API", () => {
       });
       await sendGitHubWebhook(app, "issues", {
         action: "deleted",
+        issue: deleted,
+      });
+      // A delivery from before the delete comes late.
+      await sendGitHubWebhook(app, "issues", {
+        action: "edited",
+        changes: { title: { from: "Show links" } },
         issue: deleted,
       });
       moved = true;
@@ -576,6 +583,18 @@ describe("object links API", () => {
           updated_at: after,
         },
       });
+      // A new base on the same head commit. The merge state is about the
+      // old base.
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "edited",
+        changes: { base: { ref: { from: "main" } } },
+        pull_request: {
+          ...pullRequest(90),
+          base: { ref: "release" },
+          mergeable: null,
+          updated_at: after,
+        },
+      });
       // No card has read #78 yet.
       await sendGitHubWebhook(app, "pull_request", {
         action: "opened",
@@ -592,6 +611,7 @@ describe("object links API", () => {
         `${GITHUB_REPO}/pull/34`,
         `${GITHUB_REPO}/pull/56`,
         `${GITHUB_REPO}/pull/78`,
+        `${GITHUB_REPO}/pull/90`,
       );
       // Only the moved issue is read again.
       expect(reads.slice(readsBefore)).toEqual(["issues/14"]);
@@ -622,6 +642,10 @@ describe("object links API", () => {
       expect(next.objects.get(`${GITHUB_REPO}/pull/56`)).toMatchObject({
         facts: { mergeable: "pending" },
       });
+      // The same for a merge state that was about the old base.
+      expect(next.objects.get(`${GITHUB_REPO}/pull/90`)).toMatchObject({
+        facts: { mergeable: "pending" },
+      });
       expect(next.objects.get(`${GITHUB_REPO}/pull/78`)).toMatchObject({
         status: "draft",
         title: "Cache GitHub objects",
@@ -650,24 +674,27 @@ describe("object links API", () => {
       state: "closed",
       updated_at: "2026-01-02T04:00:00Z",
     };
-    let reachGitHub!: () => void;
-    const reachedGitHub = new Promise<void>((resolve) => {
-      reachGitHub = resolve;
-    });
-    let answerGitHub!: () => void;
-    const answered = new Promise<void>((resolve) => {
-      answerGitHub = resolve;
-    });
-    let slow = true;
+    const gate = () => {
+      let open!: () => void;
+      const opened = new Promise<void>((resolve) => {
+        open = resolve;
+      });
+      return { open, opened };
+    };
+    let reachedGitHub = gate();
+    let answered = gate();
+    // The first read answers late, with the issue from before the webhook.
+    let slowAnswer: object | undefined = issue;
+    let reads = 0;
     mswServer.use(
       http.get(`${GITHUB_API}/issues/15`, async () => {
-        if (!slow) return HttpResponse.json(closed);
-        slow = false;
-        // The first read answers late, with the issue from before the
-        // webhook.
-        reachGitHub();
-        await answered;
-        return HttpResponse.json(issue);
+        reads += 1;
+        const answer = slowAnswer;
+        if (!answer) return HttpResponse.json(closed);
+        slowAnswer = undefined;
+        reachedGitHub.open();
+        await answered.opened;
+        return HttpResponse.json(answer);
       }),
     );
     try {
@@ -678,7 +705,7 @@ describe("object links API", () => {
       vi.useFakeTimers({ toFake: ["Date"] });
       const start = Date.now();
       const slowRead = read(`${GITHUB_REPO}/issues/15`);
-      await reachedGitHub;
+      await reachedGitHub.opened;
       // The webhook waits for the read's lock, then gives up.
       const webhook = sendGitHubWebhook(app, "issues", {
         action: "closed",
@@ -694,13 +721,28 @@ describe("object links API", () => {
         await new Promise((resolve) => setTimeout(resolve, 50));
       }
       await webhook;
-      answerGitHub();
+      answered.open();
       await slowRead;
 
       const next = await read(`${GITHUB_REPO}/issues/15`);
       expect(next.objects.get(`${GITHUB_REPO}/issues/15`)).toMatchObject({
         status: "closed",
       });
+
+      // A later slow read outlives the webhook's mark. The mark expires,
+      // but no write came, so the read keeps what it stored.
+      vi.setSystemTime(Date.now() + 120_000);
+      reachedGitHub = gate();
+      answered = gate();
+      slowAnswer = closed;
+      const readsBefore = reads;
+      const lateRead = read(`${GITHUB_REPO}/issues/15`);
+      await reachedGitHub.opened;
+      vi.setSystemTime(Date.now() + 2 * 60 * 60 * 1000);
+      answered.open();
+      await lateRead;
+      await read(`${GITHUB_REPO}/issues/15`);
+      expect(reads).toBe(readsBefore + 1);
     } finally {
       vi.unstubAllEnvs();
     }

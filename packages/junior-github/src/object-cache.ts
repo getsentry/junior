@@ -126,11 +126,13 @@ export function isOlderGitHubObject(
 /**
  * Merge webhook fields into a cached object. A field in the payload
  * replaces the cached one, and a missing field stays. Returns nothing when
- * the payload is older than the cached object.
+ * the object is cached as gone or the payload is older than the cached one.
  */
 export function mergeGitHubObject<
   T extends GitHubIssueFields | GitHubPullRequestFields,
 >(current: T | null | undefined, payload: T): T | undefined {
+  // A late delivery from before a delete must not bring the object back.
+  if (current === null) return undefined;
   if (isOlderGitHubObject(current, payload)) return undefined;
   return { ...current, ...payload };
 }
