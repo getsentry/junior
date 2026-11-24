@@ -34,6 +34,7 @@ jobs:
       evals: ${{ steps.filter.outputs.evals }}
       example: ${{ steps.filter.outputs.example }}
       ios: ${{ steps.filter.outputs.ios }}
+      ios_app: ${{ steps.filter.outputs.ios_app }}
       full: ${{ steps.filter.outputs.repo == 'true' || steps.filter.outputs.changes == '[]' }}
       plugins: ${{ steps.filter.outputs.plugins }}
       release: ${{ steps.filter.outputs.release }}
@@ -75,8 +76,10 @@ jobs:
             ios:
               - apps/ios/**
               - .github/workflows/ios.yml
-              - .github/workflows/ios-beta.yml
-              - .github/workflows/ios-beta-label.yml
+            # The iOS UI tests and screenshots take about 25 minutes, so they
+            # skip when only the iOS workflow changes.
+            ios_app:
+              - apps/ios/**
             # Only lint reads these. Listing them keeps a change to them from
             # counting as unknown, which runs every job.
             lint_config:
@@ -681,6 +684,8 @@ jobs:
     needs: changes
     if: github.event_name == 'pull_request' && needs.changes.outputs.ios == 'true'
     uses: ./.github/workflows/ios.yml
+    with:
+      skip_ui: ${{ needs.changes.outputs.ios_app != 'true' }}
 
   required:
     name: ci / required
