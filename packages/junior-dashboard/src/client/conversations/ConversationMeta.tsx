@@ -728,7 +728,11 @@ export function conversationCost(
   );
   const auxiliaryCosts = detail?.auxiliaryCosts ?? conversation.auxiliaryCosts;
   const live = conversationTurnIsActive(detail, conversation);
-  if (!costSummary && !auxiliaryCosts && !live) return null;
+  // Some reports carry cost only in per-model usage.
+  const modelUsage = detail?.modelUsage;
+  if (!costSummary && !auxiliaryCosts && !live && !modelUsage?.length) {
+    return null;
+  }
   return (
     <CostMetric
       auxiliaryCosts={auxiliaryCosts}
@@ -737,7 +741,7 @@ export function conversationCost(
       }
       live={live}
       liveModelId={liveModelId(detail)}
-      modelUsage={detail?.modelUsage}
+      modelUsage={modelUsage}
       summary={costSummary}
       tooltipPlacement={tooltipPlacement}
     />
