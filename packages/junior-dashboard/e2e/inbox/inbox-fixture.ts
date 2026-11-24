@@ -537,7 +537,9 @@ export async function mockInboxItems(
             .length,
           needsViewer: needsViewer.length,
           codeChanges: needsViewer.filter(
-            (i) => i.subject?.objectType === "code_change",
+            (i) =>
+              i.subject?.objectType === "code_change" &&
+              i.subject.kind !== "question",
           ).length,
           // One per Conversation row, as Snoozed lists them.
           snoozed: new Set(

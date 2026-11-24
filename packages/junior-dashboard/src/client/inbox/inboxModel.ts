@@ -74,9 +74,15 @@ export function inboxViewPath(
   return search ? `/inbox?${search}` : "/inbox";
 }
 
-/** An ask or notice about a code change, such as a GitHub pull request. */
+/**
+ * An ask or notice about a code change, such as a GitHub pull request. A
+ * question that cites one is a decision.
+ */
 export function isCodeChangeItem(item: InboxItemPayload): boolean {
-  return item.subject?.objectType === "code_change";
+  return (
+    item.subject?.objectType === "code_change" &&
+    !(item.subject.kind === "question" && item.kind === "action")
+  );
 }
 
 /** A question or approval that Junior asks with a form. */

@@ -83,6 +83,11 @@ describe("inbox item subject migration", () => {
         `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_url, subject_title, owner_id, created_at, updated_at, request) VALUES ('ship', 'action', 'open', 'public', 'Ship it?', 'Checks are green.', 'ship:946', 'https://github.com/${PULL_REQUEST.replace("#", "/pull/")}', 'PR #946', 'slack:C123:1.000003', now(), now(), '{"question":"Ship it?","fields":[],"evidence":[{"label":"CI run","url":"https://ci.example.com/1"}]}')`,
       );
 
+      // Another kept the link of its pull request as its subject id.
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_items (id, kind, status, visibility, title, body, dedupe_key, subject_id, owner_id, created_at, updated_at, request) VALUES ('deploy', 'action', 'open', 'public', 'Deploy it?', 'It merged.', 'deploy:947', 'https://github.com/getsentry/junior/pull/947', 'slack:C123:1.000004', now(), now(), '{"question":"Deploy it?","fields":[]}')`,
+      );
+
       for (const statement of migration.sql.slice(start, end + 1)) {
         await fixture.sql.execute(statement);
       }
@@ -92,6 +97,7 @@ describe("inbox item subject migration", () => {
           `SELECT id, status FROM junior_inbox_items ORDER BY id`,
         ),
       ).toEqual([
+        { id: "deploy", status: "open" },
         { id: "hold", status: "open" },
         { id: "merge", status: "open" },
         { id: "review", status: "dismissed" },
@@ -104,6 +110,7 @@ describe("inbox item subject migration", () => {
           `SELECT id, subject_kind, subject_id FROM junior_inbox_items WHERE subject_kind = 'question' ORDER BY id`,
         ),
       ).toEqual([
+        { id: "deploy", subject_id: "deploy:947", subject_kind: "question" },
         { id: "hold", subject_id: "hold:v42", subject_kind: "question" },
         { id: "rollout", subject_id: "rollout:v42", subject_kind: "question" },
         { id: "ship", subject_id: "ship:946", subject_kind: "question" },
@@ -122,6 +129,20 @@ describe("inbox item subject migration", () => {
               url: "https://github.com/getsentry/junior/pull/946",
             },
             { label: "CI run", url: "https://ci.example.com/1" },
+          ],
+        },
+      ]);
+      expect(
+        await fixture.sql.query(
+          `SELECT request->'evidence' AS evidence FROM junior_inbox_items WHERE id = 'deploy'`,
+        ),
+      ).toEqual([
+        {
+          evidence: [
+            {
+              label: "https://github.com/getsentry/junior/pull/947",
+              url: "https://github.com/getsentry/junior/pull/947",
+            },
           ],
         },
       ]);

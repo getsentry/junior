@@ -240,6 +240,19 @@ function htmlUrlLink(htmlUrl: string): GitHubObjectLink | undefined {
   return url?.host === "github.com" ? parseLink(url) : undefined;
 }
 
+/**
+ * Read the repository and number of a pull request's web page, such as
+ * `https://github.com/getsentry/junior/pull/12`.
+ */
+export function parsePullRequestUrl(
+  value: string,
+): { number: number; repository: string } | undefined {
+  const link = htmlUrlLink(value);
+  return link?.kind === "pull_request"
+    ? { number: Number(link.number), repository: `${link.owner}/${link.name}` }
+    : undefined;
+}
+
 // A transferred issue or a renamed repository answers from its new place.
 function repoRef(htmlUrl: string, link: GitHubObjectLink): string {
   const { owner, name } = htmlUrlLink(htmlUrl) ?? link;

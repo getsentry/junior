@@ -807,8 +807,6 @@ export async function countInboxItemsNeedingUserBySubject(
   Array<{
     automations: number;
     decisions: number;
-    /** A question's first evidence link, which its card reads. */
-    evidenceUrl: string | null;
     subjectId: string;
     subjectKind: string;
     todos: number;
@@ -825,9 +823,6 @@ export async function countInboxItemsNeedingUserBySubject(
         sql<number>`count(*) filter (where ${juniorInboxItems.request} -> 'question' is not null)`.mapWith(
           Number,
         ),
-      evidenceUrl: sql<
-        string | null
-      >`max(jsonb_path_query_first(${juniorInboxItems.request}, '$.evidence[*].url') #>> '{}')`,
       subjectId: juniorInboxItems.subjectId,
       subjectKind: juniorInboxItems.subjectKind,
       todos:

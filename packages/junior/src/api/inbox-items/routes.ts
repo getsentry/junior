@@ -461,12 +461,12 @@ export function createInboxItemRoutes(services: {
         countInboxItemsNeedingUserBySubject(db, viewer.id),
         query.include.includes("snoozed") ? countViewerSnoozes(viewer) : 0,
       ]);
+      // Pull requests count a code change's own asks. A question that cites
+      // one is a decision, so its evidence is not read.
       const links = await readSubjectLinks(
         db,
         subjects.map((subject) => ({
-          request: subject.evidenceUrl
-            ? { evidence: [{ url: subject.evidenceUrl }] }
-            : null,
+          request: null,
           subject: { id: subject.subjectId, kind: subject.subjectKind },
         })),
       );

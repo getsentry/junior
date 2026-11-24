@@ -800,12 +800,12 @@ describe("inbox item actions API", () => {
     ).toEqual(["code_change", "code_change", undefined]);
 
     // The counts cover every page.
-    // The question about a pull request counts as a decision and as a pull
-    // request.
+    // The question that cites a pull request counts as a decision only:
+    // pull requests count a code change's own asks.
     expect(await (await api(fixture, ana).get("/count")).json()).toEqual({
       decisions: 28,
       needsViewer: 29,
-      codeChanges: 2,
+      codeChanges: 1,
       snoozed: 0,
       todos: 0,
     });

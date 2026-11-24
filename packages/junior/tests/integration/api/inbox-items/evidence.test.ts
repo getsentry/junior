@@ -7,6 +7,7 @@ import { createJuniorApi, type JuniorApiVariables } from "@/api";
 import { createApp, defineJuniorPlugins } from "@/app";
 import { getConversationStore, getDb } from "@/chat/db";
 import { resolveViewerUserFromSql } from "@/chat/plugins/viewer";
+import { recordCodeChange } from "@/chat/code/store";
 import { insertInboxItem } from "@/chat/inbox-items/store";
 import { createSlackInboxItemToolServices } from "@/chat/slack/inbox-item-tools";
 import { createAddInboxItemTool } from "@/chat/inbox-items/tools/add";
@@ -332,11 +333,66 @@ describe("inbox item evidence", () => {
     expect(listed(merged.item.id).related.items).toEqual([
       { id: rollout.item.id, title: "Roll out payments-v42?" },
     ]);
-    // Only the question is a decision.
+    // Only the question is a decision. A question that cites a pull
+    // request is not a pull request's own ask.
     expect(await (await api(fixture, ana)("/count")).json()).toMatchObject({
       decisions: 1,
-      codeChanges: 1,
+      codeChanges: 0,
     });
+  });
+
+  it("relates a pull request's own ask and a question that cites it", async () => {
+    // The GitHub plugin builds and reads pull request links.
+    await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
+    const fixture = await createConversationFixture();
+    await slackConversation(ROLLOUT_ID, "CPUB", "public");
+    await slackConversation(LATENCY_ID, "CPUB", "public");
+    const ana = await user("ana@example.com");
+    await recordCodeChange(getDb(), "github", {
+      conversationIds: [LATENCY_ID],
+      number: 4164,
+      openedAt: new Date("2026-10-01T11:00:00.000Z"),
+      providerId: "4164001",
+      repository: { name: "getsentry/junior", providerId: "repository-1" },
+      state: "open",
+      title: "Name Inbox items by subject",
+      updatedAt: new Date("2026-10-01T11:00:00.000Z"),
+    });
+    // The GitHub plugin names the pull request by its GitHub id.
+    const review = await insertInboxItem(getDb(), {
+      assignedToEveryone: false,
+      assigneeUserIds: [ana.id],
+      body: "Ana was asked to review it.",
+      conversationIds: [LATENCY_ID],
+      kind: "action",
+      nowMs: Date.parse("2026-10-01T12:00:00.000Z"),
+      owner: { id: LATENCY_ID, kind: "conversation" },
+      subject: { id: "4164001", kind: "github:pull_request" },
+      title: "Review requested · #4164",
+      visibility: "public",
+    });
+    if (!review) throw new Error("the review ask was not added");
+    // A question in another Conversation cites the pull request's page.
+    const rollout = await add(ROLLOUT_ID, {
+      assignees: ["ana@example.com"],
+      body: "The pull request is up.",
+      kind: "action",
+      request: {
+        ...REQUEST,
+        evidence: [{ label: "The pull request", url: PR_URL }],
+      },
+      title: "Roll out payments-v42?",
+    });
+
+    const list = await (await api(fixture, ana)("")).json();
+    const listed = (id: string) =>
+      list.items.find((item: { id: string }) => item.id === id);
+    expect(listed(rollout.item.id).related.items).toEqual([
+      { id: review.id, title: "Review requested · #4164" },
+    ]);
+    expect(listed(review.id).related.items).toEqual([
+      { id: rollout.item.id, title: "Roll out payments-v42?" },
+    ]);
   });
 
   it("keeps a quiet release's related work next to a busy release on the page", async () => {

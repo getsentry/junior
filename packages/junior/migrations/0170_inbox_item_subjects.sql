@@ -10,7 +10,8 @@ ALTER TABLE "junior_inbox_items" ALTER COLUMN "dedupe_key" DROP NOT NULL;--> sta
 -- repository and number in the old key. A plugin item uses its subject
 -- link as the id when it had one. An agent's item is a question, and its
 -- old key is its id, so two questions about one object stay two items. Its
--- old subject link becomes its first evidence link.
+-- old subject link, in `subject_url` or else in `subject_id`, becomes its
+-- first evidence link.
 -- `automation_id` needs no copy:
 -- the run of the owner Conversation names the same Automation.
 --
@@ -27,6 +28,11 @@ DECLARE
         THEN regexp_replace(NEW."dedupe_key", '^plugin:github:[a-z-]+:', '')
     END;
   github_id text;
+  -- An agent item kept its link in `subject_url`, or else in `subject_id`.
+  legacy_link text := CASE
+      WHEN NEW."subject_url" ~ '^https?://' THEN NEW."subject_url"
+      WHEN NEW."subject_id" ~ '^https?://' THEN NEW."subject_id"
+    END;
 BEGIN
   IF github_ref IS NOT NULL THEN
     SELECT c."provider_id" INTO github_id
@@ -57,10 +63,10 @@ BEGIN
   -- A question reads what it is about from its evidence links, so its old
   -- subject link becomes its first evidence link. A notice has no request.
   IF NEW."subject_kind" = 'question' AND NEW."request" IS NOT NULL
-    AND NEW."subject_url" ~ '^https?://'
-    AND NOT coalesce(NEW."request"->'evidence', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('url', NEW."subject_url"))
+    AND legacy_link IS NOT NULL
+    AND NOT coalesce(NEW."request"->'evidence', '[]'::jsonb) @> jsonb_build_array(jsonb_build_object('url', legacy_link))
   THEN
-    NEW."request" := jsonb_set(NEW."request", '{evidence}', jsonb_build_array(jsonb_build_object('label', left(coalesce(nullif(NEW."subject_title", ''), NEW."subject_url"), 120), 'url', NEW."subject_url")) || coalesce(NEW."request"->'evidence', '[]'::jsonb));
+    NEW."request" := jsonb_set(NEW."request", '{evidence}', jsonb_build_array(jsonb_build_object('label', left(coalesce(nullif(NEW."subject_title", ''), legacy_link), 120), 'url', legacy_link)) || coalesce(NEW."request"->'evidence', '[]'::jsonb));
   END IF;
   RETURN NEW;
 END;

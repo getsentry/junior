@@ -43,9 +43,10 @@ how the dashboard groups and acts on its rows.
 
 ## Rules
 
-- The Inbox filters its asks by type: PRs (asks about a code
-  change), Decisions (other asks with a form), To-dos (the viewer's
-  To-dos), and Other (the rest, such as Resume). Each count holds the asks
+- The Inbox filters its asks by type: PRs (a code change's own asks,
+  such as Review requested), Decisions (other asks with a form, also
+  when they cite a code change), To-dos (the viewer's To-dos), and Other
+  (the rest, such as Resume). Each count holds the asks
   that wait on the viewer, one per ask. The type counts add up to All, and
   All is the Inbox count. A type with nothing waiting hides, but All always
   shows.

@@ -6,6 +6,7 @@ import {
   mockInboxItems,
   prMerge,
   prReview,
+  pullRequestSubject,
   rollout,
   todoForYou,
 } from "./inbox-fixture";
@@ -23,6 +24,18 @@ test.describe("new UI", { tag: "@new" }, () => {
     id: "item-other",
     request: undefined,
     title: "Rotate the staging deploy keys",
+  };
+  // A question that cites a pull request is a Decision, not a PR.
+  const citesPr = {
+    ...rollout,
+    id: "item-cites-pr",
+    subject: pullRequestSubject({
+      id: "item-cites-pr",
+      kind: "question",
+      title: "Pin the release train",
+      url: "https://github.com/getsentry/payments/pull/91",
+    }),
+    title: "Ship the release train today?",
   };
 
   function typeFilter(page: Page, label: string) {
@@ -49,19 +62,29 @@ test.describe("new UI", { tag: "@new" }, () => {
   }) => {
     await mockInboxItems(page, {
       automations: () => 0,
-      open: [rollout, license, migration, prMerge, prReview, todoForYou, other],
+      open: [
+        rollout,
+        license,
+        migration,
+        prMerge,
+        prReview,
+        todoForYou,
+        other,
+        citesPr,
+      ],
     });
     await page.goto(`${dashboard.baseURL}/inbox`);
-    // Pull requests counts each ask, and a pull request ask with a question
-    // is not also a Decision. A To-do counts in To-dos, not in Other. All,
+    // Pull requests counts a code change's own asks, and a pull request ask
+    // with a question is not also a Decision. A question that cites a pull
+    // request is a Decision. A To-do counts in To-dos, not in Other. All,
     // the default, is at the right edge.
     await expect(typeFilters(page)).toHaveText([
       /^Other\s*1$/,
       /^PRs\s*2$/,
-      /^Decisions\s*3$/,
+      /^Decisions\s*4$/,
       /^To-dos\s*1$/,
       /^Pinned$/,
-      /^All\s*7$/,
+      /^All\s*8$/,
     ]);
     // Tab moves through the tabs in their order on screen.
     const tabs = typeFilters(page);
@@ -70,7 +93,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       await page.keyboard.press("Tab");
       await expect(tabs.nth(index)).toBeFocused();
     }
-    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 7 waiting");
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 8 waiting");
     await expect(typeFilter(page, "All")).toHaveAttribute(
       "aria-current",
       "page",
@@ -96,7 +119,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       new RegExp(prMerge.subject.object.title),
     ]);
     // The filters do not change the Inbox count.
-    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 7 waiting");
+    await expect(inboxTab(page)).toHaveAccessibleName("Inbox, 8 waiting");
 
     await typeFilter(page, "To-dos").click();
     await expect(page).toHaveURL(/[?&]type=todos/);

@@ -61,5 +61,7 @@ export interface CodeChangePublisher {
  */
 export interface PluginCodeLinks {
   change(input: { number: number; repository: string }): string;
+  /** Read the repository and number of a code change's web page. */
+  parseChange(url: string): { number: number; repository: string } | undefined;
   repository(name: string): string;
 }

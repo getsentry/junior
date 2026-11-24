@@ -443,8 +443,12 @@ export function readMockInboxItemCounts(nowMs: number) {
       .length,
     decisions: needsViewer.filter((item) => item.request).length,
     needsViewer: needsViewer.length,
+    // Like the server: a code change's own asks. A question that cites one
+    // is a decision.
     codeChanges: needsViewer.filter(
-      (item) => item.subject?.objectType === "code_change",
+      (item) =>
+        item.subject?.objectType === "code_change" &&
+        item.subject.kind !== "question",
     ).length,
     // Like the server: each snoozed item that is still open.
     snoozed: seeds(nowMs).filter(
