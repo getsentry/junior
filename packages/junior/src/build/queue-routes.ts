@@ -17,6 +17,10 @@ import {
   JUNIOR_WORKSPACE_SNAPSHOT_JOB_CALLBACK_ROUTE,
 } from "@/deployment";
 
+// Only build code reads this list: the Vercel queue triggers and the dev
+// queue server. So it lives in build/ and may name the topics of chat and of
+// core, and chat/ never imports core.
+
 /**
  * Return the callback route of each queue topic. The queue pushes each
  * message of a topic to its route.
