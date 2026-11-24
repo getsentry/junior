@@ -20,7 +20,7 @@ export async function assertCanReadConversationEvents(
   conversationId: string,
 ): Promise<void> {
   const notAccessible = new ToolInputError(
-    `Conversation events are not accessible: ${conversationId}. Check conversation_id, or use searchConversations to find a Conversation that you can read.`,
+    `Conversation events are not accessible: ${conversationId}. Check conversation_id, or search Conversations to find one that you can read.`,
   );
   const [readable, target] = await Promise.all([
     canReadConversation(getDb(), context.conversationId, conversationId),

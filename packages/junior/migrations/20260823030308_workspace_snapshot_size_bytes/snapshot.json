@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "7268868b-d27e-4f42-a0f4-6c981de70f1a",
+  "prevIds": ["5f541d5b-316b-4af1-aa1e-443fefed33c3"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_snapshots", "size_bytes"],
+      "writes": [
+        "s|col|public.junior_snapshots.size_bytes",
+        "n|col|public.junior_snapshots.size_bytes",
+        "e|col|public.junior_snapshots.size_bytes"
+      ],
+      "reads": ["n|tbl|public.junior_snapshots", "n|sch|public"]
+    },
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_snapshots"],
+      "writes": [
+        "s|ck|public.junior_snapshots.junior_snapshots_size_bytes_check",
+        "n|ck|public.junior_snapshots.junior_snapshots_size_bytes_check",
+        "e|ck|public.junior_snapshots.junior_snapshots_size_bytes_check",
+        "n|con|public.junior_snapshots.junior_snapshots_size_bytes_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_snapshots",
+        "n|sch|public",
+        "n|col|public.junior_snapshots.size_bytes"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_snapshots",
+        "name": "size_bytes",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_snapshots",
+        "name": "junior_snapshots_size_bytes_check",
+        "value": "\"junior_snapshots\".\"size_bytes\" is null or \"junior_snapshots\".\"size_bytes\" >= 0",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

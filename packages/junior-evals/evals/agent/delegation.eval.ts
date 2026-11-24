@@ -29,7 +29,7 @@ function todoAssignees(calls: ToolCall[]): string[] {
   });
 }
 
-// The user never names spawnAgent here. These cases measure whether Junior
+// The user never names startAgent here. These cases measure whether Junior
 // decides on its own when delegation pays for itself.
 describe("Implicit Delegation", () => {
   test("when a request splits into independent research tracks, start a child agent for each track", async ({
@@ -45,7 +45,7 @@ describe("Implicit Delegation", () => {
       ),
     );
 
-    const spawned = completedToolCalls("spawnAgent", conversation);
+    const spawned = completedToolCalls("startAgent", conversation);
     expect(spawned.length).toBeGreaterThanOrEqual(2);
     // Research that only the parent reads is background work: a Task.
     expect(spawned.map((call) => spawnInput(call).kind)).not.toContain(
@@ -66,7 +66,7 @@ describe("Implicit Delegation", () => {
       ),
     );
 
-    expect(completedToolCalls("spawnAgent", conversation)).not.toEqual([]);
+    expect(completedToolCalls("startAgent", conversation)).not.toEqual([]);
     // The checklist waits on the first task. Only a To-do keeps it if
     // history is compacted before the result arrives.
     expect(
@@ -102,7 +102,7 @@ describe("Implicit Delegation", () => {
       slackMention("what time is it right now in UTC and in Tokyo?"),
     );
 
-    expect(completedToolCalls("spawnAgent", conversation)).toEqual([]);
+    expect(completedToolCalls("startAgent", conversation)).toEqual([]);
     expect(conversation.replies).toHaveLength(1);
   });
 });

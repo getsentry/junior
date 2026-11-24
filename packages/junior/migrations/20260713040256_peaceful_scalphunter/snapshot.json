@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "3668b705-7991-4e7e-8fb2-6e4ef8147aac",
+  "prevIds": ["df0fd278-b0ca-43c5-8d4c-f3881004516b"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversations",
+        "metric_run_id"
+      ],
+      "writes": [
+        "s|col|public.junior_conversations.metric_run_id",
+        "n|col|public.junior_conversations.metric_run_id",
+        "e|col|public.junior_conversations.metric_run_id"
+      ],
+      "reads": ["n|tbl|public.junior_conversations", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversations",
+        "name": "metric_run_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}

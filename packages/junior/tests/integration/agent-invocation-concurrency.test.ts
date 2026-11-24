@@ -147,7 +147,7 @@ async function createHarness(
     queue,
     state,
     requests: (): AgentRun[] => run.mock.calls.map(([request]) => request),
-    /** Spawn one child agent, as spawnAgent does. */
+    /** Spawn one child agent, as startAgent does. */
     spawn: async (
       overrides: Partial<SpawnChildAgentInput> & { idempotencyKey: string },
     ) =>

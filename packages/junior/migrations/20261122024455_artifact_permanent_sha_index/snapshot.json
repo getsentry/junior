@@ -1,0 +1,62 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "8c5944d5-b348-4020-970b-1b7c7510b10b",
+  "prevIds": ["1f6a8c35-45f3-42c7-9705-1d5a66fd0c94"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_artifacts",
+        "junior_artifacts_permanent_sha_uidx"
+      ],
+      "writes": [
+        "s|idx|public.junior_artifacts_permanent_sha_uidx",
+        "n|idx|public.junior_artifacts_permanent_sha_uidx",
+        "e|idx|public.junior_artifacts_permanent_sha_uidx",
+        "n|rel|public.junior_artifacts_permanent_sha_uidx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_artifacts",
+        "n|sch|public",
+        "n|col|public.junior_artifacts.conversation_id",
+        "n|col|public.junior_artifacts.sha256"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_artifacts",
+        "name": "junior_artifacts_permanent_sha_uidx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "sha256",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_artifacts\".\"visibility\" = 'public' and \"junior_artifacts\".\"expires_at\" is null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

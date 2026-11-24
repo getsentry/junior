@@ -18,7 +18,7 @@ import {
   getConversationWorkState,
 } from "@/chat/task-execution/store";
 import { bindSpawnAgent } from "@/chat/agent-invocations/spawn";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { disconnectStateAdapter, getStateAdapter } from "@/chat/state/adapter";
 import { createConversationWorkQueueTestAdapter } from "../fixtures/conversation-work";
 import {
@@ -186,7 +186,7 @@ describe("child agent spawn and result delivery", () => {
           },
           { conversationStore, maxAgentDepth: 1, queue, state },
         );
-        const tool = createSpawnAgentTool(spawnAgent!, { owner: "none" });
+        const tool = createStartAgentTool(spawnAgent!, { owner: "none" });
         return tool.execute!(
           tool.prepareArguments({
             task: "Inspect the failing checks.",

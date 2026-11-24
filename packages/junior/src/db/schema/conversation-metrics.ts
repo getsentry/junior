@@ -49,7 +49,7 @@ export const juniorConversationMetrics = pgTable(
       columns: [table.conversationId, table.runId, table.metric],
     }),
     foreignKey({
-      name: "junior_conversation_metrics_conversation_id_junior_conversations_conversation_id_fk",
+      name: "junior_conversation_metrics_conversation_id_junior_conversation",
       columns: [table.conversationId],
       foreignColumns: [juniorConversations.conversationId],
     }),

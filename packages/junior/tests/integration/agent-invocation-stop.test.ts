@@ -93,7 +93,7 @@ async function createHarness(agentRunner: AgentRunner) {
     processNext: async (conversationId: string) =>
       await work.process(queue.takeMessageFor(conversationId)),
     queue,
-    /** Spawn a child agent as the parent's `spawnAgent` does. */
+    /** Spawn a child agent as the parent's `startAgent` does. */
     spawn: async (input: {
       agentName?: string;
       idempotencyKey: string;
@@ -463,7 +463,7 @@ describe("stopping child agents", () => {
           }),
         ]),
       );
-      // A late spawnAgent call of the stopped child starts no work.
+      // A late startAgent call of the stopped child starts no work.
       await expect(
         harness.spawn({
           idempotencyKey: "tree-late-helper",

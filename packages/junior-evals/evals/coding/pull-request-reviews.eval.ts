@@ -25,10 +25,10 @@ const requesterOnGitHub = { id: 7_001, login: "octo-requester" };
 async function startPullRequestThread(run: RunAgent, events: string[]) {
   const conversation = await run(
     slackMention(
-      `Use spawnAgent to start one Thread (kind "thread") named "pr-thread" with the task "Maintain ${pullRequest}. Reply READY now. A watch on the PR sends you its events later."`,
+      `Use startAgent to start one Thread (kind "thread") named "pr-thread" with the task "Maintain ${pullRequest}. Reply READY now. A watch on the PR sends you its events later."`,
     ),
   );
-  const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+  const [spawned] = completedToolCalls("startAgent", conversation).map(
     (call) => toolOutput(call) as { conversation_id?: string },
   );
   expect(
@@ -140,10 +140,10 @@ describe("Watches", () => {
   }) => {
     const conversation = await run(
       slackMention(
-        `Use spawnAgent to start one child agent named "pr-watcher" with the task "Reply with only the word READY. A watch on ${pullRequest} sends you its reviews later." When it reports a review, @-mention me here with the reviewer, the review outcome, and the pull request link.`,
+        `Use startAgent to start one child agent named "pr-watcher" with the task "Reply with only the word READY. A watch on ${pullRequest} sends you its reviews later." When it reports a review, @-mention me here with the reviewer, the review outcome, and the pull request link.`,
       ),
     );
-    const [spawned] = completedToolCalls("spawnAgent", conversation).map(
+    const [spawned] = completedToolCalls("startAgent", conversation).map(
       (call) => toolOutput(call) as { conversation_id?: string },
     );
     expect(

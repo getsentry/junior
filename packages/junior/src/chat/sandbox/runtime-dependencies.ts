@@ -18,6 +18,20 @@ export const GLOBAL_RUNTIME_DEPENDENCIES: PluginRuntimeDependency[] = [
   { type: "system", package: "ripgrep" },
 ];
 
+/**
+ * Download flags for snapshot builds. `--retry` repeats only failures that
+ * curl treats as transient, such as timeouts and HTTP 408, 429, 500, 502,
+ * 503, and 504. Other errors, such as a 404, still fail the build at once.
+ */
+export const CURL_DOWNLOAD_ARGS = [
+  "--fail",
+  "--location",
+  "--silent",
+  "--show-error",
+  "--retry",
+  "3",
+];
+
 function writeFileCommand(
   path: string,
   contents: string,
@@ -51,7 +65,7 @@ export const GLOBAL_RUNTIME_POSTINSTALL: PluginRuntimePostinstallCommand[] = [
         "esac",
         'tmp="$(mktemp)"',
         "trap 'rm -f \"$tmp\"' EXIT",
-        'curl --fail --location --silent --show-error "https://github.com/docker/compose/releases/download/v2.39.4/docker-compose-linux-${asset}" --output "$tmp"',
+        `curl ${CURL_DOWNLOAD_ARGS.join(" ")} "https://github.com/docker/compose/releases/download/v2.39.4/docker-compose-linux-\${asset}" --output "$tmp"`,
         'echo "${sha256}  ${tmp}" | sha256sum --check --status',
         // Keep the real Compose binary off PATH; the wrapper below starts dockerd.
         'install -D -m 0755 "$tmp" /usr/local/libexec/junior-docker-compose',

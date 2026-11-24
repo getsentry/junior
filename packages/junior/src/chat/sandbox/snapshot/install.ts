@@ -7,6 +7,7 @@ import {
   SANDBOX_COMMAND_PATH,
   SANDBOX_WORKSPACE_ROOT,
 } from "@/chat/sandbox/paths";
+import { CURL_DOWNLOAD_ARGS } from "@/chat/sandbox/runtime-dependencies";
 import type { SandboxSession } from "@/chat/sandbox/workspace";
 import { trace } from "@/chat/sandbox/snapshot/span";
 
@@ -140,7 +141,7 @@ async function installUrl(
     sandbox,
     {
       cmd: "curl",
-      args: ["-fsSL", dependency.url, "-o", rpmPath],
+      args: [...CURL_DOWNLOAD_ARGS, dependency.url, "--output", rpmPath],
       signal,
       timeoutMs,
     },

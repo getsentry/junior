@@ -13,7 +13,6 @@ import { Agent } from "undici";
 import type { JuniorDatabase, JuniorSqlExecutor } from "./db";
 import { forwardInfoMessages } from "./info-messages";
 import { applyMigrations, waitForMigrationLock } from "./migrate";
-import { juniorSqlSchema } from "./schema";
 import { logWarn } from "@/chat/logging";
 import * as Sentry from "@/chat/sentry";
 
@@ -267,10 +266,7 @@ class NeonExecutor implements NeonJuniorSqlExecutor {
   }
 
   db(): JuniorDatabase {
-    return drizzle({
-      client: this.queryClient(),
-      schema: juniorSqlSchema,
-    }) as JuniorDatabase;
+    return drizzle({ client: this.queryClient() }) as JuniorDatabase;
   }
 
   async execute(

@@ -22,7 +22,7 @@ import {
 } from "@/chat/conversations/session-stop";
 import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { createMessageAgentTool } from "@/chat/tools/runtime/message-agent";
-import { createSpawnAgentTool } from "@/chat/tools/runtime/spawn-agent";
+import { createStartAgentTool } from "@/chat/tools/runtime/start-agent";
 import { ConversationTurnLifecycleService } from "@/chat/conversations/turn-lifecycle";
 import { getConversationEventStore, getSqlExecutor } from "@/chat/db";
 import { EVENT_SYSTEM_ACTOR } from "@/chat/events/actor";
@@ -634,7 +634,7 @@ describe("spawn and messageAgent", () => {
       await expect(spawn(harness, "call-1")).rejects.toBeInstanceOf(
         AgentStoppedError,
       );
-      const tool = createSpawnAgentTool(
+      const tool = createStartAgentTool(
         bindSpawnAgent(parentRun(), {
           conversationStore: harness.conversationStore,
           queue: harness.queue,

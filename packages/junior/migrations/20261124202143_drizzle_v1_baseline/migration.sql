@@ -1,0 +1,5 @@
+-- This migration does not change the database. It records the schema in the
+-- format of Drizzle v1. After `drizzle-kit up`, the converted snapshots keep
+-- the table name in index and check expressions, and Drizzle v1 does not
+-- (drizzle-team/drizzle-orm#6589). Without this snapshot, `drizzle-kit
+-- generate` rebuilds every partial index and check constraint.

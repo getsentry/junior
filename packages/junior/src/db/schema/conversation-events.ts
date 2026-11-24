@@ -51,7 +51,7 @@ export const juniorConversationEvents = pgTable(
       columns: [table.conversationId, table.seq],
     }),
     foreignKey({
-      name: "junior_conversation_events_conversation_id_junior_conversations_conversation_id_fk",
+      name: "junior_conversation_events_conversation_id_junior_conversations",
       columns: [table.conversationId],
       foreignColumns: [juniorConversations.conversationId],
     }),

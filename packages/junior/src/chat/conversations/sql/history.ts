@@ -10,7 +10,7 @@ import {
   lte,
   sql,
 } from "drizzle-orm";
-import type { JuniorSqlDatabase } from "@/db/db";
+import type { JuniorDatabase, JuniorSqlDatabase } from "@/db/db";
 import {
   conversationEventDataSchema,
   decodeStoredConversationEvent,
@@ -131,6 +131,18 @@ function insertFromEvent(
     actorIdentityId: actorIdentityId ?? null,
     createdAt: new Date(event.createdAtMs),
   };
+}
+
+/** Read a Conversation's stored event rows as they are, in seq order. */
+export async function readConversationEventRows(
+  db: JuniorDatabase,
+  conversationId: string,
+): Promise<ConversationEventRow[]> {
+  return await db
+    .select()
+    .from(juniorConversationEvents)
+    .where(eq(juniorConversationEvents.conversationId, conversationId))
+    .orderBy(asc(juniorConversationEvents.seq));
 }
 
 /** Parse one physical event row into the storage-compatible domain envelope. */
