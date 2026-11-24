@@ -254,6 +254,23 @@ describe("GitHub pull request snoozes", () => {
     expect((await asAna.inbox()).inbox).toEqual([TITLE]);
   });
 
+  it("does not wake a later snooze on a merge conflict fix that came before it", async () => {
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "labeled",
+      pull_request: pullRequest({ mergeable: false }),
+    });
+    const asAna = await snoozeUntil("pull_request.merge_conflict");
+    // A change on the base branch fixed it. Only a conflict waiter reads.
+    await comment(true);
+
+    const resnoozed = await asAna.snoozeOn({ conversationId: ROOT }, [
+      { eventType: "pull_request.merge_conflict.resolved", outcome: "wake" },
+    ]);
+    expect(resnoozed.status).toBe(201);
+    await push("bbb222", "MERGEABLE");
+    expect((await asAna.inbox()).inbox).toEqual([]);
+  });
+
   it("does not wake a snooze on a stale merge state read", async () => {
     const asAna = await snoozeUntil("pull_request.merge_conflict.resolved");
     await sendGitHubWebhook(app, "pull_request", {

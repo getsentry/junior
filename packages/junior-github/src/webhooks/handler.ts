@@ -437,6 +437,7 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          cache: args.cache,
           codeChanges: args.codeChanges,
           db: args.db,
           deliveryId,
