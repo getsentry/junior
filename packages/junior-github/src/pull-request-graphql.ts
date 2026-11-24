@@ -1,13 +1,115 @@
 /**
- * Read GraphQL pull request nodes into the cached REST fields, so a card
- * reads the same entry whether one REST read or one query for many pull
- * requests filled it.
+ * Read pull requests by repository and number in aliased GraphQL queries,
+ * and read the answers into the cached REST fields, so a card reads the
+ * same entry whether one REST read or one query for many pull requests
+ * filled it.
  */
 import * as z from "zod";
 import type { GitHubPullRequestFields } from "./object-cache.js";
+import { githubErrorMessage } from "./tool-support/github-api.js";
 
-/** GitHub reads at most this many ids in one `nodes` query. */
-export const GITHUB_NODES_MAX = 100;
+// Each pull request reads its head commit's check counts, and a card also
+// its review requests, so a query stays small enough for GitHub's time
+// limit. Craft reads pull requests in its changelog the same way.
+const PULL_REQUESTS_PER_QUERY = 25;
+
+/** One pull request that an aliased query reads. */
+export interface PullRequestRef {
+  name: string;
+  number: number;
+  owner: string;
+}
+
+/**
+ * The pull request of a `pulls:owner/repo#N` cache key, or undefined for
+ * any other key.
+ */
+export function pullRequestRefFromCacheKey(
+  key: string,
+): PullRequestRef | undefined {
+  const match = /^pulls:([^/#]+)\/([^/#]+)#(\d+)$/.exec(key);
+  if (!match?.[1] || !match[2] || !match[3]) return undefined;
+  return { name: match[2], number: Number(match[3]), owner: match[1] };
+}
+
+/** Split pull requests into the chunks that one query reads each. */
+export function pullRequestChunks<T>(items: T[]): T[][] {
+  const chunks: T[][] = [];
+  for (let start = 0; start < items.length; start += PULL_REQUESTS_PER_QUERY) {
+    chunks.push(items.slice(start, start + PULL_REQUESTS_PER_QUERY));
+  }
+  return chunks;
+}
+
+/** The variables of an aliased query for `refs`, in their order. */
+export function pullRequestVariables(
+  refs: PullRequestRef[],
+): Record<string, number | string> {
+  const variables: Record<string, number | string> = {};
+  for (const [index, ref] of refs.entries()) {
+    variables[`owner${index}`] = ref.owner;
+    variables[`name${index}`] = ref.name;
+    variables[`number${index}`] = ref.number;
+  }
+  return variables;
+}
+
+// A pull request that GitHub cannot read is null, with an error, and the
+// others still come. No data at all means that the query failed.
+const aliasedResponseSchema = z.object({
+  data: z
+    .record(z.string(), z.object({ pullRequest: z.unknown() }).nullable())
+    .nullable(),
+});
+
+/**
+ * Read the answer of an aliased query for `count` pull requests. Item `i`
+ * is the pull request of alias `p<i>` that parses, or undefined. Throw when
+ * the query failed.
+ */
+export function aliasedPullRequests<T>(
+  body: unknown,
+  count: number,
+  schema: z.ZodType<T>,
+): Array<T | undefined> {
+  const { data } = aliasedResponseSchema.parse(body);
+  if (!data) {
+    throw new Error(
+      `GitHub pull request query failed: ${githubErrorMessage(body)}`,
+    );
+  }
+  return Array.from({ length: count }, (_, index) => {
+    const parsed = schema.safeParse(data[`p${index}`]?.pullRequest);
+    return parsed.success ? parsed.data : undefined;
+  });
+}
+
+/**
+ * Run `load` on `items`. A failed run splits in halves, and the halves are
+ * its retry, while `canSplit` allows it. A run that cannot split goes to
+ * `failed`.
+ */
+export async function loadInHalves<T>(args: {
+  canSplit?(): boolean;
+  failed(items: T[], error: unknown): Promise<void>;
+  items: T[];
+  load(items: T[]): Promise<void>;
+}): Promise<void> {
+  try {
+    await args.load(args.items);
+  } catch (error) {
+    if (args.items.length === 1 || args.canSplit?.() === false) {
+      await args.failed(args.items, error);
+      return;
+    }
+    const half = Math.ceil(args.items.length / 2);
+    await Promise.all(
+      [args.items.slice(0, half), args.items.slice(half)].map((items) =>
+        loadInHalves({ ...args, items }),
+      ),
+    );
+  }
+}
 
 const stateCount = z.object({
   count: z.number().int().nonnegative(),
@@ -30,11 +132,10 @@ const commitsSchema = z.object({
     .nullable(),
 });
 
-/** One node of `PULL_REQUEST_HEAD_FACTS`. */
+/** One pull request of `pullRequestHeadFacts`. */
 export const pullRequestHeadFactsNodeSchema = z.object({
   commits: commitsSchema,
   headRefOid: z.string(),
-  id: z.string(),
   mergeable: z.enum(["CONFLICTING", "MERGEABLE", "UNKNOWN"]),
   updatedAt: z.string(),
 });
@@ -70,23 +171,6 @@ export const pullRequestCardNodeSchema = pullRequestHeadFactsNodeSchema.extend({
   title: z.string(),
   url: z.string(),
 });
-
-/**
- * Parse a `nodes` response. A node that is not a pull request, or that
- * GitHub could not read, is left out.
- */
-export function githubPullRequestNodes<T>(
-  body: unknown,
-  schema: z.ZodType<T>,
-): T[] {
-  const nodes = z
-    .object({ data: z.object({ nodes: z.array(z.unknown()) }) })
-    .parse(body).data.nodes;
-  return nodes.flatMap((node) => {
-    const parsed = schema.safeParse(node);
-    return parsed.success ? [parsed.data] : [];
-  });
-}
 
 const PASSED_CHECK_RUNS = new Set(["NEUTRAL", "SKIPPED", "SUCCESS"]);
 const PENDING_CHECK_RUNS = new Set([
@@ -134,7 +218,6 @@ export function githubPullRequestFieldsFromNode(
     html_url: node.url,
     mergeable: githubMergeable(node.mergeable),
     merged: node.merged,
-    node_id: node.id,
     number: node.number,
     requested_reviewers: (node.reviewRequests?.nodes ?? []).flatMap(
       (request) => {

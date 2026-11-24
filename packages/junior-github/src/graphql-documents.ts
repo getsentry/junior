@@ -430,7 +430,6 @@ const PULL_REQUEST_CARD = githubGraphql(`
   }
 
   fragment Card on PullRequest {
-    id
     url
     number
     state
@@ -469,15 +468,41 @@ const PULL_REQUEST_CARD = githubGraphql(`
   }
 `);
 
-/**
- * Return the query that reads the cards of `count` pull requests by
- * repository and number. Pull request `i` has the alias `p<i>` and the
- * variables `$owner<i>`, `$name<i>`, and `$number<i>`. The check run counts
- * are of each head commit. The App has no commit status permission, so
- * statuses do not count.
- */
-export function pullRequestCards(count: number): GitHubGraphqlOperation {
-  const document = parse(PULL_REQUEST_CARD.query);
+// Only the merge state and check counts of one pull request, for the patch
+// after a push. `pullRequestHeadFacts` repeats it like the cards.
+const PULL_REQUEST_HEAD_FACT = githubGraphql(`
+  query PullRequestHeadFacts($owner: String!, $name: String!, $number: Int!) {
+    repository(owner: $owner, name: $name) {
+      pullRequest(number: $number) { ...HeadFacts }
+    }
+  }
+
+  fragment HeadFacts on PullRequest {
+    updatedAt
+    headRefOid
+    mergeable
+    commits(last: 1) {
+      nodes {
+        commit {
+          statusCheckRollup {
+            contexts(first: 1) {
+              checkRunCountsByState { state count }
+            }
+          }
+        }
+      }
+    }
+  }
+`);
+
+// Repeat the `repository` field and the variables of a one pull request
+// query `count` times. Pull request `i` has the alias `p<i>` and the
+// variables `$owner<i>`, `$name<i>`, and `$number<i>`.
+function aliasedPullRequests(
+  single: GitHubGraphqlOperation,
+  count: number,
+): GitHubGraphqlOperation {
+  const document = parse(single.query);
   const indexes = Array.from({ length: count }, (_, index) => index);
   const indexed = (variable: VariableNode, index: number): VariableNode => ({
     ...variable,
@@ -518,29 +543,20 @@ export function pullRequestCards(count: number): GitHubGraphqlOperation {
 }
 
 /**
- * Read only the merge state and check counts of many pull requests, for
- * the patch after a push. At most 100 ids per query.
+ * Return the query that reads the cards of `count` pull requests by
+ * repository and number, with the aliases and variables of
+ * `pullRequestVariables`. The check run counts are of each head commit.
+ * The App has no commit status permission, so statuses do not count.
  */
-export const PULL_REQUEST_HEAD_FACTS = githubGraphql(`
-  query PullRequestHeadFacts($ids: [ID!]!) {
-    nodes(ids: $ids) {
-      ... on PullRequest {
-        id
-        updatedAt
-        headRefOid
-        mergeable
-        commits(last: 1) {
-          nodes {
-            commit {
-              statusCheckRollup {
-                contexts(first: 1) {
-                  checkRunCountsByState { state count }
-                }
-              }
-            }
-          }
-        }
-      }
-    }
-  }
-`);
+export function pullRequestCards(count: number): GitHubGraphqlOperation {
+  return aliasedPullRequests(PULL_REQUEST_CARD, count);
+}
+
+/**
+ * Return the query that reads only the merge state and check counts of
+ * `count` pull requests by repository and number, for the patch after a
+ * push. It has the aliases and variables of `pullRequestCards`.
+ */
+export function pullRequestHeadFacts(count: number): GitHubGraphqlOperation {
+  return aliasedPullRequests(PULL_REQUEST_HEAD_FACT, count);
+}

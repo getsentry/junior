@@ -57,16 +57,15 @@ async function refreshPullRequest(
     repository.full_name,
     payload.number,
   );
-  let patch: GitHubPullRequestFields | undefined;
+  let patch = false;
   await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
     const merged = mergeGitHubPullRequest(current, payload);
-    if (merged?.patch) patch = merged.fields;
+    patch = merged?.patch ?? false;
     return merged && { ...GITHUB_PULL_REQUEST_CACHE, value: merged.fields };
   });
-  if (patch?.node_id) {
+  if (patch) {
     await scheduleGitHubPullRequestPatch({
       key,
-      nodeId: patch.node_id,
       nowMs: args.nowMs,
       state: args.state,
     });
@@ -81,22 +80,21 @@ async function refreshChecks(
   sha: string,
 ): Promise<void> {
   for (const key of keys) {
-    let nodeId: string | undefined;
+    let patch = false;
     // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
     await args.cache.update<GitHubPullRequestFields | null>(key, (current) => {
       if (current?.state !== "open" || current.head?.sha !== sha)
         return undefined;
-      nodeId = current.node_id;
+      patch = true;
       return {
         ...GITHUB_PULL_REQUEST_CACHE,
         value: { ...current, checks: "pending" },
       };
     });
-    if (nodeId) {
+    if (patch) {
       // oxlint-disable-next-line no-await-in-loop -- A check event names one or a few pull requests.
       await scheduleGitHubPullRequestPatch({
         key,
-        nodeId,
         nowMs: args.nowMs,
         state: args.state,
       });

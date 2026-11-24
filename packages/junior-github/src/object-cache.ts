@@ -99,8 +99,6 @@ export const githubPullRequestFieldsSchema = z.object({
     .nullable()
     .optional(),
   merged: z.boolean().optional(),
-  // The GraphQL id, so one query can read many pull requests.
-  node_id: z.string().optional(),
   requested_reviewers: z.array(person).optional(),
 });
 

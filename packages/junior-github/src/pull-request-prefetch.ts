@@ -6,7 +6,7 @@
  */
 import type { ObjectLinkContext } from "@sentry/junior-plugin-api";
 import pLimit, { type LimitFunction } from "p-limit";
-import * as z from "zod";
+import type * as z from "zod";
 import { pullRequestCards } from "./graphql-documents.js";
 import {
   type GitHubPullRequestFields,
@@ -15,19 +15,19 @@ import {
   isOlderGitHubObject,
 } from "./object-cache.js";
 import {
+  aliasedPullRequests,
   githubPullRequestFieldsFromNode,
+  loadInHalves,
   pullRequestCardNodeSchema,
+  pullRequestChunks,
+  type PullRequestRef,
+  pullRequestVariables,
 } from "./pull-request-graphql.js";
 import { viewerCanSeeRepository } from "./repository-access.js";
-import { githubApi, githubErrorMessage } from "./tool-support/github-api.js";
+import { githubApi } from "./tool-support/github-api.js";
 
 // Cache and access reads, and card queries, that one prefetch runs at once.
 const PREFETCH_CONCURRENCY = 10;
-
-// Each pull request reads its review requests and its head commit's check
-// counts, so a query stays small enough for GitHub's time limit. Craft
-// reads pull requests in its changelog the same way.
-const PULL_REQUESTS_PER_QUERY = 25;
 
 // GitHub fails a GraphQL query after about 10 s. The page waits for this
 // read before its cards, so a hung request stops at the same time, and its
@@ -40,20 +40,6 @@ const PAGE_BUDGET_MS = 20_000;
 
 // Long enough for the card reads of the page that ran out of time.
 const OUT_OF_TIME_TTL_MS = 30_000;
-
-// A pull request that GitHub cannot read is null, with an error, and the
-// others still come. No data at all means that the query failed.
-const cardsResponseSchema = z.object({
-  data: z
-    .record(z.string(), z.object({ pullRequest: z.unknown() }).nullable())
-    .nullable(),
-});
-
-interface PullRequestRef {
-  name: string;
-  number: number;
-  owner: string;
-}
 
 function cacheKey(ref: PullRequestRef): string {
   return githubObjectCacheKey("pulls", `${ref.owner}/${ref.name}`, ref.number);
@@ -99,14 +85,11 @@ async function loadChunk(
 ): Promise<void> {
   const leftMs = deadlineMs - Date.now();
   if (leftMs <= 0) throw new Error("The page has no time left for cards");
-  const variables: Record<string, number | string> = {};
-  for (const [index, ref] of refs.entries()) {
-    variables[`owner${index}`] = ref.owner;
-    variables[`name${index}`] = ref.name;
-    variables[`number${index}`] = ref.number;
-  }
   const response = await githubApi(ctx.egress, {
-    body: { ...pullRequestCards(refs.length), variables },
+    body: {
+      ...pullRequestCards(refs.length),
+      variables: pullRequestVariables(refs),
+    },
     method: "POST",
     operation: "github.pull.get",
     path: "/graphql",
@@ -117,17 +100,14 @@ async function loadChunk(
       `GitHub pull request cards lookup failed with HTTP ${response.status}`,
     );
   }
-  const { data } = cardsResponseSchema.parse(response.body);
-  if (!data) {
-    throw new Error(
-      `GitHub pull request cards lookup failed: ${githubErrorMessage(response.body)}`,
-    );
-  }
+  const nodes = aliasedPullRequests(
+    response.body,
+    refs.length,
+    pullRequestCardNodeSchema,
+  );
   await pLimit(PREFETCH_CONCURRENCY).map(refs, async (ref, index) => {
-    const node = pullRequestCardNodeSchema.safeParse(
-      data[`p${index}`]?.pullRequest,
-    );
-    if (node.success) await storeCard(ctx, cacheKey(ref), node.data);
+    const node = nodes[index];
+    if (node) await storeCard(ctx, cacheKey(ref), node);
   });
 }
 
@@ -141,34 +121,30 @@ async function loadRefs(
   refs: PullRequestRef[],
   deadlineMs: number,
 ): Promise<void> {
-  try {
-    await limit(() => loadChunk(ctx, refs, deadlineMs));
-  } catch (error) {
-    if (Date.now() >= deadlineMs) {
-      await pLimit(PREFETCH_CONCURRENCY).map(refs, (ref) =>
-        ctx.cache.update(outOfTimeCacheKey(cacheKey(ref)), () => ({
-          ttlMs: OUT_OF_TIME_TTL_MS,
-          value: true,
-        })),
-      );
-      return;
-    }
-    const [only] = refs;
-    if (only && refs.length === 1) {
-      ctx.log.error(
-        "GitHub pull request card query failed",
-        { number: only.number, repository: `${only.owner}/${only.name}` },
-        error,
-      );
-      return;
-    }
-    const half = Math.ceil(refs.length / 2);
-    await Promise.all(
-      [refs.slice(0, half), refs.slice(half)].map((part) =>
-        loadRefs(ctx, limit, part, deadlineMs),
-      ),
-    );
-  }
+  await loadInHalves({
+    canSplit: () => Date.now() < deadlineMs,
+    failed: async (failed, error) => {
+      if (Date.now() >= deadlineMs) {
+        await pLimit(PREFETCH_CONCURRENCY).map(failed, (ref) =>
+          ctx.cache.update(outOfTimeCacheKey(cacheKey(ref)), () => ({
+            ttlMs: OUT_OF_TIME_TTL_MS,
+            value: true,
+          })),
+        );
+        return;
+      }
+      const [only] = failed;
+      if (only) {
+        ctx.log.error(
+          "GitHub pull request card query failed",
+          { number: only.number, repository: `${only.owner}/${only.name}` },
+          error,
+        );
+      }
+    },
+    items: refs,
+    load: async (part) => await limit(() => loadChunk(ctx, part, deadlineMs)),
+  });
 }
 
 /** Load the missing cards of the pull requests that `refs` name. */
@@ -177,15 +153,7 @@ export async function prefetchGitHubPullRequests(
   refs: PullRequestRef[],
 ): Promise<void> {
   const deadlineMs = Date.now() + PAGE_BUDGET_MS;
-  const missing = await missingRefs(ctx, refs);
-  const chunks: PullRequestRef[][] = [];
-  for (
-    let start = 0;
-    start < missing.length;
-    start += PULL_REQUESTS_PER_QUERY
-  ) {
-    chunks.push(missing.slice(start, start + PULL_REQUESTS_PER_QUERY));
-  }
+  const chunks = pullRequestChunks(await missingRefs(ctx, refs));
   // The queries of every chunk and of its halves share one limit.
   const queries = pLimit(PREFETCH_CONCURRENCY);
   await pLimit(PREFETCH_CONCURRENCY).map(chunks, (chunk) =>

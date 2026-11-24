@@ -47,7 +47,7 @@ function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
-/** A `nodes` result with the check run counts of the head commit. */
+/** A `commits` result with the check run counts of the head commit. */
 function checkRuns(counts: Record<string, number>) {
   return {
     nodes: [
@@ -66,18 +66,17 @@ function checkRuns(counts: Record<string, number>) {
   };
 }
 
-/** A patch query names pull requests by id, a card query by number. */
+/** Card and patch queries name pull requests by repository and number. */
 interface GraphqlQuery {
-  ids?: string[];
-  numbers?: number[];
+  numbers: number[];
   operationName: string;
 }
 
 /**
- * Answer GraphQL queries and keep them. A card query gets each pull request
- * that it asks for and that `cards` has, or the HTTP status that `cards`
- * returns for the numbers that it asks for. A patch query gets the next
- * nodes of `patches`.
+ * Answer GraphQL queries and keep them. Each alias of a query gets the pull
+ * request of its number that the answer has. A card query answers from
+ * `cards`, or with the HTTP status that `cards` returns for the numbers
+ * that it asks for. A patch query answers from the next list of `patches`.
  */
 function stubGraphql(answers: {
   cards?: unknown[] | ((numbers: number[]) => unknown[] | number);
@@ -90,21 +89,16 @@ function stubGraphql(answers: {
         operationName: string;
         variables: Record<string, unknown>;
       };
-      const ids = variables["ids"];
-      if (Array.isArray(ids)) {
-        queries.push({ ids: ids.map(String), operationName });
-        return HttpResponse.json({
-          data: { nodes: answers.patches?.shift() ?? [] },
-        });
-      }
       const numbers = Object.entries(variables).flatMap(([name, value]) =>
         name.startsWith("number") ? [Number(value)] : [],
       );
       queries.push({ numbers, operationName });
       const cards =
-        typeof answers.cards === "function"
-          ? answers.cards(numbers)
-          : (answers.cards ?? []);
+        operationName === "PullRequestHeadFacts"
+          ? (answers.patches?.shift() ?? [])
+          : typeof answers.cards === "function"
+            ? answers.cards(numbers)
+            : (answers.cards ?? []);
       if (typeof cards === "number") {
         return HttpResponse.json(
           { message: "Server Error" },
@@ -139,7 +133,6 @@ function cardNode(number: number) {
     deletions: 1,
     headRefName: `feat/${number}`,
     headRefOid: "ddd444",
-    id: `PR_${number}`,
     isDraft: number === 35,
     mergeable: "MERGEABLE",
     merged: false,
@@ -183,7 +176,7 @@ describe("GitHub pull request cache refresh", () => {
           {
             commits: checkRuns({ FAILURE: 1, IN_PROGRESS: 2, SUCCESS: 3 }),
             headRefOid: "ccc333",
-            id: "PR_34",
+            number: 34,
             mergeable: "CONFLICTING",
             updatedAt: "2026-01-02T03:00:12Z",
           },
@@ -192,7 +185,7 @@ describe("GitHub pull request cache refresh", () => {
           {
             commits: checkRuns({ FAILURE: 1, SUCCESS: 5 }),
             headRefOid: "ccc333",
-            id: "PR_34",
+            number: 34,
             mergeable: "CONFLICTING",
             updatedAt: "2026-01-02T03:00:12Z",
           },
@@ -240,7 +233,7 @@ describe("GitHub pull request cache refresh", () => {
     // query reads only the merge state and checks, not the whole entry.
     expect(queries).toEqual([
       { numbers: [34], operationName: "PullRequestCards" },
-      { ids: ["PR_34"], operationName: "PullRequestHeadFacts" },
+      { numbers: [34], operationName: "PullRequestHeadFacts" },
     ]);
     expect(reads).toEqual(["pulls/34"]);
     expect((await read(url)).objects.get(url)?.facts).toMatchObject({
@@ -273,6 +266,65 @@ describe("GitHub pull request cache refresh", () => {
       mergeable: false,
     });
     expect(reads).toEqual(["pulls/34"]);
+  });
+
+  it("patches the checks of entries with no node id by repository and number", async () => {
+    stubGitHubApp();
+    mswServer.use(
+      http.get(`${GITHUB_API}/pulls/:number`, ({ params }) =>
+        // An entry from before reads by number has no GraphQL id.
+        HttpResponse.json(
+          pullRequest(Number(params["number"]), { node_id: undefined }),
+        ),
+      ),
+    );
+    const headFacts = (number: number, counts: Record<string, number>) => ({
+      commits: checkRuns(counts),
+      headRefOid: "aaa111",
+      mergeable: "MERGEABLE",
+      number,
+      updatedAt: T0,
+    });
+    const queries = stubGraphql({
+      patches: [[headFacts(34, { SUCCESS: 3 }), headFacts(35, { FAILURE: 2 })]],
+    });
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const urls = [35, 34].map((number) => `${GITHUB_REPO}/pull/${number}`);
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse(T0);
+    vi.setSystemTime(start);
+    for (const url of urls) await read(url);
+
+    await sendGitHubWebhook(app, "check_suite", {
+      action: "completed",
+      check_suite: {
+        conclusion: "failure",
+        head_branch: "feat/object-cache",
+        head_sha: "aaa111",
+        id: 7002,
+        pull_requests: [{ number: 35 }, { number: 34 }],
+        status: "completed",
+      },
+    });
+    vi.setSystemTime(start + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    // One query reads both, and each answer goes to its own pull request.
+    expect(
+      queries.filter((query) => query.operationName === "PullRequestHeadFacts"),
+    ).toEqual([{ numbers: [35, 34], operationName: "PullRequestHeadFacts" }]);
+    const [card35, card34] = await Promise.all(
+      urls.map(async (url) => (await read(url)).objects.get(url)?.facts),
+    );
+    expect(card34).toMatchObject({
+      checks: { failed: 0, passed: 3, pending: 0 },
+    });
+    expect(card35).toMatchObject({
+      checks: { failed: 2, passed: 0, pending: 0 },
+    });
   });
 
   it("reads a page of stale pull request cards in one query", async () => {
@@ -587,7 +639,6 @@ describe("GitHub pull request cache refresh", () => {
       deletions: 1,
       headRefName: "feat/object-cache",
       headRefOid: "ddd444",
-      id: "PR_34",
       isDraft: false,
       mergeable,
       merged: false,
@@ -654,7 +705,7 @@ describe("GitHub pull request cache refresh", () => {
       {
         commits: checkRuns({ SUCCESS: 1 }),
         headRefOid: sha,
-        id: "PR_34",
+        number: 34,
         mergeable,
         updatedAt,
       },
@@ -722,7 +773,7 @@ describe("GitHub pull request cache refresh", () => {
       {
         commits: checkRuns({ SUCCESS: 4 }),
         headRefOid: "bbb222",
-        id: "PR_34",
+        number: 34,
         mergeable: "MERGEABLE",
         updatedAt,
       },
