@@ -353,7 +353,7 @@ export async function enqueueChildWaitingToParent(args: {
  */
 export async function enqueueChildDismissToParent(args: {
   conversationId: string;
-  inboxItemId: string;
+  addedByTurnId: string | undefined;
   queue: ConversationWorkQueue;
   text: string;
 }): Promise<void> {
@@ -369,7 +369,11 @@ export async function enqueueChildDismissToParent(args: {
   // The child's last Turn ended quietly only while it waited. A Turn that
   // reported, such as one with a notice still open, ended the wait already.
   // Its id also keys the result, so a repeat dismiss sends nothing new.
-  const turnId = (await listTurnSummaries(args.conversationId))[0]?.turnId;
+  // The Turn index expires, so a late dismiss falls back to the Turn that
+  // added the item.
+  const turnId =
+    (await listTurnSummaries(args.conversationId))[0]?.turnId ??
+    args.addedByTurnId;
   if (!turnId || !(await childWorkEnded(args.conversationId, turnId))) return;
   await createDeliverToParent({ queue: args.queue })({
     actor: EVENT_SYSTEM_ACTOR,

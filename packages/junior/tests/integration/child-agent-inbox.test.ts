@@ -281,6 +281,34 @@ describe("a child agent asks a person", () => {
     }
   });
 
+  it("tells the parent of a dismiss after the child's Turn index expired", async () => {
+    vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
+    const harness = await createHarness();
+    try {
+      const person = await signedInViewer("maya@example.com");
+      const childId = await startThread(harness, "task-dismiss-late", {
+        kind: "task",
+      });
+      const itemId = await askInTask(harness, childId, person);
+      vi.setSystemTime(1_800_000_000_000 + 2 * 24 * 60 * 60 * 1000);
+
+      await actOnInboxItem({
+        action: "dismiss",
+        delivery: { queue: harness.queue, show: async () => {} },
+        id: itemId,
+        user: person,
+      });
+
+      expect(
+        (await parentMessages()).filter((message) =>
+          message.input.text.includes('status="completed"'),
+        ),
+      ).toHaveLength(1);
+    } finally {
+      await harness.close();
+    }
+  });
+
   it("reports a dismiss during the asking Turn once, when that Turn ends", async () => {
     vi.useFakeTimers({ now: 1_800_000_000_000, toFake: ["Date"] });
     const harness = await createHarness();

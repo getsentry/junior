@@ -219,7 +219,7 @@ async function sendOne(args: {
     ) {
       await enqueueChildDismissToParent({
         conversationId: args.conversationId,
-        inboxItemId: args.item.id,
+        addedByTurnId: args.item.addedByTurnId,
         queue: args.queue,
         text: args.text,
       });
