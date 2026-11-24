@@ -1,3 +1,4 @@
+import { conversationMenuRow } from "./conversationMenu";
 import { expect, test } from "./test";
 import { mobile, screenshot } from "./screenshot";
 
@@ -52,9 +53,7 @@ test("shows Watches in the mobile details sheet", async ({
     `${dashboard.baseURL}/conversations/${encodeURIComponent(ACTIVE_CONVERSATION_ID)}`,
   );
   await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page
-    .getByRole("menuitem", { name: "Conversation details", exact: true })
-    .click();
+  await conversationMenuRow(page, "Conversation details").click();
   const details = page.getByRole("dialog", { name: "Conversation details" });
   await expect(
     details.getByRole("button", { name: `Cancel ${TIMER_INTENT}` }),

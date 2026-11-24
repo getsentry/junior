@@ -50,7 +50,7 @@ jobs:
 
   testflight:
     name: Upload to TestFlight
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     outputs:
       build: ${{ steps.upload.outputs.build }}

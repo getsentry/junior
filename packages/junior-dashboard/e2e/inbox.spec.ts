@@ -17,6 +17,7 @@ const base = {
   assignedToEveryone: false,
   assignees: [viewer],
   canAct: true,
+  canAnswer: true,
   canTake: false,
   conversationIds: [],
   createdAt: "2026-08-07T08:00:00.000Z",

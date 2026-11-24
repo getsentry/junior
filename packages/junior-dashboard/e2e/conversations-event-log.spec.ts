@@ -796,6 +796,7 @@ for (const view of [desktop, mobile]) {
       ],
       body: "The rollout plan has three open decisions.",
       canAct: true,
+      canAnswer: true,
       canTake: false,
       conversationIds: [conversationId],
       createdAt: report.startedAt,

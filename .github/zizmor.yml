@@ -1,0 +1,7 @@
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        # The release job takes Craft fixes as they ship.
+        getsentry/craft: ref-pin
+        "*": hash-pin

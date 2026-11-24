@@ -1,6 +1,6 @@
 import type { Page } from "@playwright/test";
 
-import { viewAsParticipant } from "./conversationMenu";
+import { conversationMenuRow, viewAsParticipant } from "./conversationMenu";
 import { mobile, screenshot } from "./screenshot";
 import { expect, test } from "./test";
 
@@ -20,66 +20,60 @@ function recordRenames(page: Page): unknown[] {
   return bodies;
 }
 
-test("renames a conversation from its title", async ({ page, dashboard }) => {
+/**
+ * Open Rename from the Conversation menu, the only way to edit the title.
+ * The new UI shows that menu as a bottom sheet on a phone.
+ */
+async function openRename(page: Page): Promise<void> {
+  await page.getByRole("button", { name: "Conversation menu" }).click();
+  await conversationMenuRow(page, "Rename").click();
+}
+
+test("renames a conversation from the menu", async ({ page, dashboard }) => {
   await viewAsParticipant(page);
   const renames = recordRenames(page);
   await page.goto(`${dashboard.baseURL}${CONVERSATION_PATH}`);
-  const title = page
-    .getByRole("heading", { name: TITLE })
-    .getByRole("button", { name: TITLE });
+  const title = page.getByRole("heading", { name: TITLE });
   const field = page.getByRole("textbox", { name: "Conversation title" });
   await expect(title).toBeVisible();
+  // The title is text, not a control that a stray click or tap edits.
+  await expect(title.getByRole("button")).toHaveCount(0);
   await screenshot(page, "conversation-title", { lightTheme: true });
 
-  await title.click();
+  await openRename(page);
   await expect(field).toBeFocused();
   await expect(field).toHaveValue(TITLE);
+  // The field stays open after the menu closes, so typing reaches it.
+  await expect(page.getByRole("menu")).toHaveCount(0);
   await field.fill("Checkout latency notes");
   await screenshot(page, "conversation-title-editing", {
     lightTheme: true,
     view: "desktop",
   });
-  // Escape cancels and gives focus back to the title.
+  // Escape cancels.
   await field.press("Escape");
-  await expect(title).toBeFocused();
+  await expect(field).toHaveCount(0);
+  await expect(title).toBeVisible();
 
   // An empty title does not save.
-  await title.press("Enter");
+  await openRename(page);
   await field.fill("   ");
   await field.press("Enter");
-  await expect(title).toBeFocused();
+  await expect(title).toBeVisible();
 
   const saved = page.waitForResponse(
     (response) =>
       response.request().method() === "PATCH" &&
       response.url().endsWith("/title"),
   );
-  await title.click();
-  await field.fill("  Checkout latency follow-up ");
-  await field.press("Enter");
-  expect((await saved).ok()).toBe(true);
-  const renamed = page
-    .getByRole("heading", { name: "Checkout latency follow-up" })
-    .getByRole("button");
-  await expect(renamed).toBeFocused();
-  expect(renames).toEqual([{ title: "Checkout latency follow-up" }]);
-
-  // The `⋯` menu's Rename edits the same field.
-  await page.getByRole("button", { name: "Conversation menu" }).click();
-  await page.getByRole("menuitem", { name: "Rename", exact: true }).click();
-  await expect(field).toBeFocused();
-  await expect(field).toHaveValue("Checkout latency follow-up");
-  // The field stays open after the menu closes, so typing reaches it.
-  await expect(page.getByRole("menu")).toHaveCount(0);
-  await page.keyboard.type("Checkout p95 regression");
+  await openRename(page);
+  await page.keyboard.type("  Checkout latency follow-up ");
   await page.keyboard.press("Enter");
+  expect((await saved).ok()).toBe(true);
   await expect(
-    page.getByRole("heading", { name: "Checkout p95 regression" }),
+    page.getByRole("heading", { name: "Checkout latency follow-up" }),
   ).toBeVisible();
-  expect(renames).toEqual([
-    { title: "Checkout latency follow-up" },
-    { title: "Checkout p95 regression" },
-  ]);
+  expect(renames).toEqual([{ title: "Checkout latency follow-up" }]);
 });
 
 test("a failed rename on a phone keeps the old title", async ({
@@ -93,10 +87,7 @@ test("a failed rename on a phone keeps the old title", async ({
   await page.setViewportSize(mobile);
   await page.goto(`${dashboard.baseURL}${CONVERSATION_PATH}`);
 
-  await page
-    .getByRole("heading", { name: TITLE })
-    .getByRole("button", { name: TITLE })
-    .click();
+  await openRename(page);
   const field = page.getByRole("textbox", { name: "Conversation title" });
   await expect(field).toBeFocused();
   await field.fill("Checkout latency follow-up");
