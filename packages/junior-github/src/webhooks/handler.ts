@@ -3,8 +3,8 @@ import type { InstallationTokens } from "../installation-tokens.js";
 import { updateGitHubAnnotations } from "../annotations.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import type {
-  CodeChangePublisher,
   PluginCache,
+  PluginCodeChanges,
   PluginConversationAnnotations,
   PluginConversationChanges,
   PluginConversationInboxItems,
@@ -25,10 +25,7 @@ import {
   GITHUB_PULL_REQUEST_OUTCOME_TASK,
   githubPullRequestOutcomeTaskKey,
 } from "../pull-request-outcomes/apply-task.js";
-import {
-  recordGitHubPullRequestConversations,
-  recordGitHubPullRequestOutcome,
-} from "../pull-request-outcomes/store.js";
+import { recordGitHubPullRequestOutcome } from "../pull-request-outcomes/store.js";
 import { normalizeGitHubClosedIssue } from "./issue-outcome.js";
 import {
   normalizeGitHubPullRequestConversations,
@@ -152,7 +149,7 @@ export function createGitHubWebhookRoute(args: {
     number: number;
     repositoryFullName: string;
   }): Promise<GitHubPullRequestCommitComposition | undefined>;
-  codeChanges: CodeChangePublisher;
+  codeChanges: PluginCodeChanges;
   conversationChanges: PluginConversationChanges;
   db: GitHubDb;
   installationId(): string | undefined;
@@ -220,7 +217,7 @@ export function createGitHubWebhookRoute(args: {
       if (eventName === "push") {
         const scheduled = await scheduleGitHubPushConflictCheck({
           body,
-          db: args.db,
+          codeChanges: args.codeChanges,
           now: new Date(),
           state: args.state,
         });
@@ -317,13 +314,7 @@ export function createGitHubWebhookRoute(args: {
           },
         });
       }
-      const recordedPullRequestConversations = pullRequestConversations
-        ? await recordGitHubPullRequestConversations(
-            args.db,
-            pullRequestConversations,
-          )
-        : false;
-      if (recordedPullRequestConversations && pullRequestConversations) {
+      if (pullRequestConversations) {
         await args.codeChanges.associateConversations({
           conversationIds: pullRequestConversations.conversationIds,
           providerId: pullRequestConversations.pullRequestId,
@@ -333,7 +324,7 @@ export function createGitHubWebhookRoute(args: {
         await refreshGitHubPullRequestPreview({
           annotations: args.annotations,
           body,
-          db: args.db,
+          codeChanges: args.codeChanges,
           log: args.log,
         });
       }
@@ -444,6 +435,7 @@ export function createGitHubWebhookRoute(args: {
       // reaction, so a Watch that wants only conflicts does not mark a comment.
       events.push(
         ...(await loadGitHubMergeConflictEvents({
+          codeChanges: args.codeChanges,
           db: args.db,
           deliveryId,
           events,
@@ -478,6 +470,7 @@ export function createGitHubWebhookRoute(args: {
       };
       await syncGitHubPullRequestActions({
         botEmail,
+        codeChanges: args.codeChanges,
         db: args.db,
         deliveryId,
         env,
@@ -500,7 +493,7 @@ export function createGitHubWebhookRoute(args: {
       if (
         !pullRequestOutcome &&
         !closedIssue &&
-        !recordedPullRequestConversations &&
+        !pullRequestConversations &&
         events.length === 0
       ) {
         return new Response("Ignored", { status: 202 });

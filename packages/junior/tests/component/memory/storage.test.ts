@@ -100,6 +100,7 @@ function memoryHeartbeatContext(args: {
     cache: memoryCache,
     codeChanges: {
       associateConversations: vi.fn(),
+      list: vi.fn(),
       record: vi.fn(),
       recordActivity: vi.fn(),
     },

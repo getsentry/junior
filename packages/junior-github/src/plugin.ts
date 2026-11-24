@@ -80,11 +80,7 @@ import {
 } from "./pull-request-outcomes/apply-task.js";
 import { githubSidebarAnnotations } from "./annotations.js";
 import { githubImageSource } from "./images.js";
-import {
-  listGitHubAssignedWork,
-  listGitHubFinishedWork,
-  listGitHubUnfinishedWork,
-} from "./pull-request-outcomes/store.js";
+import { listGitHubConversationWork } from "./pull-request-outcomes/conversation-work.js";
 import {
   additionalActorCoauthorTrailers,
   gitHooksPath,
@@ -375,6 +371,7 @@ export function githubPlugin(
         if (!ref || ctx.choice !== GITHUB_CONFLICT_RESUME) return;
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await resumeGitHubConflictFixes({
+          codeChanges: ctx.codeChanges,
           db: gitHubDbSchema.parse(ctx.db),
           events: ctx.events,
           itemId: ctx.itemId,
@@ -392,6 +389,7 @@ export function githubPlugin(
         const db = gitHubDbSchema.parse(ctx.db);
         const installationEnv = { appIdEnv, installationIdEnv, privateKeyEnv };
         await runGitHubConflictChecks({
+          codeChanges: ctx.codeChanges,
           db,
           events: ctx.events,
           loadHistory: async (ref) =>
@@ -435,21 +433,10 @@ export function githubPlugin(
         });
       },
       async unfinishedWork(ctx) {
-        const db = gitHubDbSchema.parse(ctx.db);
-        const [
-          conversationIds,
-          assignedConversationIds,
-          finishedWorkAtByConversationId,
-        ] = await Promise.all([
-          listGitHubUnfinishedWork(db, ctx.conversationIds),
-          listGitHubAssignedWork(db, ctx.conversationIds),
-          listGitHubFinishedWork(db, ctx.conversationIds),
-        ]);
-        return {
-          conversationIds,
-          assignedConversationIds,
-          finishedWorkAtByConversationId,
-        };
+        return await listGitHubConversationWork(
+          ctx.codeChanges,
+          ctx.conversationIds,
+        );
       },
       routes(ctx) {
         const installationEnv = {

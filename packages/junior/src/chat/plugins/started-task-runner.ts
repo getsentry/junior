@@ -9,7 +9,7 @@ import type {
   PluginRegistration,
   PluginStartedTaskContext,
 } from "@sentry/junior-plugin-api";
-import { createCodeChangePublisher } from "@/chat/code/publisher";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import { getDb } from "@/chat/db";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { logException, withSpan } from "@/chat/logging";
@@ -48,7 +48,7 @@ function startedTaskContext(
         }),
     },
     cache: createPluginCache(pluginName),
-    codeChanges: createCodeChangePublisher(pluginName),
+    codeChanges: createPluginCodeChanges(pluginName),
     conversationChanges: createPluginConversationChanges({
       plugin: pluginName,
       show: options.showInboxItem ?? (async () => {}),
