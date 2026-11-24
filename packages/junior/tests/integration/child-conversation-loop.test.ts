@@ -205,7 +205,10 @@ describe("child Turns on the Conversation loop", () => {
         await harness.processUntilRun(childId);
 
         expect(seen).toEqual([
-          { agents: [expect.objectContaining({ status: "running" })] },
+          {
+            agents: [expect.objectContaining({ status: "running" })],
+            next_step: expect.stringContaining("still works"),
+          },
           [childId],
         ]);
       } finally {
