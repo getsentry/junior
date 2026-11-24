@@ -4,7 +4,12 @@ import { codeChangeSearchReportSchema } from "@sentry/junior/api/schema";
 import { useLocationDirectoryData } from "../api";
 import { quickOpenMatch } from "../components/quickOpenMatch";
 import { useDebouncedValue } from "../debouncedValue";
+import {
+  MessageObjectsProvider,
+  useListedObjects,
+} from "../display-text/DisplayText";
 import { fetchDashboardJson } from "../http";
+import { listedDraft } from "../listedCodeChange";
 import { formatRelativeTime } from "../time";
 import {
   ComposerMenu,
@@ -29,6 +34,15 @@ const CODE_CHANGE_SEARCH_DEBOUNCE_MS = 150;
  * `<#C…|name>`.
  */
 export function ComposerHashMenu(props: { typeahead: ComposerTypeahead }) {
+  // The rows read their live cards in one request.
+  return (
+    <MessageObjectsProvider>
+      <HashMenu typeahead={props.typeahead} />
+    </MessageObjectsProvider>
+  );
+}
+
+function HashMenu(props: { typeahead: ComposerTypeahead }) {
   const query = props.typeahead.query?.trim() ?? "";
   const sources = [useCodeChangeSource(query), useChannelSource(query)];
   return (
@@ -56,14 +70,21 @@ function useCodeChangeSource(query: string): ComposerMenuSource {
     staleTime: SEARCH_STALE_MS,
   });
   const stale = search.isPlaceholderData || debounced !== query;
-  const rows = (search.data?.changes ?? []).map((change): ComposerMenuRow => {
+  const changes = search.data?.changes ?? [];
+  // Only an open change can be a draft, so only it needs its live card.
+  const listedOf = useListedObjects(
+    changes.flatMap((change) => (change.state === "open" ? change.url : [])),
+  );
+  const rows = changes.map((change): ComposerMenuRow => {
+    const listed = listedOf(change.url);
+    const draft = listedDraft(listed);
     const reference: ComposerReference = {
       kind: "code_change",
       url: change.url,
       repository: change.repository,
       number: change.number,
       state: change.state,
-      draft: change.draft,
+      draft,
     };
     const label = referenceName(reference);
     return {
@@ -75,12 +96,14 @@ function useCodeChangeSource(query: string): ComposerMenuSource {
       details: (
         <ComposerMenuDetails
           icon={<ReferenceIcon reference={reference} />}
-          meta={`${label} · ${codeChangeTone(change.state, change.draft).label}`}
+          meta={`${label} · ${codeChangeTone(change.state, draft).label}`}
           title={change.title ?? label}
         />
       ),
       insertion: { reference },
-      stale,
+      // An open change goes in with its draft state, so it waits for its
+      // card.
+      stale: stale || (change.state === "open" && !listed.settled),
     };
   });
   return { pending: Boolean(query) && (stale || search.isLoading), rows };

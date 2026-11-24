@@ -25,7 +25,7 @@ import { buildConversations } from "../../format";
 import { useDebouncedValue } from "../../debouncedValue";
 import { useWaitingConversations } from "../../inbox/queries";
 import { CodeActivityChart } from "./CodeActivityChart";
-import { CodeChangeRow } from "./CodeChangeRow";
+import { CodeChangeRows } from "./CodeChangeRow";
 import { codeActivity } from "./RepositorySections";
 import { getDashboardTimeZone } from "../../time";
 
@@ -157,9 +157,7 @@ export function RepositoryChangesTab(props: {
               </EmptyTelemetry>
             </div>
           ) : (
-            pageItems(changes, page, PAGE_SIZE).map((change) => (
-              <CodeChangeRow change={change} key={change.id} />
-            ))
+            <CodeChangeRows changes={pageItems(changes, page, PAGE_SIZE)} />
           )}
         </Card>
         <PagePagination

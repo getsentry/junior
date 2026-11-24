@@ -8,17 +8,20 @@ import { withLock } from "@/chat/state/locks";
 import type { WaitUntilFn } from "@/handlers/types";
 
 const CACHE_NAMESPACE = "core";
-const FRESH_MS = 5 * 60_000;
-// After this, a request reads the report again before it answers.
-const KEEP_MS = 60 * 60_000;
-const RELOAD_WAIT_MS = 10_000;
+// A report read can take longer than the cache's own 10-second load wait.
+// A caller that waits longer than this reads the report itself.
+const RELOAD_WAIT_MS = 30_000;
 
 /**
  * Create a reader for one report that is the same for every viewer. A cached
- * report is served for up to an hour. After five minutes, a request also
- * starts a background refresh.
+ * report is served until `keepMs` after its read. After `freshMs`, a request
+ * also starts a background refresh. With no cached report, one request reads
+ * it and the others wait for that read.
  */
 export function createCachedReport<T, const N extends string>(source: {
+  freshMs: number;
+  /** After this, a request reads the report again before it answers. */
+  keepMs: number;
   key: string;
   read: () => Promise<T>;
   refreshFailedEvent: LogEventName<N>;
@@ -30,9 +33,9 @@ export function createCachedReport<T, const N extends string>(source: {
   type Cached = z.infer<typeof cachedSchema>;
 
   const load = async () => ({
-    ttlMs: KEEP_MS,
+    ttlMs: source.keepMs,
     value: {
-      refreshAtMs: Date.now() + FRESH_MS,
+      refreshAtMs: Date.now() + source.freshMs,
       report: source.schema.parse(await source.read()),
     },
   });
@@ -87,23 +90,16 @@ export function createCachedReport<T, const N extends string>(source: {
       {},
       async (setSpanAttributes) => {
         const state = getStateAdapter();
-        let hit = true;
-        const loadOnMiss = () => {
-          hit = false;
-          return load();
-        };
         const parsed = cachedSchema.safeParse(
-          await createCache(state, CACHE_NAMESPACE).getOrLoad(
-            source.key,
-            loadOnMiss,
-          ),
+          await createCache(state, CACHE_NAMESPACE).get(source.key),
         );
+        const hit = parsed.success;
         let cached: Cached;
         if (parsed.success) {
           cached = parsed.data;
         } else {
-          hit = false;
-          // An entry from an older report shape is reloaded once for all callers.
+          // A missing entry, or one from an older report shape, is read once
+          // for all callers.
           const reloaded = await reload(state, () => true, RELOAD_WAIT_MS);
           // The cache only saves work, so a stuck reload must not block this caller.
           cached = reloaded.acquired ? reloaded.value : (await load()).value;
@@ -115,7 +111,7 @@ export function createCachedReport<T, const N extends string>(source: {
           "cache.hit": hit,
           "cache.item_size": Buffer.byteLength(JSON.stringify(cached)),
           "app.cache.stale": stale,
-          "app.cache.age_ms": now - (cached.refreshAtMs - FRESH_MS),
+          "app.cache.age_ms": now - (cached.refreshAtMs - source.freshMs),
         });
         if (stale) {
           waitUntil(() => refresh(state));

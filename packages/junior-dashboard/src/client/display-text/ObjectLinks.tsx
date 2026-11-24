@@ -23,27 +23,22 @@ import {
   type KnownObjects,
 } from "./knownObjects";
 import { useAnchorClass } from "./links";
-import { SameTabLink } from "../components/SameTabLink";
+import { MessageLink } from "../components/MessageLink";
 import { PersonInline, PersonReference } from "../components/PersonReference";
 
 // Fits most live cards, such as a pull request or a task. A taller card
 // scrolls in its body.
 const RESERVED_PREVIEW_HEIGHT_CLASS = "h-[min(22rem,var(--available-height))]";
 
-type KnownObjectsValue = {
-  objects: KnownObjects;
-  /** URL keys of Annotations that save only a link, with no facts. */
+const KnownObjectsContext = createContext<{
+  // The URL keys whose Annotation saves only the link, such as an Attach.
   links: ReadonlySet<string>;
-};
-
-const KnownObjectsContext = createContext<KnownObjectsValue>({
-  links: new Set(),
-  objects: new Map(),
-});
+  objects: KnownObjects;
+}>({ links: new Set(), objects: new Map() });
 
 /**
  * Let display text show the saved object of each link that points to an
- * Annotation of this Conversation. Only saved facts show; nothing is fetched.
+ * Annotation of this Conversation, until the link's live card resolves.
  */
 export function KnownObjectsProvider(props: {
   annotations: ConversationDetailReport["annotations"];
@@ -66,14 +61,12 @@ export function KnownObjectsProvider(props: {
       const key = card.url ? objectUrlKey(card.url) : undefined;
       if (key && !objects.has(key)) objects.set(key, card);
     }
-    return {
-      links: new Set(
-        [...kinds].flatMap(([key, kind]) =>
-          kind === "resource_link" ? [key] : [],
-        ),
+    const links = new Set(
+      [...kinds].flatMap(([key, kind]) =>
+        kind === "resource_link" ? [key] : [],
       ),
-      objects,
-    };
+    );
+    return { links, objects };
   }, [props.annotations, props.cards]);
   const saved = useMemo(
     () => savedObjectsFromAnnotations(props.annotations),
@@ -90,8 +83,8 @@ export function KnownObjectsProvider(props: {
 
 /**
  * Return the saved object that a link points to, when one is known.
- * `linkOnly` is true when the Annotation saves only the link, so a live card
- * shows more.
+ * `linkOnly` is true when the Annotation saves only the link, such as an
+ * Attach.
  */
 export function useKnownObject(href: string | undefined): {
   card: OwnedObjectAnnotation | undefined;
@@ -187,7 +180,7 @@ export function ObjectLinkPreview(props: {
       }
       // Running text links carry no outbound icon, so a paragraph of links
       // reads as text.
-      trigger={<SameTabLink className={props.className} href={props.href} />}
+      trigger={<MessageLink className={props.className} href={props.href} />}
     >
       {props.children}
     </HoverPreview>

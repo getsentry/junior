@@ -18,7 +18,7 @@ function mockChange(
   title: string,
   state: MentionableCodeChange["state"],
   draft = false,
-): MentionableCodeChange {
+): MockCodeChange {
   return {
     draft,
     number,
@@ -30,7 +30,10 @@ function mockChange(
 }
 
 // Newest activity first, like the API.
-const MOCK_CODE_CHANGES: MentionableCodeChange[] = [
+// The search reads no draft state; the mock card of a change says it.
+type MockCodeChange = MentionableCodeChange & { draft: boolean };
+
+const MOCK_CODE_CHANGES: MockCodeChange[] = [
   mockChange(
     "getsentry/junior",
     3842,
@@ -119,6 +122,8 @@ function searchMockCodeChanges(query: string): CodeChangeSearchReport {
       terms.length > 0 &&
       terms.every((term) => words.some((word) => word.startsWith(term)))
     );
-  }).slice(0, MOCK_CODE_CHANGE_SEARCH_LIMIT);
+  })
+    .slice(0, MOCK_CODE_CHANGE_SEARCH_LIMIT)
+    .map(({ draft: _draft, ...change }) => change);
   return { changes };
 }

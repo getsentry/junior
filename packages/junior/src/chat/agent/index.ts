@@ -869,7 +869,7 @@ async function executeAgentRunInPrivacyContext(
     const summaryStreamFn = createTracedStreamFn({
       conversationPrivacy,
       promptName: CONTEXT_COMPACTION_PROMPT_NAME,
-      ...(streamFn ? { base: streamFn } : undefined),
+      base: streamFn,
     });
     const nextInputAfterReplacement = createNextInputTracker();
     /**

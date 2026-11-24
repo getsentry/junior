@@ -324,7 +324,7 @@
     "packages/junior-dashboard/e2e/inbox/inbox-answers.spec.ts": 3,
     "packages/junior-dashboard/e2e/inbox/inbox-cards.spec.ts": 22,
     "packages/junior-dashboard/e2e/inbox/inbox-code-changes.spec.ts": 11,
-    "packages/junior-dashboard/e2e/inbox/inbox-fyi.spec.ts": 5,
+    "packages/junior-dashboard/e2e/inbox/inbox-fyi.spec.ts": 4,
     "packages/junior-dashboard/e2e/inbox/inbox-motion.spec.ts": 17,
     "packages/junior-dashboard/e2e/inbox/inbox-navigation.spec.ts": 22,
     "packages/junior-dashboard/e2e/inbox/inbox-optimistic.spec.ts": 14,

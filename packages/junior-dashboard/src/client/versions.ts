@@ -159,6 +159,7 @@ function refreshChangedReads(
   }
   // Each detail carries the token that it was built from, so this needs no
   // baseline.
+  let cardsMoved = false;
   for (const conversationId of conversationIds) {
     const detailKey = conversationDetailQueryKey(conversationId);
     const detail = client.getQueryState<ConversationSnapshot>(detailKey);
@@ -177,7 +178,12 @@ function refreshChangedReads(
       token !== next.conversationDetails[conversationId]
     ) {
       void client.invalidateQueries({ exact: true, queryKey: detailKey });
+      cardsMoved = true;
     }
+  }
+  if (cardsMoved) {
+    // oxlint-disable-next-line query-invalidation/no-broad-query-invalidation -- A moved Conversation can link work that changed, such as a pull request that merged, and the cards of its links read live.
+    void client.invalidateQueries({ queryKey: ["object-links"] });
   }
 }
 

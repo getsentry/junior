@@ -106,10 +106,12 @@ import {
   getWorkspace,
   listWorkspaceNamesByRepository,
 } from "@/chat/workspaces/store";
-import { createCodeChangePublisher } from "@/chat/code/publisher";
+import { createPluginCodeChanges } from "@/chat/code/plugin-code-changes";
 import type { IdentityDispatcher } from "@/chat/agent-dispatch/identity";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
+import type { SendPluginTask } from "./task-runner";
+import { createPluginTaskStarter } from "./task-start";
 import {
   apiRoutePrefix,
   coreRegistrations,
@@ -494,6 +496,14 @@ export function validatePlugins(plugins: PluginRegistration[]): void {
       if (typeof task.run !== "function") {
         throw new Error(
           `Plugin task "${taskName}" from plugin "${name}" must define a run function`,
+        );
+      }
+      if (
+        task.payload !== undefined &&
+        typeof task.payload.safeParse !== "function"
+      ) {
+        throw new Error(
+          `Plugin task "${taskName}" from plugin "${name}" must use a Zod schema for payload`,
         );
       }
     }
@@ -1097,6 +1107,8 @@ export function getPluginRoutes(options: {
   /** Shows an Inbox item that a plugin route changed. App setup supplies it. */
   showInboxItem?: ShowInboxItem;
   events: AppEventPublisher;
+  /** Sends the tasks that routes start. */
+  sendPluginTask: SendPluginTask;
 }): PluginRouteRegistration[] {
   const routes: PluginRouteRegistration[] = [];
   const seen = new Set<string>();
@@ -1122,7 +1134,7 @@ export function getPluginRoutes(options: {
             plugin: pluginName,
           }),
       },
-      codeChanges: createCodeChangePublisher(pluginName),
+      codeChanges: createPluginCodeChanges(pluginName),
       conversationChanges: createPluginConversationChanges({
         plugin: pluginName,
         show: options.showInboxItem ?? (async () => {}),
@@ -1136,6 +1148,11 @@ export function getPluginRoutes(options: {
             show: options.showInboxItem ?? (async () => {}),
           }),
       },
+      tasks: createPluginTaskStarter({
+        plugin: pluginName,
+        send: options.sendPluginTask,
+        tasks: plugin.tasks,
+      }),
       users: { readIdentity: readIdentityById },
       events: createPluginEventPublisher(plugin, options.events),
     });

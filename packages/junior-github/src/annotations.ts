@@ -55,17 +55,8 @@ export function githubSidebarAnnotations(
       if (annotation.kind === "object") {
         sidebar.title = annotation.title;
         if (annotation.facts?.type === "code_change") {
-          const { additions, changedFiles, deletions, previewImageUrls } =
-            annotation.facts;
-          const image = previewImageUrls?.[0];
+          const image = annotation.facts.previewImageUrls?.[0];
           if (image) sidebar.imageUrl = image;
-          if (
-            additions !== undefined ||
-            deletions !== undefined ||
-            changedFiles !== undefined
-          ) {
-            sidebar.size = { additions, changedFiles, deletions };
-          }
         }
       }
       if (annotation.url) sidebar.url = annotation.url;

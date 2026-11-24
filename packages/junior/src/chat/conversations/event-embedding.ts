@@ -1,8 +1,8 @@
 /**
  * Event embeddings: a derived index for search by meaning over the history of
- * one Conversation. After each completed Turn, the event search task stores
- * lexemes (`event-lexemes.ts`) and embeds the newest searchable events that
- * have no vector of the configured model.
+ * one Conversation. After each Turn that ends, the event search task or the
+ * Turn itself stores lexemes (`event-lexemes.ts`) and embeds the newest
+ * searchable events that have no vector of the configured model.
  *
  * Each run embeds a bounded slice, newest first, and older history gets
  * vectors last. The heartbeat backfill (`event-search-backfill.ts`) embeds
@@ -24,7 +24,11 @@ import {
   juniorConversationEvents,
 } from "@/db/schema";
 import { getDb } from "@/chat/db";
+import { logException, logInfo } from "@/chat/logging";
+import { getStateAdapter } from "@/chat/state/adapter";
+import { withLock } from "@/chat/state/locks";
 import { createConversationEmbedder } from "./embedding";
+import { isEventEmbeddingsEnabled } from "./event-embedding-config";
 import { seqIn, storeConversationEventLexemes } from "./event-lexemes";
 import {
   eventSearchTextSql,
@@ -156,8 +160,83 @@ export async function embedConversationEvents(
 }
 
 /**
- * Core task registration that stores lexemes after each completed Turn and,
- * when `embedEvents` is set, embeds events too.
+ * Store the missing lexemes of one Conversation's events, and their vectors
+ * when `embedEvents` is set, under the Conversation's index lock. A Turn
+ * that ends calls it, through the event search task or directly. When the
+ * lock stays busy, the heartbeat backfill indexes the events later.
+ */
+export async function indexConversationEvents(args: {
+  conversationId: string;
+  embedEvents: boolean;
+  turnId: string;
+}): Promise<void> {
+  const { conversationId, turnId } = args;
+  const attempt = await withLock(
+    getStateAdapter(),
+    eventIndexLockKey(conversationId),
+    async () => {
+      // Wait for both before the lock is released, even when one fails.
+      const [lexemeResult, embeddingResult] = await Promise.allSettled([
+        storeConversationEventLexemes(getDb(), conversationId),
+        args.embedEvents
+          ? embedConversationEvents(
+              getDb(),
+              createConversationEmbedder({
+                cost: { conversationId, turnId },
+                operation: "conversation_embedding",
+              }),
+              conversationId,
+            )
+          : 0,
+      ]);
+      if (lexemeResult.status === "rejected") {
+        throw lexemeResult.reason;
+      }
+      if (embeddingResult.status === "rejected") {
+        throw embeddingResult.reason;
+      }
+      logInfo("event_search.index.completed", {
+        conversationId,
+        embedded: embeddingResult.value,
+        lexemes: lexemeResult.value,
+      });
+    },
+    // The heartbeat backfill holds the lock for at most its run budget.
+    // Waiting indexes this Turn's events now instead of in a later pass.
+    { ttlMs: EVENT_INDEX_LOCK_TTL_MS, waitMs: EVENT_INDEX_LOCK_WAIT_MS },
+  );
+  if (!attempt.acquired) {
+    logInfo("event_search.index.busy", { conversationId });
+  }
+}
+
+/**
+ * Index the events of a Turn that ended without the event search task: a
+ * failed or stopped Turn, or a completed Turn of a kind without session
+ * tasks. A failure is logged, so indexing never changes the Turn's outcome.
+ */
+export async function indexEndedTurnEvents(args: {
+  conversationId: string;
+  turnId: string;
+}): Promise<void> {
+  const { conversationId, turnId } = args;
+  try {
+    await indexConversationEvents({
+      conversationId,
+      embedEvents: isEventEmbeddingsEnabled(),
+      turnId,
+    });
+  } catch (error) {
+    logException(error, "event_search.index.failed", {
+      conversationId,
+      turnId,
+    });
+  }
+}
+
+/**
+ * Core task registration that indexes the events of a completed Turn:
+ * lexemes, and vectors when `embedEvents` is set.
  */
 export function eventSearchTaskRegistration(options: {
   embedEvents: boolean;
@@ -172,49 +251,11 @@ export function eventSearchTaskRegistration(options: {
       indexEvents: {
         async run(context: PluginTaskContext) {
           const run = await context.run.load();
-          const attempt = await context.state.withLock(
-            eventIndexLockKey(run.conversationId),
-            EVENT_INDEX_LOCK_TTL_MS,
-            async () => {
-              // Wait for both before the lock is released, even when one fails.
-              const [lexemeResult, embeddingResult] = await Promise.allSettled([
-                storeConversationEventLexemes(getDb(), run.conversationId),
-                options.embedEvents
-                  ? embedConversationEvents(
-                      getDb(),
-                      createConversationEmbedder({
-                        cost: {
-                          conversationId: run.conversationId,
-                          turnId: run.runId,
-                        },
-                        operation: "conversation_embedding",
-                      }),
-                      run.conversationId,
-                    )
-                  : 0,
-              ]);
-              if (lexemeResult.status === "rejected") {
-                throw lexemeResult.reason;
-              }
-              if (embeddingResult.status === "rejected") {
-                throw embeddingResult.reason;
-              }
-              context.log.info("Conversation events indexed", {
-                conversationId: run.conversationId,
-                embedded: embeddingResult.value,
-                lexemes: lexemeResult.value,
-              });
-            },
-            // The heartbeat backfill holds the lock for at most its run
-            // budget. Waiting indexes this Turn's events now instead of after
-            // the backfill marks the index done.
-            { waitMs: EVENT_INDEX_LOCK_WAIT_MS },
-          );
-          if (!attempt.acquired) {
-            context.log.info("Conversation event index busy", {
-              conversationId: run.conversationId,
-            });
-          }
+          await indexConversationEvents({
+            conversationId: run.conversationId,
+            embedEvents: options.embedEvents,
+            turnId: run.runId,
+          });
         },
       },
     },
