@@ -37,7 +37,7 @@ function legacyQuestion(id: string, key: string): string {
 }
 
 describe("inbox item subject migration", () => {
-  it("keeps one open item for each subject, with the snoozes and without the pushes of the items it closes", async () => {
+  it("keeps one open item for each subject, with the assignees and snoozes and without the pushes of the items it closes", async () => {
     if (!migration || start < 0 || end < start) {
       throw new Error("0170 subject steps not found");
     }
@@ -62,6 +62,10 @@ describe("inbox item subject migration", () => {
       );
       await fixture.sql.execute(
         legacyItem("merge", "pull-request-ready", "2026-10-02T12:00:00Z"),
+      );
+      // Ana has the review ask and Ben the merge ask.
+      await fixture.sql.execute(
+        `INSERT INTO junior_inbox_item_assignees (item_id, user_id) VALUES ('review', 'user:ana'), ('merge', 'user:ben')`,
       );
       // Ana snoozed only the review ask. Ben snoozed both asks.
       await fixture.sql.execute(
@@ -98,6 +102,12 @@ describe("inbox item subject migration", () => {
         { id: "hold", subject_id: "hold:v42", subject_kind: "question" },
         { id: "rollout", subject_id: "rollout:v42", subject_kind: "question" },
       ]);
+      // Ana joins the item that stays open, so she keeps her ask.
+      expect(
+        await fixture.sql.query(
+          `SELECT user_id FROM junior_inbox_item_assignees WHERE item_id = 'merge' ORDER BY user_id`,
+        ),
+      ).toEqual([{ user_id: "user:ana" }, { user_id: "user:ben" }]);
       // Ana's snooze still hides the item that stays open. Ben keeps his
       // own snooze of it.
       expect(
