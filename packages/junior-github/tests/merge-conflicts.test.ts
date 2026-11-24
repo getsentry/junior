@@ -758,6 +758,27 @@ describe("merge conflict check on webhook events", () => {
       expect(h.notices).toHaveLength(1);
     });
 
+    it("Resume reads the current repository name from the code index", async () => {
+      await askedInSlack();
+      await fixThatDoesNotLand();
+      expect(h.notices).toHaveLength(1);
+      // The opener's row keeps the name from when Junior opened it.
+      await fixture
+        .db()
+        .update(juniorGitHubPullRequestRequesters)
+        .set({ repositoryFullName: "getsentry/junior-old" });
+      pullRequest.head.sha = "1".repeat(40);
+      await h.answer(resume);
+      expect(
+        conflicts().filter((event) =>
+          event.eventKey.endsWith(":resume:item-1"),
+        ),
+      ).toEqual([
+        expect.objectContaining({ identifier: "getsentry/junior#946" }),
+        expect.objectContaining({ identifier: "getsentry/junior" }),
+      ]);
+    });
+
     it("lets the next conflict ask again when Resume finds no pull request", async () => {
       await askedInSlack();
       await fixThatDoesNotLand();

@@ -40,6 +40,8 @@ export const codeChangeFilterSchema = z
   .object({
     /** Code changes linked to any of these Conversations. */
     conversationIds: z.array(z.string().min(1)).min(1).optional(),
+    /** Code changes with any of these provider ids. */
+    providerIds: z.array(z.string().min(1)).min(1).optional(),
     repository: z
       .object({
         /** The repository name. Junior matches it in any case. */

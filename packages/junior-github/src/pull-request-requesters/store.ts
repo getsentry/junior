@@ -127,18 +127,15 @@ export async function listGitHubPullRequestOpeners(
 }
 
 /**
- * Find a pull request that a person asked Junior to open in one
- * Conversation, by GitHub's id of the pull request.
+ * Whether a person asked Junior to open a pull request in one Conversation,
+ * by GitHub's id of the pull request.
  */
-export async function findGitHubPullRequestOpenedIn(
+export async function wasGitHubPullRequestOpenedIn(
   db: GitHubDb,
   input: { conversationId: string; pullRequestId: string },
-): Promise<{ number: number; repositoryFullName: string } | undefined> {
+): Promise<boolean> {
   const [row] = await db
-    .select({
-      number: table.number,
-      repositoryFullName: table.repositoryFullName,
-    })
+    .select({ number: table.number })
     .from(table)
     .where(
       and(
@@ -147,5 +144,5 @@ export async function findGitHubPullRequestOpenedIn(
       ),
     )
     .limit(1);
-  return row;
+  return row !== undefined;
 }

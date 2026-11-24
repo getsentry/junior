@@ -36,7 +36,7 @@ import {
   resumeGitHubConflictFixes,
 } from "./merge-conflict-checks/resume.js";
 import { reconcileGitHubPullRequests } from "./pull-request-outcomes/reconcile.js";
-import { findGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
+import { wasGitHubPullRequestOpenedIn } from "./pull-request-requesters/store.js";
 import { runGitHubPullRequestPatches } from "./pull-request-patches.js";
 import { gitHubEventDeclarations } from "./events/declarations.js";
 import { gitHubResourceUrl, gitHubUrlResource } from "./events/resource-url.js";
@@ -405,12 +405,16 @@ export function githubPlugin(
         const db = gitHubDbSchema.parse(ctx.db);
         const pullRequestId = ctx.subject.id;
         // The item belongs to the Conversation that opened the pull request,
-        // and the opener's row holds the pull request's id.
-        const ref = await findGitHubPullRequestOpenedIn(db, {
+        // and the opener's row holds the pull request's id. The code index
+        // holds its current name, also after a rename.
+        const opened = await wasGitHubPullRequestOpenedIn(db, {
           conversationId: ctx.conversationId,
           pullRequestId,
         });
-        if (!ref) {
+        const [change] = opened
+          ? await ctx.codeChanges.list({ providerIds: [pullRequestId] })
+          : [];
+        if (!change) {
           // Core closed the item already. Let the next conflict check ask
           // again, so the Resume is not lost.
           ctx.log.warn("GitHub merge conflict Resume found no pull request", {
@@ -429,7 +433,10 @@ export function githubPlugin(
             await loadPullRequest(installationEnv, pullRequest),
           nowMs: ctx.nowMs,
           pullRequestId,
-          ref,
+          ref: {
+            number: change.number,
+            repositoryFullName: change.repository.name,
+          },
           subscription: gitHubPullRequestSubscription(
             options.pullRequestEvents?.subscribeAfterCreate,
           ),

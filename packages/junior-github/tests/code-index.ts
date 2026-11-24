@@ -58,11 +58,13 @@ export function memoryCodeIndex() {
     async list(input) {
       const filter = codeChangeFilterSchema.parse(input);
       const conversationIds = new Set(filter.conversationIds);
+      const providerIds = new Set(filter.providerIds);
       return [...changes.values()]
         .filter(
           (change) =>
             (!filter.conversationIds ||
               change.conversationIds.some((id) => conversationIds.has(id))) &&
+            (!filter.providerIds || providerIds.has(change.providerId)) &&
             (!filter.repository ||
               (change.repository.name.toLowerCase() ===
                 filter.repository.name.toLowerCase() &&

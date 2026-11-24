@@ -216,6 +216,9 @@ export async function listCodeChanges(
         filter.conversationIds
           ? arrayOverlaps(changes.conversationIds, filter.conversationIds)
           : undefined,
+        filter.providerIds
+          ? inArray(changes.providerId, filter.providerIds)
+          : undefined,
         filter.repository
           ? sql`lower(${repositories.name}) = ${filter.repository.name.toLowerCase()}`
           : undefined,
