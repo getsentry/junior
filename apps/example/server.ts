@@ -13,6 +13,7 @@ const [
   import("./plugins.ts"),
   import("./live-preview.ts"),
 ]);
+const { withVersionsListenSpike } = await import("./spike-versions-listen.ts");
 
 const app = await createApp({
   allowedDomains: ["sentry.io"],
@@ -26,4 +27,4 @@ const app = await createApp({
   },
 });
 
-export default withExampleLivePreview(app);
+export default withVersionsListenSpike(withExampleLivePreview(app));

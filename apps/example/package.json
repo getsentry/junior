@@ -12,6 +12,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@sentry/junior": "workspace:*",
     "@sentry/junior-agent-browser": "workspace:*",
     "@sentry/junior-amplitude": "workspace:*",
