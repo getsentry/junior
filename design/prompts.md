@@ -17,13 +17,6 @@ and facts about their world. Plugins add guidance.
 - Steering text is plain. Each rule says what to do and, when that is not
   obvious, why, so the model can apply it to new cases.
 
-## Entry points
-
-- Operators: `SOUL.md` for voice and `WORLD.md` for facts and workflow.
-- Plugins: fixed guidance in the system prompt, and context for each
-  request.
-- Repos: `AGENTS.md` in a checkout.
-
 ## Rules
 
 - Core rules win over operator voice, operator facts, and plugin guidance.

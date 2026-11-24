@@ -1,0 +1,70 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "0848acd7-d2ff-4ac6-90c5-d2a2b4af905e",
+  "prevIds": ["0a0881c2-33c2-4353-910b-d8a312c220f8"],
+  "footprints": [
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_archived_idempotency_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_archived_idempotency_idx",
+        "n|idx|public.junior_memory_memories_archived_idempotency_idx",
+        "e|idx|public.junior_memory_memories_archived_idempotency_idx",
+        "n|rel|public.junior_memory_memories_archived_idempotency_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.idempotency_key"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_archived_idempotency_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "scope",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scope_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "idempotency_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NOT NULL AND \"junior_memory_memories\".\"archive_reason\" <> 'expired'",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

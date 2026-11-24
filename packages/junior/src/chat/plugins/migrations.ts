@@ -60,18 +60,15 @@ async function legacyMigrationHashes(
   return new Set(rows.map((row) => row.checksum));
 }
 
-function adoptedMigration(
+/** The migrations, from the first, whose SQL the legacy table records. */
+function adoptedMigrations(
   migrations: readonly MigrationMeta[],
   legacyHashes: ReadonlySet<string>,
-): MigrationMeta | undefined {
-  let adopted: MigrationMeta | undefined;
-  for (const migration of migrations) {
-    if (!legacyHashes.has(migration.hash)) {
-      break;
-    }
-    adopted = migration;
-  }
-  return adopted;
+): MigrationMeta[] {
+  const unknown = migrations.findIndex(
+    (migration) => !legacyHashes.has(migration.hash),
+  );
+  return unknown === -1 ? [...migrations] : migrations.slice(0, unknown);
 }
 
 async function adoptLegacyMigrationState(args: {
@@ -84,25 +81,32 @@ async function adoptLegacyMigrationState(args: {
     args.executor,
     args.pluginName,
   );
-  const migration = adoptedMigration(args.migrations, legacyHashes);
-  if (!migration) {
+  const adopted = adoptedMigrations(args.migrations, legacyHashes);
+  if (adopted.length === 0) {
     return undefined;
   }
+  const table = `drizzle.${args.table}`;
   await args.executor.transaction(async () => {
     await args.executor.execute("CREATE SCHEMA IF NOT EXISTS drizzle");
     await args.executor.execute(`
-CREATE TABLE IF NOT EXISTS drizzle.${args.table} (
+CREATE TABLE IF NOT EXISTS ${table} (
   id SERIAL PRIMARY KEY,
   hash TEXT NOT NULL,
-  created_at BIGINT
+  created_at BIGINT,
+  name TEXT,
+  applied_at TIMESTAMP WITH TIME ZONE DEFAULT now()
 )
 `);
-    await args.executor.execute(
-      `INSERT INTO drizzle.${args.table} (hash, created_at) VALUES ($1, $2)`,
-      [migration.hash, migration.folderMillis],
-    );
+    /* oxlint-disable no-await-in-loop -- Record the adopted migrations in order. */
+    for (const migration of adopted) {
+      await args.executor.execute(
+        `INSERT INTO ${table} (hash, created_at, name, applied_at) VALUES ($1, $2, $3, NULL)`,
+        [migration.hash, migration.folderMillis, migration.name],
+      );
+    }
+    /* oxlint-enable no-await-in-loop */
   });
-  return [{ createdAt: migration.folderMillis, hash: migration.hash }];
+  return await readMigrationRecords(args.executor, table);
 }
 
 /** Apply enabled plugins' packaged Drizzle migrations in plugin-name order. */

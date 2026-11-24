@@ -35,12 +35,15 @@ import { fadeOverflowClass, fadeWhenOverflowing } from "../../textFade";
 import { cn } from "../../styles";
 
 /**
- * Surface work that needs the reader, then the summary and its linked work.
+ * Lead with the glance (cost, repository, location), then the summary, the
+ * work that needs the reader, and linked work. Reference facts come last.
  */
 export function ConversationDetails(props: {
   /** Parent chain of a child Conversation, root first, this one last. */
   agentTree?: readonly ConversationAgentTreeNode[] | undefined;
   conversationId: string;
+  /** Live cost, repository, and location, above everything else. */
+  glance: ReactNode;
   summary?: string | undefined;
   summaryMentions?: ConversationDetailReport["summaryMentions"];
   /** True when a sidebar review chip opened details. */
@@ -133,7 +136,8 @@ export function ConversationDetails(props: {
       onClose={props.onClose}
     >
       <div className="grid min-w-0 content-start gap-2 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-3">
-        {/* The summary leads: what the work is and where it stands. */}
+        {props.glance}
+        {/* What the work is and where it stands. */}
         {props.summary ? (
           <section
             aria-label="Summary"
@@ -179,12 +183,12 @@ export function ConversationDetails(props: {
             tasks={tasks}
           />
         ) : null}
-        {props.overview != null ? (
-          <DetailsCard>{props.overview}</DetailsCard>
-        ) : null}
-        {props.usage}
         {props.identity != null ? (
           <DetailsCard title="Participants">{props.identity}</DetailsCard>
+        ) : null}
+        {props.usage}
+        {props.overview != null ? (
+          <DetailsCard>{props.overview}</DetailsCard>
         ) : null}
         {memoryList?.events.length ? (
           <ConversationMemoryCard

@@ -10,7 +10,8 @@ const LIVE_TYPES = new Set(["code_change", "task"]);
 /**
  * Show linked work with the status and title of its live card, once the
  * card comes. Until then, and without a card, it keeps what Junior linked.
- * The rows of one `MessageObjectsProvider` read their cards in one request.
+ * The rows of one `MessageObjectsProvider` that ask together read their
+ * cards in one request.
  */
 export function useLiveAnnotations<T extends SidebarAnnotation>(
   annotations: T[] | undefined,

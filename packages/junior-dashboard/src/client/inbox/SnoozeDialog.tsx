@@ -4,7 +4,13 @@ import {
   INBOX_SNOOZE_MAX_TRIGGERS,
 } from "@sentry/junior/api/schema";
 import { ChevronsUpDown, Link2, Plus, X } from "lucide-react";
-import { useId, useRef, useState } from "react";
+import {
+  type KeyboardEvent,
+  type RefObject,
+  useId,
+  useRef,
+  useState,
+} from "react";
 
 import { Button } from "../components/ui/button";
 import {
@@ -29,13 +35,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { useSheet } from "../components/ui/useSheet";
 import {
@@ -48,13 +47,13 @@ import {
   MessageObjectsProvider,
   useListedObjects,
 } from "../display-text/DisplayText";
-import { eventLabel } from "../eventLabel";
 import { fetchDashboardJson } from "../http";
 import { listedDraft } from "../listedCodeChange";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
-import { eventSentence, sentenceCase } from "./snoozeSentences";
+import { SnoozeEventPicker } from "./SnoozeEventPicker";
+import { eventSentence } from "./snoozeSentences";
 import {
   SOMEDAY,
   type CustomSnoozeEnd,
@@ -67,6 +66,8 @@ const SEARCH_DEBOUNCE_MS = 150;
 const SEARCH_STALE_MS = 60_000;
 // The longest query that the code change search takes.
 const SEARCH_MAX_LENGTH = 100;
+// The condition that the dialog opens with.
+const FIRST_CONDITION_ID = 1;
 
 /**
  * The page whose Events end the snooze: the subject of the row's items, or
@@ -83,6 +84,14 @@ interface Condition {
   watched?: Watched;
 }
 
+/**
+ * A condition that the viewer left as it was added: no Event, and the page
+ * that a new condition starts on. Snooze skips it.
+ */
+function isUntouched({ eventType, watched }: Condition): boolean {
+  return !eventType && (!watched || watched.kind === "subject");
+}
+
 /** A condition that names a page and an Event, ready to post. */
 interface CompleteCondition {
   eventType: string;
@@ -96,7 +105,9 @@ interface CompleteCondition {
  * a pasted link to a pull request or issue. Wake shows the items again
  * then; Dismiss dismisses them, for a viewer who can dismiss each one. The
  * time always wakes them. Someday snoozes with neither, until the items
- * close.
+ * close. A row that can snooze until an Event opens with one condition
+ * already added and focused, so people find conditions; Snooze skips it
+ * while it is untouched.
  */
 export function SnoozeDialog(props: {
   /** Set when the row can snooze until an Event. */
@@ -107,23 +118,27 @@ export function SnoozeDialog(props: {
 }) {
   const id = useId();
   const timeRef = useRef<HTMLInputElement>(null);
-  const sheet = useSheet(props.onClose, timeRef);
+  const firstConditionRef = useRef<HTMLButtonElement>(null);
+  const sheet = useSheet(
+    props.onClose,
+    props.events ? firstConditionRef : timeRef,
+  );
   const [time, setTime] = useState("");
   const [outcome, setOutcome] = useState<"resolve" | "wake">("wake");
-  const [conditions, setConditions] = useState<readonly Condition[]>([]);
-  const nextId = useRef(0);
+  const subject = props.events?.subject;
+  const newCondition = (rowId: number): Condition => ({
+    id: rowId,
+    watched: subject ? { kind: "subject" } : undefined,
+  });
+  const [conditions, setConditions] = useState<readonly Condition[]>(() =>
+    props.events ? [newCondition(FIRST_CONDITION_ID)] : [],
+  );
+  const nextId = useRef(FIRST_CONDITION_ID);
   // The time field is wrong, or nothing ends the snooze.
   const [error, setError] = useState<{ message: string; time: boolean }>();
-  const subject = props.events?.subject;
   const add = () => {
     nextId.current += 1;
-    setConditions([
-      ...conditions,
-      {
-        id: nextId.current,
-        watched: subject ? { kind: "subject" } : undefined,
-      },
-    ]);
+    setConditions([...conditions, newCondition(nextId.current)]);
     setError(undefined);
   };
   const change = (next: Condition) => {
@@ -137,16 +152,17 @@ export function SnoozeDialog(props: {
   const submit = () => {
     // A `datetime-local` value has no offset, so it parses as local time.
     const untilMs = time ? new Date(time).getTime() : undefined;
+    const touched = conditions.filter((row) => !isUntouched(row));
     // A row offers only the Events of a page that the viewer can snooze
     // on, so a picked Event is one of them.
-    const complete = conditions.flatMap(({ eventType, watched }) =>
+    const complete = touched.flatMap(({ eventType, watched }) =>
       eventType && watched ? [{ eventType, watched }] : [],
     );
     if (untilMs !== undefined && Number.isNaN(untilMs)) {
       setError({ message: "Pick a date and time.", time: true });
     } else if (untilMs !== undefined && untilMs <= Date.now()) {
       setError({ message: "Pick a time in the future.", time: true });
-    } else if (complete.length < conditions.length) {
+    } else if (complete.length < touched.length) {
       setError({
         message: "Finish each condition, or remove it.",
         time: false,
@@ -222,6 +238,11 @@ export function SnoozeDialog(props: {
                 {conditions.map((row) => (
                   <ConditionRow
                     condition={row}
+                    focusRef={
+                      row.id === FIRST_CONDITION_ID
+                        ? firstConditionRef
+                        : undefined
+                    }
                     key={row.id}
                     onChange={change}
                     onRemove={() => remove(row.id)}
@@ -320,6 +341,12 @@ function useCodeChangeSearch(query: string) {
   };
 }
 
+/** Whether a key press moves a command list's highlight. */
+function movesHighlight(event: KeyboardEvent): boolean {
+  if (["ArrowDown", "ArrowUp", "End", "Home"].includes(event.key)) return true;
+  return event.ctrlKey && ["j", "k", "n", "p"].includes(event.key);
+}
+
 /**
  * Pick the page to watch: the row's subject, a pull request that the
  * search finds, or a pasted link to a pull request or issue.
@@ -340,15 +367,44 @@ function WatchPicker(props: {
       change.state === "open" ? change.url : [],
     ),
   );
+  const waits = (change: { state: string; url: string }) =>
+    change.state === "open" && !listedOf(change.url).settled;
+  // The highlight stays on the first row that can be picked, so it moves up
+  // when the cards of open rows arrive. A row that the viewer moved to by
+  // key or pointer keeps it until the search changes.
+  const [moved, setMoved] = useState<{ query: string; value: string }>();
+  const viewerMove = useRef(false);
+  // The flag lasts the whole event: React runs capture and bubble handlers
+  // in separate listeners, so a microtask would end it before cmdk moves.
+  const markViewerMove = () => {
+    viewerMove.current = true;
+    setTimeout(() => {
+      viewerMove.current = false;
+    });
+  };
+  const first =
+    props.subject && !text
+      ? "subject"
+      : (link ?? search.changes.find((change) => !waits(change))?.url ?? "");
   return (
-    <Command label="Pull request or issue" shouldFilter={false}>
+    <Command
+      label="Pull request or issue"
+      onKeyDownCapture={(event) => {
+        if (movesHighlight(event)) markViewerMove();
+      }}
+      onValueChange={(value) => {
+        if (viewerMove.current) setMoved({ query, value });
+      }}
+      shouldFilter={false}
+      value={moved?.query === query ? moved.value : first}
+    >
       <CommandInput
         autoFocus
         onValueChange={setQuery}
         placeholder="Search pull requests or paste a link"
         value={query}
       />
-      <CommandList className="max-h-64">
+      <CommandList className="max-h-64" onPointerMoveCapture={markViewerMove}>
         {props.subject && !text ? (
           <CommandGroup heading="This item">
             <CommandItem
@@ -386,7 +442,7 @@ function WatchPicker(props: {
                 <CommandItem
                   // An open change is saved with its draft state, so it
                   // waits for its card.
-                  disabled={change.state === "open" && !listed.settled}
+                  disabled={waits(change)}
                   key={change.url}
                   onSelect={() =>
                     props.onPick({ kind: "page", reference, url: change.url })
@@ -436,18 +492,22 @@ function watchedEvents(
 
 /**
  * One condition: a page and one of its Events. A new row with no page opens
- * the search at once. The search floats over the dialog, and the Event
- * select keeps its size while the page loads, so the dialog does not jump.
+ * the search at once, except the row that the dialog opens with, which only
+ * takes focus so the time field stays in view. The search floats over the
+ * dialog, and the Event select keeps its size while the page loads, so the
+ * dialog does not jump.
  */
 function ConditionRow(props: {
   condition: Condition;
+  /** Set on the row that the dialog opens with, for its first control. */
+  focusRef?: RefObject<HTMLButtonElement | null>;
   onChange(next: Condition): void;
   onRemove(): void;
   subject: SnoozeEvents | undefined;
 }) {
   const { condition, subject } = props;
   const { watched } = condition;
-  const [open, setOpen] = useState(!watched);
+  const [open, setOpen] = useState(!watched && !props.focusRef);
   const named = useSnoozeResource(watched?.kind === "page" ? watched.url : "");
   const { error, events } = watched
     ? watchedEvents(watched, subject, named)
@@ -466,7 +526,11 @@ function ConditionRow(props: {
         role="group"
       >
         <Popover onOpenChange={setOpen} open={open}>
-          <PopoverTrigger className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-panel px-2.5 text-left font-sans text-xs font-medium text-dashboard-text hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus md:h-8">
+          <PopoverTrigger
+            className="flex h-9 min-w-0 flex-1 cursor-pointer items-center gap-1.5 rounded-lg border border-dashboard-border-emphasis bg-dashboard-surface-panel px-2.5 text-left font-sans text-xs font-medium text-dashboard-text hover:border-dashboard-border-interactive focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-dashboard-focus md:h-8"
+            // With no page yet, the page is what to pick first.
+            ref={watched ? undefined : props.focusRef}
+          >
             {watched?.kind === "page" && watched.reference ? (
               <ReferenceIcon reference={watched.reference} />
             ) : null}
@@ -503,35 +567,17 @@ function ConditionRow(props: {
             </MessageObjectsProvider>
           </PopoverContent>
         </Popover>
-        <Select<string>
-          disabled={!events}
-          onValueChange={(next) => {
-            if (next) props.onChange({ ...condition, eventType: next });
-          }}
-          value={condition.eventType ?? null}
-        >
-          <SelectTrigger
-            aria-label="Event"
-            className="row-start-2 min-w-0 sm:flex-1"
-          >
-            <SelectValue className={cn(fadeTextClass, "flex-1 text-left")}>
-              {(value: string | null) =>
-                value && events
-                  ? eventPhrase(value, events)
-                  : watched && !events && !error
-                    ? "Checking the link…"
-                    : "Pick an event"
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {events?.events.map((eventType) => (
-              <SelectItem key={eventType} value={eventType}>
-                {eventPhrase(eventType, events)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SnoozeEventPicker
+          events={events}
+          onPick={(next) => props.onChange({ ...condition, eventType: next })}
+          triggerRef={watched ? props.focusRef : undefined}
+          placeholder={
+            watched && !events && !error
+              ? "Checking the link…"
+              : "Pick an event"
+          }
+          value={condition.eventType}
+        />
         <Button
           aria-label="Remove condition"
           className="col-start-2 row-start-1"
@@ -552,14 +598,6 @@ function ConditionRow(props: {
 function pageName(watched: Watched, subject: SnoozeEvents | undefined) {
   if (watched.kind === "subject") return subject && subjectName(subject);
   return watched.reference ? referenceName(watched.reference) : watched.url;
-}
-
-/** How an Event reads after its page's name, such as "is merged". */
-function eventPhrase(eventType: string, events: SnoozeEvents): string {
-  return (
-    events.phrases[eventType] ??
-    sentenceCase(eventLabel(eventType, events.resourceType))
-  );
 }
 
 /**

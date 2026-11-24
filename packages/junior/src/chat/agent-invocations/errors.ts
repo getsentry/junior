@@ -15,7 +15,7 @@ export class AgentInvocationLimitError extends Error {
 }
 
 /**
- * The Conversation that calls spawnAgent is too deep to start child agents,
+ * The Conversation that calls startAgent is too deep to start child agents,
  * or its parent chain does not end at a root.
  */
 export class AgentDepthLimitError extends Error {

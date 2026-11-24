@@ -1,0 +1,206 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "a60cc2e7-fb87-43d7-a2c2-d91992887a1c",
+  "prevIds": ["b0120888-befa-4b42-b9cb-80f8275a4d94"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_conversation_participants",
+        "auto_archive"
+      ],
+      "writes": [
+        "s|col|public.junior_conversation_participants.auto_archive",
+        "n|col|public.junior_conversation_participants.auto_archive",
+        "e|col|public.junior_conversation_participants.auto_archive"
+      ],
+      "reads": ["n|tbl|public.junior_conversation_participants", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_users",
+        "auto_archive_default"
+      ],
+      "writes": [
+        "s|col|public.junior_users.auto_archive_default",
+        "n|col|public.junior_users.auto_archive_default",
+        "e|col|public.junior_users.auto_archive_default"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_users",
+        "auto_archive_grace_hours"
+      ],
+      "writes": [
+        "s|col|public.junior_users.auto_archive_grace_hours",
+        "n|col|public.junior_users.auto_archive_grace_hours",
+        "e|col|public.junior_users.auto_archive_grace_hours"
+      ],
+      "reads": ["n|tbl|public.junior_users", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_participants",
+        "junior_conversation_participants_auto_archive_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_participants_auto_archive_idx",
+        "n|idx|public.junior_conversation_participants_auto_archive_idx",
+        "e|idx|public.junior_conversation_participants_auto_archive_idx",
+        "n|rel|public.junior_conversation_participants_auto_archive_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_participants",
+        "n|sch|public",
+        "n|col|public.junior_conversation_participants.user_id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_conversation_participants",
+        "junior_conversation_participants_unarchived_activity_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_conversation_participants_unarchived_activity_idx",
+        "n|idx|public.junior_conversation_participants_unarchived_activity_idx",
+        "e|idx|public.junior_conversation_participants_unarchived_activity_idx",
+        "n|rel|public.junior_conversation_participants_unarchived_activity_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_conversation_participants",
+        "n|sch|public",
+        "n|col|public.junior_conversation_participants.user_id",
+        "n|col|public.junior_conversation_participants.last_message_at",
+        "n|col|public.junior_conversation_participants.root_conversation_id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_participants",
+        "name": "auto_archive",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_users",
+        "name": "auto_archive_default",
+        "type": "boolean",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "false",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_users",
+        "name": "auto_archive_grace_hours",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "24",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_participants",
+        "name": "junior_conversation_participants_auto_archive_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_conversation_participants\".\"auto_archive\" and \"junior_conversation_participants\".\"archived_at\" is null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_conversation_participants",
+        "name": "junior_conversation_participants_unarchived_activity_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "user_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "last_message_at",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "root_conversation_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_conversation_participants\".\"archived_at\" is null",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    }
+  ]
+}

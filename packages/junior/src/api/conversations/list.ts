@@ -331,7 +331,7 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * dashboard can record which inputs moved it.
  *
  * Status and tree state come from stored watermarks, not from the rules
- * that derive them, so a poll reads no Events, Briefs, or read positions.
+ * that derive them, so a poll reads no Events or read positions.
  * Each write that a status or the tree state reads moves `detail_version` on
  * its Conversation, so the token holds that version for each idle row and
  * tree member. Every Event of a live Turn moves it too, and a running row

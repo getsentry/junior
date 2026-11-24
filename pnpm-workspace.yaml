@@ -17,8 +17,8 @@ catalog:
   # Node 24 is the supported runtime in development, CI, and deployments.
   "@types/node": ^24.19.2
   "@vitest/coverage-v8": 4.1.12
-  drizzle-kit: ^0.31.8
-  drizzle-orm: ^0.45.4
+  drizzle-kit: 1.0.0-rc.6
+  drizzle-orm: 1.0.0-rc.6
   mdast-util-from-markdown: ^2.1.0
   mdast-util-gfm: ^3.1.0
   micromark-extension-gfm: ^3.0.0

@@ -24,14 +24,19 @@ const GITHUB_EVENT_PHRASES: Record<string, string> = {
   "pull_request.checks.recovered": "passes its checks again",
   "pull_request.closed_unmerged": "is closed without merging",
   "pull_request.comment.created": "gets a new comment",
+  "pull_request.converted_to_draft": "is converted to a draft",
   "pull_request.merge_conflict": "gets a merge conflict",
+  "pull_request.merge_conflict.resolved": "no longer has a merge conflict",
   "pull_request.merged": "is merged",
   "pull_request.opened": "is opened",
   "pull_request.ready_for_review": "is ready for review",
+  "pull_request.reopened": "is reopened",
   "pull_request.review.approved": "is approved",
   "pull_request.review.changes_requested": "gets changes requested",
   "pull_request.review.commented": "gets a review comment",
   "pull_request.review_comment.created": "gets an inline review comment",
+  "pull_request.review_requested": "gets a review request",
+  "pull_request.synchronized": "gets new commits",
 };
 
 /**

@@ -1,7 +1,7 @@
 # Design
 
-Each file states the intent of one major system: the goals it must meet,
-where users reach it, and the rules users rely on. Teammates read it to learn
+Each file states the intent of one major system: the goals it must meet
+and the rules users rely on. Teammates read it to learn
 why the system works the way it does. Agents read it before they change the
 system. The `create-design-docs` skill writes these files, and the
 `automate-design-doc-updates` skill checks the product against them. Both
@@ -15,11 +15,9 @@ Then it has these H2 sections, in this order:
 1. `Intent`: the goals that the system must meet, and why. Each goal
    decides between real options, such as "runs work with no person
    present".
-2. `Entry points`: each place where a user reaches the system, by its
-   visible name.
-3. `Rules`: limits that users rely on, such as who can act, and what the
+2. `Rules`: limits that users rely on, such as who can act, and what the
    system is not.
-4. `Gaps`: only when the product does not meet a goal or a rule yet. Say
+3. `Gaps`: only when the product does not meet a goal or a rule yet. Say
    how it falls short, and which goal or rule it breaks.
 
 These files state intent. The code shows what the product does, not what it
@@ -50,11 +48,11 @@ Do not list behaviors. The verification map in
 - [Inbox](./inbox.md): work that waits for a person.
 - [Inbox stacks](./inbox-stacks.md): the Inbox rows in the dashboard, one
   stack for each root Conversation.
-- [Lead](./lead.md): a person's own Conversation that finds, starts, and
-  steers their other work.
 - [Prompts](./prompts.md): what the model reads in each Turn, and who wrote
   each part.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
   commands in a Sandbox, with no real token inside it.
 - [Slack](./slack.md): requests in Slack, and who can start work there.
+- [Spaces](./spaces.md): named, shared homes for related work, each with a
+  Lead that starts and steers the work in it.
 - [Tools](./tools.md): what the model can call, and what each call returns.

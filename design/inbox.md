@@ -22,24 +22,12 @@ how the dashboard groups and acts on its rows.
   as a reply or a blocked Automation, and says what to do. It never asks.
 - A task for a person is a To-do assigned to them. They see it with their
   other asks, close it themselves, and the agent learns that it is done.
-- Only an assignee answers, and the answer carries their authority. Junior,
-  an Event, or a trigger never answers or approves for a person.
+- Only an assignee answers a private item. Anyone who can see a public
+  question can answer it, but only an assignee dismisses or takes it. The
+  answer carries the authority of the person who gives it. Junior, an
+  Event, or a trigger never answers or approves for a person.
 - "Needs you" means one thing on every surface: an ask or a Conversation
   tree that waits on you.
-
-## Entry points
-
-- Slack: the item card in each linked thread, and a thread reply.
-- Dashboard: Inbox, the Home summary, "Needs you" in the conversation list,
-  the question card in the Conversation transcript, the questions pill, and
-  a push.
-  Done and Dismiss on a "To do for you" row.
-- Dashboard filters: Other, PRs, Decisions, To-dos, Pinned, and All in the
-  Inbox; Done, Watching, Working, Needs you, Pinned, and All in
-  Conversations and a repository's Conversations tab. All, the default, is
-  at the right edge, and the tab order follows the order on screen.
-- Settings: "Show the Inbox count in the tab".
-- MCP server: read-only search and fetch with the `inbox_items:read` scope.
 
 ## Rules
 

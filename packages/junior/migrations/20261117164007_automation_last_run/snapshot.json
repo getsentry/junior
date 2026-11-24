@@ -1,0 +1,108 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "fb278771-4d1c-4003-aa03-5179f0a37640",
+  "prevIds": ["2d154736-5c0f-47c7-a700-ba3fe7791778"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_automation_runs",
+        "cost_micro_usd"
+      ],
+      "writes": [
+        "s|col|public.junior_automation_runs.cost_micro_usd",
+        "n|col|public.junior_automation_runs.cost_micro_usd",
+        "e|col|public.junior_automation_runs.cost_micro_usd"
+      ],
+      "reads": ["n|tbl|public.junior_automation_runs", "n|sch|public"]
+    },
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_automations",
+        "last_run_id"
+      ],
+      "writes": [
+        "s|col|public.junior_automations.last_run_id",
+        "n|col|public.junior_automations.last_run_id",
+        "e|col|public.junior_automations.last_run_id"
+      ],
+      "reads": ["n|tbl|public.junior_automations", "n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_automations"],
+      "writes": [
+        "s|fk|public.junior_automations.junior_automations_last_run_id_junior_automation_runs_id_fk",
+        "n|fk|public.junior_automations.junior_automations_last_run_id_junior_automation_runs_id_fk",
+        "e|fk|public.junior_automations.junior_automations_last_run_id_junior_automation_runs_id_fk",
+        "n|con|public.junior_automations.junior_automations_last_run_id_junior_automation_runs_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automations",
+        "n|sch|public",
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|col|public.junior_automations.last_run_id",
+        "n|col|public.junior_automation_runs.id",
+        "e|uniqueness|public.junior_automation_runs.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "cost_micro_usd",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "last_run_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automations",
+        "name": "junior_automations_last_run_id_junior_automation_runs_id_fk",
+        "nameExplicit": false,
+        "columns": ["last_run_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_automation_runs",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "SET NULL",
+        "entityType": "fks"
+      }
+    }
+  ]
+}

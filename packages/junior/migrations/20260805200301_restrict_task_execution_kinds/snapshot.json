@@ -1,0 +1,36 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "0c1e6611-1101-44ef-9c06-e6e389a0a435",
+  "prevIds": ["80dc4db3-8037-4fb0-a375-a2b4d217feb5"],
+  "footprints": [
+    {
+      "statementType": "add_check",
+      "statementTarget": ["table", "public", "junior_task_executions"],
+      "writes": [
+        "s|ck|public.junior_task_executions.junior_task_executions_kind_check",
+        "n|ck|public.junior_task_executions.junior_task_executions_kind_check",
+        "e|ck|public.junior_task_executions.junior_task_executions_kind_check",
+        "n|con|public.junior_task_executions.junior_task_executions_kind_check"
+      ],
+      "reads": [
+        "n|tbl|public.junior_task_executions",
+        "n|sch|public",
+        "n|col|public.junior_task_executions.kind"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_task_executions",
+        "name": "junior_task_executions_kind_check",
+        "value": "\"junior_task_executions\".\"kind\" in ('scheduled', 'event')",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

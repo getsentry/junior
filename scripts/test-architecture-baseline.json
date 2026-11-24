@@ -209,7 +209,7 @@
     "packages/junior/src/chat/task-execution/turn-wake.ts": 1,
     "packages/junior/src/chat/task-execution/web-steering.ts": 1,
     "packages/junior/src/chat/task-execution/worker.ts": 1,
-    "packages/junior/src/chat/tools/runtime/archive-agent.ts": 2
+    "packages/junior/src/chat/tools/runtime/archive-agent.ts": 1
   },
   "dashboard-spec-page-script": {
     "packages/junior-dashboard/e2e/automations.spec.ts": 1,
@@ -319,7 +319,6 @@
     "packages/junior-dashboard/e2e/inbox/conversations-event-log.spec.ts": 15,
     "packages/junior-dashboard/e2e/inbox/conversations-mobile.spec.ts": 8,
     "packages/junior-dashboard/e2e/inbox/conversations.spec.ts": 4,
-    "packages/junior-dashboard/e2e/inbox/in-flight.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/inbox-answer-drafts.spec.ts": 1,
     "packages/junior-dashboard/e2e/inbox/inbox-answers.spec.ts": 3,
     "packages/junior-dashboard/e2e/inbox/inbox-cards.spec.ts": 22,
@@ -333,7 +332,7 @@
     "packages/junior-dashboard/e2e/inbox/inbox-question-card.spec.ts": 2,
     "packages/junior-dashboard/e2e/inbox/inbox-rows.spec.ts": 35,
     "packages/junior-dashboard/e2e/inbox/inbox-snooze.spec.ts": 1,
-    "packages/junior-dashboard/e2e/inbox/inbox-snoozes.spec.ts": 9,
+    "packages/junior-dashboard/e2e/inbox/inbox-snoozes.spec.ts": 6,
     "packages/junior-dashboard/e2e/inbox/inbox-stacks.spec.ts": 29,
     "packages/junior-dashboard/e2e/inbox/inbox-tab-count.spec.ts": 5,
     "packages/junior-dashboard/e2e/inbox/inbox-wake-reasons.spec.ts": 5,

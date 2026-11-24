@@ -51,6 +51,10 @@ const SETTLE_TIMEOUT_MS = 5_000;
 // frame or two of the change that causes them.
 const QUIET_FRAMES = 3;
 
+// Resizes to the page height before a shot fails. One resize fits most
+// pages. A second fits a page that a tall viewport makes taller.
+const MAX_FIT_RESIZES = 3;
+
 type ScreenshotOptions = {
   clip?: {
     height: number;
@@ -106,17 +110,7 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
       width: view.width,
     });
     await settle(page);
-    // For a page taller than the viewport, Chrome resizes the view during the
-    // capture. It paints that size before ResizeObserver callbacks and React
-    // updates run, so charts and sticky bars keep the old size in the image.
-    // Resize first and let the page settle, so the capture fits the viewport.
-    const height = await page.evaluate(
-      () => document.documentElement.scrollHeight,
-    );
-    if (!options.clip && height > view.height) {
-      await page.setViewportSize({ height, width: view.width });
-      await settle(page);
-    }
+    if (!options.clip) await fitPage(page, view.width);
     const restoreOrigin = await page.evaluateHandle((origin) => {
       const changed: Array<[Text, string]> = [];
       const walker = document.createTreeWalker(
@@ -149,6 +143,44 @@ async function capture(page: Page, name: string, options: ScreenshotOptions) {
   }
 
   if (previous) await page.setViewportSize(previous);
+}
+
+/**
+ * Make the viewport as tall as the page, so the capture fits it.
+ *
+ * For a page that does not fit, Playwright asks Chrome to capture beyond the
+ * viewport. Chrome then resizes the page during the capture, sometimes to
+ * 1x1, and the page's resize handlers run before it paints: charts measure
+ * a few pixels, and a pinned transcript scrolls. The image shows that state.
+ *
+ * A taller viewport can make the page taller, such as the top bar that tall
+ * windows show, so measure again until the page fits.
+ */
+async function fitPage(page: Page, width: number) {
+  for (let resizes = 0; ; resizes += 1) {
+    const height = await page.evaluate(pageHeight);
+    if (height <= (page.viewportSize()?.height ?? 0)) return;
+    if (resizes === MAX_FIT_RESIZES) {
+      throw new Error(
+        `The page kept growing with the viewport after ${MAX_FIT_RESIZES} resizes.`,
+      );
+    }
+    await page.setViewportSize({ height, width });
+    await settle(page);
+  }
+}
+
+/** Page height as Playwright measures it for a full-page capture. */
+function pageHeight() {
+  const { body, documentElement: root } = document;
+  return Math.max(
+    body.scrollHeight,
+    root.scrollHeight,
+    body.offsetHeight,
+    root.offsetHeight,
+    body.clientHeight,
+    root.clientHeight,
+  );
 }
 
 /** Page box of an element, in whole pixels. */

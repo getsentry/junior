@@ -14,14 +14,6 @@ public channels for context.
   organization, so that its messages are context for work elsewhere. It
   takes no requests there.
 
-## Entry points
-
-- Slack: a DM, or `@jr` in a Slack thread of a channel. After Junior
-  replies in a Slack thread, later replies there need no mention.
-- Slack: a channel-message Automation ([Automations](./automations.md)).
-- Slack: a link to a message or Slack thread in another channel, which
-  Junior reads.
-
 ## Rules
 
 - In a channel shared with another organization, no message starts a Turn
@@ -39,9 +31,6 @@ public channels for context.
   Slack channel of the organization as inside it, so it does not stop
   private data there. This breaks "never exposes internal data to people
   outside the organization" ([Guardian](./guardian.md)).
-- In a Slack thread where Junior already replied, a later reply with no
-  mention starts no Turn in production. This breaks "later replies there
-  need no mention".
 - In a channel shared with another organization, a click on an Inbox card
   counts as the person's answer and starts a Turn, and the reply goes to
   that channel. This breaks "no message starts a Turn" there, and "never

@@ -1,0 +1,1184 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "0a0881c2-33c2-4353-910b-d8a312c220f8",
+  "prevIds": ["71c573af-09c5-4f14-8971-314a17a2631a"],
+  "footprints": [
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_memory_embeddings"],
+      "writes": [
+        "s|tbl|public.junior_memory_embeddings",
+        "n|tbl|public.junior_memory_embeddings",
+        "e|tbl|public.junior_memory_embeddings",
+        "n|rel|public.junior_memory_embeddings",
+        "n|type|public.junior_memory_embeddings",
+        "n|rel|public.junior_memory_embeddings_memory_id_provider_model_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_memory_memories"],
+      "writes": [
+        "s|tbl|public.junior_memory_memories",
+        "n|tbl|public.junior_memory_memories",
+        "e|tbl|public.junior_memory_memories",
+        "n|rel|public.junior_memory_memories",
+        "n|type|public.junior_memory_memories",
+        "n|rel|public.junior_memory_memories_pkey"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_table",
+      "statementTarget": ["table", "public", "junior_memory_signals"],
+      "writes": [
+        "s|tbl|public.junior_memory_signals",
+        "n|tbl|public.junior_memory_signals",
+        "e|tbl|public.junior_memory_signals",
+        "n|rel|public.junior_memory_signals",
+        "n|type|public.junior_memory_signals",
+        "n|rel|public.junior_memory_signals_memory_id_signal_idempotency_key_pk"
+      ],
+      "reads": ["n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_embeddings",
+        "junior_memory_embeddings_model_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_embeddings_model_idx",
+        "n|idx|public.junior_memory_embeddings_model_idx",
+        "e|idx|public.junior_memory_embeddings_model_idx",
+        "n|rel|public.junior_memory_embeddings_model_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_embeddings",
+        "n|sch|public",
+        "n|col|public.junior_memory_embeddings.provider",
+        "n|col|public.junior_memory_embeddings.model",
+        "n|col|public.junior_memory_embeddings.dimensions",
+        "n|col|public.junior_memory_embeddings.metric"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_embeddings",
+        "junior_memory_embeddings_embedding_1024_hnsw_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_embeddings_embedding_1024_hnsw_idx",
+        "n|idx|public.junior_memory_embeddings_embedding_1024_hnsw_idx",
+        "e|idx|public.junior_memory_embeddings_embedding_1024_hnsw_idx",
+        "n|rel|public.junior_memory_embeddings_embedding_1024_hnsw_idx"
+      ],
+      "reads": ["n|tbl|public.junior_memory_embeddings", "n|sch|public"]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_visible_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_visible_idx",
+        "n|idx|public.junior_memory_memories_visible_idx",
+        "e|idx|public.junior_memory_memories_visible_idx",
+        "n|rel|public.junior_memory_memories_visible_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.created_at_ms",
+        "n|col|public.junior_memory_memories.id"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_expiration_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_expiration_idx",
+        "n|idx|public.junior_memory_memories_expiration_idx",
+        "e|idx|public.junior_memory_memories_expiration_idx",
+        "n|rel|public.junior_memory_memories_expiration_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.expires_at_ms"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_search_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_search_idx",
+        "n|idx|public.junior_memory_memories_search_idx",
+        "e|idx|public.junior_memory_memories_search_idx",
+        "n|rel|public.junior_memory_memories_search_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.search_vector"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_memories",
+        "junior_memory_memories_idempotency_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_memories_idempotency_idx",
+        "n|idx|public.junior_memory_memories_idempotency_idx",
+        "e|idx|public.junior_memory_memories_idempotency_idx",
+        "n|rel|public.junior_memory_memories_idempotency_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_memories.scope",
+        "n|col|public.junior_memory_memories.scope_key",
+        "n|col|public.junior_memory_memories.idempotency_key"
+      ]
+    },
+    {
+      "statementType": "create_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_memory_signals",
+        "junior_memory_signals_observed_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_memory_signals_observed_idx",
+        "n|idx|public.junior_memory_signals_observed_idx",
+        "e|idx|public.junior_memory_signals_observed_idx",
+        "n|rel|public.junior_memory_signals_observed_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_signals",
+        "n|sch|public",
+        "n|col|public.junior_memory_signals.memory_id",
+        "n|col|public.junior_memory_signals.signal",
+        "n|col|public.junior_memory_signals.observed_at_ms"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_memory_embeddings"],
+      "writes": [
+        "s|fk|public.junior_memory_embeddings.junior_memory_embeddings_memory_id_junior_memory_memories_id_fk",
+        "n|fk|public.junior_memory_embeddings.junior_memory_embeddings_memory_id_junior_memory_memories_id_fk",
+        "e|fk|public.junior_memory_embeddings.junior_memory_embeddings_memory_id_junior_memory_memories_id_fk",
+        "n|con|public.junior_memory_embeddings.junior_memory_embeddings_memory_id_junior_memory_memories_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_embeddings",
+        "n|sch|public",
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_embeddings.memory_id",
+        "n|col|public.junior_memory_memories.id",
+        "e|uniqueness|public.junior_memory_memories.id"
+      ]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_memory_signals"],
+      "writes": [
+        "s|fk|public.junior_memory_signals.junior_memory_signals_memory_id_junior_memory_memories_id_fk",
+        "n|fk|public.junior_memory_signals.junior_memory_signals_memory_id_junior_memory_memories_id_fk",
+        "e|fk|public.junior_memory_signals.junior_memory_signals_memory_id_junior_memory_memories_id_fk",
+        "n|con|public.junior_memory_signals.junior_memory_signals_memory_id_junior_memory_memories_id_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_memory_signals",
+        "n|sch|public",
+        "n|tbl|public.junior_memory_memories",
+        "n|sch|public",
+        "n|col|public.junior_memory_signals.memory_id",
+        "n|col|public.junior_memory_memories.id",
+        "e|uniqueness|public.junior_memory_memories.id"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_memory_embeddings",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_memory_memories",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "name": "junior_memory_signals",
+        "isRlsEnabled": false,
+        "entityType": "tables"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "memory_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "provider",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "model",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "dimensions",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "metric",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "content_hash",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "embedding",
+        "type": "vector",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "created_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "scope",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "scope_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "type",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "subject_type",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "subject_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "content",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "search_vector",
+        "type": "tsvector",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": {
+          "as": "to_tsvector('english', \"content\")",
+          "type": "stored"
+        },
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "source_platform",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "source_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "location_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "idempotency_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "observed_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "created_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "expires_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "superseded_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "superseded_by_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "archived_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "archive_reason",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "memory_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "signal",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "idempotency_key",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "conversation_id",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "observed_at_ms",
+        "type": "bigint",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "junior_memory_embeddings_model_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "provider",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "model",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "dimensions",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "metric",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "junior_memory_embeddings_embedding_1024_hnsw_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "(\"embedding\"::vector(1024)) vector_cosine_ops",
+            "isExpression": true,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_memory_embeddings\".\"dimensions\" = 1024",
+        "with": "m=16,ef_construction=64",
+        "method": "hnsw",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_visible_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "scope",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scope_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "created_at_ms",
+            "isExpression": false,
+            "asc": false,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_expiration_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "expires_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"expires_at_ms\" IS NOT NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_search_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "scope",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scope_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "search_vector",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": "\"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+        "with": "",
+        "method": "gin",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_idempotency_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "scope",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "scope_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "idempotency_key",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": true,
+        "where": "\"junior_memory_memories\".\"idempotency_key\" IS NOT NULL AND \"junior_memory_memories\".\"archived_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_at_ms\" IS NULL AND \"junior_memory_memories\".\"superseded_by_id\" IS NULL",
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "junior_memory_signals_observed_idx",
+        "nameExplicit": true,
+        "columns": [
+          {
+            "value": "memory_id",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "signal",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          },
+          {
+            "value": "observed_at_ms",
+            "isExpression": false,
+            "asc": true,
+            "nullsFirst": false,
+            "opclass": null
+          }
+        ],
+        "isUnique": false,
+        "where": null,
+        "with": "",
+        "method": "btree",
+        "entityType": "indexes"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "junior_memory_embeddings_memory_id_junior_memory_memories_id_fk",
+        "nameExplicit": false,
+        "columns": ["memory_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_memory_memories",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "junior_memory_signals_memory_id_junior_memory_memories_id_fk",
+        "nameExplicit": false,
+        "columns": ["memory_id"],
+        "schemaTo": "public",
+        "tableTo": "junior_memory_memories",
+        "columnsTo": ["id"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "CASCADE",
+        "entityType": "fks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "junior_memory_embeddings_memory_id_provider_model_pk",
+        "columns": ["memory_id", "provider", "model"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_pkey",
+        "columns": ["id"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "junior_memory_signals_memory_id_signal_idempotency_key_pk",
+        "columns": ["memory_id", "signal", "idempotency_key"],
+        "nameExplicit": false,
+        "entityType": "pks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "junior_memory_embeddings_metric_check",
+        "value": "\"junior_memory_embeddings\".\"metric\" IN ('cosine')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_embeddings",
+        "name": "junior_memory_embeddings_dimensions_check",
+        "value": "\"junior_memory_embeddings\".\"dimensions\" IN (1024, 1536) AND vector_dims(\"junior_memory_embeddings\".\"embedding\") = \"junior_memory_embeddings\".\"dimensions\"",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_scope_check",
+        "value": "\"junior_memory_memories\".\"scope\" IN ('private', 'public')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_kind_check",
+        "value": "\"junior_memory_memories\".\"type\" IN (\n        'preference',\n        'procedure',\n        'knowledge'\n      )",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_subject_type_check",
+        "value": "\"junior_memory_memories\".\"subject_type\" IN ('user', 'conversation', 'general')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_subject_key_check",
+        "value": "(\"junior_memory_memories\".\"subject_type\" = 'general' AND \"junior_memory_memories\".\"subject_key\" IS NULL) OR (\"junior_memory_memories\".\"subject_type\" IN ('user', 'conversation') AND \"junior_memory_memories\".\"subject_key\" IS NOT NULL AND length(\"junior_memory_memories\".\"subject_key\") > 0)",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_memories",
+        "name": "junior_memory_memories_source_platform_check",
+        "value": "\"junior_memory_memories\".\"source_platform\" IN ('slack', 'local', 'web')",
+        "entityType": "checks"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_memory_signals",
+        "name": "junior_memory_signals_signal_check",
+        "value": "\"junior_memory_signals\".\"signal\" IN ('duplicate', 'contradicted', 'superseded')",
+        "entityType": "checks"
+      }
+    }
+  ]
+}

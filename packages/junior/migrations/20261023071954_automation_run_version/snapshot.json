@@ -1,0 +1,79 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "6936b8a8-1c94-4be1-a259-10512747eb34",
+  "prevIds": ["eb4205ac-70e2-40fe-b4af-464dad9ac188"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_automation_runs",
+        "automation_version"
+      ],
+      "writes": [
+        "s|col|public.junior_automation_runs.automation_version",
+        "n|col|public.junior_automation_runs.automation_version",
+        "e|col|public.junior_automation_runs.automation_version"
+      ],
+      "reads": ["n|tbl|public.junior_automation_runs", "n|sch|public"]
+    },
+    {
+      "statementType": "create_fk",
+      "statementTarget": ["table", "public", "junior_automation_runs"],
+      "writes": [
+        "s|fk|public.junior_automation_runs.junior_automation_runs_automation_version_fk",
+        "n|fk|public.junior_automation_runs.junior_automation_runs_automation_version_fk",
+        "e|fk|public.junior_automation_runs.junior_automation_runs_automation_version_fk",
+        "n|con|public.junior_automation_runs.junior_automation_runs_automation_version_fk"
+      ],
+      "reads": [
+        "n|tbl|public.junior_automation_runs",
+        "n|sch|public",
+        "n|tbl|public.junior_automation_versions",
+        "n|sch|public",
+        "n|col|public.junior_automation_runs.automation_id",
+        "n|col|public.junior_automation_runs.automation_version",
+        "n|col|public.junior_automation_versions.automation_id",
+        "n|col|public.junior_automation_versions.version",
+        "e|uniqueness|public.junior_automation_versions.automation_id.version"
+      ]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "automation_version",
+        "type": "integer",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_automation_runs",
+        "name": "junior_automation_runs_automation_version_fk",
+        "nameExplicit": true,
+        "columns": ["automation_id", "automation_version"],
+        "schemaTo": "public",
+        "tableTo": "junior_automation_versions",
+        "columnsTo": ["automation_id", "version"],
+        "onUpdate": "NO ACTION",
+        "onDelete": "NO ACTION",
+        "entityType": "fks"
+      }
+    }
+  ]
+}

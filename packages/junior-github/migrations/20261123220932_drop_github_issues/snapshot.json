@@ -1,0 +1,83 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "1fadcb30-52c2-4998-858b-124b9dcbc2da",
+  "prevIds": ["b85b88bb-e673-46b0-bf5a-e3582daae286"],
+  "footprints": [
+    {
+      "statementType": "drop_table",
+      "statementTarget": ["table", "public", "junior_github_issues"],
+      "writes": [
+        "s|tbl|public.junior_github_issues",
+        "n|tbl|public.junior_github_issues",
+        "e|tbl|public.junior_github_issues",
+        "n|rel|public.junior_github_issues",
+        "n|type|public.junior_github_issues"
+      ],
+      "reads": ["n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_github_issues\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"issue_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"repository_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"repository_full_name\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"number\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"state\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"opened_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"closed_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"updated_at\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"state_reason\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_issues\",\"conversation_ids\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_github_issues_opened_at_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_github_issues_closed_at_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "indexes\u0000[\"public\",\"junior_github_issues_open_idx\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_github_issues\",\"junior_github_issues_pkey\"]"
+    }
+  ]
+}

@@ -248,6 +248,8 @@ export function hasConversationUsageBreakdown(props: {
 export function ConversationUsageBreakdown(props: {
   conversation: Conversation | undefined;
   detail?: ConversationDetailReport | undefined;
+  /** The page shows the totals in its glance, so the trigger leaves them out. */
+  glance?: boolean;
 }) {
   if (!hasConversationUsageBreakdown(props) || !props.conversation) {
     return null;
@@ -456,7 +458,7 @@ export function ConversationUsageBreakdown(props: {
             )}
           />
           Usage
-          {summary ? (
+          {summary && !props.glance ? (
             <span className="ml-auto font-normal tabular-nums text-dashboard-text-muted">
               <ShimmerText active={live}>{summary}</ShimmerText>
             </span>

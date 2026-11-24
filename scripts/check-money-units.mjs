@@ -8,8 +8,8 @@ import { latestSnapshots } from "./lib/drizzle-snapshots.mjs";
  * sums are exact, so no read needs float cleanup. Code converts USD to
  * micro-USD and back only in `MONEY_HELPER`.
  *
- * - Columns: the latest Drizzle snapshot of each package is the schema that
- *   its migrations create. A column with a money word in its name must be a
+ * - Columns: the Drizzle snapshots of each package give the schema that its
+ *   migrations create. A column with a money word in its name must be a
  *   `bigint` named `*_micro_usd`.
  * - Stored names: a snake_case string in production source names a column,
  *   metric, or counter. One with a money word must end in `_micro_usd`.
@@ -40,10 +40,7 @@ const TEST_FILE = /\.(?:test|spec)\.[cm]?[jt]sx?$|\/(?:__tests__|fixtures?)\//;
  * Columns that hold money in another unit, with the reason. Remove an entry
  * when its column is dropped.
  */
-export const COLUMN_ALLOWLIST = {
-  "junior_conversation_briefs.cost_usd":
-    "Old USD cost that the runtime before micro-USD writes during its rollout. Drop it in the next release.",
-};
+export const COLUMN_ALLOWLIST = {};
 
 /** Snake_case strings that contain a money word but name no stored money. */
 export const NAME_ALLOWLIST = {
@@ -53,8 +50,6 @@ export const NAME_ALLOWLIST = {
   budget_exceeded: [
     "packages/junior/src/chat/conversations/embedding-backfill.ts",
   ],
-  // The Drizzle name of the old Brief cost column in COLUMN_ALLOWLIST.
-  cost_usd: ["packages/junior/src/db/schema/conversation-briefs.ts"],
   // A Postgres planner setting, not an amount.
   jit_above_cost: ["packages/junior/src/cli/upgrade.ts"],
 };
@@ -108,10 +103,12 @@ export function checkSource(filePath, text) {
   return errors;
 }
 
-/** Check every package's latest snapshot and production source. */
-export function run({ root, files }) {
+/** Check every package's migrated schema and production source. */
+export async function run({ root, files }) {
   const errors = [];
-  for (const { packageName, snapshotPath, snapshot } of latestSnapshots(root)) {
+  for (const { packageName, snapshotPath, snapshot } of await latestSnapshots(
+    root,
+  )) {
     if (EXCLUDED_PACKAGES.has(packageName)) continue;
     errors.push(...checkSnapshotColumns(snapshotPath, snapshot));
   }

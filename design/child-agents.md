@@ -18,12 +18,6 @@ relation adds: authority, kinds, limits, stops, and lifecycle.
 - A parent manages the lifecycle of its child agents. It starts, steers,
   stops, and archives them, so finished children do not pile up.
 
-## Entry points
-
-- Dashboard: the Threads and Tasks lists of a Conversation, and the page of
-  each child agent. People message a Thread on its page.
-- Config: `limits.maxAgentDepth`.
-
 ## Rules
 
 - A child agent is an ordinary Conversation. Its `kind`, `thread` or

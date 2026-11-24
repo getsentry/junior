@@ -34,7 +34,8 @@ export function createPluginTaskStarter(args: {
   const pluginName = args.plugin;
   return {
     async start(input) {
-      const { key, name, payload } = pluginTaskStartInputSchema.parse(input);
+      const { delaySeconds, key, name, payload } =
+        pluginTaskStartInputSchema.parse(input);
       const task = startedTaskDefinition(args.tasks, name);
       if (!task) {
         throw new Error(
@@ -48,6 +49,7 @@ export function createPluginTaskStarter(args: {
       await args.send(
         { name, payload: sent, plugin: pluginName },
         {
+          delaySeconds,
           idempotencyKey: startedPluginTaskIdempotencyKey({
             key,
             name,

@@ -1,0 +1,100 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "16d23deb-2218-4f8d-8ca6-8f27e9aad3a5",
+  "prevIds": ["0987fcdb-05e2-44d9-889c-4eea8bbf6101"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": ["column", "public", "junior_event_tasks", "status"],
+      "writes": [
+        "s|col|public.junior_event_tasks.status",
+        "n|col|public.junior_event_tasks.status",
+        "e|col|public.junior_event_tasks.status"
+      ],
+      "reads": ["n|tbl|public.junior_event_tasks", "n|sch|public"]
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_event_tasks",
+        "junior_event_tasks_team_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_event_tasks_team_idx",
+        "n|idx|public.junior_event_tasks_team_idx",
+        "e|idx|public.junior_event_tasks_team_idx",
+        "n|rel|public.junior_event_tasks_team_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_event_tasks",
+        "n|sch|public",
+        "n|col|public.junior_event_tasks.team_id",
+        "n|col|public.junior_event_tasks.created_at_ms",
+        "n|col|public.junior_event_tasks.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "95bf0119d5313eac"
+    },
+    {
+      "statementType": "recreate_index",
+      "statementTarget": [
+        "index",
+        "public",
+        "junior_event_tasks",
+        "junior_event_tasks_match_idx"
+      ],
+      "writes": [
+        "s|idx|public.junior_event_tasks_match_idx",
+        "n|idx|public.junior_event_tasks_match_idx",
+        "e|idx|public.junior_event_tasks_match_idx",
+        "n|rel|public.junior_event_tasks_match_idx"
+      ],
+      "reads": [
+        "n|tbl|public.junior_event_tasks",
+        "n|sch|public",
+        "n|col|public.junior_event_tasks.namespace",
+        "n|col|public.junior_event_tasks.identifier",
+        "n|col|public.junior_event_tasks.created_at_ms",
+        "n|col|public.junior_event_tasks.id"
+      ],
+      "sharedWrites": [],
+      "sqlHash": "eb05d928fed0c6f9"
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_event_tasks",
+        "name": "status",
+        "type": "text",
+        "typeSchema": null,
+        "notNull": true,
+        "dimensions": 0,
+        "default": "'active'",
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_event_tasks_team_idx\"]",
+      "set": {
+        "where": "\"junior_event_tasks\".\"status\" <> 'deleted'"
+      }
+    },
+    {
+      "op": "alter",
+      "key": "indexes\u0000[\"public\",\"junior_event_tasks_match_idx\"]",
+      "set": {
+        "where": "\"junior_event_tasks\".\"status\" <> 'deleted'"
+      }
+    }
+  ]
+}

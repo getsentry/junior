@@ -1,0 +1,51 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "b85b88bb-e673-46b0-bf5a-e3582daae286",
+  "prevIds": ["84ce1936-1b4b-461e-95a0-f3dbfd5d14fb"],
+  "footprints": [
+    {
+      "statementType": "drop_table",
+      "statementTarget": [
+        "table",
+        "public",
+        "junior_github_pull_request_issues"
+      ],
+      "writes": [
+        "s|tbl|public.junior_github_pull_request_issues",
+        "n|tbl|public.junior_github_pull_request_issues",
+        "e|tbl|public.junior_github_pull_request_issues",
+        "n|rel|public.junior_github_pull_request_issues",
+        "n|type|public.junior_github_pull_request_issues"
+      ],
+      "reads": ["n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "drop",
+      "key": "tables\u0000[\"public\",\"junior_github_pull_request_issues\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_pull_request_issues\",\"pull_request_id\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_pull_request_issues\",\"issue_repository_full_name\"]"
+    },
+    {
+      "op": "drop",
+      "key": "columns\u0000[\"public\",\"junior_github_pull_request_issues\",\"issue_number\"]"
+    },
+    {
+      "op": "drop",
+      "key": "fks\u0000[\"public\",\"junior_github_pull_request_issues\",\"junior_github_pull_request_issues_pull_request_id_junior_github\"]"
+    },
+    {
+      "op": "drop",
+      "key": "pks\u0000[\"public\",\"junior_github_pull_request_issues\",\"junior_github_pull_request_issues_pull_request_id_issue_repository_full_name_issue_number_pk\"]"
+    }
+  ]
+}

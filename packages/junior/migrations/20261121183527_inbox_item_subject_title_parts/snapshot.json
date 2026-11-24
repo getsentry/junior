@@ -1,0 +1,42 @@
+{
+  "type": "diff",
+  "version": "10",
+  "dialect": "postgres",
+  "id": "0467c4ef-64d2-4496-9691-573866872db4",
+  "prevIds": ["eb9276d2-ed79-4137-bbe7-f75b1c573921"],
+  "footprints": [
+    {
+      "statementType": "add_column",
+      "statementTarget": [
+        "column",
+        "public",
+        "junior_inbox_items",
+        "subject_title_parts"
+      ],
+      "writes": [
+        "s|col|public.junior_inbox_items.subject_title_parts",
+        "n|col|public.junior_inbox_items.subject_title_parts",
+        "e|col|public.junior_inbox_items.subject_title_parts"
+      ],
+      "reads": ["n|tbl|public.junior_inbox_items", "n|sch|public"]
+    }
+  ],
+  "deltas": [
+    {
+      "op": "create",
+      "row": {
+        "schema": "public",
+        "table": "junior_inbox_items",
+        "name": "subject_title_parts",
+        "type": "jsonb",
+        "typeSchema": null,
+        "notNull": false,
+        "dimensions": 0,
+        "default": null,
+        "generated": null,
+        "identity": null,
+        "entityType": "columns"
+      }
+    }
+  ]
+}
