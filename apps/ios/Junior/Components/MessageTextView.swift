@@ -100,7 +100,7 @@ struct MessageTextView: UIViewRepresentable {
 
     func textView(_ textView: UITextView, shouldChangeTextIn range: NSRange, replacementText: String) -> Bool {
       guard replacementText == "\n", let view = textView as? ComposerTextView,
-        let onSubmit = view.onSubmit, !view.insertingLineBreak,
+        let onSubmit = view.onSubmit, !view.keepsNewlines,
         // Return commits a marked (IME) text first.
         textView.markedTextRange == nil
       else { return true }
@@ -138,13 +138,21 @@ struct MessageTextView: UIViewRepresentable {
 /// has no key event; it reaches the delegate as an inserted newline.
 final class ComposerTextView: UITextView {
   var onSubmit: (() -> Void)?
-  private(set) var insertingLineBreak = false
+  /// True while a newline is text, not Return: "New Line" and paste.
+  private(set) var keepsNewlines = false
 
   /// Insert a newline at the cursor; the delegate lets this one through.
   @objc func insertLineBreak() {
-    insertingLineBreak = true
-    defer { insertingLineBreak = false }
+    keepsNewlines = true
+    defer { keepsNewlines = false }
     insertText("\n")
+  }
+
+  /// Pasted text keeps its newlines, even a lone one.
+  override func paste(_ sender: Any?) {
+    keepsNewlines = true
+    defer { keepsNewlines = false }
+    super.paste(sender)
   }
 
   override var keyCommands: [UIKeyCommand]? {
