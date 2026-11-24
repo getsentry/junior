@@ -267,8 +267,9 @@ export function useWhenVisible(
   );
 }
 
-// How far past the edge of its scroll area a row counts as near the screen.
-const NEAR_SCREEN_MARGIN = "50% 0px";
+// How far past the edge of its scroll area a row counts as near the screen,
+// as a share of the area's height.
+const NEAR_SCREEN_SHARE = 0.5;
 
 function scrollParent(element: Element): Element | null {
   for (
@@ -279,6 +280,18 @@ function scrollParent(element: Element): Element | null {
     if (/auto|scroll/.test(getComputedStyle(parent).overflowY)) return parent;
   }
   return null;
+}
+
+// The same test as the observer, so a row that mounts near the screen reads
+// its cards in the first render's requests, not a frame later.
+function isNearScreen(row: Element, root: Element | null) {
+  const box = row.getBoundingClientRect();
+  const area = root?.getBoundingClientRect() ?? {
+    bottom: window.innerHeight,
+    top: 0,
+  };
+  const margin = (area.bottom - area.top) * NEAR_SCREEN_SHARE;
+  return box.bottom >= area.top - margin && box.top <= area.bottom + margin;
 }
 
 /**
@@ -298,11 +311,16 @@ export function useNearScreen<T extends Element>(): {
     (row: T | null) => {
       element.current = row;
       if (!row || near) return;
+      const root = scrollParent(row);
+      if (isNearScreen(row, root)) {
+        setNear(true);
+        return;
+      }
       const observer = new IntersectionObserver(
         (entries) => {
           if (entries.some((entry) => entry.isIntersecting)) setNear(true);
         },
-        { root: scrollParent(row), rootMargin: NEAR_SCREEN_MARGIN },
+        { root, rootMargin: `${NEAR_SCREEN_SHARE * 100}% 0px` },
       );
       observer.observe(row);
       return () => {
