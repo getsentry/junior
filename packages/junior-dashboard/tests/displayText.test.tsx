@@ -617,3 +617,67 @@ describe("display text object links", () => {
     expect(card).toBeGreaterThan(prose);
   });
 });
+
+describe("display text details sections", () => {
+  it("renders a closed details section as a disclosure", () => {
+    const html = markup(
+      <DisplayText
+        text={[
+          "**Recommendation**",
+          "- **Hold.** Canary errors doubled.",
+          "<details>",
+          "<summary>Details</summary>",
+          "- **State:** run paused.",
+          "</details>",
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>.*Details<\/summary>/);
+    expect(html).toMatch(
+      /<details[^>]*>.*<li[^>]*>.*State:.*<\/li>.*<\/details>/s,
+    );
+    expect(html).not.toContain("&lt;details&gt;");
+  });
+
+  it("keeps a details section without its closing tag as text", () => {
+    const html = markup(
+      <DisplayText text={"<details>\n<summary>Details</summary>\n\n- one"} />,
+    );
+
+    expect(html).not.toMatch(/<details[\s>]/);
+  });
+
+  it("renders a summary on the opening line as a disclosure", () => {
+    const html = markup(
+      <DisplayText
+        text={
+          "<details><summary>Logs</summary>\n- **State:** paused.\n</details>"
+        }
+      />,
+    );
+
+    expect(html).toMatch(/<details[^>]*><summary[^>]*>.*Logs<\/summary>/s);
+    expect(html).toMatch(/<details[^>]*>.*State:.*<\/details>/s);
+  });
+
+  it("keeps a code fence inside its details section", () => {
+    const html = markup(
+      <DisplayText
+        text={[
+          "<details>",
+          "<summary>Logs</summary>",
+          "",
+          "```",
+          "pod crashed",
+          "```",
+          "</details>",
+        ].join("\n")}
+      />,
+    );
+
+    expect(html).toMatch(
+      /<details[^>]*><summary[^>]*>.*Logs<\/summary>.*pod crashed.*<\/details>/s,
+    );
+  });
+});

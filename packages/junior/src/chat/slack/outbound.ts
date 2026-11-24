@@ -1,7 +1,7 @@
 import { SlackActionError } from "@/chat/slack/client";
 import { setSpanAttributes } from "@/chat/logging";
 import { captureSlackPostWarning } from "./post-warning";
-import type { KnownBlock, ModalView } from "@slack/types";
+import type { AnyBlock, KnownBlock, ModalView } from "@slack/types";
 import { slackEntitySchema, type SlackEntity } from "./work-object";
 
 import {
@@ -105,7 +105,7 @@ export async function openSlackDirectMessage(userId: string): Promise<string> {
 /** Post Slack `mrkdwn` text to a conversation or thread via the shared outbound boundary. */
 export async function postSlackMessage(input: {
   entities?: SlackEntity[];
-  blocks?: KnownBlock[] | undefined;
+  blocks?: AnyBlock[] | undefined;
   channelId: string;
   text: string;
   threadTs?: string | undefined;

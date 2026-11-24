@@ -1,5 +1,6 @@
 import { Children, useEffect, type ReactNode, type RefCallback } from "react";
 import type { OwnedObjectAnnotation } from "@sentry/junior/api/schema";
+import { ChevronRight } from "lucide-react";
 import Markdown, { type Components } from "react-markdown";
 import remarkBreaks from "remark-breaks";
 import remarkGfm from "remark-gfm";
@@ -17,6 +18,7 @@ import {
   useTranscriptSearch,
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
+import { remarkDetails, spaceDetailsTags } from "./details";
 import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
 import { MessageLink } from "../components/MessageLink";
 import { objectUrlKey } from "./knownObjects";
@@ -73,7 +75,7 @@ export function MarkdownText(props: {
   if (!props.text.trim()) return null;
   const source = props.document
     ? props.text
-    : normalizeSlackBullets(slackLinksToMarkdown(props.text));
+    : spaceDetailsTags(normalizeSlackBullets(slackLinksToMarkdown(props.text)));
 
   if (props.inline) {
     return (
@@ -87,10 +89,10 @@ export function MarkdownText(props: {
         }
         remarkPlugins={
           props.paragraphs
-            ? [remarkGfm, remarkBreaks, remarkBareUrlStops]
+            ? [remarkGfm, remarkDetails, remarkBreaks, remarkBareUrlStops]
             : props.chips
-              ? [remarkGfm, remarkBareUrlStops]
-              : [remarkGfm]
+              ? [remarkGfm, remarkDetails, remarkBareUrlStops]
+              : [remarkGfm, remarkDetails]
         }
         urlTransform={safeHref}
       >
@@ -117,6 +119,7 @@ export function MarkdownText(props: {
               ? [remarkGfm]
               : [
                   remarkGfm,
+                  remarkDetails,
                   remarkBreaks,
                   remarkBareUrlStops,
                   remarkSectionLabels,
@@ -268,6 +271,12 @@ const COMPONENTS: Components = {
   del: ({ children }) => (
     <del className="text-dashboard-text-muted">{renderText(children)}</del>
   ),
+  // An agent reply's supporting detail, collapsed until the reader opens it.
+  details: ({ children }) => (
+    <details className="group min-w-0 rounded-md border border-dashboard-border-subtle px-3 py-2 [&>*:not(summary)]:mt-2">
+      {children}
+    </details>
+  ),
   em: ({ children }) => (
     <em className="italic text-dashboard-text">{renderText(children)}</em>
   ),
@@ -332,6 +341,15 @@ const COMPONENTS: Components = {
     <strong className="font-semibold text-dashboard-text">
       {renderText(children)}
     </strong>
+  ),
+  summary: ({ children }) => (
+    <summary className="flex cursor-pointer list-none items-center gap-1.5 font-semibold text-dashboard-text [&::-webkit-details-marker]:hidden">
+      <ChevronRight
+        aria-hidden
+        className="size-4 shrink-0 text-dashboard-text-muted transition-transform group-open:rotate-90"
+      />
+      {renderText(children)}
+    </summary>
   ),
   table: ({ children }) => (
     <div className="min-w-0 max-w-full overflow-hidden rounded-md border border-dashboard-border bg-dashboard-fill-faint">
@@ -401,6 +419,7 @@ const INLINE_COMPONENTS: Components = {
   blockquote: InlineContainer,
   code: COMPONENTS.code,
   del: COMPONENTS.del,
+  details: InlineContainer,
   em: COMPONENTS.em,
   h1: InlineBlock,
   h2: InlineBlock,
@@ -415,6 +434,7 @@ const INLINE_COMPONENTS: Components = {
   p: InlineBlock,
   pre: InlineContainer,
   strong: COMPONENTS.strong,
+  summary: InlineBlock,
   table: InlineContainer,
   tbody: InlineContainer,
   td: InlineCell,
