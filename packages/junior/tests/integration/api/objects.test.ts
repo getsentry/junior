@@ -679,7 +679,7 @@ describe("object links API", () => {
     let reachedGitHub = gate();
     let answered = gate();
     // The first read answers late, with the issue from before the webhook.
-    let slowAnswer: typeof issue | undefined = issue;
+    let slowAnswer: object | undefined = issue;
     let reads = 0;
     mswServer.use(
       http.get(`${GITHUB_API}/issues/15`, async () => {
