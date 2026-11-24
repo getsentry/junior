@@ -47,6 +47,7 @@
     "e2e/conversation-rename.spec.ts",
     "e2e/conversation-watches.spec.ts",
     "e2e/dashboard-switch.spec.ts",
+    "e2e/highlighted-code.ts",
     "e2e/inbox/**/*.ts",
     "e2e/paste-text.ts",
     "e2e/person-cards.spec.ts",
