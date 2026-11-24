@@ -7,6 +7,7 @@ import type {
 import { getSqlExecutor } from "@/chat/db";
 import { searchPluginUsers } from "@/chat/plugins/user-search-hooks";
 import { normalizeIdentityEmail } from "@/chat/identities/identity";
+import { readCachedLinkedHandle } from "@/chat/identities/user-cache";
 import { SlackActionError } from "@/chat/slack/client";
 import { slackMention } from "@/chat/slack/mrkdwn";
 import { parseSlackUserId, type SlackTeamId } from "@/chat/slack/ids";
@@ -507,7 +508,8 @@ export async function lookupUsers(input: {
 /**
  * Return the linked `provider` handle of the one person that `query` names,
  * so a plugin tool can turn an email, mention, or name into a verified
- * account.
+ * account. A found handle is cached, so a repeat lookup needs no Slack call
+ * and still works while Slack fails.
  */
 export async function findLinkedHandle(input: {
   egress: PluginEgress;
@@ -517,6 +519,16 @@ export async function findLinkedHandle(input: {
   teamId: SlackTeamId;
 }): Promise<PluginLinkedHandleLookup> {
   const { provider, ...lookup } = input;
+  return await readCachedLinkedHandle(
+    input,
+    async () => await loadLinkedHandle(provider, lookup),
+  );
+}
+
+async function loadLinkedHandle(
+  provider: string,
+  lookup: Parameters<typeof lookupUsers>[0],
+): Promise<PluginLinkedHandleLookup> {
   let result: UserLookupResult;
   try {
     result = await lookupUsers(lookup);
