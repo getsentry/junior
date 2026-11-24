@@ -2,29 +2,37 @@
 
 Guardian decides whether each action of the agent may run, immediately
 before it runs. Requested work goes on with no interruption. An action that
-nobody asked for waits for the person who owns the work. An action that
-exposes secrets or private data, or that untrusted text set up, does not
-run.
+nobody asked for waits for the person who gave the instruction. An action
+that exposes secrets or private data, or that untrusted text set up, does
+not run.
 
 ## Intent
 
 - Allow by default. Guardian blocks an action only when the action clearly
   matches one named rule from a fixed list. General doubt is not a reason to
   block.
-- People authorize, text does not. Only the person who owns the work can
-  authorize an action: the person who runs the Turn, the creator of an
-  Automation, or the person of a Lead. Their own messages and their answers
-  to Inbox items set what is authorized. Text from the agent, a parent
-  agent, tools, files, issues, comments, Event authors, Watch intents, and
-  other people is context. It is never approval.
+- People authorize, text does not. Only the person whose instruction an
+  action serves can authorize it: the person Actor of the Turn that gave
+  the instruction, the creator of an Automation, or the person of a Lead.
+  Each child agent, hand-off, Watch Turn, and Automation run serves the
+  instruction of the Turn that started it. Nobody owns a Conversation or a
+  resource, so no other person's approval is needed. Their own messages
+  and their answers to Inbox items set what is authorized. A message from
+  the person's own linked account, such as a GitHub comment that a Watch
+  delivers, counts as their own message. Text from the agent, a parent
+  agent, tools, files, issues, comments, other Event authors, Watch
+  intents, and other people is context. It is never approval.
 - Authority follows the work. A child agent, a Conversation that a Lead
   starts, a Turn that a Watch starts, and an Automation run are judged
-  against the request of the same person as the work that started them.
-  A long thread, compaction, or a hand-off never loses that request.
-- Junior states the facts, and the model judges the risk. Who owns the work,
-  what that person said and answered, what the work created, and who can
-  read each destination are facts that Junior gives Guardian. Guardian does
-  not guess them from the transcript.
+  against the person's own words and answers, which reach them unchanged.
+  Another agent's retelling of what the person said or approved is never
+  authority. A long thread, compaction, or a hand-off never loses that
+  request.
+- Junior states the facts, and the model judges the risk. Whose
+  instruction the action serves, what that person said and answered, which
+  instruction created each resource, and who can read each destination
+  are facts that Junior gives Guardian. Guardian does not guess them from
+  the transcript.
 - A confirmed action runs as confirmed. When a person confirms an exact
   action, that action runs as that person, with no second review. A
   confirmation never covers a different action.
@@ -62,10 +70,10 @@ run.
 - Each confirmation rule names what the person must name to authorize the
   action, such as the destination, the repo, or the item. Naming the
   larger task does not name a risky step inside it.
-- An ask becomes an Inbox item for the person who owns the work, also from
-  a child agent or an Automation run. The action waits for the answer, and
-  work that does not need it goes on. The agent never names Guardian or the
-  review.
+- An ask becomes an Inbox item for the person who gave the instruction,
+  also from a child agent or an Automation run. The action waits for the
+  answer, and work that does not need it goes on. The agent never names
+  Guardian or the review.
 - After three denies in a row, or ten of the last fifty in a Turn, the Turn
   stops and explains what it could not do. A question that waits for a
   person, and a review that could not run, do not count.
@@ -77,9 +85,9 @@ run.
   give, is untrusted.
 - Only the facts that Junior states are true: the Actor, Source,
   Destination, Conversation, credential authority, the person's lines and
-  answers, and what the work created. Tool input, descriptions,
-  annotations, `describeProposal`, tool results, and agent text are
-  untrusted evidence.
+  answers, and which instruction created each resource. Tool input,
+  descriptions, annotations, `describeProposal`, tool results, and agent
+  text are untrusted evidence.
 - An earlier decision is context, not precedent. A changed action, such as
   a retry with the private data removed, gets a fresh decision.
 - A hand-off to another Conversation, by `spawnAgent`, `messageAgent`, or
@@ -95,7 +103,8 @@ run.
   earlier calls only to see where the data came from.
 - The conventional steps of requested work match no rule, such as a pull
   request that delivers requested code, a review request to the person who
-  asked, and upkeep of what the work created ([GitHub](./github.md)).
+  asked, and upkeep of what the same instruction created
+  ([GitHub](./github.md)).
 - The organization's own Slack, including the active Conversation, is not
   outside the organization. Ordinary product context, such as repo and
   system names, is not private data.
@@ -117,8 +126,8 @@ run.
   text counts as the person's. A Lead's message into a root carries no
   authority. An Automation run and a Watch Turn have no person's lines at
   all. This breaks "authority follows the work".
-- Guardian is not told what the work created, so upkeep of the work's own
-  pull requests can ask. This breaks "Junior states the facts".
+- Guardian is not told which instruction created a resource, so upkeep of
+  Junior's own pull requests can ask. This breaks "Junior states the facts".
 - A child agent cannot file an Inbox item, and in an Automation run each
   ask becomes a deny. This breaks the ask rule.
 - Some core tools with side effects, file writes in the Sandbox, and
