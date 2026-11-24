@@ -51,10 +51,15 @@ export async function holdTouch(
     );
   });
   await target.hover({ position });
-  const point = await page.waitForFunction(
-    () => document.documentElement.dataset["touchPoint"],
-  );
-  const [x, y] = (await point.jsonValue()).split(",").map(Number);
+  const point = await page.waitForFunction(() => {
+    const value = document.documentElement.dataset["touchPoint"];
+    if (!value) return false;
+    const [x = 0, y = 0] = value.split(",").map(Number);
+    return { x, y };
+  });
+  const touchPoint = await point.jsonValue();
+  if (!touchPoint) throw new Error("The mouse did not reach the target.");
+  const { x, y } = touchPoint;
   const touch = await page.context().newCDPSession(page);
   await touch.send("Input.dispatchTouchEvent", {
     touchPoints: [{ id: 1, x, y }],
