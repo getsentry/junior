@@ -219,12 +219,26 @@ function getResumeLogContext(args: ResumeSlackTurnArgs): LogContext {
   };
 }
 
-async function handleResumeFailure(args: {
+type ResumeFailure = {
   error: unknown;
   eventName: "slack.resume.turn.failed" | "slack.resume.pause_handler.failed";
   failureCode: ConversationTurnFailureCode;
   resume: ResumeSlackTurnArgs;
-}): Promise<void> {
+};
+
+async function handleResumeFailure(args: ResumeFailure): Promise<void> {
+  try {
+    await failResumedTurn(args);
+  } finally {
+    // Index even when the failure notice or a state write throws.
+    await indexEndedTurnEvents({
+      conversationId: args.resume.conversationId,
+      turnId: args.resume.turnId,
+    });
+  }
+}
+
+async function failResumedTurn(args: ResumeFailure): Promise<void> {
   const turnLifecycle = getTurnLifecycle();
   const capturedEventId = logException(args.error, args.eventName);
   const eventId = requireTurnFailureEventId(capturedEventId, args.eventName);
@@ -291,10 +305,6 @@ async function handleResumeFailure(args: {
     createdAtMs: Date.now(),
     failureCode: args.failureCode,
     eventId,
-  });
-  await indexEndedTurnEvents({
-    conversationId: args.resume.conversationId,
-    turnId: args.resume.turnId,
   });
 }
 

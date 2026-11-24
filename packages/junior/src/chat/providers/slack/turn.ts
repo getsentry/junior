@@ -1599,9 +1599,6 @@ export function createSlackTurn(deps: SlackTurnDeps) {
             await persistThreadStateById(conversationId, {
               conversation: preparedState.conversation,
             });
-            if (conversationId) {
-              await indexEndedTurnEvents({ conversationId, turnId });
-            }
             if (shouldEmitDevAgentTrace()) {
               logWarn("agent.turn.failed");
             }

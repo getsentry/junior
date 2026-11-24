@@ -8,6 +8,7 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   getSubscribedReplyPreflightDecision,
@@ -886,6 +887,11 @@ export function createSlackTurnRuntime<
           error: failureCause,
           postFailureEventName: "mention.handler.failure_reply_post.failed",
         });
+        // Index after the fallback reply, so its events are searchable too.
+        await indexEndedTurnEvents({
+          conversationId,
+          turnId: buildDeterministicTurnId(message.id),
+        });
         if (lifecycleError) throw lifecycleError;
       } finally {
         if (completed) {
@@ -1272,6 +1278,11 @@ export function createSlackTurnRuntime<
           error: failureCause,
           postFailureEventName:
             "subscribed_message.handler.failure_reply_post.failed",
+        });
+        // Index after the fallback reply, so its events are searchable too.
+        await indexEndedTurnEvents({
+          conversationId,
+          turnId: buildDeterministicTurnId(message.id),
         });
         if (lifecycleError) throw lifecycleError;
       } finally {
