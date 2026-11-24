@@ -45,8 +45,9 @@ async function servePins(page: Page) {
   await mockInboxItems(page, { open: [] });
 }
 
-// Pins in In flight keep the viewer's order: only pins drag, and a drag,
-// Alt+ArrowUp or Alt+ArrowDown, or the row menu saves that order.
+// Pins in In flight keep the viewer's order, above every busy row: only
+// pins drag, and a drag, Alt+ArrowUp or Alt+ArrowDown, or the row menu
+// saves that order.
 // Only the inbox project runs `@new` tests.
 test.describe("new UI", { tag: "@new" }, () => {
   test("a drag in In flight moves only that pin in the stored order", async ({
@@ -70,8 +71,8 @@ test.describe("new UI", { tag: "@new" }, () => {
         response,
         json: {
           ...feed,
-          // Stored order Alpha, Bravo, Charlie. Charlie runs, so In flight
-          // shows it first.
+          // Stored order Alpha, Bravo, Charlie. Charlie runs, and still
+          // keeps its place.
           conversations: [
             pin(0, "Alpha pin", "done"),
             pin(1, "Bravo pin", "done"),
@@ -85,9 +86,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
     await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Charlie pin/,
       /Alpha pin/,
       /Bravo pin/,
+      /Charlie pin/,
     ]);
     // Every row shows, so there is nothing to expand.
     await expect(page.getByRole("button", { name: "Show all" })).toHaveCount(0);
@@ -211,11 +212,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     });
     await page.goto(`${dashboard.baseURL}/inbox`);
     const inFlight = page.getByRole("list", { name: "In flight" });
-    // The running Conversation that is not pinned shows first.
+    // The running Conversation that is not pinned shows after the pins.
     await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
       /Alpha pin/,
       /Bravo pin/,
+      /Delta run/,
     ]);
     const running = inFlight.getByRole("link", { name: /Delta run/ });
     const alpha = inFlight.getByRole("link", { name: /Alpha pin/ });
@@ -229,9 +230,9 @@ test.describe("new UI", { tag: "@new" }, () => {
     );
     await running.dragTo(bravo, { steps: 10 });
     await expect(inFlight.getByRole("listitem")).toHaveText([
-      /Delta run/,
       /Alpha pin/,
       /Bravo pin/,
+      /Delta run/,
     ]);
     expect(saves).toEqual([]);
     // A pin dropped on the running row lands on the nearest pin instead.
@@ -240,7 +241,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         response.request().method() === "PUT" &&
         response.url().includes("/api/conversations/pin-order"),
     );
-    await bravo.dragTo(running, { steps: 10 });
+    await alpha.dragTo(running, { steps: 10 });
     expect((await save).request().postDataJSON()).toEqual({
       conversationIds: [
         "slack:CPINS:1770000001.000100",

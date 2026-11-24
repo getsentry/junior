@@ -342,8 +342,8 @@ function useBuildInboxData(input: {
   const conversationRows = rowsByTime(inboxBundles(awake));
 
   // In flight: every pin and every busy Conversation, whose tree waits on
-  // the viewer, works, or watches for an Event or Timer. Busy rows come
-  // first, a busy pin with them, then the other pins in the viewer's order.
+  // the viewer, works, or watches for an Event or Timer. Pins come first,
+  // busy or not, in the viewer's order, then the busy Conversations.
   // Collapsed, every pin shows, each one click away, and busy Conversations
   // fill the rows left, up to IN_FLIGHT_LIMIT.
   const pinned = pinnedFirst(
@@ -357,9 +357,8 @@ function useBuildInboxData(input: {
     (conversation) => busy(conversation) && !conversation.pinnedAt,
   );
   const inFlightFor = (unpinnedBusy: Conversation[]) => [
+    ...pinned,
     ...unpinnedBusy,
-    ...pinned.filter(busy),
-    ...pinned.filter((conversation) => !busy(conversation)),
   ];
 
   // Each badge counts its page's rows (`inboxCounts`). A row that leaves
