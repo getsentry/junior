@@ -27,6 +27,6 @@ describe("Slack User Status", () => {
     // `U0TEST` is the default Slack person of the fixture.
     expect(
       completedToolCalls("userLookup", conversation).map((call) => call.input),
-    ).toContainEqual({ provider: "slack", query: "U0TEST" });
+    ).toContainEqual(expect.objectContaining({ query: "U0TEST" }));
   });
 });

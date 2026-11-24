@@ -1,14 +1,14 @@
 /**
- * Stored memories for tests that run the agent with the memory plugin.
+ * Stored memories for tests that run the agent with Memory.
  *
- * `readMemories()` reads through the store of the memory plugin, as
+ * `readMemories()` reads through the Memory store, as
  * `insertMemory()` writes through it. Tests do not read memory tables.
  */
 import {
   createMemoryStore,
   type MemoryDb,
   type MemoryRecord,
-} from "@sentry/junior-memory";
+} from "@/chat/memory/store";
 import { createSlackSource } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
 import { DEFAULT_SLACK_AUTHOR, SLACK_TEAM_ID } from "./slack";
@@ -22,7 +22,8 @@ const LIST_LIMIT = 200;
  */
 export async function readMemories(): Promise<MemoryRecord[]> {
   // All memory is public, so the reader's Source does not change the list.
-  // Junior and the plugin type the same Drizzle client with separate schemas.
+  // Junior and the Memory store type the same Drizzle client with separate
+  // schemas.
   // oxlint-disable-next-line anti-slop/no-chained-type-assertions
   const store = createMemoryStore(getDb() as unknown as MemoryDb, {
     actor: {

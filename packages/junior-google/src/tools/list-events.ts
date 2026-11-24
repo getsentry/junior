@@ -5,17 +5,19 @@ import {
 } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import {
-  accountChooserLink,
-  attendeeOutputSchema,
-  attendeeResults,
-  formatInterval,
-  googleAttendeeSchema,
   googleApiError,
   googleApiRequest,
   requireAllowedEmails,
   timeZoneSchema,
   type GoogleToolContext,
-} from "./shared";
+} from "../google-api";
+import {
+  accountChooserLink,
+  attendeeOutputSchema,
+  attendeeResults,
+  formatInterval,
+  googleAttendeeSchema,
+} from "../calendar/events";
 
 const MAX_WINDOW_MS = 31 * 24 * 60 * 60 * 1000;
 

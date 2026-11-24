@@ -4,8 +4,8 @@ Each file states the intent of one major system: the goals it must meet,
 where users reach it, and the rules users rely on. Teammates read it to learn
 why the system works the way it does. Agents read it before they change the
 system. The `create-design-docs` skill writes these files, and the
-`maintain-design-docs` skill checks the product against them. Both skills
-live in getsentry/junior-prod.
+`automate-design-doc-updates` skill checks the product against them. Both
+skills live in getsentry/junior-prod.
 
 ## File contract
 
@@ -34,11 +34,15 @@ Do not list behaviors. The verification map in
 
 ## Systems
 
-- [Attention](./attention.md): when Junior asks for a person's attention.
-  Every system follows it.
+- [Agent teams](./agent-teams.md): how agents start, message, watch, and
+  report to each other, and how each one ends a Turn.
 - [Automations](./automations.md): saved instructions that Junior runs later.
+- [Cache warming](./cache-warming.md): keeping the prompt cache of an idle
+  Conversation warm while a return is likely.
 - [Child agents](./child-agents.md): Threads and Tasks that an agent starts
   to do work for it.
+- [Context compaction](./context-compaction.md): summaries that replace old
+  history, and the prompt cache of an idle Conversation.
 - [GitHub](./github.md): code, pull requests, and issues in GitHub repos.
 - [Google Workspace](./google.md): Calendar, Docs, Sheets, and Slides
   through Junior's own Google account.
@@ -46,6 +50,11 @@ Do not list behaviors. The verification map in
 - [Inbox](./inbox.md): work that waits for a person.
 - [Inbox stacks](./inbox-stacks.md): the Inbox rows in the dashboard, one
   stack for each root Conversation.
+- [Lead](./lead.md): a person's own Conversation that finds, starts, and
+  steers their other work.
+- [Prompts](./prompts.md): what the model reads in each Turn, and who wrote
+  each part.
 - [Sandbox credentials](./sandbox-credentials.md): provider access for
   commands in a Sandbox, with no real token inside it.
 - [Slack](./slack.md): requests in Slack, and who can start work there.
+- [Tools](./tools.md): what the model can call, and what each call returns.

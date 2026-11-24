@@ -82,7 +82,9 @@ export function viewerAutomationCollection(viewer: AutomationViewer) {
       createdAtMs: automation.createdAtMs,
       lastRunId: automation.lastRunId,
       activityAtMs: activityAtMs.mapWith(Number).as("activity_at_ms"),
-      state: sql<string>`${automation.status}`.as("state"),
+      state: sql<
+        (typeof automation.$inferSelect)["status"]
+      >`${automation.status}`.as("state"),
       lastRunNeedsAttention: lastRunNeedsAttention.as(
         "last_run_needs_attention",
       ),
@@ -179,43 +181,6 @@ async function attentionFilters(
     ),
   );
   return { attention, unavailable };
-}
-
-/**
- * Count the viewer's own Automations that need attention, the rows that the
- * Inbox lists from `scope=attention&owner=me`. One query reads the owned
- * candidates, and the trigger check runs on the event ones.
- */
-export async function countOwnedAutomationsNeedingAttention(
-  viewer: AutomationViewer,
-): Promise<number> {
-  const collection = viewerAutomationCollection(viewer);
-  const rows = await getDb()
-    .select({
-      kind: collection.kind,
-      lastRunNeedsAttention: collection.lastRunNeedsAttention,
-      state: collection.state,
-      trigger: collection.trigger,
-    })
-    .from(collection)
-    .where(
-      and(
-        eq(collection.owned, true),
-        notInArray(collection.state, ["paused", "completed"]),
-        or(
-          eq(collection.state, "blocked"),
-          eq(collection.kind, "event"),
-          eq(collection.lastRunNeedsAttention, true),
-        ),
-      ),
-    );
-  const catalog = automationEventCatalog(getEventCatalog());
-  return rows.filter(
-    (row) =>
-      row.state === "blocked" ||
-      row.lastRunNeedsAttention ||
-      (row.kind === "event" && !eventTriggerAvailable(catalog, row.trigger)),
-  ).length;
 }
 
 /** Where a page of `sort=activity` ends: its last row's activity and ID. */

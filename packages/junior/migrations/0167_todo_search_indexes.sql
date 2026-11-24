@@ -1,0 +1,2 @@
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_todos_search_idx" ON "junior_todos" USING gin (to_tsvector('simple', "title"));--> statement-breakpoint
+CREATE INDEX CONCURRENTLY IF NOT EXISTS "junior_todos_title_trgm_idx" ON "junior_todos" USING gin (lower("title") gin_trgm_ops);

@@ -19,7 +19,6 @@ const [
 
 const app = await createApp({
   allowedDomains: ["example.com"],
-  briefs: { enabled: true },
   plugins,
 });
 
@@ -32,12 +31,8 @@ function writePluginsFile(targetDir: string): void {
   fs.writeFileSync(
     path.join(targetDir, "plugins.ts"),
     `import { defineJuniorPlugins } from "@sentry/junior";
-import { memoryPlugin } from "@sentry/junior-memory";
 
-export const plugins = defineJuniorPlugins([
-  memoryPlugin(),
-  "@sentry/junior-maintenance",
-]);
+export const plugins = defineJuniorPlugins(["@sentry/junior-maintenance"]);
 `,
   );
 }
@@ -180,7 +175,6 @@ export async function runInit(
     },
     dependencies: {
       "@sentry/junior": "latest",
-      "@sentry/junior-memory": "latest",
       "@sentry/junior-maintenance": "latest",
       hono: "^4.13.11",
     },

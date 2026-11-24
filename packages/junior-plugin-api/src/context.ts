@@ -44,10 +44,7 @@ export type EventAutomationSource = Extract<
   { kind: "event_automation" }
 >;
 export type PluginDispatchSource = Extract<Source, { kind: "plugin_dispatch" }>;
-export type AgentInvocationSource = Extract<
-  Source,
-  { kind: "agent_invocation" }
->;
+export type ParentMessageSource = Extract<Source, { kind: "parent_message" }>;
 export type SourceVisibility = z.output<typeof sourceVisibilitySchema>;
 
 export type Destination = z.output<typeof destinationSchema>;
@@ -61,7 +58,12 @@ export interface PluginMetadata {
 }
 
 export interface PluginLogger {
-  error(message: string, metadata?: Record<string, unknown>): void;
+  /** Report an error. `cause` is the caught error, which the report keeps. */
+  error(
+    message: string,
+    metadata?: Record<string, unknown>,
+    cause?: unknown,
+  ): void;
   info(message: string, metadata?: Record<string, unknown>): void;
   warn(message: string, metadata?: Record<string, unknown>): void;
 }
@@ -191,7 +193,7 @@ export type InvocationContext =
       destination: Destination;
       actor?: Actor | undefined;
       source:
-        | AgentInvocationSource
+        | ParentMessageSource
         | EventAutomationSource
         | PluginDispatchSource
         | EventSource
@@ -277,7 +279,7 @@ export function getSourceKey(source: Source): string | undefined {
     case "scheduled_automation":
     case "event_automation":
     case "plugin_dispatch":
-    case "agent_invocation":
+    case "parent_message":
       return undefined;
   }
 }

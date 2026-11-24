@@ -36,6 +36,7 @@ import {
 } from "@/chat/conversations/provenance";
 import { loadConversationProjection } from "@/chat/conversations/projection";
 import { getConversationEventStore } from "@/chat/db";
+import type { HistoryReplacementResult } from "@/chat/conversations/history";
 import { logWarn, setSpanAttributes } from "@/chat/logging";
 import {
   isStandaloneRuntimeContextMessage,
@@ -62,8 +63,8 @@ import {
   findVisibleAgentsInstructions,
   renderAgentsInstructions,
 } from "@/chat/repository-instructions";
-import { appendPlanSnapshot } from "@/chat/plan/snapshot";
-import { PLAN_DELTA_TAG } from "@/chat/plan/prompt";
+import { appendTodosSnapshot } from "@/chat/todos/snapshot";
+import { TODO_DELTA_TAG } from "@/chat/todos/prompt";
 import {
   withCompactionSpan,
   type CompactionMode,
@@ -75,6 +76,11 @@ const RETAINED_USER_MESSAGE_TOKENS = 20_000;
 export interface CompactContextResult {
   compacted: boolean;
   piMessages?: PiMessage[];
+  /**
+   * Event seq of each replacement message: its source seq when it kept one,
+   * otherwise the seq of the compaction event.
+   */
+  piMessageSeqs?: number[];
   reason?:
     | "below_threshold"
     | "deferred"
@@ -111,8 +117,10 @@ export interface ActiveContextCompactionArgs {
   requestOverheadTokens?: number;
   runtimeContextMessages?: PiMessage[];
   signal?: AbortSignal | undefined;
-  /** Index in the runtime context messages where the current Turn starts. */
-  turnStartMessageIndex?: number | undefined;
+  /** True when the runtime context message at `index` belongs to this Turn. */
+  isTurnMessage?:
+    | ((messages: readonly PiMessage[], index: number) => boolean)
+    | undefined;
 }
 
 /** Raised when Junior cannot compact history below the active model's hard ceiling. */
@@ -231,12 +239,12 @@ function isTurnContextText(text: string | undefined): text is string {
 
 /**
  * Remove the sections that only the Turn that received them can use, and
- * plan deltas, which the `<plan>` snapshot of the summary replaces.
+ * To-do deltas, which the `<todos>` snapshot of the summary replaces.
  */
 function withoutRequestContext(text: string): string {
   return stripTags(text, [
     ...Object.values(REQUEST_CONTEXT_SECTION_TAG),
-    PLAN_DELTA_TAG,
+    TODO_DELTA_TAG,
   ]);
 }
 
@@ -361,17 +369,19 @@ function runtimeContextMessage(
  */
 function turnRuntimeContextMessage(
   messages: PiMessage[],
-  turnStartMessageIndex: number | undefined,
+  isTurnMessage:
+    | ((messages: readonly PiMessage[], index: number) => boolean)
+    | undefined,
   timestamp?: number,
 ): PiMessage | undefined {
-  if (turnStartMessageIndex === undefined) {
+  if (!isTurnMessage) {
     return runtimeContextMessage(retainRuntimeTurnContext(messages), timestamp);
   }
   const earlierContext = retainRuntimeTurnContext(
-    messages.slice(0, turnStartMessageIndex),
+    messages.filter((_, index) => !isTurnMessage(messages, index)),
   );
   const turnContext = retainRuntimeTurnContext(
-    messages.slice(turnStartMessageIndex),
+    messages.filter((_, index) => isTurnMessage(messages, index)),
   );
   const sessionContext = turnContext.some((message) =>
     userMessageContent(message).map(textPart).some(isSessionTurnContext),
@@ -819,7 +829,7 @@ async function compactActiveAboveThreshold(
   )?.timestamp;
   const contextMessage = turnRuntimeContextMessage(
     args.runtimeContextMessages ?? args.piMessages,
-    args.turnStartMessageIndex,
+    args.isTurnMessage,
     typeof instructionTimestamp === "number" ? instructionTimestamp : undefined,
   );
   const contextEntries = contextMessage
@@ -887,7 +897,7 @@ async function compactActiveAboveThreshold(
 
   const summaryEntry = {
     message: userMessage(
-      await appendPlanSnapshot(
+      await appendTodosSnapshot(
         renderCompactionSummary(summary),
         args.conversationId,
       ),
@@ -931,31 +941,34 @@ async function compactActiveAboveThreshold(
     );
   }
   args.signal?.throwIfAborted();
-  await getConversationEventStore().replaceHistory(args.conversationId, {
-    createdAtMs: Date.now(),
-    data: {
-      type: "compaction",
-      modelId: args.modelId,
-      details: {
-        reason: "capacity",
-        estimatedInputTokens: source.estimatedTokens,
-        replacementInputTokens,
-        triggerTokens,
-        inputLimitTokens,
-        inputMessageCount: source.messages.length,
-        retainedMessageCount,
-        summaryChars: summary.length,
+  const result = await getConversationEventStore().replaceHistory(
+    args.conversationId,
+    {
+      createdAtMs: Date.now(),
+      data: {
+        type: "compaction",
+        modelId: args.modelId,
+        details: {
+          reason: "capacity",
+          estimatedInputTokens: source.estimatedTokens,
+          replacementInputTokens,
+          triggerTokens,
+          inputLimitTokens,
+          inputMessageCount: source.messages.length,
+          retainedMessageCount,
+          summaryChars: summary.length,
+        },
+        ...(costUsd === undefined ? undefined : { costUsd }),
+        summary,
+        replacementHistory: replacement.map((entry) => ({
+          item: historyItemFromPiMessage(entry.message, entry.provenance),
+          ...(entry.sourceEventSeq === undefined
+            ? undefined
+            : { sourceEventSeq: entry.sourceEventSeq }),
+        })),
       },
-      ...(costUsd === undefined ? undefined : { costUsd }),
-      summary,
-      replacementHistory: replacement.map((entry) => ({
-        item: historyItemFromPiMessage(entry.message, entry.provenance),
-        ...(entry.sourceEventSeq === undefined
-          ? undefined
-          : { sourceEventSeq: entry.sourceEventSeq }),
-      })),
     },
-  });
+  );
   setSpanAttributes({
     "app.compaction.outcome": "compacted",
     "app.compaction.input_messages": source.messages.length,
@@ -966,5 +979,20 @@ async function compactActiveAboveThreshold(
     "app.compaction.input_limit": inputLimitTokens,
     "app.compaction.threshold": triggerTokens,
   });
-  return { compacted: true, piMessages: messages };
+  return {
+    compacted: true,
+    piMessages: messages,
+    piMessageSeqs: replacementSeqs(replacement, result),
+  };
+}
+
+/** The event seq of each replacement entry after `replaceHistory`. */
+export function replacementSeqs(
+  replacement: readonly { sourceEventSeq?: number | undefined }[],
+  result: HistoryReplacementResult,
+): number[] {
+  if (result.status !== "replaced") {
+    throw new Error("A conflicting history replacement has no seqs");
+  }
+  return replacement.map((entry) => entry.sourceEventSeq ?? result.seq);
 }

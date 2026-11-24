@@ -7,6 +7,7 @@ import {
 import { getProductionSlackAdapter } from "@/chat/app/production";
 import { getConversationStore, getDb } from "@/chat/db";
 import { runBestEffort } from "@/chat/logging";
+import { pushConversationInboxItemsNow } from "@/chat/notifications/inbox-item-push";
 import { runWithSlackInstallation } from "@/chat/slack/adapter-context";
 import { postSlackDetachNotice } from "@/chat/slack/detach-notice";
 import { throwApiError } from "../http";
@@ -19,7 +20,8 @@ import { readConversationAccessFromSql } from "./access";
 /**
  * Detach a root from its Location, or attach it again. Only a participant
  * can change it, the same as rename. A mention in the Location attaches it
- * again too. Each detach tells the Slack thread once.
+ * again too. Each detach tells the Slack thread once. Each change pushes
+ * the open items of the Conversation without the Slack card wait.
  */
 export async function setConversationDeliveryForViewer(
   viewer: User,
@@ -59,8 +61,9 @@ export async function setConversationDeliveryForViewer(
         { "app.conversation.id": conversationId },
       );
     }
-  } else {
-    await resumeConversationDelivery(conversationId);
+    if (detached) await pushConversationInboxItemsNow(conversationId);
+  } else if (await resumeConversationDelivery(conversationId)) {
+    await pushConversationInboxItemsNow(conversationId);
   }
   return { paused: body.paused };
 }

@@ -211,10 +211,15 @@ import {
 } from "@/chat/sandbox/provider";
 import { SandboxCallTimeoutError } from "@/chat/sandbox/errors";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
+import type { SandboxRef } from "@/chat/sandbox/ref";
 import { disconnectStateAdapter } from "@/chat/state/adapter";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 interface SandboxFixtureOptions {
   sandboxId?: string;
+  /** The stored ref of an earlier Run. Wins over `sandboxId`. */
+  sandboxRef?: SandboxRef;
+  rotateOldSession?: boolean;
+  onSandboxRefChanged?: (ref: SandboxRef) => void;
   sandboxDependencyProfileHash?: string;
   timeoutMs?: number;
   traceContext?: Record<string, unknown>;
@@ -289,14 +294,17 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
   let access: ReturnType<typeof createSandbox> | undefined;
   const getAccess = () =>
     (access ??= createSandbox({
-      sandboxRef: options.sandboxId
-        ? {
-            id: options.sandboxId,
-            ...(options.sandboxDependencyProfileHash
-              ? { profileHash: options.sandboxDependencyProfileHash }
-              : undefined),
-          }
-        : undefined,
+      rotateOldSession: options.rotateOldSession,
+      sandboxRef: options.sandboxRef
+        ? options.sandboxRef
+        : options.sandboxId
+          ? {
+              id: options.sandboxId,
+              ...(options.sandboxDependencyProfileHash
+                ? { profileHash: options.sandboxDependencyProfileHash }
+                : undefined),
+            }
+          : undefined,
       skills,
       referenceFiles,
       timeoutMs: options.timeoutMs,
@@ -308,6 +316,7 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
             await options.agentHooks?.prepareSandbox(workspace)
         : undefined,
       onSandboxRefChanged: async (ref) => {
+        options.onSandboxRefChanged?.(ref);
         await options.onSandboxAcquired?.({
           sandboxId: ref.id,
           ...(ref.profileHash
@@ -343,8 +352,10 @@ function createTestSandbox(options: SandboxFixtureOptions = {}) {
 
 interface MockSandbox {
   name: string;
+  persistent: boolean;
   session: {
     sessionId: string;
+    createdAt: Date;
     fs: MockSandbox["fs"];
     mkDir: MockSandbox["mkDir"];
     writeFiles: MockSandbox["writeFiles"];
@@ -372,9 +383,25 @@ interface MockSandbox {
   update: ReturnType<typeof vi.fn>;
 }
 
+/**
+ * The provider waits for the guest's boot CA refresh before it returns a
+ * session. The fake guest has no refresh, so that wait finishes at once and
+ * is not recorded as a command.
+ */
+function guestRunCommand(
+  runCommand: (input: { args?: string[] }) => Promise<unknown>,
+): MockSandbox["runCommand"] {
+  return vi.fn(async (input: { args?: string[] }) =>
+    input.args?.some((arg) => arg.includes("ca-trust"))
+      ? { exitCode: 0, stdout: async () => "", stderr: async () => "" }
+      : runCommand(input),
+  );
+}
+
 function makeSandbox(
   name: string,
   options: {
+    persistent?: boolean;
     writeFilesError?: unknown;
   } = {},
 ): MockSandbox {
@@ -402,11 +429,12 @@ function makeSandbox(
   const update = vi.fn(async () => {});
   const session = {
     sessionId: `${name}_session`,
+    createdAt: new Date(),
     fs,
     mkDir,
     writeFiles,
     readFileToBuffer,
-    runCommand,
+    runCommand: guestRunCommand(runCommand),
     stop,
     extendTimeout,
     snapshot,
@@ -415,6 +443,7 @@ function makeSandbox(
 
   return {
     name,
+    persistent: options.persistent ?? false,
     session,
     currentSession: vi.fn(() => session),
     fs,
@@ -620,7 +649,10 @@ describe("createTestSandbox", () => {
 
     await workspace.runCommand({ cmd: "gh", args: ["pr", "create"] });
 
-    expect(sandbox.session.runCommand).toHaveBeenCalledTimes(1);
+    expect(sandbox.session.runCommand).toHaveBeenCalledWith({
+      cmd: "gh",
+      args: ["pr", "create"],
+    });
     expect(resumingRunCommand).not.toHaveBeenCalled();
   });
 
@@ -2393,6 +2425,10 @@ describe("createTestSandbox", () => {
     expect(secondResult).toMatchObject({
       details: { auth_required: { provider: "github" } },
     });
+    // The switch result already says that files do not carry over.
+    expect(
+      (secondResult as StructuredSandboxResult).details,
+    ).not.toHaveProperty("sandbox_notice");
     const ranOn = (target: MockSandbox) =>
       target.runCommand.mock.calls.some(([input]) =>
         String(input.args?.[1]).includes("echo second"),
@@ -3183,6 +3219,209 @@ describe("createTestSandbox", () => {
       resume: true,
       fetch: expect.any(Function),
     });
+  });
+
+  it.each([
+    {
+      persistent: false,
+      notice: expect.stringContaining("check the checkout"),
+    },
+    { persistent: true, notice: undefined },
+  ])(
+    "fails a command killed by its session stop and flags a new sandbox without the old files (persistent: $persistent)",
+    async ({ persistent, notice }) => {
+      const stoppedSandboxError = createApiError(
+        410,
+        "Gone",
+        "sandbox_stopped",
+        "Sandbox has stopped execution and is no longer available",
+      );
+      const firstSandbox = makeSandbox("sbx_session_stop", { persistent });
+      let sessionStopped = false;
+      firstSandbox.mkDir.mockImplementation(async () => {
+        if (sessionStopped) throw stoppedSandboxError;
+      });
+      firstSandbox.runCommand
+        .mockResolvedValueOnce({
+          exitCode: 0,
+          stdout: async () => "",
+          stderr: async () => "",
+        })
+        .mockImplementationOnce(async () => {
+          // The provider kills the command and reports a normal exit.
+          sessionStopped = true;
+          return {
+            exitCode: 143,
+            stdout: async () => "",
+            stderr: async () => "",
+          };
+        });
+      const nextSandbox = makeSandbox("sbx_session_stop", { persistent });
+      nextSandbox.session.sessionId = "sbx_session_stop_next_session";
+      sandboxCreateMock.mockResolvedValueOnce(firstSandbox);
+      sandboxGetMock.mockResolvedValueOnce(nextSandbox);
+
+      const executor = createTestSandbox();
+      executor.configureSkills([]);
+      const bash = (command: string) =>
+        executor.execute<StructuredSandboxResult>({
+          toolName: "bash",
+          input: { command },
+        });
+
+      await bash("git commit -m local");
+      await expect(bash("git fetch origin")).rejects.toMatchObject({
+        message: expect.stringContaining(
+          "The temporary sandbox became unavailable during bash",
+        ),
+        cause: stoppedSandboxError,
+      });
+
+      const replaced = await bash("git rev-parse HEAD");
+      const again = await bash("git status");
+
+      expect(nextSandbox.runCommand).toHaveBeenCalledTimes(2);
+      expect(replaced.result.details["sandbox_notice"]).toEqual(notice);
+      expect(again.result.details).not.toHaveProperty("sandbox_notice");
+    },
+  );
+
+  it.each([
+    { persistent: false, replaced: true },
+    { persistent: true, replaced: false },
+  ])(
+    "tells a later Run that its new session lost the files of the last tool call (persistent: $persistent)",
+    async ({ persistent, replaced }) => {
+      const firstSandbox = makeSandbox("sbx_idle_resume", { persistent });
+      sandboxCreateMock.mockResolvedValueOnce(firstSandbox);
+      let storedRef: SandboxRef | undefined;
+      const firstRun = createTestSandbox({
+        onSandboxRefChanged: (ref) => {
+          storedRef = ref;
+        },
+      });
+      firstRun.configureSkills([]);
+      await firstRun.execute({ toolName: "bash", input: { command: "ls" } });
+      expect(storedRef?.toolSession).toEqual({
+        sandboxId: "sbx_idle_resume",
+        sessionId: "sbx_idle_resume_session",
+      });
+
+      // The idle session stopped, and the next Run resumes a new one.
+      const resumedSandbox = makeSandbox("sbx_idle_resume", { persistent });
+      resumedSandbox.session.sessionId = "sbx_idle_resume_next_session";
+      resumedSandbox.fs.readFile.mockRejectedValueOnce(
+        new Error("File not found: /vercel/sandbox/notes.md"),
+      );
+      sandboxGetMock.mockResolvedValueOnce(resumedSandbox);
+      const nextRun = createTestSandbox({ sandboxRef: storedRef });
+      nextRun.configureSkills([]);
+
+      // The file is gone with the old session, so the edit fails.
+      const edit = nextRun.execute({
+        toolName: "editFile",
+        input: { path: "notes.md", edits: [{ oldText: "a", newText: "b" }] },
+      });
+      const again = await nextRun.execute<StructuredSandboxResult>({
+        toolName: "bash",
+        input: { command: "git status" },
+      });
+
+      const message = await edit.then(
+        () => "",
+        (error: Error) => error.message,
+      );
+      expect(message).toContain("File not found: notes.md");
+      expect(message.includes("check the checkout")).toBe(replaced);
+      expect(again.result.details).not.toHaveProperty("sandbox_notice");
+    },
+  );
+
+  it.each([{ stopFails: false }, { stopFails: true }])(
+    "replaces a session near the provider's session cap when a Turn starts (stop fails: $stopFails)",
+    async ({ stopFails }) => {
+      const oldSandbox = makeSandbox("sbx_rotate");
+      oldSandbox.session.createdAt = new Date(Date.now() - 21 * 60 * 60 * 1000);
+      const newSandbox = makeSandbox("sbx_rotate");
+      newSandbox.session.sessionId = "sbx_rotate_next_session";
+      if (stopFails) {
+        oldSandbox.stop.mockRejectedValueOnce(new Error("stop failed"));
+      }
+      sandboxGetMock
+        .mockResolvedValueOnce(oldSandbox)
+        .mockResolvedValueOnce(stopFails ? oldSandbox : newSandbox);
+
+      const executor = createTestSandbox({
+        rotateOldSession: true,
+        sandboxRef: {
+          id: "sbx_rotate",
+          toolSession: {
+            sandboxId: "sbx_rotate",
+            sessionId: "sbx_rotate_session",
+          },
+        },
+      });
+      executor.configureSkills([]);
+      const result = await executor.execute<StructuredSandboxResult>({
+        toolName: "bash",
+        input: { command: "git status" },
+      });
+
+      expect(oldSandbox.stop).toHaveBeenCalledTimes(1);
+      // A failed stop keeps the old session, and nothing was replaced.
+      const ranOn = stopFails ? oldSandbox : newSandbox;
+      expect(ranOn.runCommand).toHaveBeenCalledTimes(1);
+      expect("sandbox_notice" in result.result.details).toBe(!stopFails);
+    },
+  );
+
+  it("keeps an old session when a later Run resumes the Turn", async () => {
+    const oldSandbox = makeSandbox("sbx_no_rotate");
+    oldSandbox.session.createdAt = new Date(Date.now() - 21 * 60 * 60 * 1000);
+    sandboxGetMock.mockResolvedValueOnce(oldSandbox);
+
+    const executor = createTestSandbox({
+      rotateOldSession: false,
+      sandboxRef: {
+        id: "sbx_no_rotate",
+        toolSession: {
+          sandboxId: "sbx_no_rotate",
+          sessionId: "sbx_no_rotate_session",
+        },
+      },
+    });
+    executor.configureSkills([]);
+    const result = await executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "git status" },
+    });
+
+    expect(oldSandbox.stop).not.toHaveBeenCalled();
+    expect(oldSandbox.runCommand).toHaveBeenCalledTimes(1);
+    expect(result.result.details).not.toHaveProperty("sandbox_notice");
+  });
+
+  it("keeps a signal exit as the command result while its session is live", async () => {
+    const sandbox = makeSandbox("sbx_signal_exit");
+    sandbox.runCommand.mockResolvedValueOnce({
+      exitCode: 143,
+      stdout: async () => "",
+      stderr: async () => "Terminated\n",
+    });
+    sandboxCreateMock.mockResolvedValueOnce(sandbox);
+
+    const executor = createTestSandbox();
+    executor.configureSkills([]);
+    const response = await executor.execute<StructuredSandboxResult>({
+      toolName: "bash",
+      input: { command: "kill $$" },
+    });
+
+    expect(response.result.details).toMatchObject({
+      exit_code: 143,
+      stderr: "Terminated\n",
+    });
+    expect(sandbox.mkDir).toHaveBeenCalledWith(SANDBOX_WORKSPACE_ROOT);
   });
 
   it("reads virtual skill files without booting a sandbox before sandbox state exists", async () => {

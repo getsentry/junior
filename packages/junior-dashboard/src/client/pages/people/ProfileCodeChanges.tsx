@@ -5,7 +5,7 @@ import { EmptyTelemetry } from "../../components/EmptyTelemetry";
 import { FilterGroup } from "../../components/FilterBar";
 import { NativeSelect } from "../../components/ui/native-select";
 import { Card } from "../../components/layout/Card";
-import { CodeChangeRow } from "../code/CodeChangeRow";
+import { CodeChangeRows } from "../code/CodeChangeRow";
 
 const DAY_MS = 24 * 60 * 60 * 1_000;
 
@@ -86,9 +86,7 @@ export function ProfileCodeChanges(props: {
       </div>
       {changes.length > 0 ? (
         <div>
-          {changes.map((change) => (
-            <CodeChangeRow change={change} key={change.id} />
-          ))}
+          <CodeChangeRows changes={changes} />
         </div>
       ) : (
         <div className="p-4">

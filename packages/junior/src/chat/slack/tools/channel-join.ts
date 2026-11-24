@@ -9,7 +9,7 @@ import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool, zodToolDefinition } from "@/chat/tool-support/zod-tool";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import { SLACK_TOOL_SOURCE } from "@/chat/slack/tool-support/tool-source";
 
 export const slackChannelJoinToolDefinition = zodToolDefinition({
@@ -67,7 +67,7 @@ export function createSlackChannelJoinTool(context: SlackToolContext) {
         if (error instanceof SlackActionError) {
           if (error.code === "missing_scope") {
             throw new ToolInputError(
-              "Cannot join this public Slack channel because this installation is missing the `channels:join` scope.",
+              "Cannot join this public Slack channel because this installation is missing the `channels:join` scope. No change to the call can fix this; ask someone to add the bot to the channel.",
               { cause: error },
             );
           }

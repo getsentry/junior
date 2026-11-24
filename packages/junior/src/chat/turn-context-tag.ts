@@ -13,7 +13,8 @@ export const SESSION_CONTEXT_SECTION_TAG = "runtime";
  * skills, MCP catalogs, tool guidance, Workspaces, and the tools that a Code
  * Mode script can call. A Turn sends a changed section in a later system
  * message (`systemSectionsUpdate`). The Turn context of older Turns held
- * copies of them, which context compaction drops.
+ * copies of them, which context compaction drops. Keep text from people and
+ * providers out of them: it goes in the context message.
  */
 export const CAPABILITY_SECTION_TAG = {
   availableSkills: "available-skills",
@@ -29,7 +30,8 @@ export type CapabilitySectionTag =
 
 /**
  * Turn context sections that are true only for the Turn that received them.
- * Context compaction removes them from the context of earlier Turns.
+ * Context compaction removes them from the context of earlier Turns. A fact
+ * for one request goes in one of these, never in the system prompt.
  */
 export const REQUEST_CONTEXT_SECTION_TAG = {
   pluginContext: "plugin-context",

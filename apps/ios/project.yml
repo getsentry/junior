@@ -18,7 +18,6 @@ fileGroups:
   - Gemfile.lock
   - .ruby-version
   - .swift-format
-  - oauth-client.json
   - fastlane/Appfile
   - fastlane/Fastfile
   - fastlane/Matchfile
@@ -29,7 +28,6 @@ settings:
     SWIFT_STRICT_CONCURRENCY: complete
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    CODE_SIGN_STYLE: Automatic
     # Ad-hoc "Sign to Run Locally" for the simulator, so the Keychain works.
     "CODE_SIGN_IDENTITY[sdk=iphonesimulator*]": "-"
     ENABLE_USER_SCRIPT_SANDBOXING: "YES"
@@ -48,7 +46,8 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: $(JUNIOR_BUNDLE_ID)
         PRODUCT_NAME: Junior
-        TARGETED_DEVICE_FAMILY: "1"
+        # iPhone and iPad.
+        TARGETED_DEVICE_FAMILY: "1,2"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
     info:
       path: Junior/Info.plist
@@ -59,8 +58,17 @@ targets:
         # Only standard HTTPS, so TestFlight asks no export-compliance question.
         ITSAppUsesNonExemptEncryption: false
         UIApplicationSupportsIndirectInputEvents: true
+        # More than one window on iPad, each with its own navigation.
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
+        # Every orientation, which iPad multitasking requires.
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
         UIAppFonts:
           - InterVariable.ttf
           - OutfitVariable.ttf

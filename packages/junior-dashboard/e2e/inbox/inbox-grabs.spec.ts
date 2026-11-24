@@ -2,7 +2,7 @@ import {
   expandRow,
   grab,
   license,
-  mockReviewItems,
+  mockInboxItems,
   rowHead,
   viewer,
 } from "./inbox-fixture";
@@ -29,8 +29,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, { automations: () => 0, open: [shared, grab] });
-    await page.goto(`${dashboard.baseURL}/`);
+    await mockInboxItems(page, { automations: () => 0, open: [shared, grab] });
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const todo = page.getByRole("region", { name: "To do" });
     await expandRow(rowHead(todo, shared.title));
     const asks = todo.getByRole("region", { name: /: asks$/ });
@@ -47,11 +47,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    const actions = await mockReviewItems(page, {
+    const actions = await mockInboxItems(page, {
       automations: () => 0,
       open: [grab],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     const grabs = page.getByRole("region", { name: "Up for grabs" });
     await expandRow(rowHead(grabs, grab.title));
     await grabs.getByRole("button", { name: "I'll take it" }).click();
@@ -68,11 +68,11 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
     page,
   }) => {
-    await mockReviewItems(page, {
+    await mockInboxItems(page, {
       automations: () => 0,
       open: [license, grab],
     });
-    await page.goto(`${dashboard.baseURL}/`);
+    await page.goto(`${dashboard.baseURL}/inbox`);
     await expect(
       page.getByRole("region", { name: "Up for grabs" }),
     ).toBeVisible();
@@ -82,5 +82,32 @@ test.describe("new UI", { tag: "@new" }, () => {
         .getByRole("link", { name: /^Inbox/ }),
     ).toHaveAccessibleName("Inbox, 1 waiting");
     await expect(page).toHaveTitle("(1) Inbox - Junior");
+  });
+
+  test("an ask with no assignees is up for grabs, and To do matches its badge", async ({
+    dashboard,
+    page,
+  }) => {
+    // The server sends an ask with no assignees as one for Everyone.
+    const unassigned = {
+      ...grab,
+      id: "item-unassigned",
+      title: "Pick the rollout window",
+    };
+    await mockInboxItems(page, {
+      automations: () => 0,
+      open: [license, unassigned],
+    });
+    await page.goto(`${dashboard.baseURL}/inbox`);
+    const grabs = page.getByRole("region", { name: "Up for grabs" });
+    await expect(rowHead(grabs, unassigned.title)).toBeVisible();
+    const todo = page.getByRole("region", { name: "To do" });
+    await expect(todo.getByText(unassigned.title)).toHaveCount(0);
+    await expect(rowHead(todo, license.title)).toBeVisible();
+    await expect(
+      page
+        .getByRole("navigation", { name: "Primary" })
+        .getByRole("link", { name: /^Inbox/ }),
+    ).toHaveAccessibleName("Inbox, 1 waiting");
   });
 });

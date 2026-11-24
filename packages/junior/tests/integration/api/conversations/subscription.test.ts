@@ -17,8 +17,8 @@ import {
 import { resolveActorIdentityId } from "@/chat/identities/actor";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { createSetConversationSubscriptionTool } from "@/chat/tools/conversation-subscription";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolRuntimeContext } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolRuntimeContext } from "@/chat/tool-support/types";
 
 const rootTurnTools = turnBehavior({
   kind: "root",

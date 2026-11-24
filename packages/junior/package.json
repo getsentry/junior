@@ -1,6 +1,6 @@
 {
   "name": "@sentry/junior",
-  "version": "0.310.0",
+  "version": "0.314.0",
   "private": false,
   "publishConfig": {
     "access": "public"
@@ -80,8 +80,8 @@
     "@logtape/logtape": "^2.1.1",
     "@modelcontextprotocol/sdk": "1.32.0",
     "@neondatabase/serverless": "^1.1.0",
+    "@sentry/api": "2.16.0",
     "@sentry/junior-plugin-api": "workspace:*",
-    "@sentry/junior-search": "workspace:*",
     "@sentry/nitro": "catalog:",
     "@sentry/node": "catalog:",
     "@sentry/server-utils": "catalog:",
@@ -105,8 +105,11 @@
     "jiti": "^2.7.0",
     "jose": "^6.2.3",
     "just-bash": "3.0.1",
+    "mdast-util-from-markdown": "catalog:",
+    "mdast-util-gfm": "catalog:",
+    "micromark-extension-gfm": "catalog:",
     "node-html-markdown": "^2.0.0",
-    "p-limit": "^7.3.1",
+    "p-limit": "catalog:",
     "parse5": "^7.3.0",
     "pg": "^8.16.3",
     "sharp": "^0.35.3",
@@ -116,24 +119,13 @@
     "zod": "catalog:"
   },
   "peerDependencies": {
-    "bullmq": "^6.5.0",
-    "nitro": "3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta",
-    "redis": "^5.12.1"
-  },
-  "peerDependenciesMeta": {
-    "bullmq": {
-      "optional": true
-    },
-    "redis": {
-      "optional": true
-    }
+    "nitro": "3.0.260415-beta || 3.0.260429-beta || 3.0.260522-beta || 3.0.260603-beta || 3.0.260610-beta || 3.0.260903-beta"
   },
   "devDependencies": {
     "@emnapi/core": "^1.10.0",
     "@emnapi/runtime": "^1.10.0",
     "@hono/node-server": "2.1.3",
     "@sentry/junior-github": "workspace:*",
-    "@sentry/junior-memory": "workspace:*",
     "@sentry/junior-notion": "workspace:*",
     "@sentry/junior-sentry": "workspace:*",
     "@sentry/junior-testing": "workspace:*",
@@ -142,12 +134,10 @@
     "@types/web-push": "^3.6.4",
     "@typescript/typescript6": "6.0.2",
     "@vitest/coverage-v8": "catalog:",
-    "bullmq": "6.5.0",
     "dependency-cruiser": "^17.4.0",
     "drizzle-kit": "catalog:",
     "msw": "^2.14.6",
     "nitro": "3.0.260522-beta",
-    "redis": "5.12.1",
     "tsdown": "catalog:",
     "typescript": "catalog:",
     "vercel": "^54.4.0",

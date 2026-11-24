@@ -1,6 +1,17 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./test";
 import { screenshot } from "./screenshot";
 import { mockAutomationEditor } from "./automation-editor-fixture";
+
+/** Save, and wait for the Automation page that opens to read its versions. */
+async function saveChanges(page: Page, id: string) {
+  const versionsRead = page.waitForResponse(
+    (response) =>
+      new URL(response.url()).pathname === `/api/automations/${id}/versions`,
+  );
+  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await versionsRead;
+}
 
 test("edits an Automation in place, preserves list state, and protects the draft", async ({
   page,
@@ -82,7 +93,7 @@ test("edits an Automation in place, preserves list state, and protects the draft
   await page
     .getByRole("button", { name: "Remove message 2", exact: true })
     .click();
-  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await saveChanges(page, "scheduled-1");
   await expect(page).toHaveURL(
     `${dashboard.baseURL}/automations/scheduled-1?scope=mine&q=weekly`,
   );
@@ -193,7 +204,7 @@ test("runs a skill with optional context instead of an instruction", async ({
     "New: $release-check · Only check getsentry/junior.",
   );
   await screenshot(page, "automation-skill-editor");
-  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await saveChanges(page, "scheduled-1");
   expect(state.writes).toEqual([
     {
       kind: "scheduled",
@@ -289,7 +300,7 @@ test("keeps Event edits through validation, failed saves, and concurrent changes
   await expect(page.getByLabel("Title", { exact: true })).toHaveValue(
     "Changed in Slack",
   );
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await saveChanges(page, "event-1");
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/event-1`);
   expect(state.writes).toEqual([
     {
@@ -332,7 +343,7 @@ test("replaces an Event trigger with one for any resource", async ({
   await expect(
     page.getByText('This trigger needs a "state" filter'),
   ).toHaveCount(0);
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await saveChanges(page, "event-1");
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/event-1`);
   expect(state.writes).toEqual([
     expect.objectContaining({
@@ -373,7 +384,7 @@ test("public non-creators edit settings without creator credentials", async ({
     page.getByRole("radio", { name: /Avery Chen’s connected accounts/ }),
   ).toBeDisabled();
   await screenshot(page, "automation-editor-public");
-  await page.getByRole("button", { name: "Save changes", exact: true }).click();
+  await saveChanges(page, "event-2");
   await expect(page).toHaveURL(`${dashboard.baseURL}/automations/event-2`);
   expect(state.writes).toEqual([
     {

@@ -20,9 +20,9 @@ import {
 import { cn } from "../styles";
 import { remarkDetails, spaceDetailsTags } from "./details";
 import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
+import { MessageLink } from "../components/MessageLink";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
-import { OutboundLink } from "../components/OutboundLink";
 import { ObjectRow } from "../conversations/ObjectRow";
 import {
   mediaThumbnail,
@@ -34,6 +34,7 @@ import {
 } from "./ObjectLinks";
 import {
   resolvableUrl,
+  sameTypeCard,
   useResolvedObject,
   useWhenVisible,
 } from "./resolvedObjects";
@@ -477,12 +478,13 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
   const objectUrl =
     typeof props.objectUrl === "string" ? props.objectUrl : undefined;
   const known = useKnownObject(objectUrl);
-  if (objectUrl && known.card && !known.linkOnly) {
-    return <StandaloneObject card={known.card} href={objectUrl} />;
-  }
   if (objectUrl && resolvableUrl(objectUrl)) {
     return (
-      <ResolvedParagraph objectUrl={objectUrl} saved={known.card}>
+      <ResolvedParagraph
+        linkOnly={known.linkOnly}
+        objectUrl={objectUrl}
+        saved={known.card}
+      >
         {props.children}
       </ResolvedParagraph>
     );
@@ -494,13 +496,23 @@ function Paragraph(props: { children: ReactNode; objectUrl?: unknown }) {
 // A saved link has no facts, so it shows only until the live card resolves.
 function ResolvedParagraph(props: {
   children: ReactNode;
+  linkOnly: boolean;
   objectUrl: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request } = useResolvedObject(props.objectUrl);
-  useRequestWhenSaved(props.saved, request);
+  const resolved = useResolvedObject(props.objectUrl);
+  useRequestWhenSaved(props.saved, resolved.request);
+  const card = sameTypeCard(resolved.card, props.saved?.objectType);
+  // A saved object is already part of the Conversation, so its row has no
+  // Attach slot. A link that an Attach saved still says it is attached.
   if (card) {
-    return <StandaloneObject card={card} href={props.objectUrl} live />;
+    return (
+      <StandaloneObject
+        card={card}
+        href={props.objectUrl}
+        live={!props.saved || props.linkOnly}
+      />
+    );
   }
   if (props.saved) {
     return <StandaloneObject card={props.saved} href={props.objectUrl} />;
@@ -554,13 +566,6 @@ function TranscriptAnchor(props: {
     ) : (
       props.children
     );
-  if (known.card && !known.linkOnly) {
-    return (
-      <ObjectAnchor bare={props.bare} card={known.card} href={props.href}>
-        {label}
-      </ObjectAnchor>
-    );
-  }
   if (resolvableUrl(props.href)) {
     return (
       <ResolvedAnchor bare={props.bare} href={props.href} saved={known.card}>
@@ -571,16 +576,19 @@ function TranscriptAnchor(props: {
   return <PlainAnchor href={props.href}>{label}</PlainAnchor>;
 }
 
-// A link without a saved object asks the API for a card when it scrolls
-// into view or the reader hovers it. A saved link shows until then. Its hover
-// card keeps one height while the live card can still replace it.
+// A link asks the API for a card when it scrolls into view or the reader
+// hovers it, or at once when a saved card shows meanwhile. The live card
+// replaces the saved one, whose state can be old. Its hover card keeps one
+// height while the live card can still replace it.
 function ResolvedAnchor(props: {
   bare?: boolean | undefined;
   children: ReactNode;
   href: string;
   saved?: OwnedObjectAnnotation | undefined;
 }) {
-  const { card, request, settled } = useResolvedObject(props.href);
+  const resolved = useResolvedObject(props.href);
+  const { request, settled } = resolved;
+  const card = sameTypeCard(resolved.card, props.saved?.objectType);
   const observe = useWhenVisible(request);
   useRequestWhenSaved(props.saved, request);
   const reserveHeight =
@@ -647,28 +655,16 @@ function PlainAnchor(props: {
   onPointerEnter?: () => void;
 }) {
   const className = useAnchorClass();
-  const scheme = props.href.slice(0, 6).toLowerCase();
-  if (!scheme.startsWith("https:") && !scheme.startsWith("http:")) {
-    return (
-      <a
-        className={className}
-        href={props.href}
-        onPointerEnter={props.onPointerEnter}
-        ref={props.observe}
-      >
-        {props.children}
-      </a>
-    );
-  }
   return (
-    <OutboundLink
+    <MessageLink
       className={className}
       href={props.href}
+      icon
       onPointerEnter={props.onPointerEnter}
       ref={props.observe}
     >
       {props.children}
-    </OutboundLink>
+    </MessageLink>
   );
 }
 

@@ -74,9 +74,10 @@ If Junior should receive events or report PR/issue outcomes, also:
 
 1. Set the webhook URL to `https://<your-domain>/api/webhooks/github`.
 2. Set the webhook secret to the same value as `GITHUB_WEBHOOK_SECRET`.
-3. Subscribe the App to: Check suite, Deployment, Deployment status, Issues,
-   Issue comment, Pull request, Pull request review, Pull request review
-   comment, Push, and Release.
+3. Subscribe the App to: Check run, Check suite, Deployment, Deployment
+   status, Issues, Issue comment, Pull request, Pull request review, Pull
+   request review comment, Push, and Release. Check run events keep the
+   check counts on pull request cards current.
 
 Keep the App writable if Junior should create issues, push branches, or open
 pull requests. Junior scopes write tokens to the target repository and still
@@ -327,8 +328,8 @@ The next Vercel deploy applies this plugin's migrations, because the scaffolded
 build runs [junior upgrade](/cli/upgrade/). For a local database, run
 `pnpm exec junior upgrade` yourself.
 
-The migrations create the `junior_github_pull_requests` and `junior_github_issues`
-projections used by webhook ingestion and outcome tracking. Opened pull
+The migrations create the `junior_github_pull_requests` projection used by
+webhook ingestion and outcome tracking. Opened pull
 requests also publish native code-change records for the dashboard Code page
 and person profiles.
 
@@ -337,7 +338,7 @@ and person profiles.
 Once configured, Junior can:
 
 - Create, update, and comment on issues and pull requests
-- After it files an issue for a person, ask them with a Review item whether
+- After it files an issue for a person, ask them with an Inbox item whether
   to start a Thread that implements it. When they already asked for the fix,
   start the Thread without asking. Automation runs, events, and child agents
   do not ask
@@ -640,29 +641,32 @@ people work on it:
 - In the first 2 days after the latest push, review, or comment by a person,
   or after the pull request opened, the event publishes at most once a day,
   and at most 3 times in a row with no activity by a person between them.
-- After that, Junior publishes no event. It adds a Review item with a
-  **Resume** button for the person who asked for the pull request. The item
+- After that, Junior publishes no event and tells nobody. The next push,
+  review, or comment by a person starts the count again.
+- An approved pull request would be ready to merge but for the conflict. It
+  gets the event after those 2 days too, and without the daily wait, up to
+  the limit of 3 in a row. The ready to merge notice needs a clean merge
+  state, so it comes after the fix.
+- When the head commit is the same a day after its fix, the fix did not
+  land. Then Junior adds an Inbox item with a **Resume** button for the
+  person who asked for the pull request. It adds the item once after each
+  Resume, so **Dismiss** ends these asks for the pull request. The item
   closes when the conflict is gone, or when the pull request merges or
-  closes.
+  closes. When the conflict goes away while the item is open, a later fix
+  that does not land adds the item again.
 - **Resume** counts as activity by a person, so the count starts again. It
   adds the pull request's watch again if it expired, so the event reaches
   the conversation, and publishes the event at once. Until a fix lands
   after it, Junior publishes no event. If no fix lands in a day, Junior
   adds the item again. Resume on a draft, or on a pull request that GitHub
   can merge, does nothing.
-- After 3 days without activity by a person, Junior does nothing.
-- An approved pull request would be ready to merge but for the conflict. It
-  gets the event after those 2 days too, and without the daily wait, up to
-  the limit of 3 in a row. The ready to merge notice needs a clean merge
-  state, so it comes after the fix.
 
 For each conflict, Junior reads the pull request's timeline and review
 decision from GitHub, for the latest activity by a person. Only the events
 that Junior published for a fix count as fixes, so a merge or force push for
-work that a person asked for does not. Junior stores those, with the time of
-the latest Resume. Each head commit publishes one event. When the head
-commit is the same a day after its fix, the fix did not land, and Junior
-adds the item.
+work that a person asked for does not. Junior stores those, with the times
+of the latest Resume and the latest item. Each head commit publishes one
+event.
 
 </details>
 

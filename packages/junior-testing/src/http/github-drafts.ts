@@ -198,6 +198,15 @@ export async function interceptTestGitHubDraftsHttp(
       case `${api}/pulls/${draft.number}`:
       case `${api}/issues/${draft.number}`:
         return Response.json(restPullRequest(draft));
+      // A matching Watch loads the commit authors for the `authors` field.
+      case `${api}/pulls/${draft.number}/commits`:
+        return Response.json([
+          {
+            author: restPullRequest(draft).user,
+            commit: { message: draftTitle },
+            sha: draft.sha,
+          },
+        ]);
       case `${api}/commits/${draft.sha}/check-runs`: {
         const runs = checkRuns(draft);
         return Response.json({ check_runs: runs, total_count: runs.length });

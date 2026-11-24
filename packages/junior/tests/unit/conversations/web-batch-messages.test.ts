@@ -3,7 +3,7 @@ import {
   buildWebInboundMessage,
   webActorFromUser,
 } from "@/chat/conversations/web-input";
-import type { ReviewItemChangeRecord } from "@/chat/review-items/change-record";
+import type { InboxItemChangeRecord } from "@/chat/inbox-items/change-record";
 import { coerceThreadConversationState } from "@/chat/state/conversation";
 import {
   savedTurnInputMessages,
@@ -16,7 +16,7 @@ const author = { email: actor.email, userName: "alice" };
 
 function webMessage(
   messageId: string,
-  reviewItemChange?: ReviewItemChangeRecord,
+  reviewItemChange?: InboxItemChangeRecord,
 ) {
   return webConversationMessage(
     buildWebInboundMessage({
@@ -32,7 +32,7 @@ function webMessage(
 
 describe("webConversationMessage", () => {
   // A batch can mix changes and typed Messages. Each keeps its own record.
-  it("keeps the Review item change record of each Message", () => {
+  it("keeps the Inbox item change record of each Message", () => {
     const taken = { kind: "taken", reviewItemId: "item-a" } as const;
     expect(webMessage("a", taken).meta?.reviewItemChanges).toEqual([taken]);
     expect(webMessage("b").meta).not.toHaveProperty("reviewItemChanges");

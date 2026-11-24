@@ -1,5 +1,5 @@
 import type { Page } from "@playwright/test";
-import { withRequestedMailbox } from "../harness";
+import { withRequestedMailbox, waitForOutlineRead } from "../harness";
 import { expect, test } from "../test";
 import { screenshot } from "../screenshot";
 
@@ -31,7 +31,7 @@ test.describe("new UI", { tag: "@new" }, () => {
         await route.fallback();
       },
     );
-    await page.goto(`${dashboard.baseURL}/?view=conversations`, {
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`, {
       waitUntil: "domcontentloaded",
     });
     const list = page.getByRole("region", {
@@ -92,10 +92,12 @@ test.describe("new UI", { tag: "@new" }, () => {
     await page.keyboard.press("ArrowRight");
     await expect.poll(listSize).toBeGreaterThan(startSize);
     const resizedSize = await listSize();
+    const outlineRead = waitForOutlineRead(page, ACTIVE_CONVERSATION_ID);
     await page.reload();
     await expect(conversationList).toBeVisible();
     // The saved width rounds to whole pixels.
     await expect.poll(listSize).toBeCloseTo(resizedSize, 0);
+    await outlineRead;
   });
 
   test("keeps the details panel width and usage after a reload", async ({
@@ -228,7 +230,7 @@ test.describe("new UI", { tag: "@new" }, () => {
       },
     );
 
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
     await expect(
       page
         .getByRole("region", { exact: true, name: "Conversations" })
@@ -297,7 +299,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ height: 844, width: 390 });
-    await page.goto(`${dashboard.baseURL}/?view=conversations`);
+    await page.goto(`${dashboard.baseURL}/inbox?view=conversations`);
 
     const conversation = page.getByRole("listitem").filter({
       has: page.getByRole("link", { name: /Checkout latency triage/ }),
@@ -488,7 +490,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     dashboard,
   }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto(dashboard.baseURL);
+    await page.goto(`${dashboard.baseURL}/inbox`);
 
     const primary = page.getByRole("navigation", { name: "Primary" });
     const trigger = page.getByRole("button", {
@@ -508,16 +510,17 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       popover.getByRole("menuitem", { name: "Settings", exact: true }),
     ).toHaveAttribute("href", "/settings");
-    // Low-traffic pages live here instead of the primary nav.
+    // Low-traffic pages live here instead of the primary nav. Code has its
+    // own row in the pane.
     await expect(
       popover.getByRole("menuitem", { name: "Code", exact: true }),
-    ).toHaveAttribute("href", "/code");
+    ).toHaveCount(0);
     await expect(
       popover.getByRole("menuitem", { name: "System", exact: true }),
     ).toHaveAttribute("href", "/system");
-    await expect(
-      primary.getByRole("link", { name: /^(Code|System)$/ }),
-    ).toHaveCount(0);
+    await expect(primary.getByRole("link", { name: /^System$/ })).toHaveCount(
+      0,
+    );
     await expect(
       popover.getByRole("menuitem", { name: "Log out" }),
     ).toBeVisible();
@@ -547,7 +550,7 @@ test.describe("new UI", { tag: "@new" }, () => {
     test.use({ controlTimers: true });
 
     test("after the hover pause", async ({ page, dashboard }) => {
-      await page.goto(dashboard.baseURL);
+      await page.goto(`${dashboard.baseURL}/inbox`);
       const trigger = page.getByRole("button", {
         name: /^(Open|Close) profile menu for Dashboard User/,
       });
@@ -670,6 +673,23 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
     expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
       "Review complete; no blocking issues found.",
+    );
+
+    // Its input copies too, and links to itself. Only replies take a rating.
+    const input = drawer
+      .getByRole("article")
+      .filter({ hasText: "Review the dashboard plan before editing." });
+    await input.hover();
+    await expect(input.getByRole("button", { name: "Good reply" })).toHaveCount(
+      0,
+    );
+    await input.getByRole("button", { name: "Copy message" }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      "Review the dashboard plan before editing.",
+    );
+    await input.getByRole("button", { name: "Copy link to message" }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+      `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
     );
 
     // The shortcut searches the drawer's transcript, not the page behind it.
@@ -851,6 +871,8 @@ test.describe("new UI", { tag: "@new" }, () => {
     ).toBeVisible();
     await screenshot(page, "conversation-child-agent-page");
 
+    // Each visit reads the outline of its Conversation.
+    const outlineRead = waitForOutlineRead(page, "internal:dashboard-qa");
     await tree.getByRole("link", { name: "Dashboard QA edge cases" }).click();
     await expect(
       page.getByRole("heading", { name: "Dashboard QA edge cases" }),
@@ -858,5 +880,6 @@ test.describe("new UI", { tag: "@new" }, () => {
     await expect(
       page.getByRole("navigation", { name: "Breadcrumb" }),
     ).toHaveCount(0);
+    await outlineRead;
   });
 });

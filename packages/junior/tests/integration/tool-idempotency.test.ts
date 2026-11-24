@@ -1,10 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { createSlackCanvasCreateTool } from "@/chat/slack/tools/canvas/create";
-import { createOperationKey } from "@/chat/tools/idempotency";
+import { createOperationKey } from "@/chat/tool-support/idempotency";
 import { createSlackListAddItemsTool } from "@/chat/slack/tools/list/add-items";
 import { SlackActionError } from "@/chat/slack/client";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
-import type { ToolState } from "@/chat/tools/types";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
+import type { ToolState } from "@/chat/tool-support/types";
 import type { SlackToolContext } from "@/chat/slack/tool-support/context";
 import { parseSlackChannelId, parseSlackTeamId } from "@/chat/slack/ids";
 import {

@@ -1,3 +1,4 @@
+import type { SearchReport, SearchSource } from "@sentry/junior/api/schema";
 import { pluginUserPageContentSchema } from "@sentry/junior-plugin-api";
 import {
   keepPreviousData,
@@ -63,6 +64,18 @@ const AREA_KEYS = {
   Runs: "automations",
 } as const;
 
+/**
+ * The `/api/search` sources of directory groups that the nav shows. The
+ * palette reads them with its other searched groups, in one request.
+ */
+export function directorySearchSources(
+  navItems: readonly DashboardHeaderNavItem[],
+): SearchSource[] {
+  return navItems.some((item) => item.key === AREA_KEYS.Memories)
+    ? ["memories"]
+    : [];
+}
+
 /** The repository ID of the open repository page, if one shows. */
 export function repositoryIdForPath(pathname: string): string | undefined {
   const segment = REPOSITORY_PATH.exec(pathname)?.[1];
@@ -100,9 +113,10 @@ export function pluginPageGroupForPath(
  * Rows from the dashboard's directories: People, Locations, Repositories,
  * the open repository's Changes, Memories, Runs, each generic plugin page,
  * and the open Conversation's Events. A directory reads only while there
- * is typed text or its page shows. Memories match on the server; the others
- * filter the list they load, as their pages did. `fetching` is true while
- * any directory read is in flight.
+ * is typed text or its page shows. Typed text finds Memories in `searched`,
+ * the palette's `/api/search` read; the others filter the list they load,
+ * as their pages did. `fetching` is true while any directory read is in
+ * flight.
  */
 export function useDirectoryPaletteItems(input: {
   activeGroup?: string;
@@ -113,6 +127,8 @@ export function useDirectoryPaletteItems(input: {
   query: string;
   /** Debounced text, for server searches. */
   search: string;
+  /** The `/api/search` groups for the typed text, once they match it. */
+  searched?: SearchReport | undefined;
 }): { fetching: boolean; items: PaletteItem[] } {
   const query = input.query || undefined;
   const navKeys = new Set(input.navItems.map((item) => item.key));
@@ -136,20 +152,21 @@ export function useDirectoryPaletteItems(input: {
     wanted("Changes") ? repositoryId : undefined,
   );
   const runs = useAutomationRunsData(wanted("Runs"));
+  // With no typed text, the Memories page lists its newest memories.
   const memories = useQuery({
-    enabled: wanted("Memories"),
-    queryKey: ["dashboard", "palette", "memories", input.search],
+    enabled: wanted("Memories") && !query,
+    queryKey: ["dashboard", "palette", "memories"],
     queryFn: ({ signal }) =>
       fetchDashboardJson(
         pluginUserPageContentSchema,
-        `/api/user-pages/memory/memories${input.search ? `?${new URLSearchParams({ q: input.search })}` : ""}`,
+        "/api/user-pages/memory/memories",
         signal,
       ),
-    placeholderData: (previous) => previous,
     retry: false,
   });
-  const memoriesCurrent =
-    !memories.isPlaceholderData && input.query.trim() === input.search;
+  const memoryRows = query
+    ? (input.searched?.memories ?? [])
+    : (memories.data?.records ?? []);
   const events = useEventItems(input.conversationId, input.search);
   const pluginPages = input.navItems.flatMap((item) => {
     const api = pluginUserPageApiPath(item.to);
@@ -248,7 +265,7 @@ export function useDirectoryPaletteItems(input: {
     ),
     ...rows(
       "Memories",
-      (memoriesCurrent ? (memories.data?.records ?? []) : []).map((record) => {
+      memoryRows.map((record) => {
         const item = {
           group: "Memories",
           icon: Brain,

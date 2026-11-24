@@ -8,15 +8,13 @@ import { readConversationAccessFromSql } from "@/api/conversations/access";
 import { readConversationFeedFromSql } from "@/api/conversations/list";
 import { readConversationRecordFromSql } from "@/api/conversations/record";
 import { apiErrorSchema, conversationFeedSchema } from "@/api/schema";
-import { appendConversationBrief } from "@/chat/briefs/store";
-import { createSqlConversationEventStore } from "@/chat/conversations/sql/history";
+import { recordCodeChange } from "@/chat/code/store";
 import { migrateSchema } from "@/chat/conversations/sql/migrations";
 import { createSqlStore } from "@/chat/conversations/sql/store";
 import { SYSTEM_IDENTITY_ID } from "@/chat/identities/actor";
 import { upsertLinkedIdentity } from "@/chat/identities/sql";
 import { setPlugins } from "@/chat/plugins/agent-hooks";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { legacyWebActorUserId } from "@/chat/conversations/legacy-web-actor-id";
 import {
   juniorConversationEvents,
   juniorConversationParticipants,
@@ -25,7 +23,7 @@ import {
   juniorIdentities,
   juniorUsers,
 } from "@/db/schema";
-import { conversationBriefFixture } from "../../../fixtures/conversation-brief";
+import { storeConversationMetadataFixture } from "../../../fixtures/conversation-metadata";
 import { createConfiguredJuniorSqlFixture } from "../../../fixtures/sql";
 
 describe("conversation list API", () => {
@@ -58,25 +56,13 @@ describe("conversation list API", () => {
         },
         visibility: "private",
       });
-      await appendConversationBrief(fixture.sql.db(), {
+      await storeConversationMetadataFixture(fixture.sql.db(), {
         conversationId: archivedId,
-        turnId: "archived-brief-1",
-        throughSeq: 0,
-        content: conversationBriefFixture({
-          summary: "The durable sapphire choice is current.",
-        }),
-        searchText: "durable sapphire choice",
-        modelId: "test-model",
+        summary: "The durable sapphire choice is current.",
       });
-      await appendConversationBrief(fixture.sql.db(), {
+      await storeConversationMetadataFixture(fixture.sql.db(), {
         conversationId: privateId,
-        turnId: "private-brief-1",
-        throughSeq: 0,
-        content: conversationBriefFixture({
-          summary: "The hidden marigold launch stays private.",
-        }),
-        searchText: "hidden marigold launch",
-        modelId: "test-model",
+        summary: "The hidden marigold launch stays private.",
       });
       await fixture.sql
         .db()
@@ -114,20 +100,20 @@ describe("conversation list API", () => {
       expect(
         conversationFeedSchema.parse(await searchResponse.json()).conversations,
       ).toEqual([expect.objectContaining({ conversationId: archivedId })]);
-      const briefSearchResponse = await app.request(
+      const summarySearchResponse = await app.request(
         "http://localhost/api/conversations?actorEmail=viewer%40example.com&q=durable%20sapphire",
       );
-      expect(briefSearchResponse.status).toBe(200);
+      expect(summarySearchResponse.status).toBe(200);
       expect(
-        conversationFeedSchema.parse(await briefSearchResponse.json())
+        conversationFeedSchema.parse(await summarySearchResponse.json())
           .conversations,
       ).toEqual([expect.objectContaining({ conversationId: archivedId })]);
-      const privateBriefSearchResponse = await app.request(
+      const privateSummarySearchResponse = await app.request(
         "http://localhost/api/conversations?q=hidden%20marigold",
       );
-      expect(privateBriefSearchResponse.status).toBe(200);
+      expect(privateSummarySearchResponse.status).toBe(200);
       expect(
-        conversationFeedSchema.parse(await privateBriefSearchResponse.json())
+        conversationFeedSchema.parse(await privateSummarySearchResponse.json())
           .conversations,
       ).toEqual([]);
       const privateTitleSearchResponse = await app.request(
@@ -266,6 +252,41 @@ describe("conversation list API", () => {
             type: "message",
           },
         ]);
+      const change = (
+        number: number,
+        conversationId: string,
+        finish?: { at: Date; state: "closed" | "merged" },
+      ) =>
+        recordCodeChange(fixture.sql.db(), "work", {
+          closedAt: finish?.state === "closed" ? finish.at : undefined,
+          conversationIds: [conversationId],
+          mergedAt: finish?.state === "merged" ? finish.at : undefined,
+          number,
+          openedAt: new Date(nowMs - 300_000),
+          providerId: `change-${number}`,
+          repository: { name: "getsentry/junior", providerId: "repository-1" },
+          state: finish?.state ?? "open",
+          updatedAt: finish?.at ?? new Date(nowMs - 300_000),
+        });
+      await change(1, unfinishedId);
+      await change(2, finishedId, {
+        at: new Date(nowMs - 120_000),
+        state: "merged",
+      });
+      await change(3, finishedUpdatedId, {
+        at: new Date(nowMs - 90_000),
+        state: "closed",
+      });
+      // Another plugin's code change in the same Conversation is not work.
+      await recordCodeChange(fixture.sql.db(), "other", {
+        conversationIds: [finishedId],
+        number: 4,
+        openedAt: new Date(nowMs - 300_000),
+        providerId: "change-4",
+        repository: { name: "getsentry/junior", providerId: "repository-1" },
+        state: "open",
+        updatedAt: new Date(nowMs - 300_000),
+      });
       setPlugins([
         defineJuniorPlugin({
           manifest: {
@@ -274,19 +295,31 @@ describe("conversation list API", () => {
             description: "Unfinished work test plugin",
           },
           hooks: {
-            unfinishedWork(ctx) {
+            // The plugin reads its code changes from Junior's code index.
+            async unfinishedWork(ctx) {
               seenConversationIds.push([...ctx.conversationIds]);
+              const changes = await ctx.codeChanges.list({
+                conversationIds: ctx.conversationIds,
+              });
+              const finishedAt = (change: (typeof changes)[number]) =>
+                (change.mergedAt ?? change.closedAt)!.toISOString();
               return {
-                assignedConversationIds: [
-                  unfinishedId,
-                  finishedId,
-                  finishedUpdatedId,
-                ],
-                conversationIds: [unfinishedId],
-                finishedWorkAtByConversationId: {
-                  [finishedId]: new Date(nowMs - 120_000).toISOString(),
-                  [finishedUpdatedId]: new Date(nowMs - 90_000).toISOString(),
-                },
+                assignedConversationIds: changes.flatMap(
+                  (change) => change.conversationIds,
+                ),
+                conversationIds: changes
+                  .filter((change) => change.state === "open")
+                  .flatMap((change) => change.conversationIds),
+                finishedWorkAtByConversationId: Object.fromEntries(
+                  changes
+                    .filter((change) => change.state !== "open")
+                    .flatMap((change) =>
+                      change.conversationIds.map((id) => [
+                        id,
+                        finishedAt(change),
+                      ]),
+                    ),
+                ),
               };
             },
           },
@@ -854,144 +887,6 @@ describe("conversation list API", () => {
           }),
         ],
       });
-    } finally {
-      await fixture.close();
-    }
-  });
-
-  test("resolves dashboard author ids against junior email identities", async () => {
-    const fixture = createConfiguredJuniorSqlFixture();
-    const store = createSqlStore(fixture.sql);
-    const eventStore = createSqlConversationEventStore(fixture.sql);
-    try {
-      await migrateSchema(fixture.sql);
-      await store.recordActivity({
-        actor: {
-          email: "owner@example.com",
-          platform: "slack",
-          slackUserId: "U-OWNER",
-          teamId: "T1",
-        },
-        conversationId: "slack:C1:dashboard-author",
-        destination: {
-          platform: "slack" as const,
-          teamId: "T1",
-          channelId: "C1",
-        },
-        nowMs: 5_000,
-        source: "slack",
-      });
-
-      const participant = await fixture.sql
-        .db()
-        .insert(juniorUsers)
-        .values({
-          id: "user-dashboard-participant",
-          createdAt: new Date(1_000),
-          displayName: "Dashboard Participant",
-          primaryEmail: "dashboard-participant@example.com",
-          primaryEmailNormalized: "dashboard-participant@example.com",
-          updatedAt: new Date(1_000),
-        })
-        .returning({ id: juniorUsers.id });
-      const participantUserId = participant[0]?.id;
-      expect(participantUserId).toBeDefined();
-      await fixture.sql
-        .db()
-        .insert(juniorIdentities)
-        .values({
-          id: "identity-dashboard-participant",
-          createdAt: new Date(1_000),
-          email: "dashboard-participant@example.com",
-          emailNormalized: "dashboard-participant@example.com",
-          emailVerified: true,
-          kind: "user",
-          provider: "junior",
-          providerSubjectId: "dashboard-participant@example.com",
-          providerTenantId: "",
-          updatedAt: new Date(1_000),
-          userId: participantUserId!,
-        });
-
-      await eventStore.append("slack:C1:dashboard-author", [
-        {
-          createdAtMs: 5_500,
-          data: {
-            messageId: "dashboard-msg-1",
-            meta: {
-              author: {
-                isBot: false,
-                // Web authors stored this id before they used the User id.
-                userId: legacyWebActorUserId(
-                  "dashboard-participant@example.com",
-                ),
-              },
-            },
-            role: "user",
-            text: "continue from dashboard",
-            type: "message",
-          },
-          idempotencyKey: "message:dashboard-msg-1",
-        },
-      ]);
-
-      const [event] = await fixture.sql
-        .db()
-        .select({
-          actorIdentityId: juniorConversationEvents.actorIdentityId,
-        })
-        .from(juniorConversationEvents)
-        .where(
-          eq(
-            juniorConversationEvents.conversationId,
-            "slack:C1:dashboard-author",
-          ),
-        )
-        .limit(1);
-      expect(event?.actorIdentityId).toBe("identity-dashboard-participant");
-
-      const readParticipantUserIds = async () =>
-        (
-          await fixture.sql
-            .db()
-            .select({
-              userId: juniorConversationParticipants.userId,
-            })
-            .from(juniorConversationParticipants)
-            .where(
-              eq(
-                juniorConversationParticipants.rootConversationId,
-                "slack:C1:dashboard-author",
-              ),
-            )
-        ).map((row) => row.userId);
-      // A message that does not start a Turn is context, not membership.
-      expect(await readParticipantUserIds()).not.toContain(participantUserId);
-
-      await eventStore.append("slack:C1:dashboard-author", [
-        {
-          createdAtMs: 5_600,
-          data: {
-            inputMessageIds: ["dashboard-msg-1"],
-            surface: "api",
-            turnId: "turn-dashboard-msg-1",
-            type: "turn_started",
-          },
-          idempotencyKey: "turn:turn-dashboard-msg-1:started",
-        },
-      ]);
-      expect(await readParticipantUserIds()).toContain(participantUserId);
-
-      const feed = await readConversationFeedFromSql({
-        viewer: {
-          ...testViewer("dashboard-participant@example.com"),
-          id: participantUserId!,
-        },
-        limit: 10,
-      });
-      expect(feed.conversations.map((item) => item.conversationId)).toEqual([
-        "slack:C1:dashboard-author",
-      ]);
     } finally {
       await fixture.close();
     }

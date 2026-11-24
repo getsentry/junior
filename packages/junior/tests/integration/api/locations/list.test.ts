@@ -51,6 +51,21 @@ describe("locations API", () => {
         .select()
         .from(juniorDestinations);
       expect(destination).toBeDefined();
+      // Each dashboard Conversation has its own local destination. Public
+      // ones report as one Dashboard location; private ones stay private.
+      for (const [conversationId, visibility] of [
+        ["local:web:public-a", "public"],
+        ["local:web:public-b", "public"],
+        ["local:web:private", "private"],
+      ] as const) {
+        await store.recordActivity({
+          conversationId,
+          destination: { platform: "local", conversationId },
+          source: "web",
+          visibility,
+          nowMs,
+        });
+      }
 
       const now = new Date(nowMs);
       const aggregateNow = new Date(nowMs - 1_000);
@@ -106,21 +121,27 @@ describe("locations API", () => {
         );
 
       const directory = await readLocationDirectoryFromSql();
-      expect(directory.locations).toHaveLength(1);
-      expect(directory.locations[0]).toMatchObject({
+      expect(directory.locations).toHaveLength(2);
+      expect(
+        directory.locations.find(
+          (location) => location.label === "#proj-alpha",
+        ),
+      ).toMatchObject({
         conversations: 5_001,
         durationMs: 10_004,
-        label: "#proj-alpha",
         tokens: 15_007,
       });
-      expect(directory.privateActivity.conversations).toBe(1);
+      expect(
+        directory.locations.find((location) => location.label === "Dashboard"),
+      ).toMatchObject({ conversations: 2, id: "dashboard", provider: "local" });
+      expect(directory.privateActivity.conversations).toBe(2);
       expect(directory.activityDays).toHaveLength(90);
       expect(
         directory.activityDays.find((day) => day.date === "2026-06-15"),
       ).toEqual({
         date: "2026-06-15",
-        privateConversations: 1,
-        publicConversations: 5_001,
+        privateConversations: 2,
+        publicConversations: 5_003,
       });
       expect(directory.windowStart).toBe("2026-03-18T00:00:00.000Z");
       expect(directory.windowEnd).toBe("2026-06-15T00:00:00.000Z");

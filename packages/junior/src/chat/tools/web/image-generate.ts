@@ -2,7 +2,10 @@ import { renderTag } from "@sentry/junior-plugin-api";
 import * as z from "zod";
 import { juniorToolOutputSchema } from "@/chat/tool-support/structured-result";
 import { zodTool } from "@/chat/tool-support/zod-tool";
-import type { ImageGenerateToolDeps, ToolHooks } from "@/chat/tools/types";
+import type {
+  ImageGenerateToolDeps,
+  ToolHooks,
+} from "@/chat/tool-support/types";
 import { botConfig } from "@/chat/config";
 import {
   completeText,
@@ -11,9 +14,9 @@ import {
 } from "@/chat/core-model";
 import { JUNIOR_PERSONALITY } from "@/chat/prompt";
 import { logInfo, logWarn } from "@/chat/logging";
-import { generatedFileRefSchema } from "@/chat/tools/sandbox/file-uploads";
-import { readSandboxImage } from "@/chat/tools/sandbox/image-files";
-import { ToolInputError } from "@/chat/tools/execution/tool-input-error";
+import { generatedFileRefSchema } from "@/chat/sandbox/file-uploads";
+import { readSandboxImage } from "@/chat/sandbox/image-files";
+import { ToolInputError } from "@/chat/tool-support/tool-input-error";
 import type { SandboxWorkspace } from "@/chat/sandbox/workspace";
 import { IMAGES_TOOL_SOURCE } from "@/chat/artifacts/tool-source";
 
@@ -193,7 +196,7 @@ export function createImageGenerateTool(
       readOnlyHint: false,
     },
     description:
-      "Generate images from a prompt, or edit existing images. Use when the user wants to visually show or represent something — feelings, concepts, art, humor, or any visual idea. Also use for explicit image creation or image edit requests.",
+      "Edit images, such as changing text in a screenshot or restyling a photo, or generate new images from a prompt. Returns the new images.",
     inputSchema: z.object({
       prompt: z
         .string()

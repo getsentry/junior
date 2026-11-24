@@ -54,7 +54,7 @@ plugins, skills, and telemetry. Egress and credential code:
 
 - The harness owns the active actor, destination, conversation, and sandbox
   target. Model schemas do not accept target overrides.
-- Follow `context-bound-systems.md` and `tool-design.md`. Missing context
+- Follow `context-bound-systems.md` and `../design/tools.md`. Missing context
   fails with a structured error. Never fall back to a private destination,
   another actor, or a bot-owned artifact.
 

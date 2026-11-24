@@ -183,7 +183,7 @@ export function ServiceAccountsSection(props: {
                   {statusText(account)}
                 </p>
                 <p className="mt-1 mb-0 break-words font-mono text-xs text-dashboard-text-faint">
-                  {account.tools.join(", ")}
+                  {[...account.tools, ...account.operations].join(", ")}
                 </p>
               </div>
               {account.connected ? (

@@ -59,21 +59,21 @@ const rejectionMarkerSchema = z
  */
 export type ToolActionRejectionMarker = z.output<typeof rejectionMarkerSchema>;
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return Boolean(value && typeof value === "object" && !Array.isArray(value));
-}
+const markedMessageSchema = z.object({
+  details: z.object({ guardianActionRejection: rejectionMarkerSchema }),
+});
+
+const codeModeResultSchema = z.object({
+  toolName: z.literal(CODEMODE_TOOL_NAME),
+  details: z.object({ calls: z.array(z.unknown()) }),
+});
 
 /** Read a core-owned action rejection marker from one durable Pi message. */
 export function getToolActionRejectionMarker(
   message: unknown,
 ): ToolActionRejectionMarker | undefined {
-  if (!isRecord(message) || !isRecord(message["details"])) {
-    return undefined;
-  }
-  const parsed = rejectionMarkerSchema.safeParse(
-    message["details"]["guardianActionRejection"],
-  );
-  return parsed.success ? parsed.data : undefined;
+  return markedMessageSchema.safeParse(message).data?.details
+    .guardianActionRejection;
 }
 
 /**
@@ -81,16 +81,13 @@ export function getToolActionRejectionMarker(
  * call order. The bridge copies each marker from the gate.
  */
 function getCodeModeRejectionMarkers(
-  message: Record<string, unknown>,
+  message: unknown,
 ): ToolActionRejectionMarker[] {
-  if (
-    message["toolName"] !== CODEMODE_TOOL_NAME ||
-    !isRecord(message["details"]) ||
-    !Array.isArray(message["details"]["calls"])
-  ) {
+  const parsed = codeModeResultSchema.safeParse(message);
+  if (!parsed.success) {
     return [];
   }
-  return message["details"]["calls"].flatMap((call: unknown) => {
+  return parsed.data.details.calls.flatMap((call) => {
     const marker = getToolActionRejectionMarker({ details: call });
     return marker ? [marker] : [];
   });
@@ -111,7 +108,12 @@ export function projectToolActionRejection<
 ): TResult {
   const rejection = pending.get(toolCallId);
   pending.delete(toolCallId);
-  const details = isRecord(result.details) ? result.details : undefined;
+  const details =
+    typeof result.details === "object" &&
+    result.details !== null &&
+    !Array.isArray(result.details)
+      ? result.details
+      : undefined;
   const hasReservedMarker =
     details !== undefined && "guardianActionRejection" in details;
   if (!rejection && !hasReservedMarker) {

@@ -8,6 +8,7 @@
  */
 import type { Message, MessageContext, Thread } from "chat";
 import type { Destination } from "@sentry/junior-plugin-api";
+import { indexEndedTurnEvents } from "@/chat/conversations/event-embedding";
 import { isExperimentalFeatureEnabled } from "@/chat/experimental";
 import {
   getSubscribedReplyPreflightDecision,
@@ -722,6 +723,8 @@ export function createSlackTurnRuntime<
       const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       let acked = false;
+      // A failure that ends the Turn; a retried attempt does not end it.
+      let failedTurnEnded = false;
       const onTurnCompleted = async (): Promise<void> => {
         completed = true;
         await flushSkippedSteeringMessagesBestEffort({
@@ -834,6 +837,7 @@ export function createSlackTurnRuntime<
         if (shouldRethrowTurnControlError(failureCause)) {
           throw failureCause;
         }
+        failedTurnEnded = true;
         if (failureCause instanceof AuthorizationFlowDisabledError) {
           return;
         }
@@ -858,6 +862,7 @@ export function createSlackTurnRuntime<
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
           // attempt posts the visible failure reply.
+          failedTurnEnded = false;
           return;
         }
         if (!eventId) {
@@ -905,6 +910,13 @@ export function createSlackTurnRuntime<
           });
           await processingReactions.stopAll();
         }
+        // Index after the fallback reply, even when posting it throws.
+        if (failedTurnEnded) {
+          await indexEndedTurnEvents({
+            conversationId,
+            turnId: buildDeterministicTurnId(message.id),
+          });
+        }
       }
     },
 
@@ -919,6 +931,8 @@ export function createSlackTurnRuntime<
       const skippedSteeringMessages: SteeringMessageDecision[] = [];
       let completed = false;
       let acked = false;
+      // A failure that ends the Turn; a retried attempt does not end it.
+      let failedTurnEnded = false;
       const onTurnCompleted = async (): Promise<void> => {
         completed = true;
         await flushSkippedSteeringMessagesBestEffort({
@@ -1220,6 +1234,7 @@ export function createSlackTurnRuntime<
         if (shouldRethrowTurnControlError(failureCause)) {
           throw failureCause;
         }
+        failedTurnEnded = true;
         if (failureCause instanceof AuthorizationFlowDisabledError) {
           return;
         }
@@ -1244,6 +1259,7 @@ export function createSlackTurnRuntime<
         if (!acked && hooks.isFinalAttempt === false) {
           // The mailbox redelivers this message; only the final bounded
           // attempt posts the visible failure reply.
+          failedTurnEnded = false;
           return;
         }
         if (!eventId) {
@@ -1291,6 +1307,13 @@ export function createSlackTurnRuntime<
             }),
           });
           await processingReactions.stopAll();
+        }
+        // Index after the fallback reply, even when posting it throws.
+        if (failedTurnEnded) {
+          await indexEndedTurnEvents({
+            conversationId,
+            turnId: buildDeterministicTurnId(message.id),
+          });
         }
       }
     },

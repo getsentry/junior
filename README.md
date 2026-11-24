@@ -35,13 +35,12 @@ Start here:
 | `@sentry/junior-google`        | Google Workspace plugin package for calendar, Docs, Sheets, Slides as Junior |
 | `@sentry/junior-hex`           | Hex plugin package for data warehouse query workflows                        |
 | `@sentry/junior-linear`        | Linear plugin package for issue workflows                                    |
-| `@sentry/junior-memory`        | Memory plugin package for long-term Junior memory storage                    |
 | `@sentry/junior-notion`        | Notion plugin package for page search workflows                              |
 | `@sentry/junior-octolens`      | Octolens plugin package for social-listening workflows                       |
 | `@sentry/junior-pagerduty`     | Read-only PagerDuty on-call, schedule, and incident lookups                  |
 | `@sentry/junior-restream`      | Restream events, chat, analytics, and recordings through Restream's MCP      |
-| `@sentry/junior-search`        | Search ranking primitives that core and plugins share                        |
 | `@sentry/junior-maintenance`   | Maintenance plugin package for updating and improving Junior apps            |
 | `@sentry/junior-sentry`        | Sentry investigations and issue events                                       |
 | `@sentry/junior-vercel`        | Vercel plugin package for deployment monitoring and log investigations       |
+| `@sentry/junior-vimeo`         | Private Vimeo uploads, file and thumbnail updates, and processing status     |
 | `@sentry/junior-xdotcom`       | Read-only X post search, post lookup, and user timelines                     |

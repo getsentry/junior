@@ -1,11 +1,8 @@
 import { generateKeyPairSync } from "node:crypto";
-import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  juniorGitHubPullRequestRequesters,
-  juniorGitHubPullRequests,
-} from "../src/db/schema";
+import { juniorGitHubPullRequestRequesters } from "../src/db/schema";
+import { recordJuniorPullRequest } from "./code-index";
 import { createGitHubFixture, type GitHubFixture } from "./github-db";
 import { mswServer } from "./msw";
 import {
@@ -20,7 +17,6 @@ describe("daily reconcile of open pull requests", () => {
   const now = Date.parse("2026-11-09T12:00:00.000Z");
   const day = 24 * 60 * 60_000;
   let queries: number[][];
-  let drafts: Set<number>;
 
   /** A pull request lifecycle as GitHub GraphQL returns it. */
   function lifecycle(number: number) {
@@ -33,7 +29,7 @@ describe("daily reconcile of open pull requests", () => {
       createdAt: new Date(now - 3 * day).toISOString(),
       databaseId: number * 10,
       headRefName: `feat/pr-${number}`,
-      isDraft: drafts.has(number),
+      isDraft: false,
       merged,
       mergedAt: merged ? new Date(now - day).toISOString() : null,
       number,
@@ -55,7 +51,6 @@ describe("daily reconcile of open pull requests", () => {
     vi.stubEnv("GITHUB_WEBHOOK_SECRET", "test-secret");
     vi.useFakeTimers({ now, toFake: ["Date"] });
     queries = [];
-    drafts = new Set();
     vi.stubEnv(
       "GITHUB_APP_BOT_EMAIL",
       "1234+sentry-junior[bot]@users.noreply.github.com",
@@ -127,28 +122,46 @@ describe("daily reconcile of open pull requests", () => {
         });
       }),
     );
-    const row = (number: number, updatedAt: number) => ({
+    await Promise.all(
+      seeded(defaultRepository).map((change) =>
+        recordJuniorPullRequest(fixture, {
+          conversationIds: change.conversationIds,
+          number: change.number,
+          openedAt: change.openedAt,
+          updatedAt: change.updatedAt,
+        }),
+      ),
+    );
+  });
+
+  const defaultRepository = { name: "getsentry/junior", providerId: "1" };
+
+  /** The open Junior pull requests before each test, in one repository. */
+  function seeded(repository: { name: string; providerId: string }) {
+    return (
+      [
+        [946, now - 2 * day],
+        [947, now - 2 * day],
+        [949, now - 2 * day],
+        [951, now - 2 * day],
+        // Its close webhook can still arrive.
+        [950, now - 60_000],
+      ] as const
+    ).map(([number, updatedAt]) => ({
       conversationIds: ["slack:C1:1.0"],
       number,
       openedAt: new Date(now - 3 * day),
-      pullRequestId: `${number}0`,
-      repositoryFullName: "getsentry/junior",
-      repositoryId: "1",
+      providerId: `${number}0`,
+      repository,
       state: "open" as const,
       updatedAt: new Date(updatedAt),
-    });
-    await fixture
-      .db()
-      .insert(juniorGitHubPullRequests)
-      .values([
-        row(946, now - 2 * day),
-        row(947, now - 2 * day),
-        row(949, now - 2 * day),
-        row(951, now - 2 * day),
-        // Its close webhook can still arrive.
-        row(950, now - 60_000),
-      ]);
-  });
+    }));
+  }
+
+  /** Move the seeded pull requests to another repository name or id. */
+  function moveRepository(repository: { name: string; providerId: string }) {
+    for (const change of seeded(repository)) fixture.codeIndex.seed(change);
+  }
 
   afterEach(async () => {
     await fixture.close();
@@ -170,7 +183,7 @@ describe("daily reconcile of open pull requests", () => {
         repositoryFullName: "getsentry/junior",
         updatedAt: new Date(now - 3 * day),
       });
-    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+    await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       assigneeIdentityIds: ["identity-jane"],
       body: "Pull request 949 has merge conflicts.",
       dedupeKey: "merge-conflict:getsentry/junior#949",
@@ -180,7 +193,7 @@ describe("daily reconcile of open pull requests", () => {
 
   it("records closes that GitHub did not deliver, once a day", async () => {
     await noticeFor949();
-    await h.reviewItems.forConversation("slack:C1:1.0").upsert({
+    await h.inboxItems.forConversation("slack:C1:1.0").upsert({
       assigneeIdentityIds: ["identity-jane"],
       body: "GitHub asks you to review #949.",
       dedupeKey: "pull-request-action:getsentry/junior#949",
@@ -193,36 +206,58 @@ describe("daily reconcile of open pull requests", () => {
       "merge-conflict:getsentry/junior#949",
       "pull-request-action:getsentry/junior#949",
     ]);
+    // The chip and the ask change in one write.
+    expect(h.batches).toContainEqual({
+      annotations: [
+        {
+          conversationId: "slack:C1:1.0",
+          upsert: expect.objectContaining({
+            key: "getsentry/junior#949",
+            status: "closed",
+          }),
+        },
+      ],
+      inboxItems: [
+        "pull-request-action:getsentry/junior#949",
+        "merge-conflict:getsentry/junior#949",
+      ].map((dedupeKey) => ({
+        close: {
+          dedupeKey,
+          reason: "The pull request closed without merging.",
+          status: "dismissed",
+        },
+        conversationId: "slack:C1:1.0",
+      })),
+    });
 
     expect(queries.map((numbers) => numbers.sort())).toEqual([
       [946, 947, 949, 951],
     ]);
-    const rows = await fixture
-      .db()
-      .select()
-      .from(juniorGitHubPullRequests)
-      .orderBy(juniorGitHubPullRequests.number);
     expect(
-      rows.map((row) => [row.number, row.state, row.mergedAt, row.closedAt]),
+      (await fixture.codeIndex.changes())
+        .map((change) => [
+          change.number,
+          change.state,
+          change.mergedAt ?? change.closedAt,
+          change.conversationIds,
+        ])
+        .sort(([a], [b]) => Number(a) - Number(b)),
     ).toEqual([
-      [946, "merged", new Date(now - day), new Date(now - day)],
-      [947, "open", null, null],
-      [949, "closed_unmerged", null, new Date(now - day)],
-      [950, "open", null, null],
-      [951, "open", null, null],
+      [946, "merged", new Date(now - day), ["slack:C1:1.0"]],
+      [947, "open", undefined, ["slack:C1:1.0"]],
+      [949, "closed", new Date(now - day), ["slack:C1:1.0"]],
+      [950, "open", undefined, ["slack:C1:1.0"]],
+      [951, "open", undefined, ["slack:C1:1.0"]],
     ]);
     // An open pull request keeps its state and gets its current title.
     expect(
-      h.codeChanges.map((change) => [
-        change.number,
-        change.state,
-        change.title,
-        change.conversationIds,
-      ]),
+      fixture.codeIndex.recorded
+        .map((change) => [change.number, change.state, change.title])
+        .sort(([a], [b]) => Number(a) - Number(b)),
     ).toEqual([
-      [946, "merged", "Pull request 946", ["slack:C1:1.0"]],
-      [947, "open", "Pull request 947", []],
-      [949, "closed", "Pull request 949", ["slack:C1:1.0"]],
+      [946, "merged", "Pull request 946"],
+      [947, "open", "Pull request 947"],
+      [949, "closed", "Pull request 949"],
     ]);
     expect(
       h.annotations.map(({ annotation, conversationId }) => [
@@ -242,29 +277,6 @@ describe("daily reconcile of open pull requests", () => {
     vi.setSystemTime(now + day);
     await h.heartbeat(now + day);
     expect(queries[1]?.sort()).toEqual([947, 950, 951]);
-  });
-
-  it("writes a draft state that changed on GitHub", async () => {
-    drafts = new Set([947]);
-    await h.heartbeat(now);
-
-    const [row] = await fixture
-      .db()
-      .select()
-      .from(juniorGitHubPullRequests)
-      .where(eq(juniorGitHubPullRequests.number, 947));
-    expect(row).toMatchObject({ draft: true, state: "open" });
-    expect(
-      h.codeChanges.map((change) => [
-        change.number,
-        change.state,
-        change.draft,
-      ]),
-    ).toEqual([
-      [946, "merged", undefined],
-      [947, "open", true],
-      [949, "closed", undefined],
-    ]);
   });
 
   it("publishes a corrected close with the key of its webhook", async () => {
@@ -332,70 +344,100 @@ describe("daily reconcile of open pull requests", () => {
     expect(reconciled?.people).toEqual(webhook?.people);
   });
 
-  const rowStates = async () =>
-    (
-      await fixture
-        .db()
-        .select()
-        .from(juniorGitHubPullRequests)
-        .orderBy(juniorGitHubPullRequests.number)
-    ).map((row) => [row.number, row.state]);
+  const states = async () =>
+    (await fixture.codeIndex.changes())
+      .map((change) => [change.number, change.state])
+      .sort(([a], [b]) => Number(a) - Number(b));
 
   it("finds a renamed repository by its id", async () => {
-    await fixture
-      .db()
-      .update(juniorGitHubPullRequests)
-      .set({ repositoryFullName: "getsentry/junior-old" });
+    moveRepository({ name: "getsentry/junior-old", providerId: "1" });
     await h.heartbeat(now);
 
     expect(h.heartbeatLogs).toEqual([]);
-    expect(await rowStates()).toEqual([
+    expect(await states()).toEqual([
       [946, "merged"],
       [947, "open"],
-      [949, "closed_unmerged"],
+      [949, "closed"],
       [950, "open"],
       [951, "open"],
     ]);
   });
 
-  it("warns and keeps the rows when GitHub cannot reach the repository", async () => {
-    await fixture
-      .db()
-      .update(juniorGitHubPullRequests)
-      .set({ repositoryId: "2" });
+  it("repairs stored repository names from GitHub once", async () => {
+    // A backfill kept the name from before the rename. GitHub no longer
+    // finds repository 3.
+    moveRepository({ name: "getsentry/junior-old", providerId: "1" });
+    fixture.codeIndex.seed({
+      conversationIds: [],
+      number: 12,
+      openedAt: new Date(now - 60_000),
+      providerId: "120",
+      repository: { name: "getsentry/gone", providerId: "3" },
+      state: "open",
+      updatedAt: new Date(now - 60_000),
+    });
+    mswServer.use(
+      http.get("https://api.github.com/repositories/3", () =>
+        HttpResponse.json({ message: "Not Found" }, { status: 404 }),
+      ),
+    );
+    const names = async () =>
+      Object.fromEntries(
+        (await fixture.codeIndex.changes()).map((change) => [
+          change.number,
+          change.repository.name,
+        ]),
+      );
+
+    await h.heartbeat(now);
+    // The reconcile leaves pull request 950, whose webhook can still arrive.
+    expect((await names())[950]).toBe("getsentry/junior-old");
+    await h.runStartedTasks();
+
+    expect(h.heartbeatLogs).toEqual([]);
+    expect(await names()).toEqual({
+      12: "getsentry/gone",
+      946: "getsentry/junior",
+      947: "getsentry/junior",
+      949: "getsentry/junior",
+      950: "getsentry/junior",
+      951: "getsentry/junior",
+    });
+    await h.heartbeat(now + day);
+    expect(h.startedTasks).toEqual([]);
+  });
+
+  it("warns and keeps the code changes open when GitHub cannot reach the repository", async () => {
+    moveRepository({ name: "getsentry/junior", providerId: "2" });
     await h.heartbeat(now);
 
     expect(h.heartbeatLogs).toEqual([
       ["warn", "GitHub pull request reconcile skipped a repository"],
     ]);
     expect(queries).toEqual([]);
-    expect(new Set((await rowStates()).map(([, state]) => state))).toEqual(
+    expect(new Set((await states()).map(([, state]) => state))).toEqual(
       new Set(["open"]),
     );
   });
 
   it("keeps a close open for the next reconcile when its notice close fails", async () => {
     await noticeFor949();
-    const desk = h.reviewItems.forConversation("slack:C1:1.0");
-    vi.spyOn(h.reviewItems, "forConversation").mockReturnValueOnce({
+    const desk = h.inboxItems.forConversation("slack:C1:1.0");
+    vi.spyOn(h.inboxItems, "forConversation").mockReturnValueOnce({
       ...desk,
       close: () => Promise.reject(new Error("The Inbox is down")),
     });
     await h.heartbeat(now);
     const state949 = async () =>
-      (
-        await fixture
-          .db()
-          .select({ state: juniorGitHubPullRequests.state })
-          .from(juniorGitHubPullRequests)
-          .where(eq(juniorGitHubPullRequests.number, 949))
-      )[0]?.state;
+      (await fixture.codeIndex.changes()).find(
+        (change) => change.number === 949,
+      )?.state;
     expect(await state949()).toBe("open");
     expect(h.closedNotices).toEqual([]);
 
     vi.setSystemTime(now + day);
     await h.heartbeat(now + day);
-    expect(await state949()).toBe("closed_unmerged");
+    expect(await state949()).toBe("closed");
     expect(h.closedNotices).toEqual(["merge-conflict:getsentry/junior#949"]);
   });
 
@@ -404,14 +446,6 @@ describe("daily reconcile of open pull requests", () => {
       new Error("The event queue is down"),
     );
     await h.heartbeat(now);
-    const states = async () =>
-      (
-        await fixture
-          .db()
-          .select()
-          .from(juniorGitHubPullRequests)
-          .orderBy(juniorGitHubPullRequests.number)
-      ).map((row) => [row.number, row.state]);
     expect(await states()).toContainEqual([946, "open"]);
 
     vi.setSystemTime(now + day);

@@ -6,6 +6,7 @@ import {
   readEncryptionKeyring,
   type EncryptionKeyring,
 } from "@/chat/encryption/keyring";
+import { resolveBotName } from "@/chat/bot-name";
 import { toOptionalTrimmed } from "@/chat/optional-string";
 import { readQueueConfig, type QueueConfig } from "@/chat/queue/config";
 import { resolveGatewayModel } from "@/chat/pi/client";
@@ -137,6 +138,12 @@ export interface ChatConfig {
   functionMaxDurationSeconds: number;
   /** Kill switch for prompt cache warming. Defaults to true. */
   cacheWarmingEnabled: boolean;
+  /**
+   * Kill switch for compaction on idle: a warmup of a prefix at or above the
+   * background compaction mark swaps in a ready background summary instead.
+   * Defaults to true. It runs only while cache warming is on.
+   */
+  idleCompactionEnabled: boolean;
   conversationWorkEnabled: boolean;
   conversationWorkSoftYieldAfterMs: number;
   /** Keys for secrets at rest. Startup fails when they are missing or invalid. */
@@ -324,7 +331,7 @@ function readBotConfig(
     DEFAULT_GUARDIAN_MODEL_ID;
 
   return {
-    userName: toOptionalTrimmed(env["JUNIOR_BOT_NAME"]) ?? "junior",
+    userName: resolveBotName(undefined, env),
     modelId,
     contextWindowTokens:
       parseOptionalPositiveInteger(
@@ -442,6 +449,10 @@ export function readChatConfig(
     cacheWarmingEnabled: parseKillSwitch(
       "JUNIOR_CACHE_WARMING_ENABLED",
       env["JUNIOR_CACHE_WARMING_ENABLED"],
+    ),
+    idleCompactionEnabled: parseKillSwitch(
+      "JUNIOR_IDLE_COMPACTION_ENABLED",
+      env["JUNIOR_IDLE_COMPACTION_ENABLED"],
     ),
     conversationWorkEnabled: parseKillSwitch(
       "JUNIOR_CONVERSATION_WORK_ENABLED",
@@ -765,14 +776,14 @@ export function setBotModelConfig(config: BotModelConfig): void {
   }
 }
 
-/** Apply the bot name from createApp(). It overrides `JUNIOR_BOT_NAME`. */
+/**
+ * Apply the bot name that a `juniorNitro()` build resolved, so the runtime
+ * and the built system prompt use the same name. Without a build, the name
+ * stays `JUNIOR_BOT_NAME`, then `junior`.
+ */
 export function setBotName(name: string | undefined): void {
   if (name === undefined) return;
-  const trimmed = toOptionalTrimmed(name);
-  if (!trimmed) {
-    throw new Error("botName must not be empty");
-  }
-  botConfig.userName = trimmed;
+  botConfig.userName = resolveBotName(name, process.env);
 }
 
 /** Return the current Slack reaction emoji config. */

@@ -31,15 +31,40 @@ import type {
   AutomationExecutionList,
   AutomationSummary,
 } from "@sentry/junior/api/schema";
-import type { CodeChangeSize } from "@sentry/junior-plugin-api";
+import type {
+  CodeChangeSize,
+  OwnedObjectAnnotation,
+} from "@sentry/junior-plugin-api";
 import {
   activityPreviewText,
   IDLE_CHANGE_DAYS,
 } from "@sentry/junior/api/schema";
 import { mockFeedLinks } from "./feed-links";
 import { mockFeedMedia } from "./feed-media";
-import { mockQuestionConversations } from "./review-items";
+import { mockQuestionConversations } from "./question-conversations";
 import { isUnlistedMockConversation, withMockSends } from "./sends";
+
+/** The body of the mock release pull request, as GitHub returns it. */
+export const PIN_PULL_REQUEST_DESCRIPTION = [
+  "The release train read the latest payments build on each run, so a late merge could ship without review.",
+  "",
+  "## Changes",
+  "",
+  "- Pin the release train to payments 4.2.",
+  "- Read the pin from the release manifest, not from the branch head.",
+  "- Fail the train when the manifest and the lockfile disagree.",
+  "- Log the pinned version on each run.",
+  "",
+  "## Testing",
+  "",
+  "- Ran the train against a fork with a newer payments build. It kept 4.2.",
+  "- Changed the lockfile by hand. The train stopped with a clear error.",
+  "- Checked the run log for the pinned version.",
+  "",
+  "## Rollout",
+  "",
+  "Merge after the 4.2 deploy is done. The next train picks up the pin. To roll back, revert this PR; the train reads the branch head again.",
+].join("\n");
 
 /** Fixed current time for mock reports and browser tests. */
 export const NOW = "2026-08-07T12:00:00.000Z";
@@ -61,6 +86,47 @@ export function mockIdleCount(
   ).length;
 }
 
+// The live sizes of some mock changes, by number. #519 counts no
+// deletions, so that part hides.
+const MOCK_CHANGE_SIZES: Record<number, CodeChangeSize> = {
+  42: { additions: 86, changedFiles: 4, deletions: 12 },
+  85: { additions: 2, changedFiles: 1, deletions: 2 },
+  519: { additions: 64, changedFiles: 2 },
+  2330: { additions: 412, changedFiles: 9, deletions: 37 },
+  2361: { additions: 1204, changedFiles: 12, deletions: 340 },
+  2384: { additions: 18, changedFiles: 2, deletions: 5 },
+  2391: { additions: 148, changedFiles: 5, deletions: 21 },
+  2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
+};
+
+/**
+ * The live card of a mock code change in the Code overview or a person's
+ * Code, as the GitHub plugin resolves it: its draft state and size.
+ */
+export function mockCodeChangeLiveCard(
+  url: string,
+): OwnedObjectAnnotation | undefined {
+  const email = readMockPeopleDirectory().people[0]?.actor.email;
+  const change = [
+    ...readMockCodeOverview().changes,
+    ...(email ? (readMockPeopleCode(email)?.changes ?? []) : []),
+  ].find((candidate) => candidate.url === url);
+  if (!change) return undefined;
+  const label = `${change.repository}#${change.number}`;
+  return {
+    displayType: "Pull request",
+    facts: { type: "code_change", ...MOCK_CHANGE_SIZES[change.number] },
+    key: label,
+    kind: "object",
+    label,
+    objectType: "code_change",
+    plugin: "github",
+    status: change.state,
+    title: change.title ?? label,
+    url,
+  };
+}
+
 /** Build code activity for local dashboard development and QA. */
 export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
   const windowEnd = new Date(nowMs).toISOString();
@@ -78,7 +144,6 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
     activityDays,
     changes: [
       {
-        draft: true,
         id: "00000000-0000-4000-8000-000000000001",
         number: 42,
         openedAt: new Date(nowMs - 2 * 86_400_000).toISOString(),
@@ -89,7 +154,6 @@ export function readMockCodeOverview(nowMs = NOW_MS): CodeOverviewReport {
         url: "https://github.com/getsentry/payments/pull/42",
       },
       {
-        draft: false,
         id: "00000000-0000-4000-8000-000000000002",
         mergedAt: new Date(nowMs - 4 * 86_400_000).toISOString(),
         number: 781,
@@ -363,107 +427,18 @@ function detail(
   };
 }
 
-function mockBrief(
-  nowMs: number,
+function mockSummary(
   kind: "live" | "expired",
-): NonNullable<ConversationDetailReport["brief"]> {
-  const live = kind === "live";
-  const startedAt = iso(nowMs, live ? -6 * 60_000 : -44 * 60_000);
-  const updatedAt = iso(nowMs, live ? -60_000 : -41 * 60_000);
-  return {
-    content: {
-      schemaVersion: 1,
-      record: {
-        startedAt,
-        lastActivityAt: updatedAt,
-        durationMs: live ? 5 * 60_000 : 3 * 60_000,
-        participants: [{ name: "Morgan Lee", messages: live ? 2 : 1 }],
-        userMessages: live ? 2 : 1,
-        assistantMessages: 1,
-        toolResults: live ? 2 : 1,
-        events: 0,
-        turns: live ? 2 : 1,
-        location: { provider: "slack", channelName: "proj-checkout" },
-        codeChanges: [
-          {
-            repository: "getsentry/payments",
-            number: live ? 42 : 77,
-            title: live
-              ? "Reduce checkout latency"
-              : "Roll back the checkout regression",
-            url: live
-              ? "https://github.com/getsentry/payments/pull/42"
-              : "https://github.com/getsentry/payments/pull/77",
-            state: live ? "open" : "merged",
-            openedAt: startedAt,
-            mergedAt: live ? undefined : updatedAt,
-          },
-        ],
-      },
-      summary: live
-        ? "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision."
-        : "The checkout regression was traced to payments-v42. The team chose to roll it back and merged the change that restored normal latency.",
-      intent: live
-        ? "Find the slow checkout requests from the last deployment and compare the pre-deploy and post-deploy spans."
-        : "Draft the rollback note with the exact evidence for the checkout latency regression.",
-      outcome: live
-        ? {
-            status: "in_progress",
-            text: "The deployment correlation is confirmed. The span comparison is still running.",
-          }
-        : {
-            status: "done",
-            text: "The rollback note was completed and the rollback change was merged.",
-          },
-      decisions: live
-        ? [
-            {
-              text: "Compare the pre-deploy and post-deploy spans before choosing a rollback.",
-              by: "Morgan Lee",
-              kind: "stated",
-            },
-            {
-              text: "Use checkout.complete p95 as the primary comparison signal.",
-              kind: "assumed",
-            },
-          ]
-        : [
-            {
-              text: "Roll back payments-v42 instead of patching the serializer in place.",
-              by: "Morgan Lee",
-              kind: "confirmed",
-            },
-          ],
-      facts: live
-        ? [
-            "Checkout p95 increased from 210ms to 890ms.",
-            "Error volume stayed flat during the latency increase.",
-          ]
-        : [
-            "PAYMENTS-42 contained 418 events.",
-            "The regression started with payments-v42.",
-          ],
-      links: [
-        {
-          kind: "code_change",
-          label: `getsentry/payments#${live ? 42 : 77}`,
-          url: live
-            ? "https://github.com/getsentry/payments/pull/42"
-            : "https://github.com/getsentry/payments/pull/77",
-          status: live ? "open" : "merged",
-        },
-        {
-          kind: "resource",
-          label: "Checkout latency dashboard",
-          url: "https://sentry.example.com/organizations/acme/explore/traces/",
-          status: live ? "open" : "resolved",
-        },
-      ],
-      keywords: ["checkout", "latency", "payments-v42", "rollback"],
-    },
-    updatedAt,
-    version: live ? 2 : 3,
-  };
+): Pick<ConversationDetailReport, "summary"> {
+  return kind === "live"
+    ? {
+        summary:
+          "Checkout p95 rose after payments-v42. The spike links to the slow serializer path, and deployment spans are being compared before a rollback decision.",
+      }
+    : {
+        summary:
+          "The checkout regression was traced to payments-v42. PAYMENTS-42 contained 418 events. The team chose to roll it back and merged the change that restored normal latency.",
+      };
 }
 
 function activeConversation(nowMs: number): ConversationDetailReport {
@@ -471,7 +446,7 @@ function activeConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: ACTIVE_CONVERSATION_ID,
     displayTitle: "Investigate checkout latency",
-    brief: mockBrief(nowMs, "live"),
+    ...mockSummary("live"),
     // Visual QA needs the composer + pending mailbox stack attached above it.
     isParticipant: true,
     startedAt,
@@ -501,7 +476,6 @@ function activeConversation(nowMs: number): ConversationDetailReport {
         title: "Retry checkout writes after lock timeouts",
         url: "https://github.com/getsentry/payments/pull/42",
         imageUrl: CHECKOUT_PREVIEW_IMAGE_URL,
-        size: { additions: 86, changedFiles: 4, deletions: 12 },
       },
     ],
     annotations: [
@@ -1610,7 +1584,6 @@ function longConversation(nowMs: number): ConversationDetailReport {
         title: "Pin the release train to payments 4.2",
         url: "https://github.com/getsentry/payments/pull/91",
         imageUrl: `${MOCK_DASHBOARD_ORIGIN}/api/images/payments-91-before`,
-        size: { additions: 48, changedFiles: 3, deletions: 9 },
       },
       {
         icon: "git-merge",
@@ -1655,26 +1628,7 @@ function longConversation(nowMs: number): ConversationDetailReport {
         url: "https://github.com/getsentry/payments/pull/91",
         // A long body, so its hover card at the bottom of the reply must
         // scroll when "More details" opens.
-        description: [
-          "The release train read the latest payments build on each run, so a late merge could ship without review.",
-          "",
-          "## Changes",
-          "",
-          "- Pin the release train to payments 4.2.",
-          "- Read the pin from the release manifest, not from the branch head.",
-          "- Fail the train when the manifest and the lockfile disagree.",
-          "- Log the pinned version on each run.",
-          "",
-          "## Testing",
-          "",
-          "- Ran the train against a fork with a newer payments build. It kept 4.2.",
-          "- Changed the lockfile by hand. The train stopped with a clear error.",
-          "- Checked the run log for the pinned version.",
-          "",
-          "## Rollout",
-          "",
-          "Merge after the 4.2 deploy is done. The next train picks up the pin. To roll back, revert this PR; the train reads the branch head again.",
-        ].join("\n"),
+        description: PIN_PULL_REQUEST_DESCRIPTION,
         // The API names description images by Junior image paths.
         previewImages: ["payments-91-before", "payments-91-after"].map(
           (id) => ({
@@ -1729,7 +1683,7 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
   return detail(nowMs, {
     conversationId: INCIDENT_CONVERSATION_ID,
     displayTitle: "Checkout latency triage",
-    brief: mockBrief(nowMs, "expired"),
+    ...mockSummary("expired"),
     startedAt,
     lastSeenAt: iso(nowMs, -41 * 60_000),
     lastProgressAt: iso(nowMs, -42 * 60_000),
@@ -1746,11 +1700,13 @@ function incidentConversation(nowMs: number): ConversationDetailReport {
         icon: "git-merge",
         key: "getsentry/payments#77",
         label: "payments",
+        url: "https://github.com/getsentry/payments/pull/77",
       },
       {
         icon: "circle-x",
         key: "getsentry/payments#61",
         label: "payments",
+        url: "https://github.com/getsentry/payments/issues/61",
       },
     ],
     annotations: [
@@ -2128,13 +2084,12 @@ const SENTAUR_ISSUE_TITLES = [
 
 /**
  * A Conversation shaped like a live triage row: a long title, a long
- * Brief summary, pull requests from two repos, Linear issues with and
+ * summary, pull requests from two repos, Linear issues with and
  * without titles, a running outcome and Threads. Its Inbox row shows one
  * cap across every kind of linked work.
  */
 function sentaurConversation(nowMs: number): ConversationDetailReport {
   const startedAt = iso(nowMs, -26 * 60 * 60_000);
-  const brief = mockBrief(nowMs, "live");
   return detail(nowMs, {
     conversationId: SENTAUR_CONVERSATION_ID,
     displayTitle: "Triage Sentaur GoCD deployment failures",
@@ -2147,21 +2102,8 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
     // The viewer takes part, so the row has its pin and archive actions.
     isParticipant: true,
     actorIdentity: actor("michael@sentry.io", "Michael Hart", "michael"),
-    brief: {
-      ...brief,
-      content: {
-        ...brief.content,
-        record: { ...brief.content.record, codeChanges: [] },
-        summary:
-          "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
-        intent:
-          "Find why the Sentaur GoCD deploys fail and land the fixes for each stage.",
-        outcome: {
-          status: "in_progress",
-          text: "The canary retry and the soak gate are in review.",
-        },
-      },
-    },
+    summary:
+      "Sentaur deploys failed three times overnight in the canary stage. Two failures came from a lost GoCD agent during the canary, and one came from a soak health check that read a stale metric. The retry change and the soak gate are open for review. The stage template is merged. The old deploy webhook was dropped. Linear has the follow-ups for the agent pool, the alert routing and the runbook, and the Threads are checking the last ten pipeline runs and the agent logs.",
     // Newest first, like saved Annotations. Not a mock repository, so the
     // Code pages keep their rows.
     sidebarAnnotations: [
@@ -2174,7 +2116,6 @@ function sentaurConversation(nowMs: number): ConversationDetailReport {
         label: "sentaur",
         title: "Retry a canary stage once on a lost agent",
         url: "https://github.com/getsentry/sentaur/pull/418",
-        size: { additions: 1204, changedFiles: 12, deletions: 340 },
       },
       ...SENTAUR_PULL_REQUESTS.map(([repo, number, status, title]) => ({
         icon:
@@ -2448,7 +2389,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
         -2.9 * 60 * 60_000,
         DASHBOARD_QA_THREAD_ID,
       ),
-      // QA shows a Thread whose Review item waits on a person.
+      // QA shows a Thread whose Inbox item waits on a person.
       status: "needs_input" as const,
     },
     threadConversation(
@@ -2486,7 +2427,7 @@ function fixtureConversations(nowMs: number): MockConversation[] {
       displayTitle: "Sandbox validation",
       surface: "slack",
       channel: "CQA999",
-      // A root whose Review item waits on a person.
+      // A root whose Inbox item waits on a person.
       status: "needs_input",
     }),
     simpleConversation(nowMs, {
@@ -2538,8 +2479,8 @@ function summaryFromConversation(
         }
       : undefined;
   const {
+    annotations: _annotations,
     authors: _authors,
-    brief: _brief,
     eventHistory: _eventHistory,
     events: _events,
     forkedFromConversationId: _forkedFromConversationId,
@@ -2552,9 +2493,17 @@ function summaryFromConversation(
     sourceTask: _sourceTask,
     ...summary
   } = conversation;
+  // Like the API: the newest Turn lifecycle Event failed.
+  const latestTurn = [...conversation.events]
+    .reverse()
+    .find((event) => event.data.type === "turn_lifecycle");
+  const latestTurnFailed =
+    latestTurn?.data.type === "turn_lifecycle" &&
+    latestTurn.data.state === "failed";
   const summaryWithActivity = {
     ...summary,
     ...(activityPreview ? { activityPreview } : undefined),
+    ...(latestTurnFailed ? { latestTurnFailed: true } : undefined),
   };
   const withViewerState = withMockViewerState(summaryWithActivity);
   return withViewerState.channel &&
@@ -2585,24 +2534,14 @@ function mockThreadPlacement(
 }
 
 /** Group shown mock Threads by where they nest. */
-/** A feed row: the summary plus the short form of its latest Brief. */
+/** A feed row: the summary with its newest files and links. */
 function feedItemFromConversation(
   conversation: MockConversation,
 ): ConversationFeedItem {
-  const summary = {
+  return {
     ...summaryFromConversation(conversation),
     media: mockFeedMedia(conversation),
     links: mockFeedLinks(conversation),
-  };
-  const brief = conversation.brief?.content;
-  if (!brief) return summary;
-  return {
-    ...summary,
-    brief: {
-      intent: brief.intent,
-      status: brief.outcome.status,
-      summary: brief.summary,
-    },
   };
 }
 
@@ -2754,17 +2693,6 @@ function windowBounds(nowMs: number) {
   };
 }
 
-/** Count a completed mock conversation as an answered or done outcome. */
-function addMockOutcome(
-  bucket: ConversationStatsReport["metricDays"][number],
-  summary: ConversationSummaryReport,
-) {
-  if (summary.status !== "done") return;
-  bucket.outcomes = (bucket.outcomes ?? 0) + 1;
-  bucket.outcomeCostUsd =
-    (bucket.outcomeCostUsd ?? 0) + (summary.cumulativeUsage?.cost?.total ?? 0);
-}
-
 /** Add two mock merged code changes, with split conversation cost. */
 function addMockMergedCodeChanges(
   buckets: Map<string, ConversationStatsReport["metricDays"][number]>,
@@ -2780,8 +2708,6 @@ function addMockMergedCodeChanges(
     bucket.mergedCodeChanges = (bucket.mergedCodeChanges ?? 0) + 1;
     bucket.mergedCodeChangeCostUsd =
       (bucket.mergedCodeChangeCostUsd ?? 0) + change.costUsd;
-    bucket.outcomes = (bucket.outcomes ?? 0) + 1;
-    bucket.outcomeCostUsd = (bucket.outcomeCostUsd ?? 0) + change.costUsd;
   }
 }
 
@@ -2802,7 +2728,6 @@ function conversationMetricDays(
     if (!day) continue;
     day.conversations += 1;
     day.durationMs += summary.cumulativeDurationMs;
-    addMockOutcome(day, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) day.tokens = (day.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -2843,7 +2768,6 @@ function conversationMetricHours(
     if (!hour) continue;
     hour.conversations += 1;
     hour.durationMs += summary.cumulativeDurationMs;
-    addMockOutcome(hour, summary);
     const tokens = summaryTokenTotal(summary);
     if (tokens) hour.tokens = (hour.tokens ?? 0) + tokens;
     const inputTokens = summary.cumulativeUsage?.inputTokens;
@@ -4089,11 +4013,11 @@ export function readMockPeopleProfile(
 /** Build mock System operational reports for local dashboard QA. */
 export function readMockPluginReports(): PluginOperationalReportFeed {
   const categories = activityDates(NOW_MS, 90).map((date, index) => {
-    const briefs = index < 60 ? 0 : index % 6 === 0 ? 4 : (index % 3) + 1;
+    const memories = index < 60 ? 0 : index % 6 === 0 ? 4 : (index % 3) + 1;
     return {
       id: date,
       label: date,
-      values: { briefs, costUsd: briefs * 0.0037 },
+      values: { costUsd: memories * 0.0037, memories },
     };
   });
   return {
@@ -4101,28 +4025,25 @@ export function readMockPluginReports(): PluginOperationalReportFeed {
     reports: [
       {
         generatedAt: NOW,
-        pluginName: "briefs",
-        title: "Briefs",
+        pluginName: "memory",
+        title: "Memory",
         metrics: [
-          { label: "briefs · 30d", tone: "good", value: "61" },
-          { label: "conversations with a brief · 30d", value: "38" },
+          { label: "memories stored", tone: "good", value: "148" },
+          { label: "conversations with a memory", value: "93" },
+          { label: "memories · 30d", value: "61" },
           { label: "cost · 30d · retained", value: "$0.23" },
-          {
-            label: "average cost per brief · 30d · retained",
-            value: "$0.0037",
-          },
         ],
         widgets: [
           {
             categories,
-            description: "Stored Brief versions and estimated model cost",
-            id: "briefs-created",
+            description: "Stored memories and estimated model cost",
+            id: "memories-created",
             series: [
-              { key: "briefs", label: "Briefs" },
+              { key: "memories", label: "Memories" },
               { format: "usd", key: "costUsd", label: "Cost" },
             ],
             timeRangeDays: [7, 30, 90],
-            title: "Briefs created",
+            title: "Memories created",
             type: "bar_chart",
           },
         ],
@@ -4163,17 +4084,6 @@ export function readMockPeopleCode(
   }));
   const daysAgo = (days: number) =>
     new Date(NOW_MS - days * 86_400_000).toISOString();
-  // Sizes for some changes. #519 counts no deletions, so that part hides.
-  const sizes: Record<number, CodeChangeSize> = {
-    42: { additions: 86, changedFiles: 4, deletions: 12 },
-    85: { additions: 2, changedFiles: 1, deletions: 2 },
-    519: { additions: 64, changedFiles: 2 },
-    2330: { additions: 412, changedFiles: 9, deletions: 37 },
-    2361: { additions: 1204, changedFiles: 12, deletions: 340 },
-    2384: { additions: 18, changedFiles: 2, deletions: 5 },
-    2391: { additions: 148, changedFiles: 5, deletions: 21 },
-    2440: { additions: 12_480, changedFiles: 87, deletions: 3_210 },
-  };
   const openChange = (
     number: number,
     repository: string,
@@ -4181,7 +4091,6 @@ export function readMockPeopleCode(
     days: number,
     idleHours?: number,
   ) => ({
-    draft: false,
     id: `00000000-0000-4000-8000-${String(number).padStart(12, "0")}`,
     lastActivityAt:
       idleHours === undefined ? undefined : daysAgo(idleHours / 24),
@@ -4189,7 +4098,6 @@ export function readMockPeopleCode(
     openedAt: daysAgo(days),
     provider: "github",
     repository,
-    ...(sizes[number] ? { size: sizes[number] } : undefined),
     state: "open" as const,
     title,
     url: `https://github.com/${repository}/pull/${number}`,
@@ -4206,9 +4114,28 @@ export function readMockPeopleCode(
       ? { mergedAt: daysAgo(done.merged), state: "merged" as const }
       : { closedAt: daysAgo(done.closed), state: "closed" as const }),
   });
+  // Two changes from one Conversation and two from one Automation, so
+  // Code · Mine shows a stack of each.
+  const checkout = {
+    stack: {
+      id: ACTIVE_CONVERSATION_ID,
+      kind: "conversation" as const,
+      title: "Investigate checkout latency",
+    },
+  };
+  const releaseTrain = {
+    stack: {
+      id: "scheduled-3",
+      kind: "automation" as const,
+      title: "Release train",
+    },
+  };
   const openChanges = [
     openChange(2440, "getsentry/junior", "Show your week on the home page", 0),
-    openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
+    {
+      ...openChange(42, "getsentry/payments", "Reduce checkout latency", 3, 20),
+      ...checkout,
+    },
     openChange(
       2391,
       "getsentry/junior",
@@ -4216,13 +4143,22 @@ export function readMockPeopleCode(
       6,
       120,
     ),
-    openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
+    {
+      ...openChange(88, "getsentry/sentry-mcp", "Bump pi-agent-core", 12, 264),
+      ...releaseTrain,
+    },
     openChange(2402, "getsentry/junior", "Cache plugin manifests", 1, 0.3),
     openChange(512, "getsentry/sentry-docs", "Document Inbox", 1, 26),
     openChange(2419, "getsentry/junior", "Trim Slack thread context", 2, 36),
-    openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+    {
+      ...openChange(97, "getsentry/sentry-mcp", "Add trace search tool", 4, 3),
+      ...releaseTrain,
+    },
     openChange(2377, "getsentry/junior", "Split sandbox lifecycle", 5, 96),
-    openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+    {
+      ...openChange(61, "getsentry/payments", "Drop legacy refund path", 8, 30),
+      ...checkout,
+    },
     // Recorded before code changes stored titles.
     {
       ...openChange(

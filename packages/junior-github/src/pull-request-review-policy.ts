@@ -2,7 +2,6 @@
  * Deterministic pull request review policy enforced before credential grant.
  */
 import { EgressPolicyDenied } from "@sentry/junior-plugin-api";
-import { isRecord } from "./credential-support.js";
 
 /** Deny APPROVE while allowing change requests, comments, and dismissals. */
 export function assertGitHubPullRequestApprovalDenied(input: {
@@ -43,7 +42,7 @@ export function assertGitHubPullRequestApprovalDenied(input: {
       "GitHub pull request review requests must use JSON bodies so the no-approve policy can be enforced.",
     );
   }
-  if (!isRecord(body)) {
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
     throw new EgressPolicyDenied(
       "GitHub pull request review requests must use JSON object bodies so the no-approve policy can be enforced.",
     );

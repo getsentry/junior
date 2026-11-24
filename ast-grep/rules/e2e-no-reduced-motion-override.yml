@@ -1,0 +1,11 @@
+id: e2e-no-reduced-motion-override
+language: TypeScript
+severity: error
+message: "Dashboard e2e runs with reduced motion from packages/junior-dashboard/playwright.config.ts. Do not change reducedMotion in a spec. E2E does not test motion; visual QA covers it."
+files:
+  - packages/junior-dashboard/e2e/**/*.ts
+rule:
+  kind: pair
+  has:
+    field: key
+    regex: ^reducedMotion$

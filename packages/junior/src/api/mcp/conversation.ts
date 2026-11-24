@@ -20,8 +20,12 @@ export const mcpConversationSchema = z
   .object({
     conversationId: z.string(),
     title: z.string(),
+    summary: z
+      .string()
+      .optional()
+      .describe("What was asked and what happened, as of the last Turn."),
     status: conversationReportStatusSchema.describe(
-      "`needs_input` while it waits on a person: a Review item it added, a sign-in, a failed latest Turn, a `partial` or `blocked` Brief, or an answer its starter has not read. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop.",
+      "`needs_input` while it waits on a person: an Inbox item it added, a sign-in, a failed latest Turn, a `partial` or `blocked` Brief, or an answer its starter has not read. `working` while a Turn runs or waits to start. `done` otherwise, also after a stop.",
     ),
     turnActive: z
       .boolean()
@@ -68,6 +72,7 @@ export function mcpConversation(
   return {
     conversationId: summary.conversationId,
     title: summary.displayTitle,
+    summary: summary.summary,
     status: summary.status,
     turnActive: summary.turnActive,
     treeState: summary.treeState,

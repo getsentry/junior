@@ -14,6 +14,7 @@ import { normalizeIdentityEmail } from "@/chat/identities/identity";
 import {
   clearCachedUser,
   readCachedUserByEmail,
+  readCachedUserByIdentityId,
 } from "@/chat/identities/user-cache";
 import { juniorIdentities, juniorUsers } from "@/db/schema";
 import type { JuniorDatabase } from "@/db/db";
@@ -259,6 +260,18 @@ export async function readIdentityByIdFromSql(
   db: JuniorDatabase,
   identityId: string,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
+  // Webhooks and work owners read the person behind an Identity often, so a
+  // linked Identity reads from the cache.
+  const cached = await readCachedUserByIdentityId(db, identityId);
+  const cachedIdentity = cached?.identities.find(
+    (identity) => identity.id === identityId,
+  );
+  if (cached && cachedIdentity) {
+    return {
+      identity: identityFromRow(cachedIdentity),
+      user: userFromRows(cached.user, cached.identities),
+    };
+  }
   const rows = await db
     .select({
       identity: juniorIdentities,
