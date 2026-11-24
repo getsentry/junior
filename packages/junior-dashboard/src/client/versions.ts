@@ -297,7 +297,8 @@ function useVersionsStream(args: {
         failures = 0;
         retryFailedDetails(client);
       };
-      opened.addEventListener("open", heard);
+      // Not on `open`: a stream that connects and then closes at once, such
+      // as one whose first read fails, must count as a failure.
       opened.addEventListener(VERSIONS_STREAM_KEEPALIVE_EVENT, heard);
       opened.addEventListener("message", (event: MessageEvent<string>) => {
         heard();
