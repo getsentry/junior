@@ -92,7 +92,7 @@ BEGIN
 END;
 $function$;--> statement-breakpoint
 CREATE TRIGGER "junior_inbox_items_legacy_subject" BEFORE INSERT OR UPDATE ON "junior_inbox_items" FOR EACH ROW WHEN (NEW."subject_kind" IS NULL) EXECUTE FUNCTION "junior_inbox_items_legacy_subject"();--> statement-breakpoint
--- junior:bounded-backfill: every row needs its subject before 0173 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once. The same write gives the evidence links of open items the stored form.
+-- junior:bounded-backfill: every row needs its subject before 0174 sets NOT NULL, so the update runs once over the whole Inbox item table. That table holds only asks and notices for people, and the update writes each row once. The same write gives the evidence links of open items the stored form.
 UPDATE "junior_inbox_items" SET "subject_kind" = NULL;--> statement-breakpoint
 -- junior:bounded-backfill: before the unique open subject index below, the older of two open items that now share a subject closes. It reads only the open items and closes the few duplicates, such as the review and merge asks of one pull request.
 UPDATE "junior_inbox_items" AS "item" SET "status" = 'dismissed', "closed_at" = now(), "close_reason" = 'A newer item asks about the same subject.', "updated_at" = now() WHERE "item"."status" = 'open' AND EXISTS (SELECT 1 FROM "junior_inbox_items" AS "newer" WHERE "newer"."status" = 'open' AND coalesce("newer"."provider", '') = coalesce("item"."provider", '') AND coalesce("newer"."provider_tenant_id", '') = coalesce("item"."provider_tenant_id", '') AND "newer"."subject_kind" = "item"."subject_kind" AND "newer"."subject_id" = "item"."subject_id" AND ("newer"."updated_at", "newer"."id") > ("item"."updated_at", "item"."id"));--> statement-breakpoint
@@ -109,7 +109,7 @@ UPDATE "junior_inbox_item_deliveries" AS "delivery" SET "status" = 'cleared', "u
 -- squawk-ignore require-concurrent-index-creation
 CREATE UNIQUE INDEX "junior_inbox_items_open_subject_uidx" ON "junior_inbox_items" USING btree (coalesce("provider", ''),coalesce("provider_tenant_id", ''),"subject_kind","subject_id") WHERE "junior_inbox_items"."status" = 'open';--> statement-breakpoint
 -- NOT VALID: the backfill gave every row its subject, and the checks still
--- hold for every new write. 0173 validates the NOT NULL checks without a
+-- hold for every new write. 0174 validates the NOT NULL checks without a
 -- lock that blocks reads, then sets NOT NULL.
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_kind_not_null" CHECK ("subject_kind" IS NOT NULL) NOT VALID;--> statement-breakpoint
 ALTER TABLE "junior_inbox_items" ADD CONSTRAINT "junior_inbox_items_subject_id_not_null" CHECK ("subject_id" IS NOT NULL) NOT VALID;--> statement-breakpoint

@@ -168,11 +168,12 @@ export function mergeGitHubObject<
 
 /**
  * Merge a pull request webhook into its entry, and say whether its merge
- * state and checks need a patch. GitHub computes both for one head commit
- * and base branch. After a push or a new base, the cached values are about
- * the old pair, so they turn `pending` until the patch reads them. On the
- * same pair, `mergeable: null` is a missing field: known values stay, and
- * only values that are not known yet turn `pending`. Only an open pull
+ * state and checks need a patch. GitHub computes the merge state for one
+ * head commit and base branch, and checks for the head commit only. After
+ * a push, both turn `pending` until the patch reads them. After a new base,
+ * only the merge state does, and known checks stay. On the same pair,
+ * `mergeable: null` is a missing field: known values stay, and only values
+ * that are not known yet turn `pending`. Only an open pull
  * request shows them, so only an open one gets a patch. Keep this decision
  * here, so a later policy can change it in one place.
  */
@@ -184,9 +185,8 @@ export function mergeGitHubPullRequest(
   if (!fields) return undefined;
   const changed = (before?: string, after?: string) =>
     before !== undefined && after !== undefined && before !== after;
-  const newPair =
-    changed(current?.head?.sha, payload.head?.sha) ||
-    changed(current?.base?.ref, payload.base?.ref);
+  const newHead = changed(current?.head?.sha, payload.head?.sha);
+  const newPair = newHead || changed(current?.base?.ref, payload.base?.ref);
   if (fields.state !== "open") return { fields, patch: false };
   if (!newPair) {
     if (payload.mergeable !== null) return { fields, patch: false };
@@ -196,7 +196,11 @@ export function mergeGitHubPullRequest(
     }
   }
   return {
-    fields: { ...fields, checks: "pending", mergeable: "pending" },
+    fields: {
+      ...fields,
+      checks: newHead ? "pending" : (fields.checks ?? "pending"),
+      mergeable: "pending",
+    },
     patch: true,
   };
 }

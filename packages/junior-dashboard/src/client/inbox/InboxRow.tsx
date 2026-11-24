@@ -21,7 +21,11 @@ import type {
 } from "@sentry/junior/api/schema";
 
 import { Button } from "../components/ui/button";
-import { ContextMenu, ContextMenuTrigger } from "../components/ui/context-menu";
+import {
+  browserMenuOnLinks,
+  ContextMenu,
+  ContextMenuTrigger,
+} from "../components/ui/context-menu";
 import { ConversationStatusText } from "../conversations/ConversationListStatusIcon";
 import {
   ConversationStateIcon,
@@ -333,6 +337,7 @@ function ConversationInboxRow(
       >
         <ContextMenuTrigger
           {...prefetch}
+          {...browserMenuOnLinks}
           className={cn(
             "group relative min-w-0",
             dashboardSurfaceRadiusClass,
@@ -634,6 +639,7 @@ function InboxRowBody(
                   "[-webkit-touch-callout:none]",
                 )}
                 data-inbox-head=""
+                data-row-menu=""
                 // A middle click opens the link in a new tab.
                 onAuxClick={(event) => {
                   if (event.button === 1) props.onOpen?.();

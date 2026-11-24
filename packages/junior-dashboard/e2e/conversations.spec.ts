@@ -1,4 +1,5 @@
 import type { Page } from "@playwright/test";
+import { readClipboard } from "./clipboard";
 import { withRequestedMailbox } from "./harness";
 import { expectRequestBudget } from "./request-budget";
 import { expect, test } from "./test";
@@ -713,7 +714,7 @@ test("inspects and copies a child agent transcript", async ({
   await expect(copy).toBeEnabled();
   await copy.click();
   await expect(drawer.getByRole("button", { name: "Copied" })).toBeVisible();
-  const markdown = await page.evaluate(() => navigator.clipboard.readText());
+  const markdown = await readClipboard(page);
   expect(markdown).toContain("# Advisor review");
   expect(markdown).toContain("Review the dashboard plan before editing.");
   expect(markdown).toContain("Review complete; no blocking issues found.");
@@ -730,8 +731,25 @@ test("inspects and copies a child agent transcript", async ({
   await reply.hover();
   await reply.getByRole("button", { name: "Copy message" }).click();
   await expect(reply.getByRole("button", { name: "Copied" })).toBeVisible();
-  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(
+  expect(await readClipboard(page)).toBe(
     "Review complete; no blocking issues found.",
+  );
+
+  // Its input copies too, and links to itself. Only replies take a rating.
+  const input = drawer
+    .getByRole("article")
+    .filter({ hasText: "Review the dashboard plan before editing." });
+  await input.hover();
+  await expect(input.getByRole("button", { name: "Good reply" })).toHaveCount(
+    0,
+  );
+  await input.getByRole("button", { name: "Copy message" }).click();
+  expect(await readClipboard(page)).toBe(
+    "Review the dashboard plan before editing.",
+  );
+  await input.getByRole("button", { name: "Copy link to message" }).click();
+  expect(await readClipboard(page)).toBe(
+    `${dashboard.baseURL}/conversations/${encodeURIComponent(childConversationId)}?message=${encodeURIComponent(`${childConversationId}:input`)}`,
   );
 
   // The shortcut searches the drawer's transcript, not the page behind it.

@@ -254,6 +254,7 @@ catalogs:
 overrides:
   '@astrojs/compiler-binding-wasm32-wasi>@napi-rs/wasm-runtime': 1.2.0
   '@bruits/satteri-wasm32-wasi>@napi-rs/wasm-runtime': 1.2.0
+  '@slack/types': 3.3.0
   ai: 7.0.153
   astro>vite: 8.0.14
   '@swc/core': 1.15.33
@@ -472,8 +473,8 @@ importers:
         specifier: ^0.34.49
         version: 0.34.49
       '@slack/types':
-        specifier: ^2.21.1
-        version: 2.21.1
+        specifier: 3.3.0
+        version: 3.3.0
       '@slack/web-api':
         specifier: ^7.16.0
         version: 7.16.0
@@ -5401,9 +5402,9 @@ packages:
     resolution: {integrity: sha512-qYy07je71WnEHgRwmw12DlAnZLi5HXmdlI2WUzUK2LH/rYXQpP6uEg462S5CwfE8FoCKUdIigHtYnOOfzZH1lQ==}
     engines: {node: '>= 18', npm: '>= 8.6.0'}
 
-  '@slack/types@2.21.1':
-    resolution: {integrity: sha512-I8vmSjNYWsaxuWPx6dz4yeh0h7vRBWbgAMK14LEmblbZ404BtrPbXs6jDPx4cYgGf8msDGF4A9opLZBu21FViQ==}
-    engines: {node: '>= 12.13.0', npm: '>= 6.12.0'}
+  '@slack/types@3.3.0':
+    resolution: {integrity: sha512-11r2kM9Zy/UlaV6OwPibZueVlyNJ5xtHEHK/iYDnPLyhQcxRtsifNAwNhJ1Lm0nszW4jrWCHThXCHCNJC/hvqg==}
+    engines: {node: '>= 20', npm: '>=9.6.4'}
 
   '@slack/web-api@7.16.0':
     resolution: {integrity: sha512-68SAV77uuGKuhyyaRytX8UijVnqSLsTSKslGXw17cjQYXn+jtNl7gbaEjHgC5x2rhCuFdahBrEC2VCLppbzReg==}
@@ -15144,7 +15145,7 @@ snapshots:
       '@sentry/node': 11.16.0
       '@sentry/server-utils': 11.16.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       '@sinclair/typebox': 0.34.52
-      '@slack/types': 2.21.1
+      '@slack/types': 3.3.0
       '@slack/web-api': 7.16.0
       '@vercel/blob': 2.8.0
       '@vercel/functions': 3.6.0
@@ -15259,7 +15260,7 @@ snapshots:
       '@sentry/node': 11.16.0
       '@sentry/server-utils': 11.16.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       '@sinclair/typebox': 0.34.52
-      '@slack/types': 2.21.1
+      '@slack/types': 3.3.0
       '@slack/web-api': 7.16.0
       '@vercel/blob': 2.8.0
       '@vercel/functions': 3.6.0
@@ -15374,7 +15375,7 @@ snapshots:
       '@sentry/node': 11.16.0
       '@sentry/server-utils': 11.16.0(patch_hash=6b34913bf18f6a0f54dade6dd04a989a1db87476f968561666d084d578bbaaa4)
       '@sinclair/typebox': 0.34.52
-      '@slack/types': 2.21.1
+      '@slack/types': 3.3.0
       '@slack/web-api': 7.16.0
       '@vercel/blob': 2.8.0
       '@vercel/functions': 3.6.0
@@ -15666,12 +15667,12 @@ snapshots:
       - supports-color
       - utf-8-validate
 
-  '@slack/types@2.21.1': {}
+  '@slack/types@3.3.0': {}
 
   '@slack/web-api@7.16.0':
     dependencies:
       '@slack/logger': 4.0.1
-      '@slack/types': 2.21.1
+      '@slack/types': 3.3.0
       '@types/node': 25.9.1
       '@types/retry': 0.12.0
       axios: 1.16.1

@@ -3,7 +3,6 @@ import { Link } from "react-router";
 import type { InboxItemPayload } from "@sentry/junior/api/schema";
 
 import { DetailsPanel } from "../components/DetailsPanel";
-import { StatusChip } from "../components/StatusChip";
 import { DetailsCard } from "../conversations/DetailsList";
 import { conversationPath } from "../conversations/conversationRoutes";
 import {
@@ -78,7 +77,6 @@ export function InboxItemDetails(props: {
   ]);
   const addedByTitle = ownerConversationId ? titles[0] : "Automation";
   const linkedTitles = ownerConversationId ? titles.slice(1) : titles;
-  const assigned = item.assignees.length > 0 || item.assignedToEveryone;
   return (
     <DetailsPanel
       label="Inbox item details"
@@ -96,15 +94,9 @@ export function InboxItemDetails(props: {
           </InboxItemObjects>
         </div>
         <DetailsCard title="Assignees">
-          {assigned ? (
-            <span className="text-sm text-dashboard-text">
-              <InboxItemAssignees item={item} />
-            </span>
-          ) : (
-            <StatusChip size="compact" tone="warning">
-              Unassigned
-            </StatusChip>
-          )}
+          <span className="text-sm text-dashboard-text">
+            <InboxItemAssignees item={item} />
+          </span>
         </DetailsCard>
         <DetailsCard>
           <dl className="m-0 grid grid-cols-[auto_minmax(0,1fr)] gap-x-4 gap-y-1.5">

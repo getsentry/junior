@@ -21,6 +21,7 @@ import { requireViewer } from "@/api/viewer";
 import { getDb, getSqlExecutor } from "@/chat/db";
 import {
   canActOnInboxItem,
+  isInboxItemForEveryone,
   isOnlyAssignee,
   itemNeedsUser,
   inboxItemReaderForUser,
@@ -237,7 +238,7 @@ function inboxItemPayload(
   const question = inboxItemQuestion(item.request);
   return {
     ...(root ? { addedByLabel: root.label } : undefined),
-    assignedToEveryone: item.assignedToEveryone,
+    assignedToEveryone: isInboxItemForEveryone(item),
     assignees: item.assignees,
     body: item.body,
     canAct: canActOnInboxItem(item, viewer.id),

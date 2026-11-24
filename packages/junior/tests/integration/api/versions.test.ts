@@ -19,10 +19,17 @@ import {
   getConversationEventStore,
   getConversationStore,
   getDb,
+  getSqlExecutor,
 } from "@/chat/db";
+import { setConversationArchive } from "@/api/conversations/archive";
+import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import {
+  closeInboxItem,
+  insertInboxItem,
+  takeInboxItem,
+} from "@/chat/inbox-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   appendVisibleHistory,
@@ -141,7 +148,9 @@ describe("versions API", () => {
           statements: 1,
           serialRounds: 1,
         }),
-      2_500,
+      // About 720. A feed token that works out each row's status again
+      // costs about 1,330.
+      1_000,
     );
     expect(await read()).toEqual(first);
     expect(await expectPlanCost(() => detailVersion(), 1_500)).toBe(
@@ -156,21 +165,30 @@ describe("versions API", () => {
     await appendVisibleHistory(OTHER);
     expect(await read()).toEqual(first);
 
-    // Starting a child agent writes Events to the root. The feed row shows
-    // none of them, so only the open Conversation's tree token moves.
+    // Starting a child agent adds a tree member and writes Events to the
+    // root. The feed token holds the stored version of each idle member, so
+    // it moves with the tree token.
     await createChild({
       childConversationId: `${OWN}:child`,
       parentConversationId: OWN,
     });
     const withChild = await read();
-    expect(changed(first, withChild)).toEqual(["conversation"]);
+    expect(changed(first, withChild)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+    expect(feedMoved(first, withChild)).toEqual(["status", "threads"]);
     expect(await detailVersion()).toBe(withChild.conversation);
 
-    // A child agent's Turn writes only its own row. The feed row shows none
-    // of it, so only the open Conversation's tree token moves.
+    // A child agent's Turn writes only its own row, so the feed token moves
+    // only its tree input.
     await childAgentTurn(`${OWN}:child`, 20);
     const withChildTurn = await read();
-    expect(changed(withChild, withChildTurn)).toEqual(["conversation"]);
+    expect(changed(withChild, withChildTurn)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+    expect(feedMoved(withChild, withChildTurn)).toEqual(["threads"]);
     expect(await detailVersion()).toBe(withChildTurn.conversation);
 
     // Input that waits in the mailbox of an idle Conversation is part of its
@@ -281,7 +299,8 @@ describe("versions API", () => {
     ]);
 
     // A Task Turn runs as the person whose Turn started it, so the cost of
-    // the viewer's own Task moves spend without moving the feed row.
+    // the viewer's own Task moves spend. It writes the Task's row, so the
+    // feed moves only its tree input.
     await getConversationStore().recordExecution({
       actorIdentityId,
       conversationId: `${OWN}:child`,
@@ -293,7 +312,12 @@ describe("versions API", () => {
       updatedAtMs: nowMs,
     });
     const withTaskCost = await read();
-    expect(changed(withTurn, withTaskCost)).toEqual(["conversation", "spend"]);
+    expect(changed(withTurn, withTaskCost)).toEqual([
+      "conversation",
+      "conversations",
+      "spend",
+    ]);
+    expect(feedMoved(withTurn, withTaskCost)).toEqual(["threads"]);
 
     // A checkpoint rewrites every metric row of its Turn. One that adds
     // time and tokens but no cost does not move spend.
@@ -311,11 +335,14 @@ describe("versions API", () => {
       updatedAtMs: nowMs + 1,
     });
     const withTaskCheckpoint = await read();
-    expect(changed(withTaskCost, withTaskCheckpoint)).toEqual(["conversation"]);
+    expect(changed(withTaskCost, withTaskCheckpoint)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
 
-    // Each Event moves the root's last activity. An idle row shows that as
-    // an age in whole minutes, so the feed moves only when the minute
-    // changes.
+    // Each Event writes the root's row. An idle row's token holds its
+    // stored version, so each one moves the status input. Its age shows in
+    // whole minutes, so the activity input moves when the minute changes.
     const rootToolEvent = async (atMs: number) => {
       await getConversationEventStore().append(OWN, [
         {
@@ -330,13 +357,17 @@ describe("versions API", () => {
       return await read();
     };
     const withRootTool = await rootToolEvent(nowMs + 30_000);
-    expect(changed(withTaskCheckpoint, withRootTool)).toEqual(["conversation"]);
+    expect(changed(withTaskCheckpoint, withRootTool)).toEqual([
+      "conversation",
+      "conversations",
+    ]);
+    expect(feedMoved(withTaskCheckpoint, withRootTool)).toEqual(["status"]);
     const nextMinute = await rootToolEvent(nowMs + 60_000);
     expect(changed(withRootTool, nextMinute)).toEqual([
       "conversation",
       "conversations",
     ]);
-    expect(feedMoved(withRootTool, nextMinute)).toEqual(["activity"]);
+    expect(feedMoved(withRootTool, nextMinute)).toEqual(["activity", "status"]);
 
     // A running row shows that it runs in place of its age, so the Events
     // of a live Turn do not move the feed. Its end moves the status.
@@ -395,8 +426,23 @@ describe("versions API", () => {
     expect(feedMoved(withThread, threadRunning)).toEqual(["threads"]);
     const threadEvent = await threadTurn("running", nowMs + 240_000);
     expect(changed(threadRunning, threadEvent)).toEqual(["conversation"]);
+    // A live Turn can name its Thread, and the Thread row shows the name.
+    await setConversationTitle(getSqlExecutor(), threadId, "Deploy check");
+    const threadTitled = await read();
+    expect(feedMoved(threadEvent, threadTitled)).toEqual(["threads"]);
     const threadEnded = await threadTurn("idle", nowMs + 240_000);
-    expect(feedMoved(threadEvent, threadEnded)).toEqual(["threads"]);
+    expect(feedMoved(threadTitled, threadEnded)).toEqual(["threads"]);
+    // An archive hides a running Thread from the feed.
+    const threadRestarted = await threadTurn("running", nowMs + 250_000);
+    expect(
+      await setConversationArchive({
+        applyToChildren: false,
+        archived: true,
+        conversationId: threadId,
+        lastSeenAt: new Date(nowMs + 250_000).toISOString(),
+      }),
+    ).toMatchObject({ status: "archived" });
+    expect(feedMoved(threadRestarted, await read())).toEqual(["threads"]);
 
     // A Task has no row, but its work moves the root's tree state.
     const taskTurn = async (status: "idle" | "running", atMs: number) => {
@@ -413,8 +459,49 @@ describe("versions API", () => {
     };
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
+    // A take changes whom a running Task's item for Everyone waits on.
+    const everyone = await insertInboxItem(getDb(), {
+      owner: { id: `${OWN}:child`, kind: "conversation" },
+      assignedToEveryone: true,
+      assigneeUserIds: [],
+      body: "Anyone may approve.",
+      conversationIds: [`${OWN}:child`],
+      subject: { id: "versions:everyone", kind: "question" },
+      kind: "action",
+      nowMs: nowMs + 300_000,
+      request: {
+        fields: [
+          {
+            id: "decision",
+            kind: "choice",
+            label: "Decision",
+            options: [{ label: "Approve" }, { label: "Reject" }],
+          },
+        ],
+        question: "Approve the task?",
+      },
+      title: "Approve the task",
+      visibility: "public",
+    });
+    const withEveryone = await read();
+    const bob = await resolveViewerUser("bob@example.com");
+    expect(
+      await takeInboxItem(getDb(), {
+        id: everyone!.id,
+        nowMs: nowMs + 301_000,
+        userId: bob!.id,
+      }),
+    ).toBe(true);
+    const taken = await read();
+    expect(feedMoved(withEveryone, taken)).toEqual(["threads"]);
+    await closeInboxItem(getDb(), {
+      id: everyone!.id,
+      nowMs: nowMs + 302_000,
+      status: "done",
+    });
+    const taskItemClosed = await read();
     const taskEnded = await taskTurn("idle", nowMs + 300_000);
-    expect(feedMoved(taskRunning, taskEnded)).toEqual(["threads"]);
+    expect(feedMoved(taskItemClosed, taskEnded)).toEqual(["threads"]);
 
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");

@@ -15,145 +15,18 @@ import {
   stubGitHubApp,
   viewerApi,
 } from "../../fixtures/github-objects";
+import {
+  cardNode,
+  checkRuns,
+  patchQueries,
+  pullRequest,
+  stubGraphql,
+  T0,
+} from "../../fixtures/github-pull-request-graphql";
 import { mswServer } from "../../msw/server";
 
 const DASHBOARD = "https://junior.example.com";
 const BOT_EMAIL = "41898282+junior-test[bot]@users.noreply.github.com";
-const T0 = "2026-01-02T03:00:00Z";
-
-function pullRequest(number: number, overrides: Record<string, unknown> = {}) {
-  return {
-    additions: 120,
-    base: { ref: "main" },
-    body: "Cache GitHub objects.",
-    changed_files: 4,
-    closed_at: null,
-    created_at: "2026-01-01T00:00:00Z",
-    deletions: 8,
-    draft: false,
-    head: { ref: "feat/object-cache", sha: "aaa111" },
-    html_url: `${GITHUB_REPO}/pull/${number}`,
-    id: number * 1000,
-    mergeable: true,
-    merged: false,
-    merged_at: null,
-    node_id: `PR_${number}`,
-    number,
-    state: "open",
-    title: "Cache GitHub objects",
-    updated_at: T0,
-    user: { login: "byk" },
-    ...overrides,
-  };
-}
-
-/** A `commits` result with the check run counts of the head commit. */
-function checkRuns(counts: Record<string, number>) {
-  return {
-    nodes: [
-      {
-        commit: {
-          statusCheckRollup: {
-            contexts: {
-              checkRunCountsByState: Object.entries(counts).map(
-                ([state, count]) => ({ count, state }),
-              ),
-            },
-          },
-        },
-      },
-    ],
-  };
-}
-
-/** Card and patch queries name pull requests by repository and number. */
-interface GraphqlQuery {
-  numbers: number[];
-  operationName: string;
-}
-
-/**
- * Answer GraphQL queries and keep them. Each alias of a query gets the pull
- * request of its number that the answer has. A card query answers from
- * `cards`, or with the HTTP status that `cards` returns for the numbers
- * that it asks for. A patch query answers from the next list of `patches`.
- */
-function stubGraphql(answers: {
-  cards?: unknown[] | ((numbers: number[]) => unknown[] | number);
-  patches?: unknown[][];
-}): GraphqlQuery[] {
-  const queries: GraphqlQuery[] = [];
-  mswServer.use(
-    http.post("https://api.github.com/graphql", async ({ request }) => {
-      const { operationName, variables } = (await request.json()) as {
-        operationName: string;
-        variables: Record<string, unknown>;
-      };
-      const numbers = Object.entries(variables).flatMap(([name, value]) =>
-        name.startsWith("number") ? [Number(value)] : [],
-      );
-      queries.push({ numbers, operationName });
-      const cards =
-        operationName === "PullRequestHeadFacts"
-          ? (answers.patches?.shift() ?? [])
-          : typeof answers.cards === "function"
-            ? answers.cards(numbers)
-            : (answers.cards ?? []);
-      if (typeof cards === "number") {
-        return HttpResponse.json(
-          { message: "Server Error" },
-          { status: cards },
-        );
-      }
-      const byNumber = new Map(
-        cards.map((node) => [(node as { number: number }).number, node]),
-      );
-      return HttpResponse.json({
-        data: Object.fromEntries(
-          numbers.map((number, index) => [
-            `p${index}`,
-            byNumber.has(number) ? { pullRequest: byNumber.get(number) } : null,
-          ]),
-        ),
-      });
-    }),
-  );
-  return queries;
-}
-
-/**
- * The merge state and check patch queries. A page read also asks for the
- * card of an entry with no review decision, such as a REST read.
- */
-function patchQueries(queries: GraphqlQuery[]): GraphqlQuery[] {
-  return queries.filter(
-    (query) => query.operationName === "PullRequestHeadFacts",
-  );
-}
-
-/** A card query result for one open pull request. */
-function cardNode(number: number) {
-  return {
-    additions: number,
-    author: { login: "junior-test[bot]" },
-    baseRefName: "main",
-    body: "Cache GitHub objects.",
-    changedFiles: 2,
-    commits: checkRuns({ SUCCESS: 2 }),
-    deletions: 1,
-    headRefName: `feat/${number}`,
-    headRefOid: "ddd444",
-    isDraft: number === 35,
-    mergeable: "MERGEABLE",
-    merged: false,
-    number,
-    reviewRequests: { nodes: [] },
-    state: "OPEN",
-    title: `Renamed ${number}`,
-    updatedAt: "2026-01-02T06:00:00Z",
-    url: `${GITHUB_REPO}/pull/${number}`,
-  };
-}
 
 describe("GitHub pull request cache refresh", () => {
   let previousDashboard: ReturnType<typeof setDashboardConversationLinkOptions>;
@@ -542,7 +415,23 @@ describe("GitHub pull request cache refresh", () => {
     expect(reads).toEqual(["pulls/34", "pulls/34"]);
   });
 
-  it("reads a pull request again soon after its patch finds no node", async () => {
+  it.each([
+    // The patch query answers with no node for #34.
+    ["finds no node", []],
+    // A push that GitHub has and no webhook brought yet.
+    [
+      "reads another head commit",
+      [
+        {
+          commits: checkRuns({ SUCCESS: 1 }),
+          headRefOid: "ccc333",
+          mergeable: "MERGEABLE",
+          number: 34,
+          updatedAt: "2026-01-02T03:00:11Z",
+        },
+      ],
+    ],
+  ])("reads a pull request again soon after its patch %s", async (_, patch) => {
     stubGitHubApp();
     const reads: string[] = [];
     mswServer.use(
@@ -556,8 +445,7 @@ describe("GitHub pull request cache refresh", () => {
         );
       }),
     );
-    // The patch query answers with no node for #34.
-    const queries = stubGraphql({ patches: [[]] });
+    const queries = stubGraphql({ patches: [patch] });
     const app = await createGitHubApp();
     setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
     await linkGitHubMember();
@@ -615,16 +503,18 @@ describe("GitHub pull request cache refresh", () => {
     vi.useFakeTimers({ toFake: ["Date"] });
     const start = Date.parse(T0);
     vi.setSystemTime(start);
-    await sendGitHubWebhook(app, "pull_request", {
-      action: "opened",
-      pull_request: pullRequest(34, {
-        body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
-        user: { login: "junior-test[bot]" },
-      }),
-    });
+    for (const number of [34, 35]) {
+      await sendGitHubWebhook(app, "pull_request", {
+        action: "opened",
+        pull_request: pullRequest(number, {
+          body: "Cache GitHub objects.\n\n<!-- junior-session-footer:start -->\nJunior\n<!-- junior-session-footer:end -->",
+          user: { login: "junior-test[bot]" },
+        }),
+      });
+    }
 
-    // A day later, the open pull request is due for its reconcile, and a
-    // finished check suite adds a patch.
+    // A day later, the open pull requests are due for their reconcile, and
+    // a finished check suite adds a patch for each.
     vi.setSystemTime(start + 24.5 * 60 * 60_000);
     await sendGitHubWebhook(app, "check_suite", {
       action: "completed",
@@ -633,12 +523,13 @@ describe("GitHub pull request cache refresh", () => {
         head_branch: "feat/object-cache",
         head_sha: "aaa111",
         id: 7002,
-        pull_requests: [{ number: 34 }],
+        pull_requests: [{ number: 34 }, { number: 35 }],
         status: "completed",
       },
     });
     vi.setSystemTime(Date.now() + 60_000);
     await runTestHeartbeat(queue, Date.now());
+    // The failed patch query does not split. Its patches wait.
     expect(operations).toEqual([
       "PullRequestHeadFacts",
       "PullRequestLifecycles",
@@ -877,6 +768,59 @@ describe("GitHub pull request cache refresh", () => {
       checks: { failed: 0, passed: 2, pending: 0 },
       mergeable: true,
       review: "approved",
+    });
+  });
+  it("keeps known checks and patches the merge state after a base retarget", async () => {
+    stubGitHubApp();
+    const queries = stubGraphql({
+      cards: [cardNode(34)],
+      patches: [
+        [
+          {
+            commits: checkRuns({ SUCCESS: 2 }),
+            headRefOid: "ddd444",
+            mergeable: "CONFLICTING",
+            number: 34,
+            updatedAt: "2026-01-02T06:00:10Z",
+          },
+        ],
+      ],
+    });
+    const app = await createGitHubApp();
+    setDashboardConversationLinkOptions({ baseURL: DASHBOARD });
+    await linkGitHubMember();
+    const read = await viewerApi("alice@example.com");
+    const url = `${GITHUB_REPO}/pull/34`;
+    const queue = createConversationWorkQueueTestAdapter();
+    vi.useFakeTimers({ toFake: ["Date"] });
+    const start = Date.parse("2026-01-02T06:00:00Z");
+    vi.setSystemTime(start);
+    await read(url);
+
+    // A new base changes the merge state of the same head, not its checks.
+    vi.setSystemTime(start + 10_000);
+    await sendGitHubWebhook(app, "pull_request", {
+      action: "edited",
+      pull_request: pullRequest(34, {
+        base: { ref: "release" },
+        head: { ref: "feat/34", sha: "ddd444" },
+        mergeable: null,
+        updated_at: new Date(start + 10_000).toISOString(),
+      }),
+    });
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: "pending",
+    });
+    vi.setSystemTime(start + 60_000);
+    await runTestHeartbeat(queue, Date.now());
+    expect(queries.map((query) => query.operationName)).toEqual([
+      "PullRequestCards",
+      "PullRequestHeadFacts",
+    ]);
+    expect((await read(url)).objects.get(url)?.facts).toMatchObject({
+      checks: { failed: 0, passed: 2, pending: 0 },
+      mergeable: false,
     });
   });
   it("asks GitHub again soon after the last patch attempt finds the merge state still computing", async () => {
