@@ -96,7 +96,8 @@ Canonical words for Junior code and docs. One concept, one word.
   `junior admin`. Plugins use it for restricted setup. No plugin admin lists.
 - **Service account**: a provider account Junior uses for one plugin, allowed
   by `accounts.service-account` and connected by an Admin (dashboard or
-  `junior service-account connect`). It serves Actors with no own connection;
+  `junior service-account connect`). It serves Actors with no own connection,
+  for the MCP tools or `egress.fetch` operations that it lists;
   `accounts.user-oauth: false` makes it the only path.
 - **Automation**: a saved instruction run later, with a creator, trigger,
   instruction, and ordered outcomes.
