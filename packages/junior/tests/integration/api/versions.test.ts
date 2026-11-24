@@ -25,7 +25,11 @@ import { setConversationArchive } from "@/api/conversations/archive";
 import { setConversationTitle } from "@/chat/conversations/sql/title";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
 import { juniorConversationEvents, juniorConversations } from "@/db/schema";
-import { closeInboxItem, insertInboxItem } from "@/chat/inbox-items/store";
+import {
+  closeInboxItem,
+  insertInboxItem,
+  takeInboxItem,
+} from "@/chat/inbox-items/store";
 import { appendInboundMessage } from "@/chat/task-execution/store";
 import {
   appendVisibleHistory,
@@ -455,8 +459,49 @@ describe("versions API", () => {
     };
     const taskRunning = await taskTurn("running", nowMs + 300_000);
     expect(feedMoved(threadEnded, taskRunning)).toEqual(["threads"]);
+    // A take changes whom a running Task's item for Everyone waits on.
+    const everyone = await insertInboxItem(getDb(), {
+      owner: { id: `${OWN}:child`, kind: "conversation" },
+      assignedToEveryone: true,
+      assigneeUserIds: [],
+      body: "Anyone may approve.",
+      conversationIds: [`${OWN}:child`],
+      dedupeKey: "versions:everyone",
+      kind: "action",
+      nowMs: nowMs + 300_000,
+      request: {
+        fields: [
+          {
+            id: "decision",
+            kind: "choice",
+            label: "Decision",
+            options: [{ label: "Approve" }, { label: "Reject" }],
+          },
+        ],
+        question: "Approve the task?",
+      },
+      title: "Approve the task",
+      visibility: "public",
+    });
+    const withEveryone = await read();
+    const bob = await resolveViewerUser("bob@example.com");
+    expect(
+      await takeInboxItem(getDb(), {
+        id: everyone!.id,
+        nowMs: nowMs + 301_000,
+        userId: bob!.id,
+      }),
+    ).toBe(true);
+    const taken = await read();
+    expect(feedMoved(withEveryone, taken)).toEqual(["threads"]);
+    await closeInboxItem(getDb(), {
+      id: everyone!.id,
+      nowMs: nowMs + 302_000,
+      status: "done",
+    });
+    const taskItemClosed = await read();
     const taskEnded = await taskTurn("idle", nowMs + 300_000);
-    expect(feedMoved(taskRunning, taskEnded)).toEqual(["threads"]);
+    expect(feedMoved(taskItemClosed, taskEnded)).toEqual(["threads"]);
 
     // A reply changes the feed row but costs nothing, so spend stays.
     await appendVisibleHistory(OWN, "Root answer");

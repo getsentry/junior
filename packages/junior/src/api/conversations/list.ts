@@ -336,7 +336,7 @@ const feedAnnotated = alias(juniorConversations, "feed_annotated");
  * its Conversation, so the token holds that version for each idle row and
  * tree member. Every Event of a live Turn moves it too, and a running row
  * shows its running state, so a running Conversation adds only that it runs
- * and whether an Inbox item that it added waits. The end of the Turn writes
+ * and the open Inbox items that it added. The end of the Turn writes
  * the row. Watches and Timers live outside SQL. A Turn makes or cancels one,
  * and the end of that Turn moves the version, so a read after it sees the
  * change. A Watch that expires on its own moves nothing, so its row shows
@@ -354,15 +354,17 @@ export function conversationFeedVersionQuery(
 ) {
   const pin = juniorConversationParticipants;
   const conversationId = juniorConversations.conversationId;
-  const ownedItemWaits = (conversation: AnyPgColumn) =>
-    sql`exists (select 1 from ${juniorInboxItems} where ${and(
+  // The open Inbox items that a running Conversation added. A take or a
+  // reassign writes `updated_at`, and it changes whom the item waits on.
+  const ownedItemsVersion = (conversation: AnyPgColumn) =>
+    sql`(select concat(count(*), '/', max(${juniorInboxItems.updatedAt})) from ${juniorInboxItems} where ${and(
       inboxItemOwnedByConversation(conversation),
       inboxItemNeedsInput(),
     )})`;
   const rowState = (row: typeof juniorConversations) =>
     sql`case
       when ${conversationIsActiveSql(row)}
-      then concat('active:', ${ownedItemWaits(row.conversationId)})
+      then concat('active:', ${ownedItemsVersion(row.conversationId)})
       else ${row.detailVersion}::text
     end`;
   // The tree's members, and the state of each one but the root, which its
@@ -377,7 +379,9 @@ export function conversationFeedVersionQuery(
         count(*),
         sum(${feedTree.detailVersion}) filter (where ${child} and not ${active}),
         count(*) filter (where ${child} and ${active}),
-        count(*) filter (where ${child} and ${active} and ${ownedItemWaits(feedTree.conversationId)}),
+        md5(string_agg(${ownedItemsVersion(feedTree.conversationId)}, ',' order by ${feedTree.conversationId}) filter (
+          where ${child} and ${active}
+        )),
         count(*) filter (where ${child} and ${active} and ${feedTree.archivedAt} is not null),
         md5(string_agg(${feedTree.title}, ',' order by ${feedTree.conversationId}) filter (
           where ${child} and ${active} and ${feedTree.kind} = 'thread'
