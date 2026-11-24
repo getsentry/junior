@@ -1,5 +1,6 @@
 // The indent before the marker can hold block quote markers: `> - item`.
-const LIST_ITEM = /^((?:\s*>)*\s*)(?:([-*+])|(\d{1,9})([.)])) (.*)$/;
+// A bare marker, such as `-` or `1.`, is an empty item.
+const LIST_ITEM = /^((?:\s*>)*\s*)(?:([-*+])|(\d{1,9})([.)]))(?: (.*))?$/;
 
 /** What Enter at the end of a list item does. */
 export type ListEnter = { kind: "continue"; marker: string } | { kind: "end" };
@@ -18,7 +19,7 @@ export function listEnter(
   const match = LIST_ITEM.exec(line);
   if (!match) return undefined;
   const [, indent, bullet, number, delimiter, content] = match;
-  if (!content!.trim()) return { kind: "end" };
+  if (!content?.trim()) return { kind: "end" };
   const marker = bullet ?? `${(rendered ?? Number(number)) + 1}${delimiter}`;
   return { kind: "continue", marker: `${indent}${marker} ` };
 }

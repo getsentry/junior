@@ -47,6 +47,14 @@ it("ends a list on an item with only its marker", () => {
   expect(listEnter("2. ")).toEqual({ kind: "end" });
   expect(listEnter("- ")).toEqual({ kind: "end" });
   expect(listEnter("  -   ")).toEqual({ kind: "end" });
+  // A bare marker is an empty item too.
+  expect(parseMarkdownLines(["-", "1."]).map((line) => line.kind)).toEqual([
+    "bullet",
+    "ordered",
+  ]);
+  expect(listEnter("-")).toEqual({ kind: "end" });
+  expect(listEnter("1.")).toEqual({ kind: "end" });
+  expect(listEnter("> -")).toEqual({ kind: "end" });
 });
 
 it("leaves lines that are not list items alone", () => {
