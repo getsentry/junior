@@ -239,9 +239,8 @@ export function doneSections(
 }
 
 /**
- * The state that a pull request ask names before ` · `, as plugin titles
- * such as `Review requested · #91` do. Other pull request items share one
- * group.
+ * The viewer's ask on a pull request, as the subject's live label says,
+ * such as `Review requested`. Other pull request items share one group.
  */
 const PULL_REQUEST_STATES = ["Review requested", "Ready to merge"] as const;
 
@@ -249,7 +248,7 @@ function pullRequestState(
   item: InboxItemPayload,
 ): (typeof PULL_REQUEST_STATES)[number] | "Other" {
   if (!isCodeChangeItem(item)) return "Other";
-  const state = item.title.split(" · ")[0];
+  const state = item.subject.label;
   return PULL_REQUEST_STATES.find((known) => known === state) ?? "Other";
 }
 

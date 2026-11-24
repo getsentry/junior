@@ -10,25 +10,32 @@ import type {
   ObjectAnnotation,
   PluginInboxItemSubject,
   PluginInboxSubjectKind,
+  PluginInboxViewer,
 } from "@sentry/junior-plugin-api";
 
-/** The subject kinds of GitHub Inbox items. */
-export const GITHUB_INBOX_SUBJECTS = {
-  mergeConflict: "merge_conflict",
-  pullRequest: "pull_request",
-} as const;
+/** The subject kind of the Inbox item of a Junior pull request. */
+export const PULL_REQUEST_SUBJECT_KIND = "pull_request";
 
 /**
- * Name the requester's ask on a Junior pull request from its live card. The
- * plugin keeps the item open only while there is an ask, and it is a merge
- * only after approval with no conflict.
+ * Name the viewer's ask on a Junior pull request from its live card. A
+ * reviewer whose review GitHub requests reviews it. The requester merges it
+ * after approval, or resumes the fix of a conflict.
  */
-export function pullRequestAsk(object: ObjectAnnotation): string | undefined {
+export function pullRequestAsk(
+  object: ObjectAnnotation,
+  viewer: PluginInboxViewer,
+): string | undefined {
   const facts = object.facts;
   if (facts?.type !== "code_change") return undefined;
-  return facts.review === "approved" && facts.mergeable !== false
-    ? "Ready to merge"
-    : "Review requested";
+  const handle = viewer.handle?.toLowerCase();
+  if (
+    handle &&
+    facts.reviewers?.some((reviewer) => reviewer.toLowerCase() === handle)
+  ) {
+    return "Review requested";
+  }
+  if (facts.mergeable === false) return "Merge conflict";
+  return facts.review === "approved" ? "Ready to merge" : "Review requested";
 }
 
 /** The registered kinds and labels, for the plugin registration. */
@@ -36,20 +43,14 @@ export const githubInboxSubjectKinds: PluginInboxSubjectKind[] = [
   {
     ask: pullRequestAsk,
     codeChange: true,
-    kind: GITHUB_INBOX_SUBJECTS.pullRequest,
+    kind: PULL_REQUEST_SUBJECT_KIND,
     label: "Pull request",
-  },
-  {
-    codeChange: true,
-    kind: GITHUB_INBOX_SUBJECTS.mergeConflict,
-    label: "Merge conflict",
   },
 ];
 
-/** The subject of an Inbox item about one pull request. */
+/** The subject of the Inbox item of one pull request. */
 export function pullRequestSubject(
-  kind: (typeof GITHUB_INBOX_SUBJECTS)[keyof typeof GITHUB_INBOX_SUBJECTS],
   pullRequestId: string,
 ): PluginInboxItemSubject {
-  return { id: pullRequestId, kind };
+  return { id: pullRequestId, kind: PULL_REQUEST_SUBJECT_KIND };
 }

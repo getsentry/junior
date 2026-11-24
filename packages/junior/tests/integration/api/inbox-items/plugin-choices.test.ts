@@ -142,6 +142,7 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
     plugin: "deploys",
     show: async () => {},
   }).upsert({
+    askedIdentityIds: [ana.identityId],
     assigneeIdentityIds: [ana.identityId],
     body: "Deploys of `api` stopped after 3 failures.",
     choices: [{ label: "Resume" }],
@@ -181,9 +182,10 @@ it("gives the answer to a plugin item's choice to the plugin, and starts no Turn
       subject: { id: "api", kind: "deploy_stopped" },
     },
   ]);
+  // The item stays open: the plugin changes it, such as to drop the ask
+  // that the choice answered.
   expect(await getInboxItem(getDb(), row!.id)).toMatchObject({
-    closedBy: { userId: ana.user.id },
-    status: "done",
+    status: "open",
   });
   expect(watching).toEqual([false, true]);
   expect(await listWatches({ conversationId: CONVERSATION_ID })).toEqual([

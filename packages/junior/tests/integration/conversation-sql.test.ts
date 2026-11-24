@@ -492,6 +492,21 @@ ORDER BY table_name ASC, ordinal_position ASC
       // The schema drops this table, and 0160 keeps it until it drains.
       // Remove this when the follow-up migration drops it.
       actual.delete("junior_agent_invocations");
+      // 0170 keeps these Inbox item columns for one release, for old
+      // workers. Remove this when the follow-up migration drops them.
+      const retired = [
+        "automation_id",
+        "dedupe_key",
+        "subject_title",
+        "subject_title_parts",
+        "subject_url",
+      ];
+      actual.set(
+        "junior_inbox_items",
+        (actual.get("junior_inbox_items") ?? []).filter(
+          (column) => !retired.includes(column),
+        ),
+      );
       expect(actual).toEqual(expected);
       expect(actual.has("junior_conversation_inbound_messages")).toBe(false);
 

@@ -178,11 +178,12 @@ const ERROR_STATUS = {
 function subjectPayload(
   subject: InboxItem["subject"],
   views: ReadonlyMap<string, InboxSubjectView>,
+  viewer: User,
 ): InboxItemPayload["subject"] {
   const view = views.get(subjectKey(subject));
   const url = view?.url;
   const object = view?.object;
-  const label = subjectKindLabel(subject.kind, getPlugins(), object);
+  const label = subjectKindLabel(subject.kind, getPlugins(), object, viewer);
   const objectType = url && readLinkObjectType(url);
   const resource = url && snoozeSubjectResource(getEventCatalog(), url);
   return {
@@ -246,7 +247,7 @@ function inboxItemPayload(
     kind: item.kind,
     owner: item.owner,
     status: item.status,
-    subject: subjectPayload(item.subject, views),
+    subject: subjectPayload(item.subject, views, viewer),
     title: item.title,
     updatedAt: item.updatedAt.toISOString(),
     visibility: item.visibility,

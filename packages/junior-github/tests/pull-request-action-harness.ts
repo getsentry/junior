@@ -6,6 +6,7 @@ import { createHmac, generateKeyPairSync } from "node:crypto";
 import type {
   PluginConversationAnnotations,
   PluginConversationInboxItems,
+  PluginReviewNotice,
   PluginRoute,
   PluginState,
 } from "@sentry/junior-plugin-api";
@@ -153,10 +154,18 @@ export function reviewRequested(
   );
 }
 
-export function pullRequestAction(action: string, merged = false) {
+export function pullRequestAction(
+  action: string,
+  merged = false,
+  /** The reviewer of a `review_requested` event. */
+  requestedReviewer?: string,
+) {
   return signedRequest(
     {
       action,
+      ...(requestedReviewer
+        ? { requested_reviewer: { login: requestedReviewer } }
+        : undefined),
       pull_request: {
         body: "Implemented by Junior",
         closed_at: action === "closed" ? "2026-07-03T12:00:00.000Z" : null,
@@ -621,15 +630,36 @@ export function route(
   otherCloses: string[] = [],
   /** The plugin state, shared with the feedback tool. */
   state: PluginState = memoryState(),
+  /** The Identity of each reviewer who linked their GitHub login. */
+  linkedReviewers: Readonly<Record<string, string>> = {},
 ): PluginRoute {
   const isReady = (subject: { id: string; kind: string }) =>
     subject.kind === SUBJECT.kind && subject.id === SUBJECT.id;
+  // Like core: a person joins only when asked, an upsert that changes
+  // nothing and asks nobody does nothing, and a close needs an open item.
+  let open: PluginReviewNotice | undefined;
   const inboxItems: PluginConversationInboxItems = {
     forConversation(conversationId) {
       return {
         async upsert(notice) {
-          if (!isReady(notice.subject)) return;
+          if (!isReady(notice.subject)) return [];
+          const on = new Set(open?.assigneeIdentityIds);
+          const wereOn = notice.assigneeIdentityIds.filter((id) => on.has(id));
+          const assigneeIdentityIds = notice.assigneeIdentityIds.filter(
+            (id) => notice.askedIdentityIds.includes(id) || on.has(id),
+          );
+          if (assigneeIdentityIds.length === 0) return wereOn;
+          const shown = { ...notice, assigneeIdentityIds };
+          if (
+            notice.askedIdentityIds.length === 0 &&
+            JSON.stringify({ ...open, askedIdentityIds: [] }) ===
+              JSON.stringify({ ...shown, askedIdentityIds: [] })
+          ) {
+            return wereOn;
+          }
+          open = shown;
           calls.push({ conversationId, kind: "upsert", notice });
+          return wereOn;
         },
         async close(input) {
           if (!isReady(input.subject)) {
@@ -640,6 +670,8 @@ export function route(
             failures.close -= 1;
             throw new Error("Inbox is down");
           }
+          if (!open) return false;
+          open = undefined;
           calls.push({ conversationId, input, kind: "close" });
           return true;
         },
@@ -688,8 +720,18 @@ export function route(
     cache: { getOrLoad: unused },
     inboxItems,
     state,
-    // The requester linked the GitHub account `Requester`.
+    // The requester linked the GitHub account `Requester`, and each
+    // reviewer in `linkedReviewers` linked theirs.
     users: {
+      findLinkedIdentityIds: async (logins) =>
+        new Map(
+          logins.flatMap((login) => {
+            const identityId = linkedReviewers[login.toLowerCase()];
+            return identityId
+              ? [[login.toLowerCase(), identityId] as const]
+              : [];
+          }),
+        ),
       readIdentity: async (identityId: string) =>
         identityId === "identity-requester"
           ? {

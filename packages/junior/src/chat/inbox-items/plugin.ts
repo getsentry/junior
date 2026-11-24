@@ -19,9 +19,10 @@ import {
   insertInboxItem,
   ownerConversationId,
   updateInboxItemContent,
+  type InboxItem,
   type InboxItemContent,
 } from "./store";
-import { resetInboxItemPushes } from "./deliveries";
+import { leaveInboxItem, resetInboxItemPushes } from "./deliveries";
 import { pluginSubjectKind, subjectKindLabel } from "./subjects";
 
 /**
@@ -29,12 +30,12 @@ import { pluginSubjectKind, subjectKindLabel } from "./subjects";
  * Conversation, public or private. Junior leaves out an Identity without a
  * User and a User who is not in the Conversation.
  */
-async function assigneeUserIds(
+async function assigneeUsers(
   db: JuniorDatabase,
   identityIds: readonly string[],
   conversationId: string,
-): Promise<string[]> {
-  const userIds = await mapBounded(
+): Promise<Array<{ identityId: string; userId: string }>> {
+  const users = await mapBounded(
     [...new Set(identityIds)],
     async (identityId) => {
       const user = (await readIdentityByIdFromSql(db, identityId))?.user;
@@ -42,11 +43,30 @@ async function assigneeUserIds(
       const access = (
         await readConversationAccessFromSql(db, [conversationId], user)
       ).get(conversationId);
-      return access?.isParticipant ? [user.id] : [];
+      return access?.isParticipant ? [{ identityId, userId: user.id }] : [];
     },
   );
-  return userIds.flat();
+  return users.flat();
 }
+
+/** Whether an upsert would leave the open item as it is. */
+function sameContent(item: InboxItem, content: InboxItemContent): boolean {
+  const userIds = new Set(item.assignees.map((assignee) => assignee.userId));
+  return (
+    !item.assignedToEveryone &&
+    item.title === content.title &&
+    item.body === content.body &&
+    item.kind === content.kind &&
+    item.visibility === content.visibility &&
+    JSON.stringify(item.request) === JSON.stringify(content.request) &&
+    item.conversationIds.length === content.conversationIds.length &&
+    userIds.size === content.assigneeUserIds.length &&
+    content.assigneeUserIds.every((userId) => userIds.has(userId))
+  );
+}
+
+/** Why a plugin item closes when nobody on it has an ask now. */
+const NOBODY_LEFT_REASON = "Nobody on the item has an ask now.";
 
 /** Field id of the one choice field of a plugin item with choices. */
 export const PLUGIN_CHOICE_FIELD_ID = "choice";
@@ -155,13 +175,41 @@ export function createPluginInboxItems(args: {
           "A private inbox item links only to the Conversation that added it",
         );
       }
+      const [withAsk, asked] = await Promise.all([
+        assigneeUsers(db, notice.assigneeIdentityIds, conversationId),
+        assigneeUsers(db, notice.askedIdentityIds, conversationId),
+      ]);
+      // A person joins only with the event that gives them an ask. The
+      // others with an ask stay only when they are on the item already, so
+      // a person who left does not come back until a new ask.
+      const current = new Set(
+        existing?.assignees.map((assignee) => assignee.userId),
+      );
+      const wereOn = withAsk
+        .filter((user) => current.has(user.userId))
+        .map((user) => user.identityId);
+      const askedNow = new Set(asked.map((user) => user.userId));
+      const userIds = withAsk
+        .map((user) => user.userId)
+        .filter((userId) => askedNow.has(userId) || current.has(userId));
+      // An item for people who all left closes. One for nobody Junior knows,
+      // such as a person with no linked account, stays open with no
+      // assignees.
+      if (withAsk.length > 0 && userIds.length === 0) {
+        if (!existing) return wereOn;
+        const itemId = await closePluginInboxItem(db, {
+          conversationId,
+          plugin: args.plugin,
+          reason: NOBODY_LEFT_REASON,
+          status: "done",
+          subject: notice.subject,
+        });
+        if (itemId) await show(itemId);
+        return wereOn;
+      }
       const content: InboxItemContent = {
         assignedToEveryone: false,
-        assigneeUserIds: await assigneeUserIds(
-          db,
-          notice.assigneeIdentityIds,
-          conversationId,
-        ),
+        assigneeUserIds: userIds,
         body: notice.body,
         conversationIds: [
           ...new Set([conversationId, ...(existing?.conversationIds ?? [])]),
@@ -173,6 +221,11 @@ export function createPluginInboxItems(args: {
         subject,
         ...(notice.choices ? { request: choicesRequest(notice) } : undefined),
       };
+      // A plugin may show the same item on each event. One with no change
+      // and no new ask writes nothing and shows nothing.
+      if (existing && askedNow.size === 0 && sameContent(existing, content)) {
+        return wereOn;
+      }
       let itemId: string;
       // False when the item closed after the read above. A closed item does
       // not make the Conversation wait.
@@ -184,9 +237,20 @@ export function createPluginInboxItems(args: {
           nowMs: Date.now(),
         });
         itemId = existing.id;
-        // A new ask on the same item pushes to its assignees again.
-        if (open && notice.newAsk) {
-          await resetInboxItemPushes(db, existing.id);
+        if (open) {
+          const kept = new Set(userIds);
+          await leaveInboxItem(db, {
+            itemId,
+            nowMs: Date.now(),
+            userIds: [...current].filter((userId) => !kept.has(userId)),
+          });
+          // A new ask on the same item pushes it to that person again.
+          await resetInboxItemPushes(db, {
+            itemId,
+            userIds: userIds.filter(
+              (userId) => askedNow.has(userId) && current.has(userId),
+            ),
+          });
         }
       } else {
         const item = await insertInboxItem(db, {
@@ -196,7 +260,7 @@ export function createPluginInboxItems(args: {
           ...(access.tenant ? { tenant: access.tenant } : undefined),
         });
         // Undefined means a concurrent upsert added the item first.
-        if (!item) return;
+        if (!item) return wereOn;
         itemId = item.id;
       }
       await show(itemId);
@@ -216,6 +280,7 @@ export function createPluginInboxItems(args: {
           },
         );
       }
+      return wereOn;
     },
     async close(input) {
       const itemId = await closePluginInboxItem(getDb(), {

@@ -89,7 +89,7 @@ import { createPluginWatches } from "@/chat/plugins/watches";
 import { getSlackToolContext } from "@/chat/slack/tool-support/context";
 import {
   readActorIdentity,
-  readIdentityById,
+  createPluginUsers,
   resolveViewerUser,
 } from "@/chat/plugins/viewer";
 import type { ToolRuntimeContext } from "@/chat/tool-support/types";
@@ -1243,7 +1243,7 @@ export function getPluginRoutes(options: {
             show: options.showInboxItem ?? (async () => {}),
           }),
       },
-      users: { readIdentity: readIdentityById },
+      users: createPluginUsers(pluginName),
       events: createPluginEventPublisher(plugin, options.events),
     });
     if (!Array.isArray(pluginRoutes)) {

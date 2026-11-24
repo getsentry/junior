@@ -1,10 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { and, asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray, isNotNull, sql } from "drizzle-orm";
 import {
   identitySchema,
   userSchema,
   type Actor,
   type Identity,
+  type PluginUsers,
   type User,
 } from "@sentry/junior-plugin-api";
 import { getDb } from "@/chat/db";
@@ -286,4 +287,48 @@ export async function readIdentityById(
   identityId: string,
 ): Promise<{ identity: Identity; user?: User } | undefined> {
   return await readIdentityByIdFromSql(getDb(), identityId);
+}
+
+/**
+ * Find the user Identities that people linked for accounts of one provider,
+ * by handle, such as GitHub logins. Only account-linking flows put a
+ * provider Identity on a User, so the match is verified. A handle that two
+ * Identities claim is left out.
+ */
+export async function findLinkedIdentityIds(
+  provider: string,
+  handles: readonly string[],
+): Promise<Map<string, string>> {
+  const lower = [...new Set(handles.map((handle) => handle.toLowerCase()))];
+  if (lower.length === 0) return new Map();
+  const rows = await getDb()
+    .select({ handle: juniorIdentities.handle, id: juniorIdentities.id })
+    .from(juniorIdentities)
+    .where(
+      and(
+        eq(juniorIdentities.kind, "user"),
+        eq(juniorIdentities.provider, provider),
+        isNotNull(juniorIdentities.userId),
+        inArray(sql`lower(${juniorIdentities.handle})`, lower),
+      ),
+    );
+  const found = new Map<string, string | undefined>();
+  for (const row of rows) {
+    const handle = row.handle?.toLowerCase();
+    if (!handle) continue;
+    found.set(handle, found.has(handle) ? undefined : row.id);
+  }
+  return new Map(
+    [...found].flatMap(([handle, id]) => (id ? [[handle, id] as const] : [])),
+  );
+}
+
+/** The people that one plugin reads outside a Turn. */
+export function createPluginUsers(plugin: string): PluginUsers {
+  return {
+    readIdentity: readIdentityById,
+    // A plugin's provider Identities carry its name, such as `github`.
+    findLinkedIdentityIds: async (handles) =>
+      await findLinkedIdentityIds(plugin, handles),
+  };
 }

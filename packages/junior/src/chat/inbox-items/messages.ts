@@ -67,7 +67,8 @@ export function renderInboxItemMessage(
   switch (change.kind) {
     case "submitted":
       return [
-        `${personName(change.user)} answered ${label}. The item is done.`,
+        // A plugin item stays open after an answer: the plugin changes it.
+        `${personName(change.user)} answered ${label}. ${item.status === "open" ? "The plugin that added it does the work." : "The item is done."}`,
         "",
         item.request && item.answer
           ? formatUserInputAnswer(item.request, item.answer)
@@ -135,11 +136,12 @@ function recordedChange(
     : undefined;
 }
 
-// Each take has its own key. A dismiss or an answer is a close, so it uses
-// the close key.
+// Each take, and each answer that leaves a plugin item open, has its own
+// key. A dismiss or another answer is a close, so it uses the close key.
 function recordedMessageId(item: InboxItem, change: RecordedChange): string {
-  return change.kind === "taken"
-    ? `inbox-item:${item.id}:taken:${change.user.id}:${item.updatedAt.getTime()}`
+  return change.kind === "taken" ||
+    (change.kind === "submitted" && item.status === "open")
+    ? `inbox-item:${item.id}:${change.kind}:${change.user.id}:${item.updatedAt.getTime()}`
     : `inbox-item:${item.id}:closed`;
 }
 

@@ -3699,10 +3699,7 @@ describe("GitHub-owned pull request outcomes", () => {
         [opener]: "merged",
         [other]: "merged",
       });
-      expect(closes.slice(0, 2)).toEqual([
-        [opener, "pull_request:1001"],
-        [opener, "merge_conflict:1001"],
-      ]);
+      expect(closes.slice(0, 1)).toEqual([[opener, "pull_request:1001"]]);
       expect(
         errors.filter(
           (message) =>
@@ -3825,10 +3822,7 @@ describe("GitHub-owned pull request outcomes", () => {
         [opener]: "merged",
         [other]: "merged",
       });
-      expect(closes.slice(0, 2)).toEqual([
-        [opener, "pull_request:1001"],
-        [opener, "merge_conflict:1001"],
-      ]);
+      expect(closes.slice(0, 1)).toEqual([[opener, "pull_request:1001"]]);
     } finally {
       await fixture.close();
     }

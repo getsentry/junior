@@ -1,13 +1,14 @@
 /**
  * The subject of an Inbox item: what it is about, as a `{ kind, id }` pair.
  * The kind says what the item asks and who changes it. A plugin kind starts
- * with the plugin name, such as `github:pull_request_review`. The core kinds
+ * with the plugin name, such as `github:pull_request`. The core kinds
  * are below. The item stores only the pair. Its title, state, and link come
  * from the subject when Junior shows it (`resolve-subjects.ts`).
  */
 import type {
   ObjectAnnotation,
   PluginRegistration,
+  User,
 } from "@sentry/junior-plugin-api";
 
 /** What an Inbox item is about. */
@@ -58,14 +59,16 @@ export function subjectLink(subject: InboxItemSubject): string | undefined {
 }
 
 /**
- * Return the label of a stored plugin kind: the ask that the plugin reads
- * from the object's live card, such as `Ready to merge`, else the label
- * that it registered. Core kinds have none: the Inbox names them itself.
+ * Return the label of a stored plugin kind: the ask of the viewer that the
+ * plugin reads from the object's live card, such as `Ready to merge` for
+ * the author and `Review requested` for a reviewer, else the label that it
+ * registered. Core kinds have none: the Inbox names them itself.
  */
 export function subjectKindLabel(
   kind: string,
   plugins: readonly PluginRegistration[],
   object?: ObjectAnnotation,
+  viewer?: User,
 ): string | undefined {
   const plugin = subjectKindPlugin(kind);
   if (!plugin) return undefined;
@@ -73,7 +76,14 @@ export function subjectKindLabel(
   const registered = plugins
     .find((registration) => registration.manifest.name === plugin)
     ?.inboxSubjects?.find((subject) => subject.kind === own);
-  return (object && registered?.ask?.(object)) ?? registered?.label;
+  // A plugin's provider Identities carry its name, such as `github`.
+  const handle = viewer?.identities.find(
+    (identity) => identity.provider === plugin,
+  )?.handle;
+  return (
+    (object && registered?.ask?.(object, handle ? { handle } : {})) ??
+    registered?.label
+  );
 }
 
 /**

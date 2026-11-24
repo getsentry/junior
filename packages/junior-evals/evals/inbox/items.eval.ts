@@ -75,11 +75,10 @@ describe("Inbox", () => {
     const existing = await insertInboxItem({
       automationId: automation.id,
       body: "Acme uses BUSL with a six-year change date.",
-      dedupeKey: "fair-source:acme-entry",
       destination,
       kind: "action",
       request: DECISION_REQUEST,
-      subject: { id: PULL_REQUEST_URL, url: PULL_REQUEST_URL },
+      subject: { id: PULL_REQUEST_URL, kind: "agent" },
       title: "Review the Acme entry",
     });
 
@@ -104,11 +103,10 @@ describe("Inbox", () => {
     const destination = slackChannel();
     const existing = await insertInboxItem({
       body: "Acme uses BUSL with a six-year change date.",
-      dedupeKey: "fair-source:acme-entry",
       destination,
       kind: "action",
       request: DECISION_REQUEST,
-      subject: { id: PULL_REQUEST_URL, url: PULL_REQUEST_URL },
+      subject: { id: PULL_REQUEST_URL, kind: "agent" },
       title: "Review the Acme entry",
     });
 

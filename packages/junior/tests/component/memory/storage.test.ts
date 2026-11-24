@@ -110,6 +110,7 @@ function memoryHeartbeatContext(args: {
     plugin: { name: "memory" },
     inboxItems: { forConversation: vi.fn() },
     state: memoryState,
+    users: { findLinkedIdentityIds: vi.fn(), readIdentity: vi.fn() },
   };
 }
 

@@ -20,6 +20,8 @@ const responseSchema = z.object({
   head: z.object({ ref: z.string() }).optional(),
   base: z.object({ ref: z.string() }).optional(),
   mergeable: z.boolean().nullable().optional(),
+  // Only the GraphQL card read has GitHub's review decision.
+  review: z.enum(["approved", "changes_requested", "required"]).optional(),
   state: z.string().optional(),
   changed_files: z.number().int().nonnegative().optional(),
   additions: z.number().int().nonnegative().optional(),
@@ -182,6 +184,7 @@ export function githubObjectFacts(
                 ?.slice(0, 5)
                 .map((user) => short(user.login)!)
                 .filter(Boolean),
+              review: data.review,
               sourceBranch: short(data.head?.ref),
               targetBranch: short(data.base?.ref),
               // A merge state matters only while the pull request is open.

@@ -216,7 +216,7 @@ export const prMerge = {
   id: "item-pr-merge",
   kind: "action" as const,
   subject: pullRequestSubject({
-    kind: "github:pull_request_merge",
+    kind: "github:pull_request",
     label: "Ready to merge",
     resource: pullRequestResource,
     title: "Retry checkout writes after lock timeouts",
@@ -235,7 +235,7 @@ export const prReview = {
   createdAt: "2026-08-07T09:00:00.000Z",
   id: "item-pr-review",
   subject: pullRequestSubject({
-    kind: "github:pull_request_review",
+    kind: "github:pull_request",
     label: "Review requested",
     resource: pullRequestResource,
     title: "Pin the release train",
@@ -248,7 +248,7 @@ export const prReview = {
 // description.
 const releaseConversationId = "slack:CQA456:1770021600.000600";
 const pinPullRequest = pullRequestSubject({
-  kind: "github:pull_request_review",
+  kind: "github:pull_request",
   label: "Review requested",
   // The live card says that it conflicts with main.
   mergeable: false,

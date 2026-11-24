@@ -66,7 +66,7 @@ const DAY = 24 * 60;
  */
 export type MockSubject = Pick<
   InboxItemPayload["subject"],
-  "id" | "objectType" | "resource" | "url"
+  "id" | "label" | "objectType" | "resource" | "url"
 > & {
   kind?: string;
   title?: string;
@@ -276,7 +276,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2201",
-        kind: "github:pull_request_merge",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Ready to merge",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "Update the package to 0.288.0",
@@ -307,7 +309,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/2188",
-        kind: "github:merge_conflict",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Merge conflict",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "fix(slack): Retry Slack uploads on rate limits",
@@ -329,7 +333,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/payments/pull/91",
-        kind: "github:pull_request_review",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Review requested",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "Pin the release train to payments 4.2",
@@ -390,7 +396,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/sentaur/pull/418",
-        kind: "github:pull_request_review",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Review requested",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "ref(gocd)!: Retry a canary stage once on a lost agent",
@@ -527,7 +535,9 @@ export function seeds(nowMs: number): MockItemSeed[] {
       status: "open",
       subject: {
         id: "https://github.com/getsentry/junior/pull/3052",
-        kind: "github:pull_request_review",
+        kind: "github:pull_request",
+        // The viewer's ask, as the GitHub plugin reads it from the live card.
+        label: "Review requested",
         objectType: "code_change",
         resource: PULL_REQUEST_RESOURCE,
         title: "feat(dashboard): Tabs in the dashboard sidebar",

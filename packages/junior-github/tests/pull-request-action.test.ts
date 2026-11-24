@@ -63,6 +63,8 @@ describe("next action item", () => {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
         notice: {
+          // The approval gives the requester the merge ask, so it pushes.
+          askedIdentityIds: ["identity-requester"],
           assigneeIdentityIds: ["identity-requester"],
           body: `#946 is approved, and GitHub says that it can merge.\n\n${PULL_URL}`,
           subject: SUBJECT,
@@ -187,34 +189,6 @@ describe("next action item", () => {
     }
   });
 
-  it("closes the merge conflict notice when the conflict is gone", async () => {
-    const fixture = await createGitHubFixture();
-    const github: GitHubState = {
-      draft: false,
-      mergeableStates: ["dirty"],
-      merged: false,
-      requestedReviewers: [],
-      reviews: [],
-      state: "open",
-    };
-    mockGitHub(github, []);
-    try {
-      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
-      const closes: string[] = [];
-      const webhook = route(fixture, [], [], { close: 0 }, closes);
-      const conflictCloses = () =>
-        closes.filter((key) => key.startsWith("merge_conflict:"));
-      await webhook.handler(checkSuiteCompleted());
-      expect(conflictCloses()).toEqual([]);
-
-      github.mergeableStates = ["blocked"];
-      await webhook.handler(checkSuiteCompleted());
-      expect(conflictCloses()).toEqual(["merge_conflict:1001"]);
-    } finally {
-      await fixture.close();
-    }
-  });
-
   it("changes the same item from the review ask to the merge ask", async () => {
     const fixture = await createGitHubFixture();
     const calls: InboxItemCall[] = [];
@@ -234,9 +208,7 @@ describe("next action item", () => {
       const webhook = route(fixture, calls, [], { close: 0 }, otherCloses);
       await webhook.handler(pullRequestAction("review_requested"));
       expect(calls).toEqual([]);
-      // Each check closes the merge conflict notice of a pull request with
-      // no conflict.
-      expect(otherCloses).toEqual(["merge_conflict:1001"]);
+      expect(otherCloses).toEqual([]);
 
       // The GitHub login matches the requester's linked account in any case.
       // A new pull request often has no merge state yet, and the review ask
@@ -248,6 +220,7 @@ describe("next action item", () => {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
         notice: {
+          askedIdentityIds: ["identity-requester"],
           assigneeIdentityIds: ["identity-requester"],
           body: `GitHub asks you to review #946.\n\n${PULL_URL}`,
           subject: SUBJECT,
@@ -285,12 +258,82 @@ describe("next action item", () => {
       expect(calls.at(-1)).toMatchObject({
         kind: "upsert",
         notice: {
-          newAsk: true,
+          askedIdentityIds: ["identity-requester"],
           subject: SUBJECT,
           title: "Ready to merge · #946",
         },
       });
       expect(calls).toHaveLength(4);
+    } finally {
+      await fixture.close();
+    }
+  });
+
+  it("keeps one item for every requested reviewer, pushes only the newly asked one, and drops a reviewer who reviews", async () => {
+    const fixture = await createGitHubFixture();
+    const calls: InboxItemCall[] = [];
+    const github: GitHubState = {
+      draft: false,
+      mergeableStates: ["blocked"],
+      merged: false,
+      requestedReviewers: ["Alice"],
+      reviews: [],
+      state: "open",
+    };
+    mockGitHub(github, []);
+    try {
+      await seedJuniorPullRequest(fixture, "slack:C123:1712345.0001");
+      const webhook = route(fixture, calls, [], { close: 0 }, [], undefined, {
+        alice: "identity-alice",
+        bob: "identity-bob",
+      });
+      const upsert = (asked: string[], assignees: string[]) => ({
+        conversationId: "slack:C123:1712345.0001",
+        kind: "upsert",
+        notice: expect.objectContaining({
+          askedIdentityIds: asked,
+          assigneeIdentityIds: assignees,
+          subject: SUBJECT,
+          title: "Review requested · #946",
+        }),
+      });
+      await webhook.handler(
+        pullRequestAction("review_requested", false, "Alice"),
+      );
+      expect(calls).toEqual([upsert(["identity-alice"], ["identity-alice"])]);
+
+      // A second request adds Bob to the same item and pushes only to him.
+      github.requestedReviewers = ["Alice", "bob"];
+      await webhook.handler(
+        pullRequestAction("review_requested", false, "bob"),
+      );
+      expect(calls.at(-1)).toEqual(
+        upsert(["identity-bob"], ["identity-alice", "identity-bob"]),
+      );
+
+      // Other events change nothing and push nobody.
+      await webhook.handler(checkSuiteCompleted());
+      expect(calls).toHaveLength(2);
+
+      // Alice reviews, so GitHub no longer requests her review. She leaves
+      // the item, and Bob stays on it with no new push.
+      github.requestedReviewers = ["bob"];
+      github.reviews = [{ state: "COMMENTED", user: { login: "Alice" } }];
+      await webhook.handler(reviewSubmitted("commented", { login: "Alice" }));
+      expect(calls.at(-1)).toEqual(upsert([], ["identity-bob"]));
+
+      // Bob reviews too. Nobody has an ask, so the item closes.
+      github.requestedReviewers = [];
+      await webhook.handler(reviewSubmitted("approved", { login: "bob" }));
+      expect(calls.at(-1)).toEqual({
+        conversationId: "slack:C123:1712345.0001",
+        input: {
+          reason: "The review request ended.",
+          status: "done",
+          subject: SUBJECT,
+        },
+        kind: "close",
+      });
     } finally {
       await fixture.close();
     }

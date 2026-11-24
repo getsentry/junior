@@ -457,6 +457,10 @@ const GITHUB_OBJECT_CARD = githubGraphql(`
           reviewRequests(first: 5) {
             nodes { requestedReviewer { ... on User { login } } }
           }
+          reviewDecision
+          latestOpinionatedReviews(first: 5, writersOnly: true) {
+            nodes { state }
+          }
           state
           title
           updatedAt

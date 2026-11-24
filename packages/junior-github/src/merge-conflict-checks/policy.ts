@@ -14,9 +14,10 @@
  *   fix. The limit of fixes in a row still holds.
  * - When a day after its fix the head commit is the same, the fix did not
  *   land, and Junior is stuck. Then it asks the person who asked for the
- *   pull request to resume, with an Inbox item, once after each Resume. So
- *   Dismiss ends the asks on the pull request. Resume counts as activity by
- *   a person, and starts a fix at once (`resume.ts`).
+ *   pull request to resume, on the pull request's Inbox item
+ *   (`webhooks/pull-request-item.ts`), once after each Resume. So Dismiss
+ *   ends the asks on the pull request. Resume counts as activity by a
+ *   person, and starts a fix at once (`resume.ts`).
  *
  * Each conflict reads the pull request's history from GitHub for the latest
  * activity by a person. Opening the pull request counts as activity,
@@ -28,36 +29,20 @@
  * one fix. A conflict on a pull request that Junior did not open goes to its
  * Watch as before, except for a draft.
  */
-import type {
-  EventInput,
-  PluginConversationInboxItems,
-  PluginLogger,
-} from "@sentry/junior-plugin-api";
+import type { EventInput, PluginLogger } from "@sentry/junior-plugin-api";
 import { and, eq } from "drizzle-orm";
-import pLimit from "p-limit";
 import * as z from "zod";
 import type { GitHubDb } from "../db/database.js";
 import {
   type GitHubConflictFix,
   juniorGitHubPullRequests,
 } from "../db/schema.js";
-import {
-  pullRequestRow,
-  readGitHubPullRequestIds,
-} from "../pull-request-outcomes/store.js";
-import { listGitHubPullRequestOpeners } from "../pull-request-requesters/store.js";
-import {
-  GITHUB_INBOX_SUBJECTS,
-  pullRequestSubject,
-} from "../inbox-subjects.js";
+import { pullRequestRow } from "../pull-request-outcomes/store.js";
 import { logFailOpenFailure } from "../webhooks/fail-open-log.js";
 import type {
   GitHubMergeConflict,
   GitHubPullRequestRef,
 } from "../webhooks/merge-conflict.js";
-
-// Items that one change closes at once.
-const ITEM_CLOSE_CONCURRENCY = 8;
 
 const DAY_MS = 24 * 60 * 60_000;
 
@@ -70,7 +55,7 @@ const FIX_INTERVAL_MS = DAY_MS;
 /** Fixes in a row, with no activity by a person, before Junior waits. */
 const MAX_FIXES = 3;
 
-/** The choice of the merge conflict item that resumes the fixes. */
+/** The choice of the merge conflict ask that resumes the fixes. */
 export const GITHUB_CONFLICT_RESUME = "Resume";
 
 const actorSchema = z.object({ __typename: z.string() }).nullable();
@@ -233,49 +218,6 @@ function gitHubConflictAction(input: {
   return !approved && nowMs - fixedAtMs < FIX_INTERVAL_MS ? "skip" : "fix";
 }
 
-/** GitHub's id of a conflicted pull request, the id of its item. */
-async function conflictPullRequestId(
-  db: GitHubDb,
-  ref: GitHubPullRequestRef,
-): Promise<string | undefined> {
-  return (
-    await readGitHubPullRequestIds(db, {
-      numbers: [ref.number],
-      repositoryFullName: ref.repositoryFullName,
-    })
-  ).get(ref.number);
-}
-
-/** Ask the requester to resume a fix that did not land. */
-async function addUnlandedItem(args: {
-  conflict: GitHubMergeConflict;
-  db: GitHubDb;
-  ref: GitHubPullRequestRef;
-  inboxItems: PluginConversationInboxItems;
-}): Promise<void> {
-  const { conflict, ref } = args;
-  const opener = (
-    await listGitHubPullRequestOpeners(args.db, {
-      numbers: [ref.number],
-      repositoryFullName: ref.repositoryFullName,
-    })
-  ).get(ref.number);
-  // Only a pull request that a person asked for has a Conversation.
-  if (!opener?.conversationId) return;
-  const pullRequestId = await conflictPullRequestId(args.db, ref);
-  if (!pullRequestId) return;
-  await args.inboxItems.forConversation(opener.conversationId).upsert({
-    assigneeIdentityIds: [opener.identityId],
-    body: `#${ref.number} conflicts with \`${conflict.baseBranch}\`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.`,
-    choices: [{ label: GITHUB_CONFLICT_RESUME }],
-    subject: pullRequestSubject(
-      GITHUB_INBOX_SUBJECTS.mergeConflict,
-      pullRequestId,
-    ),
-    title: `Merge conflict · #${ref.number}`,
-  });
-}
-
 /**
  * Return the merge conflict events to publish for one conflicted pull
  * request that a Watch or event automation wants. A fix returns `events`.
@@ -292,7 +234,11 @@ export async function applyGitHubConflictPolicy(args: {
   log?: Pick<PluginLogger, "error" | "warn"> | undefined;
   now: Date;
   ref: GitHubPullRequestRef;
-  inboxItems: PluginConversationInboxItems;
+  /**
+   * Change the pull request's item after an ask is saved, so the requester
+   * joins it. Throws when the item fails.
+   */
+  showItem(ref: GitHubPullRequestRef): Promise<void>;
 }): Promise<EventInput[]> {
   if (args.draft) return [];
   const t = juniorGitHubPullRequests;
@@ -329,122 +275,23 @@ export async function applyGitHubConflictPolicy(args: {
       .where(pullRequestRow(args.ref));
     return args.events;
   }
+  // The item reads the saved ask. A failed item undoes it, so the next check
+  // asks again.
+  await args.db
+    .update(t)
+    .set({ conflictFixAskedAt: args.now })
+    .where(pullRequestRow(args.ref));
   try {
-    await addUnlandedItem(args);
-    // Save the ask after the item, so a failed item is asked again.
+    await args.showItem(args.ref);
+  } catch (error) {
     await args.db
       .update(t)
-      .set({ conflictFixAskedAt: args.now })
-      .where(pullRequestRow(args.ref));
-  } catch (error) {
+      .set({ conflictFixAskedAt: row.askedAt })
+      .where(and(pullRequestRow(args.ref), eq(t.conflictFixAskedAt, args.now)));
     logFailOpenFailure(args.log, "GitHub merge conflict item failed", error, {
       number: args.ref.number,
       repository: args.ref.repositoryFullName,
     });
   }
   return [];
-}
-
-/** Why a merge conflict item closes when GitHub reports no conflict. */
-export const GITHUB_CONFLICT_GONE_REASON =
-  "The pull request no longer has merge conflicts.";
-
-/**
- * Close the merge conflict item of one Junior pull request. Throws
- * when the Inbox fails, so a caller with no later check can try again.
- */
-export async function closeGitHubConflictItem(args: {
-  db: GitHubDb;
-  reason: string;
-  ref: GitHubPullRequestRef;
-  inboxItems: PluginConversationInboxItems;
-  status: "done" | "dismissed";
-}): Promise<void> {
-  const { ref } = args;
-  const opener = (
-    await listGitHubPullRequestOpeners(args.db, {
-      numbers: [ref.number],
-      repositoryFullName: ref.repositoryFullName,
-    })
-  ).get(ref.number);
-  const pullRequestId = await conflictPullRequestId(args.db, ref);
-  if (!opener?.conversationId || !pullRequestId) return;
-  await args.inboxItems.forConversation(opener.conversationId).close({
-    subject: pullRequestSubject(
-      GITHUB_INBOX_SUBJECTS.mergeConflict,
-      pullRequestId,
-    ),
-    reason: args.reason,
-    status: args.status,
-  });
-}
-
-/**
- * Close the merge conflict items of some Junior pull requests, such
- * as ones that GitHub reports as mergeable. An item is optional, so a failed
- * close is logged, and the next check closes it again. When an open item
- * closes, the ask was not dismissed, so a later fix that does not land asks
- * again.
- */
-export async function closeGitHubConflictItems(args: {
-  db: GitHubDb;
-  log?: Pick<PluginLogger, "error" | "warn">;
-  numbers: number[];
-  reason: string;
-  repositoryFullName: string;
-  inboxItems: PluginConversationInboxItems;
-  status: "done" | "dismissed";
-}): Promise<void> {
-  if (args.numbers.length === 0) return;
-  const { repositoryFullName } = args;
-  const [openers, ids] = await Promise.all([
-    listGitHubPullRequestOpeners(args.db, {
-      numbers: args.numbers,
-      repositoryFullName,
-    }),
-    readGitHubPullRequestIds(args.db, {
-      numbers: args.numbers,
-      repositoryFullName,
-    }),
-  ]);
-  const limit = pLimit(ITEM_CLOSE_CONCURRENCY);
-  const close = async (
-    number: number,
-    conversationId: string,
-    pullRequestId: string,
-  ) => {
-    try {
-      const closed = await args.inboxItems
-        .forConversation(conversationId)
-        .close({
-          subject: pullRequestSubject(
-            GITHUB_INBOX_SUBJECTS.mergeConflict,
-            pullRequestId,
-          ),
-          reason: args.reason,
-          status: args.status,
-        });
-      if (closed) {
-        await args.db
-          .update(juniorGitHubPullRequests)
-          .set({ conflictFixAskedAt: null })
-          .where(pullRequestRow({ number, repositoryFullName }));
-      }
-    } catch (error) {
-      logFailOpenFailure(
-        args.log,
-        "GitHub merge conflict item close failed",
-        error,
-        { number, repository: repositoryFullName },
-      );
-    }
-  };
-  await Promise.all(
-    [...openers].flatMap(([number, { conversationId }]) => {
-      const pullRequestId = ids.get(number);
-      return conversationId && pullRequestId
-        ? [limit(() => close(number, conversationId, pullRequestId))]
-        : [];
-    }),
-  );
 }

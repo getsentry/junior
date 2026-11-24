@@ -43,6 +43,8 @@ import { scheduleGitHubPushConflictCheck } from "../merge-conflict-checks/webhoo
 import {
   pullRequestActionTargets,
   syncGitHubPullRequestActions,
+  syncGitHubPullRequestItem,
+  type GitHubPullRequestItemSync,
 } from "./pull-request-action.js";
 import { requestGitHubReviewersWhenReady } from "./pull-request-ready-reviewers.js";
 import {
@@ -166,6 +168,10 @@ export function createGitHubWebhookRoute(args: {
   loadRepositoryRole?(target: GitHubRoleTarget): Promise<string>;
   /** Linked GitHub login of the user of one Junior identity, if any. */
   loadGitHubLogin?(identityId: string): Promise<string | undefined>;
+  /** The people who linked these GitHub logins, by lower-case login. */
+  findLinkedIdentityIds(
+    logins: readonly string[],
+  ): Promise<ReadonlyMap<string, string>>;
   log?: Pick<PluginLogger, "error" | "warn">;
   markFeedbackReviewing(input: FeedbackTarget): Promise<void>;
   privateKeyEnv: string;
@@ -401,6 +407,23 @@ export function createGitHubWebhookRoute(args: {
           });
         }
       }
+      const itemSync: GitHubPullRequestItemSync = {
+        botEmail,
+        db: args.db,
+        env: {
+          appIdEnv: args.appIdEnv,
+          installationIdEnv: args.installationIdEnv,
+          privateKeyEnv: args.privateKeyEnv,
+          responses: args.state,
+          tokens: args.tokens,
+        },
+        findLinkedIdentityIds: args.findLinkedIdentityIds,
+        loadGitHubLogin: args.loadGitHubLogin,
+        log: args.log,
+        inboxItems: args.inboxItems,
+        state: args.state,
+      };
+      const { env } = itemSync;
       // GitHub sends no webhook for a new conflict, so check on every other
       // event for a watched pull request. Add these after the feedback
       // reaction, so a Watch that wants only conflicts does not mark a comment.
@@ -414,7 +437,11 @@ export function createGitHubWebhookRoute(args: {
           loadPullRequest: args.loadPullRequest,
           log: args.log,
           pullRequestPayload: eventName === "pull_request" ? body : undefined,
-          inboxItems: args.inboxItems,
+          showItem: async (ref) =>
+            await syncGitHubPullRequestItem(itemSync, {
+              ...ref,
+              conflictAsked: true,
+            }),
         })),
       );
       for (const event of events) {
@@ -430,22 +457,9 @@ export function createGitHubWebhookRoute(args: {
                 : "item",
         });
       }
-      const env = {
-        appIdEnv: args.appIdEnv,
-        installationIdEnv: args.installationIdEnv,
-        privateKeyEnv: args.privateKeyEnv,
-        responses: args.state,
-        tokens: args.tokens,
-      };
       await syncGitHubPullRequestActions({
-        botEmail,
-        db: args.db,
+        ...itemSync,
         deliveryId,
-        env,
-        loadGitHubLogin: args.loadGitHubLogin,
-        log: args.log,
-        inboxItems: args.inboxItems,
-        state: args.state,
         targets: pullRequestActionTargets(eventName, body),
       });
       await requestGitHubReviewersWhenReady({

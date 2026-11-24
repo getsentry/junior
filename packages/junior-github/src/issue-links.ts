@@ -124,6 +124,14 @@ const graphqlObjectSchema = z.discriminatedUnion("__typename", [
           ),
         })
         .nullable(),
+      reviewDecision: z
+        .enum(["APPROVED", "CHANGES_REQUESTED", "REVIEW_REQUIRED"])
+        .nullish(),
+      latestOpinionatedReviews: z
+        .object({
+          nodes: z.array(z.object({ state: z.string() }).nullable()),
+        })
+        .nullish(),
       state: z.string(),
       title: z.string(),
       updatedAt: z.string(),
@@ -149,6 +157,7 @@ const graphqlObjectSchema = z.discriminatedUnion("__typename", [
           return login ? [{ login }] : [];
         },
       ),
+      review: pullRequestReview(pull),
       // GitHub GraphQL says `MERGED`; REST says `closed` with `merged`.
       state: pull.state === "OPEN" ? "open" : "closed",
       title: pull.title,
@@ -156,6 +165,33 @@ const graphqlObjectSchema = z.discriminatedUnion("__typename", [
       user: pull.author,
     })),
 ]);
+/**
+ * Return GitHub's review decision. A repository that requires no review has
+ * none, so the latest review of each writer decides: approved when one
+ * approves and none asks for changes.
+ */
+function pullRequestReview(pull: {
+  latestOpinionatedReviews?:
+    | { nodes: Array<{ state: string } | null> }
+    | null
+    | undefined;
+  reviewDecision?:
+    | "APPROVED"
+    | "CHANGES_REQUESTED"
+    | "REVIEW_REQUIRED"
+    | null
+    | undefined;
+}): "approved" | "changes_requested" | "required" | undefined {
+  if (pull.reviewDecision === "APPROVED") return "approved";
+  if (pull.reviewDecision === "CHANGES_REQUESTED") return "changes_requested";
+  if (pull.reviewDecision === "REVIEW_REQUIRED") return "required";
+  const states = (pull.latestOpinionatedReviews?.nodes ?? []).map(
+    (review) => review?.state,
+  );
+  if (states.includes("CHANGES_REQUESTED")) return "changes_requested";
+  return states.includes("APPROVED") ? "approved" : undefined;
+}
+
 const graphqlCardsSchema = z.object({
   data: z.record(
     z.string(),

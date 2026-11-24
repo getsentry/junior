@@ -15,7 +15,10 @@ import {
   listConversationAnnotations,
 } from "@/chat/plugins/annotations";
 import { createPluginConversationChanges } from "@/chat/plugins/conversation-changes";
-import { closeInboxItemsAnsweredByReply } from "@/chat/inbox-items/actions";
+import {
+  actOnInboxItem,
+  closeInboxItemsAnsweredByReply,
+} from "@/chat/inbox-items/actions";
 import {
   countInboxItemsNeedingUserBySubject,
   getOpenInboxItemBySubject,
@@ -28,6 +31,7 @@ import {
   juniorConversationParticipants,
   juniorConversations,
   juniorIdentities,
+  juniorInboxSnoozes,
 } from "@/db/schema";
 import { eq } from "drizzle-orm";
 
@@ -135,11 +139,16 @@ describe("plugin inbox items", () => {
     });
 
     // A notice is for information: it does not wait on Ana.
-    await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [ana.identityId],
+      assigneeIdentityIds: [ana.identityId],
+    });
     expect(await listWaitingConversations(getDb(), ana.user.id)).toEqual([]);
 
     await items.upsert({
       ...NOTICE,
+      askedIdentityIds: [ana.identityId],
       assigneeIdentityIds: [ana.identityId],
       waitsOnAssignees: true,
     });
@@ -188,7 +197,11 @@ describe("plugin inbox items", () => {
       show,
     });
 
-    await items.upsert({ ...NOTICE, assigneeIdentityIds: [ana.identityId] });
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [ana.identityId],
+      assigneeIdentityIds: [ana.identityId],
+    });
     const added = await getOpenInboxItemBySubject(
       getDb(),
       { id: NOTICE.subject.id, kind: "github:ready" },
@@ -208,6 +221,7 @@ describe("plugin inbox items", () => {
     // A repeat updates the open item.
     await items.upsert({
       ...NOTICE,
+      askedIdentityIds: [ana.identityId],
       assigneeIdentityIds: [ana.identityId],
       title: "Still ready to merge",
     });
@@ -268,7 +282,7 @@ describe("plugin inbox items", () => {
       conversationId: "slack:C1:1.000001",
       plugin: "linear",
       show,
-    }).upsert({ ...NOTICE, assigneeIdentityIds: [] });
+    }).upsert({ ...NOTICE, askedIdentityIds: [], assigneeIdentityIds: [] });
     expect(
       await getOpenInboxItemBySubject(
         getDb(),
@@ -276,6 +290,93 @@ describe("plugin inbox items", () => {
         TENANT,
       ),
     ).toMatchObject({ assignees: [], status: "open" });
+  });
+
+  it("keeps one item for the asks of several people, and a Dismiss takes off only that person", async () => {
+    await conversation("slack:C1:1.000001", "public");
+    const ana = await person("ana@example.com");
+    const bo = await person("bo@example.com");
+    await participant("slack:C1:1.000001", ana.user);
+    await participant("slack:C1:1.000001", bo.user);
+    const items = createPluginInboxItems({
+      conversationId: "slack:C1:1.000001",
+      plugin: "github",
+      show,
+    });
+    const both = [ana.identityId, bo.identityId];
+    const assignees = async () =>
+      (
+        await getOpenInboxItemBySubject(
+          getDb(),
+          { id: NOTICE.subject.id, kind: "github:ready" },
+          TENANT,
+        )
+      )?.assignees.map((assignee) => assignee.userId) ?? [];
+
+    // Only the person whom an event asks joins the item.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [ana.identityId],
+      assigneeIdentityIds: both,
+    });
+    expect(await assignees()).toEqual([ana.user.id]);
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [bo.identityId],
+      assigneeIdentityIds: both,
+    });
+    expect((await assignees()).sort()).toEqual(
+      [ana.user.id, bo.user.id].sort(),
+    );
+    const item = await getOpenInboxItemBySubject(
+      getDb(),
+      { id: NOTICE.subject.id, kind: "github:ready" },
+      TENANT,
+    );
+    await getDb().insert(juniorInboxSnoozes).values({
+      createdAt: new Date(),
+      id: "snooze-bo",
+      inboxItemId: item!.id,
+      state: "snoozed",
+      userId: bo.user.id,
+    });
+
+    // Bo's Dismiss takes off only Bo, and ends his snooze. Ana keeps it.
+    const delivery = { queue: createConversationWorkQueueTestAdapter(), show };
+    await actOnInboxItem({
+      action: "dismiss",
+      delivery,
+      id: item!.id,
+      user: bo.user,
+    });
+    expect(await assignees()).toEqual([ana.user.id]);
+    expect(
+      await getDb()
+        .select({ state: juniorInboxSnoozes.state })
+        .from(juniorInboxSnoozes),
+    ).toEqual([{ state: "cancelled" }]);
+
+    // Bo still has an ask, but he left, so he comes back only with a new
+    // one.
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [],
+      assigneeIdentityIds: both,
+      title: "Still ready to merge",
+    });
+    expect(await assignees()).toEqual([ana.user.id]);
+
+    // The last person's Dismiss closes the item.
+    await actOnInboxItem({
+      action: "dismiss",
+      delivery,
+      id: item!.id,
+      user: ana.user,
+    });
+    expect(await getInboxItem(getDb(), item!.id)).toMatchObject({
+      closedBy: { userId: ana.user.id },
+      status: "dismissed",
+    });
   });
 
   it("saves a chip and an item close together or not at all", async () => {
@@ -286,7 +387,11 @@ describe("plugin inbox items", () => {
       plugin: "github",
       show,
     });
-    await items.upsert({ ...NOTICE, assigneeIdentityIds: [] });
+    await items.upsert({
+      ...NOTICE,
+      askedIdentityIds: [],
+      assigneeIdentityIds: [],
+    });
     const chip = {
       key: "getsentry/junior#946",
       kind: "resource_link",
@@ -381,6 +486,7 @@ describe("plugin inbox items", () => {
       // Ben is not in the Conversation, so the notice leaves him out.
       await items.upsert({
         ...NOTICE,
+        askedIdentityIds: [ben.identityId, ana.identityId],
         assigneeIdentityIds: [ben.identityId, ana.identityId],
       });
       expect(

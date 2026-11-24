@@ -371,6 +371,7 @@ describe("inbox item push", () => {
       show: syncInboxItemPush,
     });
     const review = {
+      askedIdentityIds: [identityId!],
       assigneeIdentityIds: [identityId!],
       body: "GitHub asks you to review #946.",
       subject: { id: "1001", kind: "change" },
@@ -384,14 +385,18 @@ describe("inbox item push", () => {
       .from(juniorInboxItems);
     expect(pushes).toEqual([expect.objectContaining({ tag: item!.id })]);
     // New content of the same ask does not push again.
-    await items.upsert({ ...review, body: "The review still waits." });
+    await items.upsert({
+      ...review,
+      askedIdentityIds: [],
+      body: "The review still waits.",
+    });
     expect(pushes).toHaveLength(1);
     // The subject names the item, so the merge ask changes the same item,
-    // and its snooze and pin stay. A new ask pushes again.
+    // and its snooze and pin stay. The event that gives the new ask pushes
+    // again.
     await items.upsert({
       ...review,
       body: "#946 is approved. Merge it.",
-      newAsk: true,
       title: "Ready to merge · #946",
     });
     expect(pushes).toEqual([

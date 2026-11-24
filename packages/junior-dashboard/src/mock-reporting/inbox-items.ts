@@ -131,13 +131,6 @@ function related(seed: MockItemSeed, all: readonly MockItemSeed[]) {
     : undefined;
 }
 
-// The labels of the GitHub plugin's subject kinds.
-const KIND_LABELS: Record<string, string> = {
-  "github:merge_conflict": "Merge conflict",
-  "github:pull_request_merge": "Ready to merge",
-  "github:pull_request_review": "Review requested",
-};
-
 // The card of a pull request that has no other mock card.
 function pullRequestCard(
   url: string,
@@ -203,8 +196,6 @@ function subjectOf(seed: MockItemSeed): InboxItemPayload["subject"] {
   }
   const { kind = defaultKind, title, titleParts, ...rest } = seed.subject;
   const subject: InboxItemPayload["subject"] = { ...rest, kind };
-  const label = KIND_LABELS[kind];
-  if (label) subject.label = label;
   const card = subject.url
     ? (readMockObjectLinks([subject.url]).objects[0]?.object ??
       pullRequestCard(subject.url, title))

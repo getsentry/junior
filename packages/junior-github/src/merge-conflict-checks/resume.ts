@@ -1,6 +1,6 @@
 /**
- * Resume on the merge conflict item of a fix that did not land
- * (`policy.ts`). It counts as activity by a person, so the fix count starts
+ * Resume on the merge conflict ask of a fix that did not land
+ * (`policy.ts`), on the pull request's Inbox item. It counts as activity by a person, so the fix count starts
  * again, and it starts a fix at once, through the same
  * `pull_request.merge_conflict` event as a fix that the policy allows.
  */
@@ -27,12 +27,13 @@ import {
 /**
  * Resume merge conflict fixes of one open Junior pull request, and start a
  * fix when it is not a draft and GitHub does not say that it can merge.
- * Safe to repeat for one item: the event key names the item, so a retry publishes no second fix.
+ * Safe to repeat for one ask: the event key names the item and the ask, so
+ * a retry publishes no second fix.
  */
 export async function resumeGitHubConflictFixes(args: {
   db: GitHubDb;
   events: EventPublisher;
-  /** The answered item. */
+  /** The item of the answered ask. */
   itemId: string;
   loadPullRequest(ref: GitHubPullRequestRef): Promise<unknown>;
   nowMs: number;
@@ -45,14 +46,15 @@ export async function resumeGitHubConflictFixes(args: {
   const t = juniorGitHubPullRequests;
   const [row] = await args.db
     .select({
+      askedAt: t.conflictFixAskedAt,
       fixes: t.conflictFixes,
       resumedAt: t.conflictFixesResumedAt,
     })
     .from(t)
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")));
   if (!row) return;
-  // Save the Resume before the GitHub read. Core closed the item already,
-  // and until the Resume is saved a conflict check would add it again.
+  // Save the Resume before the GitHub read. Until it is saved, a conflict
+  // check would still find the ask.
   const resumedAt = new Date(args.nowMs);
   const resumed = await args.db
     .update(t)
@@ -60,7 +62,7 @@ export async function resumeGitHubConflictFixes(args: {
     .where(and(pullRequestRow(args.ref), eq(t.state, "open")))
     .returning({ pullRequestId: t.pullRequestId });
   if (resumed.length === 0) return;
-  // Core closed the item, so an undo also lets the policy ask again.
+  // The Resume answered the ask, so an undo also lets the policy ask again.
   const undo = () =>
     args.db
       .update(t)
@@ -91,8 +93,8 @@ export async function resumeGitHubConflictFixes(args: {
   }).map((event) => ({
     ...event,
     // A fix of the same head commit may have run already, so the key names
-    // the Resume too.
-    eventKey: `${event.eventKey}:resume:${args.itemId}`,
+    // the Resume too: the item, and the ask that it answered.
+    eventKey: `${event.eventKey}:resume:${args.itemId}:${row.askedAt?.getTime() ?? 0}`,
   }));
   // The item's Conversation asked for the fix, and its Watch can expire
   // while fixes are stopped. Then add it again first, so the fix event

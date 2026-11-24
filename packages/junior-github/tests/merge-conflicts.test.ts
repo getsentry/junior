@@ -308,9 +308,41 @@ describe("merge conflict check on webhook events", () => {
           () => HttpResponse.json({ message: "Not Found" }, { status: 404 }),
         ),
         http.post("https://api.github.com/graphql", async ({ request }) => {
-          const { variables } = (await request.json()) as {
+          const { operationName, variables } = (await request.json()) as {
+            operationName?: string;
             variables: { number?: number; query?: string };
           };
+          // The read of the pull request for its Inbox item.
+          if (operationName === "PullRequestNextAction") {
+            const number = variables.number!;
+            return HttpResponse.json({
+              data: {
+                repository: {
+                  pullRequest: {
+                    autoMergeRequest: null,
+                    commits: { nodes: [] },
+                    headRefOid: headSha,
+                    isDraft: drafts.has(number),
+                    mergeStateStatus:
+                      mergeability[number] === "CONFLICTING"
+                        ? "DIRTY"
+                        : mergeability[number] === "MERGEABLE"
+                          ? "BLOCKED"
+                          : "UNKNOWN",
+                    reviewRequests: { nodes: [] },
+                    reviews: {
+                      nodes: [],
+                      pageInfo: { hasPreviousPage: false, startCursor: null },
+                    },
+                    state: "OPEN",
+                    timelineItems: { nodes: [] },
+                    title: `fix(conflicts): Pull request ${number}`,
+                    url: `https://github.com/getsentry/junior/pull/${number}`,
+                  },
+                },
+              },
+            });
+          }
           if (variables.number !== undefined) {
             historyReads += 1;
             return HttpResponse.json({
@@ -511,7 +543,7 @@ describe("merge conflict check on webhook events", () => {
       choice: "Resume",
       conversationId: "slack:C1:1.0",
       itemId: "item-1",
-      subject: { id: "9460", kind: "merge_conflict" },
+      subject: { id: "9460", kind: "pull_request" },
       nowMs: pushedAt + day + hour,
     };
 
@@ -524,7 +556,7 @@ describe("merge conflict check on webhook events", () => {
       await checkAt(pushedAt + day + hour, "2");
       // Nothing is left to close.
       await checkAt(pushedAt + day + 2 * hour, "2");
-      expect(h.closedNotices).toEqual(["merge_conflict:9460"]);
+      expect(h.closedNotices).toEqual(["pull_request:9460"]);
 
       // The closed item was not dismissed, so when the conflict comes back
       // and the fix still did not land, Junior asks again.
@@ -537,7 +569,7 @@ describe("merge conflict check on webhook events", () => {
       await askedInSlack();
       await fixThatDoesNotLand();
       expect(h.notices).toHaveLength(1);
-      h.dismiss("merge_conflict:9460");
+      h.dismiss("pull_request:9460");
 
       mergeability[946] = "MERGEABLE";
       await checkAt(pushedAt + day + hour, "1");
@@ -656,21 +688,24 @@ describe("merge conflict check on webhook events", () => {
         {
           conversationId: "slack:C1:1.0",
           notice: {
+            askedIdentityIds: ["identity-jane"],
             assigneeIdentityIds: ["identity-jane"],
-            body: "#946 conflicts with `main`, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.",
+            body: "#946 conflicts with its base branch, and the last fix did not land. Resume tries again. Dismiss stops these asks for this pull request.\n\nhttps://github.com/getsentry/junior/pull/946",
             choices: [{ label: "Resume" }],
+            // The ask is on the pull request's one item.
             subject: {
               id: "9460",
-              kind: "merge_conflict",
+              kind: "pull_request",
             },
             title: "Merge conflict · #946",
+            waitsOnAssignees: true,
           },
         },
       ]);
 
       // A Dismiss tells the plugin nothing. Junior asked once, so it does
       // not ask again, also after activity by a person.
-      h.dismiss("merge_conflict:9460");
+      h.dismiss("pull_request:9460");
       reviewAt(pushedAt + 2 * day, "User");
       await checkAt(pushedAt + 2 * day + hour, "1");
       expect(h.notices).toHaveLength(1);
@@ -721,7 +756,7 @@ describe("merge conflict check on webhook events", () => {
         },
       ]);
       const resumed = conflicts().filter((event) =>
-        event.eventKey.endsWith(":resume:item-1"),
+        event.eventKey.includes(":resume:item-1:"),
       );
       expect(resumed).toEqual([
         expect.objectContaining({
@@ -799,7 +834,7 @@ describe("merge conflict check on webhook events", () => {
       });
       expect(
         conflicts().filter((event) =>
-          event.eventKey.endsWith(":resume:item-2"),
+          event.eventKey.includes(":resume:item-2:"),
         ),
       ).not.toEqual([]);
     });

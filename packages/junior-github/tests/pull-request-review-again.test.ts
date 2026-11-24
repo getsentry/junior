@@ -133,6 +133,7 @@ describe("review again after a change request", () => {
         conversationId: "slack:C123:1712345.0001",
         kind: "upsert",
         notice: {
+          askedIdentityIds: ["identity-requester"],
           assigneeIdentityIds: ["identity-requester"],
           body: `Every comment on your change request is handled.\n\n${PULL_URL}`,
           subject: SUBJECT,
@@ -497,7 +498,15 @@ describe("review again after a change request", () => {
       );
       await webhook.handler(checkSuiteCompleted());
       expect(asks()).toEqual(["request Requester"]);
-      expect(calls).toHaveLength(1);
+      // The text may change, but nobody gets a second push.
+      expect(
+        calls.filter(
+          (call) =>
+            call.kind === "upsert" &&
+            (call.notice as { askedIdentityIds: string[] }).askedIdentityIds
+              .length > 0,
+        ),
+      ).toHaveLength(1);
     } finally {
       vi.useRealTimers();
       await fixture.close();

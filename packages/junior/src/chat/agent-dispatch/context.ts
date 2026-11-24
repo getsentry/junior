@@ -16,6 +16,7 @@ import { createPluginConversationChanges } from "@/chat/plugins/conversation-cha
 import { createPluginLogger } from "@/chat/plugins/logging";
 import { createPluginEmbedder } from "@/chat/plugins/model";
 import { createPluginState } from "@/chat/plugins/state";
+import { createPluginUsers } from "@/chat/plugins/viewer";
 import type { ShowInboxItem } from "@/chat/inbox-items/changes";
 import { createPluginInboxItems } from "@/chat/inbox-items/plugin";
 import type { ConversationWorkQueue } from "@/chat/task-execution/queue";
@@ -142,6 +143,7 @@ export function createHeartbeatContext(args: {
         }),
     },
     state: createPluginState(pluginName),
+    users: createPluginUsers(pluginName),
     log: createPluginLogger(pluginName),
     agent: {
       async dispatch(options) {

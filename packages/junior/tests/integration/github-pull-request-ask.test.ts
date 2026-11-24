@@ -1,7 +1,7 @@
 import { createHmac, generateKeyPairSync } from "node:crypto";
 import path from "node:path";
 import { githubPlugin } from "@sentry/junior-github";
-import { asc, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { http, HttpResponse } from "msw";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -30,6 +30,8 @@ import { mswServer } from "../msw/server";
 
 const API = "https://api.github.com/repos/getsentry/junior/pulls/1592";
 const PULL_URL = "https://github.com/getsentry/junior/pull/1592";
+// GitHub's id of the pull request, which names its Inbox item.
+const PULL_ID = "1592000";
 const BOT = "sentry-junior[bot]";
 const person = slackInvocationInput.actor;
 
@@ -69,7 +71,7 @@ function pullRequest(body: string, merged: boolean, updatedAt: string) {
     closed_at: merged ? updatedAt : null,
     created_at: "2026-07-01T12:00:00.000Z",
     draft: false,
-    id: 1_592_000,
+    id: Number(PULL_ID),
     merged,
     merged_at: merged ? updatedAt : null,
     number: 1592,
@@ -87,7 +89,7 @@ async function readerView() {
   const [ask] = await getDb()
     .select({ status: juniorInboxItems.status })
     .from(juniorInboxItems)
-    .where(eq(juniorInboxItems.subjectId, PULL_URL));
+    .where(eq(juniorInboxItems.subjectId, PULL_ID));
   return { ask: ask?.status, chip: chip?.status };
 }
 
@@ -259,7 +261,7 @@ describe("the ask of a Junior pull request", () => {
       await fixture.close();
     }
   });
-  it("asks for the review, then the merge, as new items that read their title from GitHub", async () => {
+  it("asks for the review, then the merge, on one item that reads its title from GitHub", async () => {
     app = await createApp({ plugins: defineJuniorPlugins([githubPlugin()]) });
     await seedLinkedPerson({
       email: "pat@example.com",
@@ -321,6 +323,7 @@ describe("the ask of a Junior pull request", () => {
                     mergeable: "MERGEABLE",
                     merged: false,
                     number: 1592,
+                    reviewDecision: github.approved ? "APPROVED" : null,
                     reviewRequests: { nodes: [] },
                     state: "OPEN",
                     title,
@@ -388,12 +391,10 @@ describe("the ask of a Junior pull request", () => {
         pull_request: pullRequest(body, false, "2026-07-01T12:01:00.000Z"),
         requested_reviewer: { login: "pat" },
       });
-      expect(
-        await getDb()
-          .select({ subjectKind: juniorInboxItems.subjectKind })
-          .from(juniorInboxItems)
-          .where(eq(juniorInboxItems.subjectId, PULL_URL)),
-      ).toEqual([{ subjectKind: "github:pull_request_review" }]);
+      const [review] = await getDb()
+        .select({ id: juniorInboxItems.id })
+        .from(juniorInboxItems)
+        .where(eq(juniorInboxItems.subjectId, PULL_ID));
       github.approved = true;
       await sendGitHubWebhook("pull_request_review", {
         action: "submitted",
@@ -401,20 +402,18 @@ describe("the ask of a Junior pull request", () => {
         review: { state: "approved", user: { login: "pat" } },
       });
 
-      // The kind says what the item asks, so the merge ask is a new item.
-      // The review ask closed, and the merge ask notifies the person again.
-      const asks = await getDb()
-        .select({
-          id: juniorInboxItems.id,
-          status: juniorInboxItems.status,
-          subjectKind: juniorInboxItems.subjectKind,
-        })
-        .from(juniorInboxItems)
-        .where(eq(juniorInboxItems.subjectId, PULL_URL))
-        .orderBy(asc(juniorInboxItems.createdAt));
-      expect(asks).toMatchObject([
-        { status: "done", subjectKind: "github:pull_request_review" },
-        { status: "open", subjectKind: "github:pull_request_merge" },
+      // The subject names one item, so the merge ask is the same item.
+      expect(
+        await getDb()
+          .select({
+            id: juniorInboxItems.id,
+            status: juniorInboxItems.status,
+            subjectKind: juniorInboxItems.subjectKind,
+          })
+          .from(juniorInboxItems)
+          .where(eq(juniorInboxItems.subjectId, PULL_ID)),
+      ).toEqual([
+        { id: review!.id, status: "open", subjectKind: "github:pull_request" },
       ]);
 
       const viewer = await signedInViewer("pat@example.com");
@@ -431,14 +430,15 @@ describe("the ask of a Junior pull request", () => {
       const { items } = (await response.json()) as {
         items: Array<{ id: string; subject: Record<string, unknown> }>;
       };
-      // The label comes from the kind. The title is GitHub's title now, from
-      // one read for the page, and no Inbox column stores it.
+      // The label is the viewer's ask on the live pull request. The title
+      // is GitHub's title now, from one read for the page, and no Inbox
+      // column stores it.
       expect(items).toMatchObject([
         {
-          id: asks[1]!.id,
+          id: review!.id,
           subject: {
-            id: PULL_URL,
-            kind: "github:pull_request_merge",
+            id: PULL_ID,
+            kind: "github:pull_request",
             label: "Ready to merge",
             object: { title, url: PULL_URL },
             url: PULL_URL,

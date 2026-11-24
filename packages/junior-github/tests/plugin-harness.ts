@@ -112,8 +112,8 @@ export function createPluginHarness(fixture: GitHubFixture) {
   /** Inbox and publish calls that fail before one succeeds. */
   const failures = { publish: 0, upsert: 0 };
   const state = memoryState();
-  /** Dedupe keys of the open inbox items. */
-  const openNotices = new Set<string>();
+  /** The assignees of each open inbox item, by subject. */
+  const openNotices = new Map<string, string[]>();
   const events: EventPublisher = {
     async hasMatch(candidates) {
       return candidates.some(
@@ -140,11 +140,25 @@ export function createPluginHarness(fixture: GitHubFixture) {
             failures.upsert -= 1;
             throw new Error("The Inbox is down");
           }
-          // Like core, an open item of the subject only gets new content.
+          // Like core: a person joins only when asked, and the item
+          // closes when nobody is left. `notices` records each item that
+          // opens and each ask that pushes.
           const key = subjectKey(notice.subject);
-          if (openNotices.has(key)) return;
-          openNotices.add(key);
+          const on = openNotices.get(key);
+          const wereOn = notice.assigneeIdentityIds.filter((id) =>
+            on?.includes(id),
+          );
+          const assignees = notice.assigneeIdentityIds.filter(
+            (id) => notice.askedIdentityIds.includes(id) || on?.includes(id),
+          );
+          if (assignees.length === 0) {
+            if (openNotices.delete(key)) recorded.closedNotices.push(key);
+            return wereOn;
+          }
+          openNotices.set(key, assignees);
+          if (on && notice.askedIdentityIds.length === 0) return wereOn;
           recorded.notices.push({ conversationId, notice });
+          return wereOn;
         },
         async close(input) {
           const key = subjectKey(input.subject);
@@ -153,6 +167,15 @@ export function createPluginHarness(fixture: GitHubFixture) {
           return true;
         },
       };
+    },
+  };
+  // Nobody linked a GitHub account.
+  const users: HeartbeatHookContext["users"] = {
+    async findLinkedIdentityIds() {
+      return new Map();
+    },
+    async readIdentity() {
+      return undefined;
     },
   };
   const cache: HeartbeatHookContext["cache"] = {
@@ -196,11 +219,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
-      users: {
-        async readIdentity() {
-          return undefined;
-        },
-      },
+      users,
     });
     if (!route) throw new Error("The GitHub plugin has no webhook route");
     const response = await route.handler(request);
@@ -252,12 +271,13 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      users,
     });
   }
 
   /**
-   * A person picks a choice on an open item. Like core, the item closes
-   * first, then the plugin gets the answer.
+   * A person picks a choice on an open item. Like core, the item stays
+   * open, and the plugin gets the answer.
    */
   async function answer(input: {
     choice: string;
@@ -266,7 +286,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
     nowMs: number;
     subject: { id: string; kind: string };
   }): Promise<void> {
-    expect(openNotices.delete(subjectKey(input.subject))).toBe(true);
+    expect(openNotices.has(subjectKey(input.subject))).toBe(true);
     await githubPlugin().hooks!.inboxItemAnswered!({
       ...input,
       cache,
@@ -276,6 +296,7 @@ export function createPluginHarness(fixture: GitHubFixture) {
       plugin: { name: "github" },
       inboxItems,
       state,
+      users,
       watches: {
         canSubscribe: true,
         // Only the Conversation's own Watch counts, not `hasMatch`.
@@ -303,9 +324,12 @@ export function createPluginHarness(fixture: GitHubFixture) {
     });
   }
 
-  /** A person's Dismiss: core closes the item and tells the plugin nothing. */
-  const dismiss = (dedupeKey: string) => {
-    openNotices.delete(dedupeKey);
+  /**
+   * A person's Dismiss of an item that only they are on: core closes it and
+   * tells the plugin nothing.
+   */
+  const dismiss = (key: string) => {
+    openNotices.delete(key);
   };
 
   return {
