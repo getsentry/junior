@@ -22,6 +22,8 @@ import { PLUGIN_TASK_QUEUE_TOPIC } from "@/chat/queue/topics";
 
 /** Options for one plugin task send. */
 export interface PluginTaskSendOptions {
+  /** Seconds before the first delivery of a started task. */
+  delaySeconds?: number | undefined;
   /** Queue dedupe key of a started task. A session task derives its own. */
   idempotencyKey?: string;
 }
@@ -188,6 +190,7 @@ export async function sendVercelPluginTask(
     PLUGIN_TASK_QUEUE_TOPIC,
     signPluginTaskQueueMessage(message),
     {
+      delaySeconds: options.delaySeconds,
       idempotencyKey:
         "params" in message ? pluginTaskId(message) : options.idempotencyKey,
       retentionSeconds: QUEUE_SIGNATURE_MAX_AGE_MS / 1000,

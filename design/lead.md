@@ -28,14 +28,6 @@ of it.
 - The Lead is one long transcript that never resets. Compaction keeps it
   usable, so each new request has the context of the earlier ones.
 
-## Entry points
-
-- Dashboard: the home page, "Your Lead". New work starts here. There is no
-  separate new conversation page.
-- The Lead's tools: `startConversation`, `messageAgent`, the Conversation
-  search and read tools, `watchEvents` and timers, the Inbox tools, and the
-  Automation tools.
-
 ## Rules
 
 - Each person has exactly one Lead. It is private: only that person sees it.
