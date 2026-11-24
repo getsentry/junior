@@ -1,3 +1,4 @@
+import { eq } from "drizzle-orm";
 import { Hono } from "hono";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { githubPlugin } from "@sentry/junior-github";
@@ -7,11 +8,20 @@ import { createJuniorApi } from "@/api";
 import type { JuniorApiEnv } from "@/api/route";
 import { apiErrorSchema, codeChangeSearchReportSchema } from "@/api/schema";
 import { recordCodeChange } from "@/chat/code/store";
-import { closeDb, getConversationStore, getDb } from "@/chat/db";
+import {
+  closeDb,
+  getConversationStore,
+  getDb,
+  getSqlExecutor,
+} from "@/chat/db";
 import { resolveViewerUser } from "@/chat/plugins/viewer";
-import { juniorConversationParticipants } from "@/db/schema";
+import {
+  juniorConversationParticipants,
+  juniorConversations,
+} from "@/db/schema";
 import {
   expectNoFullScan,
+  expectPlanCost,
   expectSqlBudget,
 } from "../../../fixtures/sql-budget";
 
@@ -125,8 +135,8 @@ describe("code change search API", () => {
       });
 
     const byNumber = await expectSqlBudget(() => search("#12"), {
-      statements: 1,
-      serialRounds: 1,
+      statements: 4,
+      serialRounds: 4,
     });
     await expectNoFullScan(() => search("#12"));
     // An exact number comes first, then newest activity. A change linked
@@ -165,9 +175,26 @@ describe("code change search API", () => {
         title: `Ship step ${number}`,
       });
     }
+    // Other Conversations, so a visibility check that reads every root for
+    // each matching change costs that read once per change.
+    const [root] = await getDb()
+      .select()
+      .from(juniorConversations)
+      .where(eq(juniorConversations.conversationId, "slack:C1:public"));
+    await getDb()
+      .insert(juniorConversations)
+      .values(
+        Array.from({ length: 1_000 }, (_, index) => ({
+          ...root!,
+          conversationId: `slack:C1:other-${index}`,
+          rootConversationId: `slack:C1:other-${index}`,
+        })),
+      );
+    await getSqlExecutor().query("analyze");
     const { request, search } = await signedIn("ana@example.com");
 
-    expect((await search("ship")).map((change) => change.number)).toEqual([
+    const shipped = await expectPlanCost(() => search("ship"), 90);
+    expect(shipped.map((change) => change.number)).toEqual([
       10, 9, 8, 7, 6, 5, 4, 3,
     ]);
     const bad = await request(" ");

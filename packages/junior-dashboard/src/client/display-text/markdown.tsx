@@ -18,7 +18,7 @@ import {
 } from "../conversations/transcriptSearch";
 import { cn } from "../styles";
 import { safeHref, slackLinksToMarkdown, useAnchorClass } from "./links";
-import { SameTabLink } from "../components/SameTabLink";
+import { MessageLink } from "../components/MessageLink";
 import { objectUrlKey } from "./knownObjects";
 import { renderTextTokens } from "./mentions";
 import { ObjectRow } from "../conversations/ObjectRow";
@@ -636,14 +636,15 @@ function PlainAnchor(props: {
 }) {
   const className = useAnchorClass();
   return (
-    <SameTabLink
+    <MessageLink
       className={className}
       href={props.href}
+      icon
       onPointerEnter={props.onPointerEnter}
       ref={props.observe}
     >
       {props.children}
-    </SameTabLink>
+    </MessageLink>
   );
 }
 
