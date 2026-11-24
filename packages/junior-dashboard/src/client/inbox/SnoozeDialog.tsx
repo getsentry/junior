@@ -29,13 +29,6 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from "../components/ui/popover";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "../components/ui/toggle-group";
 import { useSheet } from "../components/ui/useSheet";
 import {
@@ -48,13 +41,13 @@ import {
   MessageObjectsProvider,
   useListedObjects,
 } from "../display-text/DisplayText";
-import { eventLabel } from "../eventLabel";
 import { fetchDashboardJson } from "../http";
 import { listedDraft } from "../listedCodeChange";
 import { cn } from "../styles";
 import { fadeTextClass } from "../textFade";
 import { useSnoozeResource } from "./inboxSnoozes";
-import { eventSentence, sentenceCase } from "./snoozeSentences";
+import { SnoozeEventPicker } from "./SnoozeEventPicker";
+import { eventSentence } from "./snoozeSentences";
 import {
   SOMEDAY,
   type CustomSnoozeEnd,
@@ -503,35 +496,16 @@ function ConditionRow(props: {
             </MessageObjectsProvider>
           </PopoverContent>
         </Popover>
-        <Select<string>
-          disabled={!events}
-          onValueChange={(next) => {
-            if (next) props.onChange({ ...condition, eventType: next });
-          }}
-          value={condition.eventType ?? null}
-        >
-          <SelectTrigger
-            aria-label="Event"
-            className="row-start-2 min-w-0 sm:flex-1"
-          >
-            <SelectValue className={cn(fadeTextClass, "flex-1 text-left")}>
-              {(value: string | null) =>
-                value && events
-                  ? eventPhrase(value, events)
-                  : watched && !events && !error
-                    ? "Checking the link…"
-                    : "Pick an event"
-              }
-            </SelectValue>
-          </SelectTrigger>
-          <SelectContent>
-            {events?.events.map((eventType) => (
-              <SelectItem key={eventType} value={eventType}>
-                {eventPhrase(eventType, events)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <SnoozeEventPicker
+          events={events}
+          onPick={(next) => props.onChange({ ...condition, eventType: next })}
+          placeholder={
+            watched && !events && !error
+              ? "Checking the link…"
+              : "Pick an event"
+          }
+          value={condition.eventType}
+        />
         <Button
           aria-label="Remove condition"
           className="col-start-2 row-start-1"
@@ -552,14 +526,6 @@ function ConditionRow(props: {
 function pageName(watched: Watched, subject: SnoozeEvents | undefined) {
   if (watched.kind === "subject") return subject && subjectName(subject);
   return watched.reference ? referenceName(watched.reference) : watched.url;
-}
-
-/** How an Event reads after its page's name, such as "is merged". */
-function eventPhrase(eventType: string, events: SnoozeEvents): string {
-  return (
-    events.phrases[eventType] ??
-    sentenceCase(eventLabel(eventType, events.resourceType))
-  );
 }
 
 /**
