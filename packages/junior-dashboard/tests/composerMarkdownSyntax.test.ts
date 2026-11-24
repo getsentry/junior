@@ -114,7 +114,8 @@ it("styles a span across lines and nested lists in quotes", () => {
   expect(lines[2]).toMatchObject({
     kind: "bullet",
     segments: [
-      { marker: { edge: "line" }, text: "> - " },
+      { marker: { edge: "line", line: "quote" }, text: "> " },
+      { marker: { edge: "line" }, text: "- " },
       { format: 0, text: "item" },
     ],
   });
@@ -138,9 +139,18 @@ it("keeps a list item that holds a quote a list item", () => {
     {
       kind: "bullet",
       segments: [
-        { marker: { edge: "line" }, text: "- > " },
+        { marker: { edge: "line" }, text: "- " },
+        { marker: { edge: "line", line: "quote" }, text: "> " },
         { format: 0, text: "quote" },
       ],
     },
   ]);
+});
+
+it("marks the quote markers of quoted code as quote markers", () => {
+  const lines = parseMarkdownLines(["> ```", "> a", "> ```"]);
+  expect(lines[1]).toMatchObject({
+    kind: "code",
+    segments: [{ marker: { edge: "line", line: "quote" }, text: "> " }, {}],
+  });
 });

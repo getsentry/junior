@@ -412,11 +412,12 @@ function plannedText(
         if (!segment.marker) {
           return { kind: "text", format: segment.format, text: piece };
         }
+        const { line: syntax, ...marker } = segment.marker;
         return {
           kind: "marker",
           format: segment.format,
-          line,
-          marker: segment.marker,
+          line: syntax ?? line,
+          marker,
           text: piece,
         };
       });

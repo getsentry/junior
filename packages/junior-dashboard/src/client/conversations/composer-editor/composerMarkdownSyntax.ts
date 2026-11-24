@@ -28,7 +28,13 @@ export type MarkdownLineKind =
  */
 export type MarkdownSegment = {
   format: number;
-  marker?: { edge: "close" | "line" | "open"; span: number };
+  // `line` names the syntax of a line marker on a line of another kind,
+  // such as the `> ` of a quoted list item or code line.
+  marker?: {
+    edge: "close" | "line" | "open";
+    line?: MarkdownLineKind;
+    span: number;
+  };
   text: string;
 };
 
@@ -45,6 +51,7 @@ export type MarkdownLine = {
 type Marker = NonNullable<MarkdownSegment["marker"]>;
 
 const LINE_MARKER: Marker = { edge: "line", span: -1 };
+const QUOTE_MARKER: Marker = { edge: "line", line: "quote", span: -1 };
 const SPAN_FORMATS: Partial<Record<MarkdownNode["type"], number>> = {
   delete: IS_STRIKETHROUGH,
   emphasis: IS_ITALIC,
@@ -93,7 +100,7 @@ export function parseMarkdownLines(lines: string[]): MarkdownLine[] {
         const from = line === firstLine ? start : starts[line]!;
         const to = quoteMarkerEnd(text, from);
         if (to === from) continue;
-        mark(from, to, LINE_MARKER);
+        mark(from, to, QUOTE_MARKER);
         // A list item visits first when the quote is inside it.
         if (kinds[line] === "text") kinds[line] = "quote";
       }
