@@ -104,17 +104,19 @@ export function InboxItemActions(props: {
   const draft = useFailedInboxItemAnswer(item.id);
   const failure = useFailedInboxItemAction(item.id);
   const closing = useClosingInboxItem(item);
+  // A caller with `onAction` shows its own pending state.
+  const shown = props.onAction ? item : closing;
   const [unsent, setUnsent] = useState(false);
   // `onAction` sends without `action`, so it keeps its own pending state.
   const [sending, setSending] = useState(false);
-  useReportUnsentAnswer(item, unsent);
+  // The form unmounts as the item shows closed, so its last unsent report
+  // stays. A closed item reports nothing.
+  useReportUnsentAnswer(shown, unsent);
   // An item can close elsewhere, such as in Slack, with answers unsent here.
   useEffect(() => {
     if (item.status !== "open") clearAnswerDraft(item.id);
   }, [item.id, item.status]);
 
-  // A caller with `onAction` shows its own pending state.
-  const shown = props.onAction ? item : closing;
   if (shown.status !== "open") return <ClosedSummary item={shown} />;
   if (!item.canAct && !item.canAnswer) {
     return (
